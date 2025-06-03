@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/netip"
 	"strconv"
-	"strings"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -17,12 +16,7 @@ var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 // newIPAddressBucketKey validates and returns a bucketKey for limits that use
 // the 'enum:ipAddress' bucket key format.
 func newIPAddressBucketKey(name Name, ip netip.Addr) (string, error) { //nolint:unparam // Only one named rate limit uses this helper
-	id := ip.String()
-	err := validateIdForName(name, id)
-	if err != nil {
-		return "", err
-	}
-	return joinWithColon(name.EnumString(), id), nil
+	return joinWithColon(name.EnumString(), ip.String()), nil
 }
 
 // newIPv6RangeCIDRBucketKey validates and returns a bucketKey for limits that
@@ -35,32 +29,18 @@ func newIPv6RangeCIDRBucketKey(name Name, ip netip.Addr) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid IPv6 address, can't calculate prefix of %q: %s", ip.String(), err)
 	}
-	id := prefix.String()
-	err = validateIdForName(name, id)
-	if err != nil {
-		return "", err
-	}
-	return joinWithColon(name.EnumString(), id), nil
+	return joinWithColon(name.EnumString(), prefix.String()), nil
 }
 
 // newRegIdBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:regId' bucket key format.
 func newRegIdBucketKey(name Name, regId int64) (string, error) {
-	id := strconv.FormatInt(regId, 10)
-	err := validateIdForName(name, id)
-	if err != nil {
-		return "", err
-	}
-	return joinWithColon(name.EnumString(), id), nil
+	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10)), nil
 }
 
 // newDomainBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:domain' bucket key format.
 func newDomainBucketKey(name Name, orderName string) (string, error) {
-	err := validateIdForName(name, orderName)
-	if err != nil {
-		return "", err
-	}
 	return joinWithColon(name.EnumString(), orderName), nil
 }
 
@@ -68,21 +48,12 @@ func newDomainBucketKey(name Name, orderName string) (string, error) {
 // the 'enum:regId:domain' bucket key format. This function is exported for use
 // in ra.resetAccountPausingLimit.
 func NewRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, error) {
-	regIdStr := strconv.FormatInt(regId, 10)
-	err := validateIdForName(name, joinWithColon(regIdStr, orderName))
-	if err != nil {
-		return "", err
-	}
-	return joinWithColon(name.EnumString(), regIdStr, orderName), nil
+	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), orderName), nil
 }
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:fqdnSet' bucket key format.
 func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nolint: unparam // Only one named rate limit uses this helper
-	err := validateIdForName(name, strings.Join(orderNames, ","))
-	if err != nil {
-		return "", err
-	}
 	id := fmt.Sprintf("%x", hashNames(orderNames))
 	return joinWithColon(name.EnumString(), id), nil
 }
