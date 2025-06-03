@@ -60,8 +60,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			overriddenBucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(tenZeroZeroTwo))
-			test.AssertNotError(t, err, "should not error")
+			overriddenBucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(tenZeroZeroTwo))
 			overriddenLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, overriddenBucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -116,8 +115,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			// Wait 1 second for a full bucket reset.
 			clk.Add(d.resetIn)
 
-			normalBucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			normalBucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			normalLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, normalBucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -247,8 +245,7 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 	testCtx, limiters, txnBuilder, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			bucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			limit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -310,8 +307,7 @@ func TestLimiter_DefaultLimits(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			bucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			limit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -373,8 +369,7 @@ func TestLimiter_RefundAndReset(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			bucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			limit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
 			test.AssertNotError(t, err, "should not error")
 
