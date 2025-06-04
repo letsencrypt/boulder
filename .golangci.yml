@@ -27,6 +27,22 @@ linters:
         - net/http.Write
         - os.Remove
         - github.com/miekg/dns.WriteMsg
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
+      settings:
+        printf:
+          funcs:
+            - (github.com/letsencrypt/boulder/log.Logger).Errf
+            - (github.com/letsencrypt/boulder/log.Logger).Warningf
+            - (github.com/letsencrypt/boulder/log.Logger).Infof
+            - (github.com/letsencrypt/boulder/log.Logger).Debugf
+            - (github.com/letsencrypt/boulder/log.Logger).AuditInfof
+            - (github.com/letsencrypt/boulder/log.Logger).AuditErrf
+            - (github.com/letsencrypt/boulder/ocsp/responder).SampledError
+            - (github.com/letsencrypt/boulder/web.RequestEvent).AddError
     gosec:
       excludes:
         # TODO: Identify, fix, and remove violations of most of these rules
@@ -44,22 +60,6 @@ linters:
         - G402 # TLS InsecureSkipVerify set true.
         - G403 # RSA keys should be at least 2048 bits
         - G404 # Use of weak random number generator
-    govet:
-      disable:
-        - fieldalignment
-        - shadow
-      enable-all: true
-      settings:
-        printf:
-          funcs:
-            - (github.com/letsencrypt/boulder/log.Logger).Errf
-            - (github.com/letsencrypt/boulder/log.Logger).Warningf
-            - (github.com/letsencrypt/boulder/log.Logger).Infof
-            - (github.com/letsencrypt/boulder/log.Logger).Debugf
-            - (github.com/letsencrypt/boulder/log.Logger).AuditInfof
-            - (github.com/letsencrypt/boulder/log.Logger).AuditErrf
-            - (github.com/letsencrypt/boulder/ocsp/responder).SampledError
-            - (github.com/letsencrypt/boulder/web.RequestEvent).AddError
     nolintlint:
       require-explanation: true
       require-specific: true
