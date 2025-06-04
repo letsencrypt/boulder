@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/netip"
 	"strconv"
-	"strings"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
@@ -57,7 +56,7 @@ func NewRegIdDomainBucketKey(name Name, regId int64, orderName string) string {
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:fqdnSet' bucket key format.
-func newFQDNSetBucketKey(name Name, orderIdents identifier.ACMEIdentifiers) (string, error) { //nolint: unparam // Only one named rate limit uses this helper
+func newFQDNSetBucketKey(name Name, orderIdents identifier.ACMEIdentifiers) string { //nolint: unparam // Only one named rate limit uses this helper
 	return joinWithColon(name.EnumString(), fmt.Sprintf("%x", core.HashIdentifiers(orderIdents)))
 }
 

@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"net/netip"
 	"strings"
 
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -35,4 +36,23 @@ func FQDNsToETLDsPlusOne(idents identifier.ACMEIdentifiers) []string {
 		}
 	}
 	return core.UniqueLowerNames(domains)
+}
+
+// guessIdentifiers is a convenience function for creating a slice of
+// ACMEIdentifier for a given slice of identifier values with unknown (and
+// potentially mixed) types.
+//
+// Only use this when parsing input that cannot, or does not yet, distinguish
+// between identifier types.
+func guessIdentifiers(input []string) identifier.ACMEIdentifiers {
+	var out identifier.ACMEIdentifiers
+	for _, value := range input {
+		ip, err := netip.ParseAddr(value)
+		if err == nil {
+			out = append(out, identifier.NewIP(ip))
+		} else {
+			out = append(out, identifier.NewDNS(value))
+		}
+	}
+	return out
 }

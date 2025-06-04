@@ -137,34 +137,6 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 	}
 }
 
-// NewGuess is a convenience function for creating an ACMEIdentifier where the
-// type is unknown, and will be guessed through parsing.
-//
-// Only use this when parsing input that cannot, or does not yet, distinguish
-// between identifier types.
-func NewGuess(value string) ACMEIdentifier {
-	ip, err := netip.ParseAddr(value)
-	if err == nil {
-		return NewIP(ip)
-	} else {
-		return NewDNS(value)
-	}
-}
-
-// NewGuessSlice is a convenience function for creating a slice of
-// ACMEIdentifier for a given slice of identifier values with unknown (and
-// potentially mixed) types.
-//
-// Only use this when parsing input that cannot, or does not yet, distinguish
-// between identifier types.
-func NewGuessSlice(input []string) ACMEIdentifiers {
-	var out ACMEIdentifiers
-	for _, in := range input {
-		out = append(out, NewGuess(in))
-	}
-	return out
-}
-
 // fromX509 extracts the Subject Alternative Names from a certificate or CSR's fields, and
 // returns a slice of ACMEIdentifiers.
 func fromX509(commonName string, dnsNames []string, ipAddresses []net.IP) ACMEIdentifiers {
