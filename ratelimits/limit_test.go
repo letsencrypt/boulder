@@ -116,12 +116,9 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	//   - CertificatesPerFQDNSet:example.com
 	//   - CertificatesPerFQDNSet:example.com,example.net
 	//   - CertificatesPerFQDNSet:example.com,example.net,example.org
-	firstEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com"}))
-	test.AssertNotError(t, err, "valid fqdnSet with one domain should not fail")
-	secondEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net"}))
-	test.AssertNotError(t, err, "valid fqdnSet with two domains should not fail")
-	thirdEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net", "example.org"}))
-	test.AssertNotError(t, err, "valid fqdnSet with three domains should not fail")
+	firstEntryKey := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com"}))
+	secondEntryKey := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net"}))
+	thirdEntryKey := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net", "example.org"}))
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides_regid_fqdnset.yml")
 	test.AssertNotError(t, err, "multiple valid override limits with 'fqdnSet' Ids")
 	test.AssertEquals(t, l[firstEntryKey].burst, int64(40))
