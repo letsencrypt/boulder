@@ -57,9 +57,8 @@ func NewRegIdIdentValueBucketKey(name Name, regId int64, orderIdent identifier.A
 // newRegIdIdentValueBucketKeyFromString validates and returns a bucketKey for
 // limits that use the 'enum:regId:identValue' bucket key format.
 //
-// This is split out from NewRegIdIdentValueBucketKey so that we can handle an
-// identifier value that may have been transformed into a CIDR-formatted IP
-// address range, which can no longer be a valid identifier value.
+// This is split out from NewRegIdIdentValueBucketKey so that we can handle a
+// CIDR-formatted IP address range, which is not a valid identifier value.
 func newRegIdIdentValueBucketKeyFromString(name Name, regId int64, orderName string) string {
 	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), orderName)
 }
@@ -368,7 +367,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
 			perAccountPerIdentValueKey := newRegIdIdentValueBucketKeyFromString(CertificatesPerDomainPerAccount, regId, name)
-			// Add a check-only transaction for each per account per domain
+			// Add a check-only transaction for each per account per identValue
 			// bucket.
 			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerIdentValueKey, 1)
 			if err != nil {
