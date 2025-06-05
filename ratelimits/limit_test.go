@@ -94,7 +94,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 
 	// Load single valid override limit with a 'domain' Id.
 	l, err = loadAndParseOverrideLimits("testdata/working_override_regid_domain.yml")
-	test.AssertNotError(t, err, "valid single override limit with Id of regId:domain")
+	test.AssertNotError(t, err, "valid single override limit with Id of regId:identValue")
 	expectKey = joinWithColon(CertificatesPerDomain.EnumString(), "example.com")
 	test.AssertEquals(t, l[expectKey].burst, int64(40))
 	test.AssertEquals(t, l[expectKey].count, int64(40))

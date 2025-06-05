@@ -46,13 +46,14 @@ const (
 	// depending on the context:
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
-	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
-	//    where regId is the ACME registration Id of the account and domain is a
-	//    domain name in the certificate.
+	//  - When referenced in a transaction: uses bucket key
+	//    'enum:regId:identValue', where regId is the ACME registration Id of
+	//    the account and identValue is the value of an identifier in the
+	//    certificate.
 	FailedAuthorizationsPerDomainPerAccount
 
-	// CertificatesPerDomain uses bucket key 'enum:domain', where domain is a
-	// domain name in the certificate.
+	// CertificatesPerDomain uses bucket key 'enum:identValue', where identValue
+	// is the value of an identifier in the certificate.
 	CertificatesPerDomain
 
 	// CertificatesPerDomainPerAccount is only used for per-account overrides to
@@ -61,9 +62,10 @@ const (
 	// keys depending on the context:
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
-	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
-	//    where regId is the ACME registration Id of the account and domain is a
-	//    domain name in the certificate.
+	//  - When referenced in a transaction: uses bucket key
+	//   'enum:regId:identValue', where regId is the ACME registration Id of
+	//    the account and identValue is the value of an identifier in the
+	//    certificate.
 	//
 	// When overrides to the CertificatesPerDomainPerAccount are configured for a
 	// subscriber, the cost:
@@ -72,10 +74,11 @@ const (
 	CertificatesPerDomainPerAccount
 
 	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a
-	// hashed set of unique eTLD+1 domain names in the certificate.
+	// hashed set of unique eTLD+1 domain names and prefixes of IP addresses in
+	// the certificate.
 	//
 	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
-	// passed as a comma-separated list of domain names.
+	// passed as a comma-separated list of domain names and IP prefixes.
 	CertificatesPerFQDNSet
 
 	// FailedAuthorizationsForPausingPerDomainPerAccount is similar to
@@ -83,9 +86,10 @@ const (
 	// bucket keys depending on the context:
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
-	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
-	//    where regId is the ACME registration Id of the account and domain is a
-	//    domain name in the certificate.
+	//  - When referenced in a transaction: uses bucket key
+	//    'enum:regId:identValue', where regId is the ACME registration Id of
+	//    the account and identValue is the value of an identifier in the
+	//    certificate.
 	FailedAuthorizationsForPausingPerDomainPerAccount
 )
 
@@ -160,9 +164,11 @@ func validateRegId(id string) error {
 	return nil
 }
 
-// validateDomain validates that the provided string is formatted 'domain',
-// where domain is a domain name.
-func validateDomain(id string) error {
+// validateIdentValue validates that the provided string is formatted
+// 'identValue', where identValue is a valid identifier value.
+//
+// TODO(#8221): This needs to accept non-DNS identifiers.
+func validateIdentValue(id string) error {
 	err := policy.ValidDomain(id)
 	if err != nil {
 		return fmt.Errorf("invalid domain, %q must be formatted 'domain': %w", id, err)
@@ -170,10 +176,12 @@ func validateDomain(id string) error {
 	return nil
 }
 
-// validateRegIdDomain validates that the provided string is formatted
-// 'regId:domain', where regId is an ACME registration Id and domain is a domain
-// name.
-func validateRegIdDomain(id string) error {
+// validateRegIdIdentValue validates that the provided string is formatted
+// 'regId:identValue', where regId is an ACME registration Id and identValue is
+// a valid identifier value.
+//
+// TODO(#8221): This needs to accept non-DNS identifiers.
+func validateRegIdIdentValue(id string) error {
 	regIdDomain := strings.Split(id, ":")
 	if len(regIdDomain) != 2 {
 		return fmt.Errorf(
@@ -194,6 +202,9 @@ func validateRegIdDomain(id string) error {
 
 // validateFQDNSet validates that the provided string is formatted 'fqdnSet',
 // where fqdnSet is a comma-separated list of identifier values.
+//
+// TODO(#8221): This needs to permit CIDRs too, so WellFormedIdentifiers isn't
+// going to work.
 func validateFQDNSet(id string) error {
 	values := strings.Split(id, ",")
 	if len(values) == 0 {
@@ -219,8 +230,8 @@ func validateIdForName(name Name, id string) error {
 
 	case FailedAuthorizationsPerDomainPerAccount:
 		if strings.Contains(id, ":") {
-			// 'enum:regId:domain' for transaction
-			return validateRegIdDomain(id)
+			// 'enum:regId:identValue' for transaction
+			return validateRegIdIdentValue(id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)
@@ -228,16 +239,16 @@ func validateIdForName(name Name, id string) error {
 
 	case CertificatesPerDomainPerAccount:
 		if strings.Contains(id, ":") {
-			// 'enum:regId:domain' for transaction
-			return validateRegIdDomain(id)
+			// 'enum:regId:identValue' for transaction
+			return validateRegIdIdentValue(id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)
 		}
 
 	case CertificatesPerDomain:
-		// 'enum:domain'
-		return validateDomain(id)
+		// 'enum:identValue'
+		return validateIdentValue(id)
 
 	case CertificatesPerFQDNSet:
 		// 'enum:fqdnSet'
@@ -245,8 +256,8 @@ func validateIdForName(name Name, id string) error {
 
 	case FailedAuthorizationsForPausingPerDomainPerAccount:
 		if strings.Contains(id, ":") {
-			// 'enum:regId:domain' for transaction
-			return validateRegIdDomain(id)
+			// 'enum:regId:identValue' for transaction
+			return validateRegIdIdentValue(id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)

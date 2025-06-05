@@ -132,7 +132,7 @@ func (d *Decision) Result(now time.Time) error {
 		)
 
 	case FailedAuthorizationsPerDomainPerAccount:
-		// Uses bucket key 'enum:regId:domain'.
+		// Uses bucket key 'enum:regId:identValue'.
 		idx := strings.LastIndex(d.transaction.bucketKey, ":")
 		if idx == -1 {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
@@ -148,7 +148,7 @@ func (d *Decision) Result(now time.Time) error {
 		)
 
 	case CertificatesPerDomain, CertificatesPerDomainPerAccount:
-		// Uses bucket key 'enum:domain' or 'enum:regId:domain' respectively.
+		// Uses bucket key 'enum:identValue' or 'enum:regId:identValue' respectively.
 		idx := strings.LastIndex(d.transaction.bucketKey, ":")
 		if idx == -1 {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")

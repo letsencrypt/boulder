@@ -2022,6 +2022,9 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // encountered during the check, it is logged but not returned. A refund
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
+//
+// Precondition: idents must be a list of identifiers that all pass
+// policy.WellFormedIdentifiers.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents identifier.ACMEIdentifiers, isRenewal bool) (func(), error) {
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, idents, isRenewal)
 	if err != nil {
