@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"fmt"
 	"net/netip"
 	"strings"
 
@@ -15,35 +16,55 @@ func joinWithColon(args ...string) string {
 	return strings.Join(args, ":")
 }
 
-// FQDNsToETLDsPlusOne transforms a list of FQDNs into a list of eTLD+1's for
-// the CertificatesPerDomain limit. It also de-duplicates the output domains.
-// Exact public suffix matches are included. Non-DNS identifiers are ignored.
-func FQDNsToETLDsPlusOne(idents identifier.ACMEIdentifiers) []string {
-	var domains []string
+// coveringIdentifiers transforms a slice of ACMEIdentifiers into strings of
+// their "covering" identifiers, for the CertificatesPerDomain limit. It also
+// de-duplicates the output. For DNS identifiers, this is eTLD+1's; exact public
+// suffix matches are included. For IP address identifiers, this is the /24 (for
+// IPv4) or /48 (for IPv6) that contains them.
+func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
+	var covers []string
 	for _, ident := range idents {
-		if ident.Type != identifier.TypeDNS {
-			continue
-		}
-		domain, err := publicsuffix.Domain(ident.Value)
-		if err != nil {
-			// The only possible errors are:
-			// (1) publicsuffix.Domain is giving garbage values
-			// (2) the public suffix is the domain itself
-			// We assume 2 and include the original name in the result.
-			domains = append(domains, ident.Value)
-		} else {
-			domains = append(domains, domain)
+		switch ident.Type {
+		case identifier.TypeDNS:
+			domain, err := publicsuffix.Domain(ident.Value)
+			if err != nil {
+				if err.Error() == fmt.Sprintf("%s is a suffix", ident.Value) {
+					// If the public suffix is the domain itself, that's fine.
+					// Include the original name in the result.
+					covers = append(covers, ident.Value)
+					continue
+				} else {
+					return nil, err
+				}
+			}
+			covers = append(covers, domain)
+		case identifier.TypeIP:
+			ip, err := netip.ParseAddr(ident.Value)
+			if err != nil {
+				return nil, err
+			}
+			var bits int
+			if ip.Is4() {
+				bits = 24
+			} else {
+				bits = 48
+			}
+			prefix, err := ip.Prefix(bits)
+			if err != nil {
+				return nil, err
+			}
+			covers = append(covers, prefix.String())
 		}
 	}
-	return core.UniqueLowerNames(domains)
+	return core.UniqueLowerNames(covers), nil
 }
 
 // guessIdentifiers is a convenience function for creating a slice of
 // ACMEIdentifier for a given slice of identifier values with unknown (and
 // potentially mixed) types.
 //
-// Only use this when parsing input that cannot, or does not yet, distinguish
-// between identifier types.
+// Only use this when parsing trusted input, i.e. a rate limit overrides list,
+// that does not distinguish between identifier types.
 func guessIdentifiers(input []string) identifier.ACMEIdentifiers {
 	var out identifier.ACMEIdentifiers
 	for _, value := range input {
