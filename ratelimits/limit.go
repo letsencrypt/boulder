@@ -196,9 +196,9 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 				if name == CertificatesPerFQDNSet {
 					// FQDNSet hashes are not a nice thing to ask for in a
 					// config file, so we allow the user to specify a
-					// comma-separated list of identifier values and compute the
-					// hash here.
-					id = fmt.Sprintf("%x", core.HashIdentifiers(guessIdentifiers(strings.Split(id, ","))))
+					// comma-separated list of identifier values and/or IP
+					// prefixes in CIDR notation, and compute the hash here.
+					id = fmt.Sprintf("%x", core.HashNames(strings.Split(id, ",")))
 				}
 				parsed[joinWithColon(name.EnumString(), id)] = lim
 			}

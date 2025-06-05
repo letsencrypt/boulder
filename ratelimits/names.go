@@ -166,12 +166,13 @@ func validateRegId(id string) error {
 
 // validateIdentValue validates that the provided string is formatted
 // 'identValue', where identValue is a valid identifier value.
-//
-// TODO(#8221): This needs to accept non-DNS identifiers.
 func validateIdentValue(id string) error {
-	err := policy.ValidDomain(id)
-	if err != nil {
-		return fmt.Errorf("invalid domain, %q must be formatted 'domain': %w", id, err)
+	domainErr := policy.ValidDomain(id)
+	if domainErr != nil {
+		ipErr := policy.ValidIP(id)
+		if ipErr != nil {
+			return fmt.Errorf("invalid identValue, %q must be formatted 'identValue': %w as domain, %w as IP", id, domainErr, ipErr)
+		}
 	}
 	return nil
 }
@@ -179,39 +180,56 @@ func validateIdentValue(id string) error {
 // validateRegIdIdentValue validates that the provided string is formatted
 // 'regId:identValue', where regId is an ACME registration Id and identValue is
 // a valid identifier value.
-//
-// TODO(#8221): This needs to accept non-DNS identifiers.
 func validateRegIdIdentValue(id string) error {
-	regIdDomain := strings.Split(id, ":")
-	if len(regIdDomain) != 2 {
+	regIdIdentValue := strings.Split(id, ":")
+	if len(regIdIdentValue) != 2 {
 		return fmt.Errorf(
-			"invalid regId:domain, %q must be formatted 'regId:domain'", id)
+			"invalid regId:identValue, %q must be formatted 'regId:identValue'", id)
 	}
-	err := validateRegId(regIdDomain[0])
+	err := validateRegId(regIdIdentValue[0])
 	if err != nil {
 		return fmt.Errorf(
-			"invalid regId, %q must be formatted 'regId:domain'", id)
+			"invalid regId, %q must be formatted 'regId:identValue'", id)
 	}
-	err = policy.ValidDomain(regIdDomain[1])
-	if err != nil {
-		return fmt.Errorf(
-			"invalid domain, %q must be formatted 'regId:domain': %w", id, err)
+	domainErr := policy.ValidDomain(regIdIdentValue[1])
+	if domainErr != nil {
+		ipErr := policy.ValidIP(regIdIdentValue[1])
+		if ipErr != nil {
+			return fmt.Errorf("invalid identValue, %q must be formatted 'regId:identValue': %w as domain, %w as IP", id, domainErr, ipErr)
+		}
 	}
 	return nil
 }
 
 // validateFQDNSet validates that the provided string is formatted 'fqdnSet',
-// where fqdnSet is a comma-separated list of identifier values.
-//
-// TODO(#8221): This needs to permit CIDRs too, so WellFormedIdentifiers isn't
-// going to work.
+// where fqdnSet is a comma-separated list of identifier values and/or IP
+// prefixes in CIDR notation.
 func validateFQDNSet(id string) error {
 	values := strings.Split(id, ",")
 	if len(values) == 0 {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	return policy.WellFormedIdentifiers(guessIdentifiers(values))
+	for _, cover := range values {
+		domainErr := policy.ValidDomain(cover)
+		// If the string isn't a valid domain, it could be a CIDR or IP.
+		if domainErr != nil {
+			prefix, prefixErr := netip.ParsePrefix(cover)
+			var ipErr error
+			if prefixErr == nil {
+				// If it's a valid CIDR, we still want to check if its base IP
+				// is inside a reserved prefix.
+				ipErr = policy.IsReservedIP(prefix.Addr())
+			} else {
+				// If it isn't a valid CIDR, it could be an IP.
+				ipErr = policy.ValidIP(cover)
+			}
+			if ipErr != nil {
+				return fmt.Errorf("invalid fqdnSet member %q: %w as domain, %w as IP prefix, %w as IP", id, domainErr, prefixErr, ipErr)
+			}
+		}
+	}
+	return nil
 }
 
 func validateIdForName(name Name, id string) error {

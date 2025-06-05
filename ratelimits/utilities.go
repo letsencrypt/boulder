@@ -58,22 +58,3 @@ func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 	}
 	return core.UniqueLowerNames(covers), nil
 }
-
-// guessIdentifiers is a convenience function for creating a slice of
-// ACMEIdentifier for a given slice of identifier values with unknown (and
-// potentially mixed) types.
-//
-// Only use this when parsing trusted input, i.e. a rate limit overrides list,
-// that does not distinguish between identifier types.
-func guessIdentifiers(input []string) identifier.ACMEIdentifiers {
-	var out identifier.ACMEIdentifiers
-	for _, value := range input {
-		ip, err := netip.ParseAddr(value)
-		if err == nil {
-			out = append(out, identifier.NewIP(ip))
-		} else {
-			out = append(out, identifier.NewDNS(value))
-		}
-	}
-	return out
-}
