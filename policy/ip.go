@@ -91,3 +91,22 @@ func IsReservedIP(ip netip.Addr) error {
 
 	return nil
 }
+
+// IsReservedPrefix returns an error if an IP prefix overlaps with a reserved
+// range.
+func IsReservedPrefix(prefix netip.Prefix) error {
+	var reservedPrefixes map[netip.Prefix]string
+	if prefix.Addr().Is4() {
+		reservedPrefixes = privateV4Prefixes
+	} else {
+		reservedPrefixes = privateV6Prefixes
+	}
+
+	for net, name := range reservedPrefixes {
+		if net.Overlaps(prefix) {
+			return fmt.Errorf("%w: %s", errIPReserved, name)
+		}
+	}
+
+	return nil
+}

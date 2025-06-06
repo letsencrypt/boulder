@@ -2,7 +2,6 @@ package ratelimits
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -138,21 +137,25 @@ func validIPAddress(id string) error {
 }
 
 // validIPv6RangeCIDR validates that the provided string is formatted as an IPv6
-// CIDR range with a /48 mask.
+// prefix in CIDR notation, with a /48 mask.
 func validIPv6RangeCIDR(id string) error {
-	_, ipNet, err := net.ParseCIDR(id)
+	prefix, err := netip.ParsePrefix(id)
 	if err != nil {
 		return fmt.Errorf(
 			"invalid CIDR, %q must be an IPv6 CIDR range", id)
 	}
-	ones, _ := ipNet.Mask.Size()
-	if ones != 48 {
+	if prefix.Bits() != 48 {
 		// This also catches the case where the range is an IPv4 CIDR, since an
 		// IPv4 CIDR can't have a /48 subnet mask - the maximum is /32.
 		return fmt.Errorf(
 			"invalid CIDR, %q must be /48", id)
 	}
-	return nil
+	masked := prefix.Masked()
+	if masked != prefix {
+		return fmt.Errorf(
+			"invalid CIDR, %q must be in canonical form (no extra bits) like %s", id, masked.String())
+	}
+	return policy.IsReservedPrefix(prefix)
 }
 
 // validateRegId validates that the provided string is a valid ACME regId.
@@ -188,22 +191,49 @@ func validateRegIdIdentValue(id string) error {
 	return nil
 }
 
-// validateDomainOrCIDR validates that the provided string is formatted
+// validateDomainOrCIDRInner validates that the provided string is formatted
 // 'domainOrCIDR', where domainOrCIDR is either a domain name in the certificate
-// or an IP prefix in CIDR notation.
-//
-// TODO(#8221): Do we need to enforce the prefix size, or can we cope?
-func validateDomainOrCIDR(id string) error {
+// or an IP prefix in CIDR notation. IP prefixes must be /24 for IPv4 or /48 for
+// IPv6.
+func validateDomainOrCIDRInner(id string) error {
 	domainErr := policy.ValidDomain(id)
 	if domainErr != nil {
 		prefix, prefixErr := netip.ParsePrefix(id)
 		if prefixErr != nil {
-			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'domainOrCIDR': %w as domain, %w as IP prefix", id, domainErr, prefixErr)
+			return fmt.Errorf("%w as domain, %w as IP prefix", domainErr, prefixErr)
 		}
-		ipErr := policy.IsReservedIP(prefix.Addr())
-		if ipErr != nil {
-			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'domainOrCIDR': %w", id, ipErr)
+
+		var bits int
+		if prefix.Addr().Is4() {
+			bits = 24
+		} else {
+			bits = 48
 		}
+		if prefix.Bits() != bits {
+			return fmt.Errorf("invalid CIDR, must be /%d", bits)
+		}
+
+		masked := prefix.Masked()
+		if masked != prefix {
+			return fmt.Errorf("invalid CIDR, must be in canonical form (no extra bits) like %s", masked.String())
+		}
+
+		reservedErr := policy.IsReservedPrefix(prefix)
+		if reservedErr != nil {
+			return reservedErr
+		}
+	}
+	return nil
+}
+
+// validateDomainOrCIDR validates that the provided string is formatted
+// 'domainOrCIDR', where domainOrCIDR is either a domain name in the certificate
+// or an IP prefix in CIDR notation. It wraps validateDomainOrCIDRInner and
+// provides the appropriate error.
+func validateDomainOrCIDR(id string) error {
+	err := validateDomainOrCIDRInner(id)
+	if err != nil {
+		return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'domainOrCIDR': %w", id, err)
 	}
 	return nil
 }
@@ -211,29 +241,20 @@ func validateDomainOrCIDR(id string) error {
 // validateRegIdDomainOrCIDR validates that the provided string is formatted
 // 'regId:domainOrCIDR', where domainOrCIDR is either a domain name in the
 // certificate or an IP prefix in CIDR notation.
-//
-// TODO(#8221): Do we need to enforce the prefix size, or can we cope?
 func validateRegIdDomainOrCIDR(id string) error {
-	regIdIdentValue := strings.Split(id, ":")
-	if len(regIdIdentValue) != 2 {
+	regIdDomainOrCIDR := strings.Split(id, ":")
+	if len(regIdDomainOrCIDR) != 2 {
 		return fmt.Errorf(
-			"invalid regId:identValue, %q must be formatted 'regId:domainOrCIDR'", id)
+			"invalid regId:domainOrCIDR, %q must be formatted 'regId:domainOrCIDR'", id)
 	}
-	err := validateRegId(regIdIdentValue[0])
+	err := validateRegId(regIdDomainOrCIDR[0])
 	if err != nil {
 		return fmt.Errorf(
 			"invalid regId, %q must be formatted 'regId:domainOrCIDR'", id)
 	}
-	domainErr := policy.ValidDomain(regIdIdentValue[1])
-	if domainErr != nil {
-		prefix, prefixErr := netip.ParsePrefix(regIdIdentValue[1])
-		if prefixErr != nil {
-			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w as domain, %w as IP prefix", regIdIdentValue[1], domainErr, prefixErr)
-		}
-		ipErr := policy.IsReservedIP(prefix.Addr())
-		if ipErr != nil {
-			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w", regIdIdentValue[1], ipErr)
-		}
+	err = validateDomainOrCIDRInner(regIdDomainOrCIDR[1])
+	if err != nil {
+		return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w", id, err)
 	}
 	return nil
 }
