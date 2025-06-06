@@ -87,9 +87,9 @@ const (
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
 	//  - When referenced in a transaction: uses bucket key
-	//    'enum:regId:domainOrCIDR', where regId is the ACME registration Id of
-	//    the account and domainOrCIDR is either a domain name in the
-	//    certificate or an IP prefix in CIDR notation.
+	//    'enum:regId:identValue', where regId is the ACME registration Id of
+	//    the account and identValue is the value of an identifier in the
+	//    certificate.
 	FailedAuthorizationsForPausingPerDomainPerAccount
 )
 
