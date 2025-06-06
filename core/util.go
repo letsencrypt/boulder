@@ -329,16 +329,7 @@ func HashIdentifiers(idents identifier.ACMEIdentifiers) []byte {
 		values = append(values, ident.Value)
 	}
 
-	return HashNames(values)
-}
-
-// HashNames returns a hash of the strings requested. This is intended for use
-// when interacting with the orderFqdnSets table and rate limiting.
-//
-// This is split out from HashIdentifiers so that we can handle an IP prefix in
-// CIDR notation, which is not a valid identifier value.
-func HashNames(names []string) []byte {
-	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	hash := sha256.Sum256([]byte(strings.Join(values, ",")))
 	return hash[:]
 }
 
