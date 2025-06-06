@@ -75,7 +75,7 @@ func TestValidateIdForName(t *testing.T) {
 		{
 			limit: NewRegistrationsPerIPv6Range,
 			desc:  "valid IPv6 address range",
-			id:    "2001:0db8:0000::/48",
+			id:    "2602:80a:6000::/48",
 		},
 		{
 			limit: NewRegistrationsPerIPv6Range,
@@ -94,6 +94,12 @@ func TestValidateIdForName(t *testing.T) {
 			desc:  "IPv4 CIDR when we expect IPv6 CIDR range",
 			id:    "10.0.0.0/16",
 			err:   "must be /48",
+		},
+		{
+			limit: NewRegistrationsPerIPv6Range,
+			desc:  "IPv4 CIDR with invalid long mask",
+			id:    "10.0.0.0/48",
+			err:   "must be an IPv6 CIDR range",
 		},
 		{
 			limit: NewOrdersPerAccount,

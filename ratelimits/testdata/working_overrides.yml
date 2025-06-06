@@ -10,7 +10,7 @@
     count: 50
     period: 2s
     ids:
-      - id: 2001:0db8:0000::/48
+      - id: 2602:80a:6000::/48
         comment: Foo
 - FailedAuthorizationsPerDomainPerAccount:
     burst: 60

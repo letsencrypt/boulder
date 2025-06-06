@@ -46,10 +46,10 @@ func TestParseOverrideNameId(t *testing.T) {
 
 	// 'enum:ipv6range'
 	// Valid IPv6 address range.
-	name, id, err = parseOverrideNameId(NewRegistrationsPerIPv6Range.String() + ":2001:0db8:0000::/48")
+	name, id, err = parseOverrideNameId(NewRegistrationsPerIPv6Range.String() + ":2602:80a:6000::/48")
 	test.AssertNotError(t, err, "should not error")
 	test.AssertEquals(t, name, NewRegistrationsPerIPv6Range)
-	test.AssertEquals(t, id, "2001:0db8:0000::/48")
+	test.AssertEquals(t, id, "2602:80a:6000::/48")
 
 	// Missing colon (this should never happen but we should avoid panicking).
 	_, _, err = parseOverrideNameId(NewRegistrationsPerIPAddress.String() + "10.0.0.1")
@@ -107,7 +107,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	test.AssertEquals(t, l[expectKey1].burst, int64(40))
 	test.AssertEquals(t, l[expectKey1].count, int64(40))
 	test.AssertEquals(t, l[expectKey1].period.Duration, time.Second)
-	expectKey2 := joinWithColon(NewRegistrationsPerIPv6Range.EnumString(), "2001:0db8:0000::/48")
+	expectKey2 := joinWithColon(NewRegistrationsPerIPv6Range.EnumString(), "2602:80a:6000::/48")
 	test.AssertEquals(t, l[expectKey2].burst, int64(50))
 	test.AssertEquals(t, l[expectKey2].count, int64(50))
 	test.AssertEquals(t, l[expectKey2].period.Duration, time.Second*2)
