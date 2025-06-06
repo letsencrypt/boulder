@@ -150,10 +150,10 @@ func validIPv6RangeCIDR(id string) error {
 		return fmt.Errorf(
 			"invalid CIDR, %q must be /48", id)
 	}
-	masked := prefix.Masked()
-	if masked != prefix {
+	canon := prefix.Masked().String()
+	if canon != id {
 		return fmt.Errorf(
-			"invalid CIDR, %q must be in canonical form (no extra bits) like %s", id, masked.String())
+			"invalid CIDR, %q must be in canonical form like %s", id, canon)
 	}
 	return policy.IsReservedPrefix(prefix)
 }
@@ -213,9 +213,9 @@ func validateDomainOrCIDRInner(id string) error {
 			return fmt.Errorf("invalid CIDR, must be /%d", bits)
 		}
 
-		masked := prefix.Masked()
-		if masked != prefix {
-			return fmt.Errorf("invalid CIDR, must be in canonical form (no extra bits) like %s", masked.String())
+		canon := prefix.Masked().String()
+		if canon != id {
+			return fmt.Errorf("invalid CIDR, must be in canonical form like %s", canon)
 		}
 
 		reservedErr := policy.IsReservedPrefix(prefix)
