@@ -89,6 +89,8 @@ func (d *DBConfig) URL() (string, error) {
 	return strings.TrimSpace(string(url)), err
 }
 
+// SMTPConfig is deprecated.
+// TODO(#8199): Delete this when it is removed from bad-key-revoker's config.
 type SMTPConfig struct {
 	PasswordConfig
 	Server   string `validate:"required"`
