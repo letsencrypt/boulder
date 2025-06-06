@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -237,6 +238,22 @@ func TestCNFromCSR(t *testing.T) {
 				DNSNames: []string{
 					"b.com",
 				}},
+			"",
+		},
+		{
+			"explicit CN that's an IP",
+			&x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: "127.0.0.1"},
+			},
+			"",
+		},
+		{
+			"no CN, only IP SANs",
+			&x509.CertificateRequest{
+				IPAddresses: []net.IP{
+					netip.MustParseAddr("127.0.0.1").AsSlice(),
+				},
+			},
 			"",
 		},
 	}
