@@ -39,7 +39,7 @@ func TestIsReservedIP(t *testing.T) {
 		{"2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true},
 		{"0100::", true},
 		{"0100::0000:ffff:ffff:ffff:ffff", true},
-		{"0100::0001:0000:0000:0000:0000", false},
+		{"0100::0002:0000:0000:0000:0000", false},
 	}
 
 	for _, tc := range cases {
@@ -51,6 +51,44 @@ func TestIsReservedIP(t *testing.T) {
 			}
 			if err == nil && tc.want {
 				t.Errorf("Wanted error for %#v, got success", tc.ip)
+			}
+		})
+	}
+}
+
+func TestIsReservedPrefix(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		cidr string
+		want bool
+	}{
+		{"172.16.0.0/12", true},
+		{"172.16.0.0/32", true},
+		{"172.16.0.1/32", true},
+		{"172.31.255.0/24", true},
+		{"172.31.255.255/24", true},
+		{"172.31.255.255/32", true},
+		{"172.32.0.0/24", false},
+		{"172.32.0.1/32", false},
+
+		{"100::/64", true},
+		{"100::/128", true},
+		{"100::1/128", true},
+		{"100::1:ffff:ffff:ffff:ffff/128", true},
+		{"100:0:0:2::/64", false},
+		{"100:0:0:2::1/128", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.cidr, func(t *testing.T) {
+			t.Parallel()
+			err := IsReservedPrefix(netip.MustParsePrefix(tc.cidr))
+			if err != nil && !tc.want {
+				t.Error(err)
+			}
+			if err == nil && tc.want {
+				t.Errorf("Wanted error for %#v, got success", tc.cidr)
 			}
 		})
 	}

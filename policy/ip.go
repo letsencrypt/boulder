@@ -50,6 +50,7 @@ var (
 		netip.MustParsePrefix("64:ff9b::/96"):      "RFC 6052: IPv4-IPv6 Translat.",
 		netip.MustParsePrefix("64:ff9b:1::/48"):    "RFC 8215: IPv4-IPv6 Translat.",
 		netip.MustParsePrefix("100::/64"):          "RFC 6666: Discard-Only Address Block",
+		netip.MustParsePrefix("100:0:0:1::/64"):    "RFC 9780: Dummy IPv6 Prefix",
 		netip.MustParsePrefix("2001::/23"):         "RFC 2928: IETF Protocol Assignments",
 		netip.MustParsePrefix("2001::/32"):         "RFC 4380 & RFC 8190: TEREDO",
 		netip.MustParsePrefix("2001:1::1/128"):     "RFC 7723: Port Control Protocol Anycast",
