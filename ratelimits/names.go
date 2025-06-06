@@ -52,8 +52,9 @@ const (
 	//    certificate.
 	FailedAuthorizationsPerDomainPerAccount
 
-	// CertificatesPerDomain uses bucket key 'enum:identValue', where identValue
-	// is the value of an identifier in the certificate.
+	// CertificatesPerDomain uses bucket key 'enum:domainOrCIDR', where
+	// domainOrCIDR is either a domain name in the certificate or an IP prefix
+	// in CIDR notation.
 	CertificatesPerDomain
 
 	// CertificatesPerDomainPerAccount is only used for per-account overrides to
@@ -63,9 +64,9 @@ const (
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
 	//  - When referenced in a transaction: uses bucket key
-	//   'enum:regId:identValue', where regId is the ACME registration Id of
-	//    the account and identValue is the value of an identifier in the
-	//    certificate.
+	//   'enum:regId:domainOrCIDR', where regId is the ACME registration Id of
+	//    the account and domainOrCIDR is either a domain name in the
+	//    certificate or an IP prefix in CIDR notation.
 	//
 	// When overrides to the CertificatesPerDomainPerAccount are configured for a
 	// subscriber, the cost:
@@ -74,11 +75,10 @@ const (
 	CertificatesPerDomainPerAccount
 
 	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a
-	// hashed set of unique eTLD+1 domain names and prefixes of IP addresses in
-	// the certificate.
+	// hashed set of unique identifier values in the certificate.
 	//
 	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
-	// passed as a comma-separated list of domain names and IP prefixes.
+	// passed as a comma-separated list of identifier values.
 	CertificatesPerFQDNSet
 
 	// FailedAuthorizationsForPausingPerDomainPerAccount is similar to
@@ -87,9 +87,9 @@ const (
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
 	//  - When referenced in a transaction: uses bucket key
-	//    'enum:regId:identValue', where regId is the ACME registration Id of
-	//    the account and identValue is the value of an identifier in the
-	//    certificate.
+	//    'enum:regId:domainOrCIDR', where regId is the ACME registration Id of
+	//    the account and domainOrCIDR is either a domain name in the
+	//    certificate or an IP prefix in CIDR notation.
 	FailedAuthorizationsForPausingPerDomainPerAccount
 )
 
@@ -137,7 +137,7 @@ func validIPAddress(id string) error {
 	return nil
 }
 
-// validIPv6RangeCIDR validates that the provided string is formatted is an IPv6
+// validIPv6RangeCIDR validates that the provided string is formatted as an IPv6
 // CIDR range with a /48 mask.
 func validIPv6RangeCIDR(id string) error {
 	_, ipNet, err := net.ParseCIDR(id)
@@ -160,19 +160,6 @@ func validateRegId(id string) error {
 	_, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid regId, %q must be an ACME registration Id", id)
-	}
-	return nil
-}
-
-// validateIdentValue validates that the provided string is formatted
-// 'identValue', where identValue is a valid identifier value.
-func validateIdentValue(id string) error {
-	domainErr := policy.ValidDomain(id)
-	if domainErr != nil {
-		ipErr := policy.ValidIP(id)
-		if ipErr != nil {
-			return fmt.Errorf("invalid identValue, %q must be formatted 'identValue': %w as domain, %w as IP", id, domainErr, ipErr)
-		}
 	}
 	return nil
 }
@@ -201,31 +188,70 @@ func validateRegIdIdentValue(id string) error {
 	return nil
 }
 
+// validateDomainOrCIDR validates that the provided string is formatted
+// 'domainOrCIDR', where domainOrCIDR is either a domain name in the certificate
+// or an IP prefix in CIDR notation.
+//
+// TODO(#8221): Do we need to enforce the prefix size, or can we cope?
+func validateDomainOrCIDR(id string) error {
+	domainErr := policy.ValidDomain(id)
+	if domainErr != nil {
+		prefix, prefixErr := netip.ParsePrefix(id)
+		if prefixErr != nil {
+			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'domainOrCIDR': %w as domain, %w as IP prefix", id, domainErr, prefixErr)
+		}
+		ipErr := policy.IsReservedIP(prefix.Addr())
+		if ipErr != nil {
+			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'domainOrCIDR': %w", id, ipErr)
+		}
+	}
+	return nil
+}
+
+// validateRegIdDomainOrCIDR validates that the provided string is formatted
+// 'regId:domainOrCIDR', where domainOrCIDR is either a domain name in the
+// certificate or an IP prefix in CIDR notation.
+//
+// TODO(#8221): Do we need to enforce the prefix size, or can we cope?
+func validateRegIdDomainOrCIDR(id string) error {
+	regIdIdentValue := strings.Split(id, ":")
+	if len(regIdIdentValue) != 2 {
+		return fmt.Errorf(
+			"invalid regId:identValue, %q must be formatted 'regId:domainOrCIDR'", id)
+	}
+	err := validateRegId(regIdIdentValue[0])
+	if err != nil {
+		return fmt.Errorf(
+			"invalid regId, %q must be formatted 'regId:domainOrCIDR'", id)
+	}
+	domainErr := policy.ValidDomain(regIdIdentValue[1])
+	if domainErr != nil {
+		prefix, prefixErr := netip.ParsePrefix(regIdIdentValue[1])
+		if prefixErr != nil {
+			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w as domain, %w as IP prefix", regIdIdentValue[1], domainErr, prefixErr)
+		}
+		ipErr := policy.IsReservedIP(prefix.Addr())
+		if ipErr != nil {
+			return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w", regIdIdentValue[1], ipErr)
+		}
+	}
+	return nil
+}
+
 // validateFQDNSet validates that the provided string is formatted 'fqdnSet',
-// where fqdnSet is a comma-separated list of identifier values and/or IP
-// prefixes in CIDR notation.
+// where fqdnSet is a comma-separated list of identifier values.
 func validateFQDNSet(id string) error {
 	values := strings.Split(id, ",")
 	if len(values) == 0 {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	for _, cover := range values {
-		domainErr := policy.ValidDomain(cover)
-		// If the string isn't a valid domain, it could be a CIDR or IP.
+	for _, value := range values {
+		domainErr := policy.ValidDomain(value)
 		if domainErr != nil {
-			prefix, prefixErr := netip.ParsePrefix(cover)
-			var ipErr error
-			if prefixErr == nil {
-				// If it's a valid CIDR, we still want to check if its base IP
-				// is inside a reserved prefix.
-				ipErr = policy.IsReservedIP(prefix.Addr())
-			} else {
-				// If it isn't a valid CIDR, it could be an IP.
-				ipErr = policy.ValidIP(cover)
-			}
+			ipErr := policy.ValidIP(value)
 			if ipErr != nil {
-				return fmt.Errorf("invalid fqdnSet member %q: %w as domain, %w as IP prefix, %w as IP", id, domainErr, prefixErr, ipErr)
+				return fmt.Errorf("invalid fqdnSet member %q: %w as domain, %w as IP", id, domainErr, ipErr)
 			}
 		}
 	}
@@ -257,16 +283,16 @@ func validateIdForName(name Name, id string) error {
 
 	case CertificatesPerDomainPerAccount:
 		if strings.Contains(id, ":") {
-			// 'enum:regId:identValue' for transaction
-			return validateRegIdIdentValue(id)
+			// 'enum:regId:domainOrCIDR' for transaction
+			return validateRegIdDomainOrCIDR(id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)
 		}
 
 	case CertificatesPerDomain:
-		// 'enum:identValue'
-		return validateIdentValue(id)
+		// 'enum:domainOrCIDR'
+		return validateDomainOrCIDR(id)
 
 	case CertificatesPerFQDNSet:
 		// 'enum:fqdnSet'

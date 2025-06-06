@@ -41,26 +41,26 @@ func newRegIdBucketKey(name Name, regId int64) string {
 	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10))
 }
 
-// newIdentValueBucketKey validates and returns a bucketKey for limits that use
-// the 'enum:identValue' bucket key format.
-func newIdentValueBucketKey(name Name, orderName string) string {
-	return joinWithColon(name.EnumString(), orderName)
+// newStringBucketKey validates and returns a bucketKey for limits that use
+// the 'enum:identValue' or 'enum:domainOrCIDR' bucket key formats.
+func newStringBucketKey(name Name, value string) string {
+	return joinWithColon(name.EnumString(), value)
 }
 
 // NewRegIdIdentValueBucketKey validates and returns a bucketKey for limits that
 // use the 'enum:regId:identValue' bucket key format. This function is exported
 // for use in ra.resetAccountPausingLimit.
 func NewRegIdIdentValueBucketKey(name Name, regId int64, orderIdent identifier.ACMEIdentifier) string {
-	return newRegIdIdentValueBucketKeyFromString(name, regId, orderIdent.Value)
+	return newRegIdStringBucketKey(name, regId, orderIdent.Value)
 }
 
-// newRegIdIdentValueBucketKeyFromString validates and returns a bucketKey for
-// limits that use the 'enum:regId:identValue' bucket key format.
+// newRegIdStringBucketKey validates and returns a bucketKey for limits that use
+// the 'enum:regId:identValue' or 'enum:regId:domainOrCIDR' bucket key formats.
 //
-// This is split out from NewRegIdIdentValueBucketKey so that we can handle a
-// CIDR-formatted IP address range, which is not a valid identifier value.
-func newRegIdIdentValueBucketKeyFromString(name Name, regId int64, orderName string) string {
-	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), orderName)
+// This is split out from NewRegIdIdentValueBucketKey so that we can handle an
+// IP prefix in CIDR notation, which is not a valid identifier value.
+func newRegIdStringBucketKey(name Name, regId int64, value string) string {
+	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), value)
 }
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
@@ -329,8 +329,8 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 // identifiers' values are invalid. This method should be used for checking
 // capacity, before allowing more orders to be created. If a
 // CertificatesPerDomainPerAccount override is active, a check-only Transaction
-// is created for each per account per identValue bucket. Otherwise, a
-// check-only Transaction is generated for each global per identValue bucket.
+// is created for each per account per domainOrCIDR bucket. Otherwise, a
+// check-only Transaction is generated for each global per domainOrCIDR bucket.
 // This method should be used for checking capacity, before allowing more orders
 // to be created.
 //
@@ -361,15 +361,15 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 		return nil, err
 	}
 	for _, name := range covers {
-		perIdentValueBucketKey := newIdentValueBucketKey(CertificatesPerDomain, name)
+		perDomainOrCIDRBucketKey := newStringBucketKey(CertificatesPerDomain, name)
 		if accountOverride {
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerIdentValueKey := newRegIdIdentValueBucketKeyFromString(CertificatesPerDomainPerAccount, regId, name)
+			perAccountPerDomainOrCIDRKey := newRegIdStringBucketKey(CertificatesPerDomainPerAccount, regId, name)
 			// Add a check-only transaction for each per account per identValue
 			// bucket.
-			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerIdentValueKey, 1)
+			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRKey, 1)
 			if err != nil {
 				if errors.Is(err, errLimitDisabled) {
 					continue
@@ -378,17 +378,17 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 			}
 			txns = append(txns, txn)
 		} else {
-			// Use the per identValue bucket key when no per account per
-			// identValue override is configured.
-			perIdentValueLimit, err := builder.getLimit(CertificatesPerDomain, perIdentValueBucketKey)
+			// Use the per domainOrCIDR bucket key when no per account per
+			// domainOrCIDR override is configured.
+			perDomainOrCIDRLimit, err := builder.getLimit(CertificatesPerDomain, perDomainOrCIDRBucketKey)
 			if err != nil {
 				if errors.Is(err, errLimitDisabled) {
 					continue
 				}
 				return nil, err
 			}
-			// Add a check-only transaction for each per identValue bucket.
-			txn, err := newCheckOnlyTransaction(perIdentValueLimit, perIdentValueBucketKey, 1)
+			// Add a check-only transaction for each per domainOrCIDR bucket.
+			txn, err := newCheckOnlyTransaction(perDomainOrCIDRLimit, perDomainOrCIDRBucketKey, 1)
 			if err != nil {
 				return nil, err
 			}
@@ -402,14 +402,14 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 // for the provided order identifiers. It returns an error if any of the order
 // identifiers' values are invalid. If a CertificatesPerDomainPerAccount
 // override is configured, it generates two types of Transactions:
-//   - A spend-only Transaction for each per-account, per-identValue bucket,
-//     which enforces the limit on certificates issued per identValue for each
-//     account.
-//   - A spend-only Transaction for each per-identValue bucket, which enforces
-//     the global limit on certificates issued per identValue.
+//   - A spend-only Transaction for each per-account, per-domainOrCIDR bucket,
+//     which enforces the limit on certificates issued per domainOrCIDR for
+//     each account.
+//   - A spend-only Transaction for each per-domainOrCIDR bucket, which
+//     enforces the global limit on certificates issued per domainOrCIDR.
 //
 // If no CertificatesPerDomainPerAccount override is present, it returns a
-// spend-only Transaction for each global per-identValue bucket. This method
+// spend-only Transaction for each global per-domainOrCIDR bucket. This method
 // should be used for spending capacity, when a certificate is issued.
 //
 // Precondition: orderIdents must all pass policy.WellFormedIdentifiers.
@@ -439,21 +439,21 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 		return nil, err
 	}
 	for _, name := range covers {
-		perIdentValueBucketKey := newIdentValueBucketKey(CertificatesPerDomain, name)
+		perDomainOrCIDRBucketKey := newStringBucketKey(CertificatesPerDomain, name)
 		if accountOverride {
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerIdentValueKey := newRegIdIdentValueBucketKeyFromString(CertificatesPerDomainPerAccount, regId, name)
-			// Add a spend-only transaction for each per account per identValue
-			// bucket.
-			txn, err := newSpendOnlyTransaction(perAccountLimit, perAccountPerIdentValueKey, 1)
+			perAccountPerDomainOrCIDRKey := newRegIdStringBucketKey(CertificatesPerDomainPerAccount, regId, name)
+			// Add a spend-only transaction for each per account per
+			// domainOrCIDR bucket.
+			txn, err := newSpendOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRKey, 1)
 			if err != nil {
 				return nil, err
 			}
 			txns = append(txns, txn)
 
-			perIdentValueLimit, err := builder.getLimit(CertificatesPerDomain, perIdentValueBucketKey)
+			perDomainOrCIDRLimit, err := builder.getLimit(CertificatesPerDomain, perDomainOrCIDRBucketKey)
 			if err != nil {
 				if errors.Is(err, errLimitDisabled) {
 					continue
@@ -461,24 +461,24 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 				return nil, err
 			}
 
-			// Add a spend-only transaction for each per identValue bucket.
-			txn, err = newSpendOnlyTransaction(perIdentValueLimit, perIdentValueBucketKey, 1)
+			// Add a spend-only transaction for each per domainOrCIDR bucket.
+			txn, err = newSpendOnlyTransaction(perDomainOrCIDRLimit, perDomainOrCIDRBucketKey, 1)
 			if err != nil {
 				return nil, err
 			}
 			txns = append(txns, txn)
 		} else {
-			// Use the per identValue bucket key when no per account per
-			// identValue override is configured.
-			perIdentValueLimit, err := builder.getLimit(CertificatesPerDomain, perIdentValueBucketKey)
+			// Use the per domainOrCIDR bucket key when no per account per
+			// domainOrCIDR override is configured.
+			perDomainOrCIDRLimit, err := builder.getLimit(CertificatesPerDomain, perDomainOrCIDRBucketKey)
 			if err != nil {
 				if errors.Is(err, errLimitDisabled) {
 					continue
 				}
 				return nil, err
 			}
-			// Add a spend-only transaction for each per identValue bucket.
-			txn, err := newSpendOnlyTransaction(perIdentValueLimit, perIdentValueBucketKey, 1)
+			// Add a spend-only transaction for each per domainOrCIDR bucket.
+			txn, err := newSpendOnlyTransaction(perDomainOrCIDRLimit, perDomainOrCIDRBucketKey, 1)
 			if err != nil {
 				return nil, err
 			}
