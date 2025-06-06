@@ -133,16 +133,13 @@ func TestReadConfigFile(t *testing.T) {
 	test.AssertError(t, err, "ReadConfigFile('') did not error")
 
 	type config struct {
-		NotifyMailer struct {
-			DB DBConfig
-			SMTPConfig
-		}
-		Syslog SyslogConfig
+		GRPC *GRPCClientConfig
+		TLS  *TLSConfig
 	}
 	var c config
-	err = ReadConfigFile("../test/config/notify-mailer.json", &c)
-	test.AssertNotError(t, err, "ReadConfigFile(../test/config/notify-mailer.json) errored")
-	test.AssertEquals(t, c.NotifyMailer.SMTPConfig.Server, "localhost")
+	err = ReadConfigFile("../test/config/health-checker.json", &c)
+	test.AssertNotError(t, err, "ReadConfigFile(../test/config/health-checker.json) errored")
+	test.AssertEquals(t, c.GRPC.Timeout.Duration, 1*time.Second)
 }
 
 func TestLogWriter(t *testing.T) {

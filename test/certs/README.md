@@ -52,7 +52,6 @@ role of internal authentication between Let's Encrypt components:
 
 - The IP-address certificate used by challtestsrv (which acts as the integration
   test environment's recursive resolver) for DoH handshakes.
-- The certificate presented by mail-test-srv's SMTP endpoint.
 - The certificate presented by the test redis cluster.
 - The certificate presented by the WFE's API TLS handler (which is usually
   behind some other load-balancer like nginx).
