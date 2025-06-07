@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"net/netip"
 	"os"
 	"testing"
 	"time"
@@ -116,20 +117,29 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	//   - CertificatesPerFQDNSet:example.com
 	//   - CertificatesPerFQDNSet:example.com,example.net
 	//   - CertificatesPerFQDNSet:example.com,example.net,example.org
-	firstEntryKey := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com"}))
-	secondEntryKey := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net"}))
-	thirdEntryKey := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net", "example.org"}))
+	entryKey1 := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com"}))
+	entryKey2 := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net"}))
+	entryKey3 := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net", "example.org"}))
+	entryKey4 := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.ACMEIdentifiers{
+		identifier.NewIP(netip.MustParseAddr("2602:80a:6000::1")),
+		identifier.NewIP(netip.MustParseAddr("9.9.9.9")),
+		identifier.NewDNS("example.com"),
+	})
+
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides_regid_fqdnset.yml")
 	test.AssertNotError(t, err, "multiple valid override limits with 'fqdnSet' Ids")
-	test.AssertEquals(t, l[firstEntryKey].burst, int64(40))
-	test.AssertEquals(t, l[firstEntryKey].count, int64(40))
-	test.AssertEquals(t, l[firstEntryKey].period.Duration, time.Second)
-	test.AssertEquals(t, l[secondEntryKey].burst, int64(50))
-	test.AssertEquals(t, l[secondEntryKey].count, int64(50))
-	test.AssertEquals(t, l[secondEntryKey].period.Duration, time.Second*2)
-	test.AssertEquals(t, l[thirdEntryKey].burst, int64(60))
-	test.AssertEquals(t, l[thirdEntryKey].count, int64(60))
-	test.AssertEquals(t, l[thirdEntryKey].period.Duration, time.Second*3)
+	test.AssertEquals(t, l[entryKey1].burst, int64(40))
+	test.AssertEquals(t, l[entryKey1].count, int64(40))
+	test.AssertEquals(t, l[entryKey1].period.Duration, time.Second)
+	test.AssertEquals(t, l[entryKey2].burst, int64(50))
+	test.AssertEquals(t, l[entryKey2].count, int64(50))
+	test.AssertEquals(t, l[entryKey2].period.Duration, time.Second*2)
+	test.AssertEquals(t, l[entryKey3].burst, int64(60))
+	test.AssertEquals(t, l[entryKey3].count, int64(60))
+	test.AssertEquals(t, l[entryKey3].period.Duration, time.Second*3)
+	test.AssertEquals(t, l[entryKey4].burst, int64(60))
+	test.AssertEquals(t, l[entryKey4].count, int64(60))
+	test.AssertEquals(t, l[entryKey4].period.Duration, time.Second*4)
 
 	// Path is empty string.
 	_, err = loadAndParseOverrideLimits("")

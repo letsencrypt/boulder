@@ -129,9 +129,14 @@ func (n Name) EnumString() string {
 
 // validIPAddress validates that the provided string is a valid IP address.
 func validIPAddress(id string) error {
-	_, err := netip.ParseAddr(id)
+	ip, err := netip.ParseAddr(id)
 	if err != nil {
 		return fmt.Errorf("invalid IP address, %q must be an IP address", id)
+	}
+	canon := ip.String()
+	if canon != id {
+		return fmt.Errorf(
+			"invalid IP address, %q must be in canonical form like %s", id, canon)
 	}
 	return nil
 }

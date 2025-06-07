@@ -46,7 +46,13 @@ func TestValidateIdForName(t *testing.T) {
 		{
 			limit: NewRegistrationsPerIPAddress,
 			desc:  "valid IPv6 address",
+			id:    "2001:db8:85a3::8a2e:370:7334",
+		},
+		{
+			limit: NewRegistrationsPerIPAddress,
+			desc:  "IPv6 address in non-canonical form",
 			id:    "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+			err:   "must be in canonical form",
 		},
 		{
 			limit: NewRegistrationsPerIPAddress,
