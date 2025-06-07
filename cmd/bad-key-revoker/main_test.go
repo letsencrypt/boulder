@@ -4,24 +4,23 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"html/template"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func randHash(t *testing.T) []byte {
@@ -244,47 +243,6 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: got 1, max 0", hashA))
 }
 
-func TestResolveContacts(t *testing.T) {
-	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
-	test.AssertNotError(t, err, "failed setting up db client")
-	defer test.ResetBoulderTestDatabase(t)()
-
-	fc := clock.NewFake()
-
-	bkr := &badKeyRevoker{dbMap: dbMap, clk: fc}
-
-	regIDA := insertRegistration(t, dbMap, fc)
-	regIDB := insertRegistration(t, dbMap, fc, "example.com", "example-2.com")
-	regIDC := insertRegistration(t, dbMap, fc, "example.com")
-	regIDD := insertRegistration(t, dbMap, fc, "example-2.com")
-
-	idToEmail, err := bkr.resolveContacts(context.Background(), []int64{regIDA, regIDB, regIDC, regIDD})
-	test.AssertNotError(t, err, "resolveContacts failed")
-	test.AssertDeepEquals(t, idToEmail, map[int64][]string{
-		regIDA: {""},
-		regIDB: {"example.com", "example-2.com"},
-		regIDC: {"example.com"},
-		regIDD: {"example-2.com"},
-	})
-}
-
-var testTemplate = template.Must(template.New("testing").Parse("{{range .}}{{.}}\n{{end}}"))
-
-func TestSendMessage(t *testing.T) {
-	mm := &mocks.Mailer{}
-	fc := clock.NewFake()
-	bkr := &badKeyRevoker{mailer: mm, emailSubject: "testing", emailTemplate: testTemplate, clk: fc}
-
-	maxSerials = 2
-	err := bkr.sendMessage("example.com", []string{"a", "b", "c"})
-	test.AssertNotError(t, err, "sendMessages failed")
-	test.AssertEquals(t, len(mm.Messages), 1)
-	test.AssertEquals(t, mm.Messages[0].To, "example.com")
-	test.AssertEquals(t, mm.Messages[0].Subject, bkr.emailSubject)
-	test.AssertEquals(t, mm.Messages[0].Body, "a\nb\nand 1 more certificates.\n")
-
-}
-
 type mockRevoker struct {
 	revoked int
 	mu      sync.Mutex
@@ -303,20 +261,15 @@ func TestRevokeCerts(t *testing.T) {
 	defer test.ResetBoulderTestDatabase(t)()
 
 	fc := clock.NewFake()
-	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
-	bkr := &badKeyRevoker{dbMap: dbMap, raClient: mr, mailer: mm, emailSubject: "testing", emailTemplate: testTemplate, clk: fc}
+	bkr := &badKeyRevoker{dbMap: dbMap, raClient: mr, clk: fc}
 
-	err = bkr.revokeCerts([]string{"revoker@example.com", "revoker-b@example.com"}, map[string][]unrevokedCertificate{
-		"revoker@example.com":   {{ID: 0, Serial: "ff"}},
-		"revoker-b@example.com": {{ID: 0, Serial: "ff"}},
-		"other@example.com":     {{ID: 1, Serial: "ee"}},
+	err = bkr.revokeCerts([]unrevokedCertificate{
+		{ID: 0, Serial: "ff"},
+		{ID: 1, Serial: "ee"},
 	})
 	test.AssertNotError(t, err, "revokeCerts failed")
-	test.AssertEquals(t, len(mm.Messages), 1)
-	test.AssertEquals(t, mm.Messages[0].To, "other@example.com")
-	test.AssertEquals(t, mm.Messages[0].Subject, bkr.emailSubject)
-	test.AssertEquals(t, mm.Messages[0].Body, "ee\n")
+	test.AssertEquals(t, mr.revoked, 2)
 }
 
 func TestCertificateAbsent(t *testing.T) {
@@ -349,9 +302,6 @@ func TestCertificateAbsent(t *testing.T) {
 		maxRevocations:  1,
 		serialBatchSize: 1,
 		raClient:        &mockRevoker{},
-		mailer:          &mocks.Mailer{},
-		emailSubject:    "testing",
-		emailTemplate:   testTemplate,
 		logger:          blog.NewMock(),
 		clk:             fc,
 	}
@@ -368,16 +318,12 @@ func TestInvoke(t *testing.T) {
 
 	fc := clock.NewFake()
 
-	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{
 		dbMap:           dbMap,
 		maxRevocations:  10,
 		serialBatchSize: 1,
 		raClient:        mr,
-		mailer:          mm,
-		emailSubject:    "testing",
-		emailTemplate:   testTemplate,
 		logger:          blog.NewMock(),
 		clk:             fc,
 	}
@@ -398,8 +344,6 @@ func TestInvoke(t *testing.T) {
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 	test.AssertEquals(t, mr.revoked, 4)
-	test.AssertEquals(t, len(mm.Messages), 1)
-	test.AssertEquals(t, mm.Messages[0].To, "example.com")
 	test.AssertMetricWithLabelsEquals(t, keysToProcess, prometheus.Labels{}, 1)
 
 	var checked struct {
@@ -440,15 +384,11 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	fc := clock.NewFake()
 
-	mm := &mocks.Mailer{}
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{dbMap: dbMap,
 		maxRevocations:  10,
 		serialBatchSize: 1,
 		raClient:        mr,
-		mailer:          mm,
-		emailSubject:    "testing",
-		emailTemplate:   testTemplate,
 		logger:          blog.NewMock(),
 		clk:             fc,
 	}
@@ -471,8 +411,6 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 	test.AssertEquals(t, mr.revoked, 4)
-	test.AssertEquals(t, len(mm.Messages), 1)
-	test.AssertEquals(t, mm.Messages[0].To, "b@example.com")
 }
 
 func TestBackoffPolicy(t *testing.T) {
