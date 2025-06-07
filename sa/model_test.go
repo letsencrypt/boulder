@@ -53,8 +53,6 @@ func TestRegistrationModelToPb(t *testing.T) {
 	test.AssertNotError(t, err, "Should pass")
 }
 
-func TestRegistrationPbToModel(t *testing.T) {}
-
 func TestAuthzModel(t *testing.T) {
 	// newTestAuthzPB returns a new *corepb.Authorization for `example.com` that
 	// is valid, and contains a single valid HTTP-01 challenge. These are the

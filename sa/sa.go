@@ -21,7 +21,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -126,62 +125,12 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 	return registrationModelToPb(reg)
 }
 
-// UpdateRegistrationContact stores an updated contact in a Registration.
-// The updated contacts field may be empty.
+// UpdateRegistrationContact makes no changes, and simply returns the account
+// as it exists in the database.
+//
+// Deprecated: See https://github.com/letsencrypt/boulder/issues/8199 for removal.
 func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID) {
-		return nil, errIncompleteRequest
-	}
-
-	if features.Get().IgnoreAccountContacts {
-		return ssa.GetRegistration(ctx, &sapb.RegistrationID{Id: req.RegistrationID})
-	}
-
-	// We don't want to write literal JSON "null" strings into the database if the
-	// list of contact addresses is empty. Replace any possibly-`nil` slice with
-	// an empty JSON array.
-	jsonContact := []byte("[]")
-	var err error
-	if len(req.Contacts) != 0 {
-		jsonContact, err = json.Marshal(req.Contacts)
-		if err != nil {
-			return nil, fmt.Errorf("serializing contacts: %w", err)
-		}
-	}
-
-	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		result, err := tx.ExecContext(ctx,
-			"UPDATE registrations SET contact = ? WHERE id = ? LIMIT 1",
-			jsonContact,
-			req.RegistrationID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil || rowsAffected != 1 {
-			return nil, berrors.InternalServerError("no registration ID '%d' updated with new contact field", req.RegistrationID)
-		}
-
-		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
-		if err != nil {
-			if db.IsNoRows(err) {
-				return nil, berrors.NotFoundError("registration with ID '%d' not found", req.RegistrationID)
-			}
-			return nil, err
-		}
-		updatedRegistration, err := registrationModelToPb(updatedRegistrationModel)
-		if err != nil {
-			return nil, err
-		}
-
-		return updatedRegistration, nil
-	})
-	if overallError != nil {
-		return nil, overallError
-	}
-
-	return result.(*corepb.Registration), nil
+	return ssa.GetRegistration(ctx, &sapb.RegistrationID{Id: req.RegistrationID})
 }
 
 // UpdateRegistrationKey stores an updated key in a Registration.

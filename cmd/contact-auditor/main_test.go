@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
@@ -33,6 +34,11 @@ const (
 )
 
 func TestContactAuditor(t *testing.T) {
+	// Leave this technically in place until contact-auditor is fully deleted, but
+	// this test cannot function now that the SA never stores nor retrieves
+	// contacts.
+	t.Skip()
+
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 

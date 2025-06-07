@@ -6,8 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"os"
-	"slices"
 	"strings"
 	"testing"
 
@@ -68,17 +66,9 @@ func TestNewAccount(t *testing.T) {
 					t.Fatalf("NewAccount(tos: %t, contact: %#v) = %s, but want no err", tc.tos, tc.contact, err)
 				}
 
-				// In config-next, we're wholly ignoring account contacts
-				if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-					if len(acct.Contact) != 0 {
-						t.Errorf("NewAccount(tos: %t, contact: %#v) = %#v, but want empty contacts", tc.tos, tc.contact, acct)
-					}
-				} else {
-					if !slices.Equal(acct.Contact, tc.contact) {
-						t.Errorf("NewAccount(tos: %t, contact: %#v) = %#v, but want contacts %q", tc.tos, tc.contact, acct, tc.contact)
-					}
+				if len(acct.Contact) != 0 {
+					t.Errorf("NewAccount(tos: %t, contact: %#v) = %#v, but want empty contacts", tc.tos, tc.contact, acct)
 				}
-
 			} else if tc.wantErr != "" {
 				if err == nil {
 					t.Fatalf("NewAccount(tos: %t, contact: %#v) = %#v, but want error %q", tc.tos, tc.contact, acct, tc.wantErr)
@@ -176,45 +166,5 @@ func TestAccountDeactivate(t *testing.T) {
 
 	if got.Status != string(core.StatusDeactivated) {
 		t.Errorf("account deactivation should have set status to %q, instead got %q", core.StatusDeactivated, got.Status)
-	}
-
-	// TODO(#5554): Check that the contacts have been cleared. We can't do this
-	// today because eggsampler/acme unmarshals the WFE's response into the same
-	// account object as it used to make the request, and a wholly missing
-	// contacts field doesn't overwrite whatever eggsampler was holding in memory.
-}
-
-func TestAccountUpdate_UnspecifiedContacts(t *testing.T) {
-	t.Parallel()
-
-	c, err := acme.NewClient("http://boulder.service.consul:4001/directory")
-	if err != nil {
-		t.Fatalf("failed to connect to acme directory: %s", err)
-	}
-
-	acctKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate account key: %s", err)
-	}
-
-	acct, err := c.NewAccount(acctKey, false, true, "mailto:example@"+random_domain())
-	if err != nil {
-		t.Fatalf("failed to create initial account: %s", err)
-	}
-
-	// This request does not include the Contact field, meaning that the contacts
-	// should remain unchanged (i.e. not be removed).
-	acct, err = c.UpdateAccount(acct)
-	if err != nil {
-		t.Errorf("failed to no-op update account: %s", err)
-	}
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		if len(acct.Contact) != 0 {
-			t.Errorf("unexpected number of contacts: want 0, got %d", len(acct.Contact))
-		}
-	} else {
-		if len(acct.Contact) != 1 {
-			t.Errorf("unexpected number of contacts: want 1, got %d", len(acct.Contact))
-		}
 	}
 }
