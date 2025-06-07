@@ -19,3 +19,10 @@
     ids:
       - id: "example.com,example.net,example.org"
         comment: Foo
+- CertificatesPerFQDNSet:
+    burst: 60
+    count: 60
+    period: 4s
+    ids:
+      - id: "2602:80a:6000::1,9.9.9.9,example.com"
+        comment: Foo

@@ -3,10 +3,13 @@ package ratelimits
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -195,8 +198,18 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 				if name == CertificatesPerFQDNSet {
 					// FQDNSet hashes are not a nice thing to ask for in a
 					// config file, so we allow the user to specify a
-					// comma-separated list of FQDNs and compute the hash here.
-					id = fmt.Sprintf("%x", hashNames(strings.Split(id, ",")))
+					// comma-separated list of identifier values, and compute
+					// the hash here.
+					var idents identifier.ACMEIdentifiers
+					for _, value := range strings.Split(id, ",") {
+						ip, err := netip.ParseAddr(value)
+						if err == nil {
+							idents = append(idents, identifier.NewIP(ip))
+						} else {
+							idents = append(idents, identifier.NewDNS(value))
+						}
+					}
+					id = fmt.Sprintf("%x", core.HashIdentifiers(idents))
 				}
 				parsed[joinWithColon(name.EnumString(), id)] = lim
 			}

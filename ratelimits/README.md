@@ -91,17 +91,29 @@ An ACME account registration ID.
 
 Example: `12345678`
 
-#### domain
+#### identValue
 
-A valid eTLD+1 domain name.
+A valid ACME identifier value, i.e. an FQDN or IP address.
 
-Example: `example.com`
+Examples:
+  - `www.example.com`
+  - `192.168.1.1`
+  - `2001:db8:eeee::1`
+
+#### domainOrCIDR
+
+A valid eTLD+1 domain name, or IP prefix in CIDR notation.
+
+Examples:
+  - `example.com`
+  - `192.168.1.0/24`
+  - `2001:db8:eeee::/48`
 
 #### fqdnSet
 
-A comma-separated list of domain names.
+A comma-separated list of identifier values.
 
-Example: `example.com,example.org`
+Example: `192.168.1.1,example.com,example.org`
 
 ## Bucket Key Definitions
 

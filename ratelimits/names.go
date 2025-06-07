@@ -2,12 +2,10 @@ package ratelimits
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -47,13 +45,15 @@ const (
 	// depending on the context:
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
-	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
-	//    where regId is the ACME registration Id of the account and domain is a
-	//    domain name in the certificate.
+	//  - When referenced in a transaction: uses bucket key
+	//    'enum:regId:identValue', where regId is the ACME registration Id of
+	//    the account and identValue is the value of an identifier in the
+	//    certificate.
 	FailedAuthorizationsPerDomainPerAccount
 
-	// CertificatesPerDomain uses bucket key 'enum:domain', where domain is a
-	// domain name in the certificate.
+	// CertificatesPerDomain uses bucket key 'enum:domainOrCIDR', where
+	// domainOrCIDR is either a domain name in the certificate or an IP prefix
+	// in CIDR notation.
 	CertificatesPerDomain
 
 	// CertificatesPerDomainPerAccount is only used for per-account overrides to
@@ -62,9 +62,10 @@ const (
 	// keys depending on the context:
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
-	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
-	//    where regId is the ACME registration Id of the account and domain is a
-	//    domain name in the certificate.
+	//  - When referenced in a transaction: uses bucket key
+	//   'enum:regId:domainOrCIDR', where regId is the ACME registration Id of
+	//    the account and domainOrCIDR is either a domain name in the
+	//    certificate or an IP prefix in CIDR notation.
 	//
 	// When overrides to the CertificatesPerDomainPerAccount are configured for a
 	// subscriber, the cost:
@@ -73,10 +74,10 @@ const (
 	CertificatesPerDomainPerAccount
 
 	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a
-	// hashed set of unique eTLD+1 domain names in the certificate.
+	// hashed set of unique identifier values in the certificate.
 	//
 	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
-	// passed as a comma-separated list of domain names.
+	// passed as a comma-separated list of identifier values.
 	CertificatesPerFQDNSet
 
 	// FailedAuthorizationsForPausingPerDomainPerAccount is similar to
@@ -84,9 +85,10 @@ const (
 	// bucket keys depending on the context:
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
-	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
-	//    where regId is the ACME registration Id of the account and domain is a
-	//    domain name in the certificate.
+	//  - When referenced in a transaction: uses bucket key
+	//    'enum:regId:identValue', where regId is the ACME registration Id of
+	//    the account and identValue is the value of an identifier in the
+	//    certificate.
 	FailedAuthorizationsForPausingPerDomainPerAccount
 )
 
@@ -127,29 +129,38 @@ func (n Name) EnumString() string {
 
 // validIPAddress validates that the provided string is a valid IP address.
 func validIPAddress(id string) error {
-	_, err := netip.ParseAddr(id)
+	ip, err := netip.ParseAddr(id)
 	if err != nil {
 		return fmt.Errorf("invalid IP address, %q must be an IP address", id)
 	}
-	return nil
+	canon := ip.String()
+	if canon != id {
+		return fmt.Errorf(
+			"invalid IP address, %q must be in canonical form like %s", id, canon)
+	}
+	return policy.IsReservedIP(ip)
 }
 
-// validIPv6RangeCIDR validates that the provided string is formatted is an IPv6
-// CIDR range with a /48 mask.
+// validIPv6RangeCIDR validates that the provided string is formatted as an IPv6
+// prefix in CIDR notation, with a /48 mask.
 func validIPv6RangeCIDR(id string) error {
-	_, ipNet, err := net.ParseCIDR(id)
+	prefix, err := netip.ParsePrefix(id)
 	if err != nil {
 		return fmt.Errorf(
 			"invalid CIDR, %q must be an IPv6 CIDR range", id)
 	}
-	ones, _ := ipNet.Mask.Size()
-	if ones != 48 {
+	if prefix.Bits() != 48 {
 		// This also catches the case where the range is an IPv4 CIDR, since an
 		// IPv4 CIDR can't have a /48 subnet mask - the maximum is /32.
 		return fmt.Errorf(
 			"invalid CIDR, %q must be /48", id)
 	}
-	return nil
+	canon := prefix.Masked().String()
+	if canon != id {
+		return fmt.Errorf(
+			"invalid CIDR, %q must be in canonical form like %s", id, canon)
+	}
+	return policy.IsReservedPrefix(prefix)
 }
 
 // validateRegId validates that the provided string is a valid ACME regId.
@@ -161,49 +172,116 @@ func validateRegId(id string) error {
 	return nil
 }
 
-// validateDomain validates that the provided string is formatted 'domain',
-// where domain is a domain name.
-func validateDomain(id string) error {
-	err := policy.ValidDomain(id)
+// validateRegIdIdentValue validates that the provided string is formatted
+// 'regId:identValue', where regId is an ACME registration Id and identValue is
+// a valid identifier value.
+func validateRegIdIdentValue(id string) error {
+	regIdIdentValue := strings.Split(id, ":")
+	if len(regIdIdentValue) != 2 {
+		return fmt.Errorf(
+			"invalid regId:identValue, %q must be formatted 'regId:identValue'", id)
+	}
+	err := validateRegId(regIdIdentValue[0])
 	if err != nil {
-		return fmt.Errorf("invalid domain, %q must be formatted 'domain': %w", id, err)
+		return fmt.Errorf(
+			"invalid regId, %q must be formatted 'regId:identValue'", id)
+	}
+	domainErr := policy.ValidDomain(regIdIdentValue[1])
+	if domainErr != nil {
+		ipErr := policy.ValidIP(regIdIdentValue[1])
+		if ipErr != nil {
+			return fmt.Errorf("invalid identValue, %q must be formatted 'regId:identValue': %w as domain, %w as IP", id, domainErr, ipErr)
+		}
 	}
 	return nil
 }
 
-// validateRegIdDomain validates that the provided string is formatted
-// 'regId:domain', where regId is an ACME registration Id and domain is a domain
-// name.
-func validateRegIdDomain(id string) error {
-	regIdDomain := strings.Split(id, ":")
-	if len(regIdDomain) != 2 {
-		return fmt.Errorf(
-			"invalid regId:domain, %q must be formatted 'regId:domain'", id)
+// validateDomainOrCIDRInner validates that the provided string is formatted
+// 'domainOrCIDR', where domainOrCIDR is either a domain name in the certificate
+// or an IP prefix in CIDR notation. IP prefixes must be /24 for IPv4 or /48 for
+// IPv6.
+func validateDomainOrCIDRInner(id string) error {
+	domainErr := policy.ValidDomain(id)
+	if domainErr != nil {
+		prefix, prefixErr := netip.ParsePrefix(id)
+		if prefixErr != nil {
+			return fmt.Errorf("%w as domain, %w as IP prefix", domainErr, prefixErr)
+		}
+
+		var bits int
+		if prefix.Addr().Is4() {
+			bits = 24
+		} else {
+			bits = 48
+		}
+		if prefix.Bits() != bits {
+			return fmt.Errorf("invalid CIDR, must be /%d", bits)
+		}
+
+		canon := prefix.Masked().String()
+		if canon != id {
+			return fmt.Errorf("invalid CIDR, must be in canonical form like %s", canon)
+		}
+
+		reservedErr := policy.IsReservedPrefix(prefix)
+		if reservedErr != nil {
+			return reservedErr
+		}
 	}
-	err := validateRegId(regIdDomain[0])
+	return nil
+}
+
+// validateDomainOrCIDR validates that the provided string is formatted
+// 'domainOrCIDR', where domainOrCIDR is either a domain name in the certificate
+// or an IP prefix in CIDR notation. It wraps validateDomainOrCIDRInner and
+// provides the appropriate error.
+func validateDomainOrCIDR(id string) error {
+	err := validateDomainOrCIDRInner(id)
+	if err != nil {
+		return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'domainOrCIDR': %w", id, err)
+	}
+	return nil
+}
+
+// validateRegIdDomainOrCIDR validates that the provided string is formatted
+// 'regId:domainOrCIDR', where domainOrCIDR is either a domain name in the
+// certificate or an IP prefix in CIDR notation.
+func validateRegIdDomainOrCIDR(id string) error {
+	regIdDomainOrCIDR := strings.Split(id, ":")
+	if len(regIdDomainOrCIDR) != 2 {
+		return fmt.Errorf(
+			"invalid regId:domainOrCIDR, %q must be formatted 'regId:domainOrCIDR'", id)
+	}
+	err := validateRegId(regIdDomainOrCIDR[0])
 	if err != nil {
 		return fmt.Errorf(
-			"invalid regId, %q must be formatted 'regId:domain'", id)
+			"invalid regId, %q must be formatted 'regId:domainOrCIDR'", id)
 	}
-	err = policy.ValidDomain(regIdDomain[1])
+	err = validateDomainOrCIDRInner(regIdDomainOrCIDR[1])
 	if err != nil {
-		return fmt.Errorf(
-			"invalid domain, %q must be formatted 'regId:domain': %w", id, err)
+		return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w", id, err)
 	}
 	return nil
 }
 
 // validateFQDNSet validates that the provided string is formatted 'fqdnSet',
-// where fqdnSet is a comma-separated list of domain names.
-//
-// TODO(#7311): Support non-DNS identifiers.
+// where fqdnSet is a comma-separated list of identifier values.
 func validateFQDNSet(id string) error {
-	domains := strings.Split(id, ",")
-	if len(domains) == 0 {
+	values := strings.Split(id, ",")
+	if len(values) == 0 {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	return policy.WellFormedIdentifiers(identifier.NewDNSSlice(domains))
+	for _, value := range values {
+		domainErr := policy.ValidDomain(value)
+		if domainErr != nil {
+			ipErr := policy.ValidIP(value)
+			if ipErr != nil {
+				return fmt.Errorf("invalid fqdnSet member %q: %w as domain, %w as IP", id, domainErr, ipErr)
+			}
+		}
+	}
+	return nil
 }
 
 func validateIdForName(name Name, id string) error {
@@ -222,8 +300,8 @@ func validateIdForName(name Name, id string) error {
 
 	case FailedAuthorizationsPerDomainPerAccount:
 		if strings.Contains(id, ":") {
-			// 'enum:regId:domain' for transaction
-			return validateRegIdDomain(id)
+			// 'enum:regId:identValue' for transaction
+			return validateRegIdIdentValue(id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)
@@ -231,16 +309,16 @@ func validateIdForName(name Name, id string) error {
 
 	case CertificatesPerDomainPerAccount:
 		if strings.Contains(id, ":") {
-			// 'enum:regId:domain' for transaction
-			return validateRegIdDomain(id)
+			// 'enum:regId:domainOrCIDR' for transaction
+			return validateRegIdDomainOrCIDR(id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)
 		}
 
 	case CertificatesPerDomain:
-		// 'enum:domain'
-		return validateDomain(id)
+		// 'enum:domainOrCIDR'
+		return validateDomainOrCIDR(id)
 
 	case CertificatesPerFQDNSet:
 		// 'enum:fqdnSet'
@@ -248,8 +326,8 @@ func validateIdForName(name Name, id string) error {
 
 	case FailedAuthorizationsForPausingPerDomainPerAccount:
 		if strings.Contains(id, ":") {
-			// 'enum:regId:domain' for transaction
-			return validateRegIdDomain(id)
+			// 'enum:regId:identValue' for transaction
+			return validateRegIdIdentValue(id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)

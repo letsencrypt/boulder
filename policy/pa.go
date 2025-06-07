@@ -332,13 +332,13 @@ func ValidDomain(domain string) error {
 	return validNonWildcardDomain(baseDomain)
 }
 
-// validIP checks that an IP address:
+// ValidIP checks that an IP address:
 //   - isn't empty
 //   - is an IPv4 or IPv6 address
 //   - isn't in an IANA special-purpose address registry
 //
 // It does NOT ensure that the IP address is absent from any PA blocked lists.
-func validIP(ip string) error {
+func ValidIP(ip string) error {
 	if ip == "" {
 		return errEmptyIdentifier
 	}
@@ -500,7 +500,7 @@ func WellFormedIdentifiers(idents identifier.ACMEIdentifiers) error {
 				subErrors = append(subErrors, subError(ident, err))
 			}
 		case identifier.TypeIP:
-			err := validIP(ident.Value)
+			err := ValidIP(ident.Value)
 			if err != nil {
 				subErrors = append(subErrors, subError(ident, err))
 			}
