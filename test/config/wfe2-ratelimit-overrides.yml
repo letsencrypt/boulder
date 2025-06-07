@@ -1,14 +1,3 @@
-- NewRegistrationsPerIPAddress:
-    burst: 1000000
-    count: 1000000
-    period: 168h
-    ids:
-      - id: 127.0.0.1
-        comment: localhost
-      - id: 10.77.77.77
-        comment: test
-      - id: 10.88.88.88
-        comment: test
 - CertificatesPerDomain:
     burst: 1
     count: 1
