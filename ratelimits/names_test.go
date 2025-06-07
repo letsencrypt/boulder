@@ -45,6 +45,12 @@ func TestValidateIdForName(t *testing.T) {
 		},
 		{
 			limit: NewRegistrationsPerIPAddress,
+			desc:  "reserved IPv4 address",
+			id:    "10.0.0.1",
+			err:   "in a reserved address block",
+		},
+		{
+			limit: NewRegistrationsPerIPAddress,
 			desc:  "valid IPv6 address",
 			id:    "2602:80a:6000::42:42",
 		},
@@ -82,6 +88,18 @@ func TestValidateIdForName(t *testing.T) {
 			limit: NewRegistrationsPerIPv6Range,
 			desc:  "valid IPv6 address range",
 			id:    "2602:80a:6000::/48",
+		},
+		{
+			limit: NewRegistrationsPerIPv6Range,
+			desc:  "IPv6 address range in non-canonical form",
+			id:    "2602:080a:6000::/48",
+			err:   "must be in canonical form",
+		},
+		{
+			limit: NewRegistrationsPerIPv6Range,
+			desc:  "IPv6 address range with low bits set",
+			id:    "2602:080a:6000::1/48",
+			err:   "must be in canonical form",
 		},
 		{
 			limit: NewRegistrationsPerIPv6Range,
@@ -209,6 +227,16 @@ func TestValidateIdForName(t *testing.T) {
 		},
 		{
 			limit: CertificatesPerDomain,
+			desc:  "valid IPv4 prefix",
+			id:    "64.112.117.0/24",
+		},
+		{
+			limit: CertificatesPerDomain,
+			desc:  "valid IPv6 prefix",
+			id:    "2602:80a:6000::/48",
+		},
+		{
+			limit: CertificatesPerDomain,
 			desc:  "malformed domain",
 			id:    "example:.com",
 			err:   "name contains an invalid character",
@@ -226,8 +254,23 @@ func TestValidateIdForName(t *testing.T) {
 		},
 		{
 			limit: CertificatesPerFQDNSet,
+			desc:  "valid fqdnSet containing a single IPv4 address",
+			id:    "64.112.117.1",
+		},
+		{
+			limit: CertificatesPerFQDNSet,
+			desc:  "valid fqdnSet containing a single IPv6 address",
+			id:    "2602:80a:6000::1",
+		},
+		{
+			limit: CertificatesPerFQDNSet,
 			desc:  "valid fqdnSet containing multiple domains",
 			id:    "example.com,example.org",
+		},
+		{
+			limit: CertificatesPerFQDNSet,
+			desc:  "valid fqdnSet containing multiple domains and IPs",
+			id:    "2602:80a:6000::1,64.112.117.1,example.com,example.org",
 		},
 	}
 

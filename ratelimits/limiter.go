@@ -137,12 +137,12 @@ func (d *Decision) Result(now time.Time) error {
 		if idx == -1 {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
-		domain := d.transaction.bucketKey[idx+1:]
+		identValue := d.transaction.bucketKey[idx+1:]
 		return berrors.FailedAuthorizationsPerDomainPerAccountError(
 			retryAfter,
 			"too many failed authorizations (%d) for %q in the last %s, retry after %s",
 			d.transaction.limit.burst,
-			domain,
+			identValue,
 			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
@@ -153,12 +153,12 @@ func (d *Decision) Result(now time.Time) error {
 		if idx == -1 {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
-		domain := d.transaction.bucketKey[idx+1:]
+		domainOrCIDR := d.transaction.bucketKey[idx+1:]
 		return berrors.CertificatesPerDomainError(
 			retryAfter,
 			"too many certificates (%d) already issued for %q in the last %s, retry after %s",
 			d.transaction.limit.burst,
-			domain,
+			domainOrCIDR,
 			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
@@ -166,7 +166,7 @@ func (d *Decision) Result(now time.Time) error {
 	case CertificatesPerFQDNSet:
 		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
-			"too many certificates (%d) already issued for this exact set of domains in the last %s, retry after %s",
+			"too many certificates (%d) already issued for this exact set of identifiers in the last %s, retry after %s",
 			d.transaction.limit.burst,
 			d.transaction.limit.period.Duration,
 			retryAfterTs,
