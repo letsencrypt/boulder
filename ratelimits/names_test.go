@@ -41,12 +41,12 @@ func TestValidateIdForName(t *testing.T) {
 		{
 			limit: NewRegistrationsPerIPAddress,
 			desc:  "valid IPv4 address",
-			id:    "10.0.0.1",
+			id:    "64.112.117.1",
 		},
 		{
 			limit: NewRegistrationsPerIPAddress,
 			desc:  "valid IPv6 address",
-			id:    "2001:db8:85a3::8a2e:370:7334",
+			id:    "2602:80a:6000::42:42",
 		},
 		{
 			limit: NewRegistrationsPerIPAddress,

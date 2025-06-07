@@ -138,7 +138,7 @@ func validIPAddress(id string) error {
 		return fmt.Errorf(
 			"invalid IP address, %q must be in canonical form like %s", id, canon)
 	}
-	return nil
+	return policy.IsReservedIP(ip)
 }
 
 // validIPv6RangeCIDR validates that the provided string is formatted as an IPv6

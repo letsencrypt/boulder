@@ -88,7 +88,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	// Load a single valid override limit with Id formatted as 'enum:RegId'.
 	l, err := loadAndParseOverrideLimits("testdata/working_override.yml")
 	test.AssertNotError(t, err, "valid single override limit")
-	expectKey := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "10.0.0.2")
+	expectKey := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "64.112.117.1")
 	test.AssertEquals(t, l[expectKey].burst, int64(40))
 	test.AssertEquals(t, l[expectKey].count, int64(40))
 	test.AssertEquals(t, l[expectKey].period.Duration, time.Second)
@@ -104,7 +104,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	// Load multiple valid override limits with 'regId' Ids.
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides.yml")
 	test.AssertNotError(t, err, "multiple valid override limits")
-	expectKey1 := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "10.0.0.2")
+	expectKey1 := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "64.112.117.1")
 	test.AssertEquals(t, l[expectKey1].burst, int64(40))
 	test.AssertEquals(t, l[expectKey1].count, int64(40))
 	test.AssertEquals(t, l[expectKey1].period.Duration, time.Second)
