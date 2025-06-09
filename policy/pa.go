@@ -39,14 +39,6 @@ type AuthorityImpl struct {
 
 // New constructs a Policy Authority.
 func New(identifierTypes map[identifier.IdentifierType]bool, challengeTypes map[core.AcmeChallenge]bool, log blog.Logger) (*AuthorityImpl, error) {
-	// If identifierTypes are not configured (i.e. nil), default to allowing DNS
-	// identifiers. This default is temporary, to improve deployability.
-	//
-	// TODO(#8184): Remove this default.
-	if identifierTypes == nil {
-		identifierTypes = map[identifier.IdentifierType]bool{identifier.TypeDNS: true}
-	}
-
 	return &AuthorityImpl{
 		log:                log,
 		enabledChallenges:  challengeTypes,
