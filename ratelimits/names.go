@@ -136,7 +136,7 @@ func validIPAddress(id string) error {
 	canon := ip.String()
 	if canon != id {
 		return fmt.Errorf(
-			"invalid IP address, %q must be in canonical form like %s", id, canon)
+			"invalid IP address, %q must be in canonical form (%q)", id, canon)
 	}
 	return policy.IsReservedIP(ip)
 }
@@ -158,7 +158,7 @@ func validIPv6RangeCIDR(id string) error {
 	canon := prefix.Masked().String()
 	if canon != id {
 		return fmt.Errorf(
-			"invalid CIDR, %q must be in canonical form like %s", id, canon)
+			"invalid CIDR, %q must be in canonical form (%q)", id, canon)
 	}
 	return policy.IsReservedPrefix(prefix)
 }
@@ -196,51 +196,37 @@ func validateRegIdIdentValue(id string) error {
 	return nil
 }
 
-// validateDomainOrCIDRInner validates that the provided string is formatted
-// 'domainOrCIDR', where domainOrCIDR is either a domain name in the certificate
-// or an IP prefix in CIDR notation. IP prefixes must be /24 for IPv4 or /48 for
-// IPv6.
-func validateDomainOrCIDRInner(id string) error {
-	domainErr := policy.ValidDomain(id)
-	if domainErr != nil {
-		prefix, prefixErr := netip.ParsePrefix(id)
-		if prefixErr != nil {
-			return fmt.Errorf("%w as domain, %w as IP prefix", domainErr, prefixErr)
-		}
-
-		var bits int
-		if prefix.Addr().Is4() {
-			bits = 24
-		} else {
-			bits = 48
-		}
-		if prefix.Bits() != bits {
-			return fmt.Errorf("invalid CIDR, must be /%d", bits)
-		}
-
-		canon := prefix.Masked().String()
-		if canon != id {
-			return fmt.Errorf("invalid CIDR, must be in canonical form like %s", canon)
-		}
-
-		reservedErr := policy.IsReservedPrefix(prefix)
-		if reservedErr != nil {
-			return reservedErr
-		}
-	}
-	return nil
-}
-
-// validateDomainOrCIDR validates that the provided string is formatted
-// 'domainOrCIDR', where domainOrCIDR is either a domain name in the certificate
-// or an IP prefix in CIDR notation. It wraps validateDomainOrCIDRInner and
-// provides the appropriate error.
+// validateDomainOrCIDR validates that the provided string is either a domain
+// name or an IP prefix in CIDR notation. IP prefixes must be /24 for IPv4 or
+// /48 for IPv6.
 func validateDomainOrCIDR(id string) error {
-	err := validateDomainOrCIDRInner(id)
-	if err != nil {
-		return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'domainOrCIDR': %w", id, err)
+	domainErr := policy.ValidDomain(id)
+	if domainErr == nil {
+		// This is a valid domain.
+		return nil
 	}
-	return nil
+
+	prefix, prefixErr := netip.ParsePrefix(id)
+	if prefixErr != nil {
+		return fmt.Errorf("%s is neither a domain (%w) nor an IP prefix in CIDR notation (%w)", id, domainErr, prefixErr)
+	}
+
+	var bits int
+	if prefix.Addr().Is4() {
+		bits = 24
+	} else {
+		bits = 48
+	}
+	if prefix.Bits() != bits {
+		return fmt.Errorf("invalid CIDR, must be /%d", bits)
+	}
+
+	canon := prefix.Masked().String()
+	if canon != id {
+		return fmt.Errorf("invalid CIDR, must be in canonical form (%q)", canon)
+	}
+
+	return policy.IsReservedPrefix(prefix)
 }
 
 // validateRegIdDomainOrCIDR validates that the provided string is formatted
@@ -257,7 +243,7 @@ func validateRegIdDomainOrCIDR(id string) error {
 		return fmt.Errorf(
 			"invalid regId, %q must be formatted 'regId:domainOrCIDR'", id)
 	}
-	err = validateDomainOrCIDRInner(regIdDomainOrCIDR[1])
+	err = validateDomainOrCIDR(regIdDomainOrCIDR[1])
 	if err != nil {
 		return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w", id, err)
 	}

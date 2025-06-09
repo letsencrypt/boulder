@@ -47,15 +47,15 @@ func newStringBucketKey(name Name, value string) string {
 	return joinWithColon(name.EnumString(), value)
 }
 
-// NewRegIdIdentValueBucketKey validates and returns a bucketKey for limits that
-// use the 'enum:regId:identValue' bucket key format. This function is exported
-// for use in ra.resetAccountPausingLimit.
+// NewRegIdIdentValueBucketKey returns a bucketKey for limits that use the
+// 'enum:regId:identValue' bucket key format. This function is exported for use
+// by the RA when resetting the account pausing limit.
 func NewRegIdIdentValueBucketKey(name Name, regId int64, orderIdent identifier.ACMEIdentifier) string {
 	return newRegIdStringBucketKey(name, regId, orderIdent.Value)
 }
 
-// newRegIdStringBucketKey validates and returns a bucketKey for limits that use
-// the 'enum:regId:identValue' or 'enum:regId:domainOrCIDR' bucket key formats.
+// newRegIdStringBucketKey returns a bucketKey for limits that use the
+// 'enum:regId:identValue' or 'enum:regId:domainOrCIDR' bucket key formats.
 //
 // This is split out from NewRegIdIdentValueBucketKey so that we can handle an
 // IP prefix in CIDR notation, which is not a valid identifier value.
@@ -259,8 +259,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 		perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident)
 
 		// Add a check-only transaction for each per identValue per account
-		// bucket. The cost is 0, as we are only checking that the account and
-		// identValue pair aren't already over the limit.
+		// bucket.
 		txn, err := newCheckOnlyTransaction(limit, perIdentValuePerAccountBucketKey, 1)
 		if err != nil {
 			return nil, err
