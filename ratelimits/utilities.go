@@ -19,8 +19,8 @@ func joinWithColon(args ...string) string {
 // coveringIdentifiers transforms a slice of ACMEIdentifiers into strings of
 // their "covering" identifiers, for the CertificatesPerDomain limit. It also
 // de-duplicates the output. For DNS identifiers, this is eTLD+1's; exact public
-// suffix matches are included. For IP address identifiers, this is the /24 (for
-// IPv4) or /48 (for IPv6) that contains them.
+// suffix matches are included. For IPv4, this is the IP address (/32). For
+// IPv6, this is the /48 (for IPv6) that contains the address.
 func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 	var covers []string
 	for _, ident := range idents {
@@ -45,7 +45,7 @@ func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 			}
 			var bits int
 			if ip.Is4() {
-				bits = 24
+				bits = 32
 			} else {
 				bits = 48
 			}

@@ -197,7 +197,7 @@ func validateRegIdIdentValue(id string) error {
 }
 
 // validateDomainOrCIDR validates that the provided string is either a domain
-// name or an IP prefix in CIDR notation. IP prefixes must be /24 for IPv4 or
+// name or an IP prefix in CIDR notation. IP prefixes must be /32 for IPv4 or
 // /48 for IPv6.
 func validateDomainOrCIDR(id string) error {
 	domainErr := policy.ValidDomain(id)
@@ -213,7 +213,7 @@ func validateDomainOrCIDR(id string) error {
 
 	var bits int
 	if prefix.Addr().Is4() {
-		bits = 24
+		bits = 32
 	} else {
 		bits = 48
 	}

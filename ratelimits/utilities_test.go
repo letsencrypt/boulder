@@ -54,7 +54,7 @@ func TestCoveringIdentifiers(t *testing.T) {
 				identifier.NewDNS("example.com"),
 				identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
 			},
-			want: []string{"127.0.0.0/24", "example.com"},
+			want: []string{"127.0.0.1/32", "example.com"},
 		},
 		{
 			name: "an IPv6 address",
@@ -71,7 +71,7 @@ func TestCoveringIdentifiers(t *testing.T) {
 				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")),
 				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:ffff:abad:0ff1:cec0:ffee")),
 			},
-			want: []string{"127.0.0.0/24", "3fff:aaa:aaaa::/48"},
+			want: []string{"127.0.0.1/32", "127.0.0.254/32", "3fff:aaa:aaaa::/48"},
 		},
 	}
 	for _, tc := range cases {

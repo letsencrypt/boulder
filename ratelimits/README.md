@@ -106,7 +106,7 @@ A valid eTLD+1 domain name, or IP prefix in CIDR notation.
 
 Examples:
   - `example.com`
-  - `192.168.1.0/24`
+  - `192.168.1.0/32`
   - `2001:db8:eeee::/48`
 
 #### fqdnSet

@@ -228,7 +228,7 @@ func TestValidateIdForName(t *testing.T) {
 		{
 			limit: CertificatesPerDomain,
 			desc:  "valid IPv4 prefix",
-			id:    "64.112.117.0/24",
+			id:    "64.112.117.1/32",
 		},
 		{
 			limit: CertificatesPerDomain,
