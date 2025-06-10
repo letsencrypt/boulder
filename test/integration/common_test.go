@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -50,7 +49,7 @@ func makeClient(contacts ...string) (*client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error connecting to acme directory: %v", err)
 	}
-	privKey, err := rsa.GenerateKey(rand.Reader, 4090)
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("error creating private key: %v", err)
 	}
