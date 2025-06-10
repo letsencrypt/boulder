@@ -211,8 +211,6 @@ func mockDNSQuery(w http.ResponseWriter, httpReq *http.Request) {
 	}
 }
 
-var testTrustedRoots *x509.CertPool
-
 func serveLoopResolver(stopChan chan bool) {
 	m := http.NewServeMux()
 	m.HandleFunc("/dns-query", mockDNSQuery)
@@ -260,6 +258,8 @@ func pollServer() {
 	}
 }
 
+// tlsConfig is used for the TLS config of client instances that talk to the
+// DoH server set up in TestMain.
 var tlsConfig *tls.Config
 
 func TestMain(m *testing.M) {
@@ -548,7 +548,6 @@ func TestRetry(t *testing.T) {
 	isTempErr := &url.Error{Op: "read", Err: tempError(true)}
 	nonTempErr := &url.Error{Op: "read", Err: tempError(false)}
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
-	netError := errors.New("DNS problem: networking error looking up TXT for example.com")
 	type testCase struct {
 		name              string
 		maxTries          int
@@ -599,7 +598,7 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:          netError,
+			expected:          servFailError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
@@ -652,7 +651,7 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:          netError,
+			expected:          servFailError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
@@ -666,7 +665,7 @@ func TestRetry(t *testing.T) {
 					nonTempErr,
 				},
 			},
-			expected:      netError,
+			expected:      servFailError,
 			expectedCount: 2,
 		},
 	}
