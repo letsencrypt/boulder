@@ -304,7 +304,7 @@ type ValidationProfileConfig struct {
 	AllowList string `validate:"omitempty"`
 	// IdentifierTypes is a list of identifier types that may be issued under
 	// this profile.
-	IdentifierTypes []identifier.IdentifierType `validate:"omitempty,dive,oneof=dns ip"`
+	IdentifierTypes []identifier.IdentifierType `validate:"required,dive,oneof=dns ip"`
 }
 
 // validationProfile holds the attributes of a given validation profile.
