@@ -79,7 +79,7 @@ services:
       - setup
 
   bmysql:
-    image: mariadb:10.5
+    image: mariadb:10.6.22
     networks:
       bouldernet:
         aliases:
