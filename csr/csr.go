@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"errors"
+	"net/netip"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
@@ -86,20 +87,27 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 }
 
 // CNFromCSR returns the lower-cased Subject Common Name from the CSR, if a
-// short enough CN was provided. If it was too long, there will be no CN. If
-// none was provided, the CN will be the first SAN that is short enough, which
-// is done only for backwards compatibility with prior Let's Encrypt behaviour.
+// short enough CN was provided. If it was too long or appears to be an IP,
+// there will be no CN. If none was provided, the CN will be the first SAN that
+// is short enough, which is done only for backwards compatibility with prior
+// Let's Encrypt behaviour.
 func CNFromCSR(csr *x509.CertificateRequest) string {
 	if len(csr.Subject.CommonName) > maxCNLength {
 		return ""
 	}
 
 	if csr.Subject.CommonName != "" {
+		_, err := netip.ParseAddr(csr.Subject.CommonName)
+		if err == nil { // inverted; we're looking for successful parsing here
+			return ""
+		}
+
 		return strings.ToLower(csr.Subject.CommonName)
 	}
 
-	// If there's no CN already, but we want to set one, promote the first SAN
-	// which is shorter than the maximum acceptable CN length (if any).
+	// If there's no CN already, but we want to set one, promote the first dnsName
+	// SAN which is shorter than the maximum acceptable CN length (if any). We
+	// will never promote an ipAddress SAN to the CN.
 	for _, name := range csr.DNSNames {
 		if len(name) <= maxCNLength {
 			return strings.ToLower(name)

@@ -276,7 +276,6 @@ func TestFailExit(t *testing.T) {
 		return
 	}
 
-	//nolint: gosec // Test-only code is not concerned about untrusted values in os.Args[0]
 	cmd := exec.Command(os.Args[0], "-test.run=TestFailExit")
 	cmd.Env = append(os.Environ(), "TIME_TO_DIE=1")
 	output, err := cmd.CombinedOutput()
@@ -303,7 +302,6 @@ func TestPanicStackTrace(t *testing.T) {
 		return
 	}
 
-	//nolint: gosec // Test-only code is not concerned about untrusted values in os.Args[0]
 	cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace")
 	cmd.Env = append(os.Environ(), "AT_THE_DISCO=1")
 	output, err := cmd.CombinedOutput()

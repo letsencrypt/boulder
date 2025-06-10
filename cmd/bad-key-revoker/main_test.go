@@ -266,7 +266,6 @@ func TestRevokeCerts(t *testing.T) {
 
 	err = bkr.revokeCerts([]unrevokedCertificate{
 		{ID: 0, Serial: "ff"},
-		{ID: 0, Serial: "ff"}, // duplicate
 		{ID: 1, Serial: "ee"},
 	})
 	test.AssertNotError(t, err, "revokeCerts failed")

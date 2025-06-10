@@ -181,11 +181,7 @@ func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked unchecke
 // keyCompromise and includes note indicating that they were revoked by
 // bad-key-revoker.
 func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
-	alreadyRevoked := map[int]bool{}
 	for _, cert := range certs {
-		if alreadyRevoked[cert.ID] {
-			continue
-		}
 		_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 			Cert:      cert.DER,
 			Serial:    cert.Serial,
@@ -196,7 +192,6 @@ func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
 			return err
 		}
 		certsRevoked.Inc()
-		alreadyRevoked[cert.ID] = true
 	}
 	return nil
 }
