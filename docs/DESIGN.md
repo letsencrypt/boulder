@@ -236,7 +236,7 @@ order finalization and does not offer the new-cert endpoint.
 
 * 3-4: RA does the following:
   * Verify the PKCS#10 CSR in the certificate request object
-  * Verify that the CSR has a non-zero number of domain names
+  * Verify that the CSR has a non-zero number of identifiers
   * Verify that the public key in the CSR is different from the account key
   * For each authorization referenced in the certificate request
     * Retrieve the authorization from the database
@@ -303,7 +303,7 @@ ACME v2:
 
 * 2-4: RA does the following:
   * Verify the PKCS#10 CSR in the certificate request object
-  * Verify that the CSR has a non-zero number of domain names
+  * Verify that the CSR has a non-zero number of identifiers
   * Verify that the public key in the CSR is different from the account key
   * Retrieve and verify the status and expiry of the order object
   * For each identifier referenced in the order request

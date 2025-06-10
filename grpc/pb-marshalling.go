@@ -351,8 +351,8 @@ func newOrderValid(order *corepb.Order) bool {
 	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)
 }
 
-// PBToAuthzMap converts a protobuf map of domains mapped to protobuf authorizations to a
-// golang map[string]*core.Authorization.
+// PBToAuthzMap converts a protobuf map of identifiers mapped to protobuf
+// authorizations to a golang map[string]*core.Authorization.
 func PBToAuthzMap(pb *sapb.Authorizations) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	m := make(map[identifier.ACMEIdentifier]*core.Authorization, len(pb.Authzs))
 	for _, v := range pb.Authzs {

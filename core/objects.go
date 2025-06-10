@@ -68,7 +68,7 @@ func (c AcmeChallenge) IsValid() bool {
 	}
 }
 
-// OCSPStatus defines the state of OCSP for a domain
+// OCSPStatus defines the state of OCSP for a certificate
 type OCSPStatus string
 
 // These status are the states of OCSP
@@ -270,10 +270,10 @@ func (ch Challenge) StringID() string {
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil)[0:4])
 }
 
-// Authorization represents the authorization of an account key holder
-// to act on behalf of a domain.  This struct is intended to be used both
-// internally and for JSON marshaling on the wire.  Any fields that should be
-// suppressed on the wire (e.g., ID, regID) must be made empty before marshaling.
+// Authorization represents the authorization of an account key holder to act on
+// behalf of an identifier. This struct is intended to be used both internally
+// and for JSON marshaling on the wire. Any fields that should be suppressed on
+// the wire (e.g., ID, regID) must be made empty before marshaling.
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
