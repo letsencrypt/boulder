@@ -123,7 +123,6 @@ type ValidationRecord struct {
 
 	// Shared
 	//
-	// TODO(#7311): Replace DnsName with Identifier.
 	DnsName           string       `json:"hostname,omitempty"`
 	Port              string       `json:"port,omitempty"`
 	AddressesResolved []netip.Addr `json:"addressesResolved,omitempty"`
