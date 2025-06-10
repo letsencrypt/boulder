@@ -208,7 +208,7 @@ func validateDomainOrCIDR(id string) error {
 
 	prefix, prefixErr := netip.ParsePrefix(id)
 	if prefixErr != nil {
-		return fmt.Errorf("%s is neither a domain (%w) nor an IP prefix in CIDR notation (%w)", id, domainErr, prefixErr)
+		return fmt.Errorf("%q is neither a domain (%w) nor an IP prefix in CIDR notation (%w)", id, domainErr, prefixErr)
 	}
 
 	var bits int
