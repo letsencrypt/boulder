@@ -622,22 +622,9 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 }
 
 func TestBadKeyRevoker(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// This test relies on contact addresses being persisted, and cares about
-		// emails being sent, which we no longer do in config-next.
-		t.Skip()
-	}
-
-	// Both accounts have two email addresses, one of which is shared between
-	// them. All three addresses should receive mail, because the revocation
-	// request is signed by the certificate key, not an account key, so we don't
-	// know who requested the revocation. Finally, a third account with no address
-	// to ensure the bad-key-revoker handles that gracefully.
-	revokerClient, err := makeClient("mailto:revoker@letsencrypt.org", "mailto:shared@letsencrypt.org")
+	revokerClient, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
-	revokeeClient, err := makeClient("mailto:shared@letsencrypt.org", "mailto:revokee@letsencrypt.org")
-	test.AssertNotError(t, err, "creating acme client")
-	noContactClient, err := makeClient()
+	revokeeClient, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
 
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -649,7 +636,7 @@ func TestBadKeyRevoker(t *testing.T) {
 	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
 	bundles := []*issuanceResult{}
-	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
+	for _, c := range []*client{revokerClient, revokeeClient} {
 		bundle, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 		t.Logf("TestBadKeyRevoker: Issued cert with serial %x", bundle.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
@@ -691,39 +678,12 @@ func TestBadKeyRevoker(t *testing.T) {
 		issuer := bundle.certs[1]
 		fetchAndCheckRevoked(t, cert, issuer, ocsp.KeyCompromise)
 	}
-
-	revokeeCount, err := http.Get("http://boulder.service.consul:9381/count?to=revokee@letsencrypt.org&from=bad-key-revoker@test.org")
-	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
-	defer func() { _ = revokeeCount.Body.Close() }()
-	body, err := io.ReadAll(revokeeCount.Body)
-	test.AssertNotError(t, err, "failed to read body")
-	test.AssertEquals(t, string(body), "1\n")
-
-	revokerCount, err := http.Get("http://boulder.service.consul:9381/count?to=revoker@letsencrypt.org&from=bad-key-revoker@test.org")
-	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
-	defer func() { _ = revokerCount.Body.Close() }()
-	body, err = io.ReadAll(revokerCount.Body)
-	test.AssertNotError(t, err, "failed to read body")
-	test.AssertEquals(t, string(body), "1\n")
-
-	sharedCount, err := http.Get("http://boulder.service.consul:9381/count?to=shared@letsencrypt.org&from=bad-key-revoker@test.org")
-	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
-	defer func() { _ = sharedCount.Body.Close() }()
-	body, err = io.ReadAll(sharedCount.Body)
-	test.AssertNotError(t, err, "failed to read body")
-	test.AssertEquals(t, string(body), "1\n")
 }
 
 func TestBadKeyRevokerByAccount(t *testing.T) {
-	// Both accounts have two email addresses, one of which is shared between
-	// them. No accounts should receive any mail, because the revocation request
-	// is signed by the account key (not the cert key) and so will not be
-	// propagated to other certs sharing the same key.
-	revokerClient, err := makeClient("mailto:revoker-moz@letsencrypt.org", "mailto:shared-moz@letsencrypt.org")
+	revokerClient, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
-	revokeeClient, err := makeClient("mailto:shared-moz@letsencrypt.org", "mailto:revokee-moz@letsencrypt.org")
-	test.AssertNotError(t, err, "creating acme client")
-	noContactClient, err := makeClient()
+	revokeeClient, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
 
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -735,7 +695,7 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
 	bundles := []*issuanceResult{}
-	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
+	for _, c := range []*client{revokerClient, revokeeClient} {
 		bundle, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 		t.Logf("TestBadKeyRevokerByAccount: Issued cert with serial %x", bundle.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
@@ -771,25 +731,4 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 		}
 		checkUnrevoked(t, allCRLs, cert)
 	}
-
-	revokeeCount, err := http.Get("http://boulder.service.consul:9381/count?to=revokee-moz@letsencrypt.org&from=bad-key-revoker@test.org")
-	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
-	defer func() { _ = revokeeCount.Body.Close() }()
-	body, err := io.ReadAll(revokeeCount.Body)
-	test.AssertNotError(t, err, "failed to read body")
-	test.AssertEquals(t, string(body), "0\n")
-
-	revokerCount, err := http.Get("http://boulder.service.consul:9381/count?to=revoker-moz@letsencrypt.org&from=bad-key-revoker@test.org")
-	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
-	defer func() { _ = revokerCount.Body.Close() }()
-	body, err = io.ReadAll(revokerCount.Body)
-	test.AssertNotError(t, err, "failed to read body")
-	test.AssertEquals(t, string(body), "0\n")
-
-	sharedCount, err := http.Get("http://boulder.service.consul:9381/count?to=shared-moz@letsencrypt.org&from=bad-key-revoker@test.org")
-	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
-	defer func() { _ = sharedCount.Body.Close() }()
-	body, err = io.ReadAll(sharedCount.Body)
-	test.AssertNotError(t, err, "failed to read body")
-	test.AssertEquals(t, string(body), "0\n")
 }
