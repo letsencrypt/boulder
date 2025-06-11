@@ -1,3 +1,10 @@
+- NewRegistrationsPerIPAddress:
+    burst: 1000000
+    count: 1000000
+    period: 168h
+    ids:
+      - id: 64.112.117.1
+        comment: test
 - CertificatesPerDomain:
     burst: 1
     count: 1
