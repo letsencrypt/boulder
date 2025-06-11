@@ -61,17 +61,17 @@ func TestCoveringIdentifiers(t *testing.T) {
 			idents: identifier.ACMEIdentifiers{
 				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")),
 			},
-			want: []string{"3fff:aaa:aaaa::/48"},
+			want: []string{"3fff:aaa:aaaa:aaaa::/64"},
 		},
 		{
-			name: "four IP addresses in two prefixes",
+			name: "four IP addresses in three prefixes",
 			idents: identifier.ACMEIdentifiers{
 				identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
 				identifier.NewIP(netip.MustParseAddr("127.0.0.254")),
 				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")),
 				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:ffff:abad:0ff1:cec0:ffee")),
 			},
-			want: []string{"127.0.0.1/32", "127.0.0.254/32", "3fff:aaa:aaaa::/48"},
+			want: []string{"127.0.0.1/32", "127.0.0.254/32", "3fff:aaa:aaaa:aaaa::/64", "3fff:aaa:aaaa:ffff::/64"},
 		},
 	}
 	for _, tc := range cases {

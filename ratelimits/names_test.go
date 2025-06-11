@@ -227,13 +227,19 @@ func TestValidateIdForName(t *testing.T) {
 		},
 		{
 			limit: CertificatesPerDomain,
-			desc:  "valid IPv4 prefix",
-			id:    "64.112.117.1/32",
+			desc:  "valid IPv4 address",
+			id:    "64.112.117.1",
 		},
 		{
 			limit: CertificatesPerDomain,
-			desc:  "valid IPv6 prefix",
-			id:    "2602:80a:6000::/48",
+			desc:  "valid IPv6 address",
+			id:    "2602:80a:6000::",
+		},
+		{
+			limit: CertificatesPerDomain,
+			desc:  "IPv6 address with subnet",
+			id:    "2602:80a:6000::/64",
+			err:   "nor an IP address",
 		},
 		{
 			limit: CertificatesPerDomain,

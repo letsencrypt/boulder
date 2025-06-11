@@ -195,11 +195,25 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 				}
-				if name == CertificatesPerFQDNSet {
-					// FQDNSet hashes are not a nice thing to ask for in a
-					// config file, so we allow the user to specify a
-					// comma-separated list of identifier values, and compute
-					// the hash here.
+
+				// We interpret and compute the override values for two rate
+				// limits, since they're not nice to ask for in a config file.
+				switch name {
+				case CertificatesPerDomain:
+					// Convert IP addresses to their covering /32 (IPv4) or /64
+					// (IPv6) prefixes in CIDR notation.
+					ip, err := netip.ParseAddr(id)
+					if err == nil {
+						prefix, err := coveringPrefix(ip)
+						if err != nil {
+							return nil, fmt.Errorf(
+								"computing prefix for IP address %q: %w", id, err)
+						}
+						id = prefix.String()
+					}
+				case CertificatesPerFQDNSet:
+					// Compute the hash of a comma-separated list of identifier
+					// values.
 					var idents identifier.ACMEIdentifiers
 					for _, value := range strings.Split(id, ",") {
 						ip, err := netip.ParseAddr(value)
@@ -211,6 +225,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 					}
 					id = fmt.Sprintf("%x", core.HashIdentifiers(idents))
 				}
+
 				parsed[joinWithColon(name.EnumString(), id)] = lim
 			}
 		}

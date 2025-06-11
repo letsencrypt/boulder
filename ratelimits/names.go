@@ -52,8 +52,13 @@ const (
 	FailedAuthorizationsPerDomainPerAccount
 
 	// CertificatesPerDomain uses bucket key 'enum:domainOrCIDR', where
-	// domainOrCIDR is either a domain name in the certificate or an IP prefix
-	// in CIDR notation.
+	// domainOrCIDR is a domain name or IP address in the certificate. It uses
+	// two different IP address formats depending on the context:
+	//  - When referenced in an overrides file: uses a single IP address.
+	//  - When referenced in a transaction: uses an IP address prefix in CIDR
+	//    notation. IPv4 prefixes must be /32, and IPv6 prefixes must be /64.
+	// In both cases, IPv6 addresses must be the lowest address in their /64;
+	// i.e. their last 64 bits must be zero.
 	CertificatesPerDomain
 
 	// CertificatesPerDomainPerAccount is only used for per-account overrides to
@@ -66,6 +71,7 @@ const (
 	//   'enum:regId:domainOrCIDR', where regId is the ACME registration Id of
 	//    the account and domainOrCIDR is either a domain name in the
 	//    certificate or an IP prefix in CIDR notation.
+	//     - IP address formats vary by context, as for CertificatesPerDomain.
 	//
 	// When overrides to the CertificatesPerDomainPerAccount are configured for a
 	// subscriber, the cost:
@@ -197,8 +203,8 @@ func validateRegIdIdentValue(id string) error {
 }
 
 // validateDomainOrCIDR validates that the provided string is either a domain
-// name or an IP prefix in CIDR notation. IP prefixes must be /32 for IPv4 or
-// /48 for IPv6.
+// name or an IP address. IPv6 addresses must be the lowest address in their
+// /64, i.e. their last 64 bits must be zero.
 func validateDomainOrCIDR(id string) error {
 	domainErr := policy.ValidDomain(id)
 	if domainErr == nil {
@@ -206,32 +212,30 @@ func validateDomainOrCIDR(id string) error {
 		return nil
 	}
 
-	prefix, prefixErr := netip.ParsePrefix(id)
+	ip, ipErr := netip.ParseAddr(id)
+	if ipErr != nil {
+		return fmt.Errorf("%q is neither a domain (%w) nor an IP address (%w)", id, domainErr, ipErr)
+	}
+
+	if ip.String() != id {
+		return fmt.Errorf("invalid IP address %q, must be in canonical form (%q)", id, ip.String())
+	}
+
+	prefix, prefixErr := coveringPrefix(ip)
 	if prefixErr != nil {
-		return fmt.Errorf("%q is neither a domain (%w) nor an IP prefix in CIDR notation (%w)", id, domainErr, prefixErr)
+		return fmt.Errorf("invalid IP address %q, couldn't determine prefix: %w", id, prefixErr)
 	}
-
-	var bits int
-	if prefix.Addr().Is4() {
-		bits = 32
-	} else {
-		bits = 48
-	}
-	if prefix.Bits() != bits {
-		return fmt.Errorf("invalid CIDR, must be /%d", bits)
-	}
-
-	canon := prefix.Masked().String()
-	if canon != id {
-		return fmt.Errorf("invalid CIDR, must be in canonical form (%q)", canon)
+	if prefix.Addr() != ip {
+		return fmt.Errorf("invalid IP address %q, must be the lowest address in its prefix (%q)", id, prefix.Addr().String())
 	}
 
 	return policy.IsReservedPrefix(prefix)
 }
 
 // validateRegIdDomainOrCIDR validates that the provided string is formatted
-// 'regId:domainOrCIDR', where domainOrCIDR is either a domain name in the
-// certificate or an IP prefix in CIDR notation.
+// 'regId:domainOrCIDR', where domainOrCIDR is either a domain name or an IP
+// address. IPv6 addresses must be the lowest address in their /64, i.e. their
+// last 64 bits must be zero.
 func validateRegIdDomainOrCIDR(id string) error {
 	regIdDomainOrCIDR := strings.Split(id, ":")
 	if len(regIdDomainOrCIDR) != 2 {

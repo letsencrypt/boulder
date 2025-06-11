@@ -102,12 +102,14 @@ Examples:
 
 #### domainOrCIDR
 
-A valid eTLD+1 domain name, or IP prefix in CIDR notation.
+A valid eTLD+1 domain name, or an IP address. IPv6 addresses must be the lowest
+address in their /64, i.e. their last 64 bits must be zero; the override will
+apply to the entire /64. Do not include the CIDR mask.
 
 Examples:
   - `example.com`
-  - `192.168.1.0/32`
-  - `2001:db8:eeee::/48`
+  - `192.168.1.0`
+  - `2001:db8:eeee:eeee::`
 
 #### fqdnSet
 

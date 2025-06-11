@@ -19,8 +19,8 @@ func joinWithColon(args ...string) string {
 // coveringIdentifiers transforms a slice of ACMEIdentifiers into strings of
 // their "covering" identifiers, for the CertificatesPerDomain limit. It also
 // de-duplicates the output. For DNS identifiers, this is eTLD+1's; exact public
-// suffix matches are included. For IPv4, this is the IP address (/32). For
-// IPv6, this is the /48 (for IPv6) that contains the address.
+// suffix matches are included. For IP address identifiers, this is the address
+// (/32) for IPv4, or the /64 prefix for IPv6, in CIDR notation.
 func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 	var covers []string
 	for _, ident := range idents {
@@ -43,13 +43,7 @@ func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
-			var bits int
-			if ip.Is4() {
-				bits = 32
-			} else {
-				bits = 48
-			}
-			prefix, err := ip.Prefix(bits)
+			prefix, err := coveringPrefix(ip)
 			if err != nil {
 				return nil, err
 			}
@@ -57,4 +51,22 @@ func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 		}
 	}
 	return core.UniqueLowerNames(covers), nil
+}
+
+// coveringPrefix transforms a netip.Addr into its "covering" prefix, for the
+// CertificatesPerDomain limit. For IPv4, this is the IP address (/32). For
+// IPv6, this is the /64 that contains the address.
+func coveringPrefix(addr netip.Addr) (netip.Prefix, error) {
+	var bits int
+	if addr.Is4() {
+		bits = 32
+	} else {
+		bits = 64
+	}
+	prefix, err := addr.Prefix(bits)
+	if err != nil {
+		// This should be impossible because bits is hardcoded.
+		return netip.Prefix{}, err
+	}
+	return prefix, nil
 }
