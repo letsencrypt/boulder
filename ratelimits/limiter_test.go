@@ -16,9 +16,9 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// tenZeroZeroTwo is overridden in 'testdata/working_override.yml' to have
-// higher burst and count values.
-const tenZeroZeroTwo = "10.0.0.2"
+// overriddenIP is overridden in 'testdata/working_override.yml' to have higher
+// burst and count values.
+const overriddenIP = "64.112.117.1"
 
 // newTestLimiter constructs a new limiter.
 func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
@@ -30,7 +30,7 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 // newTestTransactionBuilder constructs a new *TransactionBuilder with the
 // following configuration:
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
-//   - 'NewRegistrationsPerIPAddress:10.0.0.2' burst: 40 count: 40 period: 1s
+//   - 'NewRegistrationsPerIPAddress:64.112.117.1' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml")
 	test.AssertNotError(t, err, "should not error")
@@ -60,7 +60,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			overriddenBucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(tenZeroZeroTwo))
+			overriddenBucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(overriddenIP))
 			overriddenLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, overriddenBucketKey)
 			test.AssertNotError(t, err, "should not error")
 

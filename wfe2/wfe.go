@@ -2023,14 +2023,10 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
 //
-// TODO(#7311): Handle IP address identifiers properly; don't just trust that
-// the value will always make sense in context.
+// Precondition: idents must be a list of identifiers that all pass
+// policy.WellFormedIdentifiers.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents identifier.ACMEIdentifiers, isRenewal bool) (func(), error) {
-	names, err := idents.ToDNSSlice()
-	if err != nil {
-		return nil, err
-	}
-	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
+	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, idents, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
 	}
