@@ -29,7 +29,6 @@
 						"admin.boulder",
 						"ca.boulder",
 						"crl-updater.boulder",
-						"expiration-mailer.boulder",
 						"ra.boulder"
 					]
 				},

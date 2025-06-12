@@ -25,16 +25,12 @@ type Config struct {
 	EnforceMPIC                 bool
 	MPICFullResults             bool
 	UnsplitIssuance             bool
+	ExpirationMailerUsesJoin    bool
 	IgnoreAccountContacts       bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo bool
-
-	// ExpirationMailerUsesJoin enables using a JOIN query in expiration-mailer
-	// rather than a SELECT from certificateStatus followed by thousands of
-	// one-row SELECTs from certificates.
-	ExpirationMailerUsesJoin bool
 
 	// CertCheckerChecksValidations enables an extra query for each certificate
 	// checked, to find the relevant authzs. Since this query might be

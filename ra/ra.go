@@ -303,8 +303,8 @@ type ValidationProfileConfig struct {
 	// exists but is empty, the profile is closed to all accounts.
 	AllowList string `validate:"omitempty"`
 	// IdentifierTypes is a list of identifier types that may be issued under
-	// this profile. If none are specified, it defaults to "dns".
-	IdentifierTypes []identifier.IdentifierType `validate:"omitempty,dive,oneof=dns ip"`
+	// this profile.
+	IdentifierTypes []identifier.IdentifierType `validate:"required,dive,oneof=dns ip"`
 }
 
 // validationProfile holds the attributes of a given validation profile.
@@ -330,7 +330,7 @@ type validationProfile struct {
 	// nil, the profile is open to all accounts (everyone is allowed).
 	allowList *allowlist.List[int64]
 	// identifierTypes is a list of identifier types that may be issued under
-	// this profile. If none are specified, it defaults to "dns".
+	// this profile.
 	identifierTypes []identifier.IdentifierType
 }
 
@@ -384,22 +384,13 @@ func NewValidationProfiles(defaultName string, configs map[string]*ValidationPro
 			}
 		}
 
-		identifierTypes := config.IdentifierTypes
-		// If this profile has no identifier types configured, default to DNS.
-		// This default is temporary, to improve deployability.
-		//
-		// TODO(#8184): Remove this default and use config.IdentifierTypes below.
-		if len(identifierTypes) == 0 {
-			identifierTypes = []identifier.IdentifierType{identifier.TypeDNS}
-		}
-
 		profiles[name] = &validationProfile{
 			pendingAuthzLifetime: config.PendingAuthzLifetime.Duration,
 			validAuthzLifetime:   config.ValidAuthzLifetime.Duration,
 			orderLifetime:        config.OrderLifetime.Duration,
 			maxNames:             config.MaxNames,
 			allowList:            allowList,
-			identifierTypes:      identifierTypes,
+			identifierTypes:      config.IdentifierTypes,
 		}
 	}
 
