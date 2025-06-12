@@ -141,7 +141,7 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		return nil, err
 	}
 	return &corepb.ValidationRecord{
-		Hostname:          record.DnsName,
+		Hostname:          record.Hostname,
 		Port:              record.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
@@ -177,7 +177,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		return
 	}
 	return core.ValidationRecord{
-		DnsName:           in.Hostname,
+		Hostname:          in.Hostname,
 		Port:              in.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,

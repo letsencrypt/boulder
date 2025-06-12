@@ -123,7 +123,8 @@ type ValidationRecord struct {
 
 	// Shared
 	//
-	DnsName           string       `json:"hostname,omitempty"`
+	// Hostname can hold either a DNS name or an IP address.
+	Hostname          string       `json:"hostname,omitempty"`
 	Port              string       `json:"port,omitempty"`
 	AddressesResolved []netip.Addr `json:"addressesResolved,omitempty"`
 	AddressUsed       netip.Addr   `json:"addressUsed,omitempty"`
@@ -209,7 +210,7 @@ func (ch Challenge) RecordsSane() bool {
 		for _, rec := range ch.ValidationRecord {
 			// TODO(#7140): Add a check for ResolverAddress == "" only after the
 			// core.proto change has been deployed.
-			if rec.URL == "" || rec.DnsName == "" || rec.Port == "" || (rec.AddressUsed == netip.Addr{}) ||
+			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || (rec.AddressUsed == netip.Addr{}) ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}
@@ -223,7 +224,7 @@ func (ch Challenge) RecordsSane() bool {
 		}
 		// TODO(#7140): Add a check for ResolverAddress == "" only after the
 		// core.proto change has been deployed.
-		if ch.ValidationRecord[0].DnsName == "" || ch.ValidationRecord[0].Port == "" ||
+		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
 			(ch.ValidationRecord[0].AddressUsed == netip.Addr{}) || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
@@ -233,7 +234,7 @@ func (ch Challenge) RecordsSane() bool {
 		}
 		// TODO(#7140): Add a check for ResolverAddress == "" only after the
 		// core.proto change has been deployed.
-		if ch.ValidationRecord[0].DnsName == "" {
+		if ch.ValidationRecord[0].Hostname == "" {
 			return false
 		}
 		return true

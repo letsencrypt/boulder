@@ -3141,10 +3141,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 		"still.not-example.com",
 		"definitely.not-example.com",
 	}
-	var idents identifier.ACMEIdentifiers
-	for _, name := range names {
-		idents = append(idents, identifier.NewDNS(name))
-	}
+	idents := identifier.NewDNSSlice(names)
 	var authzIDs []int64
 	for i, ident := range idents {
 		attemptedAt := older

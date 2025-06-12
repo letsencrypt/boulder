@@ -806,7 +806,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		if req.Attempted == string(core.ChallengeTypeHTTP01) {
 			// Remove these fields because they can be rehydrated later
 			// on from the URL field.
-			record.DnsName = ""
+			record.Hostname = ""
 			record.Port = ""
 		}
 		validationRecords = append(validationRecords, record)
