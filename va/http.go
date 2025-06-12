@@ -42,7 +42,7 @@ const (
 // The hostname of the preresolvedDialer is used to ensure the dial only completes
 // using the pre-resolved IP/port when used for the correct host.
 type preresolvedDialer struct {
-	ip       net.IP
+	ip       netip.Addr
 	port     int
 	hostname string
 	timeout  time.Duration
@@ -170,14 +170,14 @@ type httpValidationTarget struct {
 	// following redirects)
 	query string
 	// all of the IP addresses available for the host
-	available []net.IP
+	available []netip.Addr
 	// the IP addresses that were tried for validation previously that were cycled
 	// out of cur by calls to nextIP()
-	tried []net.IP
+	tried []netip.Addr
 	// the IP addresses that will be drawn from by calls to nextIP() to set curIP
-	next []net.IP
+	next []netip.Addr
 	// the current IP address being used for validation (if any)
-	cur net.IP
+	cur netip.Addr
 	// the DNS resolver(s) that will attempt to fulfill the validation request
 	resolvers bdns.ResolverAddrs
 }
@@ -208,7 +208,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	port int,
 	path string,
 	query string) (*httpValidationTarget, error) {
-	var addrs []net.IP
+	var addrs []netip.Addr
 	var resolvers bdns.ResolverAddrs
 	switch ident.Type {
 	case identifier.TypeDNS:
@@ -219,7 +219,11 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		}
 		addrs, resolvers = dnsAddrs, dnsResolvers
 	case identifier.TypeIP:
-		addrs = []net.IP{net.ParseIP(ident.Value)}
+		netIP, err := netip.ParseAddr(ident.Value)
+		if err != nil {
+			return nil, fmt.Errorf("can't parse IP address %q: %s", ident.Value, err)
+		}
+		addrs = []netip.Addr{netIP}
 	default:
 		return nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
@@ -245,15 +249,15 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	} else if !hasV6Addrs && hasV4Addrs {
 		// If there are no v6 addrs and there are v4 addrs then use the first v4
 		// address. There's no fallback address.
-		target.next = []net.IP{v4Addrs[0]}
+		target.next = []netip.Addr{v4Addrs[0]}
 	} else if hasV6Addrs && hasV4Addrs {
 		// If there are both v6 addrs and v4 addrs then use the first v6 address and
 		// fallback with the first v4 address.
-		target.next = []net.IP{v6Addrs[0], v4Addrs[0]}
+		target.next = []netip.Addr{v6Addrs[0], v4Addrs[0]}
 	} else if hasV6Addrs && !hasV4Addrs {
 		// If there are just v6 addrs then use the first v6 address. There's no
 		// fallback address.
-		target.next = []net.IP{v6Addrs[0]}
+		target.next = []netip.Addr{v6Addrs[0]}
 	}
 
 	// Advance the target using nextIP to populate the cur IP before returning
@@ -334,8 +338,9 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 
 	reqIP, err := netip.ParseAddr(reqHost)
 	if err == nil {
-		if va.isReservedIPFunc(reqIP.AsSlice()) {
-			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target, must not be a reserved IP address")
+		err := va.isReservedIPFunc(reqIP)
+		if err != nil {
+			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: %s", err)
 		}
 		return identifier.NewIP(reqIP), reqPort, nil
 	}
@@ -379,7 +384,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 
 	// Get the target IP to build a preresolved dialer with
 	targetIP := target.cur
-	if targetIP == nil {
+	if (targetIP == netip.Addr{}) {
 		return nil,
 			record,
 			fmt.Errorf(

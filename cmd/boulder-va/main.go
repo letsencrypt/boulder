@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/va"
 	vaConfig "github.com/letsencrypt/boulder/va/config"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -152,7 +153,7 @@ func main() {
 		c.VA.AccountURIPrefixes,
 		va.PrimaryPerspective,
 		"",
-		bdns.IsReservedIP)
+		policy.IsReservedIP)
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(

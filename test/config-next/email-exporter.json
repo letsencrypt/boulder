@@ -32,7 +32,8 @@
 			"passwordFile": "test/secrets/salesforce_client_secret"
 		},
 		"salesforceBaseURL": "http://localhost:9601",
-		"pardotBaseURL": "http://localhost:9602"
+		"pardotBaseURL": "http://localhost:9602",
+		"emailCacheSize": 100000
 	},
 	"syslog": {
 		"stdoutlevel": 6,

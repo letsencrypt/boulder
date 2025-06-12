@@ -9,6 +9,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -216,7 +217,7 @@ type ValidationAuthorityImpl struct {
 	singleDialTimeout  time.Duration
 	perspective        string
 	rir                string
-	isReservedIPFunc   func(ip net.IP) bool
+	isReservedIPFunc   func(netip.Addr) error
 
 	metrics *vaMetrics
 }
@@ -236,7 +237,7 @@ func NewValidationAuthorityImpl(
 	accountURIPrefixes []string,
 	perspective string,
 	rir string,
-	reservedIPChecker func(ip net.IP) bool,
+	reservedIPChecker func(netip.Addr) error,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
@@ -300,13 +301,13 @@ func maxAllowedFailures(perspectiveCount int) int {
 // ipError is an error type used to pass though the IP address of the remote
 // host when an error occurs during HTTP-01 and TLS-ALPN domain validation.
 type ipError struct {
-	ip  net.IP
+	ip  netip.Addr
 	err error
 }
 
 // newIPError wraps an error and the IP of the remote host in an ipError so we
 // can display the IP in the problem details returned to the client.
-func newIPError(ip net.IP, err error) error {
+func newIPError(ip netip.Addr, err error) error {
 	return ipError{ip: ip, err: err}
 }
 
@@ -329,7 +330,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	var ipErr ipError
 	if errors.As(err, &ipErr) {
 		detailedErr := detailedError(ipErr.err)
-		if ipErr.ip == nil {
+		if (ipErr.ip == netip.Addr{}) {
 			// This should never happen.
 			return detailedErr
 		}

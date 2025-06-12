@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
@@ -17,17 +18,23 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 	t.Parallel()
 	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
 
+	// TODO(#8235): Remove this conditional once IP address identifiers are
+	// enabled in test/config.
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		idents = append(idents, acme.Identifier{Type: "ip", Value: "64.112.117.122"})
+	}
+
 	// The global rate limit for a duplicate certificates is 2 per 3 hours.
-	_, err := authAndIssue(nil, nil, idents, true, "")
+	_, err := authAndIssue(nil, nil, idents, true, "shortlived")
 	test.AssertNotError(t, err, "Failed to issue first certificate")
 
-	_, err = authAndIssue(nil, nil, idents, true, "")
+	_, err = authAndIssue(nil, nil, idents, true, "shortlived")
 	test.AssertNotError(t, err, "Failed to issue second certificate")
 
-	_, err = authAndIssue(nil, nil, idents, true, "")
+	_, err = authAndIssue(nil, nil, idents, true, "shortlived")
 	test.AssertError(t, err, "Somehow managed to issue third certificate")
 
-	test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of domains in the last 3h0m0s")
+	test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of identifiers in the last 3h0m0s")
 }
 
 func TestCertificatesPerDomain(t *testing.T) {

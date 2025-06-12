@@ -1284,26 +1284,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // account) and duplicate certificate rate limits. There is no reason to surface
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
-//
-// TODO(#7311): Handle IP address identifiers properly; don't just trust that
-// the value will always make sense in context.
 func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderIdents identifier.ACMEIdentifiers, isRenewal bool) {
-	names, err := orderIdents.ToDNSSlice()
-	if err != nil {
-		ra.log.Warningf("parsing identifiers at finalize: %s", err)
-		return
-	}
-
 	var transactions []ratelimits.Transaction
 	if !isRenewal {
-		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, names)
+		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderIdents)
 		if err != nil {
 			ra.log.Warningf("building rate limit transactions at finalize: %s", err)
 		}
 		transactions = append(transactions, txns...)
 	}
 
-	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(names)
+	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderIdents)
 	if err != nil {
 		ra.log.Warningf("building rate limit transaction at finalize: %s", err)
 	}
@@ -1492,11 +1483,8 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 
 // countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
 // and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
-//
-// TODO(#7311): Handle IP address identifiers properly; don't just trust that
-// the value will always make sense in context.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
-	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident)
 	if err != nil {
 		return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
@@ -1507,7 +1495,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 	}
 
 	if features.Get().AutomaticallyPauseZombieClients {
-		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident.Value)
+		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident)
 		if err != nil {
 			return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 		}
@@ -1520,12 +1508,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 		if decision.Result(ra.clk.Now()) != nil {
 			resp, err := ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
 				RegistrationID: regId,
-				Identifiers: []*corepb.Identifier{
-					{
-						Type:  string(ident.Type),
-						Value: ident.Value,
-					},
-				},
+				Identifiers:    []*corepb.Identifier{ident.ToProto()},
 			})
 			if err != nil {
 				return fmt.Errorf("failed to pause %d/%q: %w", regId, ident.Value, err)
@@ -1542,15 +1525,9 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
 // There is no reason to surface errors from this function to the Subscriber.
-//
-// TODO(#7311): Handle IP address identifiers properly; don't just trust that
-// the value will always make sense in context.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
-	if err != nil {
-		ra.log.Warningf("creating bucket key for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
-	}
-	err = ra.limiter.Reset(ctx, bucketKey)
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident)
+	err := ra.limiter.Reset(ctx, bucketKey)
 	if err != nil {
 		ra.log.Warningf("resetting bucket for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}
@@ -2635,6 +2612,37 @@ func (ra *RegistrationAuthorityImpl) GetAuthorization(ctx context.Context, req *
 
 	authz.Challenges = challs
 	return authz, nil
+}
+
+// AddRateLimitOverride dispatches an SA RPC to add a rate limit override to the
+// database. If the override already exists, it will be updated. If the override
+// does not exist, it will be inserted and enabled. If the override exists but
+// has been disabled, it will be updated but not be re-enabled. The status of
+// the override is returned in Enabled field of the response. To re-enable an
+// override, use sa.EnableRateLimitOverride.
+func (ra *RegistrationAuthorityImpl) AddRateLimitOverride(ctx context.Context, req *rapb.AddRateLimitOverrideRequest) (*rapb.AddRateLimitOverrideResponse, error) {
+	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey, req.Count, req.Burst, req.Period, req.Comment) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	resp, err := ra.SA.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{
+		Override: &sapb.RateLimitOverride{
+			LimitEnum: req.LimitEnum,
+			BucketKey: req.BucketKey,
+			Comment:   req.Comment,
+			Period:    req.Period,
+			Count:     req.Count,
+			Burst:     req.Burst,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("adding rate limit override: %w", err)
+	}
+
+	return &rapb.AddRateLimitOverrideResponse{
+		Inserted: resp.Inserted,
+		Enabled:  resp.Enabled,
+	}, nil
 }
 
 // Drain blocks until all detached goroutines are done.

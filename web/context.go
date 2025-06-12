@@ -7,8 +7,8 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -136,7 +136,8 @@ func (r *responseWriterWithStatus) WriteHeader(code int) {
 func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check that this header is well-formed, since we assume it is when logging.
 	realIP := r.Header.Get("X-Real-IP")
-	if net.ParseIP(realIP) == nil {
+	_, err := netip.ParseAddr(realIP)
+	if err != nil {
 		realIP = "0.0.0.0"
 	}
 

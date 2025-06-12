@@ -66,7 +66,7 @@ in-memory server and client with persistence disabled for ease of use.
 
 ### Linux
 
-Consul should be accessible at http://10.55.55.10:8500.
+Consul should be accessible at http://10.77.77.10:8500.
 
 ### Mac
 
@@ -76,14 +76,14 @@ to add the following port lines (temporarily) to `docker-compose.yml`:
 ```yaml
   bconsul:
     ports:
-      - 8500:8500 # forwards 127.0.0.1:8500 -> 10.55.55.10:8500
+      - 8500:8500 # forwards 127.0.0.1:8500 -> 10.77.77.10:8500
 ```
 
 For testing DNS resolution locally using `dig` you'll need to add the following:
 ```yaml
   bconsul:
     ports:
-      - 53:53/udp # forwards 127.0.0.1:53 -> 10.55.55.10:53
+      - 53:53/udp # forwards 127.0.0.1:53 -> 10.77.77.10:53
 ```
 
 The next time you bring the container up you should be able to access the web UI

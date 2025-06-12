@@ -31,8 +31,8 @@ import (
 
 // getPrecertByName finds and parses a precertificate using the given hostname.
 // It returns the most recent one.
-func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
-	name = sa.ReverseName(name)
+func getPrecertByName(db *sql.DB, reversedName string) (*x509.Certificate, error) {
+	reversedName = sa.EncodeIssuedName(reversedName)
 	// Find the certificate from the precertificates table. We don't know the serial so
 	// we have to look it up by name.
 	var der []byte
@@ -43,7 +43,7 @@ func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
 		WHERE reversedName = ?
 		ORDER BY issuedNames.id DESC
 		LIMIT 1
-	`, name)
+	`, reversedName)
 	for rows.Next() {
 		err = rows.Scan(&der)
 		if err != nil {
@@ -51,7 +51,7 @@ func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
 		}
 	}
 	if der == nil {
-		return nil, fmt.Errorf("no precertificate found for %q", name)
+		return nil, fmt.Errorf("no precertificate found for %q", reversedName)
 	}
 
 	cert, err := x509.ParseCertificate(der)

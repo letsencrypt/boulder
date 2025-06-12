@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/eggsampler/acme/v3"
+	"github.com/miekg/dns"
+
 	challtestsrvclient "github.com/letsencrypt/boulder/test/chall-test-srv-client"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/miekg/dns"
 )
 
 var expectedUserAgents = []string{"boulder", "remoteva-a", "remoteva-b", "remoteva-c"}
@@ -72,7 +73,7 @@ func TestMPICTLSALPN01(t *testing.T) {
 		t.Fatalf("no TLS-ALPN-01 challenge found in %#v", authz)
 	}
 
-	_, err = testSrvClient.AddARecord(domain, []string{"10.88.88.88"})
+	_, err = testSrvClient.AddARecord(domain, []string{"64.112.117.134"})
 	if err != nil {
 		t.Fatalf("adding A record: %s", err)
 	}

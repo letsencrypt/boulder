@@ -89,6 +89,8 @@ func (d *DBConfig) URL() (string, error) {
 	return strings.TrimSpace(string(url)), err
 }
 
+// SMTPConfig is deprecated.
+// TODO(#8199): Delete this when it is removed from bad-key-revoker's config.
 type SMTPConfig struct {
 	PasswordConfig
 	Server   string `validate:"required"`
@@ -297,7 +299,7 @@ type GRPCClientConfig struct {
 	// If you've added the above to your Consul configuration file (and reloaded
 	// Consul) then you should be able to resolve the following dig query:
 	//
-	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
+	// $ dig @10.77.77.10 -t SRV _foo._tcp.service.consul +short
 	// 1 1 8080 0a585858.addr.dc1.consul.
 	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
 	SRVLookup *ServiceDomain `validate:"required_without_all=SRVLookups ServerAddress ServerIPAddresses"`
@@ -337,7 +339,7 @@ type GRPCClientConfig struct {
 	// If you've added the above to your Consul configuration file (and reloaded
 	// Consul) then you should be able to resolve the following dig query:
 	//
-	// $ dig A @10.55.55.10 foo.service.consul +short
+	// $ dig A @10.77.77.10 foo.service.consul +short
 	// 10.77.77.77
 	// 10.88.88.88
 	ServerAddress string `validate:"required_without_all=ServerIPAddresses SRVLookup SRVLookups,omitempty,hostname_port"`
@@ -562,7 +564,7 @@ type DNSProvider struct {
 	// If you've added the above to your Consul configuration file (and reloaded
 	// Consul) then you should be able to resolve the following dig query:
 	//
-	// $ dig @10.55.55.10 -t SRV _unbound._udp.service.consul +short
+	// $ dig @10.77.77.10 -t SRV _unbound._udp.service.consul +short
 	// 1 1 8053 0a4d4d4d.addr.dc1.consul.
 	// 1 1 8153 0a4d4d4d.addr.dc1.consul.
 	SRVLookup ServiceDomain `validate:"required"`

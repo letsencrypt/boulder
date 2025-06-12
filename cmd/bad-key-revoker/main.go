@@ -1,13 +1,9 @@
 package notmain
 
 import (
-	"bytes"
 	"context"
-	"crypto/x509"
 	"flag"
 	"fmt"
-	"html/template"
-	netmail "net/mail"
 	"os"
 	"time"
 
@@ -23,7 +19,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -42,10 +37,6 @@ var certsRevoked = prometheus.NewCounter(prometheus.CounterOpts{
 	Name: "bad_keys_certs_revoked",
 	Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
 })
-var mailErrors = prometheus.NewCounter(prometheus.CounterOpts{
-	Name: "bad_keys_mail_errors",
-	Help: "A counter of email send errors",
-})
 
 // revoker is an interface used to reduce the scope of a RA gRPC client
 // to only the single method we need to use, this makes testing significantly
@@ -59,9 +50,6 @@ type badKeyRevoker struct {
 	maxRevocations      int
 	serialBatchSize     int
 	raClient            revoker
-	mailer              mail.Mailer
-	emailSubject        string
-	emailTemplate       *template.Template
 	logger              blog.Logger
 	clk                 clock.Clock
 	backoffIntervalBase time.Duration
@@ -189,95 +177,27 @@ func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked unchecke
 	return err
 }
 
-// resolveContacts builds a map of id -> email addresses
-//
-// TODO(#8199): Remove the rest of BKR's email-handling code.
-func (bkr *badKeyRevoker) resolveContacts(ids []int64) map[int64][]string {
-	idToEmail := map[int64][]string{}
-	for _, id := range ids {
-		// if the account has no contacts add a placeholder empty contact
-		// so that we don't skip any certificates
-		idToEmail[id] = append(idToEmail[id], "")
-	}
-	return idToEmail
-}
-
-var maxSerials = 100
-
-// sendMessage sends a single email to the provided address with the revoked
-// serials
-func (bkr *badKeyRevoker) sendMessage(addr string, serials []string) error {
-	conn, err := bkr.mailer.Connect()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = conn.Close()
-	}()
-	mutSerials := make([]string, len(serials))
-	copy(mutSerials, serials)
-	if len(mutSerials) > maxSerials {
-		more := len(mutSerials) - maxSerials
-		mutSerials = mutSerials[:maxSerials]
-		mutSerials = append(mutSerials, fmt.Sprintf("and %d more certificates.", more))
-	}
-	message := bytes.NewBuffer(nil)
-	err = bkr.emailTemplate.Execute(message, mutSerials)
-	if err != nil {
-		return err
-	}
-	err = conn.SendMail([]string{addr}, bkr.emailSubject, message.String())
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// revokeCerts revokes all the certificates associated with a particular key hash and sends
-// emails to the users that issued the certificates. Emails are not sent to the user which
-// requested revocation of the original certificate which marked the key as compromised.
-func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[string][]unrevokedCertificate) error {
-	revokerEmailsMap := map[string]bool{}
-	for _, email := range revokerEmails {
-		revokerEmailsMap[email] = true
-	}
-
-	alreadyRevoked := map[int]bool{}
-	for email, certs := range emailToCerts {
-		var revokedSerials []string
-		for _, cert := range certs {
-			revokedSerials = append(revokedSerials, cert.Serial)
-			if alreadyRevoked[cert.ID] {
-				continue
-			}
-			_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-				Cert:      cert.DER,
-				Serial:    cert.Serial,
-				Code:      int64(ocsp.KeyCompromise),
-				AdminName: "bad-key-revoker",
-			})
-			if err != nil {
-				return err
-			}
-			certsRevoked.Inc()
-			alreadyRevoked[cert.ID] = true
-		}
-		// don't send emails to the person who revoked the certificate
-		if revokerEmailsMap[email] || email == "" {
-			continue
-		}
-		err := bkr.sendMessage(email, revokedSerials)
+// revokeCerts revokes all the provided certificates. It uses reason
+// keyCompromise and includes note indicating that they were revoked by
+// bad-key-revoker.
+func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
+	for _, cert := range certs {
+		_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+			Cert:      cert.DER,
+			Serial:    cert.Serial,
+			Code:      int64(ocsp.KeyCompromise),
+			AdminName: "bad-key-revoker",
+		})
 		if err != nil {
-			mailErrors.Inc()
-			bkr.logger.Errf("failed to send message: %s", err)
-			continue
+			return err
 		}
+		certsRevoked.Inc()
 	}
 	return nil
 }
 
-// invoke processes a single key in the blockedKeys table and returns whether
-// there were any rows to process or not.
+// invoke exits early and returns true if there is no work to be done.
+// Otherwise, it processes a single key in the blockedKeys table and returns false.
 func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 	// Gather a count of rows to be processed.
 	uncheckedCount, err := bkr.countUncheckedKeys(ctx)
@@ -322,44 +242,14 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	// build a map of registration ID -> certificates, and collect a
-	// list of unique registration IDs
-	ownedBy := map[int64][]unrevokedCertificate{}
-	var ids []int64
-	for _, cert := range unrevokedCerts {
-		if ownedBy[cert.RegistrationID] == nil {
-			ids = append(ids, cert.RegistrationID)
-		}
-		ownedBy[cert.RegistrationID] = append(ownedBy[cert.RegistrationID], cert)
-	}
-	// if the account that revoked the original certificate isn't an owner of any
-	// extant certificates, still add them to ids so that we can resolve their
-	// email and avoid sending emails later. If RevokedBy == 0 it was a row
-	// inserted by admin-revoker with a dummy ID, since there won't be a registration
-	// to look up, don't bother adding it to ids.
-	if _, present := ownedBy[unchecked.RevokedBy]; !present && unchecked.RevokedBy != 0 {
-		ids = append(ids, unchecked.RevokedBy)
-	}
-	// get contact addresses for the list of IDs
-	idToEmails := bkr.resolveContacts(ids)
-
-	// build a map of email -> certificates, this de-duplicates accounts with
-	// the same email addresses
-	emailsToCerts := map[string][]unrevokedCertificate{}
-	for id, emails := range idToEmails {
-		for _, email := range emails {
-			emailsToCerts[email] = append(emailsToCerts[email], ownedBy[id]...)
-		}
-	}
-
 	var serials []string
 	for _, cert := range unrevokedCerts {
 		serials = append(serials, cert.Serial)
 	}
 	bkr.logger.AuditInfo(fmt.Sprintf("revoking serials %v for key with hash %s", serials, unchecked.KeyHash))
 
-	// revoke each certificate and send emails to their owners
-	err = bkr.revokeCerts(idToEmails[unchecked.RevokedBy], emailsToCerts)
+	// revoke each certificate
+	err = bkr.revokeCerts(unrevokedCerts)
 	if err != nil {
 		return false, err
 	}
@@ -399,15 +289,14 @@ type Config struct {
 		// or no work to do.
 		BackoffIntervalMax config.Duration `validate:"-"`
 
+		// Deprecated: the bad-key-revoker no longer sends emails; we use ARI.
+		// TODO(#8199): Remove this config stanza entirely.
 		Mailer struct {
-			cmd.SMTPConfig
-			// Path to a file containing a list of trusted root certificates for use
-			// during the SMTP connection (as opposed to the gRPC connections).
+			cmd.SMTPConfig      `validate:"-"`
 			SMTPTrustedRootFile string
-
-			From          string `validate:"required"`
-			EmailSubject  string `validate:"required"`
-			EmailTemplate string `validate:"required"`
+			From                string
+			EmailSubject        string
+			EmailTemplate       string
 		}
 	}
 
@@ -439,7 +328,6 @@ func main() {
 
 	scope.MustRegister(keysProcessed)
 	scope.MustRegister(certsRevoked)
-	scope.MustRegister(mailErrors)
 
 	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
@@ -451,50 +339,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(conn)
 
-	var smtpRoots *x509.CertPool
-	if config.BadKeyRevoker.Mailer.SMTPTrustedRootFile != "" {
-		pem, err := os.ReadFile(config.BadKeyRevoker.Mailer.SMTPTrustedRootFile)
-		cmd.FailOnError(err, "Loading trusted roots file")
-		smtpRoots = x509.NewCertPool()
-		if !smtpRoots.AppendCertsFromPEM(pem) {
-			cmd.FailOnError(nil, "Failed to parse root certs PEM")
-		}
-	}
-
-	fromAddress, err := netmail.ParseAddress(config.BadKeyRevoker.Mailer.From)
-	cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", config.BadKeyRevoker.Mailer.From))
-
-	smtpPassword, err := config.BadKeyRevoker.Mailer.PasswordConfig.Pass()
-	cmd.FailOnError(err, "Failed to load SMTP password")
-	mailClient := mail.New(
-		config.BadKeyRevoker.Mailer.Server,
-		config.BadKeyRevoker.Mailer.Port,
-		config.BadKeyRevoker.Mailer.Username,
-		smtpPassword,
-		smtpRoots,
-		*fromAddress,
-		logger,
-		scope,
-		1*time.Second,    // reconnection base backoff
-		5*60*time.Second, // reconnection maximum backoff
-	)
-
-	if config.BadKeyRevoker.Mailer.EmailSubject == "" {
-		cmd.Fail("BadKeyRevoker.Mailer.EmailSubject must be populated")
-	}
-	templateBytes, err := os.ReadFile(config.BadKeyRevoker.Mailer.EmailTemplate)
-	cmd.FailOnError(err, fmt.Sprintf("failed to read email template %q: %s", config.BadKeyRevoker.Mailer.EmailTemplate, err))
-	emailTemplate, err := template.New("email").Parse(string(templateBytes))
-	cmd.FailOnError(err, fmt.Sprintf("failed to parse email template %q: %s", config.BadKeyRevoker.Mailer.EmailTemplate, err))
-
 	bkr := &badKeyRevoker{
 		dbMap:               dbMap,
 		maxRevocations:      config.BadKeyRevoker.MaximumRevocations,
 		serialBatchSize:     config.BadKeyRevoker.FindCertificatesBatchSize,
 		raClient:            rac,
-		mailer:              mailClient,
-		emailSubject:        config.BadKeyRevoker.Mailer.EmailSubject,
-		emailTemplate:       emailTemplate,
 		logger:              logger,
 		clk:                 clk,
 		backoffIntervalMax:  config.BadKeyRevoker.BackoffIntervalMax.Duration,

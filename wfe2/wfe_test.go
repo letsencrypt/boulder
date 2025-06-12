@@ -2586,7 +2586,7 @@ func TestNewOrder(t *testing.T) {
 	targetPath := "new-order"
 	signedURL := fmt.Sprintf("http://%s/%s", targetHost, targetPath)
 
-	nonDNSIdentifierBody := `
+	invalidIdentifierBody := `
 	{
 		"Identifiers": [
 			{"type": "dns",    "value": "not-example.com"},
@@ -2600,7 +2600,8 @@ func TestNewOrder(t *testing.T) {
 	{
 		"Identifiers": [
 			{"type": "dns", "value": "not-example.com"},
-			{"type": "dns", "value": "www.not-example.com"}
+			{"type": "dns", "value": "www.not-example.com"},
+			{"type": "ip", "value": "9.9.9.9"}
 		]
 	}`
 
@@ -2608,7 +2609,8 @@ func TestNewOrder(t *testing.T) {
 	{
 		"Identifiers": [
 			{"type": "dns", "value": "Not-Example.com"},
-			{"type": "dns", "value": "WWW.Not-example.com"}
+			{"type": "dns", "value": "WWW.Not-example.com"},
+			{"type": "ip", "value": "9.9.9.9"}
 		]
 	}`
 
@@ -2665,14 +2667,24 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Request payload did not parse as JSON","status":400}`,
 		},
 		{
-			Name:         "POST, empty domain name identifier",
+			Name:         "POST, empty DNS identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`),
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty identifier","status":400}`,
 		},
 		{
-			Name:         "POST, invalid domain name identifier",
+			Name:         "POST, empty IP identifier",
+			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"ip","value":""}]}`),
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty identifier","status":400}`,
+		},
+		{
+			Name:         "POST, invalid DNS identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":"example.invalid"}]}`),
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Invalid identifiers requested :: Cannot issue for \"example.invalid\": Domain name does not end with a valid public suffix (TLD)","status":400}`,
+		},
+		{
+			Name:         "POST, invalid IP identifier",
+			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"ip","value":"127.0.0.0.0.0.0.1"}]}`),
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Invalid identifiers requested :: Cannot issue for \"127.0.0.0.0.0.0.1\": IP address is invalid","status":400}`,
 		},
 		{
 			Name:         "POST, no identifiers in payload",
@@ -2680,9 +2692,9 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
 		},
 		{
-			Name:         "POST, non-DNS identifier in payload",
-			Request:      signAndPost(signer, targetPath, signedURL, nonDNSIdentifierBody),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `unsupportedIdentifier","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
+			Name:         "POST, invalid identifier type in payload",
+			Request:      signAndPost(signer, targetPath, signedURL, invalidIdentifierBody),
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `unsupportedIdentifier","detail":"NewOrder request included unsupported identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
 			Name:         "POST, notAfter and notBefore in payload",
@@ -2731,7 +2743,8 @@ func TestNewOrder(t *testing.T) {
 						"expires": "2021-02-01T01:01:01Z",
 						"identifiers": [
 							{ "type": "dns", "value": "not-example.com"},
-							{ "type": "dns", "value": "www.not-example.com"}
+							{ "type": "dns", "value": "www.not-example.com"},
+							{ "type": "ip", "value": "9.9.9.9"}
 						],
 						"authorizations": [
 							"http://localhost/acme/authz/1/1"
@@ -2748,7 +2761,8 @@ func TestNewOrder(t *testing.T) {
 						"expires": "2021-02-01T01:01:01Z",
 						"identifiers": [
 							{ "type": "dns", "value": "not-example.com"},
-							{ "type": "dns", "value": "www.not-example.com"}
+							{ "type": "dns", "value": "www.not-example.com"},
+							{ "type": "ip", "value": "9.9.9.9"}
 						],
 						"authorizations": [
 							"http://localhost/acme/authz/1/1"

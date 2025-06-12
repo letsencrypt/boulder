@@ -35,7 +35,7 @@ import (
 // a dial to another host produces the expected dialerMismatchError.
 func TestDialerMismatchError(t *testing.T) {
 	d := preresolvedDialer{
-		ip:       net.ParseIP("127.0.0.1"),
+		ip:       netip.MustParseAddr("127.0.0.1"),
 		port:     1337,
 		hostname: "letsencrypt.org",
 	}
@@ -61,8 +61,8 @@ type dnsMockReturnsUnroutable struct {
 	*bdns.MockClient
 }
 
-func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
-	return []net.IP{net.ParseIP("198.51.100.1")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
+	return []netip.Addr{netip.MustParseAddr("198.51.100.1")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
 }
 
 // TestDialerTimeout tests that the preresolvedDialer's DialContext
@@ -199,7 +199,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 				// order.
 				for i, expectedIP := range tc.ExpectedIPs {
 					gotIP := target.cur
-					if gotIP == nil {
+					if (gotIP == netip.Addr{}) {
 						t.Errorf("Expected IP %d to be %s got nil", i, expectedIP)
 					} else {
 						test.AssertEquals(t, gotIP.String(), expectedIP)
@@ -317,8 +317,8 @@ func TestExtractRequestTarget(t *testing.T) {
 			Req: &http.Request{
 				URL: mustURL("http://10.10.10.10"),
 			},
-			ExpectedError: fmt.Errorf("Invalid host in redirect target, " +
-				"must not be a reserved IP address"),
+			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
+				"IP address is in a reserved address block: RFC 1918: Private-Use"),
 		},
 		{
 			Name: "bare IPv6, implicit port",
@@ -357,8 +357,8 @@ func TestExtractRequestTarget(t *testing.T) {
 			Req: &http.Request{
 				URL: mustURL("http://[3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee]"),
 			},
-			ExpectedError: fmt.Errorf("Invalid host in redirect target, " +
-				"must not be a reserved IP address"),
+			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
+				"IP address is in a reserved address block: RFC 9637: Documentation"),
 		},
 		{
 			Name: "valid HTTP redirect, explicit port",
@@ -531,12 +531,12 @@ func TestSetupHTTPValidation(t *testing.T) {
 				DnsName:           "ipv4.and.ipv6.localhost",
 				Port:              strconv.Itoa(va.httpPort),
 				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
-				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
-				AddressUsed:       net.ParseIP("::1"),
+				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+				AddressUsed:       netip.MustParseAddr("::1"),
 				ResolverAddrs:     []string{"MockClient"},
 			},
 			ExpectedDialer: &preresolvedDialer{
-				ip:      net.ParseIP("::1"),
+				ip:      netip.MustParseAddr("::1"),
 				port:    va.httpPort,
 				timeout: va.singleDialTimeout,
 			},
@@ -549,12 +549,12 @@ func TestSetupHTTPValidation(t *testing.T) {
 				DnsName:           "ipv4.and.ipv6.localhost",
 				Port:              strconv.Itoa(va.httpsPort),
 				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
-				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
-				AddressUsed:       net.ParseIP("::1"),
+				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+				AddressUsed:       netip.MustParseAddr("::1"),
 				ResolverAddrs:     []string{"MockClient"},
 			},
 			ExpectedDialer: &preresolvedDialer{
-				ip:      net.ParseIP("::1"),
+				ip:      netip.MustParseAddr("::1"),
 				port:    va.httpsPort,
 				timeout: va.singleDialTimeout,
 			},
@@ -886,8 +886,8 @@ func TestFetchHTTP(t *testing.T) {
 				DnsName:           "example.com",
 				Port:              strconv.Itoa(httpPortIPv4),
 				URL:               url,
-				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-				AddressUsed:       net.ParseIP("127.0.0.1"),
+				AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+				AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 				ResolverAddrs:     []string{"MockClient"},
 			})
 	}
@@ -907,8 +907,8 @@ func TestFetchHTTP(t *testing.T) {
 				DnsName:           "example.com",
 				Port:              strconv.Itoa(httpPortIPv4),
 				URL:               url,
-				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-				AddressUsed:       net.ParseIP("127.0.0.1"),
+				AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+				AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 				ResolverAddrs:     []string{"MockClient"},
 			})
 	}
@@ -949,8 +949,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/timeout",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -984,8 +984,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-bad-proto",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1002,8 +1002,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-bad-port",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1018,16 +1018,16 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-bare-ipv4",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 				{
 					DnsName:           "127.0.0.1",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://127.0.0.1/ok",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 				},
 			},
 		}, {
@@ -1041,16 +1041,16 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "ipv6.localhost",
 					Port:              strconv.Itoa(httpPortIPv6),
 					URL:               "http://ipv6.localhost/redir-bare-ipv6",
-					AddressesResolved: []net.IP{net.ParseIP("::1")},
-					AddressUsed:       net.ParseIP("::1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
+					AddressUsed:       netip.MustParseAddr("::1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 				{
 					DnsName:           "::1",
 					Port:              strconv.Itoa(httpPortIPv6),
 					URL:               "http://[::1]/ok",
-					AddressesResolved: []net.IP{net.ParseIP("::1")},
-					AddressUsed:       net.ParseIP("::1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
+					AddressUsed:       netip.MustParseAddr("::1"),
 				},
 			},
 		},
@@ -1065,8 +1065,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-path-too-long",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1082,8 +1082,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/bad-status-code",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1099,8 +1099,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/303-see-other",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1117,8 +1117,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/resp-too-big",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1134,8 +1134,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "ipv6.localhost",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://ipv6.localhost/ok",
-					AddressesResolved: []net.IP{net.ParseIP("::1")},
-					AddressUsed:       net.ParseIP("::1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
+					AddressUsed:       netip.MustParseAddr("::1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1150,18 +1150,18 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
-					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
-					AddressUsed:   net.ParseIP("::1"),
+					AddressUsed:   netip.MustParseAddr("::1"),
 					ResolverAddrs: []string{"MockClient"},
 				},
 				{
 					DnsName:           "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
-					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
-					AddressUsed:   net.ParseIP("127.0.0.1"),
+					AddressUsed:   netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs: []string{"MockClient"},
 				},
 			},
@@ -1176,8 +1176,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/ok",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1192,16 +1192,16 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/ok",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
@@ -1221,8 +1221,8 @@ func TestFetchHTTP(t *testing.T) {
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/printf-verbs",
-					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-					AddressUsed:       net.ParseIP("127.0.0.1"),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 			},

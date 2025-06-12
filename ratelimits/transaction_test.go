@@ -2,12 +2,14 @@ package ratelimits
 
 import (
 	"fmt"
-	"net"
+	"net/netip"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -34,7 +36,7 @@ func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
-	txn, err := tb.registrationsPerIPAddressTransaction(net.ParseIP("1.2.3.4"))
+	txn, err := tb.registrationsPerIPAddressTransaction(netip.MustParseAddr("1.2.3.4"))
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "1:1.2.3.4")
 	test.Assert(t, txn.check && txn.spend, "should be check-and-spend")
@@ -47,7 +49,7 @@ func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
-	txn, err := tb.registrationsPerIPv6RangeTransaction(net.ParseIP("2001:db8::1"))
+	txn, err := tb.registrationsPerIPv6RangeTransaction(netip.MustParseAddr("2001:db8::1"))
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "2:2001:db8::/48")
 	test.Assert(t, txn.check && txn.spend, "should be check-and-spend")
@@ -73,7 +75,7 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-only transaction for the default per-account limit.
-	txns, err := tb.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(123456789, []string{"so.many.labels.here.example.com"})
+	txns, err := tb.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(123456789, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
 	test.AssertNotError(t, err, "creating transactions")
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "4:123456789:so.many.labels.here.example.com")
@@ -81,14 +83,14 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	test.Assert(t, !txns[0].limit.isOverride, "should not be an override")
 
 	// A spend-only transaction for the default per-account limit.
-	txn, err := tb.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(123456789, "so.many.labels.here.example.com")
+	txn, err := tb.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(123456789, identifier.NewDNS("so.many.labels.here.example.com"))
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "4:123456789:so.many.labels.here.example.com")
 	test.Assert(t, txn.spendOnly(), "should be spend-only")
 	test.Assert(t, !txn.limit.isOverride, "should not be an override")
 
 	// A check-only transaction for the per-account limit override.
-	txns, err = tb.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com"})
+	txns, err = tb.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(13371338, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
 	test.AssertNotError(t, err, "creating transactions")
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "4:13371338:so.many.labels.here.example.com")
@@ -96,7 +98,7 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	test.Assert(t, txns[0].limit.isOverride, "should be an override")
 
 	// A spend-only transaction for the per-account limit override.
-	txn, err = tb.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(13371338, "so.many.labels.here.example.com")
+	txn, err = tb.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(13371338, identifier.NewDNS("so.many.labels.here.example.com"))
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "4:13371338:so.many.labels.here.example.com")
 	test.Assert(t, txn.spendOnly(), "should be spend-only")
@@ -110,7 +112,7 @@ func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testin
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A transaction for the per-account limit override.
-	txn, err := tb.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(13371338, "so.many.labels.here.example.com")
+	txn, err := tb.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(13371338, identifier.NewDNS("so.many.labels.here.example.com"))
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "8:13371338:so.many.labels.here.example.com")
 	test.Assert(t, txn.check && txn.spend, "should be check and spend")
@@ -124,14 +126,14 @@ func TestCertificatesPerDomainTransactions(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// One check-only transaction for the global limit.
-	txns, err := tb.certificatesPerDomainCheckOnlyTransactions(123456789, []string{"so.many.labels.here.example.com"})
+	txns, err := tb.certificatesPerDomainCheckOnlyTransactions(123456789, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
 	test.AssertNotError(t, err, "creating transactions")
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "5:example.com")
 	test.Assert(t, txns[0].checkOnly(), "should be check-only")
 
 	// One spend-only transaction for the global limit.
-	txns, err = tb.CertificatesPerDomainSpendOnlyTransactions(123456789, []string{"so.many.labels.here.example.com"})
+	txns, err = tb.CertificatesPerDomainSpendOnlyTransactions(123456789, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
 	test.AssertNotError(t, err, "creating transactions")
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "5:example.com")
@@ -147,7 +149,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	// We only expect a single check-only transaction for the per-account limit
 	// override. We can safely ignore the global limit when an override is
 	// present.
-	txns, err := tb.certificatesPerDomainCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com"})
+	txns, err := tb.certificatesPerDomainCheckOnlyTransactions(13371338, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
 	test.AssertNotError(t, err, "creating transactions")
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "6:13371338:example.com")
@@ -155,7 +157,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	test.Assert(t, txns[0].limit.isOverride, "should be an override")
 
 	// Same as above, but with multiple example.com domains.
-	txns, err = tb.certificatesPerDomainCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com", "z.example.com"})
+	txns, err = tb.certificatesPerDomainCheckOnlyTransactions(13371338, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com", "z.example.com"}))
 	test.AssertNotError(t, err, "creating transactions")
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "6:13371338:example.com")
@@ -163,7 +165,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	test.Assert(t, txns[0].limit.isOverride, "should be an override")
 
 	// Same as above, but with different domains.
-	txns, err = tb.certificatesPerDomainCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com", "z.example.net"})
+	txns, err = tb.certificatesPerDomainCheckOnlyTransactions(13371338, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com", "z.example.net"}))
 	test.AssertNotError(t, err, "creating transactions")
 	txns = sortTransactions(txns)
 	test.AssertEquals(t, len(txns), 2)
@@ -176,7 +178,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 
 	// Two spend-only transactions, one for the global limit and one for the
 	// per-account limit override.
-	txns, err = tb.CertificatesPerDomainSpendOnlyTransactions(13371338, []string{"so.many.labels.here.example.com"})
+	txns, err = tb.CertificatesPerDomainSpendOnlyTransactions(13371338, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 	test.AssertEquals(t, len(txns), 2)
 	txns = sortTransactions(txns)
@@ -196,9 +198,9 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A single check-only transaction for the global limit.
-	txn, err := tb.certificatesPerFQDNSetCheckOnlyTransaction([]string{"example.com", "example.net", "example.org"})
+	txn, err := tb.certificatesPerFQDNSetCheckOnlyTransaction(identifier.NewDNSSlice([]string{"example.com", "example.net", "example.org"}))
 	test.AssertNotError(t, err, "creating transaction")
-	namesHash := fmt.Sprintf("%x", hashNames([]string{"example.com", "example.net", "example.org"}))
+	namesHash := fmt.Sprintf("%x", core.HashIdentifiers(identifier.NewDNSSlice([]string{"example.com", "example.net", "example.org"})))
 	test.AssertEquals(t, txn.bucketKey, "7:"+namesHash)
 	test.Assert(t, txn.checkOnly(), "should be check-only")
 	test.Assert(t, !txn.limit.isOverride, "should not be an override")

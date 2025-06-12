@@ -38,10 +38,10 @@ type resultEntry struct {
 	Hostname string `json:"hostname,omitempty"`
 }
 
-// reverseHostname converts (reversed) names sourced from the
-// registrations table to standard hostnames.
-func (r *resultEntry) reverseHostname() {
-	r.Hostname = sa.ReverseName(r.Hostname)
+// encodeIssuedName converts FQDNs and IP addresses to/from their format in the
+// issuedNames table.
+func (r *resultEntry) encodeIssuedName() {
+	r.Hostname = sa.EncodeIssuedName(r.Hostname)
 }
 
 // idExporterResults is passed as a selectable 'holder' for the results
@@ -112,7 +112,7 @@ func (c idExporter) findIDsWithExampleHostnames(ctx context.Context) (idExporter
 	}
 
 	for _, result := range holder {
-		result.reverseHostname()
+		result.encodeIssuedName()
 	}
 	return holder, nil
 }
@@ -135,7 +135,7 @@ func (c idExporter) findIDsForHostnames(ctx context.Context, hostnames []string)
 				AND n.reversedName = :reversedName;`,
 			map[string]interface{}{
 				"expireCutoff": c.clk.Now().Add(-c.grace),
-				"reversedName": sa.ReverseName(hostname),
+				"reversedName": sa.EncodeIssuedName(hostname),
 			},
 		)
 		if err != nil {

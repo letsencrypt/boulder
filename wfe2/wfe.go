@@ -13,6 +13,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -660,7 +661,7 @@ func contactsToEmails(contacts *[]string) []string {
 // function is returned that can be called to refund the quota if the account
 // creation fails, the func will be nil if any error was encountered during the
 // check.
-func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) (func(), error) {
+func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip netip.Addr) (func(), error) {
 	txns, err := wfe.txnBuilder.NewAccountLimitTransactions(ip)
 	if err != nil {
 		return nil, fmt.Errorf("building new account limit transactions: %w", err)
@@ -2022,13 +2023,10 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
 //
-// TODO(#7311): Handle IP address identifiers.
+// Precondition: idents must be a list of identifiers that all pass
+// policy.WellFormedIdentifiers.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents identifier.ACMEIdentifiers, isRenewal bool) (func(), error) {
-	names, err := idents.ToDNSSlice()
-	if err != nil {
-		return nil, err
-	}
-	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
+	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, idents, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
 	}
@@ -2055,7 +2053,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 // as identified by the provided ARI CertID. This function ensures that:
 //   - the certificate being replaced exists,
 //   - the requesting account owns that certificate, and
-//   - a name in this new order matches a name in the certificate being
+//   - an identifier in this new order matches an identifier in the certificate being
 //     replaced.
 func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, idents identifier.ACMEIdentifiers, serial string) error {
 	// It's okay to use GetCertificate (vs trying to get a precertificate),
@@ -2077,18 +2075,17 @@ func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *c
 		return fmt.Errorf("error parsing certificate replaced by this order: %w", err)
 	}
 
-	var nameMatch bool
+	var identMatch bool
 	for _, ident := range idents {
-		// TODO(#7311): Handle IP address identifiers.
 		if parsedCert.VerifyHostname(ident.Value) == nil {
-			// At least one name in the new order matches a name in the
-			// predecessor certificate.
-			nameMatch = true
+			// At least one identifier in the new order matches an identifier in
+			// the predecessor certificate.
+			identMatch = true
 			break
 		}
 	}
-	if !nameMatch {
-		return berrors.MalformedError("identifiers in this order do not match any names in the certificate being replaced")
+	if !identMatch {
+		return berrors.MalformedError("identifiers in this order do not match any identifiers in the certificate being replaced")
 	}
 	return nil
 }
@@ -2282,12 +2279,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// TODO(#7311): Handle non-DNS identifiers.
 	idents := newOrderRequest.Identifiers
 	for _, ident := range idents {
-		if ident.Type != identifier.TypeDNS {
+		if !ident.Type.IsValid() {
 			wfe.sendError(response, logEvent,
-				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
+				probs.UnsupportedIdentifier("NewOrder request included unsupported identifier: type %q, value %q",
 					ident.Type, ident.Value),
 				nil)
 			return
@@ -2702,16 +2698,16 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	}
 }
 
-func extractRequesterIP(req *http.Request) (net.IP, error) {
-	ip := net.ParseIP(req.Header.Get("X-Real-IP"))
-	if ip != nil {
+func extractRequesterIP(req *http.Request) (netip.Addr, error) {
+	ip, err := netip.ParseAddr(req.Header.Get("X-Real-IP"))
+	if err == nil {
 		return ip, nil
 	}
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
-		return nil, err
+		return netip.Addr{}, err
 	}
-	return net.ParseIP(host), nil
+	return netip.ParseAddr(host)
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {

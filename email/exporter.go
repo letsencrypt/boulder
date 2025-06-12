@@ -17,8 +17,8 @@ import (
 
 // contactsQueueCap limits the queue size to prevent unbounded growth. This
 // value is adjustable as needed. Each RFC 5321 email address, encoded in UTF-8,
-// is at most 320 bytes. Storing 10,000 emails requires ~3.44 MB of memory.
-const contactsQueueCap = 10000
+// is at most 320 bytes. Storing 100,000 emails requires ~34.4 MB of memory.
+const contactsQueueCap = 100000
 
 var ErrQueueFull = errors.New("email-exporter queue is full")
 
