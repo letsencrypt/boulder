@@ -141,7 +141,7 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		return nil, err
 	}
 	return &corepb.ValidationRecord{
-		Hostname:          record.DnsName,
+		Hostname:          record.Hostname,
 		Port:              record.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
@@ -177,7 +177,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		return
 	}
 	return core.ValidationRecord{
-		DnsName:           in.Hostname,
+		Hostname:          in.Hostname,
 		Port:              in.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
@@ -351,8 +351,8 @@ func newOrderValid(order *corepb.Order) bool {
 	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)
 }
 
-// PBToAuthzMap converts a protobuf map of domains mapped to protobuf authorizations to a
-// golang map[string]*core.Authorization.
+// PBToAuthzMap converts a protobuf map of identifiers mapped to protobuf
+// authorizations to a golang map[string]*core.Authorization.
 func PBToAuthzMap(pb *sapb.Authorizations) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	m := make(map[identifier.ACMEIdentifier]*core.Authorization, len(pb.Authzs))
 	for _, v := range pb.Authzs {

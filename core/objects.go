@@ -68,7 +68,7 @@ func (c AcmeChallenge) IsValid() bool {
 	}
 }
 
-// OCSPStatus defines the state of OCSP for a domain
+// OCSPStatus defines the state of OCSP for a certificate
 type OCSPStatus string
 
 // These status are the states of OCSP
@@ -123,8 +123,8 @@ type ValidationRecord struct {
 
 	// Shared
 	//
-	// TODO(#7311): Replace DnsName with Identifier.
-	DnsName           string       `json:"hostname,omitempty"`
+	// Hostname can hold either a DNS name or an IP address.
+	Hostname          string       `json:"hostname,omitempty"`
 	Port              string       `json:"port,omitempty"`
 	AddressesResolved []netip.Addr `json:"addressesResolved,omitempty"`
 	AddressUsed       netip.Addr   `json:"addressUsed,omitempty"`
@@ -210,7 +210,7 @@ func (ch Challenge) RecordsSane() bool {
 		for _, rec := range ch.ValidationRecord {
 			// TODO(#7140): Add a check for ResolverAddress == "" only after the
 			// core.proto change has been deployed.
-			if rec.URL == "" || rec.DnsName == "" || rec.Port == "" || (rec.AddressUsed == netip.Addr{}) ||
+			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || (rec.AddressUsed == netip.Addr{}) ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}
@@ -224,7 +224,7 @@ func (ch Challenge) RecordsSane() bool {
 		}
 		// TODO(#7140): Add a check for ResolverAddress == "" only after the
 		// core.proto change has been deployed.
-		if ch.ValidationRecord[0].DnsName == "" || ch.ValidationRecord[0].Port == "" ||
+		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
 			(ch.ValidationRecord[0].AddressUsed == netip.Addr{}) || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
@@ -234,7 +234,7 @@ func (ch Challenge) RecordsSane() bool {
 		}
 		// TODO(#7140): Add a check for ResolverAddress == "" only after the
 		// core.proto change has been deployed.
-		if ch.ValidationRecord[0].DnsName == "" {
+		if ch.ValidationRecord[0].Hostname == "" {
 			return false
 		}
 		return true
@@ -271,10 +271,10 @@ func (ch Challenge) StringID() string {
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil)[0:4])
 }
 
-// Authorization represents the authorization of an account key holder
-// to act on behalf of a domain.  This struct is intended to be used both
-// internally and for JSON marshaling on the wire.  Any fields that should be
-// suppressed on the wire (e.g., ID, regID) must be made empty before marshaling.
+// Authorization represents the authorization of an account key holder to act on
+// behalf of an identifier. This struct is intended to be used both internally
+// and for JSON marshaling on the wire. Any fields that should be suppressed on
+// the wire (e.g., ID, regID) must be made empty before marshaling.
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.

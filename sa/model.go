@@ -582,12 +582,12 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 		return fmt.Errorf("parsing validation record URL %q: %w", vr.URL, err)
 	}
 
-	if vr.DnsName == "" {
+	if vr.Hostname == "" {
 		hostname := parsedUrl.Hostname()
 		if hostname == "" {
 			return fmt.Errorf("hostname missing in URL %q", vr.URL)
 		}
-		vr.DnsName = hostname
+		vr.Hostname = hostname
 	}
 
 	if vr.Port == "" {
