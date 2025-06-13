@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -80,25 +79,16 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertEquals(t, row.RevokedBy, int64(1))
 }
 
-func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, addrs ...string) int64 {
+func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock) int64 {
 	t.Helper()
 	jwkHash := make([]byte, 32)
 	_, err := rand.Read(jwkHash)
 	test.AssertNotError(t, err, "failed to read rand")
-	contactStr := "[]"
-	if len(addrs) > 0 {
-		contacts := []string{}
-		for _, addr := range addrs {
-			contacts = append(contacts, fmt.Sprintf(`"mailto:%s"`, addr))
-		}
-		contactStr = fmt.Sprintf("[%s]", strings.Join(contacts, ","))
-	}
 	res, err := dbMap.ExecContext(
 		context.Background(),
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO registrations (jwk, jwk_sha256, agreement, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?)",
 		[]byte{},
 		fmt.Sprintf("%x", jwkHash),
-		contactStr,
 		"yes",
 		fc.Now(),
 		string(core.StatusValid),
@@ -282,7 +272,7 @@ func TestCertificateAbsent(t *testing.T) {
 	fc := clock.NewFake()
 
 	// populate DB with all the test data
-	regIDA := insertRegistration(t, dbMap, fc, "example.com")
+	regIDA := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
 
@@ -329,9 +319,9 @@ func TestInvoke(t *testing.T) {
 	}
 
 	// populate DB with all the test data
-	regIDA := insertRegistration(t, dbMap, fc, "example.com")
-	regIDB := insertRegistration(t, dbMap, fc, "example.com")
-	regIDC := insertRegistration(t, dbMap, fc, "other.example.com", "uno.example.com")
+	regIDA := insertRegistration(t, dbMap, fc)
+	regIDB := insertRegistration(t, dbMap, fc)
+	regIDC := insertRegistration(t, dbMap, fc)
 	regIDD := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashA, regIDC, false)
@@ -394,9 +384,9 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	}
 
 	// populate DB with all the test data
-	regIDA := insertRegistration(t, dbMap, fc, "a@example.com")
-	regIDB := insertRegistration(t, dbMap, fc, "a@example.com")
-	regIDC := insertRegistration(t, dbMap, fc, "b@example.com")
+	regIDA := insertRegistration(t, dbMap, fc)
+	regIDB := insertRegistration(t, dbMap, fc)
+	regIDC := insertRegistration(t, dbMap, fc)
 
 	hashA := randHash(t)
 
