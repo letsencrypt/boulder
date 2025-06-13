@@ -784,14 +784,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	var contacts []string
-	if accountCreateRequest.Contact != nil {
-		contacts = *accountCreateRequest.Contact
-	}
-
 	// Create corepb.Registration from provided account information
 	reg := corepb.Registration{
-		Contact:   contacts,
 		Agreement: wfe.SubscriberAgreementURL,
 		Key:       keyBytes,
 	}
