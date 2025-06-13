@@ -7,7 +7,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -117,14 +116,7 @@ func TestMPICTLSALPN01(t *testing.T) {
 		}
 	}
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this conditional once the DoH feature flag has
-		// been defaulted to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 }
 
 func TestMPICDNS01(t *testing.T) {
@@ -180,14 +172,7 @@ func TestMPICDNS01(t *testing.T) {
 		}
 	}
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
-		// to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
 
 	domainDNSEvents, err := testSrvClient.DNSRequestHistory(domain)
 	if err != nil {
@@ -201,14 +186,7 @@ func TestMPICDNS01(t *testing.T) {
 		}
 	}
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
-		// to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 }
 
 func TestMPICHTTP01(t *testing.T) {
@@ -279,14 +257,7 @@ func TestMPICHTTP01(t *testing.T) {
 	}
 
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
-		// to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 }
 
 func TestCAARechecking(t *testing.T) {

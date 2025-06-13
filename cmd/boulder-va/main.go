@@ -82,16 +82,12 @@ func main() {
 	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
-	proto := "udp"
-	if features.Get().DOH {
-		proto = "tcp"
-	}
 
 	if len(c.VA.DNSStaticResolvers) != 0 {
 		servers, err = bdns.NewStaticProvider(c.VA.DNSStaticResolvers)
 		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
 	} else {
-		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
+		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, "tcp")
 		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	}
 	defer servers.Stop()
