@@ -140,7 +140,7 @@ github.com/cespare/xxhash/v2
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 ## explicit
 github.com/dgryski/go-rendezvous
-# github.com/eggsampler/acme/v3 v3.6.2-0.20250208073118-0466a0230941
+# github.com/eggsampler/acme/v3 v3.6.2
 ## explicit; go 1.11
 github.com/eggsampler/acme/v3
 # github.com/felixge/httpsnoop v1.0.4
