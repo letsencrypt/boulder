@@ -1411,11 +1411,10 @@ func (wfe *WebFrontEndImpl) Account(
 // valid update the resulting updated account is returned, otherwise a problem
 // is returned.
 func (wfe *WebFrontEndImpl) updateAccount(ctx context.Context, requestBody []byte, currAcct *core.Registration) (*core.Registration, error) {
-	// Only the Contact and Status fields of an account may be updated this way.
+	// Only the Status field of an account may be updated this way.
 	// For key updates clients should be using the key change endpoint.
 	var accountUpdateRequest struct {
-		Contact *[]string       `json:"contact"`
-		Status  core.AcmeStatus `json:"status"`
+		Status core.AcmeStatus `json:"status"`
 	}
 
 	err := json.Unmarshal(requestBody, &accountUpdateRequest)
@@ -1423,59 +1422,29 @@ func (wfe *WebFrontEndImpl) updateAccount(ctx context.Context, requestBody []byt
 		return nil, berrors.MalformedError("parsing account update request: %s", err)
 	}
 
-	// If a user tries to send both a deactivation request and an update to
-	// their contacts, the deactivation will take place and return before an
-	// update would be performed. Deactivation deletes the contacts field.
-	if accountUpdateRequest.Status == core.StatusDeactivated {
+	switch accountUpdateRequest.Status {
+	case core.StatusValid, "":
+		// They probably intended to update their contact address, but we don't do
+		// that anymore, so simply return their account as-is. We don't error out
+		// here because it would break too many clients.
+		return currAcct, nil
+
+	case core.StatusDeactivated:
 		updatedAcct, err := wfe.ra.DeactivateRegistration(
 			ctx, &rapb.DeactivateRegistrationRequest{RegistrationID: currAcct.ID})
 		if err != nil {
 			return nil, fmt.Errorf("deactivating account: %w", err)
 		}
 
-		if updatedAcct.Status == string(core.StatusDeactivated) {
-			// The request was handled by an updated RA/SA, which returned the updated
-			// account object.
-			updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
-			if err != nil {
-				return nil, fmt.Errorf("parsing deactivated account: %w", err)
-			}
-			return &updatedReg, nil
-		} else {
-			// The request was handled by an old RA/SA, which returned nothing.
-			// Instead, modify the existing account object in place and return it.
-			// TODO(#5554): Remove this after all RAs and SAs are updated.
-			currAcct.Status = core.StatusDeactivated
-			currAcct.Contact = nil
-			return currAcct, nil
+		updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
+		if err != nil {
+			return nil, fmt.Errorf("parsing deactivated account: %w", err)
 		}
-	}
+		return &updatedReg, nil
 
-	if accountUpdateRequest.Status != core.StatusValid && accountUpdateRequest.Status != "" {
+	default:
 		return nil, berrors.MalformedError("invalid status %q for account update request, must be %q or %q", accountUpdateRequest.Status, core.StatusValid, core.StatusDeactivated)
 	}
-
-	if accountUpdateRequest.Contact == nil {
-		// We use a pointer-to-slice for the contacts field so that we can tell the
-		// difference between the request not including the contact field, and the
-		// request including an empty contact list. If the field was omitted
-		// entirely, they don't want us to update it, so there's no work to do here.
-		return currAcct, nil
-	}
-
-	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{
-		RegistrationID: currAcct.ID, Contacts: *accountUpdateRequest.Contact})
-	if err != nil {
-		return nil, fmt.Errorf("updating account: %w", err)
-	}
-
-	// Convert proto to core.Registration for return
-	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
-	if err != nil {
-		return nil, fmt.Errorf("parsing updated account: %w", err)
-	}
-
-	return &updatedReg, nil
 }
 
 // deactivateAuthorization processes the given JWS POST body as a request to
