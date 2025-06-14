@@ -171,7 +171,6 @@ var (
 	errNameTooLong          = berrors.MalformedError("Domain name is longer than 253 bytes")
 	errIPAddressInDNS       = berrors.MalformedError("Identifier type is DNS but value is an IP address")
 	errIPInvalid            = berrors.MalformedError("IP address is invalid")
-	errIPReserved           = berrors.MalformedError("IP address is in a reserved address block")
 	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
 	errEmptyIdentifier      = berrors.MalformedError("Identifier value (name) is empty")
 	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a dot")
@@ -345,7 +344,7 @@ func ValidIP(ip string) error {
 		return errIPInvalid
 	}
 
-	return IsReservedIP(parsedIP)
+	return iana.IsReservedAddr(parsedIP)
 }
 
 // forbiddenMailDomains is a map of domain names we do not allow after the

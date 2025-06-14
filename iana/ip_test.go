@@ -1,11 +1,11 @@
-package policy
+package iana
 
 import (
 	"net/netip"
 	"testing"
 )
 
-func TestIsReservedIP(t *testing.T) {
+func TestIsReservedAddr(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -45,7 +45,7 @@ func TestIsReservedIP(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.ip, func(t *testing.T) {
 			t.Parallel()
-			err := IsReservedIP(netip.MustParseAddr(tc.ip))
+			err := IsReservedAddr(netip.MustParseAddr(tc.ip))
 			if err != nil && !tc.want {
 				t.Error(err)
 			}
