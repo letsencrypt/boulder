@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -144,7 +145,7 @@ func validIPAddress(id string) error {
 		return fmt.Errorf(
 			"invalid IP address, %q must be in canonical form (%q)", id, canon)
 	}
-	return policy.IsReservedIP(ip)
+	return iana.IsReservedAddr(ip)
 }
 
 // validIPv6RangeCIDR validates that the provided string is formatted as an IPv6
@@ -166,7 +167,7 @@ func validIPv6RangeCIDR(id string) error {
 		return fmt.Errorf(
 			"invalid CIDR, %q must be in canonical form (%q)", id, canon)
 	}
-	return policy.IsReservedPrefix(prefix)
+	return iana.IsReservedPrefix(prefix)
 }
 
 // validateRegId validates that the provided string is a valid ACME regId.
@@ -229,7 +230,7 @@ func validateDomainOrCIDR(id string) error {
 		return fmt.Errorf("invalid IP address %q, must be the lowest address in its prefix (%q)", id, prefix.Addr().String())
 	}
 
-	return policy.IsReservedPrefix(prefix)
+	return iana.IsReservedPrefix(prefix)
 }
 
 // validateRegIdDomainOrCIDR validates that the provided string is formatted
