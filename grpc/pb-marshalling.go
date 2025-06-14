@@ -232,10 +232,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	if err != nil {
 		return nil, err
 	}
-	var contacts []string
-	if reg.Contact != nil {
-		contacts = *reg.Contact
-	}
 	var createdAt *timestamppb.Timestamp
 	if reg.CreatedAt != nil {
 		createdAt = timestamppb.New(reg.CreatedAt.UTC())
@@ -247,7 +243,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	return &corepb.Registration{
 		Id:        reg.ID,
 		Key:       keyBytes,
-		Contact:   contacts,
 		Agreement: reg.Agreement,
 		CreatedAt: createdAt,
 		Status:    string(reg.Status),
@@ -265,14 +260,9 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
-	var contacts *[]string
-	if len(pb.Contact) != 0 {
-		contacts = &pb.Contact
-	}
 	return core.Registration{
 		ID:        pb.Id,
 		Key:       &key,
-		Contact:   contacts,
 		Agreement: pb.Agreement,
 		CreatedAt: createdAt,
 		Status:    core.AcmeStatus(pb.Status),
