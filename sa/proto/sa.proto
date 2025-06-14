@@ -91,7 +91,6 @@ service StorageAuthority {
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
-  rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
@@ -434,11 +433,6 @@ message PauseRequest {
 message PauseIdentifiersResponse {
   int64 paused = 1;
   int64 repaused = 2;
-}
-
-message UpdateRegistrationContactRequest {
-  int64 registrationID = 1;
-  repeated string contacts = 2;
 }
 
 message UpdateRegistrationKeyRequest {

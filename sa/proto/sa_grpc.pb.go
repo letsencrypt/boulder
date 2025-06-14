@@ -1294,7 +1294,6 @@ const (
 	StorageAuthority_RevokeCertificate_FullMethodName            = "/sa.StorageAuthority/RevokeCertificate"
 	StorageAuthority_SetOrderError_FullMethodName                = "/sa.StorageAuthority/SetOrderError"
 	StorageAuthority_SetOrderProcessing_FullMethodName           = "/sa.StorageAuthority/SetOrderProcessing"
-	StorageAuthority_UpdateRegistrationContact_FullMethodName    = "/sa.StorageAuthority/UpdateRegistrationContact"
 	StorageAuthority_UpdateRegistrationKey_FullMethodName        = "/sa.StorageAuthority/UpdateRegistrationKey"
 	StorageAuthority_UpdateRevokedCertificate_FullMethodName     = "/sa.StorageAuthority/UpdateRevokedCertificate"
 	StorageAuthority_LeaseCRLShard_FullMethodName                = "/sa.StorageAuthority/LeaseCRLShard"
@@ -1358,7 +1357,6 @@ type StorageAuthorityClient interface {
 	RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SetOrderError(ctx context.Context, in *SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SetOrderProcessing(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	UpdateRegistrationContact(ctx context.Context, in *UpdateRegistrationContactRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRegistrationKey(ctx context.Context, in *UpdateRegistrationKeyRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRevokedCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LeaseCRLShard(ctx context.Context, in *LeaseCRLShardRequest, opts ...grpc.CallOption) (*LeaseCRLShardResponse, error)
@@ -1872,16 +1870,6 @@ func (c *storageAuthorityClient) SetOrderProcessing(ctx context.Context, in *Ord
 	return out, nil
 }
 
-func (c *storageAuthorityClient) UpdateRegistrationContact(ctx context.Context, in *UpdateRegistrationContactRequest, opts ...grpc.CallOption) (*proto.Registration, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Registration)
-	err := c.cc.Invoke(ctx, StorageAuthority_UpdateRegistrationContact_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *storageAuthorityClient) UpdateRegistrationKey(ctx context.Context, in *UpdateRegistrationKeyRequest, opts ...grpc.CallOption) (*proto.Registration, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Registration)
@@ -2024,7 +2012,6 @@ type StorageAuthorityServer interface {
 	RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
 	SetOrderError(context.Context, *SetOrderErrorRequest) (*emptypb.Empty, error)
 	SetOrderProcessing(context.Context, *OrderRequest) (*emptypb.Empty, error)
-	UpdateRegistrationContact(context.Context, *UpdateRegistrationContactRequest) (*proto.Registration, error)
 	UpdateRegistrationKey(context.Context, *UpdateRegistrationKeyRequest) (*proto.Registration, error)
 	UpdateRevokedCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
 	LeaseCRLShard(context.Context, *LeaseCRLShardRequest) (*LeaseCRLShardResponse, error)
@@ -2175,9 +2162,6 @@ func (UnimplementedStorageAuthorityServer) SetOrderError(context.Context, *SetOr
 }
 func (UnimplementedStorageAuthorityServer) SetOrderProcessing(context.Context, *OrderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetOrderProcessing not implemented")
-}
-func (UnimplementedStorageAuthorityServer) UpdateRegistrationContact(context.Context, *UpdateRegistrationContactRequest) (*proto.Registration, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistrationContact not implemented")
 }
 func (UnimplementedStorageAuthorityServer) UpdateRegistrationKey(context.Context, *UpdateRegistrationKeyRequest) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistrationKey not implemented")
@@ -2977,24 +2961,6 @@ func _StorageAuthority_SetOrderProcessing_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_UpdateRegistrationContact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRegistrationContactRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).UpdateRegistrationContact(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_UpdateRegistrationContact_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).UpdateRegistrationContact(ctx, req.(*UpdateRegistrationContactRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StorageAuthority_UpdateRegistrationKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateRegistrationKeyRequest)
 	if err := dec(in); err != nil {
@@ -3315,10 +3281,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetOrderProcessing",
 			Handler:    _StorageAuthority_SetOrderProcessing_Handler,
-		},
-		{
-			MethodName: "UpdateRegistrationContact",
-			Handler:    _StorageAuthority_UpdateRegistrationContact_Handler,
 		},
 		{
 			MethodName: "UpdateRegistrationKey",
