@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
 )
 
 type recordingBackend struct {
@@ -25,8 +27,7 @@ func (rb *recordingBackend) GetRegistration(
 ) (*corepb.Registration, error) {
 	rb.requests = append(rb.requests, regID.Id)
 	return &corepb.Registration{
-		Id:      regID.Id,
-		Contact: []string{"example@example.com"},
+		Id: regID.Id,
 	}, nil
 }
 
@@ -56,9 +57,10 @@ func TestCacheCopy(t *testing.T) {
 
 	cache := NewAccountCache(backend, 10, time.Second, clock.NewFake(), metrics.NoopRegisterer)
 
-	_, err := cache.GetRegistration(ctx, &sapb.RegistrationID{Id: 1234})
+	acct, err := cache.GetRegistration(ctx, &sapb.RegistrationID{Id: 1234})
 	test.AssertNotError(t, err, "getting registration")
 	test.AssertEquals(t, len(backend.requests), 1)
+	origTimestamp := acct.CreatedAt
 
 	test.AssertEquals(t, cache.cache.Len(), 1)
 
@@ -68,13 +70,13 @@ func TestCacheCopy(t *testing.T) {
 	test.AssertEquals(t, len(backend.requests), 1)
 
 	// Modify a pointer value inside the result
-	result.Contact[0] = "different@example.com"
+	result.CreatedAt = timestamppb.New(time.Now().Add(24 * time.Hour))
 
 	result, err = cache.GetRegistration(ctx, &sapb.RegistrationID{Id: 1234})
 	test.AssertNotError(t, err, "getting registration")
 	test.AssertEquals(t, len(backend.requests), 1)
 
-	test.AssertDeepEquals(t, result.Contact, []string{"example@example.com"})
+	test.AssertDeepEquals(t, result.CreatedAt, origTimestamp)
 }
 
 // Test that the cache expires values.
@@ -113,8 +115,7 @@ func (wib wrongIDBackend) GetRegistration(
 	opts ...grpc.CallOption,
 ) (*corepb.Registration, error) {
 	return &corepb.Registration{
-		Id:      regID.Id + 1,
-		Contact: []string{"example@example.com"},
+		Id: regID.Id + 1,
 	}, nil
 }
 

@@ -192,7 +192,6 @@ type MockRegistrationAuthority struct {
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
-	in.Contact = nil
 	created := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
 	in.CreatedAt = timestamppb.New(created)
 	return in, nil

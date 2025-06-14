@@ -111,9 +111,6 @@ type RegistrationAuthorityImpl struct {
 	// TODO(#8177): Remove once the rate of requests failing to finalize due to
 	// requesting Must-Staple has diminished.
 	mustStapleRequestsCounter *prometheus.CounterVec
-	// TODO(#7966): Remove once the rate of registrations with contacts has been
-	// determined.
-	newOrUpdatedContactCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -230,45 +227,36 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"allowlist"})
 	stats.MustRegister(mustStapleRequestsCounter)
 
-	// TODO(#7966): Remove once the rate of registrations with contacts has been
-	// determined.
-	newOrUpdatedContactCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "new_or_updated_contact",
-		Help: "A counter of new or updated contacts, labeled by new=[bool]",
-	}, []string{"new"})
-	stats.MustRegister(newOrUpdatedContactCounter)
-
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
 
 	ra := &RegistrationAuthorityImpl{
-		clk:                        clk,
-		log:                        logger,
-		profiles:                   profiles,
-		maxContactsPerReg:          maxContactsPerReg,
-		keyPolicy:                  keyPolicy,
-		limiter:                    limiter,
-		txnBuilder:                 txnBuilder,
-		publisher:                  pubc,
-		finalizeTimeout:            finalizeTimeout,
-		ctpolicy:                   ctp,
-		ctpolicyResults:            ctpolicyResults,
-		purger:                     purger,
-		issuersByNameID:            issuersByNameID,
-		namesPerCert:               namesPerCert,
-		newRegCounter:              newRegCounter,
-		recheckCAACounter:          recheckCAACounter,
-		newCertCounter:             newCertCounter,
-		revocationReasonCounter:    revocationReasonCounter,
-		authzAges:                  authzAges,
-		orderAges:                  orderAges,
-		inflightFinalizes:          inflightFinalizes,
-		certCSRMismatch:            certCSRMismatch,
-		pauseCounter:               pauseCounter,
-		mustStapleRequestsCounter:  mustStapleRequestsCounter,
-		newOrUpdatedContactCounter: newOrUpdatedContactCounter,
+		clk:                       clk,
+		log:                       logger,
+		profiles:                  profiles,
+		maxContactsPerReg:         maxContactsPerReg,
+		keyPolicy:                 keyPolicy,
+		limiter:                   limiter,
+		txnBuilder:                txnBuilder,
+		publisher:                 pubc,
+		finalizeTimeout:           finalizeTimeout,
+		ctpolicy:                  ctp,
+		ctpolicyResults:           ctpolicyResults,
+		purger:                    purger,
+		issuersByNameID:           issuersByNameID,
+		namesPerCert:              namesPerCert,
+		newRegCounter:             newRegCounter,
+		recheckCAACounter:         recheckCAACounter,
+		newCertCounter:            newCertCounter,
+		revocationReasonCounter:   revocationReasonCounter,
+		authzAges:                 authzAges,
+		orderAges:                 orderAges,
+		inflightFinalizes:         inflightFinalizes,
+		certCSRMismatch:           certCSRMismatch,
+		pauseCounter:              pauseCounter,
+		mustStapleRequestsCounter: mustStapleRequestsCounter,
 	}
 	return ra
 }
@@ -527,17 +515,9 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 
-	// Check that contacts conform to our expectations.
-	// TODO(#8199): Remove this when no contacts are included in any requests.
-	err = ra.validateContacts(request.Contact)
-	if err != nil {
-		return nil, err
-	}
-
 	// Don't populate ID or CreatedAt because those will be set by the SA.
 	req := &corepb.Registration{
 		Key:       request.Key,
-		Contact:   request.Contact,
 		Agreement: request.Agreement,
 		Status:    string(core.StatusValid),
 	}
@@ -546,12 +526,6 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	res, err := ra.SA.NewRegistration(ctx, req)
 	if err != nil {
 		return nil, err
-	}
-
-	// TODO(#7966): Remove once the rate of registrations with contacts has been
-	// determined.
-	for range request.Contact {
-		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "true"}).Inc()
 	}
 
 	ra.newRegCounter.Inc()
@@ -1398,38 +1372,6 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []b
 	}
 	ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Observe(took.Seconds())
 	return scts, nil
-}
-
-// UpdateRegistrationContact updates an existing Registration's contact. The
-// updated contacts field may be empty.
-//
-// Deprecated: This method has no callers. See
-// https://github.com/letsencrypt/boulder/issues/8199 for removal.
-func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID) {
-		return nil, errIncompleteGRPCRequest
-	}
-
-	err := ra.validateContacts(req.Contacts)
-	if err != nil {
-		return nil, fmt.Errorf("invalid contact: %w", err)
-	}
-
-	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
-		RegistrationID: req.RegistrationID,
-		Contacts:       req.Contacts,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to update registration contact: %w", err)
-	}
-
-	// TODO(#7966): Remove once the rate of registrations with contacts has
-	// been determined.
-	for range req.Contacts {
-		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
-	}
-
-	return update, nil
 }
 
 // UpdateRegistrationKey updates an existing Registration's key.
