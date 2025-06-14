@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
-	"sync"
 
 	_ "embed"
 )
@@ -31,11 +30,11 @@ type ReservedPrefix struct {
 	// Forwardable        bool
 	// GloballyReachable  bool
 	// ReservedByProtocol bool
+	// Footnote           string
 }
 
 var (
-	reservedPrefixes   []ReservedPrefix
-	reservedPrefixesMu sync.RWMutex
+	reservedPrefixes []ReservedPrefix
 
 	// https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
 	//go:embed data/iana-ipv4-special-registry-1.csv
@@ -45,27 +44,18 @@ var (
 	ipv6Registry []byte
 )
 
-// loadReservedPrefixes parses and loads the embedded IANA special-purpose
-// address registry CSV files for all address families, returning an error if
-// any one fails.
-func loadReservedPrefixes() error {
-	reservedPrefixesMu.Lock()
-	defer reservedPrefixesMu.Unlock()
-
-	if len(reservedPrefixes) > 0 {
-		// Another thread has already loaded the data.
-		return nil
-	}
-
+// init parses and loads the embedded IANA special-purpose address registry CSV
+// files for all address families, panicing if any one fails.
+func init() {
 	ipv4Prefixes, err := parseReservedPrefixFile(ipv4Registry, 1)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	reservedPrefixes = ipv4Prefixes
 
 	ipv6Prefixes, err := parseReservedPrefixFile(ipv6Registry, 2)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	reservedPrefixes = append(reservedPrefixes, ipv6Prefixes...)
 
@@ -78,17 +68,15 @@ func loadReservedPrefixes() error {
 			AddressFamily: 1, // IPv4
 			AddressBlock:  netip.MustParsePrefix("224.0.0.0/4"),
 			Name:          "Multicast Addresses",
-			RFC:           "RFC3171",
+			RFC:           "[RFC3171]",
 		},
 		ReservedPrefix{
 			AddressFamily: 2, // IPv6
 			AddressBlock:  netip.MustParsePrefix("ff00::/8"),
 			Name:          "Multicast Addresses",
-			RFC:           "RFC4291",
+			RFC:           "[RFC4291]",
 		},
 	)
-
-	return nil
 }
 
 // parseReservedPrefixFile parses and returns the IANA special-purpose address
@@ -157,16 +145,6 @@ func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]Reser
 
 // IsReservedAddr returns an error if an IP address is part of a reserved range.
 func IsReservedAddr(ip netip.Addr) error {
-	if len(reservedPrefixes) < 1 {
-		err := loadReservedPrefixes()
-		if err != nil {
-			return err
-		}
-	}
-
-	reservedPrefixesMu.RLock()
-	defer reservedPrefixesMu.RUnlock()
-
 	for _, rpx := range reservedPrefixes {
 		if rpx.AddressBlock.Contains(ip) {
 			return fmt.Errorf("IP address is in a reserved address block: %s: %s", rpx.RFC, rpx.Name)
@@ -179,16 +157,6 @@ func IsReservedAddr(ip netip.Addr) error {
 // IsReservedPrefix returns an error if an IP address prefix overlaps with a
 // reserved range.
 func IsReservedPrefix(prefix netip.Prefix) error {
-	if len(reservedPrefixes) < 1 {
-		err := loadReservedPrefixes()
-		if err != nil {
-			return err
-		}
-	}
-
-	reservedPrefixesMu.RLock()
-	defer reservedPrefixesMu.RUnlock()
-
 	for _, rpx := range reservedPrefixes {
 		if rpx.AddressBlock.Overlaps(prefix) {
 			return fmt.Errorf("IP address is in a reserved address block: %s: %s", rpx.RFC, rpx.Name)
