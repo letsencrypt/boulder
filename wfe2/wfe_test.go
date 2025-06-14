@@ -192,17 +192,10 @@ type MockRegistrationAuthority struct {
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
+	in.Contact = nil
 	created := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
 	in.CreatedAt = timestamppb.New(created)
 	return in, nil
-}
-
-func (ra *MockRegistrationAuthority) UpdateRegistrationContact(ctx context.Context, in *rapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return &corepb.Registration{
-		Status:  string(core.StatusValid),
-		Contact: in.Contacts,
-		Key:     []byte(test1KeyPublicJSON),
-	}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistrationKey(ctx context.Context, in *rapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
@@ -1373,8 +1366,6 @@ func TestNewECDSAAccount(t *testing.T) {
 	responseBody := responseWriter.Body.String()
 	err := json.Unmarshal([]byte(responseBody), &acct)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
-	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
-	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
 	test.AssertEquals(t, acct.Agreement, "")
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/1")
@@ -1487,8 +1478,6 @@ func TestEmptyAccount(t *testing.T) {
 				var acct core.Registration
 				err := json.Unmarshal([]byte(responseBody), &acct)
 				test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
-				test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
-				test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
 				test.AssertEquals(t, acct.Agreement, "")
 			}
 
@@ -1575,8 +1564,6 @@ func TestNewAccount(t *testing.T) {
 	responseBody := responseWriter.Body.String()
 	err := json.Unmarshal([]byte(responseBody), &acct)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
-	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
-	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
 	// Agreement is an ACMEv1 field and should not be present
 	test.AssertEquals(t, acct.Agreement, "")
 
@@ -1655,9 +1642,6 @@ func TestNewAccountNoID(t *testing.T) {
 			"n": "qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw",
 			"e": "AQAB"
 		},
-		"contact": [
-			"mailto:person@mail.com"
-		],
 		"createdAt": "2021-01-01T00:00:00Z",
 		"status": ""
 	}`)
@@ -1885,52 +1869,71 @@ func TestUpdateAccount(t *testing.T) {
 		name     string
 		req      string
 		wantAcct *core.Registration
+		wantErr  string
 	}{
 		{
-			name:     "deactivate clears contact",
+			name:     "empty status",
+			req:      `{}`,
+			wantAcct: &core.Registration{Status: core.StatusValid},
+		},
+		{
+			name:     "empty status with contact",
+			req:      `{"contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusValid},
+		},
+		{
+			name:     "valid",
+			req:      `{"status": "valid"}`,
+			wantAcct: &core.Registration{Status: core.StatusValid},
+		},
+		{
+			name:     "valid with contact",
+			req:      `{"status": "valid", "contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusValid},
+		},
+		{
+			name:     "deactivate",
 			req:      `{"status": "deactivated"}`,
 			wantAcct: &core.Registration{Status: core.StatusDeactivated},
 		},
 		{
-			name:     "deactivate takes priority over contact change",
+			name:     "deactivate with contact",
 			req:      `{"status": "deactivated", "contact": ["mailto:admin@example.com"]}`,
 			wantAcct: &core.Registration{Status: core.StatusDeactivated},
 		},
 		{
-			name:     "change contact",
-			req:      `{"contact": ["mailto:admin@example.com"]}`,
-			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:admin@example.com"}},
+			name:    "unrecognized status",
+			req:     `{"status": "foo"}`,
+			wantErr: "invalid status",
 		},
 		{
-			name:     "change contact with unchanged status",
-			req:      `{"status": "valid", "contact": ["mailto:admin@example.com"]}`,
-			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:admin@example.com"}},
-		},
-		{
-			name:     "unchanged status leaves contact untouched",
-			req:      `{"status": "valid"}`,
-			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:webmaster@example.com"}},
+			// We're happy to ignore fields we don't recognize; they might be useful
+			// for other CAs.
+			name:     "unrecognized request field",
+			req:      `{"foo": "bar"}`,
+			wantAcct: &core.Registration{Status: core.StatusValid},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			acct := core.Registration{
-				Status:  core.StatusValid,
-				Contact: &[]string{"mailto:webmaster@example.com"},
-			}
+			currAcct := core.Registration{Status: core.StatusValid}
 
-			gotAcct, gotProb := wfe.updateAccount(context.Background(), []byte(tc.req), &acct)
-			if gotProb != nil {
-				t.Fatalf("want success, got problem %s", gotProb)
-			}
-
+			gotAcct, gotProb := wfe.updateAccount(context.Background(), []byte(tc.req), &currAcct)
 			if tc.wantAcct != nil {
 				if gotAcct.Status != tc.wantAcct.Status {
 					t.Errorf("want status %s, got %s", tc.wantAcct.Status, gotAcct.Status)
 				}
 				if !reflect.DeepEqual(gotAcct.Contact, tc.wantAcct.Contact) {
 					t.Errorf("want contact %v, got %v", tc.wantAcct.Contact, gotAcct.Contact)
+				}
+			}
+			if tc.wantErr != "" {
+				if gotProb == nil {
+					t.Fatalf("want error %q, got nil", tc.wantErr)
+				}
+				if !strings.Contains(gotProb.Error(), tc.wantErr) {
+					t.Errorf("want error %q, got %q", tc.wantErr, gotProb.Error())
 				}
 			}
 		})
