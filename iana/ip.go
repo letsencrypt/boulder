@@ -13,16 +13,16 @@ import (
 	_ "embed"
 )
 
-type ReservedPrefix struct {
-	// AddressFamily values are defined in:
+type reservedPrefix struct {
+	// addressFamily values are defined in:
 	// https://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml
-	AddressFamily uint16
+	addressFamily uint16
 	// The other fields are defined in:
 	// https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
 	// https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
-	AddressBlock netip.Prefix
-	Name         string
-	RFC          string
+	addressBlock netip.Prefix
+	name         string
+	rfc          string
 	// AllocationDate     time.Time
 	// TerminationDate    time.Time
 	// Source             bool
@@ -30,11 +30,10 @@ type ReservedPrefix struct {
 	// Forwardable        bool
 	// GloballyReachable  bool
 	// ReservedByProtocol bool
-	// Footnote           string
 }
 
 var (
-	reservedPrefixes []ReservedPrefix
+	reservedPrefixes []reservedPrefix
 
 	// https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
 	//go:embed data/iana-ipv4-special-registry-1.csv
@@ -64,17 +63,17 @@ func init() {
 	// TODO(#8237): Move these entries to IP address blocklists once they're
 	// implemented.
 	reservedPrefixes = append(reservedPrefixes,
-		ReservedPrefix{
-			AddressFamily: 1, // IPv4
-			AddressBlock:  netip.MustParsePrefix("224.0.0.0/4"),
-			Name:          "Multicast Addresses",
-			RFC:           "[RFC3171]",
+		reservedPrefix{
+			addressFamily: 1, // IPv4
+			addressBlock:  netip.MustParsePrefix("224.0.0.0/4"),
+			name:          "Multicast Addresses",
+			rfc:           "[RFC3171]",
 		},
-		ReservedPrefix{
-			AddressFamily: 2, // IPv6
-			AddressBlock:  netip.MustParsePrefix("ff00::/8"),
-			Name:          "Multicast Addresses",
-			RFC:           "[RFC4291]",
+		reservedPrefix{
+			addressFamily: 2, // IPv6
+			addressBlock:  netip.MustParsePrefix("ff00::/8"),
+			name:          "Multicast Addresses",
+			rfc:           "[RFC4291]",
 		},
 	)
 }
@@ -82,7 +81,7 @@ func init() {
 // parseReservedPrefixFile parses and returns the IANA special-purpose address
 // registry CSV data for a single address family, or returns an error if parsing
 // fails.
-func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]ReservedPrefix, error) {
+func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]reservedPrefix, error) {
 	if addressFamily != 1 && addressFamily != 2 {
 		return nil, fmt.Errorf("failed to parse reserved address registry: invalid address family %d", addressFamily)
 	}
@@ -110,7 +109,7 @@ func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]Reser
 	footnotesRE := regexp.MustCompile(`\[\d+\]$`)
 
 	// Parse the records.
-	var prefixes []ReservedPrefix
+	var prefixes []reservedPrefix
 	for {
 		row, err := reader.Read()
 		if errors.Is(err, io.EOF) {
@@ -130,12 +129,12 @@ func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]Reser
 				return nil, fmt.Errorf("failed to parse reserved address registry %d: couldn't parse entry %q as an IP address prefix: %s", addressFamily, prefixStr, err)
 			}
 
-			prefixes = append(prefixes, ReservedPrefix{
-				AddressFamily: addressFamily,
-				AddressBlock:  prefix,
-				Name:          row[1],
+			prefixes = append(prefixes, reservedPrefix{
+				addressFamily: addressFamily,
+				addressBlock:  prefix,
+				name:          row[1],
 				// Replace any whitespace sequences with a single space.
-				RFC: whitespacesRE.ReplaceAllLiteralString(row[2], " "),
+				rfc: whitespacesRE.ReplaceAllLiteralString(row[2], " "),
 			})
 		}
 	}
@@ -146,8 +145,8 @@ func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]Reser
 // IsReservedAddr returns an error if an IP address is part of a reserved range.
 func IsReservedAddr(ip netip.Addr) error {
 	for _, rpx := range reservedPrefixes {
-		if rpx.AddressBlock.Contains(ip) {
-			return fmt.Errorf("IP address is in a reserved address block: %s: %s", rpx.RFC, rpx.Name)
+		if rpx.addressBlock.Contains(ip) {
+			return fmt.Errorf("IP address is in a reserved address block: %s: %s", rpx.rfc, rpx.name)
 		}
 	}
 
@@ -158,8 +157,8 @@ func IsReservedAddr(ip netip.Addr) error {
 // reserved range.
 func IsReservedPrefix(prefix netip.Prefix) error {
 	for _, rpx := range reservedPrefixes {
-		if rpx.AddressBlock.Overlaps(prefix) {
-			return fmt.Errorf("IP address is in a reserved address block: %s: %s", rpx.RFC, rpx.Name)
+		if rpx.addressBlock.Overlaps(prefix) {
+			return fmt.Errorf("IP address is in a reserved address block: %s: %s", rpx.rfc, rpx.name)
 		}
 	}
 
