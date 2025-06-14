@@ -44,7 +44,7 @@ var (
 )
 
 // init parses and loads the embedded IANA special-purpose address registry CSV
-// files for all address families, panicing if any one fails.
+// files for all address families, panicking if any one fails.
 func init() {
 	ipv4Prefixes, err := parseReservedPrefixFile(ipv4Registry, 1)
 	if err != nil {
