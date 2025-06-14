@@ -70,7 +70,6 @@ func main() {
 	subcommands := map[string]subcommand{
 		"revoke-cert":      &subcommandRevokeCert{},
 		"block-key":        &subcommandBlockKey{},
-		"update-email":     &subcommandUpdateEmail{},
 		"pause-identifier": &subcommandPauseIdentifier{},
 		"unpause-account":  &subcommandUnpauseAccount{},
 	}
