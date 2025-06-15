@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 
 	_ "embed"
@@ -76,6 +77,18 @@ func init() {
 			rfc:           "[RFC4291]",
 		},
 	)
+
+	// Sort the list of reserved prefixes in descending order of prefix size, so
+	// that checks will match the most-specific reserved prefix first.
+	slices.SortFunc(reservedPrefixes, func(a, b reservedPrefix) int {
+		if a.addressBlock.Bits() == b.addressBlock.Bits() {
+			return 0
+		}
+		if a.addressBlock.Bits() > b.addressBlock.Bits() {
+			return -1
+		}
+		return 1
+	})
 }
 
 // parseReservedPrefixFile parses and returns the IANA special-purpose address
