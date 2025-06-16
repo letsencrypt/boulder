@@ -129,6 +129,15 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		}
 	}
 
+	// Ensure that the health service has the same ClientNames as the other
+	// services, so that health checks can be performed by clients which are
+	// allowed to connect to the server.
+	healthService := sb.cfg.Services[healthpb.Health_ServiceDesc.ServiceName]
+	for as := range acceptedSANs {
+		healthService.ClientNames = append(healthService.ClientNames, as)
+	}
+	sb.cfg.Services[healthpb.Health_ServiceDesc.ServiceName] = healthService
+
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
 		return nil, err
@@ -224,8 +233,12 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 
 // initLongRunningCheck initializes a goroutine which will periodically check
 // the health of the provided service and update the health server accordingly.
+//
+// TODO(#8255): Remove the service parameter and instead rely on transitioning
+// the overall health of the server (e.g. "") instead of individual services.
 func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, service string, checkImpl func(context.Context) error) {
 	// Set the initial health status for the service.
+	sb.healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 	sb.healthSrv.SetServingStatus(service, healthpb.HealthCheckResponse_NOT_SERVING)
 
 	// check is a helper function that checks the health of the service and, if
@@ -249,10 +262,14 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 		}
 
 		if next != healthpb.HealthCheckResponse_SERVING {
+			sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", sb.cfg.Address, last, next, err)
 			sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
 		} else {
+			sb.logger.Infof("transitioning health of %q from %q to %q", sb.cfg.Address, last, next)
 			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)
+
 		}
+		sb.healthSrv.SetServingStatus("", next)
 		sb.healthSrv.SetServingStatus(service, next)
 		return next
 	}
