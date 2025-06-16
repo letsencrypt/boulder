@@ -246,7 +246,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 	for _, cert := range unrevokedCerts {
 		serials = append(serials, cert.Serial)
 	}
-	bkr.logger.AuditInfo(fmt.Sprintf("revoking serials %v for key with hash %s", serials, unchecked.KeyHash))
+	bkr.logger.AuditInfo(fmt.Sprintf("revoking serials %v for key with hash %x", serials, unchecked.KeyHash))
 
 	// revoke each certificate
 	err = bkr.revokeCerts(unrevokedCerts)
