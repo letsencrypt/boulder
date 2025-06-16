@@ -15,22 +15,19 @@ import (
 )
 
 type reservedPrefix struct {
-	// addressFamily values are defined in:
-	// https://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml
-	addressFamily uint16
+	// addressFamily is "IPv4" or "IPv6".
+	addressFamily string
 	// The other fields are defined in:
 	// https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
 	// https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
 	addressBlock netip.Prefix
 	name         string
 	rfc          string
-	// AllocationDate     time.Time
-	// TerminationDate    time.Time
-	// Source             bool
-	// Destination        bool
-	// Forwardable        bool
-	// GloballyReachable  bool
-	// ReservedByProtocol bool
+	// The BRs' requirement that we not issue for Reserved IP Addresses only
+	// cares about presence in one of these registries, not any of the other
+	// metadata fields tracked by the registries. Therefore, we ignore the
+	// Allocation Date, Termination Date, Source, Destination, Forwardable,
+	// Globally Reachable, and Reserved By Protocol columns.
 }
 
 var (
@@ -47,36 +44,36 @@ var (
 // init parses and loads the embedded IANA special-purpose address registry CSV
 // files for all address families, panicking if any one fails.
 func init() {
-	ipv4Prefixes, err := parseReservedPrefixFile(ipv4Registry, 1)
+	ipv4Prefixes, err := parseReservedPrefixFile(ipv4Registry, "IPv4")
 	if err != nil {
 		panic(err)
 	}
-	reservedPrefixes = ipv4Prefixes
 
-	ipv6Prefixes, err := parseReservedPrefixFile(ipv6Registry, 2)
+	ipv6Prefixes, err := parseReservedPrefixFile(ipv6Registry, "IPv6")
 	if err != nil {
 		panic(err)
 	}
-	reservedPrefixes = append(reservedPrefixes, ipv6Prefixes...)
 
 	// Add multicast addresses, which aren't in the IANA registries.
 	//
 	// TODO(#8237): Move these entries to IP address blocklists once they're
 	// implemented.
-	reservedPrefixes = append(reservedPrefixes,
-		reservedPrefix{
-			addressFamily: 1, // IPv4
+	additionalPrefixes := []reservedPrefix{
+		{
+			addressFamily: "IPv4",
 			addressBlock:  netip.MustParsePrefix("224.0.0.0/4"),
 			name:          "Multicast Addresses",
 			rfc:           "[RFC3171]",
 		},
-		reservedPrefix{
-			addressFamily: 2, // IPv6
+		{
+			addressFamily: "IPv6",
 			addressBlock:  netip.MustParsePrefix("ff00::/8"),
 			name:          "Multicast Addresses",
 			rfc:           "[RFC4291]",
 		},
-	)
+	}
+
+	reservedPrefixes = slices.Concat(ipv4Prefixes, ipv6Prefixes, additionalPrefixes)
 
 	// Sort the list of reserved prefixes in descending order of prefix size, so
 	// that checks will match the most-specific reserved prefix first.
@@ -94,12 +91,12 @@ func init() {
 // parseReservedPrefixFile parses and returns the IANA special-purpose address
 // registry CSV data for a single address family, or returns an error if parsing
 // fails.
-func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]reservedPrefix, error) {
-	if addressFamily != 1 && addressFamily != 2 {
-		return nil, fmt.Errorf("failed to parse reserved address registry: invalid address family %d", addressFamily)
+func parseReservedPrefixFile(registryData []byte, addressFamily string) ([]reservedPrefix, error) {
+	if addressFamily != "IPv4" && addressFamily != "IPv6" {
+		return nil, fmt.Errorf("failed to parse reserved address registry: invalid address family %q", addressFamily)
 	}
 	if registryData == nil {
-		return nil, fmt.Errorf("failed to parse reserved address registry %d: empty", addressFamily)
+		return nil, fmt.Errorf("failed to parse reserved %s address registry: empty", addressFamily)
 	}
 
 	reader := csv.NewReader(bytes.NewReader(registryData))
@@ -107,10 +104,10 @@ func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]reser
 	// Parse the header row.
 	record, err := reader.Read()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse reserved address registry %d header: %w", addressFamily, err)
+		return nil, fmt.Errorf("failed to parse reserved %s address registry header: %w", addressFamily, err)
 	}
 	if record[0] != "Address Block" || record[1] != "Name" || record[2] != "RFC" {
-		return nil, fmt.Errorf("failed to parse reserved address registry %d header: must begin with \"Address Block\", \"Name\" and \"RFC\"", addressFamily)
+		return nil, fmt.Errorf("failed to parse reserved %s address registry header: must begin with \"Address Block\", \"Name\" and \"RFC\"", addressFamily)
 	}
 
 	// Define regexps we'll use to clean up poorly formatted registry entries.
@@ -128,7 +125,7 @@ func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]reser
 		if errors.Is(err, io.EOF) {
 			// Finished parsing the file.
 			if len(prefixes) < 1 {
-				return nil, fmt.Errorf("failed to parse reserved address registry %d: no rows after header", addressFamily)
+				return nil, fmt.Errorf("failed to parse reserved %s address registry: no rows after header", addressFamily)
 			}
 			break
 		} else if err != nil {
@@ -139,7 +136,7 @@ func parseReservedPrefixFile(registryData []byte, addressFamily uint16) ([]reser
 		for _, prefixStr := range strings.Split(footnotesRE.ReplaceAllLiteralString(row[0], ""), ",") {
 			prefix, err := netip.ParsePrefix(strings.TrimSpace(prefixStr))
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse reserved address registry %d: couldn't parse entry %q as an IP address prefix: %s", addressFamily, prefixStr, err)
+				return nil, fmt.Errorf("failed to parse reserved %s address registry: couldn't parse entry %q as an IP address prefix: %s", addressFamily, prefixStr, err)
 			}
 
 			prefixes = append(prefixes, reservedPrefix{
