@@ -267,7 +267,6 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 		} else {
 			sb.logger.Infof("transitioning overall health from %q to %q", last, next)
 			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)
-
 		}
 		sb.healthSrv.SetServingStatus("", next)
 		sb.healthSrv.SetServingStatus(service, next)
