@@ -391,8 +391,14 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 				"host %q has no IP addresses remaining to use",
 				target.host)
 	}
-	// TODO(#8041): This could be a good place for a backstop check for reserved IP
-	// addresses.
+
+	// This is a backstop check to avoid connecting to reserved IP addresses.
+	// They should have been caught and excluded by `bdns.LookupHost`.
+	err := va.isReservedIPFunc(targetIP)
+	if err != nil {
+		return nil, record, err
+	}
+
 	record.AddressUsed = targetIP
 
 	dialer := &preresolvedDialer{

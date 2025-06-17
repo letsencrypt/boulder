@@ -170,14 +170,25 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		// We expect a self-signed challenge certificate, do not verify it here.
 		InsecureSkipVerify: true,
 	}}
-	// TODO(#8041): This could be a good place for a backstop check for reserved IP
-	// addresses.
+
+	// This is a backstop check to avoid connecting to reserved IP addresses.
+	// They should have been caught and excluded by `bdns.LookupHost`.
+	host, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return nil, nil, err
+	}
+	netIP, ipErr := netip.ParseAddr(host)
+	if ipErr == nil {
+		err = va.isReservedIPFunc(netIP)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
 	conn, err := dialer.DialContext(dialCtx, "tcp", hostPort)
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", core.ChallengeTypeTLSALPN01, ident, err, err)
-		host, _, splitErr := net.SplitHostPort(hostPort)
-		netIP, ipErr := netip.ParseAddr(host)
-		if splitErr == nil && ipErr == nil {
+		if ipErr == nil {
 			// Wrap the validation error and the IP of the remote host in an
 			// IPError so we can display the IP in the problem details returned
 			// to the client.
