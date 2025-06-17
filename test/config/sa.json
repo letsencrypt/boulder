@@ -42,8 +42,8 @@
 				},
 				"grpc.health.v1.Health": {
 					"clientNames": [
-						"health-checker.boulder",
-						"consul.boulder"
+						"consul.boulder",
+						"health-checker.boulder"
 					]
 				}
 			}
