@@ -316,8 +316,7 @@ func TestOrderFinalizeEarly(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected error to be of type acme.Problem, got: %T", err)
 	}
-	orderNotReadyProblem := probs.OrderNotReadyProblem
-	if prob.Type != "urn:ietf:params:acme:error:"+string(orderNotReadyProblem) {
+	if prob.Type != "urn:ietf:params:acme:error:"+string(probs.OrderNotReadyProblem) {
 		t.Errorf("expected problem type 'urn:ietf:params:acme:error:orderNotReady', got: %s", prob.Type)
 	}
 }
