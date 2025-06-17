@@ -292,8 +292,7 @@ func TestOrderFinalizeEarly(t *testing.T) {
 		t.Fatalf("creating acme client: %s", err)
 	}
 
-	domain := randomDomain(t)
-	idents := []acme.Identifier{{Type: "dns", Value: domain}}
+	idents := []acme.Identifier{{Type: "dns", Value: randomDomain(t)}}
 
 	order, err := client.Client.NewOrder(client.Account, idents)
 	if err != nil {
