@@ -1146,33 +1146,6 @@ def test_ocsp_exp_unauth():
     else:
         raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
 
-def test_expiration_mailer():
-    # This test relies on contact addresses being persisted, which we no longer
-    # do in config-next.
-    if 'config-next' in os.environ['BOULDER_CONFIG_DIR']:
-        return
-
-    email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
-    order = chisel2.auth_and_issue([random_domain()], email=email_addr)
-    cert = parse_cert(order)
-    # Check that the expiration mailer sends a reminder
-    expiry = cert.not_valid_after_utc
-    no_reminder = expiry + datetime.timedelta(days=-31)
-    first_reminder = expiry + datetime.timedelta(days=-13)
-    last_reminder = expiry + datetime.timedelta(days=-2)
-
-    requests.post("http://localhost:9381/clear", data='')
-    for time in (no_reminder, first_reminder, last_reminder):
-        print(get_future_output(
-            ["./bin/boulder", "expiration-mailer",
-             "--config", "%s/expiration-mailer.json" % config_dir,
-             "--debug-addr", ":8008"],
-            time))
-    resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
-    mailcount = int(resp.text)
-    if mailcount != 2:
-        raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
-
 def test_caa_good():
     domain = random_domain()
     challSrv.add_caa_issue(domain, "happy-hacker-ca.invalid")

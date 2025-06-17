@@ -275,7 +275,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 }
 
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
-// certificate, issued for a set of domains, during a given window of time,
+// certificate, issued for a set of identifiers, during a given window of time,
 // starting from the most recent issuance.
 //
 // If req.Limit is nonzero, it returns only the most recent `Limit` results
@@ -529,7 +529,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 	return modelToAuthzPB(*(obj.(*authzModel)))
 }
 
-// authzModelMapToPB converts a mapping of domain name to authzModels into a
+// authzModelMapToPB converts a mapping of identifiers to authzModels into a
 // protobuf authorizations map
 func authzModelMapToPB(m map[identifier.ACMEIdentifier]authzModel) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}

@@ -133,16 +133,13 @@ func TestReadConfigFile(t *testing.T) {
 	test.AssertError(t, err, "ReadConfigFile('') did not error")
 
 	type config struct {
-		NotifyMailer struct {
-			DB DBConfig
-			SMTPConfig
-		}
-		Syslog SyslogConfig
+		GRPC *GRPCClientConfig
+		TLS  *TLSConfig
 	}
 	var c config
-	err = ReadConfigFile("../test/config/notify-mailer.json", &c)
-	test.AssertNotError(t, err, "ReadConfigFile(../test/config/notify-mailer.json) errored")
-	test.AssertEquals(t, c.NotifyMailer.SMTPConfig.Server, "localhost")
+	err = ReadConfigFile("../test/config/health-checker.json", &c)
+	test.AssertNotError(t, err, "ReadConfigFile(../test/config/health-checker.json) errored")
+	test.AssertEquals(t, c.GRPC.Timeout.Duration, 1*time.Second)
 }
 
 func TestLogWriter(t *testing.T) {
@@ -279,7 +276,6 @@ func TestFailExit(t *testing.T) {
 		return
 	}
 
-	//nolint: gosec // Test-only code is not concerned about untrusted values in os.Args[0]
 	cmd := exec.Command(os.Args[0], "-test.run=TestFailExit")
 	cmd.Env = append(os.Environ(), "TIME_TO_DIE=1")
 	output, err := cmd.CombinedOutput()
@@ -306,7 +302,6 @@ func TestPanicStackTrace(t *testing.T) {
 		return
 	}
 
-	//nolint: gosec // Test-only code is not concerned about untrusted values in os.Args[0]
 	cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace")
 	cmd.Env = append(os.Environ(), "AT_THE_DISCO=1")
 	output, err := cmd.CombinedOutput()

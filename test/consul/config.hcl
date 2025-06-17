@@ -1,7 +1,7 @@
 # Keep this file in sync with the ports bound in test/startservers.py
 
 client_addr = "0.0.0.0"
-bind_addr   = "10.55.55.10"
+bind_addr   = "10.77.77.10"
 log_level   = "ERROR"
 // When set, uses a subset of the agent's TLS configuration (key_file,
 // cert_file, ca_file, ca_path, and server_name) to set up the client for HTTP
@@ -318,7 +318,7 @@ services {
 services {
   id      = "bredis3"
   name    = "redisratelimits"
-  address = "10.33.33.4"
+  address = "10.77.77.4"
   port    = 4218
   tags    = ["tcp"] // Required for SRV RR support in DNS resolution.
 }
@@ -326,7 +326,7 @@ services {
 services {
   id      = "bredis4"
   name    = "redisratelimits"
-  address = "10.33.33.5"
+  address = "10.77.77.5"
   port    = 4218
   tags    = ["tcp"] // Required for SRV RR support in DNS resolution.
 }

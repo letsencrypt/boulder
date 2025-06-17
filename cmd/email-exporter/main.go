@@ -49,6 +49,12 @@ type Config struct {
 		// PardotBaseURL is the base URL for the Pardot API. (e.g.,
 		// "https://pi.pardot.com")
 		PardotBaseURL string `validate:"required"`
+
+		// EmailCacheSize controls how many hashed email addresses are retained
+		// in memory to prevent duplicates from being sent to the Pardot API.
+		// Each entry consumes ~120 bytes, so 100,000 entries uses around 12 MB
+		// of memory. If left unset, no caching is performed.
+		EmailCacheSize int `validate:"omitempty,min=1"`
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
@@ -87,6 +93,11 @@ func main() {
 	clientSecret, err := c.EmailExporter.ClientSecret.Pass()
 	cmd.FailOnError(err, "Loading clientSecret")
 
+	var cache *email.EmailCache
+	if c.EmailExporter.EmailCacheSize > 0 {
+		cache = email.NewHashedEmailCache(c.EmailExporter.EmailCacheSize, scope)
+	}
+
 	pardotClient, err := email.NewPardotClientImpl(
 		clk,
 		c.EmailExporter.PardotBusinessUnit,
@@ -94,6 +105,7 @@ func main() {
 		clientSecret,
 		c.EmailExporter.SalesforceBaseURL,
 		c.EmailExporter.PardotBaseURL,
+		cache,
 	)
 	cmd.FailOnError(err, "Creating Pardot API client")
 	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)

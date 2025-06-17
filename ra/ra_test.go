@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -485,8 +486,7 @@ func TestNewRegistration(t *testing.T) {
 		t.Fatalf("could not create new registration: %s", err)
 	}
 	test.AssertByteEquals(t, result.Key, acctKeyB)
-	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto == (result.Contact)[0], "Contact didn't match")
+	test.Assert(t, len(result.Contact) == 0, "Wrong number of contacts")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
 	reg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: result.Id})
@@ -726,8 +726,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
-	test.AssertNotError(t, err, "constructing test bucket key")
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
 
 	// Set the stored TAT to indicate that this bucket has exhausted its quota.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
@@ -803,8 +802,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
-	test.AssertNotError(t, err, "constructing test bucket key")
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
 
 	// Set a stored TAT so that we can tell when it's been reset.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
@@ -3136,14 +3134,13 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 
 	// Make some valid authzs for four names. Half of them were validated
 	// recently and half were validated in excess of our CAA recheck time.
-	idents := identifier.ACMEIdentifiers{
-		identifier.NewDNS("not-example.com"),
-		identifier.NewDNS("www.not-example.com"),
-		identifier.NewDNS("still.not-example.com"),
-		identifier.NewDNS("definitely.not-example.com"),
+	names := []string{
+		"not-example.com",
+		"www.not-example.com",
+		"still.not-example.com",
+		"definitely.not-example.com",
 	}
-	names, err := idents.ToDNSSlice()
-	test.AssertNotError(t, err, "Converting identifiers to DNS names")
+	idents := identifier.NewDNSSlice(names)
 	var authzIDs []int64
 	for i, ident := range idents {
 		attemptedAt := older
@@ -4389,4 +4386,41 @@ func TestCRLShard(t *testing.T) {
 	if err != nil || n != 123 {
 		t.Errorf("crlShard(%+v) = %d, %s, want 123, nil", cdp, n, err)
 	}
+}
+
+type mockSAWithOverrides struct {
+	sapb.StorageAuthorityClient
+	inserted *sapb.AddRateLimitOverrideRequest
+}
+
+func (sa *mockSAWithOverrides) AddRateLimitOverride(ctx context.Context, req *sapb.AddRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error) {
+	sa.inserted = req
+	return &sapb.AddRateLimitOverrideResponse{}, nil
+}
+
+func TestAddRateLimitOverride(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	mockSA := mockSAWithOverrides{}
+	ra.SA = &mockSA
+
+	expectBucketKey := core.RandomString(10)
+	ov := rapb.AddRateLimitOverrideRequest{
+		LimitEnum: 1,
+		BucketKey: expectBucketKey,
+		Comment:   "insert",
+		Period:    durationpb.New(time.Hour),
+		Count:     100,
+		Burst:     100,
+	}
+
+	_, err := ra.AddRateLimitOverride(ctx, &ov)
+	test.AssertNotError(t, err, "expected successful insert, got error")
+	test.AssertEquals(t, mockSA.inserted.Override.LimitEnum, ov.LimitEnum)
+	test.AssertEquals(t, mockSA.inserted.Override.BucketKey, expectBucketKey)
+	test.AssertEquals(t, mockSA.inserted.Override.Comment, ov.Comment)
+	test.AssertEquals(t, mockSA.inserted.Override.Period.AsDuration(), ov.Period.AsDuration())
+	test.AssertEquals(t, mockSA.inserted.Override.Count, ov.Count)
+	test.AssertEquals(t, mockSA.inserted.Override.Burst, ov.Burst)
 }

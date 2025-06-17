@@ -39,14 +39,6 @@ type AuthorityImpl struct {
 
 // New constructs a Policy Authority.
 func New(identifierTypes map[identifier.IdentifierType]bool, challengeTypes map[core.AcmeChallenge]bool, log blog.Logger) (*AuthorityImpl, error) {
-	// If identifierTypes are not configured (i.e. nil), default to allowing DNS
-	// identifiers. This default is temporary, to improve deployability.
-	//
-	// TODO(#8184): Remove this default.
-	if identifierTypes == nil {
-		identifierTypes = map[identifier.IdentifierType]bool{identifier.TypeDNS: true}
-	}
-
 	return &AuthorityImpl{
 		log:                log,
 		enabledChallenges:  challengeTypes,
@@ -332,13 +324,13 @@ func ValidDomain(domain string) error {
 	return validNonWildcardDomain(baseDomain)
 }
 
-// validIP checks that an IP address:
+// ValidIP checks that an IP address:
 //   - isn't empty
 //   - is an IPv4 or IPv6 address
 //   - isn't in an IANA special-purpose address registry
 //
 // It does NOT ensure that the IP address is absent from any PA blocked lists.
-func validIP(ip string) error {
+func ValidIP(ip string) error {
 	if ip == "" {
 		return errEmptyIdentifier
 	}
@@ -436,7 +428,7 @@ func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error
 		// Unsupported identifier types will have been caught by
 		// WellFormedIdentifiers().
 		//
-		// TODO(#7311): We may want to implement IP address blocklists too.
+		// TODO(#8237): We may want to implement IP address blocklists too.
 		if ident.Type == identifier.TypeDNS {
 			if strings.Count(ident.Value, "*") > 0 {
 				// The base domain is the wildcard request with the `*.` prefix removed
@@ -500,7 +492,7 @@ func WellFormedIdentifiers(idents identifier.ACMEIdentifiers) error {
 				subErrors = append(subErrors, subError(ident, err))
 			}
 		case identifier.TypeIP:
-			err := validIP(ident.Value)
+			err := ValidIP(ident.Value)
 			if err != nil {
 				subErrors = append(subErrors, subError(ident, err))
 			}

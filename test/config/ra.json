@@ -41,19 +41,28 @@
 				"pendingAuthzLifetime": "168h",
 				"validAuthzLifetime": "720h",
 				"orderLifetime": "168h",
-				"maxNames": 100
+				"maxNames": 100,
+				"identifierTypes": [
+					"dns"
+				]
 			},
 			"modern": {
 				"pendingAuthzLifetime": "7h",
 				"validAuthzLifetime": "7h",
 				"orderLifetime": "7h",
-				"maxNames": 10
+				"maxNames": 10,
+				"identifierTypes": [
+					"dns"
+				]
 			},
 			"shortlived": {
 				"pendingAuthzLifetime": "7h",
 				"validAuthzLifetime": "7h",
 				"orderLifetime": "7h",
-				"maxNames": 10
+				"maxNames": 10,
+				"identifierTypes": [
+					"dns"
+				]
 			}
 		},
 		"defaultProfileName": "legacy",
@@ -182,6 +191,9 @@
 			"http-01": true,
 			"dns-01": true,
 			"tls-alpn-01": true
+		},
+		"identifiers": {
+			"dns": true
 		}
 	},
 	"syslog": {

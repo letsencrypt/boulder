@@ -6,11 +6,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func defaultTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +47,7 @@ func TestSendContactSuccess(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL, nil)
 	test.AssertNotError(t, err, "failed to create client")
 
 	err = client.SendContact("test@example.com")
@@ -70,7 +73,7 @@ func TestSendContactUpdateTokenFails(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL, nil)
 	test.AssertNotError(t, err, "Failed to create client")
 
 	err = client.SendContact("test@example.com")
@@ -94,7 +97,7 @@ func TestSendContact4xx(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL, nil)
 	test.AssertNotError(t, err, "Failed to create client")
 
 	err = client.SendContact("test@example.com")
@@ -142,7 +145,7 @@ func TestSendContactTokenExpiry(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL, nil)
 	test.AssertNotError(t, err, "Failed to create client")
 
 	// First call uses the initial token ("old_token").
@@ -172,7 +175,7 @@ func TestSendContactServerErrorsAfterMaxAttempts(t *testing.T) {
 	contactSrv := httptest.NewServer(http.HandlerFunc(contactHandler))
 	defer contactSrv.Close()
 
-	client, _ := NewPardotClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, _ := NewPardotClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL, nil)
 
 	err := client.SendContact("test@example.com")
 	test.AssertError(t, err, "Should fail after retrying all attempts")
@@ -200,11 +203,38 @@ func TestSendContactRedactsEmail(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL, nil)
 	test.AssertNotError(t, err, "failed to create client")
 
 	err = client.SendContact(emailToTest)
 	test.AssertError(t, err, "SendContact should fail")
 	test.AssertNotContains(t, err.Error(), emailToTest)
 	test.AssertContains(t, err.Error(), "[REDACTED]")
+}
+
+func TestSendContactDeduplication(t *testing.T) {
+	t.Parallel()
+
+	tokenSrv := httptest.NewServer(http.HandlerFunc(defaultTokenHandler))
+	defer tokenSrv.Close()
+
+	var contactHits int32
+	contactSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&contactHits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer contactSrv.Close()
+
+	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
+	client, _ := NewPardotClientImpl(clock.New(), "biz", "cid", "csec", tokenSrv.URL, contactSrv.URL, cache)
+
+	err := client.SendContact("test@example.com")
+	test.AssertNotError(t, err, "SendContact should succeed on first call")
+	test.AssertMetricWithLabelsEquals(t, client.emailCache.requests, prometheus.Labels{"status": "miss"}, 1)
+
+	err = client.SendContact("test@example.com")
+	test.AssertNotError(t, err, "SendContact should succeed on second call")
+
+	test.AssertEquals(t, int32(1), atomic.LoadInt32(&contactHits))
+	test.AssertMetricWithLabelsEquals(t, client.emailCache.requests, prometheus.Labels{"status": "hit"}, 1)
 }

@@ -16,9 +16,9 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// tenZeroZeroTwo is overridden in 'testdata/working_override.yml' to have
-// higher burst and count values.
-const tenZeroZeroTwo = "10.0.0.2"
+// overriddenIP is overridden in 'testdata/working_override.yml' to have higher
+// burst and count values.
+const overriddenIP = "64.112.117.1"
 
 // newTestLimiter constructs a new limiter.
 func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
@@ -30,7 +30,7 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 // newTestTransactionBuilder constructs a new *TransactionBuilder with the
 // following configuration:
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
-//   - 'NewRegistrationsPerIPAddress:10.0.0.2' burst: 40 count: 40 period: 1s
+//   - 'NewRegistrationsPerIPAddress:64.112.117.1' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml")
 	test.AssertNotError(t, err, "should not error")
@@ -60,8 +60,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			overriddenBucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(tenZeroZeroTwo))
-			test.AssertNotError(t, err, "should not error")
+			overriddenBucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(overriddenIP))
 			overriddenLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, overriddenBucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -116,8 +115,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			// Wait 1 second for a full bucket reset.
 			clk.Add(d.resetIn)
 
-			normalBucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			normalBucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			normalLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, normalBucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -247,8 +245,7 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 	testCtx, limiters, txnBuilder, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			bucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			limit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -310,8 +307,7 @@ func TestLimiter_DefaultLimits(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			bucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			limit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
 			test.AssertNotError(t, err, "should not error")
 
@@ -373,8 +369,7 @@ func TestLimiter_RefundAndReset(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
-			test.AssertNotError(t, err, "should not error")
+			bucketKey := newIPAddressBucketKey(NewRegistrationsPerIPAddress, netip.MustParseAddr(testIP))
 			limit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
 			test.AssertNotError(t, err, "should not error")
 

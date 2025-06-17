@@ -37,7 +37,7 @@ func TestRecordSanityCheckOnUnsupportedChallengeType(t *testing.T) {
 	rec := []ValidationRecord{
 		{
 			URL:               "http://localhost/test",
-			DnsName:           "localhost",
+			Hostname:          "localhost",
 			Port:              "80",
 			AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 			AddressUsed:       netip.MustParseAddr("127.0.0.1"),

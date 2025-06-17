@@ -3,10 +3,10 @@
 [![Build Status](https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml/badge.svg?branch=main)](https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml?query=branch%3Amain)
 
 This is an implementation of an ACME-based CA. The [ACME
-protocol](https://github.com/ietf-wg-acme/acme/) allows the CA to
-automatically verify that an applicant for a certificate actually controls an
-identifier, and allows domain holders to issue and revoke certificates for
-their domains. Boulder is the software that runs [Let's
+protocol](https://github.com/ietf-wg-acme/acme/) allows the CA to automatically
+verify that an applicant for a certificate actually controls an identifier, and
+allows subscribers to issue and revoke certificates for the identifiers they
+control. Boulder is the software that runs [Let's
 Encrypt](https://letsencrypt.org).
 
 ## Contents

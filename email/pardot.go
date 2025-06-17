@@ -63,13 +63,14 @@ type PardotClientImpl struct {
 	contactsURL  string
 	tokenURL     string
 	token        *oAuthToken
+	emailCache   *EmailCache
 	clk          clock.Clock
 }
 
 var _ PardotClient = &PardotClientImpl{}
 
 // NewPardotClientImpl creates a new PardotClientImpl.
-func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string) (*PardotClientImpl, error) {
+func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string, cache *EmailCache) (*PardotClientImpl, error) {
 	contactsURL, err := url.JoinPath(pardotBaseURL, contactsPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to join contacts path: %w", err)
@@ -85,9 +86,9 @@ func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, 
 		clientSecret: clientSecret,
 		contactsURL:  contactsURL,
 		tokenURL:     tokenURL,
-
-		token: &oAuthToken{},
-		clk:   clk,
+		token:        &oAuthToken{},
+		emailCache:   cache,
+		clk:          clk,
 	}, nil
 }
 
@@ -144,6 +145,15 @@ func redactEmail(body []byte, email string) string {
 // SendContact submits an email to the Pardot Contacts endpoint, retrying up
 // to 3 times with exponential backoff.
 func (pc *PardotClientImpl) SendContact(email string) error {
+	if pc.emailCache.Seen(email) {
+		// Another goroutine has already sent this email address.
+		return nil
+	}
+	// There is a possible race here where two goroutines could enqueue and send
+	// the same email address between this check and the actual HTTP request.
+	// However, at an average rate of ~1 email every 2 seconds, this is unlikely
+	// to happen in practice.
+
 	var err error
 	for attempt := range maxAttempts {
 		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
@@ -183,6 +193,7 @@ func (pc *PardotClientImpl) SendContact(email string) error {
 
 		defer resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			pc.emailCache.Store(email)
 			return nil
 		}
 

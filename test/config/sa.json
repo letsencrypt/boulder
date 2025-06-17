@@ -29,7 +29,6 @@
 						"admin.boulder",
 						"ca.boulder",
 						"crl-updater.boulder",
-						"expiration-mailer.boulder",
 						"ra.boulder"
 					]
 				},
@@ -51,7 +50,8 @@
 		},
 		"features": {
 			"MultipleCertificateProfiles": true,
-			"InsertAuthzsIndividually": true
+			"InsertAuthzsIndividually": true,
+			"IgnoreAccountContacts": true
 		}
 	},
 	"syslog": {

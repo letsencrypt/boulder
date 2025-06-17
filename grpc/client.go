@@ -46,13 +46,11 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
 		cmi.Unary,
 		cmi.metrics.grpcMetrics.UnaryClientInterceptor(),
-		otelgrpc.UnaryClientInterceptor(),
 	}
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
 		cmi.Stream,
 		cmi.metrics.grpcMetrics.StreamClientInterceptor(),
-		otelgrpc.StreamClientInterceptor(),
 	}
 
 	target, hostOverride, err := c.MakeTargetAndHostOverride()
@@ -61,12 +59,13 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 	}
 
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
-	return grpc.Dial(
+	return grpc.NewClient(
 		target,
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 }
 

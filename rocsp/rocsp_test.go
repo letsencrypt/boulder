@@ -32,8 +32,8 @@ func makeClient() (*RWClient, clock.Clock) {
 
 	rdb := redis.NewRing(&redis.RingOptions{
 		Addrs: map[string]string{
-			"shard1": "10.33.33.2:4218",
-			"shard2": "10.33.33.3:4218",
+			"shard1": "10.77.77.2:4218",
+			"shard2": "10.77.77.3:4218",
 		},
 		Username:  "unittest-rw",
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
