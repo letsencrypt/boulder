@@ -22,16 +22,14 @@ var ctx = context.Background()
 type mockPardotClientImpl struct {
 	sync.Mutex
 	CreatedContacts []string
-	cache           *EmailCache
 }
 
 // newMockPardotClientImpl returns a MockPardotClientImpl, implementing the
 // PardotClient interface. Both refer to the same instance, with the interface
 // for mock interaction and the struct for state inspection and modification.
-func newMockPardotClientImpl(cache *EmailCache) (PardotClient, *mockPardotClientImpl) {
+func newMockPardotClientImpl() (PardotClient, *mockPardotClientImpl) {
 	mockImpl := &mockPardotClientImpl{
 		CreatedContacts: []string{},
-		cache:           cache,
 	}
 	return mockImpl, mockImpl
 }
@@ -41,8 +39,6 @@ func (m *mockPardotClientImpl) SendContact(email string) error {
 	m.Lock()
 	m.CreatedContacts = append(m.CreatedContacts, email)
 	m.Unlock()
-
-	m.cache.Store(email)
 	return nil
 }
 
@@ -59,8 +55,8 @@ func (m *mockPardotClientImpl) getCreatedContacts() []string {
 // ExporterImpl queue and cleanup() to drain and shutdown. If start() is called,
 // cleanup() must be called.
 func setup() (*ExporterImpl, *mockPardotClientImpl, func(), func()) {
-	mockClient, clientImpl := newMockPardotClientImpl(nil)
-	exporter := NewExporterImpl(mockClient, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+	mockClient, clientImpl := newMockPardotClientImpl()
+	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	return exporter, clientImpl,
 		func() { exporter.Start(daemonCtx) },
@@ -149,7 +145,7 @@ func TestSendContactsErrorMetrics(t *testing.T) {
 	t.Parallel()
 
 	mockClient := &mockAlwaysFailClient{}
-	exporter := NewExporterImpl(mockClient, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
@@ -165,4 +161,68 @@ func TestSendContactsErrorMetrics(t *testing.T) {
 
 	// Check that the error counter was incremented.
 	test.AssertMetricWithLabelsEquals(t, exporter.pardotErrorCounter, prometheus.Labels{}, 1)
+}
+
+func TestSendContactDeduplication(t *testing.T) {
+	t.Parallel()
+
+	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
+	mockClient, clientImpl := newMockPardotClientImpl()
+	exporter := NewExporterImpl(mockClient, cache, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+
+	daemonCtx, cancel := context.WithCancel(context.Background())
+	exporter.Start(daemonCtx)
+
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+		Emails: []string{"duplicate@example.com", "duplicate@example.com"},
+	})
+	test.AssertNotError(t, err, "Error enqueuing contacts")
+
+	// Drain the queue.
+	cancel()
+	exporter.Drain()
+
+	contacts := clientImpl.getCreatedContacts()
+	test.AssertEquals(t, 1, len(contacts))
+	test.AssertEquals(t, "duplicate@example.com", contacts[0])
+
+	// Only one successful send should be recorded.
+	test.AssertMetricWithLabelsEquals(t, exporter.emailsHandledCounter, prometheus.Labels{}, 1)
+
+	if !cache.Seen("duplicate@example.com") {
+		t.Fatalf("duplicate@example.com should have been cached after send")
+	}
+}
+
+type failClient struct{}
+
+func (f *failClient) SendContact(email string) error {
+	return fmt.Errorf("simulated failure")
+}
+
+func TestSendContactErrorRemovesFromCache(t *testing.T) {
+	t.Parallel()
+
+	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
+	fc := &failClient{}
+
+	exporter := NewExporterImpl(fc, cache, 1000000, 1, metrics.NoopRegisterer, blog.NewMock())
+
+	daemonCtx, cancel := context.WithCancel(context.Background())
+	exporter.Start(daemonCtx)
+
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+		Emails: []string{"error@example.com"},
+	})
+	test.AssertNotError(t, err, "enqueue failed")
+
+	// Drain the queue.
+	cancel()
+	exporter.Drain()
+
+	// The email should have been evicted from the cache after send encountered
+	// an error.
+	if cache.Seen("error@example.com") {
+		t.Fatalf("error@example.com should have been evicted from cache after send errors")
+	}
 }

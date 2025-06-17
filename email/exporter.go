@@ -40,6 +40,7 @@ type ExporterImpl struct {
 	maxConcurrentRequests int
 	limiter               *rate.Limiter
 	client                PardotClient
+	emailCache            *EmailCache
 	emailsHandledCounter  prometheus.Counter
 	pardotErrorCounter    prometheus.Counter
 	log                   blog.Logger
@@ -54,7 +55,7 @@ var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 // is assigned 40% (20,000 requests), it should also receive 40% of the max
 // concurrent requests (e.g., 2 out of 5). For more details, see:
 // https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+func NewExporterImpl(client PardotClient, cache *EmailCache, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
 	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
 
 	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{
@@ -74,6 +75,7 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequ
 		limiter:               limiter,
 		toSend:                make([]string, 0, contactsQueueCap),
 		client:                client,
+		emailCache:            cache,
 		emailsHandledCounter:  emailsHandledCounter,
 		pardotErrorCounter:    pardotErrorCounter,
 		log:                   logger,
@@ -145,6 +147,11 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 			impl.toSend = impl.toSend[:last]
 			impl.Unlock()
 
+			if impl.emailCache.StoreIfAbsent(email) {
+				// Another worker has already processed this email.
+				continue
+			}
+
 			err := impl.limiter.Wait(daemonCtx)
 			if err != nil && !errors.Is(err, context.Canceled) {
 				impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
@@ -153,10 +160,12 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 
 			err = impl.client.SendContact(email)
 			if err != nil {
+				impl.emailCache.Remove(email)
 				impl.pardotErrorCounter.Inc()
 				impl.log.Errf("Sending Contact to Pardot: %s", err)
+			} else {
+				impl.emailsHandledCounter.Inc()
 			}
-			impl.emailsHandledCounter.Inc()
 		}
 	}
 
