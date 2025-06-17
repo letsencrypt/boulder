@@ -180,7 +180,6 @@ func (x *Challenge) GetValidationrecords() []*ValidationRecord {
 type ValidationRecord struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Next unused field number: 9
-	// TODO(#7311): Replace hostname with Identifier.
 	Hostname          string   `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	Port              string   `protobuf:"bytes,2,opt,name=port,proto3" json:"port,omitempty"`
 	AddressesResolved [][]byte `protobuf:"bytes,3,rep,name=addressesResolved,proto3" json:"addressesResolved,omitempty"` // netip.Addr.MarshalText()

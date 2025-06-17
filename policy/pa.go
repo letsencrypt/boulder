@@ -428,7 +428,7 @@ func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error
 		// Unsupported identifier types will have been caught by
 		// WellFormedIdentifiers().
 		//
-		// TODO(#7311): We may want to implement IP address blocklists too.
+		// TODO(#8237): We may want to implement IP address blocklists too.
 		if ident.Type == identifier.TypeDNS {
 			if strings.Count(ident.Value, "*") > 0 {
 				// The base domain is the wildcard request with the `*.` prefix removed

@@ -486,8 +486,7 @@ func TestNewRegistration(t *testing.T) {
 		t.Fatalf("could not create new registration: %s", err)
 	}
 	test.AssertByteEquals(t, result.Key, acctKeyB)
-	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto == (result.Contact)[0], "Contact didn't match")
+	test.Assert(t, len(result.Contact) == 0, "Wrong number of contacts")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
 	reg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: result.Id})
@@ -3135,14 +3134,13 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 
 	// Make some valid authzs for four names. Half of them were validated
 	// recently and half were validated in excess of our CAA recheck time.
-	idents := identifier.ACMEIdentifiers{
-		identifier.NewDNS("not-example.com"),
-		identifier.NewDNS("www.not-example.com"),
-		identifier.NewDNS("still.not-example.com"),
-		identifier.NewDNS("definitely.not-example.com"),
+	names := []string{
+		"not-example.com",
+		"www.not-example.com",
+		"still.not-example.com",
+		"definitely.not-example.com",
 	}
-	names, err := idents.ToDNSSlice()
-	test.AssertNotError(t, err, "Converting identifiers to DNS names")
+	idents := identifier.NewDNSSlice(names)
 	var authzIDs []int64
 	for i, ident := range idents {
 		attemptedAt := older
