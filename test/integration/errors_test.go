@@ -20,7 +20,6 @@ import (
 	"github.com/eggsampler/acme/v3"
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -307,7 +306,7 @@ func TestOrderFinalizeEarly(t *testing.T) {
 		t.Fatalf("generating CSR: %s", err)
 	}
 
-	_, err = client.Client.FinalizeOrder(client.Account, order, csr)
+	order, err = client.Client.FinalizeOrder(client.Account, order, csr)
 	if err == nil {
 		t.Fatal("expected finalize to fail, but got success")
 	}
@@ -316,7 +315,10 @@ func TestOrderFinalizeEarly(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected error to be of type acme.Problem, got: %T", err)
 	}
-	if prob.Type != "urn:ietf:params:acme:error:"+string(probs.OrderNotReadyProblem) {
+	if prob.Type != "urn:ietf:params:acme:error:orderNotReady" {
 		t.Errorf("expected problem type 'urn:ietf:params:acme:error:orderNotReady', got: %s", prob.Type)
+	}
+	if order.Status != "pending" {
+		t.Errorf("expected order status to be pending, got: %s", order.Status)
 	}
 }
