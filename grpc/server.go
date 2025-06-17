@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -123,20 +124,20 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// This is the names which are allowlisted at the server level, plus the union
 	// of all names which are allowlisted for any individual service.
 	acceptedSANs := make(map[string]struct{})
+	var acceptedSANsSlice []string
 	for _, service := range sb.cfg.Services {
 		for _, name := range service.ClientNames {
 			acceptedSANs[name] = struct{}{}
+			if !slices.Contains(acceptedSANsSlice, name) {
+				acceptedSANsSlice = append(acceptedSANsSlice, name)
+			}
 		}
 	}
 
 	// Ensure that the health service has the same ClientNames as the other
 	// services, so that health checks can be performed by clients which are
 	// allowed to connect to the server.
-	healthService := sb.cfg.Services[healthpb.Health_ServiceDesc.ServiceName]
-	for as := range acceptedSANs {
-		healthService.ClientNames = append(healthService.ClientNames, as)
-	}
-	sb.cfg.Services[healthpb.Health_ServiceDesc.ServiceName] = healthService
+	sb.cfg.Services[healthpb.Health_ServiceDesc.ServiceName].ClientNames = acceptedSANsSlice
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
