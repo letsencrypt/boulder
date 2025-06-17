@@ -5,9 +5,12 @@ package integration
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +20,7 @@ import (
 	"github.com/eggsampler/acme/v3"
 	"github.com/go-jose/go-jose/v4"
 
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -275,5 +279,46 @@ func TestBadSignatureAlgorithm(t *testing.T) {
 	}
 	if len(prob.Algorithms) == 0 {
 		t.Error("problem document MUST contain acceptable algorithms, got none")
+	}
+}
+
+// TestOrderFinalizeEarly tests that finalizing an order before it is fully
+// authorized results in an orderNotReady error.
+func TestOrderFinalizeEarly(t *testing.T) {
+	t.Parallel()
+
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	domain := randomDomain(t)
+	idents := []acme.Identifier{{Type: "dns", Value: domain}}
+
+	order, err := client.Client.NewOrder(client.Account, idents)
+	if err != nil {
+		t.Fatalf("creating order: %s", err)
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating key: %s", err)
+	}
+	csr, err := makeCSR(key, idents, false)
+	if err != nil {
+		t.Fatalf("generating CSR: %s", err)
+	}
+
+	_, err = client.Client.FinalizeOrder(client.Account, order, csr)
+	if err == nil {
+		t.Fatal("expected finalize to fail, but got success")
+	}
+	var prob acme.Problem
+	ok := errors.As(err, &prob)
+	if !ok {
+		t.Fatalf("expected error to be of type acme.Problem, got: %T", err)
+	}
+	orderNotReadyProblem := probs.OrderNotReadyProblem
+	if prob.Type != "urn:ietf:params:acme:error:"+string(orderNotReadyProblem) {
+		t.Errorf("expected problem type 'urn:ietf:params:acme:error:orderNotReady', got: %s", prob.Type)
 	}
 }
