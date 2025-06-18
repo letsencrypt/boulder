@@ -3,6 +3,7 @@ name: Check for IANA special-purpose address registry updates
 on:
   schedule:
     - cron: "20 16 * * *"
+  workflow_dispatch:
 
 jobs:
   check-iana-registries:
