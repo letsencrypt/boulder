@@ -25,6 +25,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: verify release ancestry
+        run: ./tools/verify-release-ancestry.sh "$GITHUB_SHA"
+
       - name: Build .deb
         id: build
         env:
