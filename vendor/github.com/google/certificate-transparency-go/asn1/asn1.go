@@ -5,7 +5,7 @@
 // Package asn1 implements parsing of DER-encoded ASN.1 data structures,
 // as defined in ITU-T Rec X.690.
 //
-// See also ``A Layman's Guide to a Subset of ASN.1, BER, and DER,''
+// See also “A Layman's Guide to a Subset of ASN.1, BER, and DER,”
 // http://luca.ntop.org/Teaching/Appunti/asn1.html.
 //
 // This is a fork of the Go standard library ASN.1 implementation
@@ -14,15 +14,15 @@
 // wild.
 //
 // Main differences:
-//  - Extra "lax" tag that recursively applies and relaxes some strict
-//    checks:
-//     - parsePrintableString() copes with invalid PrintableString contents,
-//       e.g. use of tagPrintableString when the string data is really
-//       ISO8859-1.
-//     - checkInteger() allows integers that are not minimally encoded (and
-//       so are not correct DER).
-//     - parseObjectIdentifier() allows zero-length OIDs.
-//  - Better diagnostics on which particular field causes errors.
+//   - Extra "lax" tag that recursively applies and relaxes some strict
+//     checks:
+//   - parsePrintableString() copes with invalid PrintableString contents,
+//     e.g. use of tagPrintableString when the string data is really
+//     ISO8859-1.
+//   - checkInteger() allows integers that are not minimally encoded (and
+//     so are not correct DER).
+//   - parseObjectIdentifier() allows zero-length OIDs.
+//   - Better diagnostics on which particular field causes errors.
 package asn1
 
 // ASN.1 is a syntax for specifying abstract objects and BER, DER, PER, XER etc
@@ -43,6 +43,7 @@ import (
 	"reflect"
 	"strconv"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -526,6 +527,29 @@ func parseUTF8String(bytes []byte) (ret string, err error) {
 	return string(bytes), nil
 }
 
+// BMPString
+
+// parseBMPString parses an ASN.1 BMPString (Basic Multilingual Plane of
+// ISO/IEC/ITU 10646-1) from the given byte slice and returns it.
+func parseBMPString(bmpString []byte) (string, error) {
+	if len(bmpString)%2 != 0 {
+		return "", errors.New("pkcs12: odd-length BMP string")
+	}
+
+	// Strip terminator if present.
+	if l := len(bmpString); l >= 2 && bmpString[l-1] == 0 && bmpString[l-2] == 0 {
+		bmpString = bmpString[:l-2]
+	}
+
+	s := make([]uint16, 0, len(bmpString)/2)
+	for len(bmpString) > 0 {
+		s = append(s, uint16(bmpString[0])<<8+uint16(bmpString[1]))
+		bmpString = bmpString[2:]
+	}
+
+	return string(utf16.Decode(s)), nil
+}
+
 // A RawValue represents an undecoded ASN.1 object.
 type RawValue struct {
 	Class, Tag int
@@ -640,7 +664,7 @@ func parseSequenceOf(bytes []byte, sliceType reflect.Type, elemType reflect.Type
 			return
 		}
 		switch t.tag {
-		case TagIA5String, TagGeneralString, TagT61String, TagUTF8String, TagNumericString:
+		case TagIA5String, TagGeneralString, TagT61String, TagUTF8String, TagNumericString, TagBMPString:
 			// We pretend that various other string types are
 			// PRINTABLE STRINGs so that a sequence of them can be
 			// parsed into a []string.
@@ -684,7 +708,7 @@ var (
 	bigIntType           = reflect.TypeOf(new(big.Int))
 )
 
-// invalidLength returns true iff offset + length > sliceLength, or if the
+// invalidLength reports whether offset + length > sliceLength, or if the
 // addition would overflow.
 func invalidLength(offset, length, sliceLength int) bool {
 	return offset+length < offset || offset+length > sliceLength
@@ -787,6 +811,8 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 				result, err = parseGeneralizedTime(innerBytes)
 			case TagOctetString:
 				result = innerBytes
+			case TagBMPString:
+				result, err = parseBMPString(innerBytes)
 			default:
 				// If we don't know how to handle the type, we just leave Value as nil.
 			}
@@ -855,7 +881,7 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 	if universalTag == TagPrintableString {
 		if t.class == ClassUniversal {
 			switch t.tag {
-			case TagIA5String, TagGeneralString, TagT61String, TagUTF8String, TagNumericString:
+			case TagIA5String, TagGeneralString, TagT61String, TagUTF8String, TagNumericString, TagBMPString:
 				universalTag = t.tag
 			}
 		} else if params.stringType != 0 {
@@ -1056,6 +1082,9 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 			// that allow the encoding to change midstring and
 			// such. We give up and pass it as an 8-bit string.
 			v, err = parseT61String(innerBytes)
+		case TagBMPString:
+			v, err = parseBMPString(innerBytes)
+
 		default:
 			err = SyntaxError{fmt.Sprintf("internal error: unknown string type %d", universalTag), params.name}
 		}

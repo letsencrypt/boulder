@@ -3,27 +3,18 @@
 package integration
 
 import (
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509/pkix"
-	"encoding/asn1"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"io"
 	"math/big"
-	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
+	"github.com/eggsampler/acme/v3"
+
 	"github.com/letsencrypt/boulder/test"
-	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
-	"golang.org/x/crypto/ocsp"
 )
 
 // certID matches the ASN.1 structure of the CertID sequence defined by RFC6960.
@@ -34,105 +25,125 @@ type certID struct {
 	SerialNumber   *big.Int
 }
 
-func TestARI(t *testing.T) {
+func TestARIAndReplacement(t *testing.T) {
 	t.Parallel()
-	// This test is gated on the ServeRenewalInfo feature flag.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		return
-	}
 
-	// Create an account.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
+	// Setup
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-
-	// Create a private key.
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")
 
-	// Issue a cert.
+	// Issue a cert, request ARI, and check that both the suggested window and
+	// the retry-after header are approximately the right amount of time in the
+	// future.
 	name := random_domain()
-	ir, err := authAndIssue(client, key, []string{name})
+	ir, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
+
 	cert := ir.certs[0]
-
-	// Leverage OCSP to get components of ARI request path.
-	issuer, err := ocsp_helper.GetIssuer(cert)
-	test.AssertNotError(t, err, "failed to get issuer cert")
-	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{Hash: crypto.SHA256})
-	test.AssertNotError(t, err, "failed to build ocsp request")
-	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
-	test.AssertNotError(t, err, "failed to parse ocsp request")
-
-	// Make ARI request.
-	pathBytes, err := asn1.Marshal(certID{
-		pkix.AlgorithmIdentifier{ // SHA256
-			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
-			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
-		},
-		ocspReq.IssuerNameHash,
-		ocspReq.IssuerKeyHash,
-		cert.SerialNumber,
-	})
-	test.AssertNotError(t, err, "failed to marshal certID")
-	url := fmt.Sprintf(
-		"http://boulder.service.consul:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
-		base64.RawURLEncoding.EncodeToString(pathBytes),
-	)
-	resp, err := http.Get(url)
+	ari, err := client.GetRenewalInfo(cert)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
-	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+	test.AssertEquals(t, ari.SuggestedWindow.Start.Sub(time.Now()).Round(time.Hour), 1418*time.Hour)
+	test.AssertEquals(t, ari.SuggestedWindow.End.Sub(time.Now()).Round(time.Hour), 1461*time.Hour)
+	test.AssertEquals(t, ari.RetryAfter.Sub(time.Now()).Round(time.Hour), 6*time.Hour)
 
-	// Revoke the cert, then request ARI again, and the window should now be in
-	// the past.
+	// Make a new order which indicates that it replaces the cert issued above,
+	// and verify that the replacement order succeeds.
+	_, order, err := makeClientAndOrder(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "", cert)
+	test.AssertNotError(t, err, "failed to issue test cert")
+	replaceID, err := acme.GenerateARICertID(cert)
+	test.AssertNotError(t, err, "failed to generate ARI certID")
+	test.AssertEquals(t, order.Replaces, replaceID)
+	test.AssertNotEquals(t, order.Replaces, "")
+
+	// Retrieve the order and verify that it has the correct replaces field.
+	resp, err := client.FetchOrder(client.Account, order.URL)
+	test.AssertNotError(t, err, "failed to fetch order")
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		test.AssertEquals(t, resp.Replaces, order.Replaces)
+	} else {
+		test.AssertEquals(t, resp.Replaces, "")
+	}
+
+	// Try another replacement order and verify that it fails.
+	_, order, err = makeClientAndOrder(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "", cert)
+	test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
+	test.AssertContains(t, err.Error(), "urn:ietf:params:acme:error:alreadyReplaced")
+	test.AssertContains(t, err.Error(), "already has a replacement order")
+	test.AssertContains(t, err.Error(), "error code 409")
+}
+
+func TestARIShortLived(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	client, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "creating random cert key")
+
+	// Issue a short-lived cert, request ARI, and check that both the suggested
+	// window and the retry-after header are approximately the right amount of
+	// time in the future.
+	ir, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "shortlived")
+	test.AssertNotError(t, err, "failed to issue test cert")
+
+	cert := ir.certs[0]
+	ari, err := client.GetRenewalInfo(cert)
+	test.AssertNotError(t, err, "ARI request should have succeeded")
+	test.AssertEquals(t, ari.SuggestedWindow.Start.Sub(time.Now()).Round(time.Hour), 78*time.Hour)
+	test.AssertEquals(t, ari.SuggestedWindow.End.Sub(time.Now()).Round(time.Hour), 81*time.Hour)
+	test.AssertEquals(t, ari.RetryAfter.Sub(time.Now()).Round(time.Hour), 6*time.Hour)
+}
+
+func TestARIRevoked(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	client, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "creating random cert key")
+
+	// Issue a cert, revoke it, request ARI, and check that the suggested window
+	// is in the past, indicating that a renewal should happen immediately.
+	ir, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
+	test.AssertNotError(t, err, "failed to issue test cert")
+
+	cert := ir.certs[0]
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 0)
 	test.AssertNotError(t, err, "failed to revoke cert")
-	resp, err = http.Get(url)
+
+	ari, err := client.GetRenewalInfo(cert)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
-	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+	test.Assert(t, ari.SuggestedWindow.End.Before(time.Now()), "suggested window should end in the past")
+	test.Assert(t, ari.SuggestedWindow.Start.Before(ari.SuggestedWindow.End), "suggested window should start before it ends")
+}
 
-	riBytes, err := io.ReadAll(resp.Body)
-	test.AssertNotError(t, err, "failed to read ARI response")
-	var ri core.RenewalInfo
-	err = json.Unmarshal(riBytes, &ri)
-	test.AssertNotError(t, err, "failed to parse ARI response")
-	test.Assert(t, ri.SuggestedWindow.End.Before(time.Now()), "suggested window should end in the past")
-	test.Assert(t, ri.SuggestedWindow.Start.Before(ri.SuggestedWindow.End), "suggested window should start before it ends")
+func TestARIForPrecert(t *testing.T) {
+	t.Parallel()
 
-	// Try to make a new cert for a new domain, but have it fail so only
-	// a precert gets created.
-	name = random_domain()
+	// Setup
+	client, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "creating random cert key")
+
+	// Try to make a new cert for a new domain, but sabotage the CT logs so
+	// issuance fails.
+	name := random_domain()
 	err = ctAddRejectHost(name)
 	test.AssertNotError(t, err, "failed to add ct-test-srv reject host")
-	_, err = authAndIssue(client, key, []string{name})
+	_, err = authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "")
 	test.AssertError(t, err, "expected error from authAndIssue, was nil")
-	cert, err = ctFindRejection([]string{name})
+
+	// Recover the precert from CT, then request ARI and check
+	// that it fails, because we don't serve ARI for non-issued certs.
+	cert, err := ctFindRejection([]string{name})
 	test.AssertNotError(t, err, "failed to find rejected precert")
 
-	// Get ARI path components.
-	issuer, err = ocsp_helper.GetIssuer(cert)
-	test.AssertNotError(t, err, "failed to get issuer cert")
-	ocspReqBytes, err = ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{Hash: crypto.SHA256})
-	test.AssertNotError(t, err, "failed to build ocsp request")
-	ocspReq, err = ocsp.ParseRequest(ocspReqBytes)
-	test.AssertNotError(t, err, "failed to parse ocsp request")
-
-	// Make ARI request.
-	pathBytes, err = asn1.Marshal(certID{
-		pkix.AlgorithmIdentifier{ // SHA256
-			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
-			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
-		},
-		ocspReq.IssuerNameHash,
-		ocspReq.IssuerKeyHash,
-		cert.SerialNumber,
-	})
-	test.AssertNotError(t, err, "failed to marshal certID")
-	url = fmt.Sprintf(
-		"http://boulder.service.consul:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
-		base64.RawURLEncoding.EncodeToString(pathBytes),
-	)
-	resp, err = http.Get(url)
-	test.AssertNotError(t, err, "ARI request should have succeeded")
-	test.AssertEquals(t, resp.StatusCode, http.StatusNotFound)
+	_, err = client.GetRenewalInfo(cert)
+	test.AssertError(t, err, "ARI request should have failed")
+	test.AssertEquals(t, err.(acme.Problem).Status, 404)
 }

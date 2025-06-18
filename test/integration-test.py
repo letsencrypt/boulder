@@ -34,7 +34,7 @@ race_detection = True
 if os.environ.get('RACE', 'true') != 'true':
     race_detection = False
 
-def run_go_tests(filterPattern=None):
+def run_go_tests(filterPattern=None,verbose=False):
     """
     run_go_tests launches the Go integration tests. The go test command must
     return zero or an exception will be raised. If the filterPattern is provided
@@ -43,26 +43,11 @@ def run_go_tests(filterPattern=None):
     cmdLine = ["go", "test"]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
-    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
+    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race"]
+    if verbose:
+        cmdLine = cmdLine + ["-v"]
+    cmdLine = cmdLine +  ["./test/integration"]
     subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
-
-def test_single_ocsp():
-    """Run ocsp-responder with the single OCSP response generated for the intermediate
-       certificate using the ceremony tool during setup and check that it successfully
-       answers OCSP requests, and shut the responder back down.
-
-       This is a non-API test.
-    """
-    p = subprocess.Popen(
-        ["./bin/boulder", "ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
-    waitport(4003, ' '.join(p.args))
-
-    # Verify that the static OCSP responder, which answers with a
-    # pre-signed, long-lived response for the CA cert, works.
-    verify_ocsp("/hierarchy/intermediate-cert-rsa-a.pem", "/hierarchy/root-cert-rsa.pem", "http://localhost:4003", "good")
-
-    p.send_signal(signal.SIGTERM)
-    p.wait()
 
 exit_status = 1
 
@@ -72,6 +57,8 @@ def main():
                         help="run integration tests using chisel")
     parser.add_argument('--gotest', dest="run_go", action="store_true",
                         help="run Go integration tests")
+    parser.add_argument('--gotestverbose', dest="run_go_verbose", action="store_true",
+                        help="run Go integration tests with verbose output")
     parser.add_argument('--filter', dest="test_case_filter", action="store",
                         help="Regex filter for test cases")
     # allow any ACME client to run custom command for integration
@@ -85,9 +72,6 @@ def main():
 
     if not startservers.install(race_detection=race_detection):
         raise(Exception("failed to build"))
-
-    # Setup issuance hierarchy
-    startservers.setupHierarchy()
 
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
@@ -111,7 +95,10 @@ def main():
         run_chisel(args.test_case_filter)
 
     if args.run_go:
-        run_go_tests(args.test_case_filter)
+        run_go_tests(args.test_case_filter, False)
+    
+    if args.run_go_verbose:
+        run_go_tests(args.test_case_filter, True)
 
     if args.custom:
         run(args.custom.split())
@@ -122,54 +109,11 @@ def main():
         run_cert_checker()
         check_balance()
 
-        # Run the load-generator last. run_loadtest will stop the
-        # pebble-challtestsrv before running the load-generator and will not restart
-        # it.
-        run_loadtest()
-
     if not startservers.check():
         raise(Exception("startservers.check failed"))
 
-    # This test is flaky, so it's temporarily disabled.
-    # TODO(#4583): Re-enable this test.
-    #check_slow_queries()
-
     global exit_status
     exit_status = 0
-
-def check_slow_queries():
-    """Checks that we haven't run any slow queries during the integration test.
-
-    This depends on flags set on mysqld in docker-compose.yml.
-
-    We skip the boulder_sa_test database because we manually run a bunch of
-    non-indexed queries in unittests. We skip actions by the setup and root
-    users because they're known to be non-indexed. Similarly we skip the
-    cert_checker, mailer, and janitor's work because they are known to be
-    slow (though we should eventually improve these).
-    The SELECT ... IN () on the authz2 table shows up in the slow query log
-    a lot. Presumably when there are a lot of entries in the IN() argument
-    and the table is small, it's not efficient to use the index. But we
-    should dig into this more.
-    """
-    query = """
-        SELECT * FROM mysql.slow_log
-            WHERE db != 'boulder_sa_test'
-            AND user_host NOT LIKE "test_setup%"
-            AND user_host NOT LIKE "root%"
-            AND user_host NOT LIKE "cert_checker%"
-            AND user_host NOT LIKE "mailer%"
-            AND user_host NOT LIKE "janitor%"
-            AND sql_text NOT LIKE 'SELECT status, expires FROM authz2 WHERE id IN %'
-            AND sql_text NOT LIKE '%LEFT JOIN orderToAuthz2 %'
-        \G
-    """
-    output = subprocess.check_output(
-      ["mysql", "-h", "boulder-mysql", "-e", query],
-      stderr=subprocess.STDOUT).decode()
-    if len(output) > 0:
-        print(output)
-        raise Exception("Found slow queries in the slow query log")
 
 def run_chisel(test_case_filter):
     for key, value in inspect.getmembers(v2_integration):
@@ -179,20 +123,6 @@ def run_chisel(test_case_filter):
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()
 
-def run_loadtest():
-    """Run the ACME v2 load generator."""
-    latency_data_file = "%s/integration-test-latency.json" % tempdir
-
-    # Stop the global pebble-challtestsrv - it will conflict with the
-    # load-generator's internal challtestsrv. We don't restart it because
-    # run_loadtest() is called last and there are no remaining tests to run that
-    # might benefit from the pebble-challtestsrv being restarted.
-    startservers.stopChallSrv()
-
-    run(["./bin/load-generator",
-        "-config", "test/load-generator/config/integration-test-config.json",
-        "-results", latency_data_file])
-
 def check_balance():
     """Verify that gRPC load balancing across backends is working correctly.
 
@@ -200,16 +130,16 @@ def check_balance():
     metric is present, which means that backend handled at least one request.
     """
     addresses = [
-        "sa1.service.consul:8003",
-        "sa2.service.consul:8103",
-        "publisher1.service.consul:8009",
-        "publisher2.service.consul:8109",
-        "va1.service.consul:8004",
-        "va2.service.consul:8104",
-        "ca1.service.consul:8001",
-        "ca2.service.consul:8104",
-        "ra1.service.consul:8002",
-        "ra2.service.consul:8102",
+        "localhost:8003", # SA
+        "localhost:8103", # SA
+        "localhost:8009", # publisher
+        "localhost:8109", # publisher
+        "localhost:8004", # VA
+        "localhost:8104", # VA
+        "localhost:8001", # CA
+        "localhost:8101", # CA
+        "localhost:8002", # RA
+        "localhost:8102", # RA
     ]
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)

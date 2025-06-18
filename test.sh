@@ -16,7 +16,17 @@ STAGE="starting"
 STATUS="FAILURE"
 RUN=()
 UNIT_PACKAGES=()
+UNIT_FLAGS=()
+INTEGRATION_FLAGS=()
 FILTER=()
+
+#
+# Cleanup Functions
+#
+
+function flush_redis() {
+  go run ./test/boulder-tools/flushredis/main.go
+}
 
 #
 # Print Functions
@@ -28,11 +38,6 @@ function print_outcome() {
   else
     echo -e "\e[31m"$STATUS"\e[0m while running \e[31m"$STAGE"\e[0m"
   fi
-}
-
-function print_list_of_integration_tests() {
-  go test -tags integration -list=. ./test/integration/... | grep '^Test'
-  exit 0
 }
 
 function exit_msg() {
@@ -75,19 +80,7 @@ function run_and_expect_silence() {
 # Testing Helpers
 #
 function run_unit_tests() {
-  if [ "${RACE}" == true ]; then
-    # Run the full suite of tests once with the -race flag.
-    go test -race "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
-  else
-    # When running locally, we skip the -race flag for speedier test runs. We
-    # also pass -p 1 to require the tests to run serially instead of in
-    # parallel. This is because our unittests depend on mutating a database and
-    # then cleaning up after themselves. If they run in parallel, they can fail
-    # spuriously because one test is modifying a table (especially
-    # registrations) while another test is reading it.
-    # https://github.com/letsencrypt/boulder/issues/1499
-    go test "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
-  fi
+  go test "${UNIT_FLAGS[@]}" "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
 }
 
 #
@@ -104,14 +97,14 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 
     -l, --lints                           Adds lint to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
+    -v, --verbose                         Enables verbose output for unit and integration tests
+    -w, --unit-without-cache              Disables go test caching for unit tests
     -p <DIR>, --unit-test-package=<DIR>   Run unit tests for specific go package(s)
-    -e, --enable-race-detection           Enables -race flag for all unit and integration tests
+    -e, --enable-race-detection           Enables race detection for unit and integration tests
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -i, --integration                     Adds integration to the list of tests to run
     -s, --start-py                        Adds start to the list of tests to run
-    -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
-    -o, --list-integration-tests          Outputs a list of the available integration tests
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
 
                                           Note:
@@ -127,7 +120,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts lueciosvgnhp:f:-: OPT; do
+while getopts luvwecismgnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -136,13 +129,13 @@ while getopts lueciosvgnhp:f:-: OPT; do
   case "$OPT" in
     l | lints )                      RUN+=("lints") ;;
     u | unit )                       RUN+=("unit") ;;
+    v | verbose )                    UNIT_FLAGS+=("-v"); INTEGRATION_FLAGS+=("-v") ;;
+    w | unit-without-cache )         UNIT_FLAGS+=("-count=1") ;;
     p | unit-test-package )          check_arg; UNIT_PACKAGES+=("${OPTARG}") ;;
-    e | enable-race-detection )      RACE="true" ;;
+    e | enable-race-detection )      RACE="true"; UNIT_FLAGS+=("-race") ;;
     i | integration )                RUN+=("integration") ;;
-    o | list-integration-tests )     print_list_of_integration_tests ;;
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start-py )                   RUN+=("start") ;;
-    v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
@@ -152,9 +145,7 @@ while getopts lueciosvgnhp:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run. Order doesn't matter. Note: gomod-vendor
-# is specifically left out of the defaults, because we don't want to run
-# it locally (it could delete local state).
+# The list of segments to run. Order doesn't matter.
 if [ -z "${RUN[@]+x}" ]
 then
   RUN+=("lints" "unit" "integration")
@@ -182,7 +173,15 @@ fi
 # for all boulder packages
 if [ -z "${UNIT_PACKAGES[@]+x}" ]
 then
-  UNIT_PACKAGES+=("-p" "1" "./...")
+  # '-p=1' configures unit tests to run serially, rather than in parallel. Our
+  # unit tests depend on mutating a database and then cleaning up after
+  # themselves. If these test were run in parallel, they could fail spuriously
+  # due to one test modifying a table (especially registrations) while another
+  # test is reading from it.
+  # https://github.com/letsencrypt/boulder/issues/1499
+  # https://pkg.go.dev/cmd/go#hdr-Testing_flags
+  UNIT_FLAGS+=("-p=1")
+  UNIT_PACKAGES+=("./...")
 fi
 
 print_heading "Boulder Test Suite CLI"
@@ -194,8 +193,9 @@ trap "print_outcome" EXIT
 settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
+    GOCACHE:            $(go env GOCACHE)
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
-    RACE:               $RACE
+    UNIT_FLAGS:         ${UNIT_FLAGS[@]}
     FILTER:             ${FILTER[@]}
 
 EOM
@@ -212,12 +212,11 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Lints"
   golangci-lint run --timeout 9m ./...
   python3 test/grafana/lint.py
-  # Check for common spelling errors using codespell.
-  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
-  # words should be all lowercase).
-  run_and_expect_silence codespell \
-    --ignore-words=.codespell.ignore.txt \
-    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
+  # Check for common spelling errors using typos.
+  # Update .typos.toml if you find false positives
+  run_and_expect_silence typos
+  # Check test JSON configs are formatted consistently
+  run_and_expect_silence ./test/format-configs.py 'test/config*/*.json'
 fi
 
 #
@@ -226,6 +225,7 @@ fi
 STAGE="unit"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
+  flush_redis
   run_unit_tests
 fi
 
@@ -235,7 +235,12 @@ fi
 STAGE="integration"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
-  python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
+  flush_redis
+  if [[ "${INTEGRATION_FLAGS[@]}" =~ "-v" ]] ; then
+    python3 test/integration-test.py --chisel --gotestverbose "${FILTER[@]}"
+  else
+    python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
+  fi
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
@@ -244,25 +249,14 @@ STAGE="start"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
   python3 start.py &
-  for I in $(seq 1 100); do
+  for I in {1..115}; do
     sleep 1
-    curl -s http://localhost:4001/directory && break
+    curl -s http://localhost:4001/directory && echo "Boulder took ${I} seconds to come up" && break
   done
-  if [[ "$I" = 100 ]]; then
-    echo "Boulder did not come up after ./start.py."
+  if [ "${I}" -eq 115 ]; then
+    echo "Boulder did not come up after ${I} seconds during ./start.py."
     exit 1
   fi
-fi
-
-# Run go mod vendor (happens only in CI) to check that the versions in
-# vendor/ really exist in the remote repo and match what we have.
-STAGE="gomod-vendor"
-if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  print_heading "Running Go Mod Tidy"
-  go mod tidy
-  print_heading "Running Go Mod Vendor"
-  go mod vendor
-  run_and_expect_silence git diff --exit-code .
 fi
 
 # Run generate to make sure all our generated code can be re-generated with

@@ -1,20 +1,41 @@
 package sa
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func TestInvalidDSN(t *testing.T) {
-	_, err := NewDbMap("invalid", DbSettings{})
+	_, err := DBMapForTest("invalid")
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
+
+	DSN := "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
+	_, err = DBMapForTest(DSN)
+	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
+	_, err = DBMapForTest(DSN)
+	test.AssertError(t, err, "Variable is unable to be set in the SESSION scope, but was declared")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
+	_, err = DBMapForTest(DSN)
+	test.AssertError(t, err, "Variable declared with incorrect quoting")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
+	_, err = DBMapForTest(DSN)
+	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
 }
 
 var errExpected = errors.New("expected")
@@ -53,33 +74,41 @@ func TestDbSettings(t *testing.T) {
 		connMaxIdleTime = c
 		oldSetConnMaxIdleTime(db, connMaxIdleTime)
 	}
-	dbSettings := DbSettings{
+	dsnFile := path.Join(t.TempDir(), "dbconnect")
+	err := os.WriteFile(dsnFile,
+		[]byte("sa@tcp(boulder-proxysql:6033)/boulder_sa_integration"),
+		os.ModeAppend)
+	test.AssertNotError(t, err, "writing dbconnect file")
+
+	config := cmd.DBConfig{
+		DBConnectFile:   dsnFile,
 		MaxOpenConns:    100,
 		MaxIdleConns:    100,
-		ConnMaxLifetime: 100,
-		ConnMaxIdleTime: 100,
+		ConnMaxLifetime: config.Duration{Duration: 100 * time.Second},
+		ConnMaxIdleTime: config.Duration{Duration: 100 * time.Second},
 	}
-	_, err := NewDbMap("sa@tcp(boulder-mysql:3306)/boulder_sa_integration", dbSettings)
+	_, err = InitWrappedDb(config, nil, nil)
 	if err != nil {
 		t.Errorf("connecting to DB: %s", err)
 	}
 	if maxOpenConns != 100 {
-		t.Errorf("maxOpenConns was not set: expected %d, got %d", 100, maxOpenConns)
+		t.Errorf("maxOpenConns was not set: expected 100, got %d", maxOpenConns)
 	}
 	if maxIdleConns != 100 {
-		t.Errorf("maxIdleConns was not set: expected %d, got %d", 100, maxIdleConns)
+		t.Errorf("maxIdleConns was not set: expected 100, got %d", maxIdleConns)
 	}
-	if connMaxLifetime != 100 {
-		t.Errorf("connMaxLifetime was not set: expected %d, got %d", 100, connMaxLifetime)
+	if connMaxLifetime != 100*time.Second {
+		t.Errorf("connMaxLifetime was not set: expected 100s, got %s", connMaxLifetime)
 	}
-	if connMaxIdleTime != 100 {
-		t.Errorf("connMaxIdleTime was not set: expected %d, got %d", 100, connMaxIdleTime)
+	if connMaxIdleTime != 100*time.Second {
+		t.Errorf("connMaxIdleTime was not set: expected 100s, got %s", connMaxIdleTime)
 	}
 }
 
+// TODO: Change this to test `newDbMapFromMySQLConfig` instead?
 func TestNewDbMap(t *testing.T) {
-	const mysqlConnectURL = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expected = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=%27STRICT_ALL_TABLES%27"
+	const mysqlConnectURL = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.640000&max_statement_time=0.760000&sql_mode=%27STRICT_ALL_TABLES%27"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen
@@ -91,7 +120,7 @@ func TestNewDbMap(t *testing.T) {
 		return nil, errExpected
 	}
 
-	dbMap, err := NewDbMap(mysqlConnectURL, DbSettings{})
+	dbMap, err := DBMapForTest(mysqlConnectURL)
 	if err != errExpected {
 		t.Errorf("got incorrect error. Got %v, expected %v", err, errExpected)
 	}
@@ -102,11 +131,11 @@ func TestNewDbMap(t *testing.T) {
 }
 
 func TestStrictness(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{1, 0, 0, 0})
+	dbMap, err := DBMapForTest(vars.DBConnSA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = dbMap.Exec(`insert into orderToAuthz2 set
+	_, err = dbMap.ExecContext(ctx, `insert into orderToAuthz2 set
 		orderID=999999999999999999999999999,
 		authzID=999999999999999999999999999;`)
 	if err == nil {
@@ -118,14 +147,14 @@ func TestStrictness(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", DbSettings{1, 0, 0, 0})
+	dbMap, err := DBMapForTest(vars.DBConnSA + "?max_statement_time=1")
 	if err != nil {
 		t.Fatal("Error setting up DB:", err)
 	}
 	// SLEEP is defined to return 1 if it was interrupted, but we want to actually
 	// get an error to simulate what would happen with a slow query. So we wrap
 	// the SLEEP in a subselect.
-	_, err = dbMap.Exec(`SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
+	_, err = dbMap.ExecContext(ctx, `SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
 	if err == nil {
 		t.Fatal("Expected error when running slow query, got none.")
 	}
@@ -142,11 +171,12 @@ func TestTimeouts(t *testing.T) {
 // databases that have auto_increment columns use BIGINT for the data type. Our
 // data is too big for INT.
 func TestAutoIncrementSchema(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBInfoSchemaRoot, DbSettings{1, 0, 0, 0})
+	dbMap, err := DBMapForTest(vars.DBInfoSchemaRoot)
 	test.AssertNotError(t, err, "unexpected err making NewDbMap")
 
 	var count int64
 	err = dbMap.SelectOne(
+		context.Background(),
 		&count,
 		`SELECT COUNT(*) FROM columns WHERE
 			table_schema LIKE 'boulder%' AND
@@ -158,17 +188,19 @@ func TestAutoIncrementSchema(t *testing.T) {
 
 func TestAdjustMySQLConfig(t *testing.T) {
 	conf := &mysql.Config{}
-	adjustMySQLConfig(conf)
+	err := adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
 	})
 
 	conf = &mysql.Config{ReadTimeout: 100 * time.Second}
-	adjustMySQLConfig(conf)
+	err = adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":           "'STRICT_ALL_TABLES'",
-		"max_statement_time": "95",
-		"long_query_time":    "80",
+		"max_statement_time": "95.000000",
+		"long_query_time":    "80.000000",
 	})
 
 	conf = &mysql.Config{
@@ -177,10 +209,11 @@ func TestAdjustMySQLConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	adjustMySQLConfig(conf)
+	err = adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":        "'STRICT_ALL_TABLES'",
-		"long_query_time": "80",
+		"long_query_time": "80.000000",
 	})
 
 	conf = &mysql.Config{
@@ -188,7 +221,8 @@ func TestAdjustMySQLConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	adjustMySQLConfig(conf)
+	err = adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
 	})

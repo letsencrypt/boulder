@@ -30,13 +30,13 @@ func Number(thisUpdate time.Time) number {
 type id string
 
 // Id is a utility function which constructs a new `id`.
-func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) id {
+func Id(issuerID issuance.NameID, shardIdx int, crlNumber number) id {
 	type info struct {
-		IssuerID  issuance.IssuerNameID `json:"issuerID"`
-		CRLNumber number                `json:"crlNumber"`
-		ShardIdx  int                   `json:"shardIdx"`
+		IssuerID  issuance.NameID `json:"issuerID"`
+		ShardIdx  int             `json:"shardIdx"`
+		CRLNumber number          `json:"crlNumber"`
 	}
-	jsonBytes, err := json.Marshal(info{issuerID, crlNumber, shardIdx})
+	jsonBytes, err := json.Marshal(info{issuerID, shardIdx, crlNumber})
 	if err != nil {
 		panic(err)
 	}

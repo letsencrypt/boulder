@@ -27,16 +27,19 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/grpc/internal/backoff"
-	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
+
+	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/grpc/internal/backoff"
+	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 )
 
 var logger = grpclog.Component("srv")
@@ -58,16 +61,6 @@ const defaultDNSSvrPort = "53"
 var defaultResolver netResolver = net.DefaultResolver
 
 var (
-	errMissingAddr = errors.New("dns resolver: missing address")
-
-	// Addresses ending with a colon that is supposed to be the separator
-	// between host and port is not allowed.  E.g. "::" is a valid address as
-	// it is an IPv6 address (host only) and "[::]:" is invalid as it ends with
-	// a colon as the host and port separator
-	errEndsWithColon = errors.New("dns resolver: missing port after port-separator colon")
-)
-
-var (
 	// To prevent excessive re-resolution, we enforce a rate limit on DNS
 	// resolution requests.
 	minDNSResRate = 30 * time.Second
@@ -81,7 +74,7 @@ var customAuthorityDialer = func(authority string) func(ctx context.Context, net
 }
 
 var customAuthorityResolver = func(authority string) (*net.Resolver, error) {
-	host, port, err := parseTarget(authority, defaultDNSSvrPort)
+	host, port, err := bdns.ParseTarget(authority, defaultDNSSvrPort)
 	if err != nil {
 		return nil, err
 	}
@@ -97,8 +90,8 @@ func NewDefaultSRVBuilder() resolver.Builder {
 	return &srvBuilder{scheme: "srv"}
 }
 
-// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS resolvers
-// with a custom grpc.Balancer use by nonce-service clients.
+// NewNonceSRVBuilder creates a srvBuilder which is used to factory SRV DNS
+// resolvers with a custom grpc.Balancer used by nonce-service clients.
 func NewNonceSRVBuilder() resolver.Builder {
 	return &srvBuilder{scheme: noncebalancer.SRVResolverScheme, balancer: noncebalancer.Name}
 }
@@ -128,11 +121,11 @@ func (b *srvBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts 
 		rn:     make(chan struct{}, 1),
 	}
 
-	if target.Authority == "" {
+	if target.URL.Host == "" {
 		d.resolver = defaultResolver
 	} else {
 		var err error
-		d.resolver, err = customAuthorityResolver(target.Authority)
+		d.resolver, err = customAuthorityResolver(target.URL.Host)
 		if err != nil {
 			return nil, err
 		}
@@ -238,32 +231,39 @@ func (d *dnsResolver) watcher() {
 
 func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
 	var newAddrs []resolver.Address
+	var errs []error
 	for _, n := range d.names {
 		_, srvs, err := d.resolver.LookupSRV(d.ctx, n.service, "tcp", n.domain)
 		if err != nil {
 			err = handleDNSError(err, "SRV") // may become nil
-			return nil, err
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
 		}
 		for _, s := range srvs {
 			backendAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
 			if err != nil {
 				err = handleDNSError(err, "A") // may become nil
-				if err == nil {
-					// If there are other SRV records, look them up and ignore this
-					// one that does not exist.
+				if err != nil {
+					errs = append(errs, err)
 					continue
 				}
-				return nil, err
 			}
 			for _, a := range backendAddrs {
 				ip, ok := formatIP(a)
 				if !ok {
-					return nil, fmt.Errorf("srv: error parsing A record IP address %v", a)
+					errs = append(errs, fmt.Errorf("srv: error parsing A record IP address %v", a))
+					continue
 				}
 				addr := ip + ":" + strconv.Itoa(int(s.Port))
 				newAddrs = append(newAddrs, resolver.Address{Addr: addr, ServerName: s.Target})
 			}
 		}
+	}
+	// Only return an error if all lookups failed.
+	if len(errs) > 0 && len(newAddrs) == 0 {
+		return nil, errors.Join(errs...)
 	}
 	return newAddrs, nil
 }
@@ -294,53 +294,17 @@ func (d *dnsResolver) lookup() (*resolver.State, error) {
 // If addr is an IPv4 address, return the addr and ok = true.
 // If addr is an IPv6 address, return the addr enclosed in square brackets and ok = true.
 func formatIP(addr string) (addrIP string, ok bool) {
-	ip := net.ParseIP(addr)
-	if ip == nil {
+	ip, err := netip.ParseAddr(addr)
+	if err != nil {
 		return "", false
 	}
-	if ip.To4() != nil {
+	if ip.Is4() {
 		return addr, true
 	}
 	return "[" + addr + "]", true
 }
 
-// parseTarget takes the user input target string and default port, returns formatted host and port info.
-// If target doesn't specify a port, set the port to be the defaultPort.
-// If target is in IPv6 format and host-name is enclosed in square brackets, brackets
-// are stripped when setting the host.
-// examples:
-// target: "www.google.com" defaultPort: "443" returns host: "www.google.com", port: "443"
-// target: "ipv4-host:80" defaultPort: "443" returns host: "ipv4-host", port: "80"
-// target: "[ipv6-host]" defaultPort: "443" returns host: "ipv6-host", port: "443"
-// target: ":80" defaultPort: "443" returns host: "localhost", port: "80"
-func parseTarget(target, defaultPort string) (host, port string, err error) {
-	if target == "" {
-		return "", "", errMissingAddr
-	}
-	if ip := net.ParseIP(target); ip != nil {
-		// target is an IPv4 or IPv6(without brackets) address
-		return target, defaultPort, nil
-	}
-	if host, port, err = net.SplitHostPort(target); err == nil {
-		if port == "" {
-			// If the port field is empty (target ends with colon), e.g. "[::1]:", this is an error.
-			return "", "", errEndsWithColon
-		}
-		// target has port, i.e ipv4-host:port, [ipv6-host]:port, host-name:port
-		if host == "" {
-			// Keep consistent with net.Dial(): If the host is empty, as in ":80", the local system is assumed.
-			host = "localhost"
-		}
-		return host, port, nil
-	}
-	if host, port, err = net.SplitHostPort(target + ":" + defaultPort); err == nil {
-		// target doesn't have port
-		return host, port, nil
-	}
-	return "", "", fmt.Errorf("invalid target address %v, error info: %v", target, err)
-}
-
-// parseTarget takes the user input target string and parses the service domain
+// parseServiceDomain takes the user input target string and parses the service domain
 // names for SRV lookup. Input is expected to be a hostname containing at least
 // two labels (e.g. "foo.bar", "foo.bar.baz"). The first label is the service
 // name and the rest is the domain name. If the target is not in the expected

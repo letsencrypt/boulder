@@ -8,31 +8,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/metrics"
-	"golang.org/x/crypto/ocsp"
 )
 
 func makeClient() (*RWClient, clock.Clock) {
-	CACertFile := "../test/redis-tls/minica.pem"
-	CertFile := "../test/redis-tls/boulder/cert.pem"
-	KeyFile := "../test/redis-tls/boulder/key.pem"
+	CACertFile := "../test/certs/ipki/minica.pem"
+	CertFile := "../test/certs/ipki/localhost/cert.pem"
+	KeyFile := "../test/certs/ipki/localhost/key.pem"
 	tlsConfig := cmd.TLSConfig{
-		CACertFile: &CACertFile,
-		CertFile:   &CertFile,
-		KeyFile:    &KeyFile,
+		CACertFile: CACertFile,
+		CertFile:   CertFile,
+		KeyFile:    KeyFile,
 	}
-	tlsConfig2, err := tlsConfig.Load()
+	tlsConfig2, err := tlsConfig.Load(metrics.NoopRegisterer)
 	if err != nil {
 		panic(err)
 	}
 
 	rdb := redis.NewRing(&redis.RingOptions{
 		Addrs: map[string]string{
-			"shard1": "10.33.33.2:4218",
-			"shard2": "10.33.33.3:4218",
+			"shard1": "10.77.77.2:4218",
+			"shard2": "10.77.77.3:4218",
 		},
 		Username:  "unittest-rw",
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",

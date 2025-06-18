@@ -20,7 +20,7 @@ func (c Client) NewAccount(privateKey crypto.Signer, onlyReturnExisting, termsOf
 	if termsOfServiceAgreed {
 		opts = append(opts, NewAcctOptAgreeTOS())
 	}
-	if contact != nil && len(contact) > 0 {
+	if len(contact) > 0 {
 		opts = append(opts, NewAcctOptWithContacts(contact...))
 	}
 

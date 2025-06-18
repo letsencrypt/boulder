@@ -7,67 +7,110 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/akamai/proto"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestThroughput_validate(t *testing.T) {
-	type fields struct {
-		QueueEntriesPerBatch int
-		PurgeBatchInterval   time.Duration
-	}
+func TestThroughput_optimizeAndValidate(t *testing.T) {
+	dur := func(in time.Duration) config.Duration { return config.Duration{Duration: in} }
+
 	tests := []struct {
 		name    string
-		fields  fields
-		wantErr bool
+		input   Throughput
+		want    Throughput
+		wantErr string
 	}{
-		{"optimized defaults, should succeed",
-			fields{
-				QueueEntriesPerBatch: defaultEntriesPerBatch,
-				PurgeBatchInterval:   defaultPurgeBatchInterval},
-			false,
+		{
+			"negative instances",
+			Throughput{defaultEntriesPerBatch, dur(defaultPurgeBatchInterval), -1},
+			Throughput{},
+			"must be positive",
 		},
-		{"2ms faster than optimized defaults, should succeed",
-			fields{
-				QueueEntriesPerBatch: defaultEntriesPerBatch,
-				PurgeBatchInterval:   defaultPurgeBatchInterval + 2*time.Millisecond},
-			false,
+		{
+			"negative batch interval",
+			Throughput{defaultEntriesPerBatch, config.Duration{Duration: -1}, -1},
+			Throughput{},
+			"must be positive",
 		},
-		{"exceeds URLs per second by 4 URLs",
-			fields{
-				QueueEntriesPerBatch: defaultEntriesPerBatch,
-				PurgeBatchInterval:   29 * time.Millisecond},
-			true,
+		{
+			"negative entries per batch",
+			Throughput{-1, dur(defaultPurgeBatchInterval), 1},
+			Throughput{},
+			"must be positive",
 		},
-		{"exceeds bytes per second by 20 bytes",
-			fields{
-				QueueEntriesPerBatch: 125,
-				PurgeBatchInterval:   1 * time.Second},
-			true,
+		{
+			"empty input computes sane defaults",
+			Throughput{},
+			Throughput{defaultEntriesPerBatch, dur(defaultPurgeBatchInterval), 1},
+			"",
 		},
-		{"exceeds requests per second by 1 request",
-			fields{
-				QueueEntriesPerBatch: 1,
-				PurgeBatchInterval:   19999 * time.Microsecond},
-			true,
+		{
+			"strict configuration is honored",
+			Throughput{2, dur(1 * time.Second), 1},
+			Throughput{2, dur(1 * time.Second), 1},
+			"",
+		},
+		{
+			"slightly looser configuration still within limits",
+			Throughput{defaultEntriesPerBatch, dur(defaultPurgeBatchInterval - time.Millisecond), 1},
+			Throughput{defaultEntriesPerBatch, dur(defaultPurgeBatchInterval - time.Millisecond), 1},
+			"",
+		},
+		{
+			"too many requests per second",
+			Throughput{QueueEntriesPerBatch: 1, PurgeBatchInterval: dur(19999 * time.Microsecond)},
+			Throughput{},
+			"requests per second limit",
+		},
+		{
+			"too many URLs per second",
+			Throughput{PurgeBatchInterval: dur(29 * time.Millisecond)},
+			Throughput{},
+			"URLs per second limit",
+		},
+		{
+			"too many bytes per request",
+			Throughput{QueueEntriesPerBatch: 125, PurgeBatchInterval: dur(1 * time.Second)},
+			Throughput{},
+			"bytes per request limit",
+		},
+		{
+			"two instances computes sane defaults",
+			Throughput{TotalInstances: 2},
+			Throughput{defaultEntriesPerBatch, dur(defaultPurgeBatchInterval * 2), 2},
+			"",
+		},
+		{
+			"too many requests per second across multiple instances",
+			Throughput{PurgeBatchInterval: dur(defaultPurgeBatchInterval), TotalInstances: 2},
+			Throughput{},
+			"requests per second limit",
+		},
+		{
+			"too many entries per second across multiple instances",
+			Throughput{PurgeBatchInterval: dur(59 * time.Millisecond), TotalInstances: 2},
+			Throughput{},
+			"URLs per second limit",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tr := &Throughput{
-				QueueEntriesPerBatch: tt.fields.QueueEntriesPerBatch,
-			}
-			tr.PurgeBatchInterval.Duration = tt.fields.PurgeBatchInterval
-			if err := tr.validate(); (err != nil) != tt.wantErr {
-				t.Errorf("Throughput.validate() error = %v, wantErr %v", err, tt.wantErr)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.input.optimizeAndValidate()
+			if tc.wantErr != "" {
+				test.AssertError(t, err, "")
+				test.AssertContains(t, err.Error(), tc.wantErr)
+			} else {
+				test.AssertNotError(t, err, "")
+				test.AssertEquals(t, tc.input, tc.want)
 			}
 		})
 	}
 }
 
 type mockCCU struct {
-	proto.AkamaiPurgerClient
+	akamaipb.AkamaiPurgerClient
 }
 
 func (m *mockCCU) Purge(urls []string) error {
@@ -83,14 +126,14 @@ func TestAkamaiPurgerQueue(t *testing.T) {
 	}
 
 	// Add 250 entries to fill the stack.
-	for i := 0; i < 250; i++ {
-		req := proto.PurgeRequest{Urls: []string{fmt.Sprintf("http://test.com/%d", i)}}
+	for i := range 250 {
+		req := akamaipb.PurgeRequest{Urls: []string{fmt.Sprintf("http://test.com/%d", i)}}
 		_, err := ap.Purge(context.Background(), &req)
 		test.AssertNotError(t, err, fmt.Sprintf("Purge failed for entry %d.", i))
 	}
 
 	// Add another entry to the stack and using the Purge method.
-	req := proto.PurgeRequest{Urls: []string{"http://test.com/250"}}
+	req := akamaipb.PurgeRequest{Urls: []string{"http://test.com/250"}}
 	_, err := ap.Purge(context.Background(), &req)
 	test.AssertNotError(t, err, "Purge failed.")
 
@@ -129,7 +172,7 @@ func TestAkamaiPurgerQueueWithOneEntry(t *testing.T) {
 	}
 
 	// Add one entry to the stack and using the Purge method.
-	req := proto.PurgeRequest{Urls: []string{"http://test.com/0"}}
+	req := akamaipb.PurgeRequest{Urls: []string{"http://test.com/0"}}
 	_, err := ap.Purge(context.Background(), &req)
 	test.AssertNotError(t, err, "Purge failed.")
 	test.AssertEquals(t, len(ap.toPurge), 1)

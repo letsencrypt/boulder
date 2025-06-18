@@ -7,7 +7,7 @@ ceremony --config path/to/config.yml
 `ceremony` is a tool designed for Certificate Authority specific key and certificate ceremonies. The main design principle is that unlike most ceremony tooling there is a single user input, a configuration file, which is required to complete a root, intermediate, or key ceremony. The goal is to make ceremonies as simple as possible and allow for simple verification of a single file, instead of verification of a large number of independent commands.
 
 `ceremony` has these modes:
-* `root` - generates a signing key on HSM and creates a self-signed root certificate that uses the generated key, outputting a PEM public key, and a PEM certificate
+* `root` - generates a signing key on HSM and creates a self-signed root certificate that uses the generated key, outputting a PEM public key, and a PEM certificate. After generating such a root for public trust purposes, it should be submitted to [as many root programs as is possible/practical](https://github.com/daknob/root-programs).
 * `intermediate` - creates a intermediate certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `cross-csr` - creates a CSR for signing by a third party, outputting a PEM CSR.
 * `cross-certificate` - issues a certificate for one root, signed by another root. This is distinct from an intermediate because there is no path length constraint and there are no EKUs.
@@ -15,7 +15,7 @@ ceremony --config path/to/config.yml
 * `crl-signer` - creates a delegated CRL signing certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `key` - generates a signing key on HSM, outputting a PEM public key
 * `ocsp-response` - creates a OCSP response for the provided certificate and signs it using a signing key already on a HSM, outputting a base64 encoded response
-* `crl` - creates a CRL from the provided profile and signs it using a signing key already on a HSM, outputting a PEM CRL
+* `crl` - creates a CRL with the IDP extension and `onlyContainsCACerts = true` from the provided profile and signs it using a signing key already on a HSM, outputting a PEM CRL
 
 These modes are set in the `ceremony-type` field of the configuration file.
 
@@ -123,7 +123,6 @@ certificate-profile:
     policies:
         - oid: 1.2.3
         - oid: 4.5.6
-          cps-uri: "http://example.com/cps"
     key-usages:
         - Digital Signature
         - Cert Sign
@@ -403,7 +402,7 @@ crl-profile:
           revocation-date: 2019-12-31 12:00:00
 ```
 
-This config generates a CRL signed by a key in the HSM, identified by the object label `root signing key` and object ID `ffff`. The CRL will have the number `80` and will contain revocation information for the certificate `/home/user/revoked-cert.pem`
+This config generates a CRL that must only contain subordinate CA certificates signed by a key in the HSM, identified by the object label `root signing key` and object ID `ffff`. The CRL will have the number `80` and will contain revocation information for the certificate `/home/user/revoked-cert.pem`. Each of the revoked certificates provided are checked to ensure they have the `IsCA` flag set to `true`.
 
 ### Certificate profile format
 
@@ -420,5 +419,5 @@ The certificate profile defines a restricted set of fields that are used to gene
 | `ocsp-url` | Specifies the AIA OCSP responder URL |
 | `crl-url` | Specifies the cRLDistributionPoints URL |
 | `issuer-url` | Specifies the AIA caIssuer URL |
-| `policies` | Specifies contents of a certificatePolicies extension. Should contain a list of policies with the fields `oid`, indicating the policy OID, and a `cps-uri` field, containing the CPS URI to use, if the policy should contain a id-qt-cps qualifier. Only single CPS values are supported. |
+| `policies` | Specifies contents of a certificatePolicies extension. Should contain a list of policies with the field `oid`, indicating the policy OID. |
 | `key-usages` | Specifies list of key usage bits should be set, list can contain `Digital Signature`, `CRL Sign`, and `Cert Sign` |

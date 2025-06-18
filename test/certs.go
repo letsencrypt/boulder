@@ -1,8 +1,10 @@
 package test
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -11,8 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/jmhodges/clock"
 )
 
 // LoadSigner loads a PEM private key specified by filename or returns an error.
@@ -58,49 +64,42 @@ func LoadSigner(filename string) (crypto.Signer, error) {
 }
 
 // ThrowAwayCert is a small test helper function that creates a self-signed
-// certificate for nameCount random example.com subdomains and returns the
-// parsed certificate  and the random serial in string form or aborts the test.
+// certificate with one SAN. It returns the parsed certificate and its serial
+// in string form for convenience.
 // The certificate returned from this function is the bare minimum needed for
 // most tests and isn't a robust example of a complete end entity certificate.
-func ThrowAwayCert(t *testing.T, nameCount int) (string, *x509.Certificate) {
+func ThrowAwayCert(t *testing.T, clk clock.Clock) (string, *x509.Certificate) {
+	var nameBytes [3]byte
+	_, _ = rand.Read(nameBytes[:])
+	name := fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:]))
+
+	// Generate a random IPv6 address under the RFC 3849 space.
+	// https://www.rfc-editor.org/rfc/rfc3849.txt
+	var ipBytes [12]byte
+	_, _ = rand.Read(ipBytes[:])
+	ipPrefix, _ := hex.DecodeString("20010db8")
+	ip := net.IP(bytes.Join([][]byte{ipPrefix, ipBytes[:]}, nil))
+
 	var serialBytes [16]byte
 	_, _ = rand.Read(serialBytes[:])
-	sn := big.NewInt(0).SetBytes(serialBytes[:])
+	serial := big.NewInt(0).SetBytes(serialBytes[:])
 
-	return ThrowAwayCertWithSerial(t, nameCount, sn, nil)
-}
-
-// ThrowAwayCertWithSerial is a small test helper function that creates a
-// certificate for nameCount random example.com subdomains and returns the
-// parsed certificate and the serial in string form or aborts the test.
-// The new throwaway certificate is always self-signed (with a random key),
-// but will appear to be issued from issuer if provided.
-// The certificate returned from this function is the bare minimum needed for
-// most tests and isn't a robust example of a complete end entity certificate.
-func ThrowAwayCertWithSerial(t *testing.T, nameCount int, sn *big.Int, issuer *x509.Certificate) (string, *x509.Certificate) {
-	k, err := rsa.GenerateKey(rand.Reader, 512)
+	key, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
 	AssertNotError(t, err, "rsa.GenerateKey failed")
 
-	var names []string
-	for i := 0; i < nameCount; i++ {
-		var nameBytes [3]byte
-		_, _ = rand.Read(nameBytes[:])
-		names = append(names, fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:])))
-	}
-
 	template := &x509.Certificate{
-		SerialNumber:          sn,
-		DNSNames:              names,
+		SerialNumber:          serial,
+		DNSNames:              []string{name},
+		IPAddresses:           []net.IP{ip},
+		NotBefore:             clk.Now(),
+		NotAfter:              clk.Now().Add(6 * 24 * time.Hour),
 		IssuingCertificateURL: []string{"http://localhost:4001/acme/issuer-cert/1234"},
 	}
 
-	if issuer == nil {
-		issuer = template
-	}
-
-	testCertDER, err := x509.CreateCertificate(rand.Reader, template, issuer, &k.PublicKey, k)
+	testCertDER, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 	AssertNotError(t, err, "x509.CreateCertificate failed")
 	testCert, err := x509.ParseCertificate(testCertDER)
 	AssertNotError(t, err, "failed to parse self-signed cert DER")
-	return fmt.Sprintf("%036x", sn), testCert
+
+	return fmt.Sprintf("%036x", serial), testCert
 }

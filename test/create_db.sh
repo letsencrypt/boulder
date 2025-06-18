@@ -54,7 +54,7 @@ mysql ${dbconn} -e "SET GLOBAL binlog_format = 'MIXED';"
 
 # MariaDB sets the default @@max_connections value to 100. The SA alone is
 # configured to use up to 100 connections. We increase the max connections here
-# to give headroom for other components (ocsp-updater for example).
+# to give headroom for other components (ocsp-responder for example).
 mysql ${dbconn} -e "SET GLOBAL max_connections = 500;"
 
 for db in $DBS; do
@@ -78,7 +78,7 @@ for db in $DBS; do
     # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
     # as relative.
     cd "${dbpath}"
-    r=`sql-migrate up -env="${dbname}" | xargs echo`
+    r=`sql-migrate up -env="${dbname}" | xargs -0 echo`
     if [[ "${r}" == "Migration failed"* ]]
     then
       echo "Migration failed - dropping and recreating"

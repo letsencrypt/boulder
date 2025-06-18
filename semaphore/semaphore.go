@@ -65,6 +65,7 @@ func (s *Weighted) Acquire(ctx context.Context, n int64) error {
 	}
 
 	if s.maxWaiters > 0 && s.waiters.Len() >= s.maxWaiters {
+		s.mu.Unlock()
 		return ErrMaxWaiters
 	}
 

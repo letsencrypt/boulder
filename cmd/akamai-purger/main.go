@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -67,33 +68,43 @@ type Throughput struct {
 	// purge request. One cached OCSP response is composed of 3 URLs totaling <
 	// 400 bytes. If this value isn't provided it will default to
 	// 'defaultQueueEntriesPerBatch'.
-	QueueEntriesPerBatch int
+	//
+	// Deprecated: Only set TotalInstances and let it compute the defaults.
+	QueueEntriesPerBatch int `validate:"min=0"`
 
 	// PurgeBatchInterval is the duration waited between dispatching an Akamai
 	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
 	// isn't provided it will default to 'defaultPurgeBatchInterval'.
-	PurgeBatchInterval config.Duration
+	//
+	// Deprecated: Only set TotalInstances and let it compute the defaults.
+	PurgeBatchInterval config.Duration `validate:"-"`
+
+	// TotalInstances is the number of akamai-purger instances running at the same
+	// time, across all data centers.
+	TotalInstances int `validate:"min=0"`
 }
 
-func (t *Throughput) useOptimizedDefaults() {
-	if t.QueueEntriesPerBatch == 0 {
+// optimizeAndValidate updates a Throughput struct in-place, replacing any unset
+// fields with sane defaults and ensuring that the resulting configuration will
+// not cause us to exceed Akamai's rate limits.
+func (t *Throughput) optimizeAndValidate() error {
+	// Ideally, this is the only variable actually configured, and we derive
+	// everything else from here. But if it isn't set, assume only 1 is running.
+	if t.TotalInstances < 0 {
+		return errors.New("'totalInstances' must be positive or 0 (for the default)")
+	} else if t.TotalInstances == 0 {
+		t.TotalInstances = 1
+	}
+
+	// For the sake of finding a valid throughput solution, we hold the number of
+	// queue entries sent per purge batch constant. We set 2 entries (6 urls) as
+	// the default, and historically we have never had a reason to configure a
+	// different amount. This default ensures we stay well below the maximum
+	// request size of 50,000 bytes per request.
+	if t.QueueEntriesPerBatch < 0 {
+		return errors.New("'queueEntriesPerBatch' must be positive or 0 (for the default)")
+	} else if t.QueueEntriesPerBatch == 0 {
 		t.QueueEntriesPerBatch = defaultEntriesPerBatch
-	}
-	if t.PurgeBatchInterval.Duration == 0 {
-		t.PurgeBatchInterval.Duration = defaultPurgeBatchInterval
-	}
-}
-
-// validate ensures that the provided throughput configuration will not violate
-// the Akamai Fast-Purge API limits. For more information see the official
-// documentation:
-// https://techdocs.akamai.com/purge-cache/reference/rate-limiting
-func (t *Throughput) validate() error {
-	if t.PurgeBatchInterval.Duration == 0 {
-		return errors.New("'purgeBatchInterval' must be > 0")
-	}
-	if t.QueueEntriesPerBatch <= 0 {
-		return errors.New("'queueEntriesPerBatch' must be > 0")
 	}
 
 	// Send no more than the 50,000 bytes of objects we’re allotted per request.
@@ -103,8 +114,21 @@ func (t *Throughput) validate() error {
 			akamaiBytesPerReqLimit, bytesPerRequest-akamaiBytesPerReqLimit)
 	}
 
+	// Now the purge interval must be set such that we exceed neither the 50 API
+	// requests per second limit nor the 200 URLs per second limit across all
+	// concurrent purger instances. We calculated that a value of one request
+	// every 32ms satisfies both constraints with a bit of breathing room (as long
+	// as the number of entries per batch is also at its default). By default we
+	// set this purger's interval to a multiple of 32ms, depending on how many
+	// other purger instances are running.
+	if t.PurgeBatchInterval.Duration < 0 {
+		return errors.New("'purgeBatchInterval' must be positive or 0 (for the default)")
+	} else if t.PurgeBatchInterval.Duration == 0 {
+		t.PurgeBatchInterval.Duration = defaultPurgeBatchInterval * time.Duration(t.TotalInstances)
+	}
+
 	// Send no more than the 50 API requests we’re allotted each second.
-	requestsPerSecond := int(math.Ceil(float64(time.Second) / float64(t.PurgeBatchInterval.Duration)))
+	requestsPerSecond := int(math.Ceil(float64(time.Second)/float64(t.PurgeBatchInterval.Duration))) * t.TotalInstances
 	if requestsPerSecond > akamaiAPIReqPerSecondLimit {
 		return fmt.Errorf("config exceeds Akamai's requests per second limit (%d requests) by %d",
 			akamaiAPIReqPerSecondLimit, requestsPerSecond-akamaiAPIReqPerSecondLimit)
@@ -116,6 +140,7 @@ func (t *Throughput) validate() error {
 		return fmt.Errorf("config exceeds Akamai's URLs per second limit (%d URLs) by %d",
 			akamaiURLsPerSecondLimit, urlsPurgedPerSecond-akamaiURLsPerSecondLimit)
 	}
+
 	return nil
 }
 
@@ -127,11 +152,11 @@ type Config struct {
 		// isn't provided it will default to `defaultQueueSize`.
 		MaxQueueSize int
 
-		BaseURL      string
-		ClientToken  string
-		ClientSecret string
-		AccessToken  string
-		V3Network    string
+		BaseURL      string `validate:"required,url"`
+		ClientToken  string `validate:"required"`
+		ClientSecret string `validate:"required"`
+		AccessToken  string `validate:"required"`
+		V3Network    string `validate:"required,oneof=staging production"`
 
 		// Throughput is a container for all throughput related akamai-purger
 		// settings.
@@ -144,10 +169,10 @@ type Config struct {
 		// PurgeRetryBackoff is the base duration that will be waited before
 		// attempting to purge a batch of URLs which previously failed to be
 		// purged.
-		PurgeRetryBackoff config.Duration
+		PurgeRetryBackoff config.Duration `validate:"-"`
 	}
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // cachePurgeClient is testing interface.
@@ -161,7 +186,7 @@ type cachePurgeClient interface {
 // to Akamai's Fast Purge API at regular intervals.
 type akamaiPurger struct {
 	sync.Mutex
-	akamaipb.UnimplementedAkamaiPurgerServer
+	akamaipb.UnsafeAkamaiPurgerServer
 
 	// toPurge functions as a stack where each entry contains the three OCSP
 	// response URLs associated with a given certificate.
@@ -171,6 +196,8 @@ type akamaiPurger struct {
 	client          cachePurgeClient
 	log             blog.Logger
 }
+
+var _ akamaipb.AkamaiPurgerServer = (*akamaiPurger)(nil)
 
 func (ap *akamaiPurger) len() int {
 	ap.Lock()
@@ -187,12 +214,14 @@ func (ap *akamaiPurger) purgeBatch(batch [][]string) error {
 
 	err := ap.client.Purge(urls)
 	if err != nil {
-		ap.log.Errf("Failed to purge OCSP responses for %d certificates: %s", len(batch), err)
+		ap.log.Errf("Failed to purge %d OCSP responses (%s): %s", len(batch), strings.Join(urls, ","), err)
 		return err
 	}
 	return nil
 }
 
+// takeBatch returns a slice containing the next batch of entries from the purge stack.
+// It copies at most entriesPerBatch entries from the top of the stack into a new slice which is returned.
 func (ap *akamaiPurger) takeBatch() [][]string {
 	ap.Lock()
 	defer ap.Unlock()
@@ -211,7 +240,11 @@ func (ap *akamaiPurger) takeBatch() [][]string {
 	}
 
 	batchBegin := stackSize - batchSize
-	batch := ap.toPurge[batchBegin:]
+	batchEnd := stackSize
+	batch := make([][]string, batchSize)
+	for i, entry := range ap.toPurge[batchBegin:batchEnd] {
+		batch[i] = slices.Clone(entry)
+	}
 	ap.toPurge = ap.toPurge[:batchBegin]
 	return batch
 }
@@ -257,7 +290,7 @@ func main() {
 	if os.Args[1] == "manual" {
 		manualMode = true
 		_ = manualFlags.Parse(os.Args[2:])
-		if *configFile == "" {
+		if *manualConfigFile == "" {
 			manualFlags.Usage()
 			os.Exit(1)
 		}
@@ -293,15 +326,13 @@ func main() {
 		apc.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, apc.DebugAddr)
-	defer logger.AuditPanic()
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, apc.DebugAddr)
+	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	// Unless otherwise specified, use optimized throughput settings.
-	if (apc.Throughput == Throughput{}) {
-		apc.Throughput.useOptimizedDefaults()
-	}
-	cmd.FailOnError(apc.Throughput.validate(), "")
+	// Use optimized throughput settings for any that are left unspecified.
+	err = apc.Throughput.optimizeAndValidate()
+	cmd.FailOnError(err, "Failed to find valid throughput solution")
 
 	if apc.MaxQueueSize == 0 {
 		apc.MaxQueueSize = defaultQueueSize
@@ -365,7 +396,7 @@ func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string) {
 func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
 	clk := cmd.Clock()
 
-	tlsConfig, err := c.AkamaiPurger.TLS.Load()
+	tlsConfig, err := c.AkamaiPurger.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)
@@ -401,13 +432,9 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		stopped <- true
 	}()
 
-	start, stopFn, err := bgrpc.NewServer(c.AkamaiPurger.GRPC).Add(
-		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
-
-	go cmd.CatchSignals(logger, func() {
-		stopFn()
-
+	// When the gRPC server finally exits, run a clean-up routine that stops the
+	// ticker and waits for the goroutine above to finish purging the stack.
+	defer func() {
 		// Stop the ticker and signal that we want to shutdown by writing to the
 		// stop channel. We wait 15 seconds for any remaining URLs to be emptied
 		// from the current stack, if we pass that deadline we exit early.
@@ -418,16 +445,15 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 			cmd.Fail("Timed out waiting for purger to finish work")
 		case <-stopped:
 		}
-	})
-	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
+	}()
 
-	// When we get a SIGTERM, we will exit from grpcSrv.Serve as soon as all
-	// extant RPCs have been processed, but we want the process to stick around
-	// while we still have a goroutine purging the last elements from the stack.
-	// Once that's done, CatchSignals will call os.Exit().
-	select {}
+	start, err := bgrpc.NewServer(c.AkamaiPurger.GRPC, logger).Add(
+		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
+
+	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
 }
 
 func init() {
-	cmd.RegisterCommand("akamai-purger", main)
+	cmd.RegisterCommand("akamai-purger", main, &cmd.ConfigValidator{Config: &Config{}})
 }

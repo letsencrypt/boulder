@@ -1,9 +1,46 @@
-package notmain
+package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"io/fs"
+	"math/big"
+	"os"
+	"path"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jmhodges/clock"
+
+	"github.com/letsencrypt/boulder/test"
 )
+
+func TestLoadPubKey(t *testing.T) {
+	tmp := t.TempDir()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	_, _, err := loadPubKey(path.Join(tmp, "does", "not", "exist"))
+	test.AssertError(t, err, "should fail on non-existent file")
+	test.AssertErrorIs(t, err, fs.ErrNotExist)
+
+	_, _, err = loadPubKey("../../test/hierarchy/README.md")
+	test.AssertError(t, err, "should fail on non-PEM file")
+
+	priv, _ := x509.MarshalPKCS8PrivateKey(key)
+	_ = os.WriteFile(path.Join(tmp, "priv.pem"), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: priv}), 0644)
+	_, _, err = loadPubKey(path.Join(tmp, "priv.pem"))
+	test.AssertError(t, err, "should fail on non-pubkey PEM")
+
+	pub, _ := x509.MarshalPKIXPublicKey(key.Public())
+	_ = os.WriteFile(path.Join(tmp, "pub.pem"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}), 0644)
+	_, _, err = loadPubKey(path.Join(tmp, "pub.pem"))
+	test.AssertNotError(t, err, "should not have errored")
+}
 
 func TestCheckOutputFileSucceeds(t *testing.T) {
 	dir := t.TempDir()
@@ -341,6 +378,76 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			expectedError: "not-before is required",
 		},
 		{
+			name: "too many policy OIDs",
+			config: intermediateConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}, {OID: "6.6.6"}},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policy should be exactly BRs domain-validated for subordinate CAs",
+		},
+		{
+			name: "too few policy OIDs",
+			config: intermediateConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policy should be exactly BRs domain-validated for subordinate CAs",
+		},
+		{
 			name: "good config",
 			config: intermediateConfig{
 				PKCS11: PKCS11SigningConfig{
@@ -369,6 +476,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
 				},
 				SkipLints: []string{},
 			},
@@ -377,6 +485,238 @@ func TestIntermediateConfigValidate(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.config.validate(intermediateCert)
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
+			}
+		})
+	}
+}
+
+func TestCrossCertConfigValidate(t *testing.T) {
+	cases := []struct {
+		name          string
+		config        crossCertConfig
+		expectedError string
+	}{
+		{
+			name:          "no pkcs11.module",
+			config:        crossCertConfig{},
+			expectedError: "pkcs11.module is required",
+		},
+		{
+			name: "no pkcs11.signing-key-label",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module: "module",
+				},
+			},
+			expectedError: "pkcs11.signing-key-label is required",
+		},
+		{
+			name: "no inputs.public-key-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+			},
+			expectedError: "inputs.public-key-path is required",
+		},
+		{
+			name: "no inputs.issuer-certificate-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					CertificateToCrossSignPath: "path",
+				},
+			},
+			expectedError: "inputs.issuer-certificate is required",
+		},
+		{
+			name: "no inputs.certificate-to-cross-sign-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+			},
+			expectedError: "inputs.certificate-to-cross-sign-path is required",
+		},
+		{
+			name: "no outputs.certificate-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+			},
+			expectedError: "outputs.certificate-path is required",
+		},
+		{
+			name: "bad certificate-profile",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+			},
+			expectedError: "not-before is required",
+		},
+		{
+			name: "too many policy OIDs",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}, {OID: "6.6.6"}},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policy should be exactly BRs domain-validated for subordinate CAs",
+		},
+		{
+			name: "too few policy OIDs",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policy should be exactly BRs domain-validated for subordinate CAs",
+		},
+		{
+			name: "good config",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
+				},
+				SkipLints: []string{},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.validate()
 			if err != nil && err.Error() != tc.expectedError {
 				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
 			} else if err == nil && tc.expectedError != "" {
@@ -1063,4 +1403,30 @@ func TestCRLConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSignAndWriteNoLintCert(t *testing.T) {
+	_, err := signAndWriteCert(nil, nil, nil, nil, nil, "")
+	test.AssertError(t, err, "should have failed because no lintCert was provided")
+	test.AssertDeepEquals(t, err, fmt.Errorf("linting was not performed prior to issuance"))
+}
+
+func TestPostIssuanceLinting(t *testing.T) {
+	clk := clock.New()
+	err := postIssuanceLinting(nil, nil)
+	test.AssertError(t, err, "should have failed because no certificate was provided")
+
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "unable to generate ECDSA private key")
+	template := &x509.Certificate{
+		NotAfter:     clk.Now().Add(1 * time.Hour),
+		DNSNames:     []string{"example.com"},
+		SerialNumber: big.NewInt(1),
+	}
+	certDer, err := x509.CreateCertificate(rand.Reader, template, template, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "unable to create certificate")
+	parsedCert, err := x509.ParseCertificate(certDer)
+	test.AssertNotError(t, err, "unable to parse DER bytes")
+	err = postIssuanceLinting(parsedCert, nil)
+	test.AssertNotError(t, err, "should not have errored")
 }

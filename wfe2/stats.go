@@ -17,6 +17,14 @@ type wfe2Stats struct {
 	// improperECFieldLengths counts the number of ACME account EC JWKs we see
 	// with improper X and Y lengths for their curve
 	improperECFieldLengths prometheus.Counter
+	// nonceNoMatchingBackendCount counts the number of times we've received a nonce
+	// with a prefix that doesn't match a known backend.
+	nonceNoMatchingBackendCount prometheus.Counter
+	// ariReplacementOrders counts the number of new order requests that replace
+	// an existing order, labeled by:
+	//   - isReplacement=[true|false]
+	//   - limitsExempt=[true|false]
+	ariReplacementOrders *prometheus.CounterVec
 }
 
 func initStats(stats prometheus.Registerer) wfe2Stats {
@@ -53,10 +61,29 @@ func initStats(stats prometheus.Registerer) wfe2Stats {
 	)
 	stats.MustRegister(improperECFieldLengths)
 
+	nonceNoBackendCount := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "nonce_no_backend_found",
+			Help: "Number of times we've received a nonce with a prefix that doesn't match a known backend",
+		},
+	)
+	stats.MustRegister(nonceNoBackendCount)
+
+	ariReplacementOrders := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ari_replacements",
+			Help: "Number of new order requests that replace an existing order, labeled isReplacement=[true|false], limitsExempt=[true|false]",
+		},
+		[]string{"isReplacement", "limitsExempt"},
+	)
+	stats.MustRegister(ariReplacementOrders)
+
 	return wfe2Stats{
-		httpErrorCount:         httpErrorCount,
-		joseErrorCount:         joseErrorCount,
-		csrSignatureAlgs:       csrSignatureAlgs,
-		improperECFieldLengths: improperECFieldLengths,
+		httpErrorCount:              httpErrorCount,
+		joseErrorCount:              joseErrorCount,
+		csrSignatureAlgs:            csrSignatureAlgs,
+		improperECFieldLengths:      improperECFieldLengths,
+		nonceNoMatchingBackendCount: nonceNoBackendCount,
+		ariReplacementOrders:        ariReplacementOrders,
 	}
 }

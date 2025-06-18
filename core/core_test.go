@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
+
 	"github.com/letsencrypt/boulder/test"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 // challenges.go
@@ -26,13 +27,13 @@ func TestChallenges(t *testing.T) {
 
 	token := NewToken()
 	http01 := HTTPChallenge01(token)
-	test.AssertNotError(t, http01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
+	test.AssertNotError(t, http01.CheckPending(), "CheckConsistencyForClientOffer returned an error")
 
 	dns01 := DNSChallenge01(token)
-	test.AssertNotError(t, dns01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
+	test.AssertNotError(t, dns01.CheckPending(), "CheckConsistencyForClientOffer returned an error")
 
 	tlsalpn01 := TLSALPNChallenge01(token)
-	test.AssertNotError(t, tlsalpn01.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
+	test.AssertNotError(t, tlsalpn01.CheckPending(), "CheckConsistencyForClientOffer returned an error")
 
 	test.Assert(t, ChallengeTypeHTTP01.IsValid(), "Refused valid challenge")
 	test.Assert(t, ChallengeTypeDNS01.IsValid(), "Refused valid challenge")

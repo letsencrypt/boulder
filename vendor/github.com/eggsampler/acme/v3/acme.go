@@ -56,7 +56,7 @@ func NewClient(directoryURL string, options ...OptionFunc) (Client, error) {
 	return acmeClient, nil
 }
 
-// The directory object returned by the client connecting to a directory url.
+// Directory is the object returned by the client connecting to a directory url.
 func (c Client) Directory() Directory {
 	return c.dir
 }
@@ -74,8 +74,9 @@ func (c Client) getPollingDurations() (time.Duration, time.Duration) {
 	return pollInterval, pollTimeout
 }
 
-// Helper function to have a central point for performing http requests.
-// Stores any returned nonces in the stack.
+// Helper function to have a central point for performing http requests. Stores
+// any returned nonces in the stack. The caller is responsible for closing the
+// body so they can read the response.
 func (c Client) do(req *http.Request, addNonce bool) (*http.Response, error) {
 	// identifier for this client, as well as the default go user agent
 	if c.userAgentSuffix != "" {
@@ -100,7 +101,8 @@ func (c Client) do(req *http.Request, addNonce bool) (*http.Response, error) {
 	return resp, nil
 }
 
-// Helper function to perform an http get request and read the body.
+// Helper function to perform an HTTP get request and read the body. The caller
+// is responsible for closing the body so they can read the response.
 func (c Client) getRaw(url string, expectedStatus ...int) (*http.Response, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -125,7 +127,8 @@ func (c Client) getRaw(url string, expectedStatus ...int) (*http.Response, []byt
 	return resp, body, nil
 }
 
-// Helper function for performing a http get on an acme resource.
+// Helper function for performing a http get on an acme resource. The caller is
+// responsible for closing the body so they can read the response.
 func (c Client) get(url string, out interface{}, expectedStatus ...int) (*http.Response, error) {
 	resp, body, err := c.getRaw(url, expectedStatus...)
 	if err != nil {
@@ -165,8 +168,9 @@ func (c Client) nonce() (string, error) {
 	return nonce, nil
 }
 
-// Helper function to perform an http post request and read the body.
-// Will attempt to retry if error is badNonce
+// Helper function to perform an HTTP post request and read the body. Will
+// attempt to retry if error is badNonce. The caller is responsible for closing
+// the body so they can read the response.
 func (c Client) postRaw(retryCount int, requestURL, kid string, privateKey crypto.Signer, payload interface{}, expectedStatus []int) (*http.Response, []byte, error) {
 	nonce, err := c.nonce()
 	if err != nil {
@@ -215,7 +219,8 @@ func (c Client) postRaw(retryCount int, requestURL, kid string, privateKey crypt
 	return resp, body, nil
 }
 
-// Helper function for performing a http post to an acme resource.
+// Helper function for performing a http post to an acme resource. The caller is
+// responsible for closing the body so they can read the response.
 func (c Client) post(requestURL, keyID string, privateKey crypto.Signer, payload interface{}, out interface{}, expectedStatus ...int) (*http.Response, error) {
 	resp, body, err := c.postRaw(0, requestURL, keyID, privateKey, payload, expectedStatus)
 	if err != nil {
@@ -224,6 +229,7 @@ func (c Client) post(requestURL, keyID string, privateKey crypto.Signer, payload
 
 	if _, b := os.LookupEnv("ACME_DEBUG_POST"); b {
 		fmt.Println()
+		fmt.Println("========= " + requestURL)
 		fmt.Println(string(body))
 		fmt.Println()
 	}
@@ -239,7 +245,7 @@ func (c Client) post(requestURL, keyID string, privateKey crypto.Signer, payload
 
 var regLink = regexp.MustCompile(`<(.+?)>;\s*rel="(.+?)"`)
 
-// Fetches a http Link header from a http response
+// Fetches a http Link header from an http response and closes the body.
 func fetchLink(resp *http.Response, wantedLink string) string {
 	if resp == nil {
 		return ""
@@ -262,7 +268,7 @@ func fetchLink(resp *http.Response, wantedLink string) string {
 	return ""
 }
 
-// FetchRaw is a helper function to assist with POST-AS-GET requests
+// Fetch is a helper function to assist with POST-AS-GET requests
 func (c Client) Fetch(account Account, requestURL string, result interface{}, expectedStatus ...int) error {
 	if len(expectedStatus) == 0 {
 		expectedStatus = []int{http.StatusOK}

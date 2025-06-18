@@ -89,15 +89,21 @@ func New() *Resolver {
 var partitionRegexp = struct {
 	Aws      *regexp.Regexp
 	AwsCn    *regexp.Regexp
+	AwsEusc  *regexp.Regexp
 	AwsIso   *regexp.Regexp
 	AwsIsoB  *regexp.Regexp
+	AwsIsoE  *regexp.Regexp
+	AwsIsoF  *regexp.Regexp
 	AwsUsGov *regexp.Regexp
 }{
 
-	Aws:      regexp.MustCompile("^(us|eu|ap|sa|ca|me|af)\\-\\w+\\-\\d+$"),
+	Aws:      regexp.MustCompile("^(us|eu|ap|sa|ca|me|af|il|mx)\\-\\w+\\-\\d+$"),
 	AwsCn:    regexp.MustCompile("^cn\\-\\w+\\-\\d+$"),
+	AwsEusc:  regexp.MustCompile("^eusc\\-(de)\\-\\w+\\-\\d+$"),
 	AwsIso:   regexp.MustCompile("^us\\-iso\\-\\w+\\-\\d+$"),
 	AwsIsoB:  regexp.MustCompile("^us\\-isob\\-\\w+\\-\\d+$"),
+	AwsIsoE:  regexp.MustCompile("^eu\\-isoe\\-\\w+\\-\\d+$"),
+	AwsIsoF:  regexp.MustCompile("^us\\-isof\\-\\w+\\-\\d+$"),
 	AwsUsGov: regexp.MustCompile("^us\\-gov\\-\\w+\\-\\d+$"),
 }
 
@@ -155,6 +161,9 @@ var defaultPartitions = endpoints.Partitions{
 			}: {
 				Hostname: "s3.dualstack.ap-east-1.amazonaws.com",
 			},
+			endpoints.EndpointKey{
+				Region: "ap-east-2",
+			}: endpoints.Endpoint{},
 			endpoints.EndpointKey{
 				Region: "ap-northeast-1",
 			}: endpoints.Endpoint{
@@ -249,6 +258,24 @@ var defaultPartitions = endpoints.Partitions{
 				Hostname: "s3.dualstack.ap-southeast-4.amazonaws.com",
 			},
 			endpoints.EndpointKey{
+				Region: "ap-southeast-5",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "ap-southeast-5",
+				Variant: endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3.dualstack.ap-southeast-5.amazonaws.com",
+			},
+			endpoints.EndpointKey{
+				Region: "ap-southeast-7",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "ap-southeast-7",
+				Variant: endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3.dualstack.ap-southeast-7.amazonaws.com",
+			},
+			endpoints.EndpointKey{
 				Region: "aws-global",
 			}: endpoints.Endpoint{
 				Hostname:          "s3.amazonaws.com",
@@ -277,6 +304,27 @@ var defaultPartitions = endpoints.Partitions{
 				Variant: endpoints.DualStackVariant,
 			}: {
 				Hostname: "s3.dualstack.ca-central-1.amazonaws.com",
+			},
+			endpoints.EndpointKey{
+				Region: "ca-west-1",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "ca-west-1",
+				Variant: endpoints.FIPSVariant,
+			}: {
+				Hostname: "s3-fips.ca-west-1.amazonaws.com",
+			},
+			endpoints.EndpointKey{
+				Region:  "ca-west-1",
+				Variant: endpoints.FIPSVariant | endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3-fips.dualstack.ca-west-1.amazonaws.com",
+			},
+			endpoints.EndpointKey{
+				Region:  "ca-west-1",
+				Variant: endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3.dualstack.ca-west-1.amazonaws.com",
 			},
 			endpoints.EndpointKey{
 				Region: "eu-central-1",
@@ -364,6 +412,15 @@ var defaultPartitions = endpoints.Partitions{
 				Deprecated: aws.TrueTernary,
 			},
 			endpoints.EndpointKey{
+				Region: "fips-ca-west-1",
+			}: endpoints.Endpoint{
+				Hostname: "s3-fips.ca-west-1.amazonaws.com",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "ca-west-1",
+				},
+				Deprecated: aws.TrueTernary,
+			},
+			endpoints.EndpointKey{
 				Region: "fips-us-east-1",
 			}: endpoints.Endpoint{
 				Hostname: "s3-fips.us-east-1.amazonaws.com",
@@ -400,6 +457,15 @@ var defaultPartitions = endpoints.Partitions{
 				Deprecated: aws.TrueTernary,
 			},
 			endpoints.EndpointKey{
+				Region: "il-central-1",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "il-central-1",
+				Variant: endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3.dualstack.il-central-1.amazonaws.com",
+			},
+			endpoints.EndpointKey{
 				Region: "me-central-1",
 			}: endpoints.Endpoint{},
 			endpoints.EndpointKey{
@@ -416,6 +482,15 @@ var defaultPartitions = endpoints.Partitions{
 				Variant: endpoints.DualStackVariant,
 			}: {
 				Hostname: "s3.dualstack.me-south-1.amazonaws.com",
+			},
+			endpoints.EndpointKey{
+				Region: "mx-central-1",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "mx-central-1",
+				Variant: endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3.dualstack.mx-central-1.amazonaws.com",
 			},
 			endpoints.EndpointKey{
 				Region: "s3-external-1",
@@ -599,6 +674,27 @@ var defaultPartitions = endpoints.Partitions{
 		},
 	},
 	{
+		ID: "aws-eusc",
+		Defaults: map[endpoints.DefaultKey]endpoints.Endpoint{
+			{
+				Variant: endpoints.FIPSVariant,
+			}: {
+				Hostname:          "s3-fips.{region}.amazonaws.eu",
+				Protocols:         []string{"https"},
+				SignatureVersions: []string{"v4"},
+			},
+			{
+				Variant: 0,
+			}: {
+				Hostname:          "s3.{region}.amazonaws.eu",
+				Protocols:         []string{"https"},
+				SignatureVersions: []string{"v4"},
+			},
+		},
+		RegionRegex:    partitionRegexp.AwsEusc,
+		IsRegionalized: true,
+	},
+	{
 		ID: "aws-iso",
 		Defaults: map[endpoints.DefaultKey]endpoints.Endpoint{
 			{
@@ -620,14 +716,60 @@ var defaultPartitions = endpoints.Partitions{
 		IsRegionalized: true,
 		Endpoints: endpoints.Endpoints{
 			endpoints.EndpointKey{
+				Region: "fips-us-iso-east-1",
+			}: endpoints.Endpoint{
+				Hostname: "s3-fips.us-iso-east-1.c2s.ic.gov",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "us-iso-east-1",
+				},
+				Deprecated: aws.TrueTernary,
+			},
+			endpoints.EndpointKey{
+				Region: "fips-us-iso-west-1",
+			}: endpoints.Endpoint{
+				Hostname: "s3-fips.us-iso-west-1.c2s.ic.gov",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "us-iso-west-1",
+				},
+				Deprecated: aws.TrueTernary,
+			},
+			endpoints.EndpointKey{
 				Region: "us-iso-east-1",
 			}: endpoints.Endpoint{
 				Protocols:         []string{"http", "https"},
 				SignatureVersions: []string{"s3v4"},
 			},
 			endpoints.EndpointKey{
+				Region:  "us-iso-east-1",
+				Variant: endpoints.FIPSVariant | endpoints.DualStackVariant,
+			}: {
+				Hostname:          "s3-fips.dualstack.us-iso-east-1.c2s.ic.gov",
+				Protocols:         []string{"http", "https"},
+				SignatureVersions: []string{"s3v4"},
+			},
+			endpoints.EndpointKey{
+				Region:  "us-iso-east-1",
+				Variant: endpoints.FIPSVariant,
+			}: {
+				Hostname:          "s3-fips.us-iso-east-1.c2s.ic.gov",
+				Protocols:         []string{"http", "https"},
+				SignatureVersions: []string{"s3v4"},
+			},
+			endpoints.EndpointKey{
 				Region: "us-iso-west-1",
 			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "us-iso-west-1",
+				Variant: endpoints.FIPSVariant | endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3-fips.dualstack.us-iso-west-1.c2s.ic.gov",
+			},
+			endpoints.EndpointKey{
+				Region:  "us-iso-west-1",
+				Variant: endpoints.FIPSVariant,
+			}: {
+				Hostname: "s3-fips.us-iso-west-1.c2s.ic.gov",
+			},
 		},
 	},
 	{
@@ -652,7 +794,83 @@ var defaultPartitions = endpoints.Partitions{
 		IsRegionalized: true,
 		Endpoints: endpoints.Endpoints{
 			endpoints.EndpointKey{
+				Region: "fips-us-isob-east-1",
+			}: endpoints.Endpoint{
+				Hostname: "s3-fips.us-isob-east-1.sc2s.sgov.gov",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "us-isob-east-1",
+				},
+				Deprecated: aws.TrueTernary,
+			},
+			endpoints.EndpointKey{
 				Region: "us-isob-east-1",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "us-isob-east-1",
+				Variant: endpoints.FIPSVariant | endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3-fips.dualstack.us-isob-east-1.sc2s.sgov.gov",
+			},
+			endpoints.EndpointKey{
+				Region:  "us-isob-east-1",
+				Variant: endpoints.FIPSVariant,
+			}: {
+				Hostname: "s3-fips.us-isob-east-1.sc2s.sgov.gov",
+			},
+		},
+	},
+	{
+		ID: "aws-iso-e",
+		Defaults: map[endpoints.DefaultKey]endpoints.Endpoint{
+			{
+				Variant: endpoints.FIPSVariant,
+			}: {
+				Hostname:          "s3-fips.{region}.cloud.adc-e.uk",
+				Protocols:         []string{"http", "https"},
+				SignatureVersions: []string{"s3v4"},
+			},
+			{
+				Variant: 0,
+			}: {
+				Hostname:          "s3.{region}.cloud.adc-e.uk",
+				Protocols:         []string{"http", "https"},
+				SignatureVersions: []string{"s3v4"},
+			},
+		},
+		RegionRegex:    partitionRegexp.AwsIsoE,
+		IsRegionalized: true,
+		Endpoints: endpoints.Endpoints{
+			endpoints.EndpointKey{
+				Region: "eu-isoe-west-1",
+			}: endpoints.Endpoint{},
+		},
+	},
+	{
+		ID: "aws-iso-f",
+		Defaults: map[endpoints.DefaultKey]endpoints.Endpoint{
+			{
+				Variant: endpoints.FIPSVariant,
+			}: {
+				Hostname:          "s3-fips.{region}.csp.hci.ic.gov",
+				Protocols:         []string{"http", "https"},
+				SignatureVersions: []string{"s3v4"},
+			},
+			{
+				Variant: 0,
+			}: {
+				Hostname:          "s3.{region}.csp.hci.ic.gov",
+				Protocols:         []string{"http", "https"},
+				SignatureVersions: []string{"s3v4"},
+			},
+		},
+		RegionRegex:    partitionRegexp.AwsIsoF,
+		IsRegionalized: true,
+		Endpoints: endpoints.Endpoints{
+			endpoints.EndpointKey{
+				Region: "us-isof-east-1",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region: "us-isof-south-1",
 			}: endpoints.Endpoint{},
 		},
 	},
@@ -795,6 +1013,19 @@ func GetDNSSuffix(id string, options Options) (string, error) {
 
 		}
 
+	case strings.EqualFold(id, "aws-eusc"):
+		switch variant {
+		case endpoints.FIPSVariant:
+			return "amazonaws.eu", nil
+
+		case 0:
+			return "amazonaws.eu", nil
+
+		default:
+			return "", fmt.Errorf("unsupported endpoint variant %v, in partition %s", variant, id)
+
+		}
+
 	case strings.EqualFold(id, "aws-iso"):
 		switch variant {
 		case endpoints.FIPSVariant:
@@ -815,6 +1046,32 @@ func GetDNSSuffix(id string, options Options) (string, error) {
 
 		case 0:
 			return "sc2s.sgov.gov", nil
+
+		default:
+			return "", fmt.Errorf("unsupported endpoint variant %v, in partition %s", variant, id)
+
+		}
+
+	case strings.EqualFold(id, "aws-iso-e"):
+		switch variant {
+		case endpoints.FIPSVariant:
+			return "cloud.adc-e.uk", nil
+
+		case 0:
+			return "cloud.adc-e.uk", nil
+
+		default:
+			return "", fmt.Errorf("unsupported endpoint variant %v, in partition %s", variant, id)
+
+		}
+
+	case strings.EqualFold(id, "aws-iso-f"):
+		switch variant {
+		case endpoints.FIPSVariant:
+			return "csp.hci.ic.gov", nil
+
+		case 0:
+			return "csp.hci.ic.gov", nil
 
 		default:
 			return "", fmt.Errorf("unsupported endpoint variant %v, in partition %s", variant, id)
@@ -856,11 +1113,20 @@ func GetDNSSuffixFromRegion(region string, options Options) (string, error) {
 	case partitionRegexp.AwsCn.MatchString(region):
 		return GetDNSSuffix("aws-cn", options)
 
+	case partitionRegexp.AwsEusc.MatchString(region):
+		return GetDNSSuffix("aws-eusc", options)
+
 	case partitionRegexp.AwsIso.MatchString(region):
 		return GetDNSSuffix("aws-iso", options)
 
 	case partitionRegexp.AwsIsoB.MatchString(region):
 		return GetDNSSuffix("aws-iso-b", options)
+
+	case partitionRegexp.AwsIsoE.MatchString(region):
+		return GetDNSSuffix("aws-iso-e", options)
+
+	case partitionRegexp.AwsIsoF.MatchString(region):
+		return GetDNSSuffix("aws-iso-f", options)
 
 	case partitionRegexp.AwsUsGov.MatchString(region):
 		return GetDNSSuffix("aws-us-gov", options)

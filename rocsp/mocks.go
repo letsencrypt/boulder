@@ -9,13 +9,13 @@ import (
 
 // MockWriteClient is a mock
 type MockWriteClient struct {
-	StoreReponseReturnError error
+	StoreResponseReturnError error
 }
 
 // StoreResponse mocks a rocsp.StoreResponse method and returns nil or an
 // error depending on the desired state.
 func (r MockWriteClient) StoreResponse(ctx context.Context, resp *ocsp.Response) error {
-	return r.StoreReponseReturnError
+	return r.StoreResponseReturnError
 }
 
 // NewMockWriteSucceedClient returns a mock MockWriteClient with a
@@ -27,5 +27,5 @@ func NewMockWriteSucceedClient() MockWriteClient {
 // NewMockWriteFailClient returns a mock MockWriteClient with a
 // StoreResponse method that will always fail.
 func NewMockWriteFailClient() MockWriteClient {
-	return MockWriteClient{StoreReponseReturnError: fmt.Errorf("could not store response")}
+	return MockWriteClient{StoreResponseReturnError: fmt.Errorf("could not store response")}
 }

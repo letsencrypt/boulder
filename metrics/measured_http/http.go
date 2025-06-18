@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // responseWriterWithStatus satisfies http.ResponseWriter, but keeps track of the
@@ -44,9 +45,12 @@ type MeasuredHandler struct {
 	clk clock.Clock
 	// Normally this is always responseTime, but we override it for testing.
 	stat *prometheus.HistogramVec
+	// inFlightRequestsGauge is a gauge that tracks the number of requests
+	// currently in flight, labeled by endpoint.
+	inFlightRequestsGauge *prometheus.GaugeVec
 }
 
-func New(m serveMux, clk clock.Clock, stats prometheus.Registerer) *MeasuredHandler {
+func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelhttp.Option) http.Handler {
 	responseTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "response_time",
@@ -54,16 +58,31 @@ func New(m serveMux, clk clock.Clock, stats prometheus.Registerer) *MeasuredHand
 		},
 		[]string{"endpoint", "method", "code"})
 	stats.MustRegister(responseTime)
-	return &MeasuredHandler{
-		serveMux: m,
-		clk:      clk,
-		stat:     responseTime,
-	}
+
+	inFlightRequestsGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "in_flight_requests",
+			Help: "Tracks the number of WFE requests currently in flight, labeled by endpoint.",
+		},
+		[]string{"endpoint"},
+	)
+	stats.MustRegister(inFlightRequestsGauge)
+
+	return otelhttp.NewHandler(&MeasuredHandler{
+		serveMux:              m,
+		clk:                   clk,
+		stat:                  responseTime,
+		inFlightRequestsGauge: inFlightRequestsGauge,
+	}, "server", opts...)
 }
 
 func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	begin := h.clk.Now()
 	rwws := &responseWriterWithStatus{w, 0}
+
+	subHandler, pattern := h.Handler(r)
+	h.inFlightRequestsGauge.WithLabelValues(pattern).Inc()
+	defer h.inFlightRequestsGauge.WithLabelValues(pattern).Dec()
 
 	// Use the method string only if it's a recognized HTTP method. This avoids
 	// ballooning timeseries with invalid methods from public input.
@@ -77,7 +96,6 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		method = "unknown"
 	}
 
-	subHandler, pattern := h.Handler(r)
 	defer func() {
 		h.stat.With(prometheus.Labels{
 			"endpoint": pattern,

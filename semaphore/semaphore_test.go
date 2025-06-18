@@ -6,22 +6,23 @@ package semaphore_test
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/semaphore"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/letsencrypt/boulder/semaphore"
 )
 
 const maxSleep = 1 * time.Millisecond
 
 func HammerWeighted(sem *semaphore.Weighted, n int64, loops int) {
 	for i := 0; i < loops; i++ {
-		sem.Acquire(context.Background(), n)
-		time.Sleep(time.Duration(rand.Int63n(int64(maxSleep/time.Nanosecond))) * time.Nanosecond)
+		_ = sem.Acquire(context.Background(), n)
+		time.Sleep(time.Duration(rand.Int64N(int64(maxSleep/time.Nanosecond))) * time.Nanosecond)
 		sem.Release(n)
 	}
 }
@@ -62,14 +63,14 @@ func TestWeightedTryAcquire(t *testing.T) {
 	ctx := context.Background()
 	sem := semaphore.NewWeighted(2, 0)
 	tries := []bool{}
-	sem.Acquire(ctx, 1)
+	_ = sem.Acquire(ctx, 1)
 	tries = append(tries, sem.TryAcquire(1))
 	tries = append(tries, sem.TryAcquire(1))
 
 	sem.Release(2)
 
 	tries = append(tries, sem.TryAcquire(1))
-	sem.Acquire(ctx, 1)
+	_ = sem.Acquire(ctx, 1)
 	tries = append(tries, sem.TryAcquire(1))
 
 	want := []bool{true, false, true, false}
@@ -92,14 +93,14 @@ func TestWeightedAcquire(t *testing.T) {
 	}
 
 	tries := []bool{}
-	sem.Acquire(ctx, 1)
+	_ = sem.Acquire(ctx, 1)
 	tries = append(tries, tryAcquire(1))
 	tries = append(tries, tryAcquire(1))
 
 	sem.Release(2)
 
 	tries = append(tries, tryAcquire(1))
-	sem.Acquire(ctx, 1)
+	_ = sem.Acquire(ctx, 1)
 	tries = append(tries, tryAcquire(1))
 
 	want := []bool{true, false, true, false}
@@ -118,7 +119,9 @@ func TestWeightedDoesntBlockIfTooBig(t *testing.T) {
 	{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		go sem.Acquire(ctx, n+1)
+		go func() {
+			_ = sem.Acquire(ctx, n+1)
+		}()
 	}
 
 	g, ctx := errgroup.WithContext(context.Background())
@@ -150,7 +153,7 @@ func TestLargeAcquireDoesntStarve(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(int(n))
 	for i := n; i > 0; i-- {
-		sem.Acquire(ctx, 1)
+		_ = sem.Acquire(ctx, 1)
 		go func() {
 			defer func() {
 				sem.Release(1)
@@ -159,12 +162,12 @@ func TestLargeAcquireDoesntStarve(t *testing.T) {
 			for running {
 				time.Sleep(1 * time.Millisecond)
 				sem.Release(1)
-				sem.Acquire(ctx, 1)
+				_ = sem.Acquire(ctx, 1)
 			}
 		}()
 	}
 
-	sem.Acquire(ctx, n)
+	_ = sem.Acquire(ctx, n)
 	running = false
 	sem.Release(n)
 	wg.Wait()
@@ -175,13 +178,13 @@ func TestAllocCancelDoesntStarve(t *testing.T) {
 	sem := semaphore.NewWeighted(10, 0)
 
 	// Block off a portion of the semaphore so that Acquire(_, 10) can eventually succeed.
-	sem.Acquire(context.Background(), 1)
+	_ = sem.Acquire(context.Background(), 1)
 
 	// In the background, Acquire(_, 10).
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		sem.Acquire(ctx, 10)
+		_ = sem.Acquire(ctx, 10)
 	}()
 
 	// Wait until the Acquire(_, 10) call blocks.
@@ -205,11 +208,11 @@ func TestMaxWaiters(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sem := semaphore.NewWeighted(1, 10)
-	sem.Acquire(ctx, 1)
+	_ = sem.Acquire(ctx, 1)
 
 	for i := 0; i < 10; i++ {
 		go func() {
-			sem.Acquire(ctx, 1)
+			_ = sem.Acquire(ctx, 1)
 			<-ctx.Done()
 		}()
 	}

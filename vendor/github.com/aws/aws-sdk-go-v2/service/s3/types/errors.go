@@ -34,11 +34,11 @@ func (e *BucketAlreadyExists) ErrorCode() string {
 }
 func (e *BucketAlreadyExists) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// The bucket you tried to create already exists, and you own it. Amazon S3 returns
-// this error in all Amazon Web Services Regions except in the North Virginia
-// Region. For legacy compatibility, if you re-create an existing bucket that you
-// already own in the North Virginia Region, Amazon S3 returns 200 OK and resets
-// the bucket access control lists (ACLs).
+// The bucket you tried to create already exists, and you own it. Amazon S3
+// returns this error in all Amazon Web Services Regions except in the North
+// Virginia Region. For legacy compatibility, if you re-create an existing bucket
+// that you already own in the North Virginia Region, Amazon S3 returns 200 OK and
+// resets the bucket access control lists (ACLs).
 type BucketAlreadyOwnedByYou struct {
 	Message *string
 
@@ -64,7 +64,46 @@ func (e *BucketAlreadyOwnedByYou) ErrorCode() string {
 }
 func (e *BucketAlreadyOwnedByYou) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
+//	The existing object was created with a different encryption type. Subsequent
+//
+// write requests must include the appropriate encryption parameters in the request
+// or while creating the session.
+type EncryptionTypeMismatch struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *EncryptionTypeMismatch) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *EncryptionTypeMismatch) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *EncryptionTypeMismatch) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "EncryptionTypeMismatch"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *EncryptionTypeMismatch) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
 // Object is archived and inaccessible until restored.
+//
+// If the object you are retrieving is stored in the S3 Glacier Flexible Retrieval
+// storage class, the S3 Glacier Deep Archive storage class, the S3
+// Intelligent-Tiering Archive Access tier, or the S3 Intelligent-Tiering Deep
+// Archive Access tier, before you can retrieve the object you must first restore a
+// copy using [RestoreObject]. Otherwise, this operation returns an InvalidObjectState error. For
+// information about restoring archived objects, see [Restoring Archived Objects]in the Amazon S3 User Guide.
+//
+// [RestoreObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html
+// [Restoring Archived Objects]: https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html
 type InvalidObjectState struct {
 	Message *string
 
@@ -92,6 +131,69 @@ func (e *InvalidObjectState) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *InvalidObjectState) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// You may receive this error in multiple cases. Depending on the reason for the
+// error, you may receive one of the messages below:
+//
+//   - Cannot specify both a write offset value and user-defined object metadata
+//     for existing objects.
+//
+//   - Checksum Type mismatch occurred, expected checksum Type: sha1, actual
+//     checksum Type: crc32c.
+//
+//   - Request body cannot be empty when 'write offset' is specified.
+type InvalidRequest struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidRequest) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidRequest) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidRequest) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidRequest"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidRequest) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+//	The write offset value that you specified does not match the current object
+//
+// size.
+type InvalidWriteOffset struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidWriteOffset) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidWriteOffset) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidWriteOffset) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidWriteOffset"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidWriteOffset) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The specified bucket does not exist.
 type NoSuchBucket struct {
@@ -249,3 +351,32 @@ func (e *ObjectNotInActiveTierError) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *ObjectNotInActiveTierError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+//	You have attempted to add more parts than the maximum of 10000 that are
+//
+// allowed for this object. You can use the CopyObject operation to copy this
+// object to another and then add more data to the newly copied object.
+type TooManyParts struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *TooManyParts) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *TooManyParts) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *TooManyParts) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "TooManyParts"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *TooManyParts) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }

@@ -7,7 +7,7 @@ import (
 )
 
 /*
- * ZLint Copyright 2022 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -22,22 +22,27 @@ import (
 
 // LintSource is a type representing a known lint source that lints cite
 // requirements from.
+//
 //nolint:revive
 type LintSource string
 
 const (
-	UnknownLintSource        LintSource = "Unknown"
-	RFC3279                  LintSource = "RFC3279"
-	RFC5280                  LintSource = "RFC5280"
-	RFC5480                  LintSource = "RFC5480"
-	RFC5891                  LintSource = "RFC5891"
-	RFC8813                  LintSource = "RFC8813"
-	CABFBaselineRequirements LintSource = "CABF_BR"
-	CABFEVGuidelines         LintSource = "CABF_EV"
-	MozillaRootStorePolicy   LintSource = "Mozilla"
-	AppleRootStorePolicy     LintSource = "Apple"
-	Community                LintSource = "Community"
-	EtsiEsi                  LintSource = "ETSI_ESI"
+	UnknownLintSource             LintSource = "Unknown"
+	RFC3279                       LintSource = "RFC3279"
+	RFC5280                       LintSource = "RFC5280"
+	RFC5480                       LintSource = "RFC5480"
+	RFC5891                       LintSource = "RFC5891"
+	RFC6960                       LintSource = "RFC6960"
+	RFC6962                       LintSource = "RFC6962"
+	RFC8813                       LintSource = "RFC8813"
+	CABFBaselineRequirements      LintSource = "CABF_BR"
+	CABFCSBaselineRequirements    LintSource = "CABF_CS_BR"
+	CABFSMIMEBaselineRequirements LintSource = "CABF_SMIME_BR"
+	CABFEVGuidelines              LintSource = "CABF_EV"
+	MozillaRootStorePolicy        LintSource = "Mozilla"
+	AppleRootStorePolicy          LintSource = "Apple"
+	Community                     LintSource = "Community"
+	EtsiEsi                       LintSource = "ETSI_ESI"
 )
 
 // UnmarshalJSON implements the json.Unmarshaler interface. It ensures that the
@@ -49,7 +54,21 @@ func (s *LintSource) UnmarshalJSON(data []byte) error {
 	}
 
 	switch LintSource(throwAway) {
-	case RFC5280, RFC5480, RFC5891, CABFBaselineRequirements, CABFEVGuidelines, MozillaRootStorePolicy, AppleRootStorePolicy, Community, EtsiEsi:
+	case RFC3279,
+		RFC5280,
+		RFC5480,
+		RFC5891,
+		RFC6960,
+		RFC6962,
+		RFC8813,
+		CABFBaselineRequirements,
+		CABFCSBaselineRequirements,
+		CABFSMIMEBaselineRequirements,
+		CABFEVGuidelines,
+		MozillaRootStorePolicy,
+		AppleRootStorePolicy,
+		Community,
+		EtsiEsi:
 		*s = LintSource(throwAway)
 		return nil
 	default:
@@ -67,14 +86,24 @@ func (s *LintSource) FromString(src string) {
 	// Trim space and try to match a known value
 	src = strings.TrimSpace(src)
 	switch LintSource(src) {
+	case RFC3279:
+		*s = RFC3279
 	case RFC5280:
 		*s = RFC5280
 	case RFC5480:
 		*s = RFC5480
 	case RFC5891:
 		*s = RFC5891
+	case RFC6962:
+		*s = RFC6962
+	case RFC8813:
+		*s = RFC8813
 	case CABFBaselineRequirements:
 		*s = CABFBaselineRequirements
+	case CABFCSBaselineRequirements:
+		*s = CABFCSBaselineRequirements
+	case CABFSMIMEBaselineRequirements:
+		*s = CABFSMIMEBaselineRequirements
 	case CABFEVGuidelines:
 		*s = CABFEVGuidelines
 	case MozillaRootStorePolicy:
@@ -89,6 +118,8 @@ func (s *LintSource) FromString(src string) {
 }
 
 // SourceList is a slice of LintSources that can be sorted.
+//
+//nolint:recvcheck
 type SourceList []LintSource
 
 // Len returns the length of the list.

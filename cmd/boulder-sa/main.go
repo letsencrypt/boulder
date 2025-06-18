@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -16,22 +17,20 @@ type Config struct {
 	SA struct {
 		cmd.ServiceConfig
 		DB          cmd.DBConfig
-		ReadOnlyDB  cmd.DBConfig
-		IncidentsDB cmd.DBConfig
-		// TODO(#6285): Remove this field, as it is no longer used.
-		Issuers map[string]int
+		ReadOnlyDB  cmd.DBConfig `validate:"-"`
+		IncidentsDB cmd.DBConfig `validate:"-"`
 
-		Features map[string]bool
+		Features features.Config
 
 		// Max simultaneous SQL queries caused by a single RPC.
-		ParallelismPerRPC int
+		ParallelismPerRPC int `validate:"omitempty,min=1"`
 		// LagFactor is how long to sleep before retrying a read request that may
 		// have failed solely due to replication lag.
-		LagFactor config.Duration
+		LagFactor config.Duration `validate:"-"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -48,8 +47,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.SA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.SA.Features)
 
 	if *grpcAddr != "" {
 		c.SA.GRPC.Address = *grpcAddr
@@ -58,8 +56,8 @@ func main() {
 		c.SA.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
-	defer logger.AuditPanic()
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
+	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
 	dbMap, err := sa.InitWrappedDb(c.SA.DB, scope, logger)
@@ -84,26 +82,25 @@ func main() {
 		parallel = 1
 	}
 
-	tls, err := c.SA.TLS.Load()
+	tls, err := c.SA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	saroi, err := sa.NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, parallel, c.SA.LagFactor.Duration, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.Duration, clk, logger)
 	cmd.FailOnError(err, "Failed to create read-only SA impl")
 
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	start, stop, err := bgrpc.NewServer(c.SA.GRPC).Add(
+	start, err := bgrpc.NewServer(c.SA.GRPC, logger).WithCheckInterval(c.SA.HealthCheckInterval.Duration).Add(
 		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
 		&sapb.StorageAuthority_ServiceDesc, sai).Build(
 		tls, scope, clk)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "SA gRPC service failed")
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-sa", main)
+	cmd.RegisterCommand("boulder-sa", main, &cmd.ConfigValidator{Config: &Config{}})
 }

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/jmhodges/clock"
+
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/identifier"
@@ -34,7 +35,7 @@ func TestErrorWrapping(t *testing.T) {
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake(), true}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
@@ -77,7 +78,7 @@ func TestSubErrorWrapping(t *testing.T) {
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake(), true}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
@@ -96,7 +97,7 @@ func TestSubErrorWrapping(t *testing.T) {
 
 	subErrors := []berrors.SubBoulderError{
 		{
-			Identifier: identifier.DNSIdentifier("chillserver.com"),
+			Identifier: identifier.NewDNS("chillserver.com"),
 			BoulderError: &berrors.BoulderError{
 				Type:   berrors.RejectedIdentifier,
 				Detail: "2 ill 2 chill",

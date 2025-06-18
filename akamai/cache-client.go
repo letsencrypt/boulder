@@ -3,7 +3,7 @@ package akamai
 import (
 	"bytes"
 	"crypto/hmac"
-	"crypto/md5"
+	"crypto/md5" //nolint: gosec // MD5 is required by the Akamai API.
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -17,11 +17,12 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
 const (
@@ -279,7 +280,7 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 // and returning ErrAllRetriesFailed.
 func (cpc *CachePurgeClient) Purge(urls []string) error {
 	successful := false
-	for i := 0; i <= cpc.retries; i++ {
+	for i := range cpc.retries + 1 {
 		cpc.clk.Sleep(core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3))
 
 		err := cpc.purgeURLs(urls)

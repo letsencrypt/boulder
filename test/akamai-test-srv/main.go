@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
@@ -92,9 +93,23 @@ func main() {
 		w.Write(resp)
 	})
 
-	// The gosec linter complains that timeouts cannot be set here. That's fine,
-	// because this is test-only code.
-	////nolint:gosec
-	go log.Fatal(http.ListenAndServe(*listenAddr, nil))
-	cmd.CatchSignals(nil, nil)
+	s := http.Server{
+		ReadTimeout: 30 * time.Second,
+		Addr:        *listenAddr,
+	}
+
+	go func() {
+		err := s.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			cmd.FailOnError(err, "Running TLS server")
+		}
+	}()
+
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = s.Shutdown(ctx)
+	}()
+
+	cmd.WaitForSignal()
 }

@@ -1,17 +1,17 @@
-import base64
-import os
-import urllib
-import time
-import re
-import random
-import json
-import requests
-import socket
-import tempfile
-import shutil
 import atexit
+import base64
 import errno
+import glob
+import os
+import random
+import re
+import requests
+import shutil
+import socket
 import subprocess
+import tempfile
+import time
+import urllib
 
 import challtestsrv
 
@@ -86,7 +86,7 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
             '-issuer', issuer_file,
             '-cert', cert_file,
             '-verify_other', issuer_file,
-            '-CAfile', '/hierarchy/root-cert-rsa.pem',
+            '-CAfile', 'test/certs/webpki/root-rsa.cert.pem',
             '-respin', f.name], stderr=subprocess.STDOUT).decode()
     # OpenSSL doesn't always return non-zero when response verify fails, so we
     # also look for the string "Response Verify Failure"
@@ -96,7 +96,21 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
         raise(Exception("OCSP verify failure"))
     return output
 
-def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
+def verify_ocsp(cert_file, issuer_glob, url, status="revoked", reason=None):
+    # Try to verify the OCSP response using every issuer identified by the glob.
+    # If one works, great. If none work, re-raise the exception produced by the
+    # last attempt
+    lastException = None
+    for issuer_file in glob.glob(issuer_glob):
+        try:
+            output = try_verify_ocsp(cert_file, issuer_file, url, status, reason)
+            return output
+        except Exception as e:
+            lastException = e
+            continue
+    raise(lastException)
+
+def try_verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
     ocsp_request = make_ocsp_req(cert_file, issuer_file)
     responses = fetch_ocsp(ocsp_request, url)
 
@@ -114,7 +128,11 @@ def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
         if not re.search("%s: %s" % (cert_file, status), verify_output):
             print(verify_output)
             raise(Exception("OCSP response wasn't '%s'" % status))
-    if reason is not None:
+    if reason == "unspecified":
+        if re.search("Reason:", verify_output):
+            print(verify_output)
+            raise(Exception("OCSP response contained unexpected reason"))
+    elif reason is not None:
         if not re.search("Reason: %s" % reason, verify_output):
             print(verify_output)
             raise(Exception("OCSP response wasn't '%s'" % reason))
@@ -131,7 +149,7 @@ def verify_akamai_purge():
             raise(Exception("Timed out waiting for Akamai purge"))
         response = requests.get("http://localhost:6789/debug/get-purges")
         purgeData = response.json()
-        if len(purgeData["V3"]) != 1:
+        if len(purgeData["V3"]) == 0:
             continue
         break
     reset_akamai_purges()
@@ -177,8 +195,9 @@ def waitport(port, prog, perTickCheck=None):
                 raise
     raise(Exception("timed out waiting for debug port %d (%s)" % (port, prog)))
 
-def waithealth(prog, addr):
+def waithealth(prog, port, host_override):
     subprocess.check_call([
         './bin/health-checker',
-        '-addr', addr,
+        '-addr', ("localhost:%d" % (port)),
+        '-host-override', host_override,
         '-config', os.path.join(config_dir, 'health-checker.json')])

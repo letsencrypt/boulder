@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 Google LLC. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,9 +35,6 @@ func (c *LogClient) GetRawEntries(ctx context.Context, start, end int64) (*ct.Ge
 	params := map[string]string{
 		"start": strconv.FormatInt(start, 10),
 		"end":   strconv.FormatInt(end, 10),
-	}
-	if ctx == nil {
-		ctx = context.TODO()
 	}
 
 	var resp ct.GetEntriesResponse

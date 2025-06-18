@@ -2,11 +2,12 @@ package ca
 
 import (
 	"crypto/x509"
+	"fmt"
 	"io"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -33,6 +34,7 @@ func (s mockGenerateCRLBidiStream) Send(entry *capb.GenerateCRLResponse) error {
 }
 
 func TestGenerateCRL(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	crli := testCtx.crl
 	errs := make(chan error, 1)
@@ -67,11 +69,13 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
+	now := testCtx.fc.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: 1,
-				ThisUpdate:   time.Now().UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
@@ -88,21 +92,24 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
 	close(ins)
 	err = <-errs
+	fmt.Println("done waiting for error")
 	test.AssertError(t, err, "can't generate CRL with duplicate metadata")
 	test.AssertContains(t, err.Error(), "got more than one metadata message")
 
@@ -116,26 +123,27 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:    "123",
 				Reason:    1,
-				RevokedAt: time.Now().UnixNano(),
+				RevokedAt: timestamppb.New(now),
 			},
 		},
 	}
 	close(ins)
 	err = <-errs
 	test.AssertError(t, err, "can't generate CRL with bad serials")
-	test.AssertContains(t, err.Error(), "Invalid serial number")
+	test.AssertContains(t, err.Error(), "invalid serial number")
 
 	// Test that we get an error when an entry has a bad revocation time.
 	ins = make(chan *capb.GenerateCRLRequest)
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
+
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:    "deadbeefdeadbeefdeadbeefdeadbeefdead",
 				Reason:    1,
-				RevokedAt: 0,
+				RevokedAt: nil,
 			},
 		},
 	}
@@ -162,8 +170,9 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
@@ -172,10 +181,12 @@ func TestGenerateCRL(t *testing.T) {
 	<-done
 	test.AssertNotError(t, err, "generating empty CRL should work")
 	test.Assert(t, len(crlBytes) > 0, "should have gotten some CRL bytes")
-	crl, err := x509.ParseCRL(crlBytes)
+	crl, err := x509.ParseRevocationList(crlBytes)
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
-	test.AssertEquals(t, len(crl.TBSCertList.RevokedCertificates), 0)
-	err = testCtx.boulderIssuers[0].Cert.CheckCRLSignature(crl)
+	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 0)
+	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
+	test.AssertEquals(t, crl.ThisUpdate, now)
+	test.AssertEquals(t, crl.ThisUpdate, timestamppb.New(now).AsTime())
 	test.AssertNotError(t, err, "CRL signature should validate")
 
 	// Test that generating a CRL with some entries works.
@@ -196,8 +207,9 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
@@ -205,7 +217,7 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:    "000000000000000000000000000000000000",
-				RevokedAt: time.Now().UnixNano(),
+				RevokedAt: timestamppb.New(now),
 				// Reason 0, Unspecified, is omitted.
 			},
 		},
@@ -215,7 +227,7 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:    "111111111111111111111111111111111111",
 				Reason:    1, // keyCompromise
-				RevokedAt: time.Now().UnixNano(),
+				RevokedAt: timestamppb.New(now),
 			},
 		},
 	}
@@ -224,7 +236,7 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:    "444444444444444444444444444444444444",
 				Reason:    4, // superseded
-				RevokedAt: time.Now().UnixNano(),
+				RevokedAt: timestamppb.New(now),
 			},
 		},
 	}
@@ -233,7 +245,7 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:    "555555555555555555555555555555555555",
 				Reason:    5, // cessationOfOperation
-				RevokedAt: time.Now().UnixNano(),
+				RevokedAt: timestamppb.New(now),
 			},
 		},
 	}
@@ -242,7 +254,7 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:    "999999999999999999999999999999999999",
 				Reason:    9, // privilegeWithdrawn
-				RevokedAt: time.Now().UnixNano(),
+				RevokedAt: timestamppb.New(now),
 			},
 		},
 	}
@@ -251,9 +263,9 @@ func TestGenerateCRL(t *testing.T) {
 	<-done
 	test.AssertNotError(t, err, "generating empty CRL should work")
 	test.Assert(t, len(crlBytes) > 0, "should have gotten some CRL bytes")
-	crl, err = x509.ParseCRL(crlBytes)
+	crl, err = x509.ParseRevocationList(crlBytes)
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
-	test.AssertEquals(t, len(crl.TBSCertList.RevokedCertificates), 5)
-	err = testCtx.boulderIssuers[0].Cert.CheckCRLSignature(crl)
+	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 5)
+	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "CRL signature should validate")
 }

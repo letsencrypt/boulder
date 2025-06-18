@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -15,17 +16,15 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"reflect"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
-	"gopkg.in/go-jose/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
 	"github.com/letsencrypt/challtestsrv"
@@ -54,7 +53,7 @@ func (acct *account) update(finalizedOrders, certs []string) {
 	acct.certs = append(acct.certs, certs...)
 }
 
-type context struct {
+type acmeCache struct {
 	// The current V2 account (may be nil for legacy load generation)
 	acct *account
 	// Pending orders waiting for authorization challenge validation
@@ -70,12 +69,12 @@ type context struct {
 	ns *nonceSource
 }
 
-// signEmbeddedV2Request signs the provided request data using the context's
+// signEmbeddedV2Request signs the provided request data using the acmeCache's
 // account's private key. The provided URL is set as a protected header per ACME
 // v2 JWS standards. The resulting JWS contains an **embedded** JWK - this makes
 // this function primarily applicable to new account requests where no key ID is
 // known.
-func (c *context) signEmbeddedV2Request(data []byte, url string) (*jose.JSONWebSignature, error) {
+func (c *acmeCache) signEmbeddedV2Request(data []byte, url string) (*jose.JSONWebSignature, error) {
 	// Create a signing key for the account's private key
 	signingKey := jose.SigningKey{
 		Key:       c.acct.key,
@@ -101,13 +100,13 @@ func (c *context) signEmbeddedV2Request(data []byte, url string) (*jose.JSONWebS
 	return signed, nil
 }
 
-// signKeyIDV2Request signs the provided request data using the context's
+// signKeyIDV2Request signs the provided request data using the acmeCache's
 // account's private key. The provided URL is set as a protected header per ACME
 // v2 JWS standards. The resulting JWS contains a Key ID header that is
-// populated using the context's account's ID. This is the default JWS signing
+// populated using the acmeCache's account's ID. This is the default JWS signing
 // style for ACME v2 requests and should be used everywhere but where the key ID
 // is unknown (e.g. new-account requests where an account doesn't exist yet).
-func (c *context) signKeyIDV2Request(data []byte, url string) (*jose.JSONWebSignature, error) {
+func (c *acmeCache) signKeyIDV2Request(data []byte, url string) (*jose.JSONWebSignature, error) {
 	// Create a JWK with the account's private key and key ID
 	jwk := &jose.JSONWebKey{
 		Key:       c.acct.key,
@@ -168,7 +167,7 @@ type State struct {
 	realIP          string
 	certKey         *ecdsa.PrivateKey
 
-	operations []func(*State, *context) error
+	operations []func(*State, *acmeCache) error
 
 	rMu sync.RWMutex
 
@@ -261,9 +260,6 @@ func (s *State) Restore(filename string) error {
 		if err != nil {
 			continue
 		}
-		if err != nil {
-			continue
-		}
 		s.accts = append(s.accts, &account{
 			key:             key,
 			id:              a.ID,
@@ -349,6 +345,7 @@ func New(
 
 // Run runs the WFE load-generator
 func (s *State) Run(
+	ctx context.Context,
 	httpOneAddrs []string,
 	tlsALPNOneAddrs []string,
 	dnsAddrs []string,
@@ -387,8 +384,6 @@ func (s *State) Run(
 
 	// Run sending loop
 	stop := make(chan bool, 1)
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Println("[+] Beginning execution plan")
 	i := int64(0)
 	go func() {
@@ -429,8 +424,8 @@ func (s *State) Run(
 	select {
 	case <-time.After(p.Runtime):
 		fmt.Println("[+] Execution plan finished")
-	case sig := <-sigs:
-		fmt.Printf("[!] Execution plan interrupted: %s caught\n", sig.String())
+	case <-ctx.Done():
+		fmt.Println("[!] Execution plan cancelled")
 	}
 	stop <- true
 	fmt.Println("[+] Waiting for pending flows to finish before killing challenge server")
@@ -586,19 +581,19 @@ func (s *State) addAccount(acct *account) {
 
 func (s *State) sendCall() {
 	defer s.wg.Done()
-	ctx := &context{}
+	c := &acmeCache{}
 
 	for _, op := range s.operations {
-		err := op(s, ctx)
+		err := op(s, c)
 		if err != nil {
 			method := runtime.FuncForPC(reflect.ValueOf(op).Pointer()).Name()
 			fmt.Printf("[FAILED] %s: %s\n", method, err)
 			break
 		}
 	}
-	// If the context's V2 account isn't nil, update it based on the context's
+	// If the acmeCache's V2 account isn't nil, update it based on the cache's
 	// finalizedOrders and certs.
-	if ctx.acct != nil {
-		ctx.acct.update(ctx.finalizedOrders, ctx.certs)
+	if c.acct != nil {
+		c.acct.update(c.finalizedOrders, c.certs)
 	}
 }

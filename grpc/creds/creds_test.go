@@ -2,8 +2,9 @@ package creds
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"math/big"
@@ -12,59 +13,58 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestServerTransportCredentials(t *testing.T) {
-	acceptedSANs := map[string]struct{}{
-		"boulder-client": {},
+	_, badCert := test.ThrowAwayCert(t, clock.New())
+	goodCert := &x509.Certificate{
+		DNSNames:    []string{"creds-test"},
+		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
 	}
-	certFile := "testdata/boulder-client/cert.pem"
-	badCertFile := "testdata/example.com/cert.pem"
-	goodCert, err := core.LoadCert(certFile)
-	test.AssertNotError(t, err, "core.LoadCert failed on "+certFile)
-	badCert, err := core.LoadCert(badCertFile)
-	test.AssertNotError(t, err, "core.LoadCert failed on "+badCertFile)
+	acceptedSANs := map[string]struct{}{
+		"creds-test": {},
+	}
 	servTLSConfig := &tls.Config{}
 
 	// NewServerCredentials with a nil serverTLSConfig should return an error
-	_, err = NewServerCredentials(nil, acceptedSANs)
+	_, err := NewServerCredentials(nil, acceptedSANs)
 	test.AssertEquals(t, err, ErrNilServerConfig)
 
-	// A creds with a empty acceptedSANs list should consider any peer valid
+	// A creds with a nil acceptedSANs list should consider any peer valid
 	wrappedCreds, err := NewServerCredentials(servTLSConfig, nil)
 	test.AssertNotError(t, err, "NewServerCredentials failed with nil acceptedSANs")
 	bcreds := wrappedCreds.(*serverTransportCredentials)
-	emptyState := tls.ConnectionState{}
-	err = bcreds.validateClient(emptyState)
+	err = bcreds.validateClient(tls.ConnectionState{})
 	test.AssertNotError(t, err, "validateClient() errored for emptyState")
+
+	// A creds with a empty acceptedSANs list should consider any peer valid
 	wrappedCreds, err = NewServerCredentials(servTLSConfig, map[string]struct{}{})
 	test.AssertNotError(t, err, "NewServerCredentials failed with empty acceptedSANs")
 	bcreds = wrappedCreds.(*serverTransportCredentials)
-	err = bcreds.validateClient(emptyState)
+	err = bcreds.validateClient(tls.ConnectionState{})
 	test.AssertNotError(t, err, "validateClient() errored for emptyState")
 
-	// A creds given an empty TLS ConnectionState to verify should return an error
+	// A properly-initialized creds should fail to verify an empty ConnectionState
 	bcreds = &serverTransportCredentials{servTLSConfig, acceptedSANs}
-	err = bcreds.validateClient(emptyState)
+	err = bcreds.validateClient(tls.ConnectionState{})
 	test.AssertEquals(t, err, ErrEmptyPeerCerts)
 
 	// A creds should reject peers that don't have a leaf certificate with
 	// a SAN on the accepted list.
-	wrongState := tls.ConnectionState{
+	err = bcreds.validateClient(tls.ConnectionState{
 		PeerCertificates: []*x509.Certificate{badCert},
-	}
-	err = bcreds.validateClient(wrongState)
+	})
 	var errSANNotAccepted ErrSANNotAccepted
 	test.AssertErrorWraps(t, err, &errSANNotAccepted)
 
 	// A creds should accept peers that have a leaf certificate with a SAN
 	// that is on the accepted list
-	rightState := tls.ConnectionState{
+	err = bcreds.validateClient(tls.ConnectionState{
 		PeerCertificates: []*x509.Certificate{goodCert},
-	}
-	err = bcreds.validateClient(rightState)
+	})
 	test.AssertNotError(t, err, "validateClient(rightState) failed")
 
 	// A creds configured with an IP SAN in the accepted list should accept a peer
@@ -74,13 +74,15 @@ func TestServerTransportCredentials(t *testing.T) {
 		"127.0.0.1": {},
 	}
 	bcreds = &serverTransportCredentials{servTLSConfig, acceptedIPSans}
-	err = bcreds.validateClient(rightState)
+	err = bcreds.validateClient(tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{goodCert},
+	})
 	test.AssertNotError(t, err, "validateClient(rightState) failed with an IP accepted SAN list")
 }
 
 func TestClientTransportCredentials(t *testing.T) {
-	priv, err := rsa.GenerateKey(rand.Reader, 1024)
-	test.AssertNotError(t, err, "rsa.GenerateKey failed")
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
 
 	temp := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),

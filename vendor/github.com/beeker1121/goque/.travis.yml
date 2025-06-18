@@ -1,8 +1,0 @@
-language: go
-
-go:
-  - 1.13
-  - tip
-
-script:
-  - go test -v ./...

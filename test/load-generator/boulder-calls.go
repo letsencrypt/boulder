@@ -1,37 +1,36 @@
 package main
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"net/http"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
+	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
-	"golang.org/x/crypto/ocsp"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 var (
 	// stringToOperation maps a configured plan action to a function that can
 	// operate on a state/context.
-	stringToOperation = map[string]func(*State, *context) error{
+	stringToOperation = map[string]func(*State, *acmeCache) error{
 		"newAccount":        newAccount,
 		"getAccount":        getAccount,
 		"newOrder":          newOrder,
@@ -50,18 +49,18 @@ type OrderJSON struct {
 	// The URL field isn't returned by the API, we populate it manually with the
 	// `Location` header.
 	URL            string
-	Status         core.AcmeStatus             `json:"status"`
-	Expires        time.Time                   `json:"expires"`
-	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
-	Authorizations []string                    `json:"authorizations"`
-	Finalize       string                      `json:"finalize"`
-	Certificate    string                      `json:"certificate,omitempty"`
-	Error          *probs.ProblemDetails       `json:"error,omitempty"`
+	Status         core.AcmeStatus            `json:"status"`
+	Expires        time.Time                  `json:"expires"`
+	Identifiers    identifier.ACMEIdentifiers `json:"identifiers"`
+	Authorizations []string                   `json:"authorizations"`
+	Finalize       string                     `json:"finalize"`
+	Certificate    string                     `json:"certificate,omitempty"`
+	Error          *probs.ProblemDetails      `json:"error,omitempty"`
 }
 
 // getAccount takes a randomly selected v2 account from `state.accts` and puts it
-// into `ctx.acct`. The context `nonceSource` is also populated as convenience.
-func getAccount(s *State, ctx *context) error {
+// into `c.acct`. The context `nonceSource` is also populated as convenience.
+func getAccount(s *State, c *acmeCache) error {
 	s.rMu.RLock()
 	defer s.rMu.RUnlock()
 
@@ -71,8 +70,8 @@ func getAccount(s *State, ctx *context) error {
 	}
 
 	// Select a random account from the state and put it into the context
-	ctx.acct = s.accts[mrand.Intn(len(s.accts))]
-	ctx.ns = &nonceSource{s: s}
+	c.acct = s.accts[mrand.IntN(len(s.accts))]
+	c.ns = &nonceSource{s: s}
 	return nil
 }
 
@@ -81,11 +80,11 @@ func getAccount(s *State, ctx *context) error {
 // then `newAccount` puts an existing account from the state into the context,
 // otherwise it creates a new account and puts it into both the state and the
 // context.
-func newAccount(s *State, ctx *context) error {
+func newAccount(s *State, c *acmeCache) error {
 	// Check the max regs and if exceeded, just return an existing account instead
 	// of creating a new one.
 	if s.maxRegs != 0 && s.numAccts() >= s.maxRegs {
-		return getAccount(s, ctx)
+		return getAccount(s, c)
 	}
 
 	// Create a random signing key
@@ -93,10 +92,10 @@ func newAccount(s *State, ctx *context) error {
 	if err != nil {
 		return err
 	}
-	ctx.acct = &account{
+	c.acct = &account{
 		key: signKey,
 	}
-	ctx.ns = &nonceSource{s: s}
+	c.ns = &nonceSource{s: s}
 
 	// Prepare an account registration message body
 	reqBody := struct {
@@ -117,7 +116,7 @@ func newAccount(s *State, ctx *context) error {
 	// Sign the new account registration body using a JWS with an embedded JWK
 	// because we do not have a key ID from the server yet.
 	newAccountURL := s.directory.EndpointURL(acme.NewAccountEndpoint)
-	jws, err := ctx.signEmbeddedV2Request(reqBodyStr, newAccountURL)
+	jws, err := c.signEmbeddedV2Request(reqBodyStr, newAccountURL)
 	if err != nil {
 		return err
 	}
@@ -126,7 +125,7 @@ func newAccount(s *State, ctx *context) error {
 	resp, err := s.post(
 		newAccountURL,
 		bodyBuf,
-		ctx.ns,
+		c.ns,
 		string(acme.NewAccountEndpoint),
 		http.StatusCreated)
 	if err != nil {
@@ -140,10 +139,10 @@ func newAccount(s *State, ctx *context) error {
 	if locHeader == "" {
 		return fmt.Errorf("%s, bad response - no Location header with account ID", newAccountURL)
 	}
-	ctx.acct.id = locHeader
+	c.acct.id = locHeader
 
 	// Add the account to the state
-	s.addAccount(ctx.acct)
+	s.addAccount(c.acct)
 	return nil
 }
 
@@ -152,31 +151,27 @@ func newAccount(s *State, ctx *context) error {
 func randDomain(base string) string {
 	// This approach will cause some repeat domains but not enough to make rate
 	// limits annoying!
-	n := time.Now().UnixNano()
-	b := new(bytes.Buffer)
-	binary.Write(b, binary.LittleEndian, n)
-	return fmt.Sprintf("%x.%s", sha1.Sum(b.Bytes()), base)
+	var bytes [3]byte
+	_, _ = rand.Read(bytes[:])
+	return hex.EncodeToString(bytes[:]) + base
 }
 
 // newOrder creates a new pending order object for a random set of domains using
 // the context's account.
-func newOrder(s *State, ctx *context) error {
+func newOrder(s *State, c *acmeCache) error {
 	// Pick a random number of names within the constraints of the maxNamesPerCert
 	// parameter
-	orderSize := 1 + mrand.Intn(s.maxNamesPerCert-1)
+	orderSize := 1 + mrand.IntN(s.maxNamesPerCert-1)
 	// Generate that many random domain names. There may be some duplicates, we
 	// don't care. The ACME server will collapse those down for us, how handy!
-	dnsNames := []identifier.ACMEIdentifier{}
-	for i := 0; i <= orderSize; i++ {
-		dnsNames = append(dnsNames, identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: randDomain(s.domainBase),
-		})
+	dnsNames := identifier.ACMEIdentifiers{}
+	for range orderSize {
+		dnsNames = append(dnsNames, identifier.NewDNS(randDomain(s.domainBase)))
 	}
 
 	// create the new order request object
 	initOrder := struct {
-		Identifiers []identifier.ACMEIdentifier
+		Identifiers identifier.ACMEIdentifiers
 	}{
 		Identifiers: dnsNames,
 	}
@@ -187,7 +182,7 @@ func newOrder(s *State, ctx *context) error {
 
 	// Sign the new order request with the context account's key/key ID
 	newOrderURL := s.directory.EndpointURL(acme.NewOrderEndpoint)
-	jws, err := ctx.signKeyIDV2Request(initOrderStr, newOrderURL)
+	jws, err := c.signKeyIDV2Request(initOrderStr, newOrderURL)
 	if err != nil {
 		return err
 	}
@@ -196,7 +191,7 @@ func newOrder(s *State, ctx *context) error {
 	resp, err := s.post(
 		newOrderURL,
 		bodyBuf,
-		ctx.ns,
+		c.ns,
 		string(acme.NewOrderEndpoint),
 		http.StatusCreated)
 	if err != nil {
@@ -223,24 +218,24 @@ func newOrder(s *State, ctx *context) error {
 	orderJSON.URL = orderURL
 
 	// Store the pending order in the context
-	ctx.pendingOrders = append(ctx.pendingOrders, &orderJSON)
+	c.pendingOrders = append(c.pendingOrders, &orderJSON)
 	return nil
 }
 
 // popPendingOrder *removes* a random pendingOrder from the context, returning
 // it.
-func popPendingOrder(ctx *context) *OrderJSON {
-	orderIndex := mrand.Intn(len(ctx.pendingOrders))
-	order := ctx.pendingOrders[orderIndex]
-	ctx.pendingOrders = append(ctx.pendingOrders[:orderIndex], ctx.pendingOrders[orderIndex+1:]...)
+func popPendingOrder(c *acmeCache) *OrderJSON {
+	orderIndex := mrand.IntN(len(c.pendingOrders))
+	order := c.pendingOrders[orderIndex]
+	c.pendingOrders = append(c.pendingOrders[:orderIndex], c.pendingOrders[orderIndex+1:]...)
 	return order
 }
 
 // getAuthorization fetches an authorization by GET-ing the provided URL. It
 // records the latency and result of the GET operation in the state.
-func getAuthorization(s *State, ctx *context, url string) (*core.Authorization, error) {
+func getAuthorization(s *State, c *acmeCache, url string) (*core.Authorization, error) {
 	latencyTag := "/acme/authz/{ID}"
-	resp, err := postAsGet(s, ctx, url, latencyTag)
+	resp, err := postAsGet(s, c, url, latencyTag)
 	// If there was an error, note the state and return
 	if err != nil {
 		return nil, fmt.Errorf("%s bad response: %s", url, err)
@@ -269,7 +264,7 @@ func getAuthorization(s *State, ctx *context, url string) (*core.Authorization, 
 // HTTP-01 challenge using the context's account and the state's challenge
 // server. Aftering POSTing the authorization's HTTP-01 challenge the
 // authorization will be polled waiting for a state change.
-func completeAuthorization(authz *core.Authorization, s *State, ctx *context) error {
+func completeAuthorization(authz *core.Authorization, s *State, c *acmeCache) error {
 	// Skip if the authz isn't pending
 	if authz.Status != core.StatusPending {
 		return nil
@@ -283,7 +278,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	}
 
 	// Compute the key authorization from the context account's key
-	jwk := &jose.JSONWebKey{Key: &ctx.acct.key.PublicKey}
+	jwk := &jose.JSONWebKey{Key: &c.acct.key.PublicKey}
 	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return err
@@ -311,7 +306,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	}
 
 	// Prepare the Challenge POST body
-	jws, err := ctx.signKeyIDV2Request([]byte(`{}`), chalToSolve.URL)
+	jws, err := c.signKeyIDV2Request([]byte(`{}`), chalToSolve.URL)
 	if err != nil {
 		return err
 	}
@@ -320,7 +315,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 	resp, err := s.post(
 		chalToSolve.URL,
 		requestPayload,
-		ctx.ns,
+		c.ns,
 		"/acme/challenge/{ID}", // We want all challenge POST latencies to be grouped
 		http.StatusOK,
 	)
@@ -337,7 +332,7 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 
 	// Poll the authorization waiting for the challenge response to be recorded in
 	// a change of state. The polling may sleep and retry a few times if required
-	err = pollAuthorization(authz, s, ctx)
+	err = pollAuthorization(authz, s, c)
 	if err != nil {
 		return err
 	}
@@ -351,11 +346,11 @@ func completeAuthorization(authz *core.Authorization, s *State, ctx *context) er
 // be valid. If the status is invalid, or if three GETs do not produce the
 // correct authorization state an error is returned. If no error is returned
 // then the authorization is valid and ready.
-func pollAuthorization(authz *core.Authorization, s *State, ctx *context) error {
+func pollAuthorization(authz *core.Authorization, s *State, c *acmeCache) error {
 	authzURL := authz.ID
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		// Fetch the authz by its URL
-		authz, err := getAuthorization(s, ctx, authzURL)
+		authz, err := getAuthorization(s, c, authzURL)
 		if err != nil {
 			return nil
 		}
@@ -377,25 +372,25 @@ func pollAuthorization(authz *core.Authorization, s *State, ctx *context) error 
 // authorization's HTTP-01 challenge using the context's account, and finally
 // placing the now-ready-to-be-finalized order into the context's list of
 // fulfilled orders.
-func fulfillOrder(s *State, ctx *context) error {
+func fulfillOrder(s *State, c *acmeCache) error {
 	// There must be at least one pending order in the context to fulfill
-	if len(ctx.pendingOrders) == 0 {
+	if len(c.pendingOrders) == 0 {
 		return errors.New("no pending orders to fulfill")
 	}
 
 	// Get an order to fulfill from the context
-	order := popPendingOrder(ctx)
+	order := popPendingOrder(c)
 
 	// Each of its authorizations need to be processed
 	for _, url := range order.Authorizations {
 		// Fetch the authz by its URL
-		authz, err := getAuthorization(s, ctx, url)
+		authz, err := getAuthorization(s, c, url)
 		if err != nil {
 			return err
 		}
 
 		// Complete the authorization by solving a challenge
-		err = completeAuthorization(authz, s, ctx)
+		err = completeAuthorization(authz, s, c)
 		if err != nil {
 			return err
 		}
@@ -403,16 +398,16 @@ func fulfillOrder(s *State, ctx *context) error {
 
 	// Once all of the authorizations have been fulfilled the order is fulfilled
 	// and ready for future finalization.
-	ctx.fulfilledOrders = append(ctx.fulfilledOrders, order.URL)
+	c.fulfilledOrders = append(c.fulfilledOrders, order.URL)
 	return nil
 }
 
 // getOrder GETs an order by URL, returning an OrderJSON object. It tracks the
 // latency of the GET operation in the provided state.
-func getOrder(s *State, ctx *context, url string) (*OrderJSON, error) {
+func getOrder(s *State, c *acmeCache, url string) (*OrderJSON, error) {
 	latencyTag := "/acme/order/{ID}"
 	// POST-as-GET the order URL
-	resp, err := postAsGet(s, ctx, url, latencyTag)
+	resp, err := postAsGet(s, c, url, latencyTag)
 	// If there was an error, track that result
 	if err != nil {
 		return nil, fmt.Errorf("%s bad response: %s", url, err)
@@ -440,10 +435,10 @@ func getOrder(s *State, ctx *context, url string) (*OrderJSON, error) {
 // valid such that a certificate URL for the order is known. Three attempts are
 // made to check the order status, sleeping 3s between each. If these attempts
 // expire without the status becoming valid an error is returned.
-func pollOrderForCert(order *OrderJSON, s *State, ctx *context) (*OrderJSON, error) {
-	for i := 0; i < 3; i++ {
+func pollOrderForCert(order *OrderJSON, s *State, c *acmeCache) (*OrderJSON, error) {
+	for range 3 {
 		// Fetch the order by its URL
-		order, err := getOrder(s, ctx, order.URL)
+		order, err := getOrder(s, c, order.URL)
 		if err != nil {
 			return nil, err
 		}
@@ -463,10 +458,10 @@ func pollOrderForCert(order *OrderJSON, s *State, ctx *context) (*OrderJSON, err
 
 // popFulfilledOrder **removes** a fulfilled order from the context, returning
 // it. Fulfilled orders have all of their authorizations satisfied.
-func popFulfilledOrder(ctx *context) string {
-	orderIndex := mrand.Intn(len(ctx.fulfilledOrders))
-	order := ctx.fulfilledOrders[orderIndex]
-	ctx.fulfilledOrders = append(ctx.fulfilledOrders[:orderIndex], ctx.fulfilledOrders[orderIndex+1:]...)
+func popFulfilledOrder(c *acmeCache) string {
+	orderIndex := mrand.IntN(len(c.fulfilledOrders))
+	order := c.fulfilledOrders[orderIndex]
+	c.fulfilledOrders = append(c.fulfilledOrders[:orderIndex], c.fulfilledOrders[orderIndex+1:]...)
 	return order
 }
 
@@ -475,15 +470,15 @@ func popFulfilledOrder(ctx *context) string {
 // `certKey`. The order is then polled for the status to change to valid so that
 // the certificate URL can be added to the context. The context's `certs` list
 // is updated with the URL for the order's certificate.
-func finalizeOrder(s *State, ctx *context) error {
+func finalizeOrder(s *State, c *acmeCache) error {
 	// There must be at least one fulfilled order in the context
-	if len(ctx.fulfilledOrders) < 1 {
+	if len(c.fulfilledOrders) < 1 {
 		return errors.New("No fulfilled orders in the context ready to be finalized")
 	}
 
 	// Pop a fulfilled order to process, and then GET its contents
-	orderID := popFulfilledOrder(ctx)
-	order, err := getOrder(s, ctx, orderID)
+	orderID := popFulfilledOrder(c)
+	order, err := getOrder(s, c, orderID)
 	if err != nil {
 		return err
 	}
@@ -519,7 +514,7 @@ func finalizeOrder(s *State, ctx *context) error {
 	)
 
 	// Sign the request body with the context's account key/keyID
-	jws, err := ctx.signKeyIDV2Request([]byte(request), finalizeURL)
+	jws, err := c.signKeyIDV2Request([]byte(request), finalizeURL)
 	if err != nil {
 		return err
 	}
@@ -528,7 +523,7 @@ func finalizeOrder(s *State, ctx *context) error {
 	resp, err := s.post(
 		finalizeURL,
 		requestPayload,
-		ctx.ns,
+		c.ns,
 		"/acme/order/finalize", // We want all order finalizations to be grouped.
 		http.StatusOK,
 	)
@@ -544,7 +539,7 @@ func finalizeOrder(s *State, ctx *context) error {
 	}
 
 	// Poll the order waiting for the certificate to be ready
-	completedOrder, err := pollOrderForCert(order, s, ctx)
+	completedOrder, err := pollOrderForCert(order, s, c)
 	if err != nil {
 		return err
 	}
@@ -556,8 +551,8 @@ func finalizeOrder(s *State, ctx *context) error {
 	}
 
 	// Append the certificate URL into the context's list of certificates
-	ctx.certs = append(ctx.certs, certURL)
-	ctx.finalizedOrders = append(ctx.finalizedOrders, order.URL)
+	c.certs = append(c.certs, certURL)
+	c.finalizedOrders = append(c.finalizedOrders, order.URL)
 	return nil
 }
 
@@ -567,27 +562,27 @@ func finalizeOrder(s *State, ctx *context) error {
 // responsible for closing the HTTP response body.
 //
 // See RFC 8555 Section 6.3 for more information on POST-as-GET requests.
-func postAsGet(s *State, ctx *context, url string, latencyTag string) (*http.Response, error) {
+func postAsGet(s *State, c *acmeCache, url string, latencyTag string) (*http.Response, error) {
 	// Create the POST-as-GET request JWS
-	jws, err := ctx.signKeyIDV2Request([]byte(""), url)
+	jws, err := c.signKeyIDV2Request([]byte(""), url)
 	if err != nil {
 		return nil, err
 	}
 	requestPayload := []byte(jws.FullSerialize())
 
-	return s.post(url, requestPayload, ctx.ns, latencyTag, http.StatusOK)
+	return s.post(url, requestPayload, c.ns, latencyTag, http.StatusOK)
 }
 
-func popCertificate(ctx *context) string {
-	certIndex := mrand.Intn(len(ctx.certs))
-	certURL := ctx.certs[certIndex]
-	ctx.certs = append(ctx.certs[:certIndex], ctx.certs[certIndex+1:]...)
+func popCertificate(c *acmeCache) string {
+	certIndex := mrand.IntN(len(c.certs))
+	certURL := c.certs[certIndex]
+	c.certs = append(c.certs[:certIndex], c.certs[certIndex+1:]...)
 	return certURL
 }
 
-func getCert(s *State, ctx *context, url string) ([]byte, error) {
+func getCert(s *State, c *acmeCache, url string) ([]byte, error) {
 	latencyTag := "/acme/cert/{serial}"
-	resp, err := postAsGet(s, ctx, url, latencyTag)
+	resp, err := postAsGet(s, c, url, latencyTag)
 	if err != nil {
 		return nil, fmt.Errorf("%s bad response: %s", url, err)
 	}
@@ -599,8 +594,8 @@ func getCert(s *State, ctx *context, url string) ([]byte, error) {
 // and sends a revocation request for the certificate to the ACME server.
 // The revocation request is signed with the account key rather than the certificate
 // key.
-func revokeCertificate(s *State, ctx *context) error {
-	if len(ctx.certs) < 1 {
+func revokeCertificate(s *State, c *acmeCache) error {
+	if len(c.certs) < 1 {
 		return errors.New("No certificates in the context that can be revoked")
 	}
 
@@ -608,8 +603,8 @@ func revokeCertificate(s *State, ctx *context) error {
 		return nil
 	}
 
-	certURL := popCertificate(ctx)
-	certPEM, err := getCert(s, ctx, certURL)
+	certURL := popCertificate(c)
+	certPEM, err := getCert(s, c, certURL)
 	if err != nil {
 		return err
 	}
@@ -630,7 +625,7 @@ func revokeCertificate(s *State, ctx *context) error {
 	revokeURL := s.directory.EndpointURL(acme.RevokeCertEndpoint)
 	// TODO(roland): randomly use the certificate key to sign the request instead of
 	// the account key
-	jws, err := ctx.signKeyIDV2Request(revokeJSON, revokeURL)
+	jws, err := c.signKeyIDV2Request(revokeJSON, revokeURL)
 	if err != nil {
 		return err
 	}
@@ -639,7 +634,7 @@ func revokeCertificate(s *State, ctx *context) error {
 	resp, err := s.post(
 		revokeURL,
 		requestPayload,
-		ctx.ns,
+		c.ns,
 		"/acme/revoke-cert",
 		http.StatusOK,
 	)

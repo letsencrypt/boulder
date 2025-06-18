@@ -3,10 +3,11 @@ package probers
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/observer/probers"
-	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
+
+	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestCRLConf_MakeProber(t *testing.T) {
@@ -70,25 +71,20 @@ func TestCRLConf_MakeProber(t *testing.T) {
 }
 
 func TestCRLConf_UnmarshalSettings(t *testing.T) {
-	type fields struct {
-		url interface{}
-	}
 	tests := []struct {
 		name    string
-		fields  fields
+		fields  probers.Settings
 		want    probers.Configurer
 		wantErr bool
 	}{
-		{"valid", fields{"google.com"}, CRLConf{"google.com"}, false},
-		{"invalid (map)", fields{make(map[string]interface{})}, nil, true},
-		{"invalid (list)", fields{make([]string, 0)}, nil, true},
+		{"valid", probers.Settings{"url": "google.com"}, CRLConf{"google.com", false}, false},
+		{"valid with partitioned", probers.Settings{"url": "google.com", "partitioned": true}, CRLConf{"google.com", true}, false},
+		{"invalid (map)", probers.Settings{"url": make(map[string]interface{})}, nil, true},
+		{"invalid (list)", probers.Settings{"url": make([]string, 0)}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			settings := probers.Settings{
-				"url": tt.fields.url,
-			}
-			settingsBytes, _ := yaml.Marshal(settings)
+			settingsBytes, _ := yaml.Marshal(tt.fields)
 			t.Log(string(settingsBytes))
 			c := CRLConf{}
 			got, err := c.UnmarshalSettings(settingsBytes)

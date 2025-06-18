@@ -51,11 +51,11 @@ func NewMappedSelector[T any](executor MappedExecutor) (MappedSelector[T], error
 	//   - Note that the reverse is not true: it's perfectly okay for there to be
 	//     database columns which do not correspond to fields in the struct; those
 	//     columns will be ignored.
-	// TODO: In the future, when we replace gorp's TableMap with our own, this
+	// TODO: In the future, when we replace borp's TableMap with our own, this
 	// check should be performed at the time the mapping is declared.
 	columns := make([]string, 0)
 	seen := make(map[string]struct{})
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		field := t.Field(i)
 		if field.Anonymous {
 			return nil, fmt.Errorf("struct contains anonymous embedded struct %q", field.Name)
@@ -80,21 +80,21 @@ type mappedSelector[T any] struct {
 	columns []string
 }
 
-// Query performs a SELECT on the appropriate table for T. It combines the best
-// features of gorp, the go stdlib, and generics, using the type parameter of
+// QueryContext performs a SELECT on the appropriate table for T. It combines the best
+// features of borp, the go stdlib, and generics, using the type parameter of
 // the typeSelector object to automatically look up the proper table name and
 // columns to select. It returns an iterable which yields fully-populated
 // objects of the parameterized type directly. The given clauses MUST be only
 // the bits of a sql query from "WHERE ..." onwards; if they contain any of the
 // "SELECT ... FROM ..." portion of the query it will result in an error. The
-// args take the same kinds of values as gorp's SELECT: either one argument per
+// args take the same kinds of values as borp's SELECT: either one argument per
 // positional placeholder, or a map of placeholder names to their arguments
-// (see https://pkg.go.dev/gopkg.in/gorp.v2#readme-ad-hoc-sql).
+// (see https://pkg.go.dev/github.com/letsencrypt/borp#readme-ad-hoc-sql).
 //
 // The caller is responsible for calling `Rows.Close()` when they are done with
 // the query. The caller is also responsible for ensuring that the clauses
 // argument does not contain any user-influenced input.
-func (ts mappedSelector[T]) Query(ctx context.Context, clauses string, args ...interface{}) (Rows[T], error) {
+func (ts mappedSelector[T]) QueryContext(ctx context.Context, clauses string, args ...interface{}) (Rows[T], error) {
 	// Look up the table to use based on the type of this TypeSelector.
 	var throwaway T
 	tableMap, err := ts.wrapped.TableFor(reflect.TypeOf(throwaway), false)
@@ -106,7 +106,7 @@ func (ts mappedSelector[T]) Query(ctx context.Context, clauses string, args ...i
 }
 
 // QueryFrom is the same as Query, but it additionally takes a table name to
-// select from, rather than automatically computing the table name from gorp's
+// select from, rather than automatically computing the table name from borp's
 // DbMap.
 //
 // The caller is responsible for calling `Rows.Close()` when they are done with
@@ -127,7 +127,7 @@ func (ts mappedSelector[T]) QueryFrom(ctx context.Context, tablename string, cla
 		clauses,
 	)
 
-	r, err := ts.wrapped.WithContext(ctx).Query(query, args...)
+	r, err := ts.wrapped.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("reading db: %w", err)
 	}
@@ -140,6 +140,45 @@ func (ts mappedSelector[T]) QueryFrom(ctx context.Context, tablename string, cla
 type rows[T any] struct {
 	wrapped *sql.Rows
 	numCols int
+}
+
+// ForEach calls the given function with each model object retrieved by
+// repeatedly calling .Get(). It closes the rows object when it hits an error
+// or finishes iterating over the rows, so it can only be called once. This is
+// the intended way to use the result of QueryContext or QueryFrom; the other
+// methods on this type are lower-level and intended for advanced use only.
+func (r rows[T]) ForEach(do func(*T) error) (err error) {
+	defer func() {
+		// Close the row reader when we exit. Use the named error return to combine
+		// any error from normal execution with any error from closing.
+		closeErr := r.Close()
+		if closeErr != nil && err != nil {
+			err = fmt.Errorf("%w; also while closing the row reader: %w", err, closeErr)
+		} else if closeErr != nil {
+			err = closeErr
+		}
+		// If closeErr is nil, then just leaving the existing named return alone
+		// will do the right thing.
+	}()
+
+	for r.Next() {
+		row, err := r.Get()
+		if err != nil {
+			return fmt.Errorf("reading row: %w", err)
+		}
+
+		err = do(row)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = r.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
+	}
+
+	return nil
 }
 
 // Next is a wrapper around sql.Rows.Next(). It must be called before every call

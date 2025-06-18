@@ -36,8 +36,7 @@
 // The Timestamp message represents a timestamp,
 // an instant in time since the Unix epoch (January 1st, 1970).
 //
-//
-// Conversion to a Go Time
+// # Conversion to a Go Time
 //
 // The AsTime method can be used to convert a Timestamp message to a
 // standard Go time.Time value in UTC:
@@ -59,8 +58,7 @@
 //		... // handle error
 //	}
 //
-//
-// Conversion from a Go Time
+// # Conversion from a Go Time
 //
 // The timestamppb.New function can be used to construct a Timestamp message
 // from a standard Go time.Time value:
@@ -72,7 +70,6 @@
 //
 //	ts := timestamppb.Now()
 //	... // make use of ts as a *timestamppb.Timestamp
-//
 package timestamppb
 
 import (
@@ -81,6 +78,7 @@ import (
 	reflect "reflect"
 	sync "sync"
 	time "time"
+	unsafe "unsafe"
 )
 
 // A Timestamp represents a point in time independent of any time zone or local
@@ -101,52 +99,50 @@ import (
 //
 // Example 1: Compute Timestamp from POSIX `time()`.
 //
-//     Timestamp timestamp;
-//     timestamp.set_seconds(time(NULL));
-//     timestamp.set_nanos(0);
+//	Timestamp timestamp;
+//	timestamp.set_seconds(time(NULL));
+//	timestamp.set_nanos(0);
 //
 // Example 2: Compute Timestamp from POSIX `gettimeofday()`.
 //
-//     struct timeval tv;
-//     gettimeofday(&tv, NULL);
+//	struct timeval tv;
+//	gettimeofday(&tv, NULL);
 //
-//     Timestamp timestamp;
-//     timestamp.set_seconds(tv.tv_sec);
-//     timestamp.set_nanos(tv.tv_usec * 1000);
+//	Timestamp timestamp;
+//	timestamp.set_seconds(tv.tv_sec);
+//	timestamp.set_nanos(tv.tv_usec * 1000);
 //
 // Example 3: Compute Timestamp from Win32 `GetSystemTimeAsFileTime()`.
 //
-//     FILETIME ft;
-//     GetSystemTimeAsFileTime(&ft);
-//     UINT64 ticks = (((UINT64)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+//	FILETIME ft;
+//	GetSystemTimeAsFileTime(&ft);
+//	UINT64 ticks = (((UINT64)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
 //
-//     // A Windows tick is 100 nanoseconds. Windows epoch 1601-01-01T00:00:00Z
-//     // is 11644473600 seconds before Unix epoch 1970-01-01T00:00:00Z.
-//     Timestamp timestamp;
-//     timestamp.set_seconds((INT64) ((ticks / 10000000) - 11644473600LL));
-//     timestamp.set_nanos((INT32) ((ticks % 10000000) * 100));
+//	// A Windows tick is 100 nanoseconds. Windows epoch 1601-01-01T00:00:00Z
+//	// is 11644473600 seconds before Unix epoch 1970-01-01T00:00:00Z.
+//	Timestamp timestamp;
+//	timestamp.set_seconds((INT64) ((ticks / 10000000) - 11644473600LL));
+//	timestamp.set_nanos((INT32) ((ticks % 10000000) * 100));
 //
 // Example 4: Compute Timestamp from Java `System.currentTimeMillis()`.
 //
-//     long millis = System.currentTimeMillis();
+//	long millis = System.currentTimeMillis();
 //
-//     Timestamp timestamp = Timestamp.newBuilder().setSeconds(millis / 1000)
-//         .setNanos((int) ((millis % 1000) * 1000000)).build();
-//
+//	Timestamp timestamp = Timestamp.newBuilder().setSeconds(millis / 1000)
+//	    .setNanos((int) ((millis % 1000) * 1000000)).build();
 //
 // Example 5: Compute Timestamp from Java `Instant.now()`.
 //
-//     Instant now = Instant.now();
+//	Instant now = Instant.now();
 //
-//     Timestamp timestamp =
-//         Timestamp.newBuilder().setSeconds(now.getEpochSecond())
-//             .setNanos(now.getNano()).build();
-//
+//	Timestamp timestamp =
+//	    Timestamp.newBuilder().setSeconds(now.getEpochSecond())
+//	        .setNanos(now.getNano()).build();
 //
 // Example 6: Compute Timestamp from current time in Python.
 //
-//     timestamp = Timestamp()
-//     timestamp.GetCurrentTime()
+//	timestamp = Timestamp()
+//	timestamp.GetCurrentTime()
 //
 // # JSON Mapping
 //
@@ -172,15 +168,10 @@ import (
 // [`strftime`](https://docs.python.org/2/library/time.html#time.strftime) with
 // the time format spec '%Y-%m-%dT%H:%M:%S.%fZ'. Likewise, in Java, one can use
 // the Joda Time's [`ISODateTimeFormat.dateTime()`](
-// http://www.joda.org/joda-time/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime%2D%2D
+// http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
 // ) to obtain a formatter capable of generating timestamps in this format.
-//
-//
 type Timestamp struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// Represents seconds of UTC time since Unix epoch
 	// 1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to
 	// 9999-12-31T23:59:59Z inclusive.
@@ -189,7 +180,9 @@ type Timestamp struct {
 	// second values with fractions must still have non-negative nanos values
 	// that count forward in time. Must be from 0 to 999,999,999
 	// inclusive.
-	Nanos int32 `protobuf:"varint,2,opt,name=nanos,proto3" json:"nanos,omitempty"`
+	Nanos         int32 `protobuf:"varint,2,opt,name=nanos,proto3" json:"nanos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 // Now constructs a new Timestamp from the current time.
@@ -261,11 +254,9 @@ func (x *Timestamp) check() uint {
 
 func (x *Timestamp) Reset() {
 	*x = Timestamp{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_timestamp_proto_msgTypes[0]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_timestamp_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Timestamp) String() string {
@@ -276,7 +267,7 @@ func (*Timestamp) ProtoMessage() {}
 
 func (x *Timestamp) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_timestamp_proto_msgTypes[0]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -307,39 +298,28 @@ func (x *Timestamp) GetNanos() int32 {
 
 var File_google_protobuf_timestamp_proto protoreflect.FileDescriptor
 
-var file_google_protobuf_timestamp_proto_rawDesc = []byte{
-	0x0a, 0x1f, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
-	0x66, 0x2f, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x2e, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x12, 0x0f, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
-	0x75, 0x66, 0x22, 0x3b, 0x0a, 0x09, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x12,
-	0x18, 0x0a, 0x07, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03,
-	0x52, 0x07, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x12, 0x14, 0x0a, 0x05, 0x6e, 0x61, 0x6e,
-	0x6f, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x05, 0x6e, 0x61, 0x6e, 0x6f, 0x73, 0x42,
-	0x85, 0x01, 0x0a, 0x13, 0x63, 0x6f, 0x6d, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x42, 0x0e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61,
-	0x6d, 0x70, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x32, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
-	0x65, 0x2e, 0x67, 0x6f, 0x6c, 0x61, 0x6e, 0x67, 0x2e, 0x6f, 0x72, 0x67, 0x2f, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x73, 0x2f, 0x6b, 0x6e, 0x6f, 0x77,
-	0x6e, 0x2f, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x70, 0x62, 0xf8, 0x01, 0x01,
-	0xa2, 0x02, 0x03, 0x47, 0x50, 0x42, 0xaa, 0x02, 0x1e, 0x47, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
-	0x50, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x57, 0x65, 0x6c, 0x6c, 0x4b, 0x6e, 0x6f,
-	0x77, 0x6e, 0x54, 0x79, 0x70, 0x65, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
-}
+const file_google_protobuf_timestamp_proto_rawDesc = "" +
+	"\n" +
+	"\x1fgoogle/protobuf/timestamp.proto\x12\x0fgoogle.protobuf\";\n" +
+	"\tTimestamp\x12\x18\n" +
+	"\aseconds\x18\x01 \x01(\x03R\aseconds\x12\x14\n" +
+	"\x05nanos\x18\x02 \x01(\x05R\x05nanosB\x85\x01\n" +
+	"\x13com.google.protobufB\x0eTimestampProtoP\x01Z2google.golang.org/protobuf/types/known/timestamppb\xf8\x01\x01\xa2\x02\x03GPB\xaa\x02\x1eGoogle.Protobuf.WellKnownTypesb\x06proto3"
 
 var (
 	file_google_protobuf_timestamp_proto_rawDescOnce sync.Once
-	file_google_protobuf_timestamp_proto_rawDescData = file_google_protobuf_timestamp_proto_rawDesc
+	file_google_protobuf_timestamp_proto_rawDescData []byte
 )
 
 func file_google_protobuf_timestamp_proto_rawDescGZIP() []byte {
 	file_google_protobuf_timestamp_proto_rawDescOnce.Do(func() {
-		file_google_protobuf_timestamp_proto_rawDescData = protoimpl.X.CompressGZIP(file_google_protobuf_timestamp_proto_rawDescData)
+		file_google_protobuf_timestamp_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_google_protobuf_timestamp_proto_rawDesc), len(file_google_protobuf_timestamp_proto_rawDesc)))
 	})
 	return file_google_protobuf_timestamp_proto_rawDescData
 }
 
 var file_google_protobuf_timestamp_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_google_protobuf_timestamp_proto_goTypes = []interface{}{
+var file_google_protobuf_timestamp_proto_goTypes = []any{
 	(*Timestamp)(nil), // 0: google.protobuf.Timestamp
 }
 var file_google_protobuf_timestamp_proto_depIdxs = []int32{
@@ -355,25 +335,11 @@ func file_google_protobuf_timestamp_proto_init() {
 	if File_google_protobuf_timestamp_proto != nil {
 		return
 	}
-	if !protoimpl.UnsafeEnabled {
-		file_google_protobuf_timestamp_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Timestamp); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: file_google_protobuf_timestamp_proto_rawDesc,
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_google_protobuf_timestamp_proto_rawDesc), len(file_google_protobuf_timestamp_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 0,
@@ -384,7 +350,6 @@ func file_google_protobuf_timestamp_proto_init() {
 		MessageInfos:      file_google_protobuf_timestamp_proto_msgTypes,
 	}.Build()
 	File_google_protobuf_timestamp_proto = out.File
-	file_google_protobuf_timestamp_proto_rawDesc = nil
 	file_google_protobuf_timestamp_proto_goTypes = nil
 	file_google_protobuf_timestamp_proto_depIdxs = nil
 }

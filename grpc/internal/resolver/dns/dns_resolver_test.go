@@ -24,17 +24,18 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/resolver"
+
 	"github.com/letsencrypt/boulder/grpc/internal/leakcheck"
 	"github.com/letsencrypt/boulder/grpc/internal/testutils"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/resolver"
 )
 
 func TestMain(m *testing.M) {
@@ -231,7 +232,7 @@ func testDNSResolver(t *testing.T) {
 		}
 		var state resolver.State
 		var cnt int
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			state, cnt = cc.getState()
 			if cnt > 0 {
 				break
@@ -242,7 +243,7 @@ func testDNSResolver(t *testing.T) {
 			t.Fatalf("UpdateState not called after 2s; aborting")
 		}
 
-		if !reflect.DeepEqual(a.addrWant, state.Addresses) {
+		if !slices.Equal(a.addrWant, state.Addresses) {
 			t.Errorf("Resolved addresses of target: %q = %+v, want %+v", a.target, state.Addresses, a.addrWant)
 		}
 		r.Close()
@@ -277,7 +278,7 @@ func TestDNSResolverExponentialBackoff(t *testing.T) {
 	defer r.Close()
 	var state resolver.State
 	var cnt int
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, cnt = cc.getState()
 		if cnt > 0 {
 			break
@@ -287,13 +288,13 @@ func TestDNSResolverExponentialBackoff(t *testing.T) {
 	if cnt == 0 {
 		t.Fatalf("UpdateState not called after 2s; aborting")
 	}
-	if !reflect.DeepEqual(wantAddr, state.Addresses) {
+	if !slices.Equal(wantAddr, state.Addresses) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, target)
 	}
 	ctx, ctxCancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer ctxCancel()
 	// Cause timer to go off 10 times, and see if it calls updateState() correctly.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		timer, err := timerChan.Receive(ctx)
 		if err != nil {
 			t.Fatalf("Error receiving timer from mock NewTimer call: %v", err)
@@ -404,7 +405,7 @@ func testDNSResolveNow(t *testing.T) {
 		defer r.Close()
 		var state resolver.State
 		var cnt int
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			state, cnt = cc.getState()
 			if cnt > 0 {
 				break
@@ -414,13 +415,13 @@ func testDNSResolveNow(t *testing.T) {
 		if cnt == 0 {
 			t.Fatalf("UpdateState not called after 2s; aborting.  state=%v", state)
 		}
-		if !reflect.DeepEqual(a.addrWant, state.Addresses) {
+		if !slices.Equal(a.addrWant, state.Addresses) {
 			t.Errorf("Resolved addresses of target: %q = %+v, want %+v", a.target, state.Addresses, a.addrWant)
 		}
 
 		revertTbl := mutateTbl(strings.TrimPrefix(a.target, "foo."))
 		r.ResolveNow(resolver.ResolveNowOptions{})
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			state, cnt = cc.getState()
 			if cnt == 2 {
 				break
@@ -430,7 +431,7 @@ func testDNSResolveNow(t *testing.T) {
 		if cnt != 2 {
 			t.Fatalf("UpdateState not called after 2s; aborting.  state=%v", state)
 		}
-		if !reflect.DeepEqual(a.addrNext, state.Addresses) {
+		if !slices.Equal(a.addrNext, state.Addresses) {
 			t.Errorf("Resolved addresses of target: %q = %+v, want %+v", a.target, state.Addresses, a.addrNext)
 		}
 		revertTbl()
@@ -454,7 +455,7 @@ func TestDNSResolverRetry(t *testing.T) {
 	}
 	defer r.Close()
 	var state resolver.State
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, _ = cc.getState()
 		if len(state.Addresses) == 1 {
 			break
@@ -465,14 +466,14 @@ func TestDNSResolverRetry(t *testing.T) {
 		t.Fatalf("UpdateState not called with 1 address after 2s; aborting.  state=%v", state)
 	}
 	want := []resolver.Address{{Addr: "2.4.6.8:1234", ServerName: "ipv4.single.fake"}}
-	if !reflect.DeepEqual(want, state.Addresses) {
+	if !slices.Equal(want, state.Addresses) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, want)
 	}
 	// mutate the host lookup table so the target has 0 address returned.
 	revertTbl := mutateTbl(strings.TrimPrefix(target, "foo."))
 	// trigger a resolve that will get empty address list
 	r.ResolveNow(resolver.ResolveNowOptions{})
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, _ = cc.getState()
 		if len(state.Addresses) == 0 {
 			break
@@ -485,14 +486,14 @@ func TestDNSResolverRetry(t *testing.T) {
 	revertTbl()
 	// wait for the retry to happen in two seconds.
 	r.ResolveNow(resolver.ResolveNowOptions{})
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, _ = cc.getState()
 		if len(state.Addresses) == 1 {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if !reflect.DeepEqual(want, state.Addresses) {
+	if !slices.Equal(want, state.Addresses) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, want)
 	}
 }
@@ -590,8 +591,7 @@ func TestCustomAuthority(t *testing.T) {
 		b := NewDefaultSRVBuilder()
 		cc := &testClientConn{target: mockEndpointTarget, errChan: make(chan error, 1)}
 		target := resolver.Target{
-			Authority: a.authority,
-			URL:       *testutils.MustParseURL(fmt.Sprintf("scheme://%s/%s", a.authority, mockEndpointTarget)),
+			URL: *testutils.MustParseURL(fmt.Sprintf("scheme://%s/%s", a.authority, mockEndpointTarget)),
 		}
 		r, err := b.Build(target, cc, resolver.BuildOptions{})
 
@@ -600,7 +600,7 @@ func TestCustomAuthority(t *testing.T) {
 
 			err = <-errChan
 			if err != nil {
-				t.Errorf(err.Error())
+				t.Error(err.Error())
 			}
 
 			if a.expectError {
@@ -675,7 +675,7 @@ func TestRateLimitedResolve(t *testing.T) {
 
 	// Call Resolve Now 100 times, shouldn't continue onto next iteration of
 	// watcher, thus shouldn't lookup again.
-	for i := 0; i <= 100; i++ {
+	for range 100 {
 		r.ResolveNow(resolver.ResolveNowOptions{})
 	}
 
@@ -704,7 +704,7 @@ func TestRateLimitedResolve(t *testing.T) {
 
 	// Resolve Now 1000 more times, shouldn't lookup again as DNS Min Res Rate
 	// timer has not gone off.
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		r.ResolveNow(resolver.ResolveNowOptions{})
 	}
 
@@ -735,7 +735,7 @@ func TestRateLimitedResolve(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if !reflect.DeepEqual(state.Addresses, wantAddrs) {
+	if !slices.Equal(state.Addresses, wantAddrs) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, wantAddrs)
 	}
 }
@@ -778,7 +778,7 @@ func TestReportError(t *testing.T) {
 	defer r.Close()
 
 	// Cause timer to go off 10 times, and see if it matches DNS Resolver updating Error.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		// Should call ReportError().
 		err = <-cc.errChan
 		if !strings.Contains(err.Error(), "srvLookup error") {

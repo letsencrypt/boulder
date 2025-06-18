@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configPath := flag.String(
 		"config", "config.yml", "Path to boulder-observer configuration file")
 	flag.Parse()
@@ -20,6 +21,10 @@ func main() {
 	// Parse the YAML config file.
 	var config observer.ObsConf
 	err = strictyaml.Unmarshal(configYAML, &config)
+
+	if *debugAddr != "" {
+		config.DebugAddr = *debugAddr
+	}
 
 	if err != nil {
 		cmd.FailOnError(err, "failed to parse YAML config")
@@ -36,5 +41,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-observer", main)
+	cmd.RegisterCommand("boulder-observer", main, &cmd.ConfigValidator{Config: &observer.ObsConf{}})
 }

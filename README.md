@@ -3,10 +3,10 @@
 [![Build Status](https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml/badge.svg?branch=main)](https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml?query=branch%3Amain)
 
 This is an implementation of an ACME-based CA. The [ACME
-protocol](https://github.com/ietf-wg-acme/acme/) allows the CA to
-automatically verify that an applicant for a certificate actually controls an
-identifier, and allows domain holders to issue and revoke certificates for
-their domains. Boulder is the software that runs [Let's
+protocol](https://github.com/ietf-wg-acme/acme/) allows the CA to automatically
+verify that an applicant for a certificate actually controls an identifier, and
+allows subscribers to issue and revoke certificates for the identifiers they
+control. Boulder is the software that runs [Let's
 Encrypt](https://letsencrypt.org).
 
 ## Contents
@@ -30,8 +30,8 @@ Boulder is divided into the following main components:
 4. Certificate Authority
 5. Storage Authority
 6. Publisher
-7. OCSP Updater
-8. OCSP Responder
+7. OCSP Responder
+8. CRL Updater
 
 This component model lets us separate the function of the CA by security
 context. The Web Front End, Validation Authority, OCSP Responder and
@@ -43,18 +43,14 @@ Registration Authority. All components talk to the SA for storage, so most
 lines indicating SA RPCs are not shown here.
 
 ```text
-                             +--------- OCSP Updater
-                             |               |
-                             v               |
-                            CA -> Publisher  |
-                             ^               |
-                             |               v
+                            CA ---------> Publisher
+                             ^
+                             |
        Subscriber -> WFE --> RA --> SA --> MariaDB
                              |               ^
 Subscriber server <- VA <----+               |
                                              |
-          Browser ------------------>  OCSP Responder
-
+          Browser -------------------> OCSP Responder
 ```
 
 Internally, the logic of the system is based around five types of objects:
@@ -233,8 +229,8 @@ the following URLs:
 
 To access the HTTPS versions of the endpoints you will need to configure your
 ACME client software to use a CA truststore that contains the
-`test/wfe-tls/minica.pem` CA certificate. See
-[`test/PKI.md`](https://github.com/letsencrypt/boulder/blob/main/test/PKI.md)
+`test/certs/ipki/minica.pem` CA certificate. See
+[`test/certs/README.md`](https://github.com/letsencrypt/boulder/blob/main/test/certs/README.md)
 for more information.
 
 Your local Boulder instance uses a fake DNS resolver that returns 127.0.0.1

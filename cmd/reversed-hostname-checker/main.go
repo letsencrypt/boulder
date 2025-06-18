@@ -1,5 +1,5 @@
-// Read a list of reversed hostnames, separated by newlines. Print only those
-// that are rejected by the current policy.
+// Read a list of reversed FQDNs and/or normal IP addresses, separated by
+// newlines. Print only those that are rejected by the current policy.
 
 package notmain
 
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/netip"
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -18,7 +19,7 @@ import (
 )
 
 func init() {
-	cmd.RegisterCommand("reversed-hostname-checker", main)
+	cmd.RegisterCommand("reversed-hostname-checker", main, nil)
 }
 
 func main() {
@@ -39,18 +40,26 @@ func main() {
 
 	scanner := bufio.NewScanner(input)
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
-	pa, err := policy.New(nil, logger)
+	logger.Info(cmd.VersionString())
+	pa, err := policy.New(nil, nil, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = pa.SetHostnamePolicyFile(*policyFile)
+	err = pa.LoadHostnamePolicyFile(*policyFile)
 	if err != nil {
 		log.Fatalf("reading %s: %s", *policyFile, err)
 	}
 	var errors bool
 	for scanner.Scan() {
-		n := sa.ReverseName(scanner.Text())
-		err := pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{identifier.DNSIdentifier(n)})
+		n := sa.EncodeIssuedName(scanner.Text())
+		var ident identifier.ACMEIdentifier
+		ip, err := netip.ParseAddr(n)
+		if err == nil {
+			ident = identifier.NewIP(ip)
+		} else {
+			ident = identifier.NewDNS(n)
+		}
+		err = pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
 		if err != nil {
 			errors = true
 			fmt.Printf("%s: %s\n", n, err)

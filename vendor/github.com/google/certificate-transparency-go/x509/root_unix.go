@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build dragonfly freebsd js,wasm linux nacl netbsd openbsd solaris
+//go:build aix || dragonfly || freebsd || linux || netbsd || openbsd || solaris || zos
+// +build aix dragonfly freebsd linux netbsd openbsd solaris zos
 
 package x509
 
 import (
-	"io/ioutil"
 	"os"
 )
 
@@ -19,6 +19,7 @@ var certDirectories = []string{
 	"/usr/local/share/certs",       // FreeBSD
 	"/etc/pki/tls/certs",           // Fedora/RHEL
 	"/etc/openssl/certs",           // NetBSD
+	"/var/ssl/certs",               // AIX
 }
 
 const (
@@ -45,7 +46,7 @@ func loadSystemRoots() (*CertPool, error) {
 
 	var firstErr error
 	for _, file := range files {
-		data, err := ioutil.ReadFile(file)
+		data, err := os.ReadFile(file)
 		if err == nil {
 			roots.AppendCertsFromPEM(data)
 			break
@@ -61,7 +62,7 @@ func loadSystemRoots() (*CertPool, error) {
 	}
 
 	for _, directory := range dirs {
-		fis, err := ioutil.ReadDir(directory)
+		fis, err := os.ReadDir(directory)
 		if err != nil {
 			if firstErr == nil && !os.IsNotExist(err) {
 				firstErr = err
@@ -70,7 +71,7 @@ func loadSystemRoots() (*CertPool, error) {
 		}
 		rootsAdded := false
 		for _, fi := range fis {
-			data, err := ioutil.ReadFile(directory + "/" + fi.Name())
+			data, err := os.ReadFile(directory + "/" + fi.Name())
 			if err == nil && roots.AppendCertsFromPEM(data) {
 				rootsAdded = true
 			}

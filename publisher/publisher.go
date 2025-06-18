@@ -25,7 +25,7 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/canceled"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -39,11 +39,20 @@ type Log struct {
 	client *ctClient.LogClient
 }
 
+// cacheKey is a comparable type for use as a key within a logCache. It holds
+// both the log URI and its log_id (base64 encoding of its pubkey), so that
+// the cache won't interfere if the RA decides that a log's URI or pubkey has
+// changed.
+type cacheKey struct {
+	uri    string
+	pubkey string
+}
+
 // logCache contains a cache of *Log's that are constructed as required by
 // `SubmitToSingleCT`
 type logCache struct {
 	sync.RWMutex
-	logs map[string]*Log
+	logs map[cacheKey]*Log
 }
 
 // AddLog adds a *Log to the cache by constructing the statName, client and
@@ -51,7 +60,7 @@ type logCache struct {
 func (c *logCache) AddLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 	// Lock the mutex for reading to check the cache
 	c.RLock()
-	log, present := c.logs[b64PK]
+	log, present := c.logs[cacheKey{uri, b64PK}]
 	c.RUnlock()
 
 	// If we have already added this log, give it back
@@ -68,7 +77,7 @@ func (c *logCache) AddLog(uri, b64PK, userAgent string, logger blog.Logger) (*Lo
 	if err != nil {
 		return nil, err
 	}
-	c.logs[b64PK] = log
+	c.logs[cacheKey{uri, b64PK}] = log
 	return log, nil
 }
 
@@ -95,12 +104,15 @@ func NewLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 	}
 	url.Path = strings.TrimSuffix(url.Path, "/")
 
-	pemPK := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----",
-		b64PK)
+	derPK, err := base64.StdEncoding.DecodeString(b64PK)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := jsonclient.Options{
-		Logger:    logAdaptor{logger},
-		PublicKey: pemPK,
-		UserAgent: userAgent,
+		Logger:       logAdaptor{logger},
+		PublicKeyDER: derPK,
+		UserAgent:    userAgent,
 	}
 	httpClient := &http.Client{
 		// We set the HTTP client timeout to about half of what we expect
@@ -119,6 +131,7 @@ func NewLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 		// "unlimited," which would be bad.
 		Transport: &http.Transport{
 			MaxIdleConns:        http.DefaultTransport.(*http.Transport).MaxIdleConns,
+			MaxIdleConnsPerHost: http.DefaultTransport.(*http.Transport).MaxIdleConns,
 			IdleConnTimeout:     http.DefaultTransport.(*http.Transport).IdleConnTimeout,
 			TLSHandshakeTimeout: http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout,
 			// In Boulder Issue 3821[0] we found that HTTP/2 support was causing hard
@@ -164,7 +177,7 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 			Help:    "Time taken to submit a certificate to a CT log",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"log", "status", "http_status"},
+		[]string{"log", "type", "status", "http_status"},
 	)
 	stats.MustRegister(submissionLatency)
 
@@ -183,7 +196,7 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 			Name: "ct_errors_count",
 			Help: "Count of errors by type",
 		},
-		[]string{"type"},
+		[]string{"log", "type"},
 	)
 	stats.MustRegister(errorCount)
 
@@ -192,18 +205,20 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 
 // Impl defines a Publisher
 type Impl struct {
-	pubpb.UnimplementedPublisherServer
+	pubpb.UnsafePublisherServer
 	log           blog.Logger
 	userAgent     string
-	issuerBundles map[issuance.IssuerNameID][]ct.ASN1Cert
+	issuerBundles map[issuance.NameID][]ct.ASN1Cert
 	ctLogsCache   logCache
 	metrics       *pubMetrics
 }
 
+var _ pubpb.PublisherServer = (*Impl)(nil)
+
 // New creates a Publisher that will submit certificates
 // to requested CT logs
 func New(
-	bundles map[issuance.IssuerNameID][]ct.ASN1Cert,
+	bundles map[issuance.NameID][]ct.ASN1Cert,
 	userAgent string,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -212,23 +227,29 @@ func New(
 		issuerBundles: bundles,
 		userAgent:     userAgent,
 		ctLogsCache: logCache{
-			logs: make(map[string]*Log),
+			logs: make(map[cacheKey]*Log),
 		},
 		log:     logger,
 		metrics: initMetrics(stats),
 	}
 }
 
-// SubmitToSingleCTWithResult will submit the certificate represented by certDER to the CT
-// log specified by log URL and public key (base64) and return the SCT to the caller
+// SubmitToSingleCTWithResult will submit the certificate represented by certDER
+// to the CT log specified by log URL and public key (base64) and return the SCT
+// to the caller.
 func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+	if core.IsAnyNilOrZero(req.Der, req.LogURL, req.LogPublicKey, req.Kind) {
+		return nil, errors.New("incomplete gRPC request message")
+	}
+
 	cert, err := x509.ParseCertificate(req.Der)
 	if err != nil {
 		pub.log.AuditErrf("Failed to parse certificate: %s", err)
 		return nil, err
 	}
+
 	chain := []ct.ASN1Cert{{Data: req.Der}}
-	id := issuance.GetIssuerNameID(cert)
+	id := issuance.IssuerNameID(cert)
 	issuerBundle, ok := pub.issuerBundles[id]
 	if !ok {
 		err := fmt.Errorf("No issuerBundle matching issuerNameID: %d", int64(id))
@@ -246,11 +267,9 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, err
 	}
 
-	isPrecert := req.Precert
-
-	sct, err := pub.singleLogSubmit(ctx, chain, isPrecert, ctLog)
+	sct, err := pub.singleLogSubmit(ctx, chain, req.Kind, ctLog)
 	if err != nil {
-		if canceled.Is(err) {
+		if core.IsCanceled(err) {
 			return nil, err
 		}
 		var body string
@@ -273,12 +292,11 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,
-	isPrecert bool,
+	kind pubpb.SubmissionType,
 	ctLog *Log,
 ) (*ct.SignedCertificateTimestamp, error) {
-	var submissionMethod func(context.Context, []ct.ASN1Cert) (*ct.SignedCertificateTimestamp, error)
-	submissionMethod = ctLog.client.AddChain
-	if isPrecert {
+	submissionMethod := ctLog.client.AddChain
+	if kind == pubpb.SubmissionType_sct || kind == pubpb.SubmissionType_info {
 		submissionMethod = ctLog.client.AddPreChain
 	}
 
@@ -287,7 +305,7 @@ func (pub *Impl) singleLogSubmit(
 	took := time.Since(start).Seconds()
 	if err != nil {
 		status := "error"
-		if canceled.Is(err) {
+		if core.IsCanceled(err) {
 			status = "canceled"
 		}
 		httpStatus := ""
@@ -297,30 +315,33 @@ func (pub *Impl) singleLogSubmit(
 		}
 		pub.metrics.submissionLatency.With(prometheus.Labels{
 			"log":         ctLog.uri,
+			"type":        kind.String(),
 			"status":      status,
 			"http_status": httpStatus,
 		}).Observe(took)
-		if isPrecert {
-			pub.metrics.errorCount.WithLabelValues("precert").Inc()
-		} else {
-			pub.metrics.errorCount.WithLabelValues("final").Inc()
-		}
+		pub.metrics.errorCount.With(prometheus.Labels{
+			"log":  ctLog.uri,
+			"type": kind.String(),
+		}).Inc()
 		return nil, err
 	}
 	pub.metrics.submissionLatency.With(prometheus.Labels{
 		"log":         ctLog.uri,
+		"type":        kind.String(),
 		"status":      "success",
 		"http_status": "",
 	}).Observe(took)
 
-	timestamp := time.Unix(int64(sct.Timestamp)/1000, 0)
-	if time.Until(timestamp) > time.Minute {
-		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%s)", timestamp)
+	threshold := uint64(time.Now().Add(time.Minute).UnixMilli()) //nolint: gosec // Current-ish timestamp is guaranteed to fit in a uint64
+	if sct.Timestamp > threshold {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%d > %d)", sct.Timestamp, threshold)
 	}
+
 	// For regular certificates, we could get an old SCT, but that shouldn't
 	// happen for precertificates.
-	if isPrecert && time.Until(timestamp) < -10*time.Minute {
-		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
+	threshold = uint64(time.Now().Add(-10 * time.Minute).UnixMilli()) //nolint: gosec // Current-ish timestamp is guaranteed to fit in a uint64
+	if kind != pubpb.SubmissionType_final && sct.Timestamp < threshold {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%d < %d)", sct.Timestamp, threshold)
 	}
 
 	return sct, nil
@@ -351,7 +372,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 	// Sign the SCT
 	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	logID := sha256.Sum256(rawKey)
-	timestampMillis := uint64(timestamp.UnixNano()) / 1e6
+	timestampMillis := uint64(timestamp.UnixMilli()) //nolint: gosec // Current-ish timestamp is guaranteed to fit in a uint64
 	serialized, _ := ct.SerializeSCTSignatureInput(ct.SignedCertificateTimestamp{
 		SCTVersion: ct.V1,
 		LogID:      ct.LogID{KeyID: logID},
@@ -392,7 +413,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 // GetCTBundleForChain takes a slice of *issuance.Certificate(s)
 // representing a certificate chain and returns a slice of
-// ct.ANS1Cert(s) in the same order
+// ct.ASN1Cert(s) in the same order
 func GetCTBundleForChain(chain []*issuance.Certificate) []ct.ASN1Cert {
 	var ctBundle []ct.ASN1Cert
 	for _, cert := range chain {

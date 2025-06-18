@@ -6,13 +6,12 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"log/syslog"
+	"net/netip"
 	"os"
-	"reflect"
 	"regexp"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,9 +31,10 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	"github.com/letsencrypt/boulder/identifier"
-	_ "github.com/letsencrypt/boulder/linter"
+	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/precert"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -64,6 +64,7 @@ type report struct {
 	end       time.Time
 	GoodCerts int64                  `json:"good-certs"`
 	BadCerts  int64                  `json:"bad-certs"`
+	DbErrs    int64                  `json:"db-errs"`
 	Entries   map[string]reportEntry `json:"entries"`
 }
 
@@ -78,28 +79,35 @@ func (r *report) dump() error {
 
 type reportEntry struct {
 	Valid    bool     `json:"valid"`
-	DNSNames []string `json:"dnsNames"`
+	SANs     []string `json:"sans"`
 	Problems []string `json:"problems,omitempty"`
 }
 
-// certDB is an interface collecting the gorp.saDbMap functions that the various
+// certDB is an interface collecting the borp.DbMap functions that the various
 // parts of cert-checker rely on. Using this adapter shim allows tests to swap
 // out the saDbMap implementation.
 type certDB interface {
-	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error)
+	Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error)
+	SelectOne(ctx context.Context, i interface{}, query string, args ...interface{}) error
+	SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error)
 }
+
+// A function that looks up a precertificate by serial and returns its DER bytes. Used for
+// mocking in tests.
+type precertGetter func(context.Context, string) ([]byte, error)
 
 type certChecker struct {
 	pa                          core.PolicyAuthority
 	kp                          goodkey.KeyPolicy
 	dbMap                       certDB
-	certs                       chan core.Certificate
+	getPrecert                  precertGetter
+	certs                       chan *corepb.Certificate
 	clock                       clock.Clock
 	rMu                         *sync.Mutex
 	issuedReport                report
 	checkPeriod                 time.Duration
 	acceptableValidityDurations map[time.Duration]bool
+	lints                       lint.Registry
 	logger                      blog.Logger
 }
 
@@ -109,38 +117,58 @@ func newChecker(saDbMap certDB,
 	kp goodkey.KeyPolicy,
 	period time.Duration,
 	avd map[time.Duration]bool,
+	lints lint.Registry,
 	logger blog.Logger,
 ) certChecker {
+	precertGetter := func(ctx context.Context, serial string) ([]byte, error) {
+		precertPb, err := sa.SelectPrecertificate(ctx, saDbMap, serial)
+		if err != nil {
+			return nil, err
+		}
+		return precertPb.Der, nil
+	}
 	return certChecker{
 		pa:                          pa,
 		kp:                          kp,
 		dbMap:                       saDbMap,
-		certs:                       make(chan core.Certificate, batchSize),
+		getPrecert:                  precertGetter,
+		certs:                       make(chan *corepb.Certificate, batchSize),
 		rMu:                         new(sync.Mutex),
 		clock:                       clk,
 		issuedReport:                report{Entries: make(map[string]reportEntry)},
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
+		lints:                       lints,
 		logger:                      logger,
 	}
 }
 
-func (c *certChecker) getCerts(unexpiredOnly bool) error {
-	c.issuedReport.end = c.clock.Now()
-	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
-
-	args := map[string]interface{}{"issued": c.issuedReport.begin, "now": 0}
-	if unexpiredOnly {
-		args["now"] = c.clock.Now()
-	}
-
-	var sni sql.NullInt64
+// findStartingID returns the lowest `id` in the certificates table within the
+// time window specified. The time window is a half-open interval [begin, end).
+func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) (int64, error) {
+	var output sql.NullInt64
 	var err error
 	var retries int
-	for {
-		sni, err = c.dbMap.SelectNullInt(
-			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
-			args,
+
+	// Rather than querying `MIN(id)` across that whole window, we query it across the first
+	// hour of the window. This allows the query planner to use the index on `issued` more
+	// effectively. For a busy, actively issuing CA, that will always return results in the
+	// first query. For a less busy CA, or during integration tests, there may only exist
+	// certificates towards the end of the window, so we try querying later hourly chunks until
+	// we find a certificate or hit the end of the window. We also retry transient errors.
+	queryBegin := begin
+	queryEnd := begin.Add(time.Hour)
+
+	for queryBegin.Compare(end) < 0 {
+		output, err = c.dbMap.SelectNullInt(
+			ctx,
+			`SELECT MIN(id) FROM certificates
+				WHERE issued >= :begin AND
+					  issued < :end`,
+			map[string]interface{}{
+				"begin": queryBegin,
+				"end":   queryEnd,
+			},
 		)
 		if err != nil {
 			c.logger.AuditErrf("finding starting certificate: %s", err)
@@ -148,31 +176,61 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
 		}
-		retries = 0
-		break
-	}
-	if !sni.Valid {
-		// a nil response was returned by the DB, so return error and fail
-		return errors.New("the SELECT query resulted in a NULL response from the DB")
+		// https://mariadb.com/kb/en/min/
+		// MIN() returns NULL if there were no matching rows
+		// https://pkg.go.dev/database/sql#NullInt64
+		// Valid is true if Int64 is not NULL
+		if !output.Valid {
+			// No matching rows, try the next hour
+			queryBegin = queryBegin.Add(time.Hour)
+			queryEnd = queryEnd.Add(time.Hour)
+			if queryEnd.Compare(end) > 0 {
+				queryEnd = end
+			}
+			continue
+		}
+
+		return output.Int64, nil
 	}
 
-	initialID := sni.Int64
+	// Fell through the loop without finding a valid ID
+	return 0, fmt.Errorf("no rows found for certificates issued between %s and %s", begin, end)
+}
+
+func (c *certChecker) getCerts(ctx context.Context) error {
+	// The end of the report is the current time, rounded up to the nearest second.
+	c.issuedReport.end = c.clock.Now().Truncate(time.Second).Add(time.Second)
+	// The beginning of the report is the end minus the check period, rounded down to the nearest second.
+	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod).Truncate(time.Second)
+
+	initialID, err := c.findStartingID(ctx, c.issuedReport.begin, c.issuedReport.end)
+	if err != nil {
+		return err
+	}
 	if initialID > 0 {
 		// decrement the initial ID so that we select below as we aren't using >=
 		initialID -= 1
 	}
 
-	// Retrieve certs in batches of 1000 (the size of the certificate channel)
-	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
-	// packet limit.
-	args["limit"] = batchSize
-	args["id"] = initialID
-
+	batchStartID := initialID
+	var retries int
 	for {
-		certs, err := sa.SelectCertificates(
+		certs, highestID, err := sa.SelectCertificates(
+			ctx,
 			c.dbMap,
-			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
-			args,
+			`WHERE id > :id AND
+			       issued >= :begin AND
+				   issued < :end
+			 ORDER BY id LIMIT :limit`,
+			map[string]interface{}{
+				"begin": c.issuedReport.begin,
+				"end":   c.issuedReport.end,
+				// Retrieve certs in batches of 1000 (the size of the certificate channel)
+				// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
+				// packet limit.
+				"limit": batchSize,
+				"id":    batchStartID,
+			},
 		)
 		if err != nil {
 			c.logger.AuditErrf("selecting certificates: %s", err)
@@ -182,16 +240,16 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		}
 		retries = 0
 		for _, cert := range certs {
-			c.certs <- cert.Certificate
+			c.certs <- cert
 		}
 		if len(certs) == 0 {
 			break
 		}
 		lastCert := certs[len(certs)-1]
-		args["id"] = lastCert.ID
-		if lastCert.Issued.After(c.issuedReport.end) {
+		if lastCert.Issued.AsTime().After(c.issuedReport.end) {
 			break
 		}
+		batchStartID = highestID
 	}
 
 	// Close channel so range operations won't block once the channel empties out
@@ -199,15 +257,15 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool, ignoredLints map[string]bool) {
+func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
 	for cert := range c.certs {
-		dnsNames, problems := c.checkCert(cert, ignoredLints)
+		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
 			c.issuedReport.Entries[cert.Serial] = reportEntry{
 				Valid:    valid,
-				DNSNames: dnsNames,
+				SANs:     sans,
 				Problems: problems,
 			}
 		}
@@ -245,8 +303,8 @@ var expectedExtensionContent = map[string][]byte{
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
-func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
-	authzs, err := sa.SelectAuthzsMatchingIssuance(c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
+func (c *certChecker) checkValidations(ctx context.Context, cert *corepb.Certificate, idents identifier.ACMEIdentifiers) error {
+	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued.AsTime(), idents)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}
@@ -255,18 +313,18 @@ func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string)
 		return fmt.Errorf("no relevant authzs found valid at %s", cert.Issued)
 	}
 
-	// We may get multiple authorizations for the same name, but that's okay.
-	// Any authorization for a given name is sufficient.
-	nameToAuthz := make(map[string]*corepb.Authorization)
+	// We may get multiple authorizations for the same identifier, but that's
+	// okay. Any authorization for a given identifier is sufficient.
+	identToAuthz := make(map[identifier.ACMEIdentifier]*corepb.Authorization)
 	for _, m := range authzs {
-		nameToAuthz[m.Identifier] = m
+		identToAuthz[identifier.FromProto(m.Identifier)] = m
 	}
 
 	var errors []error
-	for _, name := range dnsNames {
-		_, ok := nameToAuthz[name]
+	for _, ident := range idents {
+		_, ok := identToAuthz[ident]
 		if !ok {
-			errors = append(errors, fmt.Errorf("missing authz for %q", name))
+			errors = append(errors, fmt.Errorf("missing authz for %q", ident.Value))
 			continue
 		}
 	}
@@ -276,64 +334,85 @@ func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string)
 	return nil
 }
 
-// checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
-func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) ([]string, []string) {
-	var dnsNames []string
+// checkCert returns a list of Subject Alternative Names in the certificate and a list of problems with the certificate.
+func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) ([]string, []string) {
 	var problems []string
 
 	// Check that the digests match.
-	if cert.Digest != core.Fingerprint256(cert.DER) {
+	if cert.Digest != core.Fingerprint256(cert.Der) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
 	}
+
 	// Parse the certificate.
-	parsedCert, err := zX509.ParseCertificate(cert.DER)
+	parsedCert, err := zX509.ParseCertificate(cert.Der)
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
-	} else {
-		dnsNames = parsedCert.DNSNames
-		// Run zlint checks.
-		results := zlint.LintCertificate(parsedCert)
-		for name, res := range results.Results {
-			if ignoredLints[name] || res.Status <= lint.Pass {
-				continue
-			}
-			prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
-			if res.Details != "" {
-				prob = fmt.Sprintf("%s %s", prob, res.Details)
-			}
-			problems = append(problems, prob)
+		// This is a fatal error, we can't do any further processing.
+		return nil, problems
+	}
+
+	// Now that it's parsed, we can extract the SANs.
+	sans := slices.Clone(parsedCert.DNSNames)
+	for _, ip := range parsedCert.IPAddresses {
+		sans = append(sans, ip.String())
+	}
+
+	// Run zlint checks.
+	results := zlint.LintCertificateEx(parsedCert, c.lints)
+	for name, res := range results.Results {
+		if res.Status <= lint.Pass {
+			continue
 		}
-		// Check if stored serial is correct.
-		storedSerial, err := core.StringToSerial(cert.Serial)
-		if err != nil {
-			problems = append(problems, "Stored serial is invalid")
-		} else if parsedCert.SerialNumber.Cmp(storedSerial) != 0 {
-			problems = append(problems, "Stored serial doesn't match certificate serial")
+		prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
+		if res.Details != "" {
+			prob = fmt.Sprintf("%s %s", prob, res.Details)
 		}
-		// Check that we have the correct expiration time.
-		if !parsedCert.NotAfter.Equal(cert.Expires) {
-			problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
-		}
-		// Check if basic constraints are set.
-		if !parsedCert.BasicConstraintsValid {
-			problems = append(problems, "Certificate doesn't have basic constraints set")
-		}
-		// Check that the cert isn't able to sign other certificates.
-		if parsedCert.IsCA {
-			problems = append(problems, "Certificate can sign other certificates")
-		}
-		// Check that the cert has a valid validity period. The validity
-		// period is computed inclusive of the whole final second indicated by
-		// notAfter.
-		validityDuration := parsedCert.NotAfter.Add(time.Second).Sub(parsedCert.NotBefore)
-		_, ok := c.acceptableValidityDurations[validityDuration]
-		if !ok {
-			problems = append(problems, "Certificate has unacceptable validity period")
-		}
-		// Check that the stored issuance time isn't too far back/forward dated.
-		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
-			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
-		}
+		problems = append(problems, prob)
+	}
+
+	// Check if stored serial is correct.
+	storedSerial, err := core.StringToSerial(cert.Serial)
+	if err != nil {
+		problems = append(problems, "Stored serial is invalid")
+	} else if parsedCert.SerialNumber.Cmp(storedSerial) != 0 {
+		problems = append(problems, "Stored serial doesn't match certificate serial")
+	}
+
+	// Check that we have the correct expiration time.
+	if !parsedCert.NotAfter.Equal(cert.Expires.AsTime()) {
+		problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
+	}
+
+	// Check if basic constraints are set.
+	if !parsedCert.BasicConstraintsValid {
+		problems = append(problems, "Certificate doesn't have basic constraints set")
+	}
+
+	// Check that the cert isn't able to sign other certificates.
+	if parsedCert.IsCA {
+		problems = append(problems, "Certificate can sign other certificates")
+	}
+
+	// Check that the cert has a valid validity period. The validity
+	// period is computed inclusive of the whole final second indicated by
+	// notAfter.
+	validityDuration := parsedCert.NotAfter.Add(time.Second).Sub(parsedCert.NotBefore)
+	_, ok := c.acceptableValidityDurations[validityDuration]
+	if !ok {
+		problems = append(problems, "Certificate has unacceptable validity period")
+	}
+
+	// Check that the stored issuance time isn't too far back/forward dated.
+	if parsedCert.NotBefore.Before(cert.Issued.AsTime().Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.AsTime().Add(6*time.Hour)) {
+		problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
+	}
+
+	// Check that the cert doesn't contain any SANs of unexpected types.
+	if len(parsedCert.EmailAddresses) != 0 || len(parsedCert.URIs) != 0 {
+		problems = append(problems, "Certificate contains SAN of unacceptable type (email or URI)")
+	}
+
+	if parsedCert.Subject.CommonName != "" {
 		// Check if the CommonName is <= 64 characters.
 		if len(parsedCert.Subject.CommonName) > 64 {
 			problems = append(
@@ -341,68 +420,110 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 				fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
 			)
 		}
-		// Check that the PA is still willing to issue for each name in DNSNames
-		// + CommonName.
-		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
-			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
-			err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id})
-			if err != nil {
-				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
-			} else {
-				// For defense-in-depth, even if the PA was willing to issue for a name
-				// we double check it against a list of forbidden domains. This way even
-				// if the hostnamePolicyFile malfunctions we will flag the forbidden
-				// domain matches
-				if forbidden, pattern := isForbiddenDomain(name); forbidden {
-					problems = append(problems, fmt.Sprintf(
-						"Policy Authority was willing to issue but domain '%s' matches "+
-							"forbiddenDomains entry %q", name, pattern))
-				}
-			}
-		}
-		// Check the cert has the correct key usage extensions
-		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
-			problems = append(problems, "Certificate has incorrect key usage extensions")
-		}
 
-		for _, ext := range parsedCert.Extensions {
-			_, ok := allowedExtensions[ext.Id.String()]
-			if !ok {
-				problems = append(problems, fmt.Sprintf("Certificate contains an unexpected extension: %s", ext.Id))
-			}
-			expectedContent, ok := expectedExtensionContent[ext.Id.String()]
-			if ok {
-				if !bytes.Equal(ext.Value, expectedContent) {
-					problems = append(problems, fmt.Sprintf("Certificate extension %s contains unexpected content: has %x, expected %x", ext.Id, ext.Value, expectedContent))
-				}
-			}
+		// Check that the CommonName is included in the SANs.
+		if !slices.Contains(sans, parsedCert.Subject.CommonName) {
+			problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Names: %q !< %v",
+				parsedCert.Subject.CommonName, parsedCert.DNSNames))
 		}
+	}
 
-		// Check that the cert has a good key. Note that this does not perform
-		// checks which rely on external resources such as weak or blocked key
-		// lists, or the list of blocked keys in the database. This only performs
-		// static checks, such as against the RSA key size and the ECDSA curve.
-		p, err := x509.ParseCertificate(cert.DER)
+	// Check that the PA is still willing to issue for each DNS name and IP
+	// address in the SANs. We do not check the CommonName here, as (if it exists)
+	// we already checked that it is identical to one of the DNSNames in the SAN.
+	for _, name := range parsedCert.DNSNames {
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)})
 		if err != nil {
-			problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
+			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
+			continue
 		}
-		err = c.kp.GoodKey(context.Background(), p.PublicKey)
+		// For defense-in-depth, even if the PA was willing to issue for a name
+		// we double check it against a list of forbidden domains. This way even
+		// if the hostnamePolicyFile malfunctions we will flag the forbidden
+		// domain matches
+		if forbidden, pattern := isForbiddenDomain(name); forbidden {
+			problems = append(problems, fmt.Sprintf(
+				"Policy Authority was willing to issue but domain '%s' matches "+
+					"forbiddenDomains entry %q", name, pattern))
+		}
+	}
+	for _, name := range parsedCert.IPAddresses {
+		ip, ok := netip.AddrFromSlice(name)
+		if !ok {
+			problems = append(problems, fmt.Sprintf("SANs contain malformed IP %q", name))
+			continue
+		}
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)})
 		if err != nil {
-			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
+			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
+			continue
 		}
+	}
 
-		if features.Enabled(features.CertCheckerChecksValidations) {
-			err = c.checkValidations(cert, parsedCert.DNSNames)
-			if err != nil {
-				if features.Enabled(features.CertCheckerRequiresValidations) {
-					problems = append(problems, err.Error())
-				} else {
-					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)
-				}
+	// Check the cert has the correct key usage extensions
+	serverAndClient := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth})
+	serverOnly := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth})
+	if !(serverAndClient || serverOnly) {
+		problems = append(problems, "Certificate has incorrect key usage extensions")
+	}
+
+	for _, ext := range parsedCert.Extensions {
+		_, ok := allowedExtensions[ext.Id.String()]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("Certificate contains an unexpected extension: %s", ext.Id))
+		}
+		expectedContent, ok := expectedExtensionContent[ext.Id.String()]
+		if ok {
+			if !bytes.Equal(ext.Value, expectedContent) {
+				problems = append(problems, fmt.Sprintf("Certificate extension %s contains unexpected content: has %x, expected %x", ext.Id, ext.Value, expectedContent))
 			}
 		}
 	}
-	return dnsNames, problems
+
+	// Check that the cert has a good key. Note that this does not perform
+	// checks which rely on external resources such as weak or blocked key
+	// lists, or the list of blocked keys in the database. This only performs
+	// static checks, such as against the RSA key size and the ECDSA curve.
+	p, err := x509.ParseCertificate(cert.Der)
+	if err != nil {
+		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
+	} else {
+		err = c.kp.GoodKey(ctx, p.PublicKey)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
+		}
+	}
+
+	precertDER, err := c.getPrecert(ctx, cert.Serial)
+	if err != nil {
+		// Log and continue, since we want the problems slice to only contains
+		// problems with the cert itself.
+		c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
+		atomic.AddInt64(&c.issuedReport.DbErrs, 1)
+	} else {
+		err = precert.Correspond(precertDER, cert.Der)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))
+		}
+	}
+
+	if features.Get().CertCheckerChecksValidations {
+		idents := identifier.FromCert(p)
+		err = c.checkValidations(ctx, cert, idents)
+		if err != nil {
+			if features.Get().CertCheckerRequiresValidations {
+				problems = append(problems, err.Error())
+			} else {
+				var identValues []string
+				for _, ident := range idents {
+					identValues = append(identValues, ident.Value)
+				}
+				c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
+			}
+		}
+	}
+
+	return sans, problems
 }
 
 type Config struct {
@@ -410,7 +531,8 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		Workers        int
+		Workers int `validate:"required,min=1"`
+		// Deprecated: this is ignored, and cert checker always checks both expired and unexpired.
 		UnexpiredOnly  bool
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
@@ -424,6 +546,9 @@ type Config struct {
 		// public keys in the certs it checks.
 		GoodKey goodkey.Config
 
+		// LintConfig is a path to a zlint config file, which can be used to control
+		// the behavior of zlint's "customizable lints".
+		LintConfig string
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
 		// the IgnoredLists list are ignored regardless of LintStatus level.
 		IgnoredLints []string
@@ -433,7 +558,7 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig
@@ -451,21 +576,10 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(config.CertChecker.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(config.CertChecker.Features)
 
-	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-	cmd.FailOnError(err, "Failed to dial syslog")
-
-	syslogLevel := int(syslog.LOG_INFO)
-	if config.Syslog.SyslogLevel != 0 {
-		syslogLevel = config.Syslog.SyslogLevel
-	}
-	logger, err := blog.New(syslogger, config.Syslog.StdoutLevel, syslogLevel)
-	cmd.FailOnError(err, "Could not connect to Syslog")
-
-	err = blog.Set(logger)
-	cmd.FailOnError(err, "Failed to set audit logger")
+	logger := cmd.NewLogger(config.Syslog)
+	logger.Info(cmd.VersionString())
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
@@ -481,14 +595,9 @@ func main() {
 
 	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
+	cmd.FailOnError(config.PA.CheckIdentifiers(), "Invalid PA configuration")
 
-	if config.CertChecker.GoodKey.WeakKeyFile != "" {
-		cmd.Fail("cert-checker does not support checking against weak key files")
-	}
-	if config.CertChecker.GoodKey.BlockedKeyFile != "" {
-		cmd.Fail("cert-checker does not support checking against blocked key files")
-	}
-	kp, err := sagoodkey.NewKeyPolicy(&config.CertChecker.GoodKey, nil)
+	kp, err := sagoodkey.NewPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
@@ -500,15 +609,23 @@ func main() {
 	})
 	prometheus.DefaultRegisterer.MustRegister(checkerLatency)
 
-	pa, err := policy.New(config.PA.Challenges, logger)
+	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
 
-	err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+	err = pa.LoadHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 	if config.CertChecker.CTLogListFile != "" {
 		err = loglist.InitLintList(config.CertChecker.CTLogListFile)
 		cmd.FailOnError(err, "Failed to load CT Log List")
+	}
+
+	lints, err := linter.NewRegistry(config.CertChecker.IgnoredLints)
+	cmd.FailOnError(err, "Failed to create zlint registry")
+	if config.CertChecker.LintConfig != "" {
+		lintconfig, err := lint.NewConfigFromFile(config.CertChecker.LintConfig)
+		cmd.FailOnError(err, "Failed to load zlint config file")
+		lints.SetConfiguration(lintconfig)
 	}
 
 	checker := newChecker(
@@ -518,30 +635,26 @@ func main() {
 		kp,
 		config.CertChecker.CheckPeriod.Duration,
 		acceptableValidityDurations,
+		lints,
 		logger,
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
-
-	ignoredLintsMap := make(map[string]bool)
-	for _, name := range config.CertChecker.IgnoredLints {
-		ignoredLintsMap[name] = true
-	}
 
 	// Since we grab certificates in batches we don't want this to block, when it
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err := checker.getCerts(config.CertChecker.UnexpiredOnly)
+		err := checker.getCerts(context.TODO())
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 
 	fmt.Fprintf(os.Stderr, "# Processing certificates using %d workers\n", config.CertChecker.Workers)
 	wg := new(sync.WaitGroup)
-	for i := 0; i < config.CertChecker.Workers; i++ {
+	for range config.CertChecker.Workers {
 		wg.Add(1)
 		go func() {
 			s := checker.clock.Now()
-			checker.processCerts(wg, config.CertChecker.BadResultsOnly, ignoredLintsMap)
+			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly)
 			checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		}()
 	}
@@ -558,5 +671,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("cert-checker", main)
+	cmd.RegisterCommand("cert-checker", main, &cmd.ConfigValidator{Config: &Config{}})
 }

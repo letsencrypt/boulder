@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -31,48 +32,37 @@ import (
 
 type Config struct {
 	OCSPResponder struct {
-		DebugAddr string
-		DB        cmd.DBConfig
+		DebugAddr string       `validate:"omitempty,hostname_port"`
+		DB        cmd.DBConfig `validate:"required_without_all=Source SAService,structonly"`
 
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
 		// If DBConfig has non-empty fields, it takes precedence over this.
-		Source string
+		Source string `validate:"required_without_all=DB.DBConnectFile SAService Redis"`
 
 		// The list of issuer certificates, against which OCSP requests/responses
 		// are checked to ensure we're not responding for anyone else's certs.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"min=1,dive,required"`
 
-		Path          string
-		ListenAddress string
+		Path string
 
-		// When to timeout a request. This should be slightly lower than the
-		// upstream's timeout when making request to ocsp-responder.
-		Timeout config.Duration
+		// ListenAddress is the address:port on which to listen for incoming
+		// OCSP requests. This has a default value of ":80".
+		ListenAddress string `validate:"omitempty,hostname_port"`
 
-		// The worst-case freshness of a response during normal operations.
-		//
-		// This controls behavior when both Redis and MariaDB backends are
-		// configured. If a MariaDB response is older than this, ocsp-responder
-		// will try to serve a fresher response from Redis, waiting for a Redis
-		// response if necessary.
-		//
-		// This is related to OCSPMinTimeToExpiry in ocsp-updater's config,
-		// and both are related to the mandated refresh times in the BRs and
-		// root programs (minus a safety margin).
-		//
-		// This should be configured slightly higher than ocsp-updater's
-		// OCSPMinTimeToExpiry, to account for the time taken to sign
-		// responses once they pass that threshold. For instance, a good value
-		// would be: OCSPMinTimeToExpiry + OldOCSPWindow.
-		//
-		// This has a default value of 61h.
-		ExpectedFreshness config.Duration
+		// Timeout is the per-request overall timeout. This should be slightly
+		// lower than the upstream's timeout when making requests to this service.
+		Timeout config.Duration `validate:"-"`
+
+		// ShutdownStopTimeout determines the maximum amount of time to wait
+		// for extant request handlers to complete before exiting. It should be
+		// greater than Timeout.
+		ShutdownStopTimeout config.Duration
 
 		// How often a response should be signed when using Redis/live-signing
 		// path. This has a default value of 60h.
-		LiveSigningPeriod config.Duration
+		LiveSigningPeriod config.Duration `validate:"-"`
 
 		// A limit on how many requests to the RA (and onwards to the CA) will
 		// be made to sign responses that are not fresh in the cache. This
@@ -80,7 +70,8 @@ type Config struct {
 		// (HSM signing capacity) / (number of ocsp-responders).
 		// Requests that would exceed this limit will block until capacity is
 		// available and eventually serve an HTTP 500 Internal Server Error.
-		MaxInflightSignings int
+		// This has a default value of 1000.
+		MaxInflightSignings int `validate:"min=0"`
 
 		// A limit on how many goroutines can be waiting for a signing slot at
 		// a time. When this limit is exceeded, additional signing requests
@@ -92,20 +83,18 @@ type Config struct {
 		// instance, if the timeout is 5 seconds, and a signing takes 20ms,
 		// and we have MaxInflightSignings = 40, we can expect to process
 		// 40 * 5 / 0.02 = 10,000 requests before the oldest request times out.
-		MaxSigningWaiters int
+		MaxSigningWaiters int `validate:"min=0"`
 
-		ShutdownStopTimeout config.Duration
+		RequiredSerialPrefixes []string `validate:"omitempty,dive,hexadecimal"`
 
-		RequiredSerialPrefixes []string
-
-		Features map[string]bool
+		Features features.Config
 
 		// Configuration for using Redis as a cache. This configuration should
 		// allow for both read and write access.
-		Redis rocsp_config.RedisConfig
+		Redis *rocsp_config.RedisConfig `validate:"required_without=Source"`
 
 		// TLS client certificate, private key, and trusted root bundle.
-		TLS cmd.TLSConfig
+		TLS cmd.TLSConfig `validate:"required_without=Source,structonly"`
 
 		// RAService configures how to communicate with the RA when it is necessary
 		// to generate a fresh OCSP response.
@@ -114,20 +103,27 @@ type Config struct {
 		// SAService configures how to communicate with the SA to look up
 		// certificate status metadata used to confirm/deny that the response from
 		// Redis is up-to-date.
-		SAService *cmd.GRPCClientConfig
+		SAService *cmd.GRPCClientConfig `validate:"required_without_all=DB.DBConnectFile Source"`
 
 		// LogSampleRate sets how frequently error logs should be emitted. This
 		// avoids flooding the logs during outages. 1 out of N log lines will be emitted.
-		LogSampleRate int
+		// If LogSampleRate is 0, no logs will be emitted.
+		LogSampleRate int `validate:"min=0"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+
+	// OpenTelemetryHTTPConfig configures tracing on incoming HTTP requests
+	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
 func main() {
+	listenAddr := flag.String("addr", "", "OCSP listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
+
 	if *configFile == "" {
 		fmt.Fprintf(os.Stderr, `Usage of %s:
 Config JSON should contain either a DBConnectFile or a Source value containing a file: URL.
@@ -141,11 +137,17 @@ as generated by Boulder's ceremony command.
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.OCSPResponder.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OCSPResponder.DebugAddr)
-	defer logger.AuditPanic()
+	features.Set(c.OCSPResponder.Features)
+
+	if *listenAddr != "" {
+		c.OCSPResponder.ListenAddress = *listenAddr
+	}
+	if *debugAddr != "" {
+		c.OCSPResponder.DebugAddr = *debugAddr
+	}
+
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.OCSPResponder.DebugAddr)
 	logger.Info(cmd.VersionString())
 
 	clk := cmd.Clock()
@@ -165,7 +167,7 @@ as generated by Boulder's ceremony command.
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
 	} else {
 		// Set up the redis source and the combined multiplex source.
-		rocspRWClient, err := rocsp_config.MakeClient(&c.OCSPResponder.Redis, clk, scope)
+		rocspRWClient, err := rocsp_config.MakeClient(c.OCSPResponder.Redis, clk, scope)
 		cmd.FailOnError(err, "Could not make redis client")
 
 		err = rocspRWClient.Ping(context.Background())
@@ -176,7 +178,7 @@ as generated by Boulder's ceremony command.
 			liveSigningPeriod = 60 * time.Hour
 		}
 
-		tlsConfig, err := c.OCSPResponder.TLS.Load()
+		tlsConfig, err := c.OCSPResponder.TLS.Load(scope)
 		cmd.FailOnError(err, "TLS config")
 
 		raConn, err := bgrpc.ClientSetup(c.OCSPResponder.RAService, tlsConfig, scope, clk)
@@ -189,7 +191,7 @@ as generated by Boulder's ceremony command.
 		}
 		liveSource := live.New(rac, int64(maxInflight), c.OCSPResponder.MaxSigningWaiters)
 
-		rocspSource, err := redis_responder.NewRedisSource(rocspRWClient, liveSource, liveSigningPeriod, clk, scope, logger)
+		rocspSource, err := redis_responder.NewRedisSource(rocspRWClient, liveSource, liveSigningPeriod, clk, scope, logger, c.OCSPResponder.LogSampleRate)
 		cmd.FailOnError(err, "Could not create redis source")
 
 		var dbMap *db.WrappedMap
@@ -207,27 +209,33 @@ as generated by Boulder's ceremony command.
 
 		source, err = redis_responder.NewCheckedRedisSource(rocspSource, dbMap, sac, scope, logger)
 		cmd.FailOnError(err, "Could not create checkedRedis source")
-
-		// Load the certificate from the file path.
-		issuerCerts := make([]*issuance.Certificate, len(c.OCSPResponder.IssuerCerts))
-		for i, issuerFile := range c.OCSPResponder.IssuerCerts {
-			issuerCert, err := issuance.LoadCertificate(issuerFile)
-			cmd.FailOnError(err, "Could not load issuer cert")
-			issuerCerts[i] = issuerCert
-		}
-
-		source, err = responder.NewFilterSource(
-			issuerCerts,
-			c.OCSPResponder.RequiredSerialPrefixes,
-			source,
-			scope,
-			logger,
-			clk,
-		)
-		cmd.FailOnError(err, "Could not create filtered source")
 	}
 
-	m := mux(c.OCSPResponder.Path, source, c.OCSPResponder.Timeout.Duration, scope, logger, c.OCSPResponder.LogSampleRate)
+	// Load the certificate from the file path.
+	issuerCerts := make([]*issuance.Certificate, len(c.OCSPResponder.IssuerCerts))
+	for i, issuerFile := range c.OCSPResponder.IssuerCerts {
+		issuerCert, err := issuance.LoadCertificate(issuerFile)
+		cmd.FailOnError(err, "Could not load issuer cert")
+		issuerCerts[i] = issuerCert
+	}
+
+	source, err = responder.NewFilterSource(
+		issuerCerts,
+		c.OCSPResponder.RequiredSerialPrefixes,
+		source,
+		scope,
+		logger,
+		clk,
+	)
+	cmd.FailOnError(err, "Could not create filtered source")
+
+	m := mux(c.OCSPResponder.Path, source, c.OCSPResponder.Timeout.Duration, scope, c.OpenTelemetryHTTPConfig.Options(), logger, c.OCSPResponder.LogSampleRate)
+
+	if c.OCSPResponder.ListenAddress == "" {
+		cmd.Fail("HTTP listen address is not configured")
+	}
+
+	logger.Infof("HTTP server listening on %s", c.OCSPResponder.ListenAddress)
 
 	srv := &http.Server{
 		ReadTimeout:  30 * time.Second,
@@ -237,25 +245,25 @@ as generated by Boulder's ceremony command.
 		Handler:      m,
 	}
 
-	done := make(chan bool)
-	go cmd.CatchSignals(logger, func() {
-		ctx, cancel := context.WithTimeout(context.Background(),
-			c.OCSPResponder.ShutdownStopTimeout.Duration)
-		defer cancel()
-		_ = srv.Shutdown(ctx)
-		done <- true
-	})
-
 	err = srv.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		cmd.FailOnError(err, "Running HTTP server")
 	}
 
-	// https://godoc.org/net/http#Server.Shutdown:
-	// When Shutdown is called, Serve, ListenAndServe, and ListenAndServeTLS
-	// immediately return ErrServerClosed. Make sure the program doesn't exit and
-	// waits instead for Shutdown to return.
-	<-done
+	// When main is ready to exit (because it has received a shutdown signal),
+	// gracefully shutdown the servers. Calling these shutdown functions causes
+	// ListenAndServe() to immediately return, cleaning up the server goroutines
+	// as well, then waits for any lingering connection-handing goroutines to
+	// finish and clean themselves up.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(),
+			c.OCSPResponder.ShutdownStopTimeout.Duration)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+		oTelShutdown(ctx)
+	}()
+
+	cmd.WaitForSignal()
 }
 
 // ocspMux partially implements the interface defined for http.ServeMux but doesn't implement
@@ -271,7 +279,7 @@ func (om *ocspMux) Handler(_ *http.Request) (http.Handler, string) {
 	return om.handler, "/"
 }
 
-func mux(responderPath string, source responder.Source, timeout time.Duration, stats prometheus.Registerer, logger blog.Logger, sampleRate int) http.Handler {
+func mux(responderPath string, source responder.Source, timeout time.Duration, stats prometheus.Registerer, oTelHTTPOptions []otelhttp.Option, logger blog.Logger, sampleRate int) http.Handler {
 	stripPrefix := http.StripPrefix(responderPath, responder.NewResponder(source, timeout, stats, logger, sampleRate))
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" && r.URL.Path == "/" {
@@ -281,9 +289,9 @@ func mux(responderPath string, source responder.Source, timeout time.Duration, s
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return measured_http.New(&ocspMux{h}, cmd.Clock(), stats)
+	return measured_http.New(&ocspMux{h}, cmd.Clock(), stats, oTelHTTPOptions...)
 }
 
 func init() {
-	cmd.RegisterCommand("ocsp-responder", main)
+	cmd.RegisterCommand("ocsp-responder", main, &cmd.ConfigValidator{Config: &Config{}})
 }

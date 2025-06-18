@@ -3,7 +3,7 @@ package acme
 import (
 	"errors"
 	"fmt"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
@@ -67,7 +67,7 @@ func (strategy randomChallengeStrategy) PickChallenge(authz *core.Authorization)
 	if len(authz.Challenges) == 0 {
 		return nil, ErrPickChallengeAuthzMissingChallenges
 	}
-	return &authz.Challenges[mrand.Intn(len(authz.Challenges))], nil
+	return &authz.Challenges[mrand.IntN(len(authz.Challenges))], nil
 }
 
 // preferredTypeChallengeStrategy is a ChallengeStrategy implementation that

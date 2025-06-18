@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -186,11 +187,19 @@ scan:
 	}
 }
 
-func (srv *mailSrv) serveSMTP(l net.Listener) error {
+func (srv *mailSrv) serveSMTP(ctx context.Context, l net.Listener) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			return err
+			// If the accept call returned an error because the listener has been
+			// closed, then the context should have been canceled too. In that case,
+			// ignore the error.
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				return err
+			}
 		}
 		go srv.handleConn(conn)
 	}
@@ -224,19 +233,16 @@ func main() {
 
 	srv.setupHTTP(http.DefaultServeMux)
 	go func() {
-		// The gosec linter complains that timeouts cannot be set here. That's fine,
-		// because this is test-only code.
-		////nolint:gosec
-		err := http.ListenAndServe(*listenAPI, http.DefaultServeMux)
+		err := http.ListenAndServe(*listenAPI, http.DefaultServeMux) //nolint: gosec // No request timeout is fine for test-only code.
 		if err != nil {
 			log.Fatalln("Couldn't start HTTP server", err)
 		}
 	}()
 
-	go cmd.CatchSignals(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	err = srv.serveSMTP(l)
-	if err != nil {
-		log.Fatalln(err, "Failed to accept connection")
-	}
+	go cmd.FailOnError(srv.serveSMTP(ctx, l), "Failed to accept connection")
+
+	cmd.WaitForSignal()
 }

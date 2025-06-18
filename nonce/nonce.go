@@ -28,22 +28,20 @@ import (
 	"sync"
 	"time"
 
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
 const (
 	// PrefixLen is the character length of a nonce prefix.
 	PrefixLen = 8
-	// DeprecatedPrefixLen is the character length of a nonce prefix.
-	//
-	// DEPRECATED: Use PrefixLen instead.
-	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	DeprecatedPrefixLen = 4
-	defaultMaxUsed      = 65536
-	nonceLen            = 32
+
+	// NonceLen is the character length of a nonce, excluding the prefix.
+	NonceLen       = 32
+	defaultMaxUsed = 65536
 )
 
 var errInvalidNonceLength = errors.New("invalid nonce length")
@@ -57,8 +55,8 @@ type HMACKeyCtxKey struct{}
 // DerivePrefix derives a nonce prefix from the provided listening address and
 // key. The prefix is derived by take the first 8 characters of the base64url
 // encoded HMAC-SHA256 hash of the listening address using the provided key.
-func DerivePrefix(grpcAddr, key string) string {
-	h := hmac.New(sha256.New, []byte(key))
+func DerivePrefix(grpcAddr string, key []byte) string {
+	h := hmac.New(sha256.New, key)
 	h.Write([]byte(grpcAddr))
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))[:PrefixLen]
 }
@@ -74,11 +72,9 @@ type NonceService struct {
 	maxUsed          int
 	prefix           string
 	nonceCreates     prometheus.Counter
+	nonceEarliest    prometheus.Gauge
 	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
-	// TODO(#6610): Remove this field once we've moved to derivable prefixes by
-	// default.
-	prefixLen int
 }
 
 type int64Heap []int64
@@ -101,23 +97,16 @@ func (h *int64Heap) Pop() interface{} {
 
 // NewNonceService constructs a NonceService with defaults
 func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*NonceService, error) {
-	// If a prefix is provided it must be four characters and valid base64. The
+	// If a prefix is provided it must be eight characters and valid base64. The
 	// prefix is required to be base64url as RFC8555 section 6.5.1 requires that
-	// nonces use that encoding. As base64 operates on three byte binary
-	// segments we require the prefix to be three or six bytes (four or eight
-	// characters) so that the bytes preceding the prefix wouldn't impact the
-	// encoding.
-	//
-	// TODO(#6610): Update this comment once we've moved to eight character
-	// prefixes by default.
+	// nonces use that encoding. As base64 operates on three byte binary segments
+	// we require the prefix to be six bytes (eight characters) so that the bytes
+	// preceding the prefix wouldn't impact the encoding.
 	if prefix != "" {
-		// TODO(#6610): Refactor once we've moved to derivable prefixes by
-		// default.
-		if len(prefix) != PrefixLen && len(prefix) != DeprecatedPrefixLen {
+		if len(prefix) != PrefixLen {
 			return nil, fmt.Errorf(
-				"'noncePrefix' must be %d or %d characters, not %d",
+				"nonce prefix must be %d characters, not %d",
 				PrefixLen,
-				DeprecatedPrefixLen,
 				len(prefix),
 			)
 		}
@@ -149,6 +138,11 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		Help: "A counter of nonces generated",
 	})
 	stats.MustRegister(nonceCreates)
+	nonceEarliest := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nonce_earliest",
+		Help: "A gauge with the current earliest valid nonce value",
+	})
+	stats.MustRegister(nonceEarliest)
 	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
@@ -169,18 +163,16 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		maxUsed:          maxUsed,
 		prefix:           prefix,
 		nonceCreates:     nonceCreates,
+		nonceEarliest:    nonceEarliest,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
-		// TODO(#6610): Remove this field once we've moved to derivable prefixes
-		// by default.
-		prefixLen: len(prefix),
 	}, nil
 }
 
 func (ns *NonceService) encrypt(counter int64) (string, error) {
 	// Generate a nonce with upper 4 bytes zero
 	nonce := make([]byte, 12)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		nonce[i] = 0
 	}
 	_, err := rand.Read(nonce[4:])
@@ -195,7 +187,7 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 	copy(pt[pad:], ctr.Bytes())
 
 	// Encrypt
-	ret := make([]byte, nonceLen)
+	ret := make([]byte, NonceLen)
 	ct := ns.gcm.Seal(nil, nonce, pt, nil)
 	copy(ret, nonce[4:])
 	copy(ret[8:], ct)
@@ -220,12 +212,12 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if len(decoded) != nonceLen {
+	if len(decoded) != NonceLen {
 		return 0, errInvalidNonceLength
 	}
 
 	n := make([]byte, 12)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		n[i] = 0
 	}
 	copy(n[4:], decoded[:8])
@@ -281,6 +273,7 @@ func (ns *NonceService) Valid(nonce string) bool {
 	if len(ns.used) > ns.maxUsed {
 		s := time.Now()
 		ns.earliest = heap.Pop(ns.usedHeap).(int64)
+		ns.nonceEarliest.Set(float64(ns.earliest))
 		ns.nonceHeapLatency.Observe(time.Since(s).Seconds())
 		delete(ns.used, ns.earliest)
 	}
@@ -291,43 +284,10 @@ func (ns *NonceService) Valid(nonce string) bool {
 
 // splitNonce splits a nonce into a prefix and a body.
 func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
-	if len(nonce) < ns.prefixLen {
+	if len(nonce) < PrefixLen {
 		return "", "", errInvalidNonceLength
 	}
-	return nonce[:ns.prefixLen], nonce[ns.prefixLen:], nil
-}
-
-// splitDeprecatedNonce splits a nonce into a prefix and a body.
-//
-// Deprecated: Use NonceService.splitDeprecatedNonce instead.
-// TODO(#6610): Remove this function once we've moved to derivable prefixes by
-// default.
-func splitDeprecatedNonce(nonce string) (string, string, error) {
-	if len(nonce) < DeprecatedPrefixLen {
-		return "", "", errInvalidNonceLength
-	}
-	return nonce[:DeprecatedPrefixLen], nonce[DeprecatedPrefixLen:], nil
-}
-
-// RemoteRedeem checks the nonce prefix and routes the Redeem RPC
-// to the associated remote nonce service.
-//
-// TODO(#6610): Remove this function once we've moved to derivable prefixes by
-// default.
-func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]Redeemer, nonce string) (bool, error) {
-	prefix, _, err := splitDeprecatedNonce(nonce)
-	if err != nil {
-		return false, nil
-	}
-	nonceService, present := noncePrefixMap[prefix]
-	if !present {
-		return false, nil
-	}
-	resp, err := nonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonce})
-	if err != nil {
-		return false, err
-	}
-	return resp.Valid, nil
+	return nonce[:PrefixLen], nonce[PrefixLen:], nil
 }
 
 // NewServer returns a new Server, wrapping a NonceService.
@@ -337,9 +297,11 @@ func NewServer(inner *NonceService) *Server {
 
 // Server implements the gRPC nonce service.
 type Server struct {
-	noncepb.UnimplementedNonceServiceServer
+	noncepb.UnsafeNonceServiceServer
 	inner *NonceService
 }
+
+var _ noncepb.NonceServiceServer = (*Server)(nil)
 
 // Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
 func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {

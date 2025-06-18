@@ -3,11 +3,12 @@ package inmemnonce
 import (
 	"context"
 
-	"github.com/letsencrypt/boulder/nonce"
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
+	"github.com/go-jose/go-jose/v4"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/go-jose/go-jose.v2"
+
+	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
 // Service implements noncepb.NonceServiceClient for tests.

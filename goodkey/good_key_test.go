@@ -13,22 +13,16 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var testingPolicy = &KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
+// testingPolicy is a simple policy which allows all of the key types, so that
+// the unit tests can exercise checks against all key types.
+var testingPolicy = &KeyPolicy{allowedKeys: AllowedKeys{
+	RSA2048: true, RSA3072: true, RSA4096: true,
+	ECDSAP256: true, ECDSAP384: true, ECDSAP521: true,
+}}
 
 func TestUnknownKeyType(t *testing.T) {
 	notAKey := struct{}{}
 	err := testingPolicy.GoodKey(context.Background(), notAKey)
-	test.AssertError(t, err, "Should have rejected a key of unknown type")
-	test.AssertEquals(t, err.Error(), "unsupported key type struct {}")
-
-	// Check for early rejection and that no error is seen from blockedKeys.blocked.
-	testingPolicyWithBlockedKeys := *testingPolicy
-	testingPolicyWithBlockedKeys.blockedList = &blockedKeys{}
-	err = testingPolicyWithBlockedKeys.GoodKey(context.Background(), notAKey)
 	test.AssertError(t, err, "Should have rejected a key of unknown type")
 	test.AssertEquals(t, err.Error(), "unsupported key type struct {}")
 }
@@ -146,12 +140,12 @@ func TestECDSABadCurve(t *testing.T) {
 
 var invalidCurves = []elliptic.Curve{
 	elliptic.P224(),
-	elliptic.P521(),
 }
 
 var validCurves = []elliptic.Curve{
 	elliptic.P256(),
 	elliptic.P384(),
+	elliptic.P521(),
 }
 
 func TestECDSAGoodKey(t *testing.T) {
@@ -263,7 +257,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 			return false, nil
 		},
 	} {
-		policy, err := NewKeyPolicy(&Config{}, testCheck)
+		policy, err := NewPolicy(nil, testCheck)
 		test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -278,7 +272,7 @@ func TestDBBlocklistReject(t *testing.T) {
 		return true, nil
 	}
 
-	policy, err := NewKeyPolicy(&Config{}, testCheck)
+	policy, err := NewPolicy(nil, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -289,6 +283,26 @@ func TestDBBlocklistReject(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "public key is forbidden")
 }
 
+func TestDefaultAllowedKeys(t *testing.T) {
+	policy, err := NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "NewPolicy with nil config failed")
+	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA4096, "RSA 4096 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP256, "NIST P256 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP384, "NIST P384 should be allowed")
+	test.Assert(t, !policy.allowedKeys.ECDSAP521, "NIST P521 should not be allowed")
+
+	policy, err = NewPolicy(&Config{}, nil)
+	test.AssertNotError(t, err, "NewPolicy with nil config.AllowedKeys failed")
+	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA4096, "RSA 4096 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP256, "NIST P256 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP384, "NIST P384 should be allowed")
+	test.Assert(t, !policy.allowedKeys.ECDSAP521, "NIST P521 should not be allowed")
+}
+
 func TestRSAStrangeSize(t *testing.T) {
 	k := &rsa.PublicKey{N: big.NewInt(10)}
 	err := testingPolicy.GoodKey(context.Background(), k)
@@ -297,49 +311,102 @@ func TestRSAStrangeSize(t *testing.T) {
 }
 
 func TestCheckPrimeFactorsTooClose(t *testing.T) {
-	// The prime factors of 5959 are 59 and 101. The values a and b calculated
-	// by Fermat's method will be 80 and 21. The ceil of the square root of 5959
-	// is 78. Therefore it takes 3 rounds of Fermat's method to find the factors.
-	n := big.NewInt(5959)
-	err := checkPrimeFactorsTooClose(n, 2)
-	test.AssertNotError(t, err, "factored n in too few iterations")
-	err = checkPrimeFactorsTooClose(n, 3)
-	test.AssertError(t, err, "failed to factor n")
-	test.AssertContains(t, err.Error(), "p: 101")
-	test.AssertContains(t, err.Error(), "q: 59")
+	type testCase struct {
+		name         string
+		p            string
+		q            string
+		expectRounds int
+	}
 
-	// These factors differ only in their second-to-last digit. They're so close
-	// that a single iteration of Fermat's method is sufficient to find them.
-	p, ok := new(big.Int).SetString("12451309173743450529024753538187635497858772172998414407116324997634262083672423797183640278969532658774374576700091736519352600717664126766443002156788367", 10)
-	test.Assert(t, ok, "failed to create large prime")
-	q, ok := new(big.Int).SetString("12451309173743450529024753538187635497858772172998414407116324997634262083672423797183640278969532658774374576700091736519352600717664126766443002156788337", 10)
-	test.Assert(t, ok, "failed to create large prime")
-	n = n.Mul(p, q)
-	err = checkPrimeFactorsTooClose(n, 0)
-	test.AssertNotError(t, err, "factored n in too few iterations")
-	err = checkPrimeFactorsTooClose(n, 1)
-	test.AssertError(t, err, "failed to factor n")
-	test.AssertContains(t, err.Error(), fmt.Sprintf("p: %s", p))
-	test.AssertContains(t, err.Error(), fmt.Sprintf("q: %s", q))
+	testCases := []testCase{
+		{
+			// The factors 59 and 101 multiply to 5959. The values a and b calculated
+			// by Fermat's method will be 80 and 21. The ceil of the square root of
+			// 5959 is 78. Therefore it takes 3 rounds of Fermat's method to find the
+			// factors.
+			name:         "tiny",
+			p:            "101",
+			q:            "59",
+			expectRounds: 3,
+		},
+		{
+			// These factors differ only in their second-to-last digit. They're so close
+			// that a single iteration of Fermat's method is sufficient to find them.
+			name:         "very close",
+			p:            "12451309173743450529024753538187635497858772172998414407116324997634262083672423797183640278969532658774374576700091736519352600717664126766443002156788367",
+			q:            "12451309173743450529024753538187635497858772172998414407116324997634262083672423797183640278969532658774374576700091736519352600717664126766443002156788337",
+			expectRounds: 1,
+		},
+		{
+			// These factors differ by slightly more than 2^256, which takes fourteen
+			// rounds to factor.
+			name:         "still too close",
+			p:            "11779932606551869095289494662458707049283241949932278009554252037480401854504909149712949171865707598142483830639739537075502512627849249573564209082969463",
+			q:            "11779932606551869095289494662458707049283241949932278009554252037480401854503793357623711855670284027157475142731886267090836872063809791989556295953329083",
+			expectRounds: 14,
+		},
+		{
+			// These factors come from a real canon printer in the wild with a broken
+			// key generation mechanism.
+			name:         "canon printer (2048 bit, 1 round)",
+			p:            "155536235030272749691472293262418471207550926406427515178205576891522284497518443889075039382254334975506248481615035474816604875321501901699955105345417152355947783063521554077194367454070647740704883461064399268622437721385112646454393005862535727615809073410746393326688230040267160616554768771412289114449",
+			q:            "155536235030272749691472293262418471207550926406427515178205576891522284497518443889075039382254334975506248481615035474816604875321501901699955105345417152355947783063521554077194367454070647740704883461064399268622437721385112646454393005862535727615809073410746393326688230040267160616554768771412289114113",
+			expectRounds: 1,
+		},
+		{
+			// These factors come from a real innsbruck printer in the wild with a
+			// broken key generation mechanism.
+			name:         "innsbruck printer (4096 bit, 1 round)",
+			p:            "25868808535211632564072019392873831934145242707953960515208595626279836366691068618582894100813803673421320899654654938470888358089618966238341690624345530870988951109006149164192566967552401505863871260691612081236189439839963332690997129144163260418447718577834226720411404568398865166471102885763673744513186211985402019037772108416694793355840983833695882936201196462579254234744648546792097397517107797153785052856301942321429858537224127598198913168345965493941246097657533085617002572245972336841716321849601971924830462771411171570422802773095537171762650402420866468579928479284978914972383512240254605625661",
+			q:            "25868808535211632564072019392873831934145242707953960515208595626279836366691068618582894100813803673421320899654654938470888358089618966238341690624345530870988951109006149164192566967552401505863871260691612081236189439839963332690997129144163260418447718577834226720411404568398865166471102885763673744513186211985402019037772108416694793355840983833695882936201196462579254234744648546792097397517107797153785052856301942321429858537224127598198913168345965493941246097657533085617002572245972336841716321849601971924830462771411171570422802773095537171762650402420866468579928479284978914972383512240254605624819",
+			expectRounds: 1,
+		},
+		{
+			// FIPS requires that |p-q| > 2^(nlen/2 - 100). For example, a 2048-bit
+			// RSA key must have prime factors with a difference of at least 2^924.
+			// These two factors have a difference of exactly 2^924 + 4, just *barely*
+			// FIPS-compliant. Their first different digit is in column 52 of this
+			// file, which makes them vastly further apart than the cases above. Their
+			// product cannot be factored even with 100,000,000 rounds of Fermat's
+			// Algorithm.
+			name:         "barely FIPS compliant (2048 bit)",
+			p:            "151546560166767007654995655231369126386504564489055366370313539237722892921762327477057109592614214965864835328962951695621854530739049166771701397343693962526456985866167580660948398404000483264137738772983130282095332559392185543017295488346592188097443414824871619976114874896240350402349774470198190454623",
+			q:            "151546560166767007654995655231510939369872272987323309037144546294925352276321214430320942815891873491060949332482502812040326472743233767963240491605860423063942576391584034077877871768428333113881339606298282107984376151546711223157061364850161576363709081794948857957944390170575452970542651659150041855843",
+			expectRounds: -1,
+		},
+	}
 
-	// These factors differ by slightly more than 2^256.
-	p, ok = p.SetString("11779932606551869095289494662458707049283241949932278009554252037480401854504909149712949171865707598142483830639739537075502512627849249573564209082969463", 10)
-	test.Assert(t, ok, "failed to create large prime")
-	q, ok = q.SetString("11779932606551869095289494662458707049283241949932278009554252037480401854503793357623711855670284027157475142731886267090836872063809791989556295953329083", 10)
-	test.Assert(t, ok, "failed to create large prime")
-	n = n.Mul(p, q)
-	err = checkPrimeFactorsTooClose(n, 13)
-	test.AssertNotError(t, err, "factored n in too few iterations")
-	err = checkPrimeFactorsTooClose(n, 14)
-	test.AssertError(t, err, "failed to factor n")
-	test.AssertContains(t, err.Error(), fmt.Sprintf("p: %s", p))
-	test.AssertContains(t, err.Error(), fmt.Sprintf("q: %s", q))
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, ok := new(big.Int).SetString(tc.p, 10)
+			if !ok {
+				t.Fatalf("failed to load prime factor p (%s)", tc.p)
+			}
+
+			q, ok := new(big.Int).SetString(tc.q, 10)
+			if !ok {
+				t.Fatalf("failed to load prime factor q (%s)", tc.q)
+			}
+
+			n := new(big.Int).Mul(p, q)
+			err := checkPrimeFactorsTooClose(n, 100)
+
+			if tc.expectRounds > 0 {
+				test.AssertError(t, err, "failed to factor n")
+				test.AssertContains(t, err.Error(), fmt.Sprintf("p: %s", tc.p))
+				test.AssertContains(t, err.Error(), fmt.Sprintf("q: %s", tc.q))
+				test.AssertContains(t, err.Error(), fmt.Sprintf("in %d rounds", tc.expectRounds))
+			} else {
+				test.AssertNil(t, err, "factored the unfactorable")
+			}
+		})
+	}
 }
 
 func benchFermat(rounds int, b *testing.B) {
 	n := big.NewInt(0)
 	n.SetString("801622717394169050106926578578301725055526605503706912100006286161529273473377413824975745384114446662904851914935980611269769546695796451504160869649117000521094368058953989236438103975426680952076533198797388295193391779933559668812684470909409457778161223896975426492372231040386646816154793996920467596916193680611886097694746368434138296683172992347929528214464827172059378866098534956467670429228681248968588692628197119606249988365750115578731538804653322115223303388019261933988266126675740797091559541980722545880793708750882230374320698192373040882555154628949384420712168289605526223733016176898368282023301917856921049583659644200174763940543991507836551835324807116188739389620816364505209568211448815747330488813651206715564392791134964121857454359816296832013457790067067190116393364546525054134704119475840526673114964766611499226043189928040037210929720682839683846078550615582181112536768195193557758454282232948765374797970874053642822355832904812487562117265271449547063765654262549173209805579494164339236981348054782533307762260970390747872669357067489756517340817289701322583209366268084923373164395703994945233187987667632964509271169622904359262117908604555420100186491963838567445541249128944592555657626247", 10)
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if checkPrimeFactorsTooClose(n, rounds) != nil {
 			b.Fatal("factored the unfactorable!")
 		}

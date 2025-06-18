@@ -1,7 +1,7 @@
 package rfc
 
 /*
- * ZLint Copyright 2021 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -37,13 +37,15 @@ RFC 5280: 4.1.2.8
 ****************************************************************************/
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_cert_unique_identifier_version_not_2_or_3",
-		Description:   "Unique identifiers MUST only appear if the X.509 version is 2 or 3",
-		Citation:      "RFC 5280: 4.1.2.8",
-		Source:        lint.RFC5280,
-		EffectiveDate: util.RFC5280Date,
-		Lint:          NewCertUniqueIdVersion,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_cert_unique_identifier_version_not_2_or_3",
+			Description:   "Unique identifiers MUST only appear if the X.509 version is 2 or 3",
+			Citation:      "RFC 5280: 4.1.2.8",
+			Source:        lint.RFC5280,
+			EffectiveDate: util.RFC5280Date,
+		},
+		Lint: NewCertUniqueIdVersion,
 	})
 }
 
@@ -52,11 +54,11 @@ func NewCertUniqueIdVersion() lint.LintInterface {
 }
 
 func (l *certUniqueIdVersion) CheckApplies(c *x509.Certificate) bool {
-	return c.IssuerUniqueId.Bytes != nil || c.SubjectUniqueId.Bytes != nil
+	return true
 }
 
 func (l *certUniqueIdVersion) Execute(c *x509.Certificate) *lint.LintResult {
-	if (c.Version) != 2 && (c.Version) != 3 {
+	if (c.IssuerUniqueId.Bytes != nil || c.SubjectUniqueId.Bytes != nil) && (c.Version) != 2 && (c.Version) != 3 {
 		return &lint.LintResult{Status: lint.Error}
 	} else {
 		return &lint.LintResult{Status: lint.Pass}

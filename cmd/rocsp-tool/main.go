@@ -6,12 +6,13 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -20,20 +21,19 @@ import (
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
 type Config struct {
 	ROCSPTool struct {
-		DebugAddr string
+		DebugAddr string `validate:"omitempty,hostname_port"`
 		Redis     rocsp_config.RedisConfig
 
 		// If using load-from-db, this provides credentials to connect to the DB
 		// and the CA. Otherwise, it's optional.
 		LoadFromDB *LoadFromDBConfig
 	}
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // LoadFromDBConfig provides the credentials and configuration needed to load
@@ -53,18 +53,18 @@ type ProcessingSpeed struct {
 	// If using load-from-db, this limits how many items per second we
 	// scan from the DB. We might go slower than this depending on how fast
 	// we read rows from the DB, but we won't go faster. Defaults to 2000.
-	RowsPerSecond int
+	RowsPerSecond int `validate:"min=0"`
 	// If using load-from-db, this controls how many parallel requests to
 	// boulder-ca for OCSP signing we can make. Defaults to 100.
-	ParallelSigns int
+	ParallelSigns int `validate:"min=0"`
 	// If using load-from-db, the LIMIT on our scanning queries. We have to
 	// apply a limit because MariaDB will cut off our response at some
 	// threshold of total bytes transferred (1 GB by default). Defaults to 10000.
-	ScanBatchSize int
+	ScanBatchSize int `validate:"min=0"`
 }
 
 func init() {
-	cmd.RegisterCommand("rocsp-tool", main)
+	cmd.RegisterCommand("rocsp-tool", main, &cmd.ConfigValidator{Config: &Config{}})
 }
 
 func main() {
@@ -77,6 +77,7 @@ func main() {
 var startFromID *int64
 
 func main2() error {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	startFromID = flag.Int64("start-from-id", 0, "For load-from-db, the first ID in the certificateStatus table to scan")
 	flag.Usage = helpExit
@@ -85,16 +86,19 @@ func main2() error {
 		helpExit()
 	}
 
-	rand.Seed(time.Now().UnixNano())
-
 	var conf Config
 	err := cmd.ReadConfigFile(*configFile, &conf)
 	if err != nil {
 		return fmt.Errorf("reading JSON config file: %w", err)
 	}
 
-	_, logger := cmd.StatsAndLogging(conf.Syslog, conf.ROCSPTool.DebugAddr)
-	defer logger.AuditPanic()
+	if *debugAddr != "" {
+		conf.ROCSPTool.DebugAddr = *debugAddr
+	}
+
+	_, logger, oTelShutdown := cmd.StatsAndLogging(conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
+	defer oTelShutdown(context.Background())
+	logger.Info(cmd.VersionString())
 
 	clk := cmd.Clock()
 	redisClient, err := rocsp_config.MakeClient(&conf.ROCSPTool.Redis, clk, metrics.NoopRegisterer)
@@ -192,7 +196,10 @@ var (
 					Bytes: resp,
 					Type:  "OCSP RESPONSE",
 				}
-				pem.Encode(os.Stdout, &block)
+				err = pem.Encode(os.Stdout, &block)
+				if err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -243,7 +250,7 @@ func helpExit() {
 }
 
 func configureOCSPGenerator(tlsConf cmd.TLSConfig, grpcConf cmd.GRPCClientConfig, clk clock.Clock, scope prometheus.Registerer) (capb.OCSPGeneratorClient, error) {
-	tlsConfig, err := tlsConf.Load()
+	tlsConfig, err := tlsConf.Load(scope)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}

@@ -27,7 +27,7 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. These will
 		// be used to validate the CRLs received by this service before uploading
 		// them.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"min=1,dive,required"`
 
 		// S3Endpoint is the URL at which the S3-API-compatible object storage
 		// service can be reached. This can be used to point to a non-Amazon storage
@@ -46,11 +46,11 @@ type Config struct {
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
 		AWSCredsFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // awsLogger implements the github.com/aws/smithy-go/logging.Logger interface.
@@ -68,6 +68,8 @@ func (log awsLogger) Logf(c awsl.Classification, format string, v ...interface{}
 }
 
 func main() {
+	grpcAddr := flag.String("addr", "", "gRPC listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -79,16 +81,22 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.CRLStorer.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CRLStorer.Features)
 
-	tlsConfig, err := c.CRLStorer.TLS.Load()
-	cmd.FailOnError(err, "TLS config")
+	if *grpcAddr != "" {
+		c.CRLStorer.GRPC.Address = *grpcAddr
+	}
+	if *debugAddr != "" {
+		c.CRLStorer.DebugAddr = *debugAddr
+	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CRLStorer.DebugAddr)
-	defer logger.AuditPanic()
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
+	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
+
+	tlsConfig, err := c.CRLStorer.TLS.Load(scope)
+	cmd.FailOnError(err, "TLS config")
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLStorer.IssuerCerts))
 	for _, filepath := range c.CRLStorer.IssuerCerts {
@@ -124,14 +132,13 @@ func main() {
 	csi, err := storer.New(issuers, s3client, c.CRLStorer.S3Bucket, scope, logger, clk)
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
-	start, stop, err := bgrpc.NewServer(c.CRLStorer.GRPC).Add(
+	start, err := bgrpc.NewServer(c.CRLStorer.GRPC, logger).Add(
 		&cspb.CRLStorer_ServiceDesc, csi).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup CRLStorer gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "CRLStorer gRPC service failed")
 }
 
 func init() {
-	cmd.RegisterCommand("crl-storer", main)
+	cmd.RegisterCommand("crl-storer", main, &cmd.ConfigValidator{Config: &Config{}})
 }

@@ -23,10 +23,12 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/web"
 )
 
 var fc = clock.NewFake()
@@ -87,95 +89,96 @@ func TestClientInterceptor(t *testing.T) {
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
 }
 
-// TestFailFastFalse sends a gRPC request to a backend that is
-// unavailable, and ensures that the request doesn't error out until the
-// timeout is reached, i.e. that FailFast is set to false.
+// TestWaitForReadyTrue configures a gRPC client with waitForReady: true and
+// sends a request to a backend that is unavailable. It ensures that the
+// request doesn't error out until the timeout is reached, i.e. that
+// FailFast is set to false.
 // https://github.com/grpc/grpc/blob/main/doc/wait-for-ready.md
-func TestFailFastFalse(t *testing.T) {
+func TestWaitForReadyTrue(t *testing.T) {
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientMetadataInterceptor{
-		timeout: 100 * time.Millisecond,
-		metrics: clientMetrics,
-		clk:     clock.NewFake(),
+		timeout:      100 * time.Millisecond,
+		metrics:      clientMetrics,
+		clk:          clock.NewFake(),
+		waitForReady: true,
 	}
-	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
+	conn, err := grpc.NewClient("localhost:19876", // random, probably unused port
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.Unary))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
+	defer conn.Close()
 	c := test_proto.NewChillerClient(conn)
 
 	start := time.Now()
-	_, err = c.Chill(context.Background(), &test_proto.Time{Time: time.Second.Nanoseconds()})
+	_, err = c.Chill(context.Background(), &test_proto.Time{Duration: durationpb.New(time.Second)})
 	if err == nil {
 		t.Errorf("Successful Chill when we expected failure.")
 	}
 	if time.Since(start) < 90*time.Millisecond {
-		t.Errorf("Chill failed fast, when FailFast should be disabled.")
+		t.Errorf("Chill failed fast, when WaitForReady should be enabled.")
 	}
-	_ = conn.Close()
 }
 
-// testServer is used to implement TestTimeouts, and will attempt to sleep for
+// TestWaitForReadyFalse configures a gRPC client with waitForReady: false and
+// sends a request to a backend that is unavailable, and ensures that the request
+// errors out promptly.
+func TestWaitForReadyFalse(t *testing.T) {
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
+	ci := &clientMetadataInterceptor{
+		timeout:      time.Second,
+		metrics:      clientMetrics,
+		clk:          clock.NewFake(),
+		waitForReady: false,
+	}
+	conn, err := grpc.NewClient("localhost:19876", // random, probably unused port
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(ci.Unary))
+	if err != nil {
+		t.Fatalf("did not connect: %v", err)
+	}
+	defer conn.Close()
+	c := test_proto.NewChillerClient(conn)
+
+	start := time.Now()
+	_, err = c.Chill(context.Background(), &test_proto.Time{Duration: durationpb.New(time.Second)})
+	if err == nil {
+		t.Errorf("Successful Chill when we expected failure.")
+	}
+	if time.Since(start) > 200*time.Millisecond {
+		t.Errorf("Chill failed slow, when WaitForReady should be disabled.")
+	}
+}
+
+// testTimeoutServer is used to implement TestTimeouts, and will attempt to sleep for
 // the given amount of time (unless it hits a timeout or cancel).
-type testServer struct {
+type testTimeoutServer struct {
 	test_proto.UnimplementedChillerServer
 }
 
 // Chill implements ChillerServer.Chill
-func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_proto.Time, error) {
+func (s *testTimeoutServer) Chill(ctx context.Context, in *test_proto.Time) (*test_proto.Time, error) {
 	start := time.Now()
 	// Sleep for either the requested amount of time, or the context times out or
 	// is canceled.
 	select {
-	case <-time.After(time.Duration(in.Time) * time.Nanosecond):
-		spent := int64(time.Since(start) / time.Nanosecond)
-		return &test_proto.Time{Time: spent}, nil
+	case <-time.After(in.Duration.AsDuration() * time.Nanosecond):
+		spent := time.Since(start) / time.Nanosecond
+		return &test_proto.Time{Duration: durationpb.New(spent)}, nil
 	case <-ctx.Done():
 		return nil, errors.New("unique error indicating that the server's shortened context timed itself out")
 	}
 }
 
 func TestTimeouts(t *testing.T) {
-	// start server
-	lis, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	port := lis.Addr().(*net.TCPAddr).Port
-
-	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
-	test_proto.RegisterChillerServer(s, &testServer{})
-	go func() {
-		start := time.Now()
-		err := s.Serve(lis)
-		if err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
-			t.Logf("s.Serve: %v after %s", err, time.Since(start))
-		}
-	}()
-	defer s.Stop()
-
-	// make client
-	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientMetadataInterceptor{
-		timeout: 30 * time.Second,
-		metrics: clientMetrics,
-		clk:     clock.NewFake(),
-	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.Unary))
-	if err != nil {
-		t.Fatalf("did not connect: %v", err)
-	}
-	c := test_proto.NewChillerClient(conn)
+	server := new(testTimeoutServer)
+	client, _, stop := setup(t, server, clock.NewFake())
+	defer stop()
 
 	testCases := []struct {
 		timeout             time.Duration
@@ -189,7 +192,7 @@ func TestTimeouts(t *testing.T) {
 		t.Run(tc.timeout.String(), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.timeout)
 			defer cancel()
-			_, err := c.Chill(ctx, &test_proto.Time{Time: time.Second.Nanoseconds()})
+			_, err := client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(time.Second)})
 			if err == nil {
 				t.Fatal("Got no error, expected a timeout")
 			}
@@ -201,59 +204,69 @@ func TestTimeouts(t *testing.T) {
 }
 
 func TestRequestTimeTagging(t *testing.T) {
-	clk := clock.NewFake()
-	// Listen for TCP requests on a random system assigned port number
-	lis, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	// Retrieve the concrete port numberthe system assigned our listener
-	port := lis.Addr().(*net.TCPAddr).Port
-
-	// Create a new ChillerServer
+	server := new(testTimeoutServer)
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerMetadataInterceptor(serverMetrics, clk)
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
-	test_proto.RegisterChillerServer(s, &testServer{})
-	// Chill until ill
-	go func() {
-		start := time.Now()
-		err := s.Serve(lis)
-		if err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
-			t.Logf("s.Serve: %v after %s", err, time.Since(start))
-		}
-	}()
-	defer s.Stop()
-
-	// Dial the ChillerServer
-	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientMetadataInterceptor{
-		timeout: 30 * time.Second,
-		metrics: clientMetrics,
-		clk:     clk,
-	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.Unary))
-	if err != nil {
-		t.Fatalf("did not connect: %v", err)
-	}
-	// Create a ChillerClient with the connection to the ChillerServer
-	c := test_proto.NewChillerClient(conn)
+	client, _, stop := setup(t, server, serverMetrics)
+	defer stop()
 
 	// Make an RPC request with the ChillerClient with a timeout higher than the
 	// requested ChillerServer delay so that the RPC completes normally
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	delayTime := (time.Second * 5).Nanoseconds()
-	if _, err := c.Chill(ctx, &test_proto.Time{Time: delayTime}); err != nil {
+	if _, err := client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(time.Second * 5)}); err != nil {
 		t.Fatalf("Unexpected error calling Chill RPC: %s", err)
 	}
 
 	// There should be one histogram sample in the serverInterceptor rpcLag stat
-	test.AssertMetricWithLabelsEquals(t, si.metrics.rpcLag, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, serverMetrics.rpcLag, prometheus.Labels{}, 1)
+}
+
+func TestClockSkew(t *testing.T) {
+	// Create two separate clocks for the client and server
+	serverClk := clock.NewFake()
+	serverClk.Set(time.Now())
+	clientClk := clock.NewFake()
+	clientClk.Set(time.Now())
+
+	_, serverPort, stop := setup(t, &testTimeoutServer{}, serverClk)
+	defer stop()
+
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
+	ci := &clientMetadataInterceptor{
+		timeout: 30 * time.Second,
+		metrics: clientMetrics,
+		clk:     clientClk,
+	}
+	conn, err := grpc.NewClient(net.JoinHostPort("localhost", strconv.Itoa(serverPort)),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(ci.Unary))
+	if err != nil {
+		t.Fatalf("did not connect: %v", err)
+	}
+
+	client := test_proto.NewChillerClient(conn)
+
+	// Create a context with plenty of timeout
+	ctx, cancel := context.WithDeadline(context.Background(), clientClk.Now().Add(10*time.Second))
+	defer cancel()
+
+	// Attempt a gRPC request which should succeed
+	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
+	test.AssertNotError(t, err, "should succeed with no skew")
+
+	// Skew the client clock forward and the request should fail due to skew
+	clientClk.Add(time.Hour)
+	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
+	test.AssertError(t, err, "should fail with positive client skew")
+	test.AssertContains(t, err.Error(), "very different time")
+
+	// Skew the server clock forward and the request should fail due to skew
+	serverClk.Add(2 * time.Hour)
+	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
+	test.AssertError(t, err, "should fail with negative client skew")
+	test.AssertContains(t, err.Error(), "very different time")
 }
 
 // blockedServer implements a ChillerServer with a Chill method that:
@@ -274,21 +287,18 @@ func (s *blockedServer) Chill(_ context.Context, _ *test_proto.Time) (*test_prot
 	// Wait for the roadblock to be cleared
 	s.roadblock.Wait()
 	// Return a dummy spent value to adhere to the chiller protocol
-	return &test_proto.Time{Time: int64(1)}, nil
+	return &test_proto.Time{Duration: durationpb.New(time.Millisecond)}, nil
 }
 
 func TestInFlightRPCStat(t *testing.T) {
-	clk := clock.NewFake()
-	// Listen for TCP requests on a random system assigned port number
-	lis, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	// Retrieve the concrete port numberthe system assigned our listener
-	port := lis.Addr().(*net.TCPAddr).Port
-
 	// Create a new blockedServer to act as a ChillerServer
 	server := &blockedServer{}
+
+	metrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
+
+	client, _, stop := setup(t, server, metrics)
+	defer stop()
 
 	// Increment the roadblock waitgroup - this will cause all chill RPCs to
 	// the server to block until we call Done()!
@@ -300,43 +310,11 @@ func TestInFlightRPCStat(t *testing.T) {
 	numRPCs := 5
 	server.received.Add(numRPCs)
 
-	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerMetadataInterceptor(serverMetrics, clk)
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
-	test_proto.RegisterChillerServer(s, server)
-	// Chill until ill
-	go func() {
-		start := time.Now()
-		err := s.Serve(lis)
-		if err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
-			t.Logf("s.Serve: %v after %s", err, time.Since(start))
-		}
-	}()
-	defer s.Stop()
-
-	// Dial the ChillerServer
-	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientMetadataInterceptor{
-		timeout: 30 * time.Second,
-		metrics: clientMetrics,
-		clk:     clk,
-	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.Unary))
-	if err != nil {
-		t.Fatalf("did not connect: %v", err)
-	}
-	// Create a ChillerClient with the connection to the ChillerServer
-	c := test_proto.NewChillerClient(conn)
-
 	// Fire off a few RPCs. They will block on the blockedServer's roadblock wg
-	for i := 0; i < numRPCs; i++ {
+	for range numRPCs {
 		go func() {
 			// Ignore errors, just chilllll.
-			_, _ = c.Chill(context.Background(), &test_proto.Time{})
+			_, _ = client.Chill(context.Background(), &test_proto.Time{})
 		}()
 	}
 
@@ -351,7 +329,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	}
 
 	// We expect the inFlightRPCs gauge for the Chiller.Chill RPCs to be equal to numRPCs.
-	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, float64(numRPCs))
+	test.AssertMetricWithLabelsEquals(t, metrics.inFlightRPCs, labels, float64(numRPCs))
 
 	// Unblock the blockedServer to let all of the Chiller.Chill RPCs complete
 	server.roadblock.Done()
@@ -359,7 +337,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Check the gauge value again
-	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, 0)
+	test.AssertMetricWithLabelsEquals(t, metrics.inFlightRPCs, labels, 0)
 }
 
 func TestServiceAuthChecker(t *testing.T) {
@@ -433,4 +411,87 @@ func TestServiceAuthChecker(t *testing.T) {
 	})
 	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")
 	test.AssertNotError(t, err, "checking allowed cert")
+}
+
+// testUserAgentServer stores the last value it saw in the user agent field of its context.
+type testUserAgentServer struct {
+	test_proto.UnimplementedChillerServer
+
+	lastSeenUA string
+}
+
+// Chill implements ChillerServer.Chill
+func (s *testUserAgentServer) Chill(ctx context.Context, in *test_proto.Time) (*test_proto.Time, error) {
+	s.lastSeenUA = web.UserAgent(ctx)
+	return nil, nil
+}
+
+func TestUserAgentMetadata(t *testing.T) {
+	server := new(testUserAgentServer)
+	client, _, stop := setup(t, server)
+	defer stop()
+
+	testUA := "test UA"
+	ctx := web.WithUserAgent(context.Background(), testUA)
+
+	_, err := client.Chill(ctx, &test_proto.Time{})
+	if err != nil {
+		t.Fatalf("calling c.Chill: %s", err)
+	}
+
+	if server.lastSeenUA != testUA {
+		t.Errorf("last seen User-Agent on server side was %q, want %q", server.lastSeenUA, testUA)
+	}
+}
+
+// setup creates a server and client, returning the created client, the running server's port, and a stop function.
+func setup(t *testing.T, server test_proto.ChillerServer, opts ...any) (test_proto.ChillerClient, int, func()) {
+	clk := clock.NewFake()
+	serverMetricsVal, err := newServerMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating server metrics")
+	clientMetricsVal, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
+
+	for _, opt := range opts {
+		switch optTyped := opt.(type) {
+		case clock.FakeClock:
+			clk = optTyped
+		case clientMetrics:
+			clientMetricsVal = optTyped
+		case serverMetrics:
+			serverMetricsVal = optTyped
+		default:
+			t.Fatalf("setup called with unrecognize option %#v", t)
+		}
+	}
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	port := lis.Addr().(*net.TCPAddr).Port
+
+	si := newServerMetadataInterceptor(serverMetricsVal, clk)
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
+	test_proto.RegisterChillerServer(s, server)
+
+	go func() {
+		start := time.Now()
+		err := s.Serve(lis)
+		if err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
+			t.Logf("s.Serve: %v after %s", err, time.Since(start))
+		}
+	}()
+
+	ci := &clientMetadataInterceptor{
+		timeout: 30 * time.Second,
+		metrics: clientMetricsVal,
+		clk:     clock.NewFake(),
+	}
+	conn, err := grpc.NewClient(net.JoinHostPort("localhost", strconv.Itoa(port)),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(ci.Unary))
+	if err != nil {
+		t.Fatalf("did not connect: %v", err)
+	}
+	return test_proto.NewChillerClient(conn), port, s.Stop
 }

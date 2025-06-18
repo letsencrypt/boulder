@@ -2,28 +2,59 @@ package bdns
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/netip"
+	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/dns"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"
 
-func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
+func mockDNSQuery(w http.ResponseWriter, httpReq *http.Request) {
+	if httpReq.Header.Get("Content-Type") != "application/dns-message" {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "client didn't send Content-Type: application/dns-message")
+	}
+	if httpReq.Header.Get("Accept") != "application/dns-message" {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "client didn't accept Content-Type: application/dns-message")
+	}
+
+	requestBody, err := io.ReadAll(httpReq.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "reading body: %s", err)
+	}
+	httpReq.Body.Close()
+
+	r := new(dns.Msg)
+	err = r.Unpack(requestBody)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "unpacking request: %s", err)
+	}
+
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false
@@ -53,19 +84,19 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			if q.Name == "v6.letsencrypt.org." {
 				record := new(dns.AAAA)
 				record.Hdr = dns.RR_Header{Name: "v6.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				record.AAAA = net.ParseIP("::1")
+				record.AAAA = net.ParseIP("2602:80a:6000:abad:cafe::1")
 				appendAnswer(record)
 			}
 			if q.Name == "dualstack.letsencrypt.org." {
 				record := new(dns.AAAA)
 				record.Hdr = dns.RR_Header{Name: "dualstack.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				record.AAAA = net.ParseIP("::1")
+				record.AAAA = net.ParseIP("2602:80a:6000:abad:cafe::1")
 				appendAnswer(record)
 			}
 			if q.Name == "v4error.letsencrypt.org." {
 				record := new(dns.AAAA)
 				record.Hdr = dns.RR_Header{Name: "v4error.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				record.AAAA = net.ParseIP("::1")
+				record.AAAA = net.ParseIP("2602:80a:6000:abad:cafe::1")
 				appendAnswer(record)
 			}
 			if q.Name == "v6error.letsencrypt.org." {
@@ -81,19 +112,19 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			if q.Name == "cps.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "cps.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-				record.A = net.ParseIP("127.0.0.1")
+				record.A = net.ParseIP("64.112.117.1")
 				appendAnswer(record)
 			}
 			if q.Name == "dualstack.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "dualstack.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-				record.A = net.ParseIP("127.0.0.1")
+				record.A = net.ParseIP("64.112.117.1")
 				appendAnswer(record)
 			}
 			if q.Name == "v6error.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "dualstack.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-				record.A = net.ParseIP("127.0.0.1")
+				record.A = net.ParseIP("64.112.117.1")
 				appendAnswer(record)
 			}
 			if q.Name == "v4error.letsencrypt.org." {
@@ -142,6 +173,9 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Flag = 1
 				appendAnswer(record)
 			}
+			if q.Name == "gonetld." {
+				m.SetRcode(r, dns.RcodeNameError)
+			}
 		case dns.TypeTXT:
 			if q.Name == "split-txt.letsencrypt.org." {
 				record := new(dns.TXT)
@@ -166,45 +200,37 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
-	err := w.WriteMsg(m)
+	body, err := m.Pack()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "packing reply: %s\n", err)
+	}
+	w.Header().Set("Content-Type", "application/dns-message")
+	_, err = w.Write(body)
 	if err != nil {
 		panic(err) // running tests, so panic is OK
 	}
 }
 
 func serveLoopResolver(stopChan chan bool) {
-	dns.HandleFunc(".", mockDNSQuery)
-	tcpServer := &dns.Server{
+	m := http.NewServeMux()
+	m.HandleFunc("/dns-query", mockDNSQuery)
+	httpServer := &http.Server{
 		Addr:         dnsLoopbackAddr,
-		Net:          "tcp",
-		ReadTimeout:  time.Second,
-		WriteTimeout: time.Second,
-	}
-	udpServer := &dns.Server{
-		Addr:         dnsLoopbackAddr,
-		Net:          "udp",
+		Handler:      m,
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
 	}
 	go func() {
-		err := tcpServer.ListenAndServe()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}()
-	go func() {
-		err := udpServer.ListenAndServe()
+		cert := "../test/certs/ipki/localhost/cert.pem"
+		key := "../test/certs/ipki/localhost/key.pem"
+		err := httpServer.ListenAndServeTLS(cert, key)
 		if err != nil {
 			fmt.Println(err)
 		}
 	}()
 	go func() {
 		<-stopChan
-		err := tcpServer.Shutdown()
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = udpServer.Shutdown()
+		err := httpServer.Shutdown(context.Background())
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -232,7 +258,21 @@ func pollServer() {
 	}
 }
 
+// tlsConfig is used for the TLS config of client instances that talk to the
+// DoH server set up in TestMain.
+var tlsConfig *tls.Config
+
 func TestMain(m *testing.M) {
+	root, err := os.ReadFile("../test/certs/ipki/minica.pem")
+	if err != nil {
+		log.Fatal(err)
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(root)
+	tlsConfig = &tls.Config{
+		RootCAs: pool,
+	}
+
 	stop := make(chan bool, 1)
 	serveLoopResolver(stop)
 	pollServer()
@@ -245,15 +285,16 @@ func TestDNSNoServers(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 
-	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
+	_, resolvers, err := obj.LookupHost(context.Background(), "letsencrypt.org")
+	test.AssertEquals(t, len(resolvers), 0)
 	test.AssertError(t, err, "No servers")
 
-	_, err = obj.LookupTXT(context.Background(), "letsencrypt.org")
+	_, _, err = obj.LookupTXT(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, _, err = obj.LookupCAA(context.Background(), "letsencrypt.org")
+	_, _, _, err = obj.LookupCAA(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 }
 
@@ -261,10 +302,12 @@ func TestDNSOneServer(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 
-	_, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
-
+	_, resolvers, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	test.AssertEquals(t, len(resolvers), 2)
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 	test.AssertNotError(t, err, "No message")
 }
 
@@ -272,10 +315,12 @@ func TestDNSDuplicateServers(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr, dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 
-	_, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
-
+	_, resolvers, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	test.AssertEquals(t, len(resolvers), 2)
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 	test.AssertNotError(t, err, "No message")
 }
 
@@ -283,16 +328,16 @@ func TestDNSServFail(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 	bad := "servfail.com"
 
-	_, err = obj.LookupTXT(context.Background(), bad)
+	_, _, err = obj.LookupTXT(context.Background(), bad)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
 
-	_, err = obj.LookupHost(context.Background(), bad)
+	_, _, err = obj.LookupHost(context.Background(), bad)
 	test.AssertError(t, err, "LookupHost didn't return an error")
 
-	emptyCaa, _, err := obj.LookupCAA(context.Background(), bad)
+	emptyCaa, _, _, err := obj.LookupCAA(context.Background(), bad)
 	test.Assert(t, len(emptyCaa) == 0, "Query returned non-empty list of CAA records")
 	test.AssertError(t, err, "LookupCAA should have returned an error")
 }
@@ -301,100 +346,119 @@ func TestDNSLookupTXT(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 
-	a, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+	a, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
 	test.AssertNotError(t, err, "No message")
 
-	a, err = obj.LookupTXT(context.Background(), "split-txt.letsencrypt.org")
+	a, _, err = obj.LookupTXT(context.Background(), "split-txt.letsencrypt.org")
 	t.Logf("A: %v ", a)
 	test.AssertNotError(t, err, "No message")
 	test.AssertEquals(t, len(a), 1)
 	test.AssertEquals(t, a[0], "abc")
 }
 
+// TODO(#8213): Convert this to a table test.
 func TestDNSLookupHost(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 
-	ip, err := obj.LookupHost(context.Background(), "servfail.com")
+	ip, resolvers, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "Server failure")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
-	ip, err = obj.LookupHost(context.Background(), "nonexistent.letsencrypt.org")
+	ip, resolvers, err = obj.LookupHost(context.Background(), "nonexistent.letsencrypt.org")
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "No valid A or AAAA records should error")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
 	// Single IPv4 address
-	ip, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	ip, resolvers, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
-	ip, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
+	ip, resolvers, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
 	// Single IPv6 address
-	ip, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
+	ip, resolvers, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
 	t.Logf("v6.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should not have IPs")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
 	// Both IPv6 and IPv4 address
-	ip, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
+	ip, resolvers, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
 	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 2, "Should have 2 IPs")
-	expected := net.ParseIP("127.0.0.1")
-	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
-	expected = net.ParseIP("::1")
-	test.Assert(t, ip[1].To16().Equal(expected), "wrong ipv6 address")
+	expected := netip.MustParseAddr("64.112.117.1")
+	test.Assert(t, ip[0] == expected, "wrong ipv4 address")
+	expected = netip.MustParseAddr("2602:80a:6000:abad:cafe::1")
+	test.Assert(t, ip[1] == expected, "wrong ipv6 address")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
 	// IPv6 error, IPv4 success
-	ip, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
+	ip, resolvers, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
 	t.Logf("v6error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
-	expected = net.ParseIP("127.0.0.1")
-	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
+	expected = netip.MustParseAddr("64.112.117.1")
+	test.Assert(t, ip[0] == expected, "wrong ipv4 address")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
 	// IPv6 success, IPv4 error
-	ip, err = obj.LookupHost(context.Background(), "v4error.letsencrypt.org")
+	ip, resolvers, err = obj.LookupHost(context.Background(), "v4error.letsencrypt.org")
 	t.Logf("v4error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
-	expected = net.ParseIP("::1")
-	test.Assert(t, ip[0].To16().Equal(expected), "wrong ipv6 address")
+	expected = netip.MustParseAddr("2602:80a:6000:abad:cafe::1")
+	test.Assert(t, ip[0] == expected, "wrong ipv6 address")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
 	// IPv6 error, IPv4 error
 	// Should return both the IPv4 error (Refused) and the IPv6 error (NotImplemented)
 	hostname := "dualstackerror.letsencrypt.org"
-	ip, err = obj.LookupHost(context.Background(), hostname)
+	ip, resolvers, err = obj.LookupHost(context.Background(), hostname)
 	t.Logf("%s - IP: %s, Err: %s", hostname, ip, err)
 	test.AssertError(t, err, "Should be an error")
 	test.AssertContains(t, err.Error(), "REFUSED looking up A for")
 	test.AssertContains(t, err.Error(), "NOTIMP looking up AAAA for")
+	slices.Sort(resolvers)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 }
 
 func TestDNSNXDOMAIN(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 
 	hostname := "nxdomain.letsencrypt.org"
-	_, err = obj.LookupHost(context.Background(), hostname)
+	_, _, err = obj.LookupHost(context.Background(), hostname)
 	test.AssertContains(t, err.Error(), "NXDOMAIN looking up A for")
 	test.AssertContains(t, err.Error(), "NXDOMAIN looking up AAAA for")
 
-	_, err = obj.LookupTXT(context.Background(), hostname)
-	expected := &Error{dns.TypeTXT, hostname, nil, dns.RcodeNameError}
+	_, _, err = obj.LookupTXT(context.Background(), hostname)
+	expected := Error{dns.TypeTXT, hostname, nil, dns.RcodeNameError, nil}
 	test.AssertDeepEquals(t, err, expected)
 }
 
@@ -402,12 +466,14 @@ func TestDNSLookupCAA(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
 	removeIDExp := regexp.MustCompile(" id: [[:digit:]]+")
 
-	caas, resp, err := obj.LookupCAA(context.Background(), "bracewel.net")
+	caas, resp, resolvers, err := obj.LookupCAA(context.Background(), "bracewel.net")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should have CAA records")
+	test.AssertEquals(t, len(resolvers), 1)
+	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"127.0.0.1:4053"})
 	expectedResp := `;; opcode: QUERY, status: NOERROR, id: XXXX
 ;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
 
@@ -419,15 +485,25 @@ bracewel.net.	0	IN	CAA	1 issue "letsencrypt.org"
 `
 	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, " id: XXXX"), expectedResp)
 
-	caas, resp, err = obj.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
+	caas, resp, resolvers, err = obj.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
+	test.AssertEquals(t, resolvers[0], "127.0.0.1:4053")
 	expectedResp = ""
 	test.AssertEquals(t, resp, expectedResp)
 
-	caas, resp, err = obj.LookupCAA(context.Background(), "cname.example.com")
+	caas, resp, resolvers, err = obj.LookupCAA(context.Background(), "nxdomain.letsencrypt.org")
+	slices.Sort(resolvers)
+	test.AssertNotError(t, err, "CAA lookup failed")
+	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
+	test.AssertEquals(t, resolvers[0], "127.0.0.1:4053")
+	expectedResp = ""
+	test.AssertEquals(t, resp, expectedResp)
+
+	caas, resp, resolvers, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
+	test.AssertEquals(t, resolvers[0], "127.0.0.1:4053")
 	expectedResp = `;; opcode: QUERY, status: NOERROR, id: XXXX
 ;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
 
@@ -438,37 +514,11 @@ bracewel.net.	0	IN	CAA	1 issue "letsencrypt.org"
 caa.example.com.	0	IN	CAA	1 issue "letsencrypt.org"
 `
 	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, " id: XXXX"), expectedResp)
-}
 
-func TestIsPrivateIP(t *testing.T) {
-	test.Assert(t, isPrivateV4(net.ParseIP("127.0.0.1")), "should be private")
-	test.Assert(t, isPrivateV4(net.ParseIP("192.168.254.254")), "should be private")
-	test.Assert(t, isPrivateV4(net.ParseIP("10.255.0.3")), "should be private")
-	test.Assert(t, isPrivateV4(net.ParseIP("172.16.255.255")), "should be private")
-	test.Assert(t, isPrivateV4(net.ParseIP("172.31.255.255")), "should be private")
-	test.Assert(t, !isPrivateV4(net.ParseIP("128.0.0.1")), "should be private")
-	test.Assert(t, !isPrivateV4(net.ParseIP("192.169.255.255")), "should not be private")
-	test.Assert(t, !isPrivateV4(net.ParseIP("9.255.0.255")), "should not be private")
-	test.Assert(t, !isPrivateV4(net.ParseIP("172.32.255.255")), "should not be private")
-
-	test.Assert(t, isPrivateV6(net.ParseIP("::0")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("::1")), "should be private")
-	test.Assert(t, !isPrivateV6(net.ParseIP("::2")), "should not be private")
-
-	test.Assert(t, isPrivateV6(net.ParseIP("fe80::1")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("febf::1")), "should be private")
-	test.Assert(t, !isPrivateV6(net.ParseIP("fec0::1")), "should not be private")
-	test.Assert(t, !isPrivateV6(net.ParseIP("feff::1")), "should not be private")
-
-	test.Assert(t, isPrivateV6(net.ParseIP("ff00::1")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("ff10::1")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
-
-	test.Assert(t, isPrivateV6(net.ParseIP("2002::")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("0100::")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("0100::0000:ffff:ffff:ffff:ffff")), "should be private")
-	test.Assert(t, !isPrivateV6(net.ParseIP("0100::0001:0000:0000:0000:0000")), "should be private")
+	_, _, resolvers, err = obj.LookupCAA(context.Background(), "gonetld")
+	test.AssertError(t, err, "should fail for TLD NXDOMAIN")
+	test.AssertContains(t, err.Error(), "NXDOMAIN")
+	test.AssertEquals(t, resolvers[0], "127.0.0.1:4053")
 }
 
 type testExchanger struct {
@@ -495,10 +545,9 @@ func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration
 }
 
 func TestRetry(t *testing.T) {
-	isTempErr := &net.OpError{Op: "read", Err: tempError(true)}
-	nonTempErr := &net.OpError{Op: "read", Err: tempError(false)}
+	isTempErr := &url.Error{Op: "read", Err: tempError(true)}
+	nonTempErr := &url.Error{Op: "read", Err: tempError(false)}
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
-	netError := errors.New("DNS problem: networking error looking up TXT for example.com")
 	type testCase struct {
 		name              string
 		maxTries          int
@@ -549,7 +598,7 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:          netError,
+			expected:          servFailError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
@@ -602,7 +651,7 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:          netError,
+			expected:          servFailError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
@@ -616,7 +665,7 @@ func TestRetry(t *testing.T) {
 					nonTempErr,
 				},
 			},
-			expected:      netError,
+			expected:      servFailError,
 			expectedCount: 2,
 		},
 	}
@@ -626,10 +675,10 @@ func TestRetry(t *testing.T) {
 			staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 			test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-			testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock())
+			testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, "", blog.UseMock(), tlsConfig)
 			dr := testClient.(*impl)
 			dr.dnsClient = tc.te
-			_, err = dr.LookupTXT(context.Background(), "example.com")
+			_, _, err = dr.LookupTXT(context.Background(), "example.com")
 			if err == errTooManyRequests {
 				t.Errorf("#%d, sent more requests than the test case handles", i)
 			}
@@ -657,12 +706,12 @@ func TestRetry(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock())
+	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = dr.LookupTXT(ctx, "example.com")
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out (and was canceled) looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
@@ -671,7 +720,7 @@ func TestRetry(t *testing.T) {
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel = context.WithTimeout(context.Background(), -10*time.Hour)
 	defer cancel()
-	_, err = dr.LookupTXT(ctx, "example.com")
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
@@ -680,7 +729,7 @@ func TestRetry(t *testing.T) {
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
 	deadlineCancel()
-	_, err = dr.LookupTXT(ctx, "example.com")
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
@@ -736,7 +785,7 @@ func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.
 
 	// If its a broken server, return a retryable error
 	if e.brokenAddresses[a] {
-		isTempErr := &net.OpError{Op: "read", Err: tempError(true)}
+		isTempErr := &url.Error{Op: "read", Err: tempError(true)}
 		return nil, 2 * time.Millisecond, isTempErr
 	}
 
@@ -758,10 +807,9 @@ func TestRotateServerOnErr(t *testing.T) {
 	// working server
 	staticProvider, err := NewStaticProvider(dnsServers)
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
-	fmt.Println(staticProvider.servers)
 
 	maxTries := 5
-	client := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, blog.UseMock())
+	client := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, "", blog.UseMock(), tlsConfig)
 
 	// Configure a mock exchanger that will always return a retryable error for
 	// servers A and B. This will force server "[2606:4700:4700::1111]:53" to do
@@ -780,8 +828,10 @@ func TestRotateServerOnErr(t *testing.T) {
 	// in the list. Since we configured maxTries to be larger than the number of
 	// servers *all* queries should eventually succeed by being retried against
 	// server "[2606:4700:4700::1111]:53".
-	for i := 0; i < maxTries*2; i++ {
-		_, err := client.LookupTXT(context.Background(), "example.com")
+	for range maxTries * 2 {
+		_, resolvers, err := client.LookupTXT(context.Background(), "example.com")
+		test.AssertEquals(t, len(resolvers), 1)
+		test.AssertEquals(t, resolvers[0], "[2606:4700:4700::1111]:53")
 		// Any errors are unexpected - server "[2606:4700:4700::1111]:53" should
 		// have responded without error.
 		test.AssertNotError(t, err, "Expected no error from eventual retry with functional server")
@@ -796,4 +846,46 @@ func TestRotateServerOnErr(t *testing.T) {
 	// all of the lookups attempted.
 	test.AssertEquals(t, mock.lookups["[2606:4700:4700::1111]:53"], maxTries*2)
 
+}
+
+type mockTempURLError struct{}
+
+func (m *mockTempURLError) Error() string   { return "whoops, oh gosh" }
+func (m *mockTempURLError) Timeout() bool   { return false }
+func (m *mockTempURLError) Temporary() bool { return true }
+
+type dohAlwaysRetryExchanger struct {
+	sync.Mutex
+	err error
+}
+
+func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+	dohE.Lock()
+	defer dohE.Unlock()
+
+	tempURLerror := &url.Error{
+		Op:  "GET",
+		URL: "https://example.com",
+		Err: &mockTempURLError{},
+	}
+
+	return nil, time.Second, tempURLerror
+}
+
+func TestDOHMetric(t *testing.T) {
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	testClient := New(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, "", blog.UseMock(), tlsConfig)
+	resolver := testClient.(*impl)
+	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: tempError(true)}}
+
+	// Starting out, we should count 0 "out of retries" errors.
+	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 0)
+
+	// Trigger the error.
+	_, _, _ = resolver.exchangeOne(context.Background(), "example.com", 0)
+
+	// Now, we should count 1 "out of retries" errors.
+	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 1)
 }

@@ -2,11 +2,12 @@ package grpc
 
 import (
 	"encoding/json"
-	"net"
+	"net/netip"
 	"testing"
 	"time"
 
-	"gopkg.in/go-jose/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -54,11 +55,10 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	validated := time.Now().Round(0).UTC()
 	chall := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusValid,
-		Token:                    "asd",
-		ProvidedKeyAuthorization: "keyauth",
-		Validated:                &validated,
+		Type:      core.ChallengeTypeDNS01,
+		Status:    core.StatusValid,
+		Token:     "asd",
+		Validated: &validated,
 	}
 
 	pb, err := ChallengeToPB(chall)
@@ -69,15 +69,15 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "PBToChallenge failed")
 	test.AssertDeepEquals(t, recon, chall)
 
-	ip := net.ParseIP("1.1.1.1")
+	ip := netip.MustParseAddr("1.1.1.1")
 	chall.ValidationRecord = []core.ValidationRecord{
 		{
-			Hostname:          "host",
+			Hostname:          "example.com",
 			Port:              "2020",
-			AddressesResolved: []net.IP{ip},
+			AddressesResolved: []netip.Addr{ip},
 			AddressUsed:       ip,
-			URL:               "url",
-			AddressesTried:    []net.IP{ip},
+			URL:               "https://example.com:2020",
+			AddressesTried:    []netip.Addr{ip},
 		},
 	}
 	chall.Error = &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
@@ -95,17 +95,31 @@ func TestChallenge(t *testing.T) {
 	_, err = PBToChallenge(&corepb.Challenge{})
 	test.AssertError(t, err, "PBToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
+
+	challNilValidation := core.Challenge{
+		Type:      core.ChallengeTypeDNS01,
+		Status:    core.StatusValid,
+		Token:     "asd",
+		Validated: nil,
+	}
+	pb, err = ChallengeToPB(challNilValidation)
+	test.AssertNotError(t, err, "ChallengeToPB failed")
+	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
+	recon, err = PBToChallenge(pb)
+	test.AssertNotError(t, err, "PBToChallenge failed")
+	test.AssertDeepEquals(t, recon, challNilValidation)
 }
 
 func TestValidationRecord(t *testing.T) {
-	ip := net.ParseIP("1.1.1.1")
+	ip := netip.MustParseAddr("1.1.1.1")
 	vr := core.ValidationRecord{
-		Hostname:          "host",
-		Port:              "2020",
-		AddressesResolved: []net.IP{ip},
+		Hostname:          "exampleA.com",
+		Port:              "80",
+		AddressesResolved: []netip.Addr{ip},
 		AddressUsed:       ip,
-		URL:               "url",
-		AddressesTried:    []net.IP{ip},
+		URL:               "http://exampleA.com",
+		AddressesTried:    []netip.Addr{ip},
+		ResolverAddrs:     []string{"resolver:5353"},
 	}
 
 	pb, err := ValidationRecordToPB(vr)
@@ -118,29 +132,33 @@ func TestValidationRecord(t *testing.T) {
 }
 
 func TestValidationResult(t *testing.T) {
-	ip := net.ParseIP("1.1.1.1")
+	ip := netip.MustParseAddr("1.1.1.1")
 	vrA := core.ValidationRecord{
-		Hostname:          "hostA",
-		Port:              "2020",
-		AddressesResolved: []net.IP{ip},
+		Hostname:          "exampleA.com",
+		Port:              "443",
+		AddressesResolved: []netip.Addr{ip},
 		AddressUsed:       ip,
-		URL:               "urlA",
-		AddressesTried:    []net.IP{ip},
+		URL:               "https://exampleA.com",
+		AddressesTried:    []netip.Addr{ip},
+		ResolverAddrs:     []string{"resolver:5353"},
 	}
 	vrB := core.ValidationRecord{
-		Hostname:          "hostB",
-		Port:              "2020",
-		AddressesResolved: []net.IP{ip},
+		Hostname:          "exampleB.com",
+		Port:              "443",
+		AddressesResolved: []netip.Addr{ip},
 		AddressUsed:       ip,
-		URL:               "urlB",
-		AddressesTried:    []net.IP{ip},
+		URL:               "https://exampleB.com",
+		AddressesTried:    []netip.Addr{ip},
+		ResolverAddrs:     []string{"resolver:5353"},
 	}
 	result := []core.ValidationRecord{vrA, vrB}
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
 
-	pb, err := ValidationResultToPB(result, prob)
+	pb, err := ValidationResultToPB(result, prob, "surreal", "ARIN")
 	test.AssertNotError(t, err, "ValidationResultToPB failed")
 	test.Assert(t, pb != nil, "Returned vapb.ValidationResult is nil")
+	test.AssertEquals(t, pb.Perspective, "surreal")
+	test.AssertEquals(t, pb.Rir, "ARIN")
 
 	reconResult, reconProb, err := pbToValidationResult(pb)
 	test.AssertNotError(t, err, "pbToValidationResult failed")
@@ -165,7 +183,6 @@ func TestRegistration(t *testing.T) {
 		Key:       &key,
 		Contact:   &contacts,
 		Agreement: "yup",
-		InitialIP: net.ParseIP("1.1.1.1"),
 		CreatedAt: &createdAt,
 		Status:    core.StatusValid,
 	}
@@ -189,58 +206,70 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "registrationToPB failed")
 	outReg, err = PbToRegistration(pbReg)
 	test.AssertNotError(t, err, "PbToRegistration failed")
-	test.Assert(t, *outReg.Contact != nil, "Empty slice was converted to a nil slice")
+	if outReg.Contact != nil {
+		t.Errorf("Empty contacts should be a nil slice")
+	}
+
+	inRegNilCreatedAt := core.Registration{
+		ID:        1,
+		Key:       &key,
+		Contact:   &contacts,
+		Agreement: "yup",
+		CreatedAt: nil,
+		Status:    core.StatusValid,
+	}
+	pbReg, err = RegistrationToPB(inRegNilCreatedAt)
+	test.AssertNotError(t, err, "registrationToPB failed")
+	outReg, err = PbToRegistration(pbReg)
+	test.AssertNotError(t, err, "PbToRegistration failed")
+	test.AssertDeepEquals(t, inRegNilCreatedAt, outReg)
 }
 
 func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
-	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"}
+	ident := identifier.NewDNS("example.com")
 	challA := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusPending,
-		Token:                    "asd",
-		ProvidedKeyAuthorization: "keyauth",
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd",
 	}
 	challB := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusPending,
-		Token:                    "asd2",
-		ProvidedKeyAuthorization: "keyauth4",
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd2",
 	}
 	inAuthz := core.Authorization{
 		ID:             "1",
-		Identifier:     identifier,
+		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
 		Expires:        &exp,
 		Challenges:     []core.Challenge{challA, challB},
 	}
-
 	pbAuthz, err := AuthzToPB(inAuthz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
 	outAuthz, err := PBToAuthz(pbAuthz)
-	test.AssertNotError(t, err, "pbToAuthz failed")
+	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
-}
 
-func TestCert(t *testing.T) {
-	now := time.Now().Round(0)
-	cert := core.Certificate{
-		RegistrationID: 1,
-		Serial:         "serial",
-		Digest:         "digest",
-		DER:            []byte{255},
-		Issued:         now,
-		Expires:        now.Add(time.Hour),
+	inAuthzNilExpires := core.Authorization{
+		ID:             "1",
+		Identifier:     ident,
+		RegistrationID: 5,
+		Status:         core.StatusPending,
+		Expires:        nil,
+		Challenges:     []core.Challenge{challA, challB},
 	}
-
-	certPB := CertToPB(cert)
-	outCert, _ := PBToCert(certPB)
-
-	test.AssertDeepEquals(t, cert, outCert)
+	pbAuthz2, err := AuthzToPB(inAuthzNilExpires)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+	outAuthz2, err := PBToAuthz(pbAuthz2)
+	test.AssertNotError(t, err, "PBToAuthz failed")
+	test.AssertDeepEquals(t, inAuthzNilExpires, outAuthz2)
 }
 
 func TestOrderValid(t *testing.T) {
+	created := time.Now()
+	expires := created.Add(1 * time.Hour)
 	testCases := []struct {
 		Name          string
 		Order         *corepb.Order
@@ -251,12 +280,12 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				Expires:           1,
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
-				Created:           1,
+				Created:           timestamppb.New(created),
 			},
 			ExpectedValid: true,
 		},
@@ -265,11 +294,11 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:               1,
 				RegistrationID:   1,
-				Expires:          1,
+				Expires:          timestamppb.New(expires),
 				V2Authorizations: []int64{},
-				Names:            []string{"example.com"},
+				Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:  false,
-				Created:          1,
+				Created:          timestamppb.New(created),
 			},
 			ExpectedValid: true,
 		},
@@ -282,10 +311,10 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                0,
 				RegistrationID:    1,
-				Expires:           1,
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -294,10 +323,10 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    0,
-				Expires:           1,
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -306,10 +335,10 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				Expires:           0,
+				Expires:           nil,
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -318,10 +347,10 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				Expires:           1,
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{},
+				Identifiers:       []*corepb.Identifier{},
 				BeganProcessing:   false,
 			},
 		},

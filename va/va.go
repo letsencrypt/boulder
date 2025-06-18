@@ -4,31 +4,46 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"maps"
+	"math/rand/v2"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
+)
+
+const (
+	PrimaryPerspective = "Primary"
+	allPerspectives    = "all"
+
+	opDCVAndCAA = "dcv+caa"
+	opDCV       = "dcv"
+	opCAA       = "caa"
+
+	pass = "pass"
+	fail = "fail"
 )
 
 var (
@@ -65,65 +80,56 @@ var (
 	h2SettingsFrameErrRegex = regexp.MustCompile(`(?:net\/http\: HTTP\/1\.x transport connection broken: )?malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
-// RemoteVA wraps the vapb.VAClient interface and adds a field containing the
-// address of the remote gRPC server since the underlying gRPC client doesn't
-// provide a way to extract this metadata which is useful for debugging gRPC
-// connection issues.
-type RemoteVA struct {
+// RemoteClients wraps the vapb.VAClient and vapb.CAAClient interfaces to aid in
+// mocking remote VAs for testing.
+type RemoteClients struct {
 	vapb.VAClient
-	Address string
+	vapb.CAAClient
+}
+
+// RemoteVA embeds RemoteClients and adds a field containing the address of the
+// remote gRPC server since the underlying gRPC client doesn't provide a way to
+// extract this metadata which is useful for debugging gRPC connection issues.
+type RemoteVA struct {
+	RemoteClients
+	Address     string
+	Perspective string
+	RIR         string
 }
 
 type vaMetrics struct {
-	validationTime                      *prometheus.HistogramVec
-	localValidationTime                 *prometheus.HistogramVec
-	remoteValidationTime                *prometheus.HistogramVec
-	remoteValidationFailures            prometheus.Counter
-	prospectiveRemoteValidationFailures prometheus.Counter
-	tlsALPNOIDCounter                   *prometheus.CounterVec
-	http01Fallbacks                     prometheus.Counter
-	http01Redirects                     prometheus.Counter
-	caaCounter                          *prometheus.CounterVec
-	ipv4FallbackCounter                 prometheus.Counter
+	// validationLatency is a histogram of the latency to perform validations
+	// from the primary and remote VA perspectives. It's labelled by:
+	//   - operation: VA.DoDCV or VA.DoCAA as [dcv|caa|dcv+caa]
+	//   - perspective: ValidationAuthorityImpl.perspective
+	//   - challenge_type: core.Challenge.Type
+	//   - problem_type: probs.ProblemType
+	//   - result: the result of the validation as [pass|fail]
+	validationLatency                 *prometheus.HistogramVec
+	prospectiveRemoteCAACheckFailures prometheus.Counter
+	tlsALPNOIDCounter                 *prometheus.CounterVec
+	http01Fallbacks                   prometheus.Counter
+	http01Redirects                   prometheus.Counter
+	caaCounter                        *prometheus.CounterVec
+	ipv4FallbackCounter               prometheus.Counter
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
-	validationTime := prometheus.NewHistogramVec(
+	validationLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "validation_time",
-			Help:    "Total time taken to validate a challenge and aggregate results",
+			Name:    "validation_latency",
+			Help:    "Histogram of the latency to perform validations from the primary and remote VA perspectives",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result", "problem_type"})
-	stats.MustRegister(validationTime)
-	localValidationTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "local_validation_time",
-			Help:    "Time taken to locally validate a challenge",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"type", "result"})
-	stats.MustRegister(localValidationTime)
-	remoteValidationTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "remote_validation_time",
-			Help:    "Time taken to remotely validate a challenge",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"type", "result"})
-	stats.MustRegister(remoteValidationTime)
-	remoteValidationFailures := prometheus.NewCounter(
+		[]string{"operation", "perspective", "challenge_type", "problem_type", "result"},
+	)
+	stats.MustRegister(validationLatency)
+	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "remote_validation_failures",
-			Help: "Number of validations failed due to remote VAs returning failure when consensus is enforced",
+			Name: "prospective_remote_caa_check_failures",
+			Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
 		})
-	stats.MustRegister(remoteValidationFailures)
-	prospectiveRemoteValidationFailures := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "prospective_remote_validation_failures",
-			Help: "Number of validations that would have failed due to remote VAs returning failure if consesus were enforced",
-		})
-	stats.MustRegister(prospectiveRemoteValidationFailures)
+	stats.MustRegister(prospectiveRemoteCAACheckFailures)
 	tlsALPNOIDCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "tls_alpn_oid_usage",
@@ -156,16 +162,13 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	stats.MustRegister(ipv4FallbackCounter)
 
 	return &vaMetrics{
-		validationTime:                      validationTime,
-		remoteValidationTime:                remoteValidationTime,
-		localValidationTime:                 localValidationTime,
-		remoteValidationFailures:            remoteValidationFailures,
-		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
-		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
-		http01Fallbacks:                     http01Fallbacks,
-		http01Redirects:                     http01Redirects,
-		caaCounter:                          caaCounter,
-		ipv4FallbackCounter:                 ipv4FallbackCounter,
+		validationLatency:                 validationLatency,
+		prospectiveRemoteCAACheckFailures: prospectiveRemoteCAACheckFailures,
+		tlsALPNOIDCounter:                 tlsALPNOIDCounter,
+		http01Fallbacks:                   http01Fallbacks,
+		http01Redirects:                   http01Redirects,
+		caaCounter:                        caaCounter,
+		ipv4FallbackCounter:               ipv4FallbackCounter,
 	}
 }
 
@@ -198,8 +201,8 @@ func newDefaultPortConfig() *portConfig {
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	vapb.UnimplementedVAServer
-	vapb.UnimplementedCAAServer
+	vapb.UnsafeVAServer
+	vapb.UnsafeCAAServer
 	log                blog.Logger
 	dnsClient          bdns.Client
 	issuerDomain       string
@@ -212,25 +215,41 @@ type ValidationAuthorityImpl struct {
 	maxRemoteFailures  int
 	accountURIPrefixes []string
 	singleDialTimeout  time.Duration
+	perspective        string
+	rir                string
+	isReservedIPFunc   func(netip.Addr) error
 
 	metrics *vaMetrics
 }
+
+var _ vapb.VAServer = (*ValidationAuthorityImpl)(nil)
+var _ vapb.CAAServer = (*ValidationAuthorityImpl)(nil)
 
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(
 	resolver bdns.Client,
 	remoteVAs []RemoteVA,
-	maxRemoteFailures int,
 	userAgent string,
 	issuerDomain string,
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
+	perspective string,
+	rir string,
+	reservedIPChecker func(netip.Addr) error,
 ) (*ValidationAuthorityImpl, error) {
 
-	if features.Enabled(features.CAAAccountURI) && len(accountURIPrefixes) == 0 {
+	if len(accountURIPrefixes) == 0 {
 		return nil, errors.New("no account URI prefixes configured")
+	}
+
+	for i, va1 := range remoteVAs {
+		for j, va2 := range remoteVAs {
+			if i != j && va1.Perspective == va2.Perspective {
+				return nil, fmt.Errorf("duplicate remote VA perspective %q", va1.Perspective)
+			}
+		}
 	}
 
 	pc := newDefaultPortConfig()
@@ -246,33 +265,50 @@ func NewValidationAuthorityImpl(
 		clk:                clk,
 		metrics:            initMetrics(stats),
 		remoteVAs:          remoteVAs,
-		maxRemoteFailures:  maxRemoteFailures,
+		maxRemoteFailures:  maxAllowedFailures(len(remoteVAs)),
 		accountURIPrefixes: accountURIPrefixes,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
 		// HTTP-01 challenge validation.
 		singleDialTimeout: 10 * time.Second,
+		perspective:       perspective,
+		rir:               rir,
+		isReservedIPFunc:  reservedIPChecker,
 	}
 
 	return va, nil
 }
 
-// Used for audit logging
-type verificationRequestEvent struct {
-	ID                string         `json:",omitempty"`
-	Requester         int64          `json:",omitempty"`
-	Hostname          string         `json:",omitempty"`
-	Challenge         core.Challenge `json:",omitempty"`
-	ValidationLatency float64
-	Error             string `json:",omitempty"`
+// maxAllowedFailures returns the maximum number of allowed failures
+// for a given number of remote perspectives, according to the "Quorum
+// Requirements" table in BRs Section 3.2.2.9, as follows:
+//
+//	| # of Distinct Remote Network Perspectives Used | # of Allowed non-Corroborations |
+//	| --- | --- |
+//	| 2-5 |  1  |
+//	| 6+  |  2  |
+func maxAllowedFailures(perspectiveCount int) int {
+	if perspectiveCount < 2 {
+		return 0
+	}
+	if perspectiveCount < 6 {
+		return 1
+	}
+	return 2
 }
 
 // ipError is an error type used to pass though the IP address of the remote
 // host when an error occurs during HTTP-01 and TLS-ALPN domain validation.
 type ipError struct {
-	ip  net.IP
+	ip  netip.Addr
 	err error
+}
+
+// newIPError wraps an error and the IP of the remote host in an ipError so we
+// can display the IP in the problem details returned to the client.
+func newIPError(ip netip.Addr, err error) error {
+	return ipError{ip: ip, err: err}
 }
 
 // Unwrap returns the underlying error.
@@ -294,7 +330,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	var ipErr ipError
 	if errors.As(err, &ipErr) {
 		detailedErr := detailedError(ipErr.err)
-		if ipErr.ip == nil {
+		if (ipErr.ip == netip.Addr{}) {
 			// This should never happen.
 			return detailedErr
 		}
@@ -320,30 +356,30 @@ func detailedError(err error) *probs.ProblemDetails {
 		if fmt.Sprintf("%T", netOpErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
-			return probs.TLSError(netOpErr.Error())
+			return probs.TLS(netOpErr.Error())
 		} else if netOpErr.Timeout() && netOpErr.Op == "dial" {
-			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+			return probs.Connection("Timeout during connect (likely firewall problem)")
 		} else if netOpErr.Timeout() {
-			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
+			return probs.Connection(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
 		}
 	}
 	var syscallErr *os.SyscallError
 	if errors.As(err, &syscallErr) {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
-			return probs.ConnectionFailure("Connection refused")
+			return probs.Connection("Connection refused")
 		case syscall.ENETUNREACH:
-			return probs.ConnectionFailure("Network unreachable")
+			return probs.Connection("Network unreachable")
 		case syscall.ECONNRESET:
-			return probs.ConnectionFailure("Connection reset by peer")
+			return probs.Connection("Connection reset by peer")
 		}
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
+		return probs.Connection("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {
-		return probs.ConnectionFailure(err.Error())
+		return probs.Connection(err.Error())
 	}
 	if errors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
@@ -351,401 +387,366 @@ func detailedError(err error) *probs.ProblemDetails {
 	if errors.Is(err, berrors.DNS) {
 		return probs.DNS(err.Error())
 	}
+	if errors.Is(err, berrors.Malformed) {
+		return probs.Malformed(err.Error())
+	}
+	if errors.Is(err, berrors.CAA) {
+		return probs.CAA(err.Error())
+	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
-		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
+		return probs.Connection("Server is speaking HTTP/2 over HTTP")
 	}
-	return probs.ConnectionFailure("Error getting validation data")
+	return probs.Connection("Error getting validation data")
 }
 
-// validate performs a challenge validation and, in parallel,
-// checks CAA and GSB for the identifier. If any of those steps fails, it
-// returns a ProblemDetails plus the validation records created during the
-// validation attempt.
-func (va *ValidationAuthorityImpl) validate(
+// isPrimaryVA returns true if the VA is the primary validation perspective.
+func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
+	return va.perspective == PrimaryPerspective
+}
+
+// validateChallenge simply passes through to the appropriate validation method
+// depending on the challenge type.
+func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
-	identifier identifier.ACMEIdentifier,
-	regid int64,
-	challenge core.Challenge,
-) ([]core.ValidationRecord, *probs.ProblemDetails) {
-
-	// If the identifier is a wildcard domain we need to validate the base
-	// domain by removing the "*." wildcard prefix. We create a separate
-	// `baseIdentifier` here before starting the `va.checkCAA` goroutine with the
-	// `identifier` to avoid a data race.
-	baseIdentifier := identifier
-	if strings.HasPrefix(identifier.Value, "*.") {
-		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
-	}
-
-	// va.checkCAA accepts wildcard identifiers and handles them appropriately so
-	// we can dispatch `checkCAA` with the provided `identifier` instead of
-	// `baseIdentifier`
-	ch := make(chan *probs.ProblemDetails, 1)
-	go func() {
-		params := &caaParams{
-			accountURIID:     regid,
-			validationMethod: challenge.Type,
-		}
-		ch <- va.checkCAA(ctx, identifier, params)
-	}()
-
-	// TODO(#1292): send into another goroutine
-	validationRecords, prob := va.validateChallenge(ctx, baseIdentifier, challenge)
-	if prob != nil {
-		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
-		// It will also later be serialized in JSON, which defaults to UTF-8. Make
-		// sure it is UTF-8 clean now.
-		prob = filterProblemDetails(prob)
-
-		return validationRecords, prob
-	}
-
-	for i := 0; i < cap(ch); i++ {
-		if extraProblem := <-ch; extraProblem != nil {
-			return validationRecords, extraProblem
-		}
-	}
-	return validationRecords, nil
-}
-
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	err := challenge.CheckConsistencyForValidation()
-	if err != nil {
-		return nil, probs.Malformed("Challenge failed consistency check: %s", err)
-	}
-	switch challenge.Type {
+	ident identifier.ACMEIdentifier,
+	kind core.AcmeChallenge,
+	token string,
+	keyAuthorization string,
+) ([]core.ValidationRecord, error) {
+	switch kind {
 	case core.ChallengeTypeHTTP01:
-		return va.validateHTTP01(ctx, identifier, challenge)
+		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
 	case core.ChallengeTypeDNS01:
-		return va.validateDNS01(ctx, identifier, challenge)
+		// Strip a (potential) leading wildcard token from the identifier.
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
-		return va.validateTLSALPN01(ctx, identifier, challenge)
+		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
 	}
-	return nil, probs.Malformed("invalid challenge type %s", challenge.Type)
+	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
 
-// performRemoteValidation calls `PerformValidation` for each of the configured
-// remoteVAs in a random order. The provided `results` chan should have an equal
-// size to the number of remote VAs. The validations will be performed in
-// separate go-routines. If the result `error` from a remote
-// `PerformValidation` RPC is nil or a nil `ProblemDetails` instance it is
-// written directly to the `results` chan. If the err is a cancelled error it is
-// treated as a nil error. Otherwise the error/problem is written to the results
-// channel as-is.
-func (va *ValidationAuthorityImpl) performRemoteValidation(
-	ctx context.Context,
-	req *vapb.PerformValidationRequest,
-	results chan *remoteValidationResult) {
-	for _, i := range rand.Perm(len(va.remoteVAs)) {
-		remoteVA := va.remoteVAs[i]
+// observeLatency records entries in the validationLatency histogram of the
+// latency to perform validations from the primary and remote VA perspectives.
+// The labels are:
+//   - operation: VA.DoDCV or VA.DoCAA as [dcv|caa]
+//   - perspective: [ValidationAuthorityImpl.perspective|all]
+//   - challenge_type: core.Challenge.Type
+//   - problem_type: probs.ProblemType
+//   - result: the result of the validation as [pass|fail]
+func (va *ValidationAuthorityImpl) observeLatency(op, perspective, challType, probType, result string, latency time.Duration) {
+	labels := prometheus.Labels{
+		"operation":      op,
+		"perspective":    perspective,
+		"challenge_type": challType,
+		"problem_type":   probType,
+		"result":         result,
+	}
+	va.metrics.validationLatency.With(labels).Observe(latency.Seconds())
+}
+
+// remoteOperation is a func type that encapsulates the operation and request
+// passed to va.performRemoteOperation. The operation must be a method on
+// vapb.VAClient or vapb.CAAClient, and the request must be the corresponding
+// proto.Message passed to that method.
+type remoteOperation = func(context.Context, RemoteVA, proto.Message) (remoteResult, error)
+
+// remoteResult is an interface that must be implemented by the results of a
+// remoteOperation, such as *vapb.ValidationResult and *vapb.IsCAAValidResponse.
+// It provides methods to access problem details, the associated perspective,
+// and the RIR.
+type remoteResult interface {
+	proto.Message
+	GetProblem() *corepb.ProblemDetails
+	GetPerspective() string
+	GetRir() string
+}
+
+const (
+	// requiredRIRs is the minimum number of distinct Regional Internet
+	// Registries required for MPIC-compliant validation. Per BRs Section
+	// 3.2.2.9, starting March 15, 2026, the required number is 2.
+	requiredRIRs = 2
+)
+
+// mpicSummary is returned by doRemoteOperation and contains a summary of the
+// validation results for logging purposes. To ensure that the JSON output does
+// not contain nil slices, and to ensure deterministic output use the
+// summarizeMPIC function to prepare an mpicSummary.
+type mpicSummary struct {
+	// Passed are the perspectives that passed validation.
+	Passed []string `json:"passedPerspectives"`
+
+	// Failed are the perspectives that failed validation.
+	Failed []string `json:"failedPerspectives"`
+
+	// PassedRIRs are the Regional Internet Registries that the passing
+	// perspectives reside in.
+	PassedRIRs []string `json:"passedRIRs"`
+
+	// QuorumResult is the Multi-Perspective Issuance Corroboration quorum
+	// result, per BRs Section 5.4.1, Requirement 2.7 (i.e., "3/4" which should
+	// be interpreted as "Three (3) out of four (4) attempted Network
+	// Perspectives corroborated the determinations made by the Primary Network
+	// Perspective".
+	QuorumResult string `json:"quorumResult"`
+}
+
+// summarizeMPIC prepares an *mpicSummary for logging, ensuring there are no nil
+// slices and output is deterministic.
+func summarizeMPIC(passed, failed []string, passedRIRSet map[string]struct{}) *mpicSummary {
+	if passed == nil {
+		passed = []string{}
+	}
+	slices.Sort(passed)
+	if failed == nil {
+		failed = []string{}
+	}
+	slices.Sort(failed)
+
+	passedRIRs := []string{}
+	if passedRIRSet != nil {
+		for rir := range maps.Keys(passedRIRSet) {
+			passedRIRs = append(passedRIRs, rir)
+		}
+	}
+	slices.Sort(passedRIRs)
+
+	return &mpicSummary{
+		Passed:       passed,
+		Failed:       failed,
+		PassedRIRs:   passedRIRs,
+		QuorumResult: fmt.Sprintf("%d/%d", len(passed), len(passed)+len(failed)),
+	}
+}
+
+// doRemoteOperation concurrently calls the provided operation with `req` and a
+// RemoteVA once for each configured RemoteVA. It cancels remaining operations
+// and returns early if either the required number of successful results is
+// obtained or the number of failures exceeds va.maxRemoteFailures.
+//
+// Internal logic errors are logged. If the number of operation failures exceeds
+// va.maxRemoteFailures, the first encountered problem is returned as a
+// *probs.ProblemDetails.
+func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) (*mpicSummary, *probs.ProblemDetails) {
+	remoteVACount := len(va.remoteVAs)
+	//  - Mar 15, 2026: MUST implement using at least 3 perspectives
+	//  - Jun 15, 2026: MUST implement using at least 4 perspectives
+	//  - Dec 15, 2026: MUST implement using at least 5 perspectives
+	// See "Phased Implementation Timeline" in
+	// https://github.com/cabforum/servercert/blob/main/docs/BR.md#3229-multi-perspective-issuance-corroboration
+	if remoteVACount < 3 {
+		return nil, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
+	}
+
+	type response struct {
+		addr        string
+		perspective string
+		rir         string
+		result      remoteResult
+		err         error
+	}
+
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	responses := make(chan *response, remoteVACount)
+	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
-			result := &remoteValidationResult{
-				VAHostname: rva.Address,
+			res, err := op(subCtx, rva, req)
+			if err != nil {
+				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+				return
 			}
-			res, err := rva.PerformValidation(ctx, req)
-			if err != nil && canceled.Is(err) {
-				// If the non-nil err was a canceled error, ignore it. That's fine: it
-				// just means we cancelled the remote VA request before it was
-				// finished because we didn't care about its result. Don't log to avoid
-				// spamming the logs.
-				result.Problem = probs.ServerInternal("Remote PerformValidation RPC canceled")
-			} else if err != nil {
-				// This is a real error, not just a problem with the validation.
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Address, err)
-				result.Problem = probs.ServerInternal("Remote PerformValidation RPC failed")
-			} else if res.Problems != nil {
-				prob, err := bgrpc.PBToProblemDetails(res.Problems)
-				if err != nil {
-					va.log.Infof("Remote VA %q.PerformValidation returned malformed problem: %s", rva.Address, err)
-					result.Problem = probs.ServerInternal(
-						fmt.Sprintf("Remote PerformValidation RPC returned malformed result: %s", err))
-				} else {
-					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Address, prob)
-					result.Problem = prob
-				}
+			if res.GetPerspective() != rva.Perspective || res.GetRir() != rva.RIR {
+				err = fmt.Errorf(
+					"Expected perspective %q (%q) but got reply from %q (%q) - misconfiguration likely", rva.Perspective, rva.RIR, res.GetPerspective(), res.GetRir(),
+				)
+				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+				return
 			}
-			results <- result
-		}(remoteVA)
+			responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+		}(va.remoteVAs[i])
 	}
-}
 
-// processRemoteResults evaluates a primary VA result, and a channel of remote
-// VA problems to produce a single overall validation result based on configured
-// feature flags. The overall result is calculated based on the VA's configured
-// `maxRemoteFailures` value.
-//
-// If the `MultiVAFullResults` feature is enabled then `processRemoteResults`
-// will expect to read a result from the `remoteErrors` channel for each VA and
-// will not produce an overall result until all remote VAs have responded. In
-// this case `logRemoteFailureDifferentials` will also be called to describe the
-// differential between the primary and all of the remote VAs.
-//
-// If the `MultiVAFullResults` feature flag is not enabled then
-// `processRemoteResults` will potentially return before all remote VAs have had
-// a chance to respond. This happens if the success or failure threshold is met.
-// This doesn't allow for logging the differential between the primary and
-// remote VAs but is more performant.
-func (va *ValidationAuthorityImpl) processRemoteResults(
-	domain string,
-	acctID int64,
-	challengeType string,
-	primaryResult *probs.ProblemDetails,
-	remoteResultsChan chan *remoteValidationResult,
-	numRemoteVAs int) *probs.ProblemDetails {
-
-	state := "failure"
-	start := va.clk.Now()
-
-	defer func() {
-		va.metrics.remoteValidationTime.With(prometheus.Labels{
-			"type":   challengeType,
-			"result": state,
-		}).Observe(va.clk.Since(start).Seconds())
-	}()
-
-	required := numRemoteVAs - va.maxRemoteFailures
-	good := 0
-	bad := 0
-
-	var remoteResults []*remoteValidationResult
+	required := remoteVACount - va.maxRemoteFailures
+	var passed []string
+	var failed []string
+	var passedRIRs = map[string]struct{}{}
 	var firstProb *probs.ProblemDetails
-	// Due to channel behavior this could block indefinitely and we rely on gRPC
-	// honoring the context deadline used in client calls to prevent that from
-	// happening.
-	for result := range remoteResultsChan {
-		// Add the result to the slice
-		remoteResults = append(remoteResults, result)
-		if result.Problem == nil {
-			good++
-		} else {
-			bad++
-		}
 
-		// Store the first non-nil problem to return later (if `MultiVAFullResults`
-		// is enabled).
-		if firstProb == nil && result.Problem != nil {
-			firstProb = result.Problem
-		}
+	for resp := range responses {
+		var currProb *probs.ProblemDetails
 
-		// If MultiVAFullResults isn't enabled then return early whenever the
-		// success or failure threshold is met.
-		if !features.Enabled(features.MultiVAFullResults) {
-			if good >= required {
-				state = "success"
-				return nil
-			} else if bad > va.maxRemoteFailures {
-				modifiedProblem := *result.Problem
-				modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
-				return &modifiedProblem
+		if resp.err != nil {
+			// Failed to communicate with the remote VA.
+			failed = append(failed, resp.perspective)
+
+			if core.IsCanceled(resp.err) {
+				currProb = probs.ServerInternal("Secondary validation RPC canceled")
+			} else {
+				va.log.Errf("Operation on remote VA (%s) failed: %s", resp.addr, resp.err)
+				currProb = probs.ServerInternal("Secondary validation RPC failed")
 			}
+		} else if resp.result.GetProblem() != nil {
+			// The remote VA returned a problem.
+			failed = append(failed, resp.perspective)
+
+			var err error
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.GetProblem())
+			if err != nil {
+				va.log.Errf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
+				currProb = probs.ServerInternal("Secondary validation RPC returned malformed result")
+			}
+		} else {
+			// The remote VA returned a successful result.
+			passed = append(passed, resp.perspective)
+			passedRIRs[resp.rir] = struct{}{}
 		}
 
-		// If we haven't returned early because of MultiVAFullResults being enabled
-		// we need to break the loop once all of the VAs have returned a result.
-		if len(remoteResults) == numRemoteVAs {
+		if firstProb == nil && currProb != nil {
+			// A problem was encountered for the first time.
+			firstProb = currProb
+		}
+
+		// Once all the VAs have returned a result, break the loop.
+		if len(passed)+len(failed) >= remoteVACount {
 			break
 		}
 	}
-
-	// If we are using `features.MultiVAFullResults` then we haven't returned
-	// early and can now log the differential between what the primary VA saw and
-	// what all of the remote VAs saw.
-	va.logRemoteValidationDifferentials(
-		domain,
-		acctID,
-		challengeType,
-		primaryResult,
-		remoteResults)
-
-	// Based on the threshold of good/bad return nil or a problem.
-	if good >= required {
-		state = "success"
-		return nil
-	} else if bad > va.maxRemoteFailures {
-		modifiedProblem := *firstProb
-		modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
-		return &modifiedProblem
+	if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
+		return summarizeMPIC(passed, failed, passedRIRs), nil
 	}
-
-	// This condition should not occur - it indicates the good/bad counts didn't
-	// meet either the required threshold or the maxRemoteFailures threshold.
-	return probs.ServerInternal("Too few remote PerformValidation RPC results")
+	if firstProb == nil {
+		// This should never happen. If we didn't meet the thresholds above we
+		// should have seen at least one error.
+		return summarizeMPIC(passed, failed, passedRIRs), probs.ServerInternal(
+			"During secondary validation: validation failed but the problem is unavailable")
+	}
+	firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
+	return summarizeMPIC(passed, failed, passedRIRs), firstProb
 }
 
-// logRemoteValidationDifferentials is called by `processRemoteResults` when the
-// `MultiVAFullResults` feature flag is enabled. It produces a JSON log line
-// that contains the primary VA result and the results each remote VA returned.
-func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
-	domain string,
-	acctID int64,
-	challengeType string,
-	primaryResult *probs.ProblemDetails,
-	remoteResults []*remoteValidationResult) {
-
-	var successes []*remoteValidationResult
-	var failures []*remoteValidationResult
-
-	allEqual := true
-	for _, result := range remoteResults {
-		if result.Problem != primaryResult {
-			allEqual = false
-		}
-		if result.Problem == nil {
-			successes = append(successes, result)
-		} else {
-			failures = append(failures, result)
-		}
-	}
-	if allEqual {
-		// There's no point logging a differential line if the primary VA and remote
-		// VAs all agree.
-		return
-	}
-
-	// If the primary result was OK and there were more failures than the allowed
-	// threshold increment a stat that indicates this overall validation will have
-	// failed if features.EnforceMultiVA is enabled.
-	if primaryResult == nil && len(failures) > va.maxRemoteFailures {
-		va.metrics.prospectiveRemoteValidationFailures.Inc()
-	}
-
-	logOb := struct {
-		Domain          string
-		AccountID       int64
-		ChallengeType   string
-		PrimaryResult   *probs.ProblemDetails
-		RemoteSuccesses int
-		RemoteFailures  []*remoteValidationResult
-	}{
-		Domain:          domain,
-		AccountID:       acctID,
-		ChallengeType:   challengeType,
-		PrimaryResult:   primaryResult,
-		RemoteSuccesses: len(successes),
-		RemoteFailures:  failures,
-	}
-
-	logJSON, err := json.Marshal(logOb)
-	if err != nil {
-		// log a warning - a marshaling failure isn't expected given the data and
-		// isn't critical enough to break validation for by returning an error to
-		// the caller.
-		va.log.Warningf("Could not marshal log object in "+
-			"logRemoteValidationDifferentials: %s", err)
-		return
-	}
-
-	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
+// validationLogEvent is a struct that contains the information needed to log
+// the results of DoCAA and DoDCV.
+type validationLogEvent struct {
+	AuthzID       string
+	Requester     int64
+	Identifier    identifier.ACMEIdentifier
+	Challenge     core.Challenge
+	Error         string `json:",omitempty"`
+	InternalError string `json:",omitempty"`
+	Latency       float64
+	Summary       *mpicSummary `json:",omitempty"`
 }
 
-// remoteValidationResult is a struct that combines a problem details instance
-// (that may be nil) with the remote VA hostname that produced it.
-type remoteValidationResult struct {
-	VAHostname string
-	Problem    *probs.ProblemDetails
-}
-
-// PerformValidation validates the challenge for the domain in the request.
-// The returned result will always contain a list of validation records, even
-// when it also contains a problem.
-func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
+// DoDCV conducts a local Domain Control Validation (DCV) for the specified
+// challenge. When invoked on the primary Validation Authority (VA) and the
+// local validation succeeds, it also performs DCV validations using the
+// configured remote VAs. Failed validations are indicated by a non-nil Problems
+// in the returned ValidationResult. DoDCV returns error only for internal logic
+// errors (and the client may receive errors from gRPC in the event of a
+// communication problem). ValidationResult always includes a list of
+// ValidationRecords, even when it also contains Problems. This method
+// implements the DCV portion of Multi-Perspective Issuance Corroboration as
+// defined in BRs Sections 3.2.2.9 and 5.4.1.
+func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
-	logEvent := verificationRequestEvent{
-		ID:        req.Authz.Id,
-		Requester: req.Authz.RegID,
-		Hostname:  req.Domain,
-	}
-	vStart := va.clk.Now()
 
-	var remoteResults chan *remoteValidationResult
-	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteResults = make(chan *remoteValidationResult, remoteVACount)
-		go va.performRemoteValidation(ctx, req, remoteResults)
-	}
+	ident := identifier.FromProto(req.Identifier)
 
-	challenge, err := bgrpc.PBToChallenge(req.Challenge)
+	chall, err := bgrpc.PBToChallenge(req.Challenge)
 	if err != nil {
-		return nil, probs.ServerInternal("Challenge failed to deserialize")
+		return nil, errors.New("challenge failed to deserialize")
 	}
 
-	records, prob := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge)
-	challenge.ValidationRecord = records
-	localValidationLatency := time.Since(vStart)
+	err = chall.CheckPending()
+	if err != nil {
+		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
+	}
+
+	// Initialize variables and a deferred function to handle validation latency
+	// metrics, log validation errors, and log an MPIC summary. Avoid using :=
+	// to redeclare `prob`, `localLatency`, or `summary` below this point.
+	var prob *probs.ProblemDetails
+	var summary *mpicSummary
+	var localLatency time.Duration
+	start := va.clk.Now()
+	logEvent := validationLogEvent{
+		AuthzID:    req.Authz.Id,
+		Requester:  req.Authz.RegID,
+		Identifier: ident,
+		Challenge:  chall,
+	}
+	defer func() {
+		probType := ""
+		outcome := fail
+		if prob != nil {
+			probType = string(prob.Type)
+			logEvent.Error = prob.String()
+			logEvent.Challenge.Error = prob
+			logEvent.Challenge.Status = core.StatusInvalid
+		} else {
+			logEvent.Challenge.Status = core.StatusValid
+			outcome = pass
+		}
+		// Observe local validation latency (primary|remote).
+		va.observeLatency(opDCV, va.perspective, string(chall.Type), probType, outcome, localLatency)
+		if va.isPrimaryVA() {
+			// Observe total validation latency (primary+remote).
+			va.observeLatency(opDCV, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
+			logEvent.Summary = summary
+		}
+
+		// Log the total validation latency.
+		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
+		va.log.AuditObject("Validation result", logEvent)
+	}()
+
+	// Do local validation. Note that we process the result in a couple ways
+	// *before* checking whether it returned an error. These few checks are
+	// carefully written to ensure that they work whether the local validation
+	// was successful or not, and cannot themselves fail.
+	records, err := va.validateChallenge(
+		ctx,
+		ident,
+		chall.Type,
+		chall.Token,
+		req.ExpectedKeyAuthorization,
+	)
+
+	// Stop the clock for local validation latency.
+	localLatency = va.clk.Since(start)
 
 	// Check for malformed ValidationRecords
-	if !challenge.RecordsSane() && prob == nil {
-		prob = probs.ServerInternal("Records for validation failed sanity check")
+	logEvent.Challenge.ValidationRecord = records
+	if err == nil && !logEvent.Challenge.RecordsSane() {
+		err = errors.New("records from local validation failed sanity check")
 	}
 
-	var problemType string
-	if prob != nil {
-		problemType = string(prob.Type)
-		challenge.Status = core.StatusInvalid
-		challenge.Error = prob
-		logEvent.Error = prob.Error()
-	} else if remoteResults != nil {
-		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
-			// If we're not going to enforce multi VA but we are logging the
-			// differentials then collect and log the remote results in a separate go
-			// routine to avoid blocking the primary VA.
-			go func() {
-				_ = va.processRemoteResults(
-					req.Domain,
-					req.Authz.RegID,
-					string(challenge.Type),
-					prob,
-					remoteResults,
-					len(va.remoteVAs))
-			}()
-			// Since prob was nil and we're not enforcing the results from
-			// `processRemoteResults` set the challenge status to valid so the
-			// validationTime metrics increment has the correct result label.
-			challenge.Status = core.StatusValid
-		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteResults(
-				req.Domain,
-				req.Authz.RegID,
-				string(challenge.Type),
-				prob,
-				remoteResults,
-				len(va.remoteVAs))
+	if err != nil {
+		logEvent.InternalError = err.Error()
+		prob = detailedError(err)
+		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	}
 
-			// If the remote result was a non-nil problem then fail the validation
-			if remoteProb != nil {
-				prob = remoteProb
-				challenge.Status = core.StatusInvalid
-				challenge.Error = remoteProb
-				logEvent.Error = remoteProb.Error()
-				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
-					req.Domain, remoteProb)
-				va.metrics.remoteValidationFailures.Inc()
-			} else {
-				challenge.Status = core.StatusValid
+	if va.isPrimaryVA() {
+		// Do remote validation. We do this after local validation is complete
+		// to avoid wasting work when validation will fail anyway. This only
+		// returns a singular problem, because the remote VAs have already
+		// logged their own validationLogEvent, and it's not helpful to present
+		// multiple large errors to the end user.
+		op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
+			validationRequest, ok := req.(*vapb.PerformValidationRequest)
+			if !ok {
+				return nil, fmt.Errorf("got type %T, want *vapb.PerformValidationRequest", req)
 			}
+			return remoteva.DoDCV(ctx, validationRequest)
 		}
-	} else {
-		challenge.Status = core.StatusValid
+		summary, prob = va.doRemoteOperation(ctx, op, req)
 	}
-
-	logEvent.Challenge = challenge
-
-	validationLatency := time.Since(vStart)
-	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
-
-	va.metrics.localValidationTime.With(prometheus.Labels{
-		"type":   string(challenge.Type),
-		"result": string(challenge.Status),
-	}).Observe(localValidationLatency.Seconds())
-	va.metrics.validationTime.With(prometheus.Labels{
-		"type":         string(challenge.Type),
-		"result":       string(challenge.Status),
-		"problem_type": problemType,
-	}).Observe(validationLatency.Seconds())
-
-	va.log.AuditObject("Validation result", logEvent)
-
-	return bgrpc.ValidationResultToPB(records, prob)
+	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }

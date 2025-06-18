@@ -60,7 +60,7 @@ func acquireN(b *testing.B, sem weighted, size int64, N int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < N; j++ {
-			sem.Acquire(context.Background(), size)
+			_ = sem.Acquire(context.Background(), size)
 		}
 		for j := 0; j < N; j++ {
 			sem.Release(size)

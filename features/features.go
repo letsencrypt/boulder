@@ -1,153 +1,119 @@
-//go:generate stringer -type=FeatureFlag
-
+// features provides the Config struct, which is used to define feature flags
+// that can affect behavior across Boulder components. It also maintains a
+// global singleton Config which can be referenced by arbitrary Boulder code
+// without having to pass a collection of feature flags through the function
+// call graph.
 package features
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 )
 
-type FeatureFlag int
+// Config contains one boolean field for every Boulder feature flag. It can be
+// included directly in an executable's Config struct to have feature flags be
+// automatically parsed by the json config loader; executables that do so must
+// then call features.Set(parsedConfig) to load the parsed struct into this
+// package's global Config.
+type Config struct {
+	// Deprecated flags.
+	IncrementRateLimits         bool
+	UseKvLimitsForNewOrder      bool
+	DisableLegacyLimitWrites    bool
+	MultipleCertificateProfiles bool
+	InsertAuthzsIndividually    bool
+	EnforceMultiCAA             bool
+	EnforceMPIC                 bool
+	MPICFullResults             bool
+	UnsplitIssuance             bool
+	ExpirationMailerUsesJoin    bool
+	DOH                         bool
+	IgnoreAccountContacts       bool
 
-const (
-	unused FeatureFlag = iota // unused is used for testing
-	//   Deprecated features, these can be removed once stripped from production configs
-	StoreRevokerInfo
-
-	//   Currently in-use features
-	// Check CAA and respect validationmethods parameter.
-	CAAValidationMethods
-	// Check CAA and respect accounturi parameter.
-	CAAAccountURI
-	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
-	// requests in order to make a valid/invalid decision with the results.
-	EnforceMultiVA
-	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
-	// results, not just the threshold required to make a decision.
-	MultiVAFullResults
-	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
-	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
-	ECDSAForAll
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
-	ServeRenewalInfo
-	// AllowUnrecognizedFeatures is internal to the features package: if true,
-	// skip error when unrecognized feature flag names are passed.
-	AllowUnrecognizedFeatures
-
-	// ROCSPStage6 disables writing full OCSP Responses to MariaDB during
-	// (pre)certificate issuance and during revocation. Because Stage 4 involved
-	// disabling ocsp-updater, this means that no ocsp response bytes will be
-	// written to the database anymore.
-	ROCSPStage6
-	// ROCSPStage7 disables generating OCSP responses during issuance and
-	// revocation. This affects codepaths in both the RA (revocation) and the CA
-	// (precert "birth certificates").
-	ROCSPStage7
-
-	// ExpirationMailerUsesJoin enables using a JOIN query in expiration-mailer
-	// rather than a SELECT from certificateStatus followed by thousands of
-	// one-row SELECTs from certificates.
-	ExpirationMailerUsesJoin
+	ServeRenewalInfo bool
 
 	// CertCheckerChecksValidations enables an extra query for each certificate
 	// checked, to find the relevant authzs. Since this query might be
 	// expensive, we gate it behind a feature flag.
-	CertCheckerChecksValidations
+	CertCheckerChecksValidations bool
 
 	// CertCheckerRequiresValidations causes cert-checker to fail if the
 	// query enabled by CertCheckerChecksValidations didn't find corresponding
 	// authorizations.
-	CertCheckerRequiresValidations
+	CertCheckerRequiresValidations bool
 
 	// AsyncFinalize enables the RA to return approximately immediately from
 	// requests to finalize orders. This allows us to take longer getting SCTs,
 	// issuing certs, and updating the database; it indirectly reduces the number
-	// of "orphaned" certs we have. However, it also requires clients to properly
-	// implement polling the Order object to wait for the cert URL to appear.
-	AsyncFinalize
-	// SetCommonName defaults to true, and causes the CA to include the commonName
-	// field in the certificate Subject. When false, the commonName will be
-	// omitted. According to the BRs Section 7.1.4.2.2(a), the commonName field is
-	// Deprecated, and its inclusion is Discouraged but not (yet) prohibited.
-	SetCommonName
-)
+	// of issuances that fail due to timeouts during storage. However, it also
+	// requires clients to properly implement polling the Order object to wait
+	// for the cert URL to appear.
+	AsyncFinalize bool
 
-// List of features and their default value, protected by fMu
-var features = map[FeatureFlag]bool{
-	unused:                         false,
-	CAAValidationMethods:           false,
-	CAAAccountURI:                  false,
-	EnforceMultiVA:                 false,
-	MultiVAFullResults:             false,
-	StoreRevokerInfo:               false,
-	ECDSAForAll:                    false,
-	ServeRenewalInfo:               false,
-	AllowUnrecognizedFeatures:      false,
-	ROCSPStage6:                    false,
-	ROCSPStage7:                    false,
-	ExpirationMailerUsesJoin:       false,
-	CertCheckerChecksValidations:   false,
-	CertCheckerRequiresValidations: false,
-	AsyncFinalize:                  false,
-	SetCommonName:                  true,
+	// CheckIdentifiersPaused checks if any of the identifiers in the order are
+	// currently paused at NewOrder time. If any are paused, an error is
+	// returned to the Subscriber indicating that the order cannot be processed
+	// until the paused identifiers are unpaused and the order is resubmitted.
+	CheckIdentifiersPaused bool
+
+	// PropagateCancels controls whether the WFE and ocsp-responder allows
+	// cancellation of an inbound request to cancel downstream gRPC and other
+	// queries. In practice, cancellation of an inbound request is achieved by
+	// Nginx closing the connection on which the request was happening. This may
+	// help shed load in overcapacity situations. However, note that in-progress
+	// database queries (for instance, in the SA) are not cancelled. Database
+	// queries waiting for an available connection may be cancelled.
+	PropagateCancels bool
+
+	// AutomaticallyPauseZombieClients configures the RA to automatically track
+	// and pause issuance for each (account, hostname) pair that repeatedly
+	// fails validation.
+	AutomaticallyPauseZombieClients bool
+
+	// NoPendingAuthzReuse causes the RA to only select already-validated authzs
+	// to attach to a newly created order. This preserves important client-facing
+	// functionality (valid authz reuse) while letting us simplify our code by
+	// removing pending authz reuse.
+	NoPendingAuthzReuse bool
+
+	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
+	// ARI replaces field in the orders table.
+	StoreARIReplacesInOrders bool
 }
 
 var fMu = new(sync.RWMutex)
+var global = Config{}
 
-var initial = map[FeatureFlag]bool{}
-
-var nameToFeature = make(map[string]FeatureFlag, len(features))
-
-func init() {
-	for f, v := range features {
-		nameToFeature[f.String()] = f
-		initial[f] = v
-	}
-}
-
-// Set accepts a list of features and whether they should
-// be enabled or disabled. In the presence of unrecognized
-// flags, it will return an error or not depending on the
-// value of AllowUnrecognizedFeatures.
-func Set(featureSet map[string]bool) error {
+// Set changes the global FeatureSet to match the input FeatureSet. This
+// overrides any previous changes made to the global FeatureSet.
+//
+// When used in tests, the caller must defer features.Reset() to avoid leaving
+// dirty global state.
+func Set(fs Config) {
 	fMu.Lock()
 	defer fMu.Unlock()
-	var unknown []string
-	for n, v := range featureSet {
-		f, present := nameToFeature[n]
-		if present {
-			features[f] = v
-		} else {
-			unknown = append(unknown, n)
-		}
-	}
-	if len(unknown) > 0 && !features[AllowUnrecognizedFeatures] {
-		return fmt.Errorf("unrecognized feature flag names: %s",
-			strings.Join(unknown, ", "))
-	}
-	return nil
+	// If the FeatureSet type ever changes, this must be updated to still copy
+	// the input argument, never hold a reference to it.
+	global = fs
 }
 
-// Enabled returns true if the feature is enabled or false
-// if it isn't, it will panic if passed a feature that it
-// doesn't know.
-func Enabled(n FeatureFlag) bool {
-	fMu.RLock()
-	defer fMu.RUnlock()
-	v, present := features[n]
-	if !present {
-		panic(fmt.Sprintf("feature '%s' doesn't exist", n.String()))
-	}
-	return v
-}
-
-// Reset resets the features to their initial state
+// Reset resets all features to their initial state (false).
 func Reset() {
 	fMu.Lock()
 	defer fMu.Unlock()
-	for k, v := range initial {
-		features[k] = v
-	}
+	global = Config{}
+}
+
+// Get returns a copy of the current global FeatureSet, indicating which
+// features are currently enabled (set to true). Expected caller behavior looks
+// like:
+//
+//	if features.Get().FeatureName { ...
+func Get() Config {
+	fMu.RLock()
+	defer fMu.RUnlock()
+	// If the FeatureSet type ever changes, this must be updated to still return
+	// only a copy of the current state, never a reference directly to it.
+	return global
 }

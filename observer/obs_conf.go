@@ -6,9 +6,10 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -24,13 +25,14 @@ var (
 
 // ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
-	DebugAddr string           `yaml:"debugaddr"`
-	Buckets   []float64        `yaml:"buckets"`
-	Syslog    cmd.SyslogConfig `yaml:"syslog"`
-	MonConfs  []*MonConf       `yaml:"monitors"`
+	DebugAddr     string           `yaml:"debugaddr" validate:"omitempty,hostname_port"`
+	Buckets       []float64        `yaml:"buckets" validate:"min=1,dive"`
+	Syslog        cmd.SyslogConfig `yaml:"syslog"`
+	OpenTelemetry cmd.OpenTelemetryConfig
+	MonConfs      []*MonConf `yaml:"monitors" validate:"min=1,dive"`
 }
 
-// validateSyslog ensures the the `Syslog` field received by `ObsConf`
+// validateSyslog ensures the `Syslog` field received by `ObsConf`
 // contains valid log levels.
 func (c *ObsConf) validateSyslog() error {
 	syslog, stdout := c.Syslog.SyslogLevel, c.Syslog.StdoutLevel
@@ -134,7 +136,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	}
 
 	// Start monitoring and logging.
-	metrics, logger := cmd.StatsAndLogging(c.Syslog, c.DebugAddr)
+	metrics, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.DebugAddr)
 	histObservations = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "obs_observations",
@@ -143,7 +145,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 		}, []string{"name", "kind", "success"})
 	metrics.MustRegister(countMonitors)
 	metrics.MustRegister(histObservations)
-	defer logger.AuditPanic()
+	defer cmd.AuditPanic()
 	logger.Info(cmd.VersionString())
 	logger.Infof("Initializing boulder-observer daemon")
 	logger.Debugf("Using config: %+v", c)
@@ -160,5 +162,5 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Observer{logger, monitors}, nil
+	return &Observer{logger, monitors, shutdown}, nil
 }

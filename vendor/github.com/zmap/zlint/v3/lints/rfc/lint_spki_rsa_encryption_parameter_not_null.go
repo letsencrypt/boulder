@@ -1,7 +1,7 @@
 package rfc
 
 /*
- * ZLint Copyright 2021 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -30,13 +30,15 @@ RSA: Encoded algorithm identifier MUST have NULL parameters.
 *******************************************************************************************************/
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_spki_rsa_encryption_parameter_not_null",
-		Description:   "RSA: Encoded public key algorithm identifier MUST have NULL parameters",
-		Citation:      "RFC 4055, Section 1.2",
-		Source:        lint.RFC5280, // RFC4055 is referenced in lint.RFC5280, Section 1
-		EffectiveDate: util.RFC5280Date,
-		Lint:          NewRsaSPKIEncryptionParamNotNULL,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_spki_rsa_encryption_parameter_not_null",
+			Description:   "RSA: Encoded public key algorithm identifier MUST have NULL parameters",
+			Citation:      "RFC 4055, Section 1.2",
+			Source:        lint.RFC5280, // RFC4055 is referenced in lint.RFC5280, Section 1
+			EffectiveDate: util.RFC5280Date,
+		},
+		Lint: NewRsaSPKIEncryptionParamNotNULL,
 	})
 }
 
@@ -59,7 +61,7 @@ func (l *rsaSPKIEncryptionParamNotNULL) Execute(c *x509.Certificate) *lint.LintR
 	}
 
 	if err := util.CheckAlgorithmIDParamNotNULL(encodedPublicKeyAid, util.OidRSAEncryption); err != nil {
-		return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("certificate pkixPublicKey %s", err.Error())}
+		return &lint.LintResult{Status: lint.Error, Details: "certificate pkixPublicKey " + err.Error()}
 	}
 
 	return &lint.LintResult{Status: lint.Pass}

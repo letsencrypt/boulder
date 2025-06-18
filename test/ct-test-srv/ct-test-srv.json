@@ -2,36 +2,6 @@
   "Personalities": [
     {
       "UserAgent": "boulder/1.0",
-      "Addr": ":4500",
-      "PrivKey": "MHcCAQEEIOCtGlGt/WT7471dOHdfBg43uJWJoZDkZAQjWfTitcVNoAoGCCqGSM49AwEHoUQDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q==",
-      "FlakinessRate": 30
-    },
-    {
-      "UserAgent": "boulder/1.0",
-      "Addr": ":4501",
-      "PrivKey": "MHcCAQEEIJSCFDYXt2xCIxv+G8BCzGdUsFIQDWEjxfJDfnn9JB5loAoGCCqGSM49AwEHoUQDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA==",
-      "FlakinessRate": 2
-    },
-    {
-      "UserAgent": "boulder/1.0",
-      "Addr": ":4510",
-      "PrivKey": "MHcCAQEEIBtqLTgjiM9nMaUQkbsE1vQWYXpJP0uLqVLV73U2UzlioAoGCCqGSM49AwEHoUQDQgAEyw1HymhJkuxSIgt3gqW3sVXqMqB3EFsXcMfPFo0vYwjNiRmCJDXKsR0Flp7MAK+wc3X/7Hpc8liUbMhPet7tEA==",
-      "FlakinessRate": 2
-    },
-    {
-      "UserAgent": "boulder/1.0",
-      "Addr": ":4511",
-      "PrivKey": "MHcCAQEEINwaal89BqkwvQ6r3uOj7R5VEjJi5iSDbAhlYyDhZv/joAoGCCqGSM49AwEHoUQDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
-      "FlakinessRate": 100
-    },
-    {
-      "UserAgent": "boulder/1.0",
-      "Addr": ":4512",
-      "PrivKey": "MHcCAQEEINwaal89BqkwvQ6r3uOj7R5VEjJi5iSDbAhlYyDhZv/joAoGCCqGSM49AwEHoUQDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
-      "FlakinessRate": 100
-    },
-    {
-      "UserAgent": "boulder/1.0",
       "Addr": ":4600",
       "PrivKey": "MHcCAQEEIArwh8VhAPXaUocPILwSJrQF1E2OXtY7O2aJyjGIR7UPoAoGCCqGSM49AwEHoUQDQgAExhriVaEwBOtdNzg5EOtJBHl/u+ua1FtCR/CBXQ1kvpFelcP3gozLNXyxV/UexuifpmzTN31CdfdHv1kK3KDIxQ==",
       "FlakinessRate": 1

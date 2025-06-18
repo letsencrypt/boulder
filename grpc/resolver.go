@@ -3,6 +3,7 @@ package grpc
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 
 	"google.golang.org/grpc/resolver"
@@ -30,7 +31,11 @@ func (sb *staticBuilder) Build(target resolver.Target, cc resolver.ClientConn, _
 		}
 		resolverAddrs = append(resolverAddrs, *parsedAddress)
 	}
-	return newStaticResolver(cc, resolverAddrs), nil
+	r, err := newStaticResolver(cc, resolverAddrs)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // Scheme returns the scheme that `staticBuilder` will be registered for, for
@@ -49,9 +54,12 @@ type staticResolver struct {
 // `resolver.Addresses`. It updates the state of the `resolver.ClientConn` with
 // the provided addresses and returns a `staticResolver` which wraps the
 // `resolver.ClientConn` and implements the `resolver.Resolver` interface.
-func newStaticResolver(cc resolver.ClientConn, resolverAddrs []resolver.Address) resolver.Resolver {
-	cc.UpdateState(resolver.State{Addresses: resolverAddrs})
-	return &staticResolver{cc: cc}
+func newStaticResolver(cc resolver.ClientConn, resolverAddrs []resolver.Address) (resolver.Resolver, error) {
+	err := cc.UpdateState(resolver.State{Addresses: resolverAddrs})
+	if err != nil {
+		return nil, err
+	}
+	return &staticResolver{cc: cc}, nil
 }
 
 // ResolveNow is a no-op necessary for `staticResolver` to implement the
@@ -84,7 +92,8 @@ func parseResolverIPAddress(addr string) (*resolver.Address, error) {
 		// empty (e.g. :80), the local system is assumed.
 		host = "127.0.0.1"
 	}
-	if net.ParseIP(host) == nil {
+	_, err = netip.ParseAddr(host)
+	if err != nil {
 		// Host is a DNS name or an IPv6 address without brackets.
 		return nil, fmt.Errorf("address %q is not an IP address", addr)
 	}

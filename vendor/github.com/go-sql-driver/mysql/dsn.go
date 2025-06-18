@@ -10,6 +10,7 @@ package mysql
 
 import (
 	"bytes"
+	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	"errors"
@@ -34,51 +35,125 @@ var (
 // If a new Config is created instead of being parsed from a DSN string,
 // the NewConfig function should be used, which sets default values.
 type Config struct {
-	User             string            // Username
-	Passwd           string            // Password (requires User)
-	Net              string            // Network type
-	Addr             string            // Network address (requires Net)
-	DBName           string            // Database name
-	Params           map[string]string // Connection parameters
-	Collation        string            // Connection collation
-	Loc              *time.Location    // Location for time.Time values
-	MaxAllowedPacket int               // Max packet size allowed
-	ServerPubKey     string            // Server public key name
-	pubKey           *rsa.PublicKey    // Server public key
-	TLSConfig        string            // TLS configuration name
-	tls              *tls.Config       // TLS configuration
-	Timeout          time.Duration     // Dial timeout
-	ReadTimeout      time.Duration     // I/O read timeout
-	WriteTimeout     time.Duration     // I/O write timeout
+	// non boolean fields
 
-	AllowAllFiles           bool // Allow all files to be used with LOAD DATA LOCAL INFILE
-	AllowCleartextPasswords bool // Allows the cleartext client side plugin
-	AllowNativePasswords    bool // Allows the native password authentication method
-	AllowOldPasswords       bool // Allows the old insecure password method
-	CheckConnLiveness       bool // Check connections for liveness before using them
-	ClientFoundRows         bool // Return number of matching rows instead of rows changed
-	ColumnsWithAlias        bool // Prepend table alias to column names
-	InterpolateParams       bool // Interpolate placeholders into query string
-	MultiStatements         bool // Allow multiple statements in one query
-	ParseTime               bool // Parse time values to time.Time
-	RejectReadOnly          bool // Reject read-only connections
+	User                 string            // Username
+	Passwd               string            // Password (requires User)
+	Net                  string            // Network (e.g. "tcp", "tcp6", "unix". default: "tcp")
+	Addr                 string            // Address (default: "127.0.0.1:3306" for "tcp" and "/tmp/mysql.sock" for "unix")
+	DBName               string            // Database name
+	Params               map[string]string // Connection parameters
+	ConnectionAttributes string            // Connection Attributes, comma-delimited string of user-defined "key:value" pairs
+	Collation            string            // Connection collation. When set, this will be set in SET NAMES <charset> COLLATE <collation> query
+	Loc                  *time.Location    // Location for time.Time values
+	MaxAllowedPacket     int               // Max packet size allowed
+	ServerPubKey         string            // Server public key name
+	TLSConfig            string            // TLS configuration name
+	TLS                  *tls.Config       // TLS configuration, its priority is higher than TLSConfig
+	Timeout              time.Duration     // Dial timeout
+	ReadTimeout          time.Duration     // I/O read timeout
+	WriteTimeout         time.Duration     // I/O write timeout
+	Logger               Logger            // Logger
+	// DialFunc specifies the dial function for creating connections
+	DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+	// boolean fields
+
+	AllowAllFiles            bool // Allow all files to be used with LOAD DATA LOCAL INFILE
+	AllowCleartextPasswords  bool // Allows the cleartext client side plugin
+	AllowFallbackToPlaintext bool // Allows fallback to unencrypted connection if server does not support TLS
+	AllowNativePasswords     bool // Allows the native password authentication method
+	AllowOldPasswords        bool // Allows the old insecure password method
+	CheckConnLiveness        bool // Check connections for liveness before using them
+	ClientFoundRows          bool // Return number of matching rows instead of rows changed
+	ColumnsWithAlias         bool // Prepend table alias to column names
+	InterpolateParams        bool // Interpolate placeholders into query string
+	MultiStatements          bool // Allow multiple statements in one query
+	ParseTime                bool // Parse time values to time.Time
+	RejectReadOnly           bool // Reject read-only connections
+
+	// unexported fields. new options should be come here.
+	// boolean first. alphabetical order.
+
+	compress bool // Enable zlib compression
+
+	beforeConnect func(context.Context, *Config) error // Invoked before a connection is established
+	pubKey        *rsa.PublicKey                       // Server public key
+	timeTruncate  time.Duration                        // Truncate time.Time values to the specified duration
+	charsets      []string                             // Connection charset. When set, this will be set in SET NAMES <charset> query
 }
+
+// Functional Options Pattern
+// https://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis
+type Option func(*Config) error
 
 // NewConfig creates a new Config and sets default values.
 func NewConfig() *Config {
-	return &Config{
-		Collation:            defaultCollation,
+	cfg := &Config{
 		Loc:                  time.UTC,
 		MaxAllowedPacket:     defaultMaxAllowedPacket,
+		Logger:               defaultLogger,
 		AllowNativePasswords: true,
 		CheckConnLiveness:    true,
+	}
+	return cfg
+}
+
+// Apply applies the given options to the Config object.
+func (c *Config) Apply(opts ...Option) error {
+	for _, opt := range opts {
+		err := opt(c)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TimeTruncate sets the time duration to truncate time.Time values in
+// query parameters.
+func TimeTruncate(d time.Duration) Option {
+	return func(cfg *Config) error {
+		cfg.timeTruncate = d
+		return nil
+	}
+}
+
+// BeforeConnect sets the function to be invoked before a connection is established.
+func BeforeConnect(fn func(context.Context, *Config) error) Option {
+	return func(cfg *Config) error {
+		cfg.beforeConnect = fn
+		return nil
+	}
+}
+
+// EnableCompress sets the compression mode.
+func EnableCompression(yes bool) Option {
+	return func(cfg *Config) error {
+		cfg.compress = yes
+		return nil
+	}
+}
+
+// Charset sets the connection charset and collation.
+//
+// charset is the connection charset.
+// collation is the connection collation. It can be null or empty string.
+//
+// When collation is not specified, `SET NAMES <charset>` command is sent when the connection is established.
+// When collation is specified, `SET NAMES <charset> COLLATE <collation>` command is sent when the connection is established.
+func Charset(charset, collation string) Option {
+	return func(cfg *Config) error {
+		cfg.charsets = []string{charset}
+		cfg.Collation = collation
+		return nil
 	}
 }
 
 func (cfg *Config) Clone() *Config {
 	cp := *cfg
-	if cp.tls != nil {
-		cp.tls = cfg.tls.Clone()
+	if cp.TLS != nil {
+		cp.TLS = cfg.TLS.Clone()
 	}
 	if len(cp.Params) > 0 {
 		cp.Params = make(map[string]string, len(cfg.Params))
@@ -96,7 +171,7 @@ func (cfg *Config) Clone() *Config {
 }
 
 func (cfg *Config) normalize() error {
-	if cfg.InterpolateParams && unsafeCollations[cfg.Collation] {
+	if cfg.InterpolateParams && cfg.Collation != "" && unsafeCollations[cfg.Collation] {
 		return errInvalidDSNUnsafeCollation
 	}
 
@@ -119,24 +194,29 @@ func (cfg *Config) normalize() error {
 		cfg.Addr = ensureHavePort(cfg.Addr)
 	}
 
-	switch cfg.TLSConfig {
-	case "false", "":
-		// don't set anything
-	case "true":
-		cfg.tls = &tls.Config{}
-	case "skip-verify", "preferred":
-		cfg.tls = &tls.Config{InsecureSkipVerify: true}
-	default:
-		cfg.tls = getTLSConfigClone(cfg.TLSConfig)
-		if cfg.tls == nil {
-			return errors.New("invalid value / unknown config name: " + cfg.TLSConfig)
+	if cfg.TLS == nil {
+		switch cfg.TLSConfig {
+		case "false", "":
+			// don't set anything
+		case "true":
+			cfg.TLS = &tls.Config{}
+		case "skip-verify":
+			cfg.TLS = &tls.Config{InsecureSkipVerify: true}
+		case "preferred":
+			cfg.TLS = &tls.Config{InsecureSkipVerify: true}
+			cfg.AllowFallbackToPlaintext = true
+		default:
+			cfg.TLS = getTLSConfigClone(cfg.TLSConfig)
+			if cfg.TLS == nil {
+				return errors.New("invalid value / unknown config name: " + cfg.TLSConfig)
+			}
 		}
 	}
 
-	if cfg.tls != nil && cfg.tls.ServerName == "" && !cfg.tls.InsecureSkipVerify {
+	if cfg.TLS != nil && cfg.TLS.ServerName == "" && !cfg.TLS.InsecureSkipVerify {
 		host, _, err := net.SplitHostPort(cfg.Addr)
 		if err == nil {
-			cfg.tls.ServerName = host
+			cfg.TLS.ServerName = host
 		}
 	}
 
@@ -145,6 +225,10 @@ func (cfg *Config) normalize() error {
 		if cfg.pubKey == nil {
 			return errors.New("invalid value / unknown server pub key name: " + cfg.ServerPubKey)
 		}
+	}
+
+	if cfg.Logger == nil {
+		cfg.Logger = defaultLogger
 	}
 
 	return nil
@@ -165,6 +249,8 @@ func writeDSNParam(buf *bytes.Buffer, hasParam *bool, name, value string) {
 
 // FormatDSN formats the given Config into a DSN string which can be passed to
 // the driver.
+//
+// Note: use [NewConnector] and [database/sql.OpenDB] to open a connection from a [*Config].
 func (cfg *Config) FormatDSN() string {
 	var buf bytes.Buffer
 
@@ -190,7 +276,7 @@ func (cfg *Config) FormatDSN() string {
 
 	// /dbname
 	buf.WriteByte('/')
-	buf.WriteString(cfg.DBName)
+	buf.WriteString(url.PathEscape(cfg.DBName))
 
 	// [?param1=value1&...&paramN=valueN]
 	hasParam := false
@@ -202,6 +288,10 @@ func (cfg *Config) FormatDSN() string {
 
 	if cfg.AllowCleartextPasswords {
 		writeDSNParam(&buf, &hasParam, "allowCleartextPasswords", "true")
+	}
+
+	if cfg.AllowFallbackToPlaintext {
+		writeDSNParam(&buf, &hasParam, "allowFallbackToPlaintext", "true")
 	}
 
 	if !cfg.AllowNativePasswords {
@@ -220,12 +310,24 @@ func (cfg *Config) FormatDSN() string {
 		writeDSNParam(&buf, &hasParam, "clientFoundRows", "true")
 	}
 
-	if col := cfg.Collation; col != defaultCollation && len(col) > 0 {
+	if charsets := cfg.charsets; len(charsets) > 0 {
+		writeDSNParam(&buf, &hasParam, "charset", strings.Join(charsets, ","))
+	}
+
+	if col := cfg.Collation; col != "" {
 		writeDSNParam(&buf, &hasParam, "collation", col)
 	}
 
 	if cfg.ColumnsWithAlias {
 		writeDSNParam(&buf, &hasParam, "columnsWithAlias", "true")
+	}
+
+	if cfg.ConnectionAttributes != "" {
+		writeDSNParam(&buf, &hasParam, "connectionAttributes", url.QueryEscape(cfg.ConnectionAttributes))
+	}
+
+	if cfg.compress {
+		writeDSNParam(&buf, &hasParam, "compress", "true")
 	}
 
 	if cfg.InterpolateParams {
@@ -242,6 +344,10 @@ func (cfg *Config) FormatDSN() string {
 
 	if cfg.ParseTime {
 		writeDSNParam(&buf, &hasParam, "parseTime", "true")
+	}
+
+	if cfg.timeTruncate > 0 {
+		writeDSNParam(&buf, &hasParam, "timeTruncate", cfg.timeTruncate.String())
 	}
 
 	if cfg.ReadTimeout > 0 {
@@ -348,7 +454,11 @@ func ParseDSN(dsn string) (cfg *Config, err error) {
 					break
 				}
 			}
-			cfg.DBName = dsn[i+1 : j]
+
+			dbname := dsn[i+1 : j]
+			if cfg.DBName, err = url.PathUnescape(dbname); err != nil {
+				return nil, fmt.Errorf("invalid dbname %q: %w", dbname, err)
+			}
 
 			break
 		}
@@ -368,14 +478,14 @@ func ParseDSN(dsn string) (cfg *Config, err error) {
 // Values must be url.QueryEscape'ed
 func parseDSNParams(cfg *Config, params string) (err error) {
 	for _, v := range strings.Split(params, "&") {
-		param := strings.SplitN(v, "=", 2)
-		if len(param) != 2 {
+		key, value, found := strings.Cut(v, "=")
+		if !found {
 			continue
 		}
 
 		// cfg params
-		switch value := param[1]; param[0] {
-		// Disable INFILE whitelist / enable all files
+		switch key {
+		// Disable INFILE allowlist / enable all files
 		case "allowAllFiles":
 			var isBool bool
 			cfg.AllowAllFiles, isBool = readBool(value)
@@ -387,6 +497,14 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 		case "allowCleartextPasswords":
 			var isBool bool
 			cfg.AllowCleartextPasswords, isBool = readBool(value)
+			if !isBool {
+				return errors.New("invalid bool value: " + value)
+			}
+
+		// Allow fallback to unencrypted connection if server does not support TLS
+		case "allowFallbackToPlaintext":
+			var isBool bool
+			cfg.AllowFallbackToPlaintext, isBool = readBool(value)
 			if !isBool {
 				return errors.New("invalid bool value: " + value)
 			}
@@ -423,10 +541,13 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 				return errors.New("invalid bool value: " + value)
 			}
 
+		// charset
+		case "charset":
+			cfg.charsets = strings.Split(value, ",")
+
 		// Collation
 		case "collation":
 			cfg.Collation = value
-			break
 
 		case "columnsWithAlias":
 			var isBool bool
@@ -437,7 +558,11 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 
 		// Compression
 		case "compress":
-			return errors.New("compression not implemented yet")
+			var isBool bool
+			cfg.compress, isBool = readBool(value)
+			if !isBool {
+				return errors.New("invalid bool value: " + value)
+			}
 
 		// Enable client side placeholder substitution
 		case "interpolateParams":
@@ -471,6 +596,13 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 			cfg.ParseTime, isBool = readBool(value)
 			if !isBool {
 				return errors.New("invalid bool value: " + value)
+			}
+
+		// time.Time truncation
+		case "timeTruncate":
+			cfg.timeTruncate, err = time.ParseDuration(value)
+			if err != nil {
+				return fmt.Errorf("invalid timeTruncate value: %v, error: %w", value, err)
 			}
 
 		// I/O read Timeout
@@ -537,13 +669,22 @@ func parseDSNParams(cfg *Config, params string) (err error) {
 			if err != nil {
 				return
 			}
+
+		// Connection attributes
+		case "connectionAttributes":
+			connectionAttributes, err := url.QueryUnescape(value)
+			if err != nil {
+				return fmt.Errorf("invalid connectionAttributes value: %v", err)
+			}
+			cfg.ConnectionAttributes = connectionAttributes
+
 		default:
 			// lazy init
 			if cfg.Params == nil {
 				cfg.Params = make(map[string]string)
 			}
 
-			if cfg.Params[param[0]], err = url.QueryUnescape(value); err != nil {
+			if cfg.Params[key], err = url.QueryUnescape(value); err != nil {
 				return
 			}
 		}

@@ -48,7 +48,8 @@ to our workflow:
 2. We run the `tag_and_upload.sh` script to build, tag, and upload
    a `boulder-tools` image for each of the `GO_VERSIONS`.
 3. We update `.github/workflows/boulder-ci.yml` to add the new image tag(s).
-4. We update `docker-compose.yml` to update the default image tag (optional).
+4. We update the remaining `.github/workflows/` yaml files that use a `GO_VERSION` matrix with the new version of Go.
+5. We update `docker-compose.yml` to update the default image tag (optional).
 
 After some time when we have spot checked the new Go release and coordinated
 a staging/prod environment upgrade with the operations team we can remove the

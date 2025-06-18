@@ -40,7 +40,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"time"
@@ -153,7 +153,7 @@ var hashToString = map[crypto.Hash]string{
 }
 
 func SampledError(log blog.Logger, sampleRate int, format string, a ...interface{}) {
-	if sampleRate > 0 && rand.Intn(sampleRate) == 0 {
+	if sampleRate > 0 && rand.IntN(sampleRate) == 0 {
 		log.Errf(format, a...)
 	}
 }
@@ -162,10 +162,10 @@ func (rs Responder) sampledError(format string, a ...interface{}) {
 	SampledError(rs.log, rs.sampleRate, format, a...)
 }
 
-// A Responder can process both GET and POST requests. The mapping from an OCSP
-// request to an OCSP response is done by the Source; the Responder simply
-// decodes the request, and passes back whatever response is provided by the
-// source.
+// ServeHTTP is a Responder that can process both GET and POST requests. The
+// mapping from an OCSP request to an OCSP response is done by the Source; the
+// Responder simply decodes the request, and passes back whatever response is
+// provided by the source.
 // The Responder will set these headers:
 //
 //	Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
@@ -184,8 +184,8 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	// We specifically ignore request.Context() because we would prefer for clients
 	// to not be able to cancel our operations in arbitrary places. Instead we
 	// start a new context, and apply timeouts in our various RPCs.
-	// TODO(go1.22?): Use context.Detach()
-	ctx := context.Background()
+	ctx := context.WithoutCancel(request.Context())
+	request = request.WithContext(ctx)
 
 	if rs.timeout != 0 {
 		var cancel func()
@@ -299,8 +299,6 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	ocspResponse, err := rs.Source.Response(ctx, ocspRequest)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			rs.sampledError("No response found for request: serial %x, request body %s",
-				ocspRequest.SerialNumber, b64Body)
 			response.Write(ocsp.UnauthorizedErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return

@@ -26,6 +26,8 @@ import (
 	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+
+	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 type rocspClient interface {
@@ -41,6 +43,9 @@ type redisSource struct {
 	cachedResponseAges prometheus.Histogram
 	clk                clock.Clock
 	liveSigningPeriod  time.Duration
+	// Error logs will be emitted at a rate of 1 in logSampleRate.
+	// If logSampleRate is 0, no logs will be emitted.
+	logSampleRate int
 	// Note: this logger is not currently used, as all audit log events are from
 	// the dbSource right now, but it should and will be used in the future.
 	log blog.Logger
@@ -55,6 +60,7 @@ func NewRedisSource(
 	clk clock.Clock,
 	stats prometheus.Registerer,
 	log blog.Logger,
+	logSampleRate int,
 ) (*redisSource, error) {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_redis_responses",
@@ -108,7 +114,9 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 			src.counter.WithLabelValues("not_found").Inc()
 		} else {
 			src.counter.WithLabelValues("lookup_error").Inc()
-			responder.SampledError(src.log, 1000, "looking for cached response: %s", err)
+			responder.SampledError(src.log, src.logSampleRate, "looking for cached response: %s", err)
+			// Proceed despite the error; when Redis is down we'd like to limp along with live signing
+			// rather than returning an error to the client.
 		}
 		return src.signAndSave(ctx, req, causeNotFound)
 	}
@@ -154,15 +162,27 @@ const (
 
 func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	resp, err := src.signer.Response(ctx, req)
-	if err != nil {
-		if errors.Is(err, responder.ErrNotFound) {
-			src.signAndSaveCounter.WithLabelValues(string(cause), "certificate_not_found").Inc()
-			return nil, responder.ErrNotFound
-		}
+	if errors.Is(err, responder.ErrNotFound) {
+		src.signAndSaveCounter.WithLabelValues(string(cause), "certificate_not_found").Inc()
+		return nil, responder.ErrNotFound
+	} else if errors.Is(err, berrors.UnknownSerial) {
+		// UnknownSerial is more interesting than NotFound, because it means we don't
+		// have a record in the `serials` table, which is kept longer-term than the
+		// `certificateStatus` table. That could mean someone is making up silly serial
+		// numbers in their requests to us, or it could mean there's site on the internet
+		// using a certificate that we don't have a record of in the `serials` table.
+		src.signAndSaveCounter.WithLabelValues(string(cause), "unknown_serial").Inc()
+		responder.SampledError(src.log, src.logSampleRate, "unknown serial: %s", core.SerialToString(req.SerialNumber))
+		return nil, responder.ErrNotFound
+	} else if err != nil {
 		src.signAndSaveCounter.WithLabelValues(string(cause), "signing_error").Inc()
 		return nil, err
 	}
 	src.signAndSaveCounter.WithLabelValues(string(cause), "signing_success").Inc()
-	go src.client.StoreResponse(context.Background(), resp.Response)
+	go func() {
+		// We don't care about the error here, because if storing the response
+		// fails, we'll just generate a new one on the next request.
+		_ = src.client.StoreResponse(context.Background(), resp.Response)
+	}()
 	return resp, nil
 }

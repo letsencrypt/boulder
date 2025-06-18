@@ -8,17 +8,18 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/probs"
 )
 
 const (
@@ -41,7 +42,7 @@ const (
 // The hostname of the preresolvedDialer is used to ensure the dial only completes
 // using the pre-resolved IP/port when used for the correct host.
 type preresolvedDialer struct {
-	ip       net.IP
+	ip       netip.Addr
 	port     int
 	hostname string
 	timeout  time.Duration
@@ -159,7 +160,7 @@ func httpTransport(df dialerFunc) *http.Transport {
 // httpValidationTarget bundles all of the information needed to make an HTTP-01
 // validation request against a target.
 type httpValidationTarget struct {
-	// the hostname being validated
+	// the host being validated
 	host string
 	// the port for the validation request
 	port int
@@ -169,14 +170,16 @@ type httpValidationTarget struct {
 	// following redirects)
 	query string
 	// all of the IP addresses available for the host
-	available []net.IP
+	available []netip.Addr
 	// the IP addresses that were tried for validation previously that were cycled
 	// out of cur by calls to nextIP()
-	tried []net.IP
+	tried []netip.Addr
 	// the IP addresses that will be drawn from by calls to nextIP() to set curIP
-	next []net.IP
+	next []netip.Addr
 	// the current IP address being used for validation (if any)
-	cur net.IP
+	cur netip.Addr
+	// the DNS resolver(s) that will attempt to fulfill the validation request
+	resolvers bdns.ResolverAddrs
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -195,34 +198,43 @@ func (vt *httpValidationTarget) nextIP() error {
 	return nil
 }
 
-// ip returns the current *net.IP for the validation target. It may return nil
-// if all possible IPs have been expended by calls to nextIP.
-func (vt *httpValidationTarget) ip() net.IP {
-	return vt.cur
-}
-
 // newHTTPValidationTarget creates a httpValidationTarget for the given host,
 // port, and path. This involves querying DNS for the IP addresses for the host.
 // An error is returned if there are no usable IP addresses or if the DNS
 // lookups fail.
 func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	ctx context.Context,
-	host string,
+	ident identifier.ACMEIdentifier,
 	port int,
 	path string,
 	query string) (*httpValidationTarget, error) {
-	// Resolve IP addresses for the hostname
-	addrs, err := va.getAddrs(ctx, host)
-	if err != nil {
-		return nil, err
+	var addrs []netip.Addr
+	var resolvers bdns.ResolverAddrs
+	switch ident.Type {
+	case identifier.TypeDNS:
+		// Resolve IP addresses for the identifier
+		dnsAddrs, dnsResolvers, err := va.getAddrs(ctx, ident.Value)
+		if err != nil {
+			return nil, err
+		}
+		addrs, resolvers = dnsAddrs, dnsResolvers
+	case identifier.TypeIP:
+		netIP, err := netip.ParseAddr(ident.Value)
+		if err != nil {
+			return nil, fmt.Errorf("can't parse IP address %q: %s", ident.Value, err)
+		}
+		addrs = []netip.Addr{netIP}
+	default:
+		return nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
 	target := &httpValidationTarget{
-		host:      host,
+		host:      ident.Value,
 		port:      port,
 		path:      path,
 		query:     query,
 		available: addrs,
+		resolvers: resolvers,
 	}
 
 	// Separate the addresses into the available v4 and v6 addresses
@@ -233,19 +245,19 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	if !hasV6Addrs && !hasV4Addrs {
 		// If there are no v6 addrs and no v4addrs there was a bug with getAddrs or
 		// availableAddresses and we need to return an error.
-		return nil, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
+		return nil, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", ident.Value)
 	} else if !hasV6Addrs && hasV4Addrs {
 		// If there are no v6 addrs and there are v4 addrs then use the first v4
 		// address. There's no fallback address.
-		target.next = []net.IP{v4Addrs[0]}
+		target.next = []netip.Addr{v4Addrs[0]}
 	} else if hasV6Addrs && hasV4Addrs {
 		// If there are both v6 addrs and v4 addrs then use the first v6 address and
 		// fallback with the first v4 address.
-		target.next = []net.IP{v6Addrs[0], v4Addrs[0]}
+		target.next = []netip.Addr{v6Addrs[0], v4Addrs[0]}
 	} else if hasV6Addrs && !hasV4Addrs {
 		// If there are just v6 addrs then use the first v6 address. There's no
 		// fallback address.
-		target.next = []net.IP{v6Addrs[0]}
+		target.next = []netip.Addr{v6Addrs[0]}
 	}
 
 	// Advance the target using nextIP to populate the cur IP before returning
@@ -253,45 +265,47 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	return target, nil
 }
 
-// extractRequestTarget extracts the hostname and port specified in the provided
+// extractRequestTarget extracts the host and port specified in the provided
 // HTTP redirect request. If the request's URL's protocol schema is not HTTP or
 // HTTPS an error is returned. If an explicit port is specified in the request's
-// URL and it isn't the VA's HTTP or HTTPS port, an error is returned. If the
-// request's URL's Host is a bare IPv4 or IPv6 address and not a domain name an
-// error is returned.
-func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (string, int, error) {
+// URL and it isn't the VA's HTTP or HTTPS port, an error is returned.
+func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (identifier.ACMEIdentifier, int, error) {
 	// A nil request is certainly not a valid redirect and has no port to extract.
 	if req == nil {
-		return "", 0, fmt.Errorf("redirect HTTP request was nil")
+		return identifier.ACMEIdentifier{}, 0, fmt.Errorf("redirect HTTP request was nil")
 	}
 
 	reqScheme := req.URL.Scheme
 
 	// The redirect request must use HTTP or HTTPs protocol schemes regardless of the port..
 	if reqScheme != "http" && reqScheme != "https" {
-		return "", 0, berrors.ConnectionFailureError(
+		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
 			"Invalid protocol scheme in redirect target. "+
 				`Only "http" and "https" protocol schemes are supported, not %q`, reqScheme)
 	}
 
-	// Try and split an explicit port number from the request URL host. If there is
-	// one we need to make sure its a valid port. If there isn't one we need to
-	// pick the port based on the reqScheme default port.
-	reqHost := req.URL.Host
+	// Try to parse an explicit port number from the request URL host. If there
+	// is one, we need to make sure its a valid port. If there isn't one we need
+	// to pick the port based on the reqScheme default port.
+	reqHost := req.URL.Hostname()
 	var reqPort int
-	if h, p, err := net.SplitHostPort(reqHost); err == nil {
-		reqHost = h
-		reqPort, err = strconv.Atoi(p)
+	// URL.Port() will return "" for an invalid port, not just an empty port. To
+	// reject invalid ports, we rely on the calling function having used
+	// URL.Parse(), which does enforce validity.
+	if req.URL.Port() != "" {
+		parsedPort, err := strconv.Atoi(req.URL.Port())
 		if err != nil {
-			return "", 0, err
+			return identifier.ACMEIdentifier{}, 0, err
 		}
 
 		// The explicit port must match the VA's configured HTTP or HTTPS port.
-		if reqPort != va.httpPort && reqPort != va.httpsPort {
-			return "", 0, berrors.ConnectionFailureError(
+		if parsedPort != va.httpPort && parsedPort != va.httpsPort {
+			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
 				"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
-				va.httpPort, va.httpsPort, reqPort)
+				va.httpPort, va.httpsPort, parsedPort)
 		}
+
+		reqPort = parsedPort
 	} else if reqScheme == "http" {
 		reqPort = va.httpPort
 	} else if reqScheme == "https" {
@@ -299,17 +313,11 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	} else {
 		// This shouldn't happen but defensively return an internal server error in
 		// case it does.
-		return "", 0, fmt.Errorf("unable to determine redirect HTTP request port")
+		return identifier.ACMEIdentifier{}, 0, fmt.Errorf("unable to determine redirect HTTP request port")
 	}
 
 	if reqHost == "" {
-		return "", 0, berrors.ConnectionFailureError("Invalid empty hostname in redirect target")
-	}
-
-	// Check that the request host isn't a bare IP address. We only follow
-	// redirects to hostnames.
-	if net.ParseIP(reqHost) != nil {
-		return "", 0, berrors.ConnectionFailureError("Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
+		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid empty host in redirect target")
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -322,17 +330,26 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// This happens frequently enough we want to return a distinct error message
 	// for this case by detecting the reqHost ending in ".well-known".
 	if strings.HasSuffix(reqHost, ".well-known") {
-		return "", 0, berrors.ConnectionFailureError(
+		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
 			"Invalid host in redirect target %q. Check webserver config for missing '/' in redirect target.",
 			reqHost,
 		)
 	}
 
-	if _, err := iana.ExtractSuffix(reqHost); err != nil {
-		return "", 0, berrors.ConnectionFailureError("Invalid hostname in redirect target, must end in IANA registered TLD")
+	reqIP, err := netip.ParseAddr(reqHost)
+	if err == nil {
+		err := va.isReservedIPFunc(reqIP)
+		if err != nil {
+			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: %s", err)
+		}
+		return identifier.NewIP(reqIP), reqPort, nil
 	}
 
-	return reqHost, reqPort, nil
+	if _, err := iana.ExtractSuffix(reqHost); err != nil {
+		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target, must end in IANA registered TLD")
+	}
+
+	return identifier.NewDNS(reqHost), reqPort, nil
 }
 
 // setupHTTPValidation sets up a preresolvedDialer and a validation record for
@@ -362,17 +379,20 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
+		ResolverAddrs:     target.resolvers,
 	}
 
 	// Get the target IP to build a preresolved dialer with
-	targetIP := target.ip()
-	if targetIP == nil {
+	targetIP := target.cur
+	if (targetIP == netip.Addr{}) {
 		return nil,
 			record,
 			fmt.Errorf(
 				"host %q has no IP addresses remaining to use",
 				target.host)
 	}
+	// TODO(#8041): This could be a good place for a backstop check for reserved IP
+	// addresses.
 	record.AddressUsed = targetIP
 
 	dialer := &preresolvedDialer{
@@ -384,25 +404,10 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	return dialer, record, nil
 }
 
-// fetchHTTP invokes processHTTPValidation and if an error result is
-// returned, converts it to a problem. Otherwise the results from
-// processHTTPValidation are returned.
-func (va *ValidationAuthorityImpl) fetchHTTP(
-	ctx context.Context,
-	host string,
-	path string) ([]byte, []core.ValidationRecord, *probs.ProblemDetails) {
-	body, records, err := va.processHTTPValidation(ctx, host, path)
-	if err != nil {
-		// Use detailedError to convert the error into a problem
-		return body, records, detailedError(err)
-	}
-	return body, records, nil
-}
-
 // fallbackErr returns true only for net.OpError instances where the op is equal
 // to "dial", or url.Error instances wrapping such an error. fallbackErr returns
 // false for all other errors. By policy, only dial errors (not read or write
-// errors) are eligble for fallback from an IPv6 to an IPv4 address.
+// errors) are eligible for fallback from an IPv6 to an IPv4 address.
 func fallbackErr(err error) bool {
 	// Err shouldn't ever be nil if we're considering it for fallback
 	if err == nil {
@@ -420,20 +425,25 @@ func fallbackErr(err error) bool {
 // a non-nil error and potentially some ValidationRecords are returned.
 func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
-	host string,
+	ident identifier.ACMEIdentifier,
 	path string) ([]byte, []core.ValidationRecord, error) {
-
 	// Create a target for the host, port and path with no query parameters
-	target, err := va.newHTTPValidationTarget(ctx, host, va.httpPort, path, "")
+	target, err := va.newHTTPValidationTarget(ctx, ident, va.httpPort, path, "")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// newIPError implements the error interface. It wraps an error and the IP
-	// of the remote host in an IPError so we can display the IP in the problem
-	// details returned to the client.
-	newIPError := func(target *httpValidationTarget, err error) error {
-		return ipError{ip: target.cur, err: err}
+	// When constructing a URL, bare IPv6 addresses must be enclosed in square
+	// brackets. Otherwise, a colon may be interpreted as a port separator.
+	host := ident.Value
+	if ident.Type == identifier.TypeIP {
+		netipHost, err := netip.ParseAddr(host)
+		if err != nil {
+			return nil, nil, fmt.Errorf("couldn't parse IP address from identifier")
+		}
+		if !netipHost.Is4() {
+			host = "[" + host + "]"
+		}
 	}
 
 	// Create an initial GET Request
@@ -444,7 +454,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
 	if err != nil {
-		return nil, nil, newIPError(target, err)
+		return nil, nil, newIPError(target.cur, err)
 	}
 
 	// Add a context to the request. Shave some time from the
@@ -481,7 +491,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Set up the initial validation request and a base validation record
 	dialer, baseRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
 	if err != nil {
-		return nil, []core.ValidationRecord{}, newIPError(target, err)
+		return nil, []core.ValidationRecord{}, newIPError(target.cur, err)
 	}
 
 	// Build a transport for this validation that will use the preresolvedDialer's
@@ -596,16 +606,17 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// have a fallback address to use and must return the original error.
 		advanceTargetIPErr := target.nextIP()
 		if advanceTargetIPErr != nil {
-			return nil, records, newIPError(target, err)
+			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 		}
 
 		// setup another validation to retry the target with the new IP and append
 		// the retry record.
 		retryDialer, retryRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
-		records = append(records, retryRecord)
 		if err != nil {
-			return nil, records, newIPError(target, err)
+			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 		}
+
+		records = append(records, retryRecord)
 		va.metrics.http01Fallbacks.Inc()
 		// Replace the transport's dialer with the preresolvedDialer for the retry
 		// host.
@@ -616,15 +627,15 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// If the retry still failed there isn't anything more to do, return the
 		// error immediately.
 		if err != nil {
-			return nil, records, newIPError(target, err)
+			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 		}
 	} else if err != nil {
 		// if the error was not a fallbackErr then return immediately.
-		return nil, records, newIPError(target, err)
+		return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 	}
 
 	if httpResponse.StatusCode != 200 {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %d",
+		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %d",
 			records[len(records)-1].URL, httpResponse.StatusCode))
 	}
 
@@ -636,37 +647,37 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		err = closeErr
 	}
 	if err != nil {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
+		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
 	}
 
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
+		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %q",
 			records[len(records)-1].URL, body))
 	}
+
 	return body, records, nil
 }
 
-func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if ident.Type != identifier.DNS {
-		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
-		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
+func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
+	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
+		va.log.Info(fmt.Sprintf("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident))
+		return nil, berrors.MalformedError("Identifier type for HTTP-01 challenge was not DNS or IP")
 	}
 
 	// Perform the fetch
-	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, prob := va.fetchHTTP(ctx, ident.Value, "/"+path)
-	if prob != nil {
-		return validationRecords, prob
+	path := fmt.Sprintf(".well-known/acme-challenge/%s", token)
+	body, validationRecords, err := va.processHTTPValidation(ctx, ident, "/"+path)
+	if err != nil {
+		return validationRecords, err
 	}
-
 	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
-	if payload != challenge.ProvidedKeyAuthorization {
-		problem := probs.Unauthorized(fmt.Sprintf("The key authorization file from the server did not match this challenge %q != %q",
-			challenge.ProvidedKeyAuthorization, payload))
-		va.log.Infof("%s for %s", problem.Detail, ident)
+	if payload != keyAuthorization {
+		problem := berrors.UnauthorizedError("The key authorization file from the server did not match this challenge. Expected %q (got %q)",
+			keyAuthorization, payload)
+		va.log.Infof("%s for %s", problem, ident)
 		return validationRecords, problem
 	}
 

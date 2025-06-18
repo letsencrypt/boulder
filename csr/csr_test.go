@@ -9,6 +9,8 @@ import (
 	"encoding/asn1"
 	"errors"
 	"net"
+	"net/netip"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -20,19 +22,13 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var testingPolicy = &goodkey.KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
-
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
-	return
+func (pa *mockPA) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
+	return []core.AcmeChallenge{}, nil
 }
 
-func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
+func (pa *mockPA) WillingToIssue(idents identifier.ACMEIdentifiers) error {
 	for _, ident := range idents {
 		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
 			return errors.New("policy forbids issuing for identifier")
@@ -45,7 +41,7 @@ func (pa *mockPA) ChallengeTypeEnabled(t core.AcmeChallenge) bool {
 	return true
 }
 
-func (pa *mockPA) CheckAuthz(a *core.Authorization) error {
+func (pa *mockPA) CheckAuthzChallenges(a *core.Authorization) error {
 	return nil
 }
 
@@ -74,118 +70,140 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithIPAddress := new(x509.CertificateRequest)
 	*signedReqWithIPAddress = *signedReq
 	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
+	signedReqWithURI := new(x509.CertificateRequest)
+	*signedReqWithURI = *signedReq
+	testURI, _ := url.ParseRequestURI("https://example.com/")
+	signedReqWithURI.URIs = []*url.URL{testURI}
 	signedReqWithAllLongSANs := new(x509.CertificateRequest)
 	*signedReqWithAllLongSANs = *signedReq
 	signedReqWithAllLongSANs.DNSNames = []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"}
 
+	keyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "creating test keypolicy")
+
 	cases := []struct {
 		csr           *x509.CertificateRequest
 		maxNames      int
-		keyPolicy     *goodkey.KeyPolicy
 		pa            core.PolicyAuthority
 		expectedError error
 	}{
 		{
 			&x509.CertificateRequest{},
 			100,
-			testingPolicy,
 			&mockPA{},
 			invalidPubKey,
 		},
 		{
 			&x509.CertificateRequest{PublicKey: &private.PublicKey},
 			100,
-			testingPolicy,
 			&mockPA{},
 			unsupportedSigAlg,
 		},
 		{
 			brokenSignedReq,
 			100,
-			testingPolicy,
 			&mockPA{},
 			invalidSig,
 		},
 		{
 			signedReq,
 			100,
-			testingPolicy,
 			&mockPA{},
-			invalidNoDNS,
+			invalidNoIdent,
 		},
 		{
 			signedReqWithLongCN,
 			100,
-			testingPolicy,
 			&mockPA{},
-			berrors.BadCSRError("CN was longer than %d bytes", maxCNLength),
+			nil,
 		},
 		{
 			signedReqWithHosts,
 			1,
-			testingPolicy,
 			&mockPA{},
-			berrors.BadCSRError("CSR contains more than 1 DNS names"),
+			berrors.BadCSRError("CSR contains more than 1 identifiers"),
 		},
 		{
 			signedReqWithBadNames,
 			100,
-			testingPolicy,
 			&mockPA{},
 			errors.New("policy forbids issuing for identifier"),
 		},
 		{
 			signedReqWithEmailAddress,
 			100,
-			testingPolicy,
 			&mockPA{},
 			invalidEmailPresent,
 		},
 		{
 			signedReqWithIPAddress,
 			100,
-			testingPolicy,
 			&mockPA{},
-			invalidIPPresent,
+			nil,
+		},
+		{
+			signedReqWithURI,
+			100,
+			&mockPA{},
+			invalidURIPresent,
 		},
 		{
 			signedReqWithAllLongSANs,
 			100,
-			testingPolicy,
 			&mockPA{},
-			invalidAllSANTooLong,
+			nil,
 		},
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(context.Background(), c.csr, c.maxNames, c.keyPolicy, c.pa)
+		err := VerifyCSR(context.Background(), c.csr, c.maxNames, &keyPolicy, c.pa)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }
 
-func TestNamesFromCSR(t *testing.T) {
+func TestCNFromCSR(t *testing.T) {
 	tooLongString := strings.Repeat("a", maxCNLength+1)
 
 	cases := []struct {
-		name          string
-		csr           *x509.CertificateRequest
-		expectedCN    string
-		expectedNames []string
+		name       string
+		csr        *x509.CertificateRequest
+		expectedCN string
 	}{
 		{
 			"no explicit CN",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
 			"a.com",
-			[]string{"a.com"},
 		},
 		{
 			"explicit uppercase CN",
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
 			"a.com",
-			[]string{"a.com"},
 		},
 		{
-			"no explicit CN, too long leading SANs",
+			"no explicit CN, uppercase SAN",
+			&x509.CertificateRequest{DNSNames: []string{"A.com"}},
+			"a.com",
+		},
+		{
+			"duplicate SANs",
+			&x509.CertificateRequest{DNSNames: []string{"b.com", "b.com", "a.com", "a.com"}},
+			"b.com",
+		},
+		{
+			"explicit CN not found in SANs",
+			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "a.com"}, DNSNames: []string{"b.com"}},
+			"a.com",
+		},
+		{
+			"no explicit CN, all SANs too long to be the CN",
+			&x509.CertificateRequest{DNSNames: []string{
+				tooLongString + ".a.com",
+				tooLongString + ".b.com",
+			}},
+			"",
+		},
+		{
+			"no explicit CN, leading SANs too long to be the CN",
 			&x509.CertificateRequest{DNSNames: []string{
 				tooLongString + ".a.com",
 				tooLongString + ".b.com",
@@ -193,10 +211,9 @@ func TestNamesFromCSR(t *testing.T) {
 				"b.com",
 			}},
 			"a.com",
-			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
 		},
 		{
-			"explicit CN, too long leading SANs",
+			"explicit CN, leading SANs too long to be the CN",
 			&x509.CertificateRequest{
 				Subject: pkix.Name{CommonName: "A.com"},
 				DNSNames: []string{
@@ -206,73 +223,52 @@ func TestNamesFromCSR(t *testing.T) {
 					"b.com",
 				}},
 			"a.com",
-			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			names := NamesFromCSR(tc.csr)
-			test.AssertEquals(t, names.CN, tc.expectedCN)
-			test.AssertDeepEquals(t, names.SANs, tc.expectedNames)
-		})
-	}
-}
-
-func TestNamesFromCSROmitCommonName(t *testing.T) {
-	features.Set(map[string]bool{features.SetCommonName.String(): false})
-	defer features.Reset()
-
-	tooLongString := strings.Repeat("a", maxCNLength+1)
-
-	cases := []struct {
-		name          string
-		csr           *x509.CertificateRequest
-		expectedNames []string
-	}{
-		{
-			"no explicit CN",
-			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			[]string{"a.com"},
 		},
 		{
-			"explicit uppercase CN",
-			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
-			[]string{"a.com"},
-		},
-		{
-			"no explicit CN, too long leading SANs",
-			&x509.CertificateRequest{DNSNames: []string{
-				tooLongString + ".a.com",
-				tooLongString + ".b.com",
-				"a.com",
-				"b.com",
-			}},
-			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
-		},
-		{
-			"explicit CN, too long leading SANs",
+			"explicit CN that's too long to be the CN",
 			&x509.CertificateRequest{
-				Subject: pkix.Name{CommonName: "A.com"},
+				Subject: pkix.Name{CommonName: tooLongString + ".a.com"},
+			},
+			"",
+		},
+		{
+			"explicit CN that's too long to be the CN, with a SAN",
+			&x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: tooLongString + ".a.com"},
 				DNSNames: []string{
-					tooLongString + ".a.com",
-					tooLongString + ".b.com",
-					"a.com",
 					"b.com",
 				}},
-			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
+			"",
+		},
+		{
+			"explicit CN that's an IP",
+			&x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: "127.0.0.1"},
+			},
+			"",
+		},
+		{
+			"no CN, only IP SANs",
+			&x509.CertificateRequest{
+				IPAddresses: []net.IP{
+					netip.MustParseAddr("127.0.0.1").AsSlice(),
+				},
+			},
+			"",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			names := NamesFromCSR(tc.csr)
-			test.AssertEquals(t, names.CN, "")
-			test.AssertDeepEquals(t, names.SANs, tc.expectedNames)
+			test.AssertEquals(t, CNFromCSR(tc.csr), tc.expectedCN)
 		})
 	}
 }
 
 func TestSHA1Deprecation(t *testing.T) {
 	features.Reset()
+
+	keyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "creating test keypolicy")
 
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -289,7 +285,7 @@ func TestSHA1Deprecation(t *testing.T) {
 		csr, err := x509.ParseCertificateRequest(csrBytes)
 		test.AssertNotError(t, err, "parsing test CSR")
 
-		return VerifyCSR(context.Background(), csr, 100, testingPolicy, &mockPA{})
+		return VerifyCSR(context.Background(), csr, 100, &keyPolicy, &mockPA{})
 	}
 
 	err = makeAndVerifyCsr(x509.SHA256WithRSA)

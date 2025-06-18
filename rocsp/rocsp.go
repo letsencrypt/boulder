@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+
+	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -26,21 +26,8 @@ type ROClient struct {
 
 // NewReadingClient creates a read-only client. The timeout applies to all
 // requests, though a shorter timeout can be applied on a per-request basis
-// using context.Context. rdb must be non-nil and calls to rdb.Options().Addrs
-// must return at least one entry.
+// using context.Context. rdb must be non-nil.
 func NewReadingClient(rdb *redis.Ring, timeout time.Duration, clk clock.Clock, stats prometheus.Registerer) *ROClient {
-	if len(rdb.Options().Addrs) == 0 {
-		return nil
-	}
-	var addrs []string
-	for addr := range rdb.Options().Addrs {
-		addrs = append(addrs, addr)
-	}
-	labels := prometheus.Labels{
-		"addresses": strings.Join(addrs, ", "),
-		"user":      rdb.Options().Username,
-	}
-	stats.MustRegister(newMetricsCollector(rdb, labels))
 	getLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "rocsp_get_latency",
@@ -60,10 +47,19 @@ func NewReadingClient(rdb *redis.Ring, timeout time.Duration, clk clock.Clock, s
 	}
 }
 
+// Ping checks that each shard of the *redis.Ring is reachable using the PING
+// command. It returns an error if any shard is unreachable and nil otherwise.
 func (c *ROClient) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	return c.rdb.Ping(ctx).Err()
+
+	err := c.rdb.ForEachShard(ctx, func(ctx context.Context, shard *redis.Client) error {
+		return shard.Ping(ctx).Err()
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // RWClient represents a Redis client that can both read and write.

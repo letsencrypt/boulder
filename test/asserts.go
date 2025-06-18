@@ -118,7 +118,7 @@ func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
 	t.Helper()
 	if !reflect.DeepEqual(one, two) {
-		t.Fatalf("[%+v] !(deep)= [%+v]", one, two)
+		t.Fatalf("[%#v] !(deep)= [%#v]", one, two)
 	}
 }
 
@@ -147,7 +147,7 @@ func AssertUnmarshaledEquals(t *testing.T, got, expected string) {
 	err = json.Unmarshal([]byte(expected), &expectedMap)
 	AssertNotError(t, err, "Could not unmarshal 'expected'")
 	if len(gotMap) != len(expectedMap) {
-		t.Errorf("Expected had %d keys, got had %d", len(gotMap), len(expectedMap))
+		t.Errorf("Expected %d keys, but got %d", len(expectedMap), len(gotMap))
 	}
 	for k, v := range expectedMap {
 		if !reflect.DeepEqual(v, gotMap[k]) {
@@ -247,5 +247,7 @@ loop:
 			total += float64(iom.Histogram.GetSampleCount())
 		}
 	}
-	AssertEquals(t, total, expected)
+	if total != expected {
+		t.Errorf("metric with labels %+v: got %g, want %g", l, total, expected)
+	}
 }

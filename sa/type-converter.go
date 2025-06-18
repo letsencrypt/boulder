@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/go-gorp/gorp/v3"
-	jose "gopkg.in/go-jose/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/letsencrypt/borp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 )
 
-// BoulderTypeConverter is used by Gorp for storing objects in DB.
+// BoulderTypeConverter is used by borp for storing objects in DB.
 type BoulderTypeConverter struct{}
 
 // ToDb converts a Boulder object to one suitable for the DB representation.
@@ -34,13 +36,25 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 		return string(t), nil
 	case core.OCSPStatus:
 		return string(t), nil
+	// Time types get truncated to the nearest second. Given our DB schema,
+	// only seconds are stored anyhow. Avoiding sending queries with sub-second
+	// precision may help the query planner avoid pathological cases when
+	// querying against indexes on time fields (#5437).
+	case time.Time:
+		return t.Truncate(time.Second), nil
+	case *time.Time:
+		if t == nil {
+			return nil, nil
+		}
+		newT := t.Truncate(time.Second)
+		return &newT, nil
 	default:
 		return val, nil
 	}
 }
 
 // FromDb converts a DB representation back into a Boulder object.
-func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, bool) {
+func (tc BoulderTypeConverter) FromDb(target interface{}) (borp.CustomScanner, bool) {
 	switch target.(type) {
 	case *identifier.ACMEIdentifier, *[]core.Challenge, *[]string, *[][]int:
 		binder := func(holder, target interface{}) error {
@@ -58,7 +72,7 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			}
 			return nil
 		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
+		return borp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *jose.JSONWebKey:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
@@ -82,7 +96,7 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			}
 			return nil
 		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
+		return borp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
@@ -97,7 +111,7 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			*st = core.AcmeStatus(*s)
 			return nil
 		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
+		return borp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.OCSPStatus:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
@@ -112,8 +126,8 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			*st = core.OCSPStatus(*s)
 			return nil
 		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
+		return borp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	default:
-		return gorp.CustomScanner{}, false
+		return borp.CustomScanner{}, false
 	}
 }

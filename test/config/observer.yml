@@ -1,5 +1,4 @@
 --- 
-debugaddr: :8040
 buckets: [.001, .002, .005, .01, .02, .05, .1, .2, .5, 1, 2, 5, 10]
 syslog:
   stdoutlevel: 6
@@ -38,6 +37,7 @@ monitors:
     settings: 
       url: https://letsencrypt.org
       rcodes: [200]
+      useragent: "letsencrypt/boulder-observer-http-client"
   -
     period: 5s
     kind: DNS
@@ -89,3 +89,9 @@ monitors:
     settings: 
       url: http://letsencrypt.org/foo
       rcodes: [200, 404]
+      useragent: "letsencrypt/boulder-observer-http-client"
+  -
+    period: 10s
+    kind: TCP
+    settings:
+      hostport: acme-v02.api.letsencrypt.org:443

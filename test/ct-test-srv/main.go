@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strings"
@@ -161,7 +161,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 	is.submissions[hostnames]++
 	is.Unlock()
 
-	if is.flakinessRate != 0 && rand.Intn(100) < is.flakinessRate {
+	if is.flakinessRate != 0 && rand.IntN(100) < is.flakinessRate {
 		time.Sleep(10 * time.Second)
 	}
 
@@ -228,16 +228,13 @@ func runPersonality(p Personality) {
 	m.HandleFunc("/ct/v1/add-chain", is.addChain)
 	m.HandleFunc("/add-reject-host", is.addRejectHost)
 	m.HandleFunc("/get-rejections", is.getRejections)
-	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
-	// because this is test-only code.
-	////nolint:gosec
-	srv := &http.Server{
+	srv := &http.Server{ //nolint: gosec // No ReadHeaderTimeout is fine for test-only code.
 		Addr:    p.Addr,
 		Handler: m,
 	}
 	logID := sha256.Sum256(pubKeyBytes)
-	log.Printf("ct-test-srv on %s with pubkey %s and log ID %s", p.Addr,
-		base64.StdEncoding.EncodeToString(pubKeyBytes), base64.StdEncoding.EncodeToString(logID[:]))
+	log.Printf("ct-test-srv on %s with pubkey: %s, log ID: %s, flakiness: %d%%", p.Addr,
+		base64.StdEncoding.EncodeToString(pubKeyBytes), base64.StdEncoding.EncodeToString(logID[:]), p.FlakinessRate)
 	log.Fatal(srv.ListenAndServe())
 }
 
@@ -257,5 +254,5 @@ func main() {
 	for _, p := range c.Personalities {
 		go runPersonality(p)
 	}
-	cmd.CatchSignals(nil, nil)
+	cmd.WaitForSignal()
 }

@@ -1,75 +1,70 @@
 package ca
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509/pkix"
-	"encoding/asn1"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
-	"time"
+
+	"google.golang.org/grpc"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bcrl "github.com/letsencrypt/boulder/crl"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 type crlImpl struct {
-	capb.UnimplementedCRLGeneratorServer
-	issuers   map[issuance.IssuerNameID]*issuance.Issuer
-	lifetime  time.Duration
-	idpBase   string
+	capb.UnsafeCRLGeneratorServer
+	issuers   map[issuance.NameID]*issuance.Issuer
+	profile   *issuance.CRLProfile
 	maxLogLen int
 	log       blog.Logger
+	metrics   *caMetrics
 }
 
-// NewCRLImpt returns a new object which fulfils the ca.proto CRLGenerator
+var _ capb.CRLGeneratorServer = (*crlImpl)(nil)
+
+// NewCRLImpl returns a new object which fulfils the ca.proto CRLGenerator
 // interface. It uses the list of issuers to determine what issuers it can
 // issue CRLs from. lifetime sets the validity period (inclusive) of the
-// resulting CRLs. idpBase is the base URL from which IssuingDistributionPoint
-// URIs will constructed; it must use the http:// scheme.
-func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, idpBase string, maxLogLen int, logger blog.Logger) (*crlImpl, error) {
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
+// resulting CRLs.
+func NewCRLImpl(
+	issuers []*issuance.Issuer,
+	profileConfig issuance.CRLProfileConfig,
+	maxLogLen int,
+	logger blog.Logger,
+	metrics *caMetrics,
+) (*crlImpl, error) {
+	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
-		issuersByNameID[issuer.Cert.NameID()] = issuer
+		issuersByNameID[issuer.NameID()] = issuer
 	}
 
-	if lifetime == 0 {
-		logger.Warningf("got zero for crl lifetime; setting to default 9 days")
-		lifetime = 9 * 24 * time.Hour
-	} else if lifetime >= 10*24*time.Hour {
-		return nil, fmt.Errorf("crl lifetime cannot be more than 10 days, got %q", lifetime)
-	} else if lifetime <= 0*time.Hour {
-		return nil, fmt.Errorf("crl lifetime must be positive, got %q", lifetime)
-	}
-
-	if !strings.HasPrefix(idpBase, "http://") {
-		return nil, fmt.Errorf("issuingDistributionPoint base URI must use http:// scheme, got %q", idpBase)
-	}
-	if strings.HasSuffix(idpBase, "/") {
-		return nil, fmt.Errorf("issuingDistributionPoint base URI must not end with a slash, got %q", idpBase)
+	profile, err := issuance.NewCRLProfile(profileConfig)
+	if err != nil {
+		return nil, fmt.Errorf("loading CRL profile: %w", err)
 	}
 
 	return &crlImpl{
 		issuers:   issuersByNameID,
-		lifetime:  lifetime,
-		idpBase:   idpBase,
+		profile:   profile,
 		maxLogLen: maxLogLen,
 		log:       logger,
+		metrics:   metrics,
 	}, nil
 }
 
-func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
+func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLRequest, capb.GenerateCRLResponse]) error {
 	var issuer *issuance.Issuer
-	var template *crl_x509.RevocationList
-	var shard int64
-	rcs := make([]crl_x509.RevokedCertificate, 0)
+	var req *issuance.CRLRequest
+	rcs := make([]x509.RevocationListEntry, 0)
 
 	for {
 		in, err := stream.Recv()
@@ -82,22 +77,20 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 		switch payload := in.Payload.(type) {
 		case *capb.GenerateCRLRequest_Metadata:
-			if template != nil {
+			if req != nil {
 				return errors.New("got more than one metadata message")
 			}
 
-			template, err = ci.metadataToTemplate(payload.Metadata)
+			req, err = ci.metadataToRequest(payload.Metadata)
 			if err != nil {
 				return err
 			}
 
 			var ok bool
-			issuer, ok = ci.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
+			issuer, ok = ci.issuers[issuance.NameID(payload.Metadata.IssuerNameID)]
 			if !ok {
 				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerNameID)
 			}
-
-			shard = payload.Metadata.ShardIdx
 
 		case *capb.GenerateCRLRequest_Entry:
 			rc, err := ci.entryToRevokedCertificate(payload.Entry)
@@ -112,37 +105,26 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		}
 	}
 
-	if template == nil {
+	if req == nil {
 		return errors.New("no crl metadata received")
 	}
 
-	// Add the Issuing Distribution Point extension.
-	idp, err := makeIDPExt(ci.idpBase, issuer.Cert.NameID(), shard)
-	if err != nil {
-		return fmt.Errorf("creating IDP extension: %w", err)
-	}
-	template.ExtraExtensions = append(template.ExtraExtensions, *idp)
-
 	// Compute a unique ID for this issuer-number-shard combo, to tie together all
 	// the audit log lines related to its issuance.
-	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.Cert.NameID()) + template.Number.String() + fmt.Sprintf("%d", shard))
+	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.NameID()) + req.Number.String() + fmt.Sprintf("%d", req.Shard))
 	ci.log.AuditInfof(
-		"Signing CRL: logID=[%s] issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-		logID, issuer.Cert.Subject.CommonName, template.Number.String(), shard, template.ThisUpdate, template.NextUpdate, len(rcs),
+		"Signing CRL: logID=[%s] issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] numEntries=[%d]",
+		logID, issuer.Cert.Subject.CommonName, req.Number.String(), req.Shard, req.ThisUpdate, len(rcs),
 	)
 
 	if len(rcs) > 0 {
 		builder := strings.Builder{}
-		for i := 0; i < len(rcs); i += 1 {
+		for i := range len(rcs) {
 			if builder.Len() == 0 {
 				fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
 			}
 
-			reason := 0
-			if rcs[i].ReasonCode != nil {
-				reason = *rcs[i].ReasonCode
-			}
-			fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
+			fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
 
 			if builder.Len() >= ci.maxLogLen {
 				fmt.Fprint(&builder, "]")
@@ -154,22 +136,14 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		ci.log.AuditInfo(builder.String())
 	}
 
-	template.RevokedCertificates = rcs
+	req.Entries = rcs
 
-	err = issuer.Linter.CheckCRL(template)
+	crlBytes, err := issuer.IssueCRL(ci.profile, req)
 	if err != nil {
-		return err
-	}
-
-	crlBytes, err := crl_x509.CreateRevocationList(
-		rand.Reader,
-		template,
-		issuer.Cert.Certificate,
-		issuer.Signer,
-	)
-	if err != nil {
+		ci.metrics.noteSignError(err)
 		return fmt.Errorf("signing crl: %w", err)
 	}
+	ci.metrics.signatureCount.With(prometheus.Labels{"purpose": "crl", "issuer": issuer.Name()}).Inc()
 
 	hash := sha256.Sum256(crlBytes)
 	ci.log.AuditInfof(
@@ -196,88 +170,34 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	return nil
 }
 
-func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.RevocationList, error) {
-	if meta.IssuerNameID == 0 || meta.ThisUpdate == 0 {
+func (ci *crlImpl) metadataToRequest(meta *capb.CRLMetadata) (*issuance.CRLRequest, error) {
+	if core.IsAnyNilOrZero(meta.IssuerNameID, meta.ThisUpdate, meta.ShardIdx) {
 		return nil, errors.New("got incomplete metadata message")
 	}
-	thisUpdate := time.Unix(0, meta.ThisUpdate)
+	thisUpdate := meta.ThisUpdate.AsTime()
 	number := bcrl.Number(thisUpdate)
 
-	return &crl_x509.RevocationList{
+	return &issuance.CRLRequest{
 		Number:     number,
+		Shard:      meta.ShardIdx,
 		ThisUpdate: thisUpdate,
-		NextUpdate: thisUpdate.Add(-time.Second).Add(ci.lifetime),
 	}, nil
 }
 
-func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*crl_x509.RevokedCertificate, error) {
+func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*x509.RevocationListEntry, error) {
 	serial, err := core.StringToSerial(entry.Serial)
 	if err != nil {
 		return nil, err
 	}
 
-	if entry.RevokedAt == 0 {
+	if core.IsAnyNilOrZero(entry.RevokedAt) {
 		return nil, errors.New("got empty or zero revocation timestamp")
 	}
-	revokedAt := time.Unix(0, entry.RevokedAt)
+	revokedAt := entry.RevokedAt.AsTime()
 
-	var reason *int
-	if entry.Reason != 0 {
-		reason = new(int)
-		*reason = int(entry.Reason)
-	}
-
-	return &crl_x509.RevokedCertificate{
+	return &x509.RevocationListEntry{
 		SerialNumber:   serial,
 		RevocationTime: revokedAt,
-		ReasonCode:     reason,
-	}, nil
-}
-
-// distributionPointName represents the ASN.1 DistributionPointName CHOICE as
-// defined in RFC 5280 Section 4.2.1.13. We only use one of the fields, so the
-// others are omitted.
-type distributionPointName struct {
-	// Technically, FullName is of type GeneralNames, which is of type SEQUENCE OF
-	// GeneralName. But GeneralName itself is of type CHOICE, and the ans1.Marhsal
-	// function doesn't support marshalling structs to CHOICEs, so we have to use
-	// asn1.RawValue and encode the GeneralName ourselves.
-	FullName []asn1.RawValue `asn1:"optional,tag:0"`
-}
-
-// issuingDistributionPoint represents the ASN.1 IssuingDistributionPoint
-// SEQUENCE as defined in RFC 5280 Section 5.2.5. We only use two of the fields,
-// so the others are omitted.
-type issuingDistributionPoint struct {
-	DistributionPoint     distributionPointName `asn1:"optional,tag:0"`
-	OnlyContainsUserCerts bool                  `asn1:"optional,tag:1"`
-}
-
-// makeIDPExt returns a critical IssuingDistributionPoint extension containing a
-// URI built from the base url, the issuer's NameID, and the shard number. It
-// also sets the OnlyContainsUserCerts boolean to true.
-func makeIDPExt(base string, issuer issuance.IssuerNameID, shardIdx int64) (*pkix.Extension, error) {
-	val := issuingDistributionPoint{
-		DistributionPoint: distributionPointName{
-			[]asn1.RawValue{ // GeneralNames
-				{ // GeneralName
-					Class: 2, // context-specific
-					Tag:   6, // uniformResourceIdentifier, IA5String
-					Bytes: []byte(fmt.Sprintf("%s/%d/%d.crl", base, issuer, shardIdx)),
-				},
-			},
-		},
-		OnlyContainsUserCerts: true,
-	}
-
-	valBytes, err := asn1.Marshal(val)
-	if err != nil {
-		return nil, err
-	}
-
-	return &pkix.Extension{
-		Id:       asn1.ObjectIdentifier{2, 5, 29, 28}, // id-ce-issuingDistributionPoint
-		Value:    valBytes,
-		Critical: true,
+		ReasonCode:     int(entry.Reason),
 	}, nil
 }

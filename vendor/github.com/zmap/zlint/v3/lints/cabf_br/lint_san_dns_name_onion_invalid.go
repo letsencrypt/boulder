@@ -1,5 +1,5 @@
 /*
- * ZLint Copyright 2021 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -78,13 +78,15 @@ See also https://github.com/cabforum/documents/issues/191
 *******************************************************************/
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_san_dns_name_onion_invalid",
-		Description:   "certificates with a .onion subject name must be issued in accordance with the Tor address/rendezvous specification",
-		Citation:      "RFC 7686, EVGs v1.7.2: Appendix F, BRs v1.6.9: Appendix C",
-		Source:        lint.CABFBaselineRequirements,
-		EffectiveDate: util.OnionOnlyEVDate,
-		Lint:          NewOnionNotValid,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_san_dns_name_onion_invalid",
+			Description:   "certificates with a .onion subject name must be issued in accordance with the Tor address/rendezvous specification",
+			Citation:      "RFC 7686, EVGs v1.7.2: Appendix F, BRs v1.6.9: Appendix C",
+			Source:        lint.CABFBaselineRequirements,
+			EffectiveDate: util.OnionOnlyEVDate,
+		},
+		Lint: NewOnionNotValid,
 	})
 }
 
@@ -103,9 +105,9 @@ func (l *onionNotValid) CheckApplies(c *x509.Certificate) bool {
 // Execute will lint the provided certificate. A lint.Error lint.LintResult will
 // be returned if:
 //
-//  1) The certificate contains a Tor Rendezvous Spec v2 address and is not an
+//  1. The certificate contains a Tor Rendezvous Spec v2 address and is not an
 //     EV certificate (BRs: Appendix C).
-//  2) The certificate contains a `.onion` subject name/SAN that is neither a
+//  2. The certificate contains a `.onion` subject name/SAN that is neither a
 //     Rendezvous Spec v2 or v3 address.
 func (l *onionNotValid) Execute(c *x509.Certificate) *lint.LintResult {
 	for _, subj := range append(c.DNSNames, c.Subject.CommonName) {

@@ -3,12 +3,13 @@ package sa
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 
-	jose "gopkg.in/go-jose/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 )
 
 const JWK1JSON = `{
@@ -150,4 +151,27 @@ func TestStringSlice(t *testing.T) {
 	err = scanner.Binder(&marshaled, &out)
 	test.AssertNotError(t, err, "failed to scanner.Binder")
 	test.AssertMarshaledEquals(t, au, out)
+}
+
+func TestTimeTruncate(t *testing.T) {
+	tc := BoulderTypeConverter{}
+	preciseTime := time.Date(2024, 06, 20, 00, 00, 00, 999999999, time.UTC)
+	dbTime, err := tc.ToDb(preciseTime)
+	test.AssertNotError(t, err, "Could not ToDb")
+	dbTimeT, ok := dbTime.(time.Time)
+	test.Assert(t, ok, "Could not convert dbTime to time.Time")
+	test.Assert(t, dbTimeT.Nanosecond() == 0, "Nanosecond not truncated")
+
+	dbTimePtr, err := tc.ToDb(&preciseTime)
+	test.AssertNotError(t, err, "Could not ToDb")
+	dbTimePtrT, ok := dbTimePtr.(*time.Time)
+	test.Assert(t, ok, "Could not convert dbTimePtr to *time.Time")
+	test.Assert(t, dbTimePtrT.Nanosecond() == 0, "Nanosecond not truncated")
+
+	var dbTimePtrNil *time.Time
+	shouldBeNil, err := tc.ToDb(dbTimePtrNil)
+	test.AssertNotError(t, err, "Could not ToDb")
+	if shouldBeNil != nil {
+		t.Errorf("Expected nil, got %v", shouldBeNil)
+	}
 }

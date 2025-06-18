@@ -1,7 +1,7 @@
 package rfc
 
 /*
- * ZLint Copyright 2021 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -15,7 +15,6 @@ package rfc
  */
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/zmap/zcrypto/x509"
@@ -30,13 +29,15 @@ type extDuplicateExtension struct{}
 ************************************************/
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_ext_duplicate_extension",
-		Description:   "A certificate MUST NOT include more than one instance of a particular extension",
-		Citation:      "RFC 5280: 4.2",
-		Source:        lint.RFC5280,
-		EffectiveDate: util.RFC2459Date,
-		Lint:          NewExtDuplicateExtension,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_ext_duplicate_extension",
+			Description:   "A certificate MUST NOT include more than one instance of a particular extension",
+			Citation:      "RFC 5280: 4.2",
+			Source:        lint.RFC5280,
+			EffectiveDate: util.RFC2459Date,
+		},
+		Lint: NewExtDuplicateExtension,
 	})
 }
 
@@ -80,9 +81,7 @@ func (l *extDuplicateExtension) Execute(cert *x509.Certificate) *lint.LintResult
 	}
 
 	return &lint.LintResult{
-		Status: lint.Error,
-		Details: fmt.Sprintf(
-			"The following extensions are duplicated: %s",
-			strings.Join(duplicateOIDsList, ", ")),
+		Status:  lint.Error,
+		Details: "The following extensions are duplicated: " + strings.Join(duplicateOIDsList, ", "),
 	}
 }

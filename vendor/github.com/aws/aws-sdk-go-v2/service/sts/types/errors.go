@@ -27,7 +27,7 @@ func (e *ExpiredTokenException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *ExpiredTokenException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "ExpiredTokenException"
 	}
 	return *e.ErrorCodeOverride
@@ -57,7 +57,7 @@ func (e *IDPCommunicationErrorException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *IDPCommunicationErrorException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "IDPCommunicationError"
 	}
 	return *e.ErrorCodeOverride
@@ -65,9 +65,10 @@ func (e *IDPCommunicationErrorException) ErrorCode() string {
 func (e *IDPCommunicationErrorException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The identity provider (IdP) reported that authentication failed. This might be
-// because the claim is invalid. If this error is returned for the
-// AssumeRoleWithWebIdentity operation, it can also mean that the claim has expired
-// or has been explicitly revoked.
+// because the claim is invalid.
+//
+// If this error is returned for the AssumeRoleWithWebIdentity operation, it can
+// also mean that the claim has expired or has been explicitly revoked.
 type IDPRejectedClaimException struct {
 	Message *string
 
@@ -86,7 +87,7 @@ func (e *IDPRejectedClaimException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *IDPRejectedClaimException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "IDPRejectedClaim"
 	}
 	return *e.ErrorCodeOverride
@@ -94,8 +95,8 @@ func (e *IDPRejectedClaimException) ErrorCode() string {
 func (e *IDPRejectedClaimException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The error returned if the message passed to DecodeAuthorizationMessage was
-// invalid. This can happen if the token contains invalid characters, such as
-// linebreaks.
+// invalid. This can happen if the token contains invalid characters, such as line
+// breaks, or if the message has expired.
 type InvalidAuthorizationMessageException struct {
 	Message *string
 
@@ -114,7 +115,7 @@ func (e *InvalidAuthorizationMessageException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *InvalidAuthorizationMessageException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "InvalidAuthorizationMessageException"
 	}
 	return *e.ErrorCodeOverride
@@ -144,7 +145,7 @@ func (e *InvalidIdentityTokenException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *InvalidIdentityTokenException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "InvalidIdentityToken"
 	}
 	return *e.ErrorCodeOverride
@@ -171,7 +172,7 @@ func (e *MalformedPolicyDocumentException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *MalformedPolicyDocumentException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "MalformedPolicyDocument"
 	}
 	return *e.ErrorCodeOverride
@@ -183,13 +184,13 @@ func (e *MalformedPolicyDocumentException) ErrorFault() smithy.ErrorFault { retu
 // compresses the session policy document, session policy ARNs, and session tags
 // into a packed binary format that has a separate limit. The error message
 // indicates by percentage how close the policies and tags are to the upper size
-// limit. For more information, see Passing Session Tags in STS
-// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html) in the
-// IAM User Guide. You could receive this error even though you meet other defined
-// session policy and session tag limits. For more information, see IAM and STS
-// Entity Character Limits
-// (https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html#reference_iam-limits-entity-length)
-// in the IAM User Guide.
+// limit. For more information, see [Passing Session Tags in STS]in the IAM User Guide.
+//
+// You could receive this error even though you meet other defined session policy
+// and session tag limits. For more information, see [IAM and STS Entity Character Limits]in the IAM User Guide.
+//
+// [Passing Session Tags in STS]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html
+// [IAM and STS Entity Character Limits]: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html#reference_iam-limits-entity-length
 type PackedPolicyTooLargeException struct {
 	Message *string
 
@@ -208,19 +209,19 @@ func (e *PackedPolicyTooLargeException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *PackedPolicyTooLargeException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "PackedPolicyTooLarge"
 	}
 	return *e.ErrorCodeOverride
 }
 func (e *PackedPolicyTooLargeException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// STS is not activated in the requested region for the account that is being asked
-// to generate credentials. The account administrator must use the IAM console to
-// activate STS in that region. For more information, see Activating and
-// Deactivating Amazon Web Services STS in an Amazon Web Services Region
-// (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html)
-// in the IAM User Guide.
+// STS is not activated in the requested region for the account that is being
+// asked to generate credentials. The account administrator must use the IAM
+// console to activate STS in that region. For more information, see [Activating and Deactivating STS in an Amazon Web Services Region]in the IAM
+// User Guide.
+//
+// [Activating and Deactivating STS in an Amazon Web Services Region]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_enable-regions.html
 type RegionDisabledException struct {
 	Message *string
 
@@ -239,7 +240,7 @@ func (e *RegionDisabledException) ErrorMessage() string {
 	return *e.Message
 }
 func (e *RegionDisabledException) ErrorCode() string {
-	if e.ErrorCodeOverride == nil {
+	if e == nil || e.ErrorCodeOverride == nil {
 		return "RegionDisabledException"
 	}
 	return *e.ErrorCodeOverride

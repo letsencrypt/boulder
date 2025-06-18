@@ -1,101 +1,164 @@
 {
-  "wfe": {
-    "listenAddress": "0.0.0.0:4001",
-    "TLSListenAddress": "0.0.0.0:4431",
-    "timeout": "30s",
-    "serverCertificatePath": "test/wfe-tls/boulder/cert.pem",
-    "serverKeyPath": "test/wfe-tls/boulder/key.pem",
-    "allowOrigins": ["*"],
-    "shutdownStopTimeout": "10s",
-    "subscriberAgreementURL": "https://boulder.service.consul:4431/terms/v7",
-    "debugAddr": ":8013",
-    "directoryCAAIdentity": "happy-hacker-ca.invalid",
-    "directoryWebsite": "https://github.com/letsencrypt/boulder",
-    "legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
-    "goodkey": {
-      "blockedKeyFile": "test/example-blocked-keys.yaml"
-    },
-    "tls": {
-      "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
-    },
-    "raService": {
-      "dnsAuthority": "10.55.55.10",
-      "srvLookup": {
-        "service": "ra",
-        "domain": "service.consul"
-      },
-      "timeout": "15s",
-      "hostOverride": "ra.boulder"
-    },
-    "saService": {
-      "dnsAuthority": "10.55.55.10",
-      "srvLookup": {
-        "service": "sa",
-        "domain": "service.consul"
-      },
-      "timeout": "15s",
-      "hostOverride": "sa.boulder"
-    },
-    "accountCache": {
-      "size": 9000,
-      "ttl": "5s"
-    },
-    "getNonceService": {
-      "dnsAuthority": "10.55.55.10",
-      "srvLookup": {
-        "service": "nonce",
-        "domain": "service.consul"
-      },
-      "timeout": "15s",
-      "hostOverride": "nonce.boulder"
-    },
-    "redeemNonceService": {
-      "dnsAuthority": "10.55.55.10",
-      "srvLookups": [
-        {
-          "service": "nonce1",
-          "domain": "service.consul"
-        },
-        {
-          "service": "nonce2",
-          "domain": "service.consul"
-        }
-      ],
-      "srvResolver": "nonce-srv",
-      "timeout": "15s",
-      "hostOverride": "nonce.boulder"
-    },
-    "noncePrefixKey": {"passwordFile": "test/secrets/nonce_prefix_key"},
-    "chains": [
-      [
-        "/hierarchy/intermediate-cert-rsa-a.pem",
-        "/hierarchy/root-cert-rsa.pem"
-      ],
-      [
-        "/hierarchy/intermediate-cert-rsa-b.pem",
-        "/hierarchy/root-cert-rsa.pem"
-      ],
-      [
-        "/hierarchy/intermediate-cert-ecdsa-a.pem",
-        "/hierarchy/root-cert-ecdsa.pem"
-      ],
-      [
-        "/hierarchy/intermediate-cert-ecdsa-b.pem",
-        "/hierarchy/root-cert-ecdsa.pem"
-      ]
-    ],
-    "staleTimeout": "5m",
-    "authorizationLifetimeDays": 30,
-    "pendingAuthorizationLifetimeDays": 7,
-    "features": {
-      "ServeRenewalInfo": true
-    }
-  },
-
-  "syslog": {
-    "stdoutlevel": 4,
-    "sysloglevel": -1
-  }
+	"wfe": {
+		"timeout": "30s",
+		"serverCertificatePath": "test/certs/ipki/boulder/cert.pem",
+		"serverKeyPath": "test/certs/ipki/boulder/key.pem",
+		"allowOrigins": [
+			"*"
+		],
+		"shutdownStopTimeout": "10s",
+		"subscriberAgreementURL": "https://boulder.service.consul:4431/terms/v7",
+		"directoryCAAIdentity": "happy-hacker-ca.invalid",
+		"directoryWebsite": "https://github.com/letsencrypt/boulder",
+		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
+		"goodkey": {},
+		"tls": {
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
+		},
+		"raService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "ra",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "ra.boulder"
+		},
+		"saService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "sa",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "sa.boulder"
+		},
+		"emailExporter": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "email-exporter",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "email-exporter.boulder"
+		},
+		"accountCache": {
+			"size": 9000,
+			"ttl": "5s"
+		},
+		"getNonceService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "nonce-taro",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "nonce.boulder"
+		},
+		"redeemNonceService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookups": [
+				{
+					"service": "nonce-taro",
+					"domain": "service.consul"
+				},
+				{
+					"service": "nonce-zinc",
+					"domain": "service.consul"
+				}
+			],
+			"srvResolver": "nonce-srv",
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "nonce.boulder"
+		},
+		"nonceHMACKey": {
+			"keyFile": "test/secrets/nonce_prefix_key"
+		},
+		"chains": [
+			[
+				"test/certs/webpki/int-rsa-a.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
+			],
+			[
+				"test/certs/webpki/int-rsa-b.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
+			],
+			[
+				"test/certs/webpki/int-ecdsa-a.cert.pem",
+				"test/certs/webpki/root-ecdsa.cert.pem"
+			],
+			[
+				"test/certs/webpki/int-ecdsa-b.cert.pem",
+				"test/certs/webpki/root-ecdsa.cert.pem"
+			],
+			[
+				"test/certs/webpki/int-ecdsa-a-cross.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
+			],
+			[
+				"test/certs/webpki/int-ecdsa-b-cross.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
+			]
+		],
+		"staleTimeout": "5m",
+		"limiter": {
+			"redis": {
+				"username": "boulder-wfe",
+				"passwordFile": "test/secrets/wfe_ratelimits_redis_password",
+				"lookups": [
+					{
+						"Service": "redisratelimits",
+						"Domain": "service.consul"
+					}
+				],
+				"lookupDNSAuthority": "consul.service.consul",
+				"readTimeout": "250ms",
+				"writeTimeout": "250ms",
+				"poolSize": 100,
+				"routeRandomly": true,
+				"tls": {
+					"caCertFile": "test/certs/ipki/minica.pem",
+					"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
+				}
+			},
+			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml",
+			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
+		},
+		"features": {
+			"PropagateCancels": true,
+			"ServeRenewalInfo": true,
+			"CheckIdentifiersPaused": true
+		},
+		"certProfiles": {
+			"legacy": "The normal profile you know and love",
+			"modern": "Profile 2: Electric Boogaloo",
+			"shortlived": "Like modern, but smaller"
+		},
+		"unpause": {
+			"hmacKey": {
+				"keyFile": "test/secrets/sfe_unpause_key"
+			},
+			"jwtLifetime": "336h",
+			"url": "https://boulder.service.consul:4003"
+		}
+	},
+	"syslog": {
+		"stdoutlevel": 7,
+		"sysloglevel": -1
+	},
+	"openTelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
+	},
+	"openTelemetryHttpConfig": {
+		"trustIncomingSpans": true
+	}
 }

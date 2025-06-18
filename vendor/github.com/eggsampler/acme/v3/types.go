@@ -8,15 +8,23 @@ import (
 	"time"
 )
 
-// ErrUnsupportedKey is returned when an unsupported key type is encountered.
-var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+var (
+	// ErrUnsupportedKey is returned when an unsupported key type is encountered.
+	ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+
+	// ErrRenewalInfoNotSupported is returned by Client.GetRenewalInfo if the
+	// renewal info entry isn't present on the acme directory (ie, it's not
+	// supported by the acme server)
+	ErrRenewalInfoNotSupported = errors.New("renewal information endpoint not supported")
+)
 
 // Different possible challenge types provided by an ACME server.
 // See https://tools.ietf.org/html/rfc8555#section-9.7.8
 const (
-	ChallengeTypeDNS01     = "dns-01"
-	ChallengeTypeHTTP01    = "http-01"
-	ChallengeTypeTLSALPN01 = "tls-alpn-01"
+	ChallengeTypeDNS01        = "dns-01"
+	ChallengeTypeDNSAccount01 = "dns-account-01"
+	ChallengeTypeHTTP01       = "http-01"
+	ChallengeTypeTLSALPN01    = "tls-alpn-01"
 
 	// ChallengeTypeTLSSNI01 is deprecated and should not be used.
 	// See: https://community.letsencrypt.org/t/important-what-you-need-to-know-about-tls-sni-validation-issues/50811
@@ -49,12 +57,16 @@ type Directory struct {
 	RevokeCert string `json:"revokeCert"` // url to revoke cert endpoint
 	KeyChange  string `json:"keyChange"`  // url to key change endpoint
 
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03
+	RenewalInfo string `json:"renewalInfo"` // url to renewal info endpoint
+
 	// meta object containing directory metadata
 	Meta struct {
-		TermsOfService          string   `json:"termsOfService"`
-		Website                 string   `json:"website"`
-		CaaIdentities           []string `json:"caaIdentities"`
-		ExternalAccountRequired bool     `json:"externalAccountRequired"`
+		TermsOfService          string            `json:"termsOfService"`
+		Website                 string            `json:"website"`
+		CaaIdentities           []string          `json:"caaIdentities"`
+		ExternalAccountRequired bool              `json:"externalAccountRequired"`
+		Profiles                map[string]string `json:"profiles"`
 	} `json:"meta"`
 
 	// Directory url provided when creating a new acme client.
@@ -78,6 +90,12 @@ type Client struct {
 	// The time between checking if a challenge has been updated or a certificate has been issued.
 	// Default 0.5 seconds if duration is not set or if set to 0.
 	PollInterval time.Duration
+
+	// IgnorePolling does not use any simple polling in order finalisation
+	IgnorePolling bool
+
+	// IgnoreRetryAfter does not use the retry-after header in order finalisation
+	IgnoreRetryAfter bool
 }
 
 // Account structure representing fields in an account object.
@@ -108,10 +126,11 @@ type Account struct {
 // external account binding.
 // The MacKey is a base64url-encoded string.
 // Algorithm is a "MAC-based algorithm" as per RFC8555. Typically this is either,
-//  - "HS256" for HashFunc: crypto.SHA256
-//  - "HS384" for HashFunc: crypto.SHA384
-//  - "HS512" for HashFunc: crypto.SHA512
-// However this is dependant on the acme server in question and is provided here to give more options for future compatibility.
+//   - "HS256" for HashFunc: crypto.SHA256
+//   - "HS384" for HashFunc: crypto.SHA384
+//   - "HS512" for HashFunc: crypto.SHA512
+//
+// However this is dependent on the acme server in question and is provided here to give more options for future compatibility.
 type ExternalAccountBinding struct {
 	KeyIdentifier string      `json:"-"`
 	MacKey        string      `json:"-"`
@@ -132,6 +151,7 @@ type Order struct {
 	Status         string       `json:"status"`
 	Expires        time.Time    `json:"expires"`
 	Identifiers    []Identifier `json:"identifiers"`
+	Profile        string       `json:"Profile,omitempty"`
 	NotBefore      time.Time    `json:"notBefore"`
 	NotAfter       time.Time    `json:"notAfter"`
 	Error          Problem      `json:"error"`
@@ -142,6 +162,14 @@ type Order struct {
 	// URL for the order object.
 	// Provided by the rel="Location" Link http header
 	URL string `json:"-"`
+
+	// RetryAfter is the http Retry-After header from the order response
+	RetryAfter time.Time `json:"-"`
+
+	// Replaces (optional, string): A string uniquely identifying a
+	// previously-issued certificate which this order is intended to replace.
+	// See https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+	Replaces string `json:"replaces,omitempty"`
 }
 
 // Authorization object returned when fetching an authorization in an order.
@@ -193,4 +221,16 @@ type NewAccountRequest struct {
 	TermsOfServiceAgreed   bool            `json:"termsOfServiceAgreed"`
 	Contact                []string        `json:"contact,omitempty"`
 	ExternalAccountBinding json.RawMessage `json:"externalAccountBinding"`
+}
+
+// RenewalInfo stores the server-provided suggestions on when to renew
+// certificates.
+type RenewalInfo struct {
+	SuggestedWindow struct {
+		Start time.Time `json:"start"`
+		End   time.Time `json:"end"`
+	} `json:"suggestedWindow"`
+	ExplanationURL string `json:"explanationURL,omitempty"`
+
+	RetryAfter time.Time `json:"-"`
 }

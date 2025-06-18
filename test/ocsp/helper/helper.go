@@ -36,8 +36,11 @@ var (
 // Config contains fields which control various behaviors of the
 // checker's behavior.
 type Config struct {
-	method             string
-	urlOverride        string
+	method string
+	// This URL will always be used in place of the URL in a certificate.
+	urlOverride string
+	// This URL will be used if no urlOverride is present and no OCSP URL is in the certificate.
+	urlFallback        string
 	hostOverride       string
 	tooSoon            int
 	ignoreExpiredCerts bool
@@ -52,6 +55,7 @@ type Config struct {
 var DefaultConfig = Config{
 	method:             "GET",
 	urlOverride:        "",
+	urlFallback:        "",
 	hostOverride:       "",
 	tooSoon:            76,
 	ignoreExpiredCerts: false,
@@ -107,11 +111,17 @@ func (template Config) WithExpectStatus(status int) Config {
 	return ret
 }
 
-// WithExpectStatus returns a new Config with the given expectReason,
+// WithExpectReason returns a new Config with the given expectReason,
 // and all other fields the same as the receiver.
 func (template Config) WithExpectReason(reason int) Config {
 	ret := template
 	ret.expectReason = reason
+	return ret
+}
+
+func (template Config) WithURLFallback(url string) Config {
+	ret := template
+	ret.urlFallback = url
 	return ret
 }
 
@@ -151,6 +161,9 @@ func GetIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("got http status code %d from AIA issuer url %q", resp.StatusCode, resp.Request.URL)
+	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -164,11 +177,12 @@ func GetIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 		issuer, err = parse(body)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("from %s: %s", issuerURL, err)
+		return nil, fmt.Errorf("from %s: %w", issuerURL, err)
 	}
 	return issuer, nil
 }
 
+// parse tries to parse the bytes as a PEM or DER-encoded certificate.
 func parse(body []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(body)
 	var der []byte
@@ -208,7 +222,7 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-// ReqFle makes an OCSP request using the given config for the PEM-encoded
+// ReqFile makes an OCSP request using the given config for the PEM-encoded
 // certificate in fileName, and returns the response.
 func ReqFile(fileName string, config Config) (*ocsp.Response, error) {
 	contents, err := os.ReadFile(fileName)
@@ -251,7 +265,7 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 	if config.issuerFile == "" {
 		issuer, err = GetIssuer(cert)
 		if err != nil {
-			return nil, fmt.Errorf("problem getting issuer (try --issuer-file flag instead): ")
+			return nil, fmt.Errorf("problem getting issuer (try --issuer-file flag instead): %w", err)
 		}
 	} else {
 		issuer, err = GetIssuerFile(config.issuerFile)
@@ -264,12 +278,17 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 		return nil, fmt.Errorf("creating OCSP request: %s", err)
 	}
 
-	ocspURL, err := getOCSPURL(cert, config.urlOverride)
+	ocspURL, err := getOCSPURL(cert, config.urlOverride, config.urlFallback)
 	if err != nil {
 		return nil, err
 	}
 
 	httpResp, err := sendHTTPRequest(req, ocspURL, config.method, config.hostOverride, config.output)
+	if err != nil {
+		return nil, err
+	}
+	respBytes, err := io.ReadAll(httpResp.Body)
+	defer httpResp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -280,17 +299,21 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 		}
 	}
 	if httpResp.StatusCode != 200 {
-		return nil, fmt.Errorf("http status code %d", httpResp.StatusCode)
-	}
-	respBytes, err := io.ReadAll(httpResp.Body)
-	defer httpResp.Body.Close()
-	if err != nil {
-		return nil, err
+		return nil, StatusCodeError{httpResp.StatusCode, respBytes}
 	}
 	if len(respBytes) == 0 {
 		return nil, fmt.Errorf("empty response body")
 	}
 	return parseAndPrint(respBytes, cert, issuer, config)
+}
+
+type StatusCodeError struct {
+	Code int
+	Body []byte
+}
+
+func (e StatusCodeError) Error() string {
+	return fmt.Sprintf("HTTP status code %d, body: %s", e.Code, e.Body)
 }
 
 func sendHTTPRequest(
@@ -328,12 +351,14 @@ func sendHTTPRequest(
 	return client.Do(httpRequest)
 }
 
-func getOCSPURL(cert *x509.Certificate, urlOverride string) (*url.URL, error) {
+func getOCSPURL(cert *x509.Certificate, urlOverride, urlFallback string) (*url.URL, error) {
 	var ocspServer string
 	if urlOverride != "" {
 		ocspServer = urlOverride
 	} else if len(cert.OCSPServer) > 0 {
 		ocspServer = cert.OCSPServer[0]
+	} else if len(urlFallback) > 0 {
+		ocspServer = urlFallback
 	} else {
 		return nil, fmt.Errorf("no ocsp servers in cert")
 	}

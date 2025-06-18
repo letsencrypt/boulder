@@ -12,12 +12,18 @@ guidelines for Boulder contributions.
 
 # Review Requirements
 
-* All pull requests must receive at least one approval through the GitHub UI.
-* We indicate review approval through GitHub's code review facility.
+* All pull requests must receive at least one approval by a [CODEOWNER](../CODEOWNERS) other than the author. This is enforced by GitHub itself.
+* All pull requests should receive at least two approvals by [Trusted Contributors](https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md#161-definitions).
+  This requirement may be waived when:
+  * the change only modifies documentation;
+  * the change only modifies tests;
+  * in exceptional circumstances, such as when no second reviewer is available at all.
+
+  This requirement should not be waived when:
+  * the change is not written by a Trusted Contributor, to ensure that at least two TCs have eyes on it.
 * New commits pushed to a branch invalidate previous reviews. In other words, a
   reviewer must give positive reviews of a branch after its most recent pushed
   commit.
-* You cannot review your own code.
 * If a branch contains commits from multiple authors, it needs a reviewer who
   is not an author of commits on that branch.
 * Review changes to or addition of tests just as rigorously as you review code
@@ -26,6 +32,19 @@ guidelines for Boulder contributions.
   functionality in the patch, including error cases?
 * Are there new RPCs or config fields? Make sure the patch meets the
   Deployability rules below.
+
+# Merge Requirements
+
+We have a bot that will comment on some PRs indicating there are:
+
+ 1. configuration changes
+ 2. SQL schema changes
+ 3. feature flag changes
+
+These may require either a CP/CPS review or filing of a ticket to make matching changes
+in production. It is the responsibility of the person merging the PR to make sure
+the required action has been performed before merging. Usually this will be confirmed
+in a comment or in the PR description.
 
 # Patch Guidelines
 
@@ -133,11 +152,12 @@ separate deploy-triggered problems from config-triggered problems.
 
 When adding significant new features or replacing existing RPCs the
 `boulder/features` package should be used to gate its usage. To add a flag, a
-new `const FeatureFlag` should be added and its default value specified in
-`features.features` in `features/features.go`. In order to test if the flag
-is enabled elsewhere in the codebase you can use
-`features.Enabled(features.ExampleFeatureName)` which returns a `bool`
-indicating if the flag is enabled or not.
+new field of the `features.Config` struct should be added. All flags default
+to false.
+
+In order to test if the flag is enabled elsewhere in the codebase you can use
+`features.Get().ExampleFeatureName` which gets the `bool` value from a global
+config.
 
 Each service should include a `map[string]bool` named `Features` in its
 configuration object at the top level and call `features.Set` with that map
@@ -154,13 +174,24 @@ immediately after parsing the configuration. For example to enable
 }
 ```
 
-Avoid negative flag names such as `"DontCancelRequest": false` because such
-names are difficult to reason about.
-
 Feature flags are meant to be used temporarily and should not be used for
-permanent boolean configuration options. Once a feature has been enabled in
-both staging and production the flag should be removed making the previously
-gated functionality the default in future deployments.
+permanent boolean configuration options.
+
+### Deprecating a feature flag
+
+Once a feature has been enabled in both staging and production, someone on the
+team should deprecate it:
+
+ - Remove any instances of `features.Get().ExampleFeatureName`, adjusting code
+   as needed.
+ - Move the field to the top of the `features.Config` struct, under a comment
+   saying it's deprecated.
+ - Remove all references to the feature flag from `test/config-next`.
+ - Add the feature flag to `test/config`. This serves to check that we still
+   tolerate parsing the flag at startup, even though it is ineffective.
+ - File a ticket to remove the feature flag in staging and production.
+ - Once the feature flag is removed in staging and production, delete it from
+   `test/config` and `features.Config`.
 
 ### Gating RPCs
 
@@ -191,10 +222,10 @@ Specifically, that means that all of our `SELECT` statements should enumerate
 columns to select, and not use `*`. Also, generally speaking, we will need a
 separate model `struct` for serializing and deserializing data before and
 after the migration. This is because the ORM package we use,
-[`gorp`](https://github.com/go-gorp/gorp), expects every field in a struct to
+[`borp`](https://github.com/letsencrypt/borp), expects every field in a struct to
 map to a column in the table. If we add a new field to a model struct and
 Boulder attempts to write that struct to a table that doesn't yet have the
-corresponding column (case 1), gorp will fail with `Insert failed table posts
+corresponding column (case 1), borp will fail with `Insert failed table posts
 has no column named Foo`. There are examples of such models in sa/model.go,
 along with code to turn a model into a `struct` used internally.
 
@@ -254,14 +285,14 @@ func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
 
 func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
   if features.Enabled(features.AllowWizards) { // Added!
-    return ssa.dbMap.Insert(personModelv2{
+    return ssa.dbMap.Insert(context.Background(), personModelv2{
       personModelv1: {
         HatSize:  p.HatSize,
       },
       IsWizard: p.IsWizard,
     })
   } else {
-    return ssa.dbMap.Insert(personModelv1{
+    return ssa.dbMap.Insert(context.Background(), personModelv1{
       HatSize:  p.HatSize,
       // p.IsWizard ignored
     })
@@ -270,14 +301,14 @@ func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
 ```
 
 You will also need to update the `initTables` function from `sa/database.go` to
-tell Gorp which table to use for your versioned model structs. Make sure to
+tell borp which table to use for your versioned model structs. Make sure to
 consult the flag you defined so that only **one** of the table maps is added at
-any given time, otherwise Gorp will error.  Depending on your table you may also
+any given time, otherwise borp will error.  Depending on your table you may also
 need to add `SetKeys` and `SetVersionCol` entries for your versioned models.
 Example:
 
 ```go
-func initTables(dbMap *gorp.DbMap) {
+func initTables(dbMap *borp.DbMap) {
  // < unrelated lines snipped for brevity >
 
  if features.Enabled(features.AllowWizards) {
@@ -306,6 +337,24 @@ ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
 -- +migrate Down
 ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
 ```
+
+# Expressing "optional" Timestamps
+Timestamps in protocol buffers must always be expressed as
+[timestamppb.Timestamp](https://pkg.go.dev/google.golang.org/protobuf/types/known/timestamppb).
+Timestamps must never contain their zero value, in the sense of
+`timestamp.AsTime().IsZero()`. When a timestamp field is optional, absence must
+be expressed through the absence of the field, rather than present with a zero
+value. The `core.IsAnyNilOrZero` function can check these cases.
+
+Senders must check that timestamps are non-zero before sending them. Receivers
+must check that timestamps are non-zero before accepting them.
+
+# Rounding time in DB
+
+All times that we send to the database are truncated to one second's worth of
+precision. This reduces the size of indexes that include timestamps, and makes
+querying them more efficient. The Storage Authority (SA) is responsible for this
+truncation, and performs it for SELECT queries as well as INSERT and UPDATE.
 
 # Release Process
 

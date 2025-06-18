@@ -9,37 +9,89 @@ import (
 	"time"
 )
 
-// NewOrder initiates a new order for a new certificate.
+type OrderExtension struct {
+	Profile string
+}
+
+// NewOrder initiates a new order for a new certificate. This method does not use ACME Renewal Info.
 func (c Client) NewOrder(account Account, identifiers []Identifier) (Order, error) {
+	return c.ReplacementOrder(account, nil, identifiers)
+}
+
+// NewOrderDomains takes a list of domain dns identifiers for a new certificate. Essentially a helper function.
+func (c Client) NewOrderDomains(account Account, domains ...string) (Order, error) {
+	var identifiers []Identifier
+	for _, d := range domains {
+		identifiers = append(identifiers, Identifier{Type: "dns", Value: d})
+	}
+	return c.ReplacementOrder(account, nil, identifiers)
+}
+
+// NewOrderExtension takes a struct providing any extensions onto the order
+func (c Client) NewOrderExtension(account Account, identifiers []Identifier, ext OrderExtension) (Order, error) {
+	return c.ReplacementOrderExtension(account, nil, identifiers, ext)
+}
+
+// ReplacementOrder takes an existing *x509.Certificate and initiates a new
+// order for a new certificate, but with the order being marked as a
+// replacement. Replacement orders which are valid replacements are (currently)
+// exempt from Let's Encrypt NewOrder rate limits, but may not be exempt from
+// other ACME CAs ACME Renewal Info implementations. At least one identifier
+// must match the list of identifiers from the parent order to be considered as
+// a valid replacement order.
+// See https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+func (c Client) ReplacementOrder(account Account, oldCert *x509.Certificate, identifiers []Identifier) (Order, error) {
+	return c.ReplacementOrderExtension(account, oldCert, identifiers, OrderExtension{})
+}
+
+// ReplacementOrderExtension takes a struct providing any extensions onto the order
+func (c Client) ReplacementOrderExtension(account Account, oldCert *x509.Certificate, identifiers []Identifier, ext OrderExtension) (Order, error) {
+	// If an old cert being replaced is present and the acme directory doesn't list a RenewalInfo endpoint,
+	// throw an error. This endpoint being present indicates support for ARI.
+	if oldCert != nil && c.dir.RenewalInfo == "" {
+		return Order{}, ErrRenewalInfoNotSupported
+	}
+
+	// optional fields are listed as 'omitempty' so the json encoder doesn't
+	// include those keys if their values are not provided.
 	newOrderReq := struct {
 		Identifiers []Identifier `json:"identifiers"`
+		Replaces    string       `json:"replaces,omitempty"`
+		Profile     string       `json:"Profile,omitempty"`
 	}{
 		Identifiers: identifiers,
 	}
+
 	newOrderResp := Order{}
+
+	if ext.Profile != "" {
+		_, ok := c.Directory().Meta.Profiles[ext.Profile]
+		if !ok {
+			return Order{}, fmt.Errorf("requested Profile not advertised by directory: %v", ext.Profile)
+		}
+		newOrderReq.Profile = ext.Profile
+	}
+
+	// If present, add the ari cert ID from the original/old certificate
+	if oldCert != nil {
+		replacesCertID, err := GenerateARICertID(oldCert)
+		if err != nil {
+			return Order{}, fmt.Errorf("acme: error generating replacement certificate id: %v", err)
+		}
+
+		newOrderReq.Replaces = replacesCertID
+		newOrderResp.Replaces = replacesCertID // server does not appear to set this currently?
+	}
+
+	// Submit the order
 	resp, err := c.post(c.dir.NewOrder, account.URL, account.PrivateKey, newOrderReq, &newOrderResp, http.StatusCreated)
 	if err != nil {
 		return newOrderResp, err
 	}
+	defer resp.Body.Close()
 
 	newOrderResp.URL = resp.Header.Get("Location")
-
 	return newOrderResp, nil
-}
-
-// NewOrderDomains is a wrapper for NewOrder(AcmeAccount, []AcmeIdentifiers)
-// Creates a dns identifier for each provided domain
-func (c Client) NewOrderDomains(account Account, domains ...string) (Order, error) {
-	if len(domains) == 0 {
-		return Order{}, errors.New("acme: no domains provided")
-	}
-
-	var ids []Identifier
-	for _, d := range domains {
-		ids = append(ids, Identifier{Type: "dns", Value: d})
-	}
-
-	return c.NewOrder(account, ids)
 }
 
 // FetchOrder fetches an existing order given an order url.
@@ -52,7 +104,7 @@ func (c Client) FetchOrder(account Account, orderURL string) (Order, error) {
 	return orderResp, err
 }
 
-// Helper function to determine whether an order is "finished" by it's status.
+// Helper function to determine whether an order is "finished" by its status.
 func checkFinalizedOrderStatus(order Order) (bool, error) {
 	switch order.Status {
 	case "invalid":
@@ -109,28 +161,71 @@ func (c Client) FinalizeOrder(account Account, order Order, csr *x509.Certificat
 
 	order.URL = resp.Header.Get("Location")
 
-	if finished, err := checkFinalizedOrderStatus(order); finished {
+	updateOrder := func(resp *http.Response) (bool, error) {
+		if finished, err := checkFinalizedOrderStatus(order); finished {
+			return true, err
+		}
+
+		retryAfter, err := parseRetryAfter(resp.Header.Get("Retry-After"))
+		if err != nil {
+			return false, fmt.Errorf("acme: error parsing retry-after header: %v", err)
+		}
+		order.RetryAfter = retryAfter
+
+		return false, nil
+	}
+
+	if finished, err := updateOrder(resp); finished || err != nil {
 		return order, err
 	}
 
-	pollInterval, pollTimeout := c.getPollingDurations()
-	end := time.Now().Add(pollTimeout)
-	for {
-		if time.Now().After(end) {
-			return order, errors.New("acme: finalized order timeout")
-		}
-		time.Sleep(pollInterval)
-
-		if _, err := c.post(order.URL, account.URL, account.PrivateKey, "", &order, http.StatusOK); err != nil {
-			// i dont think it's worth exiting the loop on this error
-			// it could just be connectivity issue thats resolved before the timeout duration
-			continue
+	fetchOrder := func() (bool, error) {
+		resp, err := c.post(order.URL, account.URL, account.PrivateKey, "", &order, http.StatusOK)
+		if err != nil {
+			return false, nil
 		}
 
-		order.URL = resp.Header.Get("Location")
+		return updateOrder(resp)
+	}
 
-		if finished, err := checkFinalizedOrderStatus(order); finished {
-			return order, err
+	if !c.IgnoreRetryAfter && !order.RetryAfter.IsZero() {
+		_, pollTimeout := c.getPollingDurations()
+		end := time.Now().Add(pollTimeout)
+
+		for {
+			if time.Now().After(end) {
+				return order, errors.New("acme: finalized order timeout")
+			}
+
+			diff := time.Until(order.RetryAfter)
+			_, pollTimeout := c.getPollingDurations()
+			if diff > pollTimeout {
+				return order, fmt.Errorf("acme: Retry-After (%v) longer than poll timeout (%v)", diff, c.PollTimeout)
+			}
+			if diff > 0 {
+				time.Sleep(diff)
+			}
+
+			if finished, err := fetchOrder(); finished || err != nil {
+				return order, err
+			}
 		}
 	}
+
+	if !c.IgnoreRetryAfter {
+		pollInterval, pollTimeout := c.getPollingDurations()
+		end := time.Now().Add(pollTimeout)
+		for {
+			if time.Now().After(end) {
+				return order, errors.New("acme: finalized order timeout")
+			}
+			time.Sleep(pollInterval)
+
+			if finished, err := fetchOrder(); finished || err != nil {
+				return order, err
+			}
+		}
+	}
+
+	return order, err
 }

@@ -8,10 +8,16 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # already present, which prevents the whole container from starting. We remove
 # it just in case it's there.
 rm -f /var/run/rsyslogd.pid
-service rsyslog start
+rsyslogd
 
 # make sure we can reach the mysqldb.
 ./test/wait-for-it.sh boulder-mysql 3306
+
+# make sure we can reach the proxysql.
+./test/wait-for-it.sh bproxysql 6032
+
+# make sure we can reach pkilint
+./test/wait-for-it.sh bpkimetal 8080
 
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh

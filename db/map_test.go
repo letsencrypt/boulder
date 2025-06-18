@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"testing"
 
-	gorp "github.com/go-gorp/gorp/v3"
+	"github.com/letsencrypt/borp"
 
 	"github.com/go-sql-driver/mysql"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -122,7 +123,7 @@ func TestTableFromQuery(t *testing.T) {
 		expectedTable string
 	}{
 		{
-			query:         "SELECT id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status FROM registrations WHERE jwk_sha256 = ?",
+			query:         "SELECT id, jwk, jwk_sha256, contact, agreement, createdAt, LockCol, status FROM registrations WHERE jwk_sha256 = ?",
 			expectedTable: "registrations",
 		},
 		{
@@ -134,15 +135,15 @@ func TestTableFromQuery(t *testing.T) {
 			expectedTable: "authz2",
 		},
 		{
-			query:         "insert into `registrations` (`id`,`jwk`,`jw      k_sha256`,`contact`,`agreement`,`initialIp`,`createdAt`,`LockCol`,`status`) values (null,?,?,?,?,?,?,?,?);",
+			query:         "insert into `registrations` (`id`,`jwk`,`jw      k_sha256`,`contact`,`agreement`,`createdAt`,`LockCol`,`status`) values (null,?,?,?,?,?,?,?,?);",
 			expectedTable: "`registrations`",
 		},
 		{
-			query:         "update `registrations` set `jwk`=?, `jwk_sh      a256`=?, `contact`=?, `agreement`=?, `initialIp`=?, `createdAt`=?, `LockCol`      =?, `status`=? where `id`=? and `LockCol`=?;",
+			query:         "update `registrations` set `jwk`=?, `jwk_sh      a256`=?, `contact`=?, `agreement`=?, `createdAt`=?, `LockCol`      =?, `status`=? where `id`=? and `LockCol`=?;",
 			expectedTable: "`registrations`",
 		},
 		{
-			query:         "SELECT COUNT(*) FROM registrations WHERE initialIP = ? AND ? < createdAt AND createdAt <= ?",
+			query:         "SELECT COUNT(*) FROM registrations WHERE ? < createdAt AND createdAt <= ?",
 			expectedTable: "registrations",
 		},
 		{
@@ -166,10 +167,6 @@ func TestTableFromQuery(t *testing.T) {
 			expectedTable: "`orderToAuthz2`",
 		},
 		{
-			query:         "insert into `requestedNames` (`ID`,`OrderID`,`ReversedName`) values (?,?,?);",
-			expectedTable: "`requestedNames`",
-		},
-		{
 			query:         "UPDATE authz2 SET status = :status, attempted = :attempted, validationRecord = :validationRecord, validationError = :validationError, expires = :expires WHERE id = :id AND status = :pending",
 			expectedTable: "authz2",
 		},
@@ -188,10 +185,6 @@ func TestTableFromQuery(t *testing.T) {
 		{
 			query:         "insert into `certificates` (`registrationID`,`serial`,`digest`,`der`,`issued`,`expires`) values (?,?,?,?,?,?);",
 			expectedTable: "`certificates`",
-		},
-		{
-			query:         "INSERT INTO certificatesPerName (eTLDPlusOne, time, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count=count+1;",
-			expectedTable: "certificatesPerName",
 		},
 		{
 			query:         "insert into `fqdnSets` (`ID`,`SetHash`,`Serial`,`Issued`,`Expires`) values (null,?,?,?,?);",
@@ -236,25 +229,28 @@ func testDbMap(t *testing.T) *WrappedMap {
 	dbConn, err := sql.Open("mysql", config.FormatDSN())
 	test.AssertNotError(t, err, "opening DB connection")
 
-	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
+	dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	// NOTE(@cpu): We avoid giving a sa.BoulderTypeConverter to the DbMap field to
 	// avoid the cyclic dep. We don't need to convert any types in the db tests.
-	dbMap := &gorp.DbMap{Db: dbConn, Dialect: dialect, TypeConverter: nil}
-	return &WrappedMap{DbMap: dbMap}
+	dbMap := &borp.DbMap{Db: dbConn, Dialect: dialect, TypeConverter: nil}
+	return &WrappedMap{dbMap: dbMap}
 }
 
 func TestWrappedMap(t *testing.T) {
 	mustDbErr := func(err error) ErrDatabaseOp {
+		t.Helper()
 		var dbOpErr ErrDatabaseOp
 		test.AssertErrorWraps(t, err, &dbOpErr)
 		return dbOpErr
 	}
 
+	ctx := context.Background()
+
 	testWrapper := func(dbMap Executor) {
 		reg := &core.Registration{}
 
 		// Test wrapped Get
-		_, err := dbMap.Get(reg)
+		_, err := dbMap.Get(ctx, reg)
 		test.AssertError(t, err, "expected err Getting Registration w/o type converter")
 		dbOpErr := mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "get")
@@ -262,7 +258,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Insert
-		err = dbMap.Insert(reg)
+		err = dbMap.Insert(ctx, reg)
 		test.AssertError(t, err, "expected err Inserting Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "insert")
@@ -270,7 +266,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Update
-		_, err = dbMap.Update(reg)
+		_, err = dbMap.Update(ctx, reg)
 		test.AssertError(t, err, "expected err Updating Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "update")
@@ -278,7 +274,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Delete
-		_, err = dbMap.Delete(reg)
+		_, err = dbMap.Delete(ctx, reg)
 		test.AssertError(t, err, "expected err Deleting Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "delete")
@@ -286,7 +282,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Select with a bogus query
-		_, err = dbMap.Select(reg, "blah")
+		_, err = dbMap.Select(ctx, reg, "blah")
 		test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select")
@@ -294,7 +290,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Select with a valid query
-		_, err = dbMap.Select(reg, "SELECT id, contact FROM registrationzzz WHERE id > 1;")
+		_, err = dbMap.Select(ctx, reg, "SELECT id, contact FROM registrationzzz WHERE id > 1;")
 		test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select")
@@ -302,7 +298,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped SelectOne with a bogus query
-		err = dbMap.SelectOne(reg, "blah")
+		err = dbMap.SelectOne(ctx, reg, "blah")
 		test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select one")
@@ -310,7 +306,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped SelectOne with a valid query
-		err = dbMap.SelectOne(reg, "SELECT contact FROM doesNotExist WHERE id=1;")
+		err = dbMap.SelectOne(ctx, reg, "SELECT contact FROM doesNotExist WHERE id=1;")
 		test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select one")
@@ -318,7 +314,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Exec
-		_, err = dbMap.Exec("INSERT INTO whatever (id) VALUES (?) WHERE id = ?", 10)
+		_, err = dbMap.ExecContext(ctx, "INSERT INTO whatever (id) VALUES (?) WHERE id = ?", 10)
 		test.AssertError(t, err, "expected err Exec-ing bad query")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "exec")
@@ -333,24 +329,10 @@ func TestWrappedMap(t *testing.T) {
 	// database errors.
 	testWrapper(dbMap)
 
-	// Using WithContext on the WrappedMap should return a map that continues to
-	// operate in the expected fashion.
-	dbMapWithCtx := dbMap.WithContext(context.Background())
-	testWrapper(dbMapWithCtx)
-
 	// Using Begin to start a transaction with the dbMap should return a
 	// transaction that continues to operate in the expected fashion.
-	tx, err := dbMap.Begin()
+	tx, err := dbMap.BeginTx(ctx)
 	defer func() { _ = tx.Rollback() }()
 	test.AssertNotError(t, err, "unexpected error beginning transaction")
 	testWrapper(tx)
-
-	// Using Begin to start a transaction with the dbMap and then using
-	// WithContext should return a transaction that continues to operate in the
-	// expected fashion.
-	tx, err = dbMap.Begin()
-	defer func() { _ = tx.Rollback() }()
-	test.AssertNotError(t, err, "unexpected error beginning transaction")
-	txWithContext := tx.WithContext(context.Background())
-	testWrapper(txWithContext)
 }

@@ -12,13 +12,15 @@ import (
 	"testing"
 	"time"
 
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
-	"github.com/letsencrypt/boulder/cmd"
-	bcreds "github.com/letsencrypt/boulder/grpc/creds"
-	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/connectivity"
+
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/cmd"
+	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
@@ -35,14 +37,11 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 		purgerCmd.Wait()
 	}
 
-	s := func(input string) *string {
-		return &input
-	}
 	tlsConfig, err := (&cmd.TLSConfig{
-		CACertFile: s("test/grpc-creds/minica.pem"),
-		CertFile:   s("test/grpc-creds/ra.boulder/cert.pem"),
-		KeyFile:    s("test/grpc-creds/ra.boulder/key.pem"),
-	}).Load()
+		CACertFile: "test/certs/ipki/minica.pem",
+		CertFile:   "test/certs/ipki/ra.boulder/cert.pem",
+		KeyFile:    "test/certs/ipki/ra.boulder/key.pem",
+	}).Load(metrics.NoopRegisterer)
 	if err != nil {
 		sigterm()
 		return nil, nil, nil, err
@@ -57,7 +56,7 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 		sigterm()
 		return nil, nil, nil, err
 	}
-	for i := 0; ; i++ {
+	for i := range 42 {
 		if conn.GetState() == connectivity.Ready {
 			break
 		}
@@ -76,13 +75,19 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = purgerClient.Purge(context.Background(), &akamaipb.PurgeRequest{
-		Urls: []string{"http://example.com/"},
-	})
-	if err != nil {
-		// Don't use t.Fatal here because we need to get as far as the SIGTERM or
-		// we'll hang on exit.
-		t.Error(err)
+
+	// We know that the purger is configured to only process two items per batch,
+	// so submitting 10 items should give it enough of a backlog to guarantee
+	// that our SIGTERM reaches the process before it's fully cleared the queue.
+	for i := range 10 {
+		_, err = purgerClient.Purge(context.Background(), &akamaipb.PurgeRequest{
+			Urls: []string{fmt.Sprintf("http://example%d.com/", i)},
+		})
+		if err != nil {
+			// Don't use t.Fatal here because we need to get as far as the SIGTERM or
+			// we'll hang on exit.
+			t.Error(err)
+		}
 	}
 
 	purgerCmd.Process.Signal(syscall.SIGTERM)
@@ -90,7 +95,11 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	if err == nil {
 		t.Error("expected error shutting down akamai-purger that could not reach backend")
 	}
-	test.AssertContains(t, outputBuffer.String(), "failed to purge OCSP responses for 1 certificates before exit: all attempts to submit purge request failed")
+
+	// Use two asserts because we're not sure what integer (10? 8?) will come in
+	// the middle of the error message.
+	test.AssertContains(t, outputBuffer.String(), "failed to purge OCSP responses for")
+	test.AssertContains(t, outputBuffer.String(), "certificates before exit: all attempts to submit purge request failed")
 }
 
 func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
@@ -98,7 +107,7 @@ func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err := purgerClient.Purge(context.Background(), &akamaipb.PurgeRequest{
 			Urls: []string{"http://example.com/"},
 		})

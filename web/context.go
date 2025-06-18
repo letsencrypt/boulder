@@ -7,13 +7,31 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 )
+
+type userAgentContextKey struct{}
+
+func UserAgent(ctx context.Context) string {
+	// The below type assertion is safe because this context key can only be
+	// set by this package and is only set to a string.
+	val, ok := ctx.Value(userAgentContextKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+func WithUserAgent(ctx context.Context, ua string) context.Context {
+	return context.WithValue(ctx, userAgentContextKey{}, ua)
+}
 
 // RequestEvent is a structured record of the metadata we care about for a
 // single web request. It is generated when a request is received, passed to
@@ -31,12 +49,15 @@ type RequestEvent struct {
 	Latency   float64 `json:"-"`
 	RealIP    string  `json:"-"`
 
-	TLS            string   `json:",omitempty"`
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
 	Error          string   `json:",omitempty"`
-	Contacts       []string `json:",omitempty"`
-	UserAgent      string   `json:"ua,omitempty"`
+	// If there is an error checking the data store for our rate limits
+	// we ignore it, but attach the error to the log event for analysis.
+	// TODO(#7796): Treat errors from the rate limit system as normal
+	// errors and put them into InternalErrors.
+	IgnoredRateLimitError string `json:",omitempty"`
+	UserAgent             string `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
 	Origin string                 `json:",omitempty"`
 	Extra  map[string]interface{} `json:",omitempty"`
@@ -47,12 +68,9 @@ type RequestEvent struct {
 	// For challenge and authorization GETs and POSTs:
 	// the status of the authorization at the time the request began.
 	Status string `json:",omitempty"`
-	// The DNS name, if there is a single relevant name, for instance
-	// in an authorization or challenge request.
-	DNSName string `json:",omitempty"`
-	// The set of DNS names, if there are potentially multiple relevant
-	// names, for instance in a new-order, finalize, or revoke request.
-	DNSNames []string `json:",omitempty"`
+	// The set of identifiers, for instance in an authorization, challenge,
+	// new-order, finalize, or revoke request.
+	Identifiers identifier.ACMEIdentifiers `json:",omitempty"`
 
 	// For challenge POSTs, the challenge type.
 	ChallengeType string `json:",omitempty"`
@@ -118,23 +136,31 @@ func (r *responseWriterWithStatus) WriteHeader(code int) {
 func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check that this header is well-formed, since we assume it is when logging.
 	realIP := r.Header.Get("X-Real-IP")
-	if net.ParseIP(realIP) == nil {
+	_, err := netip.ParseAddr(realIP)
+	if err != nil {
 		realIP = "0.0.0.0"
 	}
+
+	userAgent := r.Header.Get("User-Agent")
 
 	logEvent := &RequestEvent{
 		RealIP:    realIP,
 		Method:    r.Method,
-		UserAgent: r.Header.Get("User-Agent"),
+		UserAgent: userAgent,
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}),
 	}
-	// We specifically override the default r.Context() because we would prefer
-	// for clients to not be able to cancel our operations in arbitrary places.
-	// Instead we start a new context, and apply timeouts in our various RPCs.
-	// TODO(go1.22?): Use context.Detach()
-	ctx := context.Background()
+
+	ctx := WithUserAgent(r.Context(), userAgent)
 	r = r.WithContext(ctx)
+
+	if !features.Get().PropagateCancels {
+		// We specifically override the default r.Context() because we would prefer
+		// for clients to not be able to cancel our operations in arbitrary places.
+		// Instead we start a new context, and apply timeouts in our various RPCs.
+		ctx := context.WithoutCancel(r.Context())
+		r = r.WithContext(ctx)
+	}
 
 	// Some clients will send a HTTP Host header that includes the default port
 	// for the scheme that they are using. Previously when we were fronted by
@@ -182,10 +208,9 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 		int(logEvent.Latency*1000), logEvent.RealIP, jsonEvent)
 }
 
-// Comma-separated list of HTTP clients involved in making this
-// request, starting with the original requestor and ending with the
-// remote end of our TCP connection (which is typically our own
-// proxy).
+// GetClientAddr returns a comma-separated list of HTTP clients involved in
+// making this request, starting with the original requester and ending with the
+// remote end of our TCP connection (which is typically our own proxy).
 func GetClientAddr(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		return xff + "," + r.RemoteAddr

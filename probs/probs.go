@@ -4,32 +4,48 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-jose/go-jose/v4"
+
 	"github.com/letsencrypt/boulder/identifier"
 )
 
-// Error types that can be used in ACME payloads
 const (
+	// Error types that can be used in ACME payloads. These are sorted in the
+	// same order as they are defined in RFC8555 Section 6.7. We do not implement
+	// the `compound`, `externalAccountRequired`, or `userActionRequired` errors,
+	// because we have no path that would return them.
+	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
+	// AlreadyReplacedProblem is a problem type that is defined in Section 7.4
+	// of draft-ietf-acme-ari-08, for more information see:
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-08#section-7.4
+	AlreadyReplacedProblem       = ProblemType("alreadyReplaced")
+	AlreadyRevokedProblem        = ProblemType("alreadyRevoked")
+	BadCSRProblem                = ProblemType("badCSR")
+	BadNonceProblem              = ProblemType("badNonce")
+	BadPublicKeyProblem          = ProblemType("badPublicKey")
+	BadRevocationReasonProblem   = ProblemType("badRevocationReason")
+	BadSignatureAlgorithmProblem = ProblemType("badSignatureAlgorithm")
+	CAAProblem                   = ProblemType("caa")
+	// ConflictProblem is a problem type that is not defined in RFC8555.
+	ConflictProblem              = ProblemType("conflict")
 	ConnectionProblem            = ProblemType("connection")
+	DNSProblem                   = ProblemType("dns")
+	InvalidContactProblem        = ProblemType("invalidContact")
 	MalformedProblem             = ProblemType("malformed")
+	OrderNotReadyProblem         = ProblemType("orderNotReady")
+	PausedProblem                = ProblemType("rateLimited")
+	RateLimitedProblem           = ProblemType("rateLimited")
+	RejectedIdentifierProblem    = ProblemType("rejectedIdentifier")
 	ServerInternalProblem        = ProblemType("serverInternal")
 	TLSProblem                   = ProblemType("tls")
 	UnauthorizedProblem          = ProblemType("unauthorized")
-	RateLimitedProblem           = ProblemType("rateLimited")
-	BadNonceProblem              = ProblemType("badNonce")
-	InvalidEmailProblem          = ProblemType("invalidEmail")
-	RejectedIdentifierProblem    = ProblemType("rejectedIdentifier")
-	AccountDoesNotExistProblem   = ProblemType("accountDoesNotExist")
-	CAAProblem                   = ProblemType("caa")
-	DNSProblem                   = ProblemType("dns")
-	AlreadyRevokedProblem        = ProblemType("alreadyRevoked")
-	OrderNotReadyProblem         = ProblemType("orderNotReady")
-	BadSignatureAlgorithmProblem = ProblemType("badSignatureAlgorithm")
-	BadPublicKeyProblem          = ProblemType("badPublicKey")
-	BadRevocationReasonProblem   = ProblemType("badRevocationReason")
-	BadCSRProblem                = ProblemType("badCSR")
+	UnsupportedContactProblem    = ProblemType("unsupportedContact")
+	UnsupportedIdentifierProblem = ProblemType("unsupportedIdentifier")
 
-	V1ErrorNS = "urn:acme:error:"
-	V2ErrorNS = "urn:ietf:params:acme:error:"
+	// Defined in https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/
+	InvalidProfileProblem = ProblemType("invalidProfile")
+
+	ErrorNS = "urn:ietf:params:acme:error:"
 )
 
 // ProblemType defines the error types in the ACME protocol
@@ -46,6 +62,10 @@ type ProblemDetails struct {
 	// SubProblems are optional additional per-identifier problems. See
 	// RFC 8555 Section 6.7.1: https://tools.ietf.org/html/rfc8555#section-6.7.1
 	SubProblems []SubProblemDetails `json:"subproblems,omitempty"`
+	// Algorithms is an extension field defined only for problem documents of type
+	// badSignatureAlgorithm. See RFC 8555, Section 6.2:
+	// https://datatracker.ietf.org/doc/html/rfc8555#section-6.2
+	Algorithms []jose.SignatureAlgorithm `json:"algorithms,omitempty"`
 }
 
 // SubProblemDetails represents sub-problems specific to an identifier that are
@@ -56,7 +76,7 @@ type SubProblemDetails struct {
 	Identifier identifier.ACMEIdentifier `json:"identifier"`
 }
 
-func (pd *ProblemDetails) Error() string {
+func (pd *ProblemDetails) String() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
 }
 
@@ -71,40 +91,45 @@ func (pd *ProblemDetails) WithSubProblems(subProbs []SubProblemDetails) *Problem
 	}
 }
 
-// statusTooManyRequests is the HTTP status code meant for rate limiting
-// errors. It's not currently in the net/http library so we add it here.
-const statusTooManyRequests = 429
+// Helper functions which construct the basic RFC8555 Problem Documents, with
+// the Type already set and the Details supplied by the caller.
 
-// ProblemDetailsToStatusCode inspects the given ProblemDetails to figure out
-// what HTTP status code it should represent. It should only be used by the WFE
-// but is included in this package because of its reliance on ProblemTypes.
-func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
-	if prob.HTTPStatus != 0 {
-		return prob.HTTPStatus
+// AccountDoesNotExist returns a ProblemDetails representing an
+// AccountDoesNotExistProblem error
+func AccountDoesNotExist(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       AccountDoesNotExistProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
-	switch prob.Type {
-	case
-		ConnectionProblem,
-		MalformedProblem,
-		BadSignatureAlgorithmProblem,
-		BadPublicKeyProblem,
-		TLSProblem,
-		BadNonceProblem,
-		InvalidEmailProblem,
-		RejectedIdentifierProblem,
-		AccountDoesNotExistProblem,
-		BadRevocationReasonProblem:
-		return http.StatusBadRequest
-	case ServerInternalProblem:
-		return http.StatusInternalServerError
-	case
-		UnauthorizedProblem,
-		CAAProblem:
-		return http.StatusForbidden
-	case RateLimitedProblem:
-		return statusTooManyRequests
-	default:
-		return http.StatusInternalServerError
+}
+
+// AlreadyReplaced returns a ProblemDetails with a AlreadyReplacedProblem and a
+// 409 Conflict status code.
+func AlreadyReplaced(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       AlreadyReplacedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusConflict,
+	}
+}
+
+// AlreadyRevoked returns a ProblemDetails with a AlreadyRevokedProblem and a 400 Bad
+// Request status code.
+func AlreadyRevoked(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       AlreadyRevokedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// BadCSR returns a ProblemDetails representing a BadCSRProblem.
+func BadCSR(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       BadCSRProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
@@ -118,185 +143,31 @@ func BadNonce(detail string) *ProblemDetails {
 	}
 }
 
-// RejectedIdentifier returns a ProblemDetails with a RejectedIdentifierProblem and a 400 Bad
+// BadPublicKey returns a ProblemDetails with a BadPublicKeyProblem and a 400 Bad
 // Request status code.
-func RejectedIdentifier(detail string) *ProblemDetails {
+func BadPublicKey(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       RejectedIdentifierProblem,
+		Type:       BadPublicKeyProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
-// Conflict returns a ProblemDetails with a MalformedProblem and a 409 Conflict
-// status code.
-func Conflict(detail string) *ProblemDetails {
+// BadRevocationReason returns a ProblemDetails representing
+// a BadRevocationReasonProblem
+func BadRevocationReason(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusConflict,
-	}
-}
-
-// AlreadyRevoked returns a ProblemDetails with a AlreadyRevokedProblem and a 400 Bad
-// Request status code.
-func AlreadyRevoked(detail string, a ...interface{}) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       AlreadyRevokedProblem,
-		Detail:     fmt.Sprintf(detail, a...),
-		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// Malformed returns a ProblemDetails with a MalformedProblem and a 400 Bad
-// Request status code.
-func Malformed(detail string, args ...interface{}) *ProblemDetails {
-	if len(args) > 0 {
-		detail = fmt.Sprintf(detail, args...)
-	}
-	return &ProblemDetails{
-		Type:       MalformedProblem,
+		Type:       BadRevocationReasonProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// Canceled returns a ProblemDetails with a MalformedProblem and a 408 Request
-// Timeout status code.
-func Canceled(detail string, args ...interface{}) *ProblemDetails {
-	if len(args) > 0 {
-		detail = fmt.Sprintf(detail, args...)
-	}
-	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusRequestTimeout,
 	}
 }
 
 // BadSignatureAlgorithm returns a ProblemDetails with a BadSignatureAlgorithmProblem
 // and a 400 Bad Request status code.
-func BadSignatureAlgorithm(detail string, a ...interface{}) *ProblemDetails {
+func BadSignatureAlgorithm(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadSignatureAlgorithmProblem,
-		Detail:     fmt.Sprintf(detail, a...),
-		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// BadPublicKey returns a ProblemDetails with a BadPublicKeyProblem and a 400 Bad
-// Request status code.
-func BadPublicKey(detail string, a ...interface{}) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       BadPublicKeyProblem,
-		Detail:     fmt.Sprintf(detail, a...),
-		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// NotFound returns a ProblemDetails with a MalformedProblem and a 404 Not Found
-// status code.
-func NotFound(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusNotFound,
-	}
-}
-
-// ServerInternal returns a ProblemDetails with a ServerInternalProblem and a
-// 500 Internal Server Failure status code.
-func ServerInternal(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       ServerInternalProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusInternalServerError,
-	}
-}
-
-// Unauthorized returns a ProblemDetails with an UnauthorizedProblem and a 403
-// Forbidden status code.
-func Unauthorized(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       UnauthorizedProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusForbidden,
-	}
-}
-
-// MethodNotAllowed returns a ProblemDetails representing a disallowed HTTP
-// method error.
-func MethodNotAllowed() *ProblemDetails {
-	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     "Method not allowed",
-		HTTPStatus: http.StatusMethodNotAllowed,
-	}
-}
-
-// ContentLengthRequired returns a ProblemDetails representing a missing
-// Content-Length header error
-func ContentLengthRequired() *ProblemDetails {
-	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     "missing Content-Length header",
-		HTTPStatus: http.StatusLengthRequired,
-	}
-}
-
-// InvalidContentType returns a ProblemDetails suitable for a missing
-// ContentType header, or an incorrect ContentType header
-func InvalidContentType(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusUnsupportedMediaType,
-	}
-}
-
-// InvalidEmail returns a ProblemDetails representing an invalid email address
-// error
-func InvalidEmail(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       InvalidEmailProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// ConnectionFailure returns a ProblemDetails representing a ConnectionProblem
-// error
-func ConnectionFailure(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       ConnectionProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// RateLimited returns a ProblemDetails representing a RateLimitedProblem error
-func RateLimited(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       RateLimitedProblem,
-		Detail:     detail,
-		HTTPStatus: statusTooManyRequests,
-	}
-}
-
-// TLSError returns a ProblemDetails representing a TLSProblem error
-func TLSError(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       TLSProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-// AccountDoesNotExist returns a ProblemDetails representing an
-// AccountDoesNotExistProblem error
-func AccountDoesNotExist(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       AccountDoesNotExistProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
@@ -311,6 +182,16 @@ func CAA(detail string) *ProblemDetails {
 	}
 }
 
+// Connection returns a ProblemDetails representing a ConnectionProblem
+// error
+func Connection(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       ConnectionProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
 // DNS returns a ProblemDetails representing a DNSProblem
 func DNS(detail string) *ProblemDetails {
 	return &ProblemDetails{
@@ -320,30 +201,166 @@ func DNS(detail string) *ProblemDetails {
 	}
 }
 
+// InvalidContact returns a ProblemDetails representing an InvalidContactProblem.
+func InvalidContact(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       InvalidContactProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// Malformed returns a ProblemDetails with a MalformedProblem and a 400 Bad
+// Request status code.
+func Malformed(detail string, a ...any) *ProblemDetails {
+	if len(a) > 0 {
+		detail = fmt.Sprintf(detail, a...)
+	}
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
 // OrderNotReady returns a ProblemDetails representing a OrderNotReadyProblem
-func OrderNotReady(detail string, a ...interface{}) *ProblemDetails {
+func OrderNotReady(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       OrderNotReadyProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Detail:     detail,
 		HTTPStatus: http.StatusForbidden,
 	}
 }
 
-// BadRevocationReason returns a ProblemDetails representing
-// a BadRevocationReasonProblem
-func BadRevocationReason(detail string, a ...interface{}) *ProblemDetails {
+// RateLimited returns a ProblemDetails representing a RateLimitedProblem error
+func RateLimited(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       BadRevocationReasonProblem,
+		Type:       RateLimitedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusTooManyRequests,
+	}
+}
+
+// Paused returns a ProblemDetails representing a RateLimitedProblem error
+func Paused(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       PausedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusTooManyRequests,
+	}
+}
+
+// RejectedIdentifier returns a ProblemDetails with a RejectedIdentifierProblem and a 400 Bad
+// Request status code.
+func RejectedIdentifier(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       RejectedIdentifierProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// ServerInternal returns a ProblemDetails with a ServerInternalProblem and a
+// 500 Internal Server Failure status code.
+func ServerInternal(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       ServerInternalProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusInternalServerError,
+	}
+}
+
+// TLS returns a ProblemDetails representing a TLSProblem error
+func TLS(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       TLSProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// Unauthorized returns a ProblemDetails with an UnauthorizedProblem and a 403
+// Forbidden status code.
+func Unauthorized(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       UnauthorizedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
+	}
+}
+
+// UnsupportedContact returns a ProblemDetails representing an
+// UnsupportedContactProblem
+func UnsupportedContact(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       UnsupportedContactProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// UnsupportedIdentifier returns a ProblemDetails representing an
+// UnsupportedIdentifierProblem
+func UnsupportedIdentifier(detail string, a ...any) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       UnsupportedIdentifierProblem,
 		Detail:     fmt.Sprintf(detail, a...),
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
-// BadCSR returns a ProblemDetails representing a BadCSRProblem.
-func BadCSR(detail string, a ...interface{}) *ProblemDetails {
+// Additional helper functions that return variations on MalformedProblem with
+// different HTTP status codes set.
+
+// Canceled returns a ProblemDetails with a MalformedProblem and a 408 Request
+// Timeout status code.
+func Canceled(detail string, a ...any) *ProblemDetails {
+	if len(a) > 0 {
+		detail = fmt.Sprintf(detail, a...)
+	}
 	return &ProblemDetails{
-		Type:       BadCSRProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusRequestTimeout,
+	}
+}
+
+// Conflict returns a ProblemDetails with a ConflictProblem and a 409 Conflict
+// status code.
+func Conflict(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       ConflictProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusConflict,
+	}
+}
+
+// MethodNotAllowed returns a ProblemDetails representing a disallowed HTTP
+// method error.
+func MethodNotAllowed() *ProblemDetails {
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     "Method not allowed",
+		HTTPStatus: http.StatusMethodNotAllowed,
+	}
+}
+
+// NotFound returns a ProblemDetails with a MalformedProblem and a 404 Not Found
+// status code.
+func NotFound(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusNotFound,
+	}
+}
+
+// InvalidProfile returns a ProblemDetails with type InvalidProfile, specified
+// in https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/.
+func InvalidProfile(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       InvalidProfileProblem,
+		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }

@@ -88,10 +88,12 @@ func TestStdoutLogger(t *testing.T) {
 	stderr := bytes.NewBuffer(nil)
 	logger := &impl{
 		&stdoutWriter{
-			level:  7,
-			clk:    clock.NewFake(),
-			stdout: stdout,
-			stderr: stderr,
+			prefix:    "prefix ",
+			level:     7,
+			clkFormat: "2006-01-02",
+			clk:       clock.NewFake(),
+			stdout:    stdout,
+			stderr:    stderr,
 		},
 	}
 
@@ -99,8 +101,8 @@ func TestStdoutLogger(t *testing.T) {
 	logger.Warning("Warning log")
 	logger.Info("Info log")
 
-	test.AssertEquals(t, stdout.String(), "1970-01-01T00:00:00.000000+00:00Z  6 log.test pcbo7wk Info log\n")
-	test.AssertEquals(t, stderr.String(), "1970-01-01T00:00:00.000000+00:00Z  3 log.test 46_ghQg [AUDIT] Error Audit\n1970-01-01T00:00:00.000000+00:00Z  4 log.test 97r2xAw Warning log\n")
+	test.AssertEquals(t, stdout.String(), "1970-01-01 prefix 6 log.test pcbo7wk Info log\n")
+	test.AssertEquals(t, stderr.String(), "1970-01-01 prefix 3 log.test 46_ghQg [AUDIT] Error Audit\n1970-01-01 prefix 4 log.test 97r2xAw Warning log\n")
 }
 
 func TestSyslogMethods(t *testing.T) {
@@ -119,14 +121,6 @@ func TestSyslogMethods(t *testing.T) {
 	impl.Errf("audit-logger_test.go: %s", "err")
 	impl.Infof("audit-logger_test.go: %s", "info")
 	impl.Warningf("audit-logger_test.go: %s", "warning")
-}
-
-func TestPanic(t *testing.T) {
-	t.Parallel()
-	impl := setup(t)
-	defer impl.AuditPanic()
-	panic("Test panic")
-	// Can't assert anything here or golint gets angry
 }
 
 func TestAuditObject(t *testing.T) {

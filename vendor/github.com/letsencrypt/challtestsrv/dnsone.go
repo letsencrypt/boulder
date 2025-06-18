@@ -1,6 +1,8 @@
 package challtestsrv
 
 import (
+	"context"
+	"net/http"
 	"time"
 
 	"github.com/miekg/dns"
@@ -54,4 +56,31 @@ func dnsOneServer(address string, handler dnsHandler) []challengeServer {
 		WriteTimeout: time.Second,
 	}
 	return []challengeServer{udpServer, tcpServer}
+}
+
+type doh struct {
+	*http.Server
+	tlsCert, tlsCertKey string
+}
+
+func (s *doh) Shutdown() error {
+	return s.Server.Shutdown(context.Background())
+}
+
+func (s *doh) ListenAndServe() error {
+	return s.Server.ListenAndServeTLS(s.tlsCert, s.tlsCertKey)
+}
+
+// dohServer creates a DoH server.
+func dohServer(address string, tlsCert, tlsCertKey string, handler http.Handler) (challengeServer, error) {
+	return &doh{
+		&http.Server{
+			Handler:      handler,
+			Addr:         address,
+			ReadTimeout:  time.Second,
+			WriteTimeout: time.Second,
+		},
+		tlsCert,
+		tlsCertKey,
+	}, nil
 }

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-gorp/gorp/v3"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,7 +18,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	ocsp_test "github.com/letsencrypt/boulder/ocsp/test"
 	"github.com/letsencrypt/boulder/sa"
@@ -71,11 +69,7 @@ type echoSelector struct {
 	status sa.RevocationStatusModel
 }
 
-func (s echoSelector) WithContext(context.Context) gorp.SqlExecutor {
-	return s
-}
-
-func (s echoSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
+func (s echoSelector) SelectOne(_ context.Context, output interface{}, _ string, _ ...interface{}) error {
 	outputPtr, ok := output.(*sa.RevocationStatusModel)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
@@ -89,12 +83,8 @@ type errorSelector struct {
 	db.MockSqlExecutor
 }
 
-func (s errorSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+func (s errorSelector) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
 	return errors.New("oops")
-}
-
-func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
-	return s
 }
 
 // notFoundSelector always returns an NoRows error.
@@ -102,17 +92,13 @@ type notFoundSelector struct {
 	db.MockSqlExecutor
 }
 
-func (s notFoundSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+func (s notFoundSelector) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
 	return db.ErrDatabaseOp{Err: sql.ErrNoRows}
-}
-
-func (s notFoundSelector) WithContext(context.Context) gorp.SqlExecutor {
-	return s
 }
 
 // echoSA always returns the given revocation status.
 type echoSA struct {
-	mocks.StorageAuthorityReadOnly
+	sapb.StorageAuthorityReadOnlyClient
 	status *sapb.RevocationStatus
 }
 
@@ -122,7 +108,7 @@ func (s *echoSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...g
 
 // errorSA always returns an error.
 type errorSA struct {
-	mocks.StorageAuthorityReadOnly
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
@@ -131,7 +117,7 @@ func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...
 
 // notFoundSA always returns a NotFound error.
 type notFoundSA struct {
-	mocks.StorageAuthorityReadOnly
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (s *notFoundSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {

@@ -7,39 +7,41 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
 )
 
 func makeClient() (*rocsp.RWClient, clock.Clock) {
-	CACertFile := "../../test/redis-tls/minica.pem"
-	CertFile := "../../test/redis-tls/boulder/cert.pem"
-	KeyFile := "../../test/redis-tls/boulder/key.pem"
+	CACertFile := "../../test/certs/ipki/minica.pem"
+	CertFile := "../../test/certs/ipki/localhost/cert.pem"
+	KeyFile := "../../test/certs/ipki/localhost/key.pem"
 	tlsConfig := cmd.TLSConfig{
-		CACertFile: &CACertFile,
-		CertFile:   &CertFile,
-		KeyFile:    &KeyFile,
+		CACertFile: CACertFile,
+		CertFile:   CertFile,
+		KeyFile:    KeyFile,
 	}
-	tlsConfig2, err := tlsConfig.Load()
+	tlsConfig2, err := tlsConfig.Load(metrics.NoopRegisterer)
 	if err != nil {
 		panic(err)
 	}
 
 	rdb := redis.NewRing(&redis.RingOptions{
 		Addrs: map[string]string{
-			"shard1": "10.33.33.2:4218",
-			"shard2": "10.33.33.3:4218",
+			"shard1": "10.77.77.2:4218",
+			"shard2": "10.77.77.3:4218",
 		},
 		Username:  "unittest-rw",
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
@@ -49,28 +51,34 @@ func makeClient() (*rocsp.RWClient, clock.Clock) {
 	return rocsp.NewWritingClient(rdb, 500*time.Millisecond, clk, metrics.NoopRegisterer), clk
 }
 
+func insertCertificateStatus(t *testing.T, dbMap db.Executor, serial string, notAfter, ocspLastUpdated time.Time) int64 {
+	result, err := dbMap.ExecContext(context.Background(),
+		`INSERT INTO certificateStatus
+		(serial, notAfter, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, issuerID)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		serial,
+		notAfter,
+		core.OCSPStatusGood,
+		ocspLastUpdated,
+		time.Time{},
+		0,
+		time.Time{},
+		99)
+	test.AssertNotError(t, err, "inserting certificate status")
+	id, err := result.LastInsertId()
+	test.AssertNotError(t, err, "getting last insert ID")
+	return id
+}
+
 func TestGetStartingID(t *testing.T) {
 	clk := clock.NewFake()
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
-	sa.SetSQLDebug(dbMap, blog.Get())
 
-	cs := core.CertificateStatus{
-		Serial:   "1337",
-		NotAfter: clk.Now().Add(12 * time.Hour),
-	}
-	err = dbMap.Insert(&cs)
-	test.AssertNotError(t, err, "inserting certificate status")
-	firstID := cs.ID
+	firstID := insertCertificateStatus(t, dbMap, "1337", clk.Now().Add(12*time.Hour), time.Time{})
+	secondID := insertCertificateStatus(t, dbMap, "1338", clk.Now().Add(36*time.Hour), time.Time{})
 
-	cs = core.CertificateStatus{
-		Serial:   "1338",
-		NotAfter: clk.Now().Add(36 * time.Hour),
-	}
-	err = dbMap.Insert(&cs)
-	test.AssertNotError(t, err, "inserting certificate status")
-	secondID := cs.ID
 	t.Logf("first ID %d, second ID %d", firstID, secondID)
 
 	clk.Sleep(48 * time.Hour)
@@ -121,20 +129,15 @@ func (mog mockOCSPGenerator) GenerateOCSP(ctx context.Context, in *capb.Generate
 func TestLoadFromDB(t *testing.T) {
 	redisClient, clk := makeClient()
 
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 
 	defer test.ResetBoulderTestDatabase(t)
 
-	for i := 0; i < 100; i++ {
-		err = dbMap.Insert(&core.CertificateStatus{
-			Serial:          fmt.Sprintf("%036x", i),
-			OCSPResponse:    []byte("phthpbt"),
-			NotAfter:        clk.Now().Add(200 * time.Hour),
-			OCSPLastUpdated: clk.Now(),
-		})
+	for i := range 100 {
+		insertCertificateStatus(t, dbMap, fmt.Sprintf("%036x", i), clk.Now().Add(200*time.Hour), clk.Now())
 		if err != nil {
 			t.Fatalf("Failed to insert certificateStatus: %s", err)
 		}

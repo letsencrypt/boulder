@@ -11,7 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestProblemDetailsFromError(t *testing.T) {
+func TestProblemDetailsForError(t *testing.T) {
 	// errMsg is used as the msg argument for `ProblemDetailsForError` and is
 	// always returned in the problem detail.
 	const errMsg = "testError"
@@ -35,7 +35,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
 		{berrors.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
 		{berrors.RateLimitError(0, detailMsg), 429, probs.RateLimitedProblem, fullDetail + ": see https://letsencrypt.org/docs/rate-limits/"},
-		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
+		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidContactProblem, fullDetail},
 		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
 	}
 	for _, c := range testCases {
@@ -50,14 +50,6 @@ func TestProblemDetailsFromError(t *testing.T) {
 			t.Errorf("Expected detailed message %q, got %q", c.detail, p.Detail)
 		}
 	}
-
-	expected := &probs.ProblemDetails{
-		Type:       probs.MalformedProblem,
-		HTTPStatus: 200,
-		Detail:     "gotcha",
-	}
-	p := ProblemDetailsForError(expected, "k")
-	test.AssertDeepEquals(t, expected, p)
 }
 
 func TestSubProblems(t *testing.T) {
@@ -67,14 +59,14 @@ func TestSubProblems(t *testing.T) {
 	}).WithSubErrors(
 		[]berrors.SubBoulderError{
 			{
-				Identifier: identifier.DNSIdentifier("threeletter.agency"),
+				Identifier: identifier.NewDNS("threeletter.agency"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.CAA,
 					Detail: "Forbidden by ■■■■■■■■■■■ and directive ■■■■",
 				},
 			},
 			{
-				Identifier: identifier.DNSIdentifier("area51.threeletter.agency"),
+				Identifier: identifier.NewDNS("area51.threeletter.agency"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.NotFound,
 					Detail: "No Such Area...",

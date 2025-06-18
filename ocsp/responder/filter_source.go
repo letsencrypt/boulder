@@ -4,28 +4,62 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/sha1" //nolint: gosec // SHA1 is required by the RFC 5019 Lightweight OCSP Profile
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
+// responderID contains the SHA1 hashes of an issuer certificate's name and key,
+// exactly as the issuerNameHash and issuerKeyHash fields of an OCSP request
+// should be computed by OCSP clients that are compliant with RFC 5019, the
+// Lightweight OCSP Profile for High-Volume Environments. It also contains the
+// Subject Common Name of the issuer certificate, for our own observability.
 type responderID struct {
-	nameHash []byte
-	keyHash  []byte
+	nameHash   []byte
+	keyHash    []byte
+	commonName string
+}
+
+// computeLightweightResponderID builds a responderID from an issuer certificate.
+func computeLightweightResponderID(ic *issuance.Certificate) (responderID, error) {
+	// nameHash is the SHA1 hash over the DER encoding of the issuer certificate's
+	// Subject Distinguished Name.
+	nameHash := sha1.Sum(ic.RawSubject)
+
+	// keyHash is the SHA1 hash over the DER encoding of the issuer certificate's
+	// Subject Public Key Info. We can't use MarshalPKIXPublicKey for this since
+	// it encodes keys using the SPKI structure itself, and we just want the
+	// contents of the subjectPublicKey for the hash, so we need to extract it
+	// ourselves.
+	var spki struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	_, err := asn1.Unmarshal(ic.RawSubjectPublicKeyInfo, &spki)
+	if err != nil {
+		return responderID{}, err
+	}
+	keyHash := sha1.Sum(spki.PublicKey.RightAlign())
+
+	return responderID{nameHash[:], keyHash[:], ic.Subject.CommonName}, nil
 }
 
 type filterSource struct {
 	wrapped        Source
 	hashAlgorithm  crypto.Hash
-	issuers        map[issuance.IssuerNameID]responderID
+	issuers        map[issuance.NameID]responderID
 	serialPrefixes []string
 	counter        *prometheus.CounterVec
 	log            blog.Logger
@@ -40,13 +74,11 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 		return nil, errors.New("filter must include at least 1 issuer cert")
 	}
 
-	issuersByNameId := make(map[issuance.IssuerNameID]responderID)
+	issuersByNameId := make(map[issuance.NameID]responderID)
 	for _, issuerCert := range issuerCerts {
-		keyHash := issuerCert.KeyHash()
-		nameHash := issuerCert.NameHash()
-		rid := responderID{
-			keyHash:  keyHash[:],
-			nameHash: nameHash[:],
+		rid, err := computeLightweightResponderID(issuerCert)
+		if err != nil {
+			return nil, fmt.Errorf("computing lightweight OCSP responder ID: %w", err)
 		}
 		issuersByNameId[issuerCert.NameID()] = rid
 	}
@@ -54,7 +86,7 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_filter_responses",
 		Help: "Count of OCSP requests/responses by action taken by the filter",
-	}, []string{"result"})
+	}, []string{"result", "issuer"})
 	stats.MustRegister(counter)
 
 	return &filterSource{
@@ -75,24 +107,26 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 	iss, err := src.checkRequest(req)
 	if err != nil {
 		src.log.Debugf("Not responding to filtered OCSP request: %s", err.Error())
-		src.counter.WithLabelValues("request_filtered").Inc()
+		src.counter.WithLabelValues("request_filtered", "none").Inc()
 		return nil, err
 	}
 
+	counter := src.counter.MustCurryWith(prometheus.Labels{"issuer": src.issuers[iss].commonName})
+
 	resp, err := src.wrapped.Response(ctx, req)
 	if err != nil {
-		src.counter.WithLabelValues("wrapped_error").Inc()
+		counter.WithLabelValues("wrapped_error").Inc()
 		return nil, err
 	}
 
 	err = src.checkResponse(iss, resp)
 	if err != nil {
 		src.log.Warningf("OCSP Response not sent for CA=%s, Serial=%s, err: %s", hex.EncodeToString(req.IssuerKeyHash), core.SerialToString(req.SerialNumber), err)
-		src.counter.WithLabelValues("response_filtered").Inc()
+		counter.WithLabelValues("response_filtered").Inc()
 		return nil, err
 	}
 
-	src.counter.WithLabelValues("success").Inc()
+	counter.WithLabelValues("success").Inc()
 	return resp, nil
 }
 
@@ -109,7 +143,7 @@ func (src *filterSource) checkNextUpdate(resp *Response) error {
 // the requirements of an OCSP request, or nil if the request should be handled.
 // If the request passes all checks, then checkRequest returns the unique id of
 // the issuer cert specified in the request.
-func (src *filterSource) checkRequest(req *ocsp.Request) (issuance.IssuerNameID, error) {
+func (src *filterSource) checkRequest(req *ocsp.Request) (issuance.NameID, error) {
 	if req.HashAlgorithm != src.hashAlgorithm {
 		return 0, fmt.Errorf("unsupported issuer key/name hash algorithm %s: %w", req.HashAlgorithm, ErrNotFound)
 	}
@@ -140,8 +174,8 @@ func (src *filterSource) checkRequest(req *ocsp.Request) (issuance.IssuerNameID,
 // issuer as was identified in the request, or an error otherwise. This filters
 // out, for example, responses which are for a serial that we issued, but from a
 // different issuer than that contained in the request.
-func (src *filterSource) checkResponse(reqIssuerID issuance.IssuerNameID, resp *Response) error {
-	respIssuerID := issuance.GetOCSPIssuerNameID(resp.Response)
+func (src *filterSource) checkResponse(reqIssuerID issuance.NameID, resp *Response) error {
+	respIssuerID := issuance.ResponderNameID(resp.Response)
 	if reqIssuerID != respIssuerID {
 		// This would be allowed if we used delegated responders, but we don't.
 		return fmt.Errorf("responder name does not match requested issuer name")

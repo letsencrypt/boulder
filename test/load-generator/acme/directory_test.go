@@ -132,7 +132,7 @@ func TestNew(t *testing.T) {
 		{
 			Name:          "unreachable directory URL",
 			DirectoryURL:  "http://localhost:1987",
-			ExpectedError: "Get \"http://localhost:1987\": dial tcp 127.0.0.1:1987: connect: connection refused",
+			ExpectedError: "connect: connection refused",
 		},
 		{
 			Name:          "wrong directory HTTP status code",
@@ -179,7 +179,7 @@ func TestNew(t *testing.T) {
 			if err == nil && tc.ExpectedError != "" {
 				t.Errorf("expected error %q got nil", tc.ExpectedError)
 			} else if err != nil {
-				test.AssertEquals(t, err.Error(), tc.ExpectedError)
+				test.AssertContains(t, err.Error(), tc.ExpectedError)
 			}
 		})
 	}

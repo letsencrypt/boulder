@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -19,7 +20,7 @@ import (
 type Config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		Features map[string]bool
+		Features features.Config
 
 		// If this is non-zero, profile blocking events such that one even is
 		// sampled every N nanoseconds.
@@ -30,11 +31,11 @@ type Config struct {
 		// Chains is a list of lists of certificate filenames. Each inner list is
 		// a chain, starting with the issuing intermediate, followed by one or
 		// more additional certificates, up to and including a root.
-		Chains [][]string
+		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -50,8 +51,7 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.Publisher.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.Publisher.Features)
 
 	runtime.SetBlockProfileRate(c.Publisher.BlockProfileRate)
 
@@ -64,9 +64,8 @@ func main() {
 	if c.Publisher.UserAgent == "" {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
-
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
-	defer logger.AuditPanic()
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Publisher.DebugAddr)
+	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
 	if c.Publisher.Chains == nil {
@@ -74,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	bundles := make(map[issuance.IssuerNameID][]ct.ASN1Cert)
+	bundles := make(map[issuance.NameID][]ct.ASN1Cert)
 	for _, files := range c.Publisher.Chains {
 		chain, err := issuance.LoadChain(files)
 		cmd.FailOnError(err, "failed to load chain.")
@@ -86,21 +85,20 @@ func main() {
 		bundles[id] = publisher.GetCTBundleForChain(chain)
 	}
 
-	tlsConfig, err := c.Publisher.TLS.Load()
+	tlsConfig, err := c.Publisher.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
 
 	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 
-	start, stop, err := bgrpc.NewServer(c.Publisher.GRPC).Add(
+	start, err := bgrpc.NewServer(c.Publisher.GRPC, logger).Add(
 		&pubpb.Publisher_ServiceDesc, pubi).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "Publisher gRPC service failed")
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-publisher", main)
+	cmd.RegisterCommand("boulder-publisher", main, &cmd.ConfigValidator{Config: &Config{}})
 }

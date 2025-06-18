@@ -5,6 +5,7 @@ package challtestsrv
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -95,10 +96,17 @@ type Config struct {
 	HTTPOneAddrs []string
 	// HTTPSOneAddrs are the HTTPS HTTP-01 challenge server bind addresses/ports
 	HTTPSOneAddrs []string
+	// DOHAddrs are the DOH challenge server bind addresses/ports
+	DOHAddrs []string
 	// DNSOneAddrs are the DNS-01 challenge server bind addresses/ports
 	DNSOneAddrs []string
 	// TLSALPNOneAddrs are the TLS-ALPN-01 challenge server bind addresses/ports
 	TLSALPNOneAddrs []string
+
+	// DOHCert is required if DOHAddrs is nonempty.
+	DOHCert string
+	// DOHCertKey is required if DOHAddrs is nonempty.
+	DOHCertKey string
 }
 
 // validate checks that a challenge server Config is valid. To be valid it must
@@ -112,7 +120,7 @@ func (c *Config) validate() error {
 		len(c.TLSALPNOneAddrs) < 1 {
 		return fmt.Errorf(
 			"config must specify at least one HTTPOneAddrs entry, one HTTPSOneAddr " +
-				"entry, one DNSOneAddrs entry, or one TLSALPNOneAddrs entry")
+				"entry, one DOHAddrs, one DNSOneAddrs entry, or one TLSALPNOneAddrs entry")
 	}
 	// If there is no configured log make a default with a prefix
 	if c.Log == nil {
@@ -165,6 +173,15 @@ func New(config Config) (*ChallSrv, error) {
 		challSrv.log.Printf("Creating TCP and UDP DNS-01 challenge server on %s\n", address)
 		challSrv.servers = append(challSrv.servers,
 			dnsOneServer(address, challSrv.dnsHandler)...)
+	}
+
+	for _, address := range config.DOHAddrs {
+		challSrv.log.Printf("Creating DoH server on %s\n", address)
+		s, err := dohServer(address, config.DOHCert, config.DOHCertKey, http.HandlerFunc(challSrv.dohHandler))
+		if err != nil {
+			return nil, err
+		}
+		challSrv.servers = append(challSrv.servers, s)
 	}
 
 	// If there are TLS-ALPN-01 addresses configured, create TLS-ALPN-01 servers

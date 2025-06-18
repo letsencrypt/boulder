@@ -80,7 +80,7 @@ func (s *Session) getPublicKeyID(label string, publicKey crypto.PublicKey) ([]by
 		// PKCS#11 v2.20 specified that the CKA_EC_POINT was to be store in a DER-encoded
 		// OCTET STRING.
 		rawValue := asn1.RawValue{
-			Tag:   4, // in Go 1.6+ this is asn1.TagOctetString
+			Tag:   asn1.TagOctetString,
 			Bytes: elliptic.Marshal(key.Curve, key.X, key.Y),
 		}
 		marshalledPoint, err := asn1.Marshal(rawValue)
@@ -235,7 +235,7 @@ const (
 
 // Hash identifiers required for PKCS#11 RSA signing. Only support SHA-256, SHA-384,
 // and SHA-512
-var hashIdentifiers = map[crypto.Hash][]byte{
+var hashIdents = map[crypto.Hash][]byte{
 	crypto.SHA256: {0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20},
 	crypto.SHA384: {0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30},
 	crypto.SHA512: {0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40},
@@ -250,7 +250,7 @@ func (s *Session) Sign(object pkcs11.ObjectHandle, keyType keyType, digest []byt
 	switch keyType {
 	case RSAKey:
 		mech[0] = pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)
-		prefix, ok := hashIdentifiers[hash]
+		prefix, ok := hashIdents[hash]
 		if !ok {
 			return nil, errors.New("unsupported hash function")
 		}

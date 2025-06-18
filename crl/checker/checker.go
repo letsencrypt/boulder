@@ -8,17 +8,23 @@ import (
 	"sort"
 	"time"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
+	zlint_x509 "github.com/zmap/zcrypto/x509"
+	"github.com/zmap/zlint/v3"
+
 	"github.com/letsencrypt/boulder/linter"
-	crlint "github.com/letsencrypt/boulder/linter/lints/crl"
 )
 
 // Validate runs the given CRL through our set of lints, ensures its signature
 // validates (if supplied with a non-nil issuer), and checks that the CRL is
 // less than ageLimit old. It returns an error if any of these conditions are
 // not met.
-func Validate(crl *crl_x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration) error {
-	err := linter.ProcessResultSet(crlint.LintCRL(crl))
+func Validate(crl *x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration) error {
+	zcrl, err := zlint_x509.ParseRevocationList(crl.Raw)
+	if err != nil {
+		return fmt.Errorf("parsing CRL: %w", err)
+	}
+
+	err = linter.ProcessResultSet(zlint.LintRevocationList(zcrl))
 	if err != nil {
 		return fmt.Errorf("linting CRL: %w", err)
 	}
@@ -48,30 +54,30 @@ type diffResult struct {
 // CRLs. In order to be comparable, the CRLs must come from the same issuer, and
 // be given in the correct order (the "old" CRL's Number and ThisUpdate must
 // both precede the "new" CRL's).
-func Diff(old, new *crl_x509.RevocationList) (*diffResult, error) {
+func Diff(old, new *x509.RevocationList) (*diffResult, error) {
 	if !bytes.Equal(old.AuthorityKeyId, new.AuthorityKeyId) {
 		return nil, fmt.Errorf("CRLs were not issued by same issuer")
-	}
-
-	if !old.ThisUpdate.Before(new.ThisUpdate) {
-		return nil, fmt.Errorf("old CRL does not precede new CRL")
 	}
 
 	if old.Number.Cmp(new.Number) >= 0 {
 		return nil, fmt.Errorf("old CRL does not precede new CRL")
 	}
 
+	if new.ThisUpdate.Before(old.ThisUpdate) {
+		return nil, fmt.Errorf("old CRL does not precede new CRL")
+	}
+
 	// Sort both sets of serials so we can march through them in order.
-	oldSerials := make([]*big.Int, len(old.RevokedCertificates))
-	for i, rc := range old.RevokedCertificates {
+	oldSerials := make([]*big.Int, len(old.RevokedCertificateEntries))
+	for i, rc := range old.RevokedCertificateEntries {
 		oldSerials[i] = rc.SerialNumber
 	}
 	sort.Slice(oldSerials, func(i, j int) bool {
 		return oldSerials[i].Cmp(oldSerials[j]) < 0
 	})
 
-	newSerials := make([]*big.Int, len(new.RevokedCertificates))
-	for j, rc := range new.RevokedCertificates {
+	newSerials := make([]*big.Int, len(new.RevokedCertificateEntries))
+	for j, rc := range new.RevokedCertificateEntries {
 		newSerials[j] = rc.SerialNumber
 	}
 	sort.Slice(newSerials, func(i, j int) bool {

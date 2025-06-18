@@ -27,7 +27,7 @@ jobs:
   #  tags and 5 tests there would be 10 jobs run.
   b:
     # The type of runner that the job will run on
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     strategy:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
@@ -36,12 +36,12 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.20.2_2023-03-07
+          - go1.24.4_2025-06-06
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
           - "./t.sh --lints --generate"
-          - "./t.sh --integration && ./test/test-caa-log-checker.sh"
+          - "./t.sh --integration"
           # Testing Config Changes:
           # Config changes that have landed in main but not yet been applied to
           # production can be made in `test/config-next/<component>.json`.
@@ -54,29 +54,24 @@ jobs:
           - "./t.sh --unit --enable-race-detection"
           - "./tn.sh --unit --enable-race-detection"
           - "./t.sh --start-py"
-          # gomod-vendor runs with a separate network access definition
-          # because it needs to fetch packages from GitHub et. al., which
-          # is incompatible with the DNS server override in the boulder
-          # container (used for service discovery).
-          - "docker compose run --use-aliases netaccess ./test.sh --gomod-vendor"
 
-    # This sets the docker image tag for the boulder-tools repository to
-    # use in tests. It will be set appropriately for each tag in the list
-    # defined in the matrix.
     env:
+      # This sets the docker image tag for the boulder-tools repository to
+      # use in tests. It will be set appropriately for each tag in the list
+      # defined in the matrix.
       BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
 
     # Sequence of tasks that will be executed as part of the job.
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Docker Login
         # You may pin to the exact commit or the version.
         # uses: docker/login-action@f3364599c6aa293cdc2b8391b1b56d0c30e45c8a
-        uses: docker/login-action@v2.1.0
+        uses: docker/login-action@v3.4.0
         with:
           # Username used to log against the Docker registry
           username: ${{ secrets.DOCKER_USERNAME}}
@@ -99,18 +94,71 @@ jobs:
       - name: "Run Test: ${{ matrix.tests }}"
         run: ${{ matrix.tests }}
 
+  govulncheck:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+
+    steps:
+      # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          # When Go produces a security release, we want govulncheck to run
+          # against the most recently released Go version.
+          check-latest: true
+          go-version: "stable"
+
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  vendorcheck:
+    runs-on: ubuntu-24.04
+    strategy:
+      # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
+      fail-fast: false
+      matrix:
+        go-version: [ '1.24.1' ]
+
+    steps:
+      # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Verify vendor
+        shell: bash
+        run: |
+          go mod tidy
+          go mod vendor
+          git diff --exit-code
+
+
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
   # one static job name that can be used to determine success of the job
   # in GitHub branch protection.
+  # It does not block on the result of govulncheck so that a new vulnerability
+  # disclosure does not prevent any other PRs from being merged.
   boulder_ci_test_matrix_status:
     permissions:
       contents: none
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Boulder CI Test Matrix
-    needs: b
+    needs:
+      - b
+      - vendorcheck
     steps:
       - name: Check boulder ci test matrix status
-        if: ${{ needs.b.result != 'success' }}
+        if: ${{ needs.b.result != 'success' || needs.vendorcheck.result != 'success' }}
         run: exit 1

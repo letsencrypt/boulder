@@ -1,10 +1,13 @@
 package probers
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/letsencrypt/boulder/observer/obsdialer"
 )
 
 // HTTPProbe is the exported 'Prober' object for monitors configured to
@@ -44,12 +47,14 @@ func (p HTTPProbe) isExpected(received int) bool {
 
 // Probe performs the configured HTTP request.
 func (p HTTPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	client := http.Client{
-		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
+			DialContext:     obsdialer.Dialer.DialContext,
 		}}
-	req, err := http.NewRequest("GET", p.url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
 		return false, 0
 	}

@@ -256,13 +256,13 @@ func (r RDNSequence) String() string {
 // ToRDNSequence converts n into a single RDNSequence. The following
 // attributes are encoded as multi-value RDNs:
 //
-//  - Country
-//  - Organization
-//  - OrganizationalUnit
-//  - Locality
-//  - Province
-//  - StreetAddress
-//  - PostalCode
+//   - Country
+//   - Organization
+//   - OrganizationalUnit
+//   - Locality
+//   - Province
+//   - StreetAddress
+//   - PostalCode
 //
 // Each ExtraNames entry is encoded as an individual RDN.
 func (n Name) ToRDNSequence() (ret RDNSequence) {
@@ -272,6 +272,7 @@ func (n Name) ToRDNSequence() (ret RDNSequence) {
 	if len(n.CommonName) > 0 {
 		ret = n.appendRDNs(ret, []string{n.CommonName}, oidCommonName)
 	}
+	ret = n.appendRDNs(ret, n.EmailAddress, oidDNEmailAddress)
 	ret = n.appendRDNs(ret, n.OrganizationalUnit, oidOrganizationalUnit)
 	ret = n.appendRDNs(ret, n.Organization, oidOrganization)
 	ret = n.appendRDNs(ret, n.StreetAddress, oidStreetAddress)

@@ -86,10 +86,7 @@ func (tc *clientTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Con
 
 // Info returns information about the transport protocol used
 func (tc *clientTransportCredentials) Info() credentials.ProtocolInfo {
-	return credentials.ProtocolInfo{
-		SecurityProtocol: "tls",
-		SecurityVersion:  "1.2", // We *only* support TLS 1.2
-	}
+	return credentials.ProtocolInfo{SecurityProtocol: "tls"}
 }
 
 // GetRequestMetadata returns nil, nil since TLS credentials do not have metadata.
@@ -217,10 +214,7 @@ func (tc *serverTransportCredentials) ClientHandshake(ctx context.Context, addr 
 
 // Info provides the ProtocolInfo of this TransportCredentials.
 func (tc *serverTransportCredentials) Info() credentials.ProtocolInfo {
-	return credentials.ProtocolInfo{
-		SecurityProtocol: "tls",
-		SecurityVersion:  "1.2", // We *only* support TLS 1.2
-	}
+	return credentials.ProtocolInfo{SecurityProtocol: "tls"}
 }
 
 // GetRequestMetadata returns nil, nil since TLS credentials do not have metadata.
