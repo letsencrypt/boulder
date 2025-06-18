@@ -177,9 +177,9 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	if err != nil {
 		return nil, nil, err
 	}
-	netIP, ipErr := netip.ParseAddr(host)
-	if ipErr == nil {
-		err = va.isReservedIPFunc(netIP)
+	hostIP, _ := netip.ParseAddr(host)
+	if (hostIP != netip.Addr{}) {
+		err = va.isReservedIPFunc(hostIP)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -188,11 +188,11 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	conn, err := dialer.DialContext(dialCtx, "tcp", hostPort)
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", core.ChallengeTypeTLSALPN01, ident, err, err)
-		if ipErr == nil {
+		if (hostIP != netip.Addr{}) {
 			// Wrap the validation error and the IP of the remote host in an
 			// IPError so we can display the IP in the problem details returned
 			// to the client.
-			return nil, nil, ipError{netIP, err}
+			return nil, nil, ipError{hostIP, err}
 		}
 		return nil, nil, err
 	}
