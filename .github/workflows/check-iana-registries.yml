@@ -2,7 +2,7 @@ name: Check for IANA special-purpose address registry updates
 
 on:
   schedule:
-    - cron: "20 11 * * 1,3,5"
+    - cron: "20 16 * * *"
 
 jobs:
   check-iana-registries:
@@ -14,6 +14,7 @@ jobs:
         with:
             sparse-checkout: iana/data
 
+      # TODO(#8080): Instead of just failing the job, create a PR.
       - name: Check and fail if IANA special-purpose address registries have changed
         run: |
             set -e
