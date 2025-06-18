@@ -528,6 +528,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	}
 
 	// Check that contacts conform to our expectations.
+	// TODO(#8199): Remove this when no contacts are included in any requests.
 	err = ra.validateContacts(request.Contact)
 	if err != nil {
 		return nil, err
@@ -1399,8 +1400,11 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []b
 	return scts, nil
 }
 
-// UpdateRegistrationContact updates an existing Registration's contact.
-// The updated contacts field may be empty.
+// UpdateRegistrationContact updates an existing Registration's contact. The
+// updated contacts field may be empty.
+//
+// Deprecated: This method has no callers. See
+// https://github.com/letsencrypt/boulder/issues/8199 for removal.
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
