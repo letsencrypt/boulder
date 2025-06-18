@@ -147,7 +147,7 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 			impl.toSend = impl.toSend[:last]
 			impl.Unlock()
 
-			if impl.emailCache.StoreIfAbsent(email) {
+			if !impl.emailCache.StoreIfAbsent(email) {
 				// Another worker has already processed this email.
 				continue
 			}

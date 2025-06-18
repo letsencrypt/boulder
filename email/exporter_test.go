@@ -190,21 +190,15 @@ func TestSendContactDeduplication(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, exporter.emailsHandledCounter, prometheus.Labels{}, 1)
 
 	if !cache.Seen("duplicate@example.com") {
-		t.Fatalf("duplicate@example.com should have been cached after send")
+		t.Errorf("duplicate@example.com should have been cached after send")
 	}
-}
-
-type failClient struct{}
-
-func (f *failClient) SendContact(email string) error {
-	return fmt.Errorf("simulated failure")
 }
 
 func TestSendContactErrorRemovesFromCache(t *testing.T) {
 	t.Parallel()
 
 	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
-	fc := &failClient{}
+	fc := &mockAlwaysFailClient{}
 
 	exporter := NewExporterImpl(fc, cache, 1000000, 1, metrics.NoopRegisterer, blog.NewMock())
 
@@ -223,6 +217,9 @@ func TestSendContactErrorRemovesFromCache(t *testing.T) {
 	// The email should have been evicted from the cache after send encountered
 	// an error.
 	if cache.Seen("error@example.com") {
-		t.Fatalf("error@example.com should have been evicted from cache after send errors")
+		t.Errorf("error@example.com should have been evicted from cache after send errors")
 	}
+
+	// Check that the error counter was incremented.
+	test.AssertMetricWithLabelsEquals(t, exporter.pardotErrorCounter, prometheus.Labels{}, 1)
 }
