@@ -53,7 +53,7 @@ func (c *EmailCache) Seen(email string) bool {
 	return true
 }
 
-func (c *EmailCache) Store(email string) {
+func (c *EmailCache) Remove(email string) {
 	if c == nil {
 		// If the cache is nil we assume it was not configured.
 		return
@@ -64,5 +64,29 @@ func (c *EmailCache) Store(email string) {
 	c.Lock()
 	defer c.Unlock()
 
+	c.cache.Remove(hash)
+}
+
+// StoreIfAbsent stores the email in the cache if it is not already present, as
+// a single atomic operation. It returns true if the email was stored and false
+// if it was already in the cache. If the cache is nil, true is always returned.
+func (c *EmailCache) StoreIfAbsent(email string) bool {
+	if c == nil {
+		// If the cache is nil we assume it was not configured.
+		return true
+	}
+
+	hash := hashEmail(email)
+
+	c.Lock()
+	defer c.Unlock()
+
+	_, ok := c.cache.Get(hash)
+	if ok {
+		c.requests.WithLabelValues("hit").Inc()
+		return false
+	}
 	c.cache.Add(hash, nil)
+	c.requests.WithLabelValues("miss").Inc()
+	return true
 }

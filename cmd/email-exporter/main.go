@@ -105,10 +105,9 @@ func main() {
 		clientSecret,
 		c.EmailExporter.SalesforceBaseURL,
 		c.EmailExporter.PardotBaseURL,
-		cache,
 	)
 	cmd.FailOnError(err, "Creating Pardot API client")
-	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
+	exporterServer := email.NewExporterImpl(pardotClient, cache, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
 
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading email-exporter TLS config")
