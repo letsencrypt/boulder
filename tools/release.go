@@ -134,7 +134,8 @@ func release(args []string) error {
 			return err
 		}
 	} else {
-		fmt.Println("please inspect the tag above, then run:")
+		fmt.Println()
+		fmt.Println("Please inspect the tag above, then run:")
 		fmt.Printf("    git push origin %s\n", version)
 	}
 	return nil
@@ -250,7 +251,8 @@ func hotfix(args []string) error {
 			return cmdError{output: out, error: err}
 		}
 	} else {
-		fmt.Println("please inspect the tag above, then run:")
+		fmt.Println()
+		fmt.Println("Please inspect the tag above, then run:")
 		fmt.Printf("    git push origin %s %s\n", refspec, version)
 	}
 	return nil
