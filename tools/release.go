@@ -1,13 +1,40 @@
-package main
+/*
+release.go creates a new Boulder release tag and pushes it to GitHub. It ensures
+that the release tag points to the correct commit, has standardized formatting
+of both the tag itself and its message, and is GPG-signed.
 
-// release.go creates a new version tag and pushes it to GitHub. It has two
-// main modes of operation:
-// * default: fetch origin/main, tag that commit with Major.Minor.Patch version
-//   of 0.YYYYMMDD.0, and push the tag.
-// * hotfix: fetch the named release tag, create a new branch starting from
-//   that commit, cherry-pick the named commit(s) onto that branch, tag the
-//   new branch head with a Major.Minor.Patch that matches the Major.Minor of
-//   named release tag and a Patch that is one greater, and push that tag.
+It always produces Semantic Versioning tags of the form v0.YYYYMMDD.N, where:
+  - the major version of 0 indicates that we are not committing to any
+    backwards-compatibility guarantees;
+  - the minor version of the current date provides a human-readable date for the
+    release, and ensures that minor versions will be monotonically increasing;
+    and
+  - the patch version is always 0 for mainline releases, and a monotonically
+    increasing number for hotfix releases.
+
+Usage:
+
+	go run tools/release.go [-push]
+
+	go run tools/release.go hotfix -pick <committish>[,<committish>] -onto <prior tag> [-push]
+
+In the first (default) mode, it fetches 'origin/main', creates a new tag
+pointing at the HEAD of that ref, and prints the result to the terminal for the
+user to inspect. If the -push flag is supplied, it also immediately pushes the
+newly-created tag to the remote 'origin'.
+
+In the hotfix mode, two additional flags must be supplied: one or more
+comma-separated commits to be cherry-picked into the hotfix, and the tag of the
+release on which this hotfix should be based. If this is the first hotfix
+release on top of a particular main-line release, it creates a new release
+branch named after the major and minor portions of the version number. It
+cherry-picks each commit given by the -pick flag on top of the release commit
+indicated by the -onto flag. It then creates and signs a tag whose patch version
+is one greater than the version given by the -onto flag. When all of this is
+complete, it behaves like the default command, either printing the tag, or
+pushing it if the -push flag was supplied.
+*/
+package main
 
 import (
 	"flag"
