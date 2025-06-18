@@ -242,7 +242,7 @@ func hotfix(args []string) error {
 	// commits. This branch may or may not exist already, and it doesn't matter:
 	// when we push to it, it will either be updated or created, as appropriate.
 	branch := semver.MajorMinor(onto)
-	refspec := fmt.Sprintf("HEAD:%s", branch)
+	refspec := fmt.Sprintf("HEAD:refs/heads/%s", branch)
 
 	if push {
 		_, err = run(exec.Command("git", "push", "origin", refspec, version))
