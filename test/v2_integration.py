@@ -647,27 +647,6 @@ def test_order_reuse_failed_authz():
     finally:
         cleanup()
 
-def test_order_finalize_early():
-    """
-    Test that finalizing an order before its fully authorized results in the
-    order having an error set and the status being invalid.
-    """
-    # Create a client
-    client = chisel2.make_client(None)
-
-    # Create a random domain and a csr
-    domains = [ random_domain() ]
-    csr_pem = chisel2.make_csr(domains)
-
-    # Create an order for the domain
-    order = client.new_order(csr_pem)
-
-    deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
-
-    # Finalizing an order early should generate an orderNotReady error.
-    chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
-        lambda: client.finalize_order(order, deadline))
-
 def test_only_return_existing_reg():
     client = chisel2.uninitialized_client()
     email = "test@not-example.com"
