@@ -216,7 +216,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "198.51.100.1: Timeout during connect (likely firewall problem)"
+	expected := "64.112.117.254: Timeout during connect (likely firewall problem)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
