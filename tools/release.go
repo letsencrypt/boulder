@@ -185,6 +185,19 @@ func hotfix(args []string) error {
 	// -x flag so that each of these cherry-picked commits has a commit message
 	// which indicates the original commit that it came from.
 	for committish := range strings.SplitSeq(cherryPicks, ",") {
+		// First, confirm that the target commit is reachable from origin/main (i.e.
+		// has been reviewed and merged) and is not reachable from the current HEAD
+		// (i.e. isn't already incorporated into this release).
+		_, err = run(exec.Command("git", "merge-base", "--is-ancestor", committish, "origin/main"))
+		if err != nil {
+			return fmt.Errorf("committish %q is not reachable from origin/main, may not be properly reviewed and merged: %w", committish, err)
+		}
+
+		_, err = run(exec.Command("git", "merge-base", "--is-ancestor", committish, onto))
+		if err == nil { // inverted! we want this command to fail.
+			return fmt.Errorf("committish %q is reachable from %q, may not need to be cherry-picked: %w", committish, onto, err)
+		}
+
 		_, err = run(exec.Command("git", "cherry-pick", "-x", committish))
 		if err != nil {
 			return err
