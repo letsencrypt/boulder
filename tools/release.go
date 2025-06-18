@@ -66,6 +66,12 @@ func run(cmd *exec.Cmd) (string, error) {
 	return string(out), nil
 }
 
+func show(output string) {
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		fmt.Println("  ", line)
+	}
+}
+
 func main() {
 	var err error
 	if len(os.Args) >= 2 && os.Args[1] == "hotfix" {
@@ -76,9 +82,7 @@ func main() {
 	if err != nil {
 		var cmdErr cmdError
 		if errors.As(err, &cmdErr) {
-			for line := range strings.SplitSeq(strings.TrimSpace(cmdErr.output), "\n") {
-				fmt.Println("  ", line)
-			}
+			show(cmdErr.output)
 		}
 		fmt.Println(err.Error())
 		os.Exit(1)
@@ -122,7 +126,7 @@ func release(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(out)
+	show(out)
 
 	if push {
 		_, err = run(exec.Command("git", "push", "origin", version))
@@ -232,7 +236,7 @@ func hotfix(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(out)
+	show(out)
 
 	// Compute the name of the release branch that will contain the cherry-picked
 	// commits. This branch may or may not exist already, and it doesn't matter:
