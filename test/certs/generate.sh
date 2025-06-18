@@ -21,7 +21,7 @@ ipki() (
   # aren't sophisticated enough to present a different name. This first
   # invocation also creates the issuer key, so the loops below can run in the
   # background without racing to create it.
-  minica -domains localhost
+  minica -domains localhost --ip-addresses 127.0.0.1
 
   # Used by challtestsrv to negotiate DoH handshakes. Even though we think of
   # challtestsrv as being external to our infrastructure (because it hosts the

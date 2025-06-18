@@ -2327,7 +2327,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	var isARIRenewal bool
 	replacesSerial, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, idents, newOrderRequest.Replaces)
 	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Could not validate ARI 'replaces' field"), err)
 		return
 	}
 
