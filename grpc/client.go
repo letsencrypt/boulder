@@ -14,11 +14,13 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 
-	// 'grpc/health' is imported for its init function, which causes clients to
-	// rely on the Health Service for load-balancing.
 	// 'grpc/internal/resolver/dns' is imported for its init function, which
 	// registers the SRV resolver.
 	"google.golang.org/grpc/balancer/roundrobin"
+
+	// 'grpc/health' is imported for its init function, which causes clients to
+	// rely on the Health Service for load-balancing as long as a
+	// "healthCheckConfig" is specified in the gRPC service config.
 	_ "google.golang.org/grpc/health"
 
 	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
@@ -61,7 +63,21 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
 	return grpc.NewClient(
 		target,
-		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
+		grpc.WithDefaultServiceConfig(
+			fmt.Sprintf(
+				// By setting the service name to an empty string in
+				// healthCheckConfig, we're instructing the gRPC client to query
+				// the overall health status of each server. The grpc-go health
+				// server, as constructed by health.NewServer(), unconditionally
+				// sets the overall service (e.g. "") status to SERVING. If a
+				// specific service name were set, the server would need to
+				// explicitly transition that service to SERVING; otherwise,
+				// clients would receive a NOT_FOUND status and the connection
+				// would be marked as unhealthy (TRANSIENT_FAILURE).
+				`{"healthCheckConfig": {"serviceName": ""},"loadBalancingConfig": [{"%s":{}}]}`,
+				roundrobin.Name,
+			),
+		),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
