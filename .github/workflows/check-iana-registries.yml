@@ -44,7 +44,7 @@ jobs:
         # `git diff --exit-code` returns an error code if there are any changes.
         run: |
             if ! git diff --exit-code; then
-                git add iana/data/*
+                git add iana/data/
                 git config user.name "Irwin the IANA Bot"
                 git commit \
                     --message "Update IANA special-purpose address registries"
