@@ -133,9 +133,8 @@ func TestMakeTemplateRoot(t *testing.T) {
 	cert, err = makeTemplate(randReader, profile, pubKey, nil, intermediateCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, cert.MaxPathLenZero, "MaxPathLenZero not set in intermediate template")
-	test.AssertEquals(t, len(cert.ExtKeyUsage), 2)
-	test.AssertEquals(t, cert.ExtKeyUsage[0], x509.ExtKeyUsageClientAuth)
-	test.AssertEquals(t, cert.ExtKeyUsage[1], x509.ExtKeyUsageServerAuth)
+	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
+	test.AssertEquals(t, cert.ExtKeyUsage[0], x509.ExtKeyUsageServerAuth)
 }
 
 func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
