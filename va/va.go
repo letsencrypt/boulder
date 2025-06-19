@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -203,21 +204,22 @@ func newDefaultPortConfig() *portConfig {
 type ValidationAuthorityImpl struct {
 	vapb.UnsafeVAServer
 	vapb.UnsafeCAAServer
-	log                blog.Logger
-	dnsClient          bdns.Client
-	issuerDomain       string
-	httpPort           int
-	httpsPort          int
-	tlsPort            int
-	userAgent          string
-	clk                clock.Clock
-	remoteVAs          []RemoteVA
-	maxRemoteFailures  int
-	accountURIPrefixes []string
-	singleDialTimeout  time.Duration
-	perspective        string
-	rir                string
-	isReservedIPFunc   func(netip.Addr) error
+	log                          blog.Logger
+	dnsClient                    bdns.Client
+	issuerDomain                 string
+	httpPort                     int
+	httpsPort                    int
+	tlsPort                      int
+	userAgent                    string
+	clk                          clock.Clock
+	remoteVAs                    []RemoteVA
+	maxRemoteFailures            int
+	accountURIPrefixes           []string
+	dnsAccountChallengeURIPrefix string
+	singleDialTimeout            time.Duration
+	perspective                  string
+	rir                          string
+	isReservedIPFunc             func(netip.Addr) error
 
 	metrics *vaMetrics
 }
@@ -235,6 +237,7 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
+	dnsAccountChallengeURIPrefix string,
 	perspective string,
 	rir string,
 	reservedIPChecker func(netip.Addr) error,
@@ -255,18 +258,19 @@ func NewValidationAuthorityImpl(
 	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
-		log:                logger,
-		dnsClient:          resolver,
-		issuerDomain:       issuerDomain,
-		httpPort:           pc.HTTPPort,
-		httpsPort:          pc.HTTPSPort,
-		tlsPort:            pc.TLSPort,
-		userAgent:          userAgent,
-		clk:                clk,
-		metrics:            initMetrics(stats),
-		remoteVAs:          remoteVAs,
-		maxRemoteFailures:  maxAllowedFailures(len(remoteVAs)),
-		accountURIPrefixes: accountURIPrefixes,
+		log:                          logger,
+		dnsClient:                    resolver,
+		issuerDomain:                 issuerDomain,
+		httpPort:                     pc.HTTPPort,
+		httpsPort:                    pc.HTTPSPort,
+		tlsPort:                      pc.TLSPort,
+		userAgent:                    userAgent,
+		clk:                          clk,
+		metrics:                      initMetrics(stats),
+		remoteVAs:                    remoteVAs,
+		maxRemoteFailures:            maxAllowedFailures(len(remoteVAs)),
+		accountURIPrefixes:           accountURIPrefixes,
+		dnsAccountChallengeURIPrefix: dnsAccountChallengeURIPrefix,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
@@ -716,6 +720,14 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	}()
 
 	// Do local validation. Note that we process the result in a couple ways
+	// For dns-account-01 challenges, construct the account URI from the configured prefix
+	var accountURI string
+	if chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled {
+		if va.dnsAccountChallengeURIPrefix != "" && req.Authz.RegID != 0 {
+			accountURI = fmt.Sprintf("%s%d", va.dnsAccountChallengeURIPrefix, req.Authz.RegID)
+		}
+	}
+
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
@@ -725,7 +737,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
-		req.AccountURI,
+		accountURI,
 	)
 
 	// Stop the clock for local validation latency.

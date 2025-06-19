@@ -65,7 +65,8 @@
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4000/acme/reg/",
 			"http://boulder.service.consul:4001/acme/acct/"
-		]
+		],
+		"dnsAccountChallengeURIPrefix": "http://boulder.service.consul:4001/acme/acct/"
 	},
 	"syslog": {
 		"stdoutlevel": 6,

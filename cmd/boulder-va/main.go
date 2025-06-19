@@ -147,6 +147,7 @@ func main() {
 		clk,
 		logger,
 		c.VA.AccountURIPrefixes,
+		c.VA.DNSAccountChallengeURIPrefix,
 		va.PrimaryPerspective,
 		"",
 		iana.IsReservedAddr)

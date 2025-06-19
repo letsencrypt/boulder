@@ -478,27 +478,27 @@ func TestChallengeTypesFor(t *testing.T) {
 					core.ChallengeTypeDNSAccount01,
 				},
 			},
-		{
-			name:  "dns wildcard",
-			ident: identifier.NewDNS("*.example.com"),
-			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeDNS01,
-				core.ChallengeTypeDNSAccount01,
+			{
+				name:  "dns wildcard",
+				ident: identifier.NewDNS("*.example.com"),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeDNS01,
+					core.ChallengeTypeDNSAccount01,
+				},
 			},
-		},
-		{
-			name:  "ip",
-			ident: identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
-			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeHTTP01, core.ChallengeTypeTLSALPN01,
+			{
+				name:  "ip",
+				ident: identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeHTTP01, core.ChallengeTypeTLSALPN01,
+				},
 			},
-		},
-		{
-			name:    "invalid",
-			ident:   identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"},
-			wantErr: "unrecognized identifier type",
-		},
-	}
+			{
+				name:    "invalid",
+				ident:   identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"},
+				wantErr: "unrecognized identifier type",
+			},
+		}
 
 		for _, tc := range testCases {
 			tc := tc // Capture range variable
@@ -548,9 +548,11 @@ func TestChallengeTypesFor(t *testing.T) {
 				},
 			},
 			{
-				name:    "other",
-				ident:   identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
-				wantErr: "unrecognized identifier type",
+				name:  "ip",
+				ident: identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeHTTP01, core.ChallengeTypeTLSALPN01,
+				},
 			},
 		}
 

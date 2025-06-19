@@ -28,7 +28,8 @@ type Common struct {
 	DNSTimeout                config.Duration `validate:"required"`
 	DNSAllowLoopbackAddresses bool
 
-	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
+	AccountURIPrefixes           []string `validate:"min=1,dive,required,url"`
+	DNSAccountChallengeURIPrefix string   `validate:"omitempty,url"`
 }
 
 // SetDefaultsAndValidate performs some basic sanity checks on fields stored in
