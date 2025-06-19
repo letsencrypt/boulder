@@ -53,15 +53,16 @@ type AcmeChallenge string
 
 // These types are the available challenges
 const (
-	ChallengeTypeHTTP01    = AcmeChallenge("http-01")
-	ChallengeTypeDNS01     = AcmeChallenge("dns-01")
-	ChallengeTypeTLSALPN01 = AcmeChallenge("tls-alpn-01")
+	ChallengeTypeHTTP01       = AcmeChallenge("http-01")
+	ChallengeTypeDNS01        = AcmeChallenge("dns-01")
+	ChallengeTypeTLSALPN01    = AcmeChallenge("tls-alpn-01")
+	ChallengeTypeDNSAccount01 = AcmeChallenge("dns-account-01")
 )
 
 // IsValid tests whether the challenge is a known challenge
 func (c AcmeChallenge) IsValid() bool {
 	switch c {
-	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01:
+	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01, ChallengeTypeDNSAccount01:
 		return true
 	default:
 		return false
@@ -228,7 +229,7 @@ func (ch Challenge) RecordsSane() bool {
 			(ch.ValidationRecord[0].AddressUsed == netip.Addr{}) || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
-	case ChallengeTypeDNS01:
+	case ChallengeTypeDNS01, ChallengeTypeDNSAccount01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
