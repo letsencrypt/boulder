@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -16,8 +17,9 @@ import (
 // IMPORTANT: If you add or remove a limit Name, you MUST update:
 //   - the string representation of the Name in nameToString,
 //   - the validators for that name in validateIdForName(),
-//   - the transaction constructors for that name in bucket.go, and
-//   - the Subscriber facing error message in ErrForDecision().
+//   - the transaction constructors for that name in bucket.go
+//   - the Subscriber facing error message in ErrForDecision(), and
+//   - the case in BuildBucketKey() for that name.
 type Name int
 
 const (
@@ -332,8 +334,8 @@ func validateIdForName(name Name, id string) error {
 	}
 }
 
-// stringToName is a map of string names to Name values.
-var stringToName = func() map[string]Name {
+// StringToName is a map of string names to Name values.
+var StringToName = func() map[string]Name {
 	m := make(map[string]Name, len(nameToString))
 	for k, v := range nameToString {
 		m[v] = k
@@ -341,11 +343,74 @@ var stringToName = func() map[string]Name {
 	return m
 }()
 
-// limitNames is a slice of all rate limit names.
-var limitNames = func() []string {
+// LimitNames is a slice of all rate limit names.
+var LimitNames = func() []string {
 	names := make([]string, 0, len(nameToString))
 	for _, v := range nameToString {
 		names = append(names, v)
 	}
 	return names
 }()
+
+// BuildBucketKey builds a valid bucketKey for the given rate limit name from
+// the provided components. It returns an error if the name is not valid or if
+// the components are not valid for the given name.
+func BuildBucketKey(name Name, regID int64, domain, domains, ipAddr string) (string, error) {
+	makeMissingErr := func(field string) error {
+		return fmt.Errorf("%s is required for limit %s (enum: %s)", field, name, name.EnumString())
+	}
+
+	switch name {
+	case NewRegistrationsPerIPAddress, NewRegistrationsPerIPv6Range:
+		if ipAddr == "" {
+			return "", makeMissingErr("ip")
+		}
+		ip, err := netip.ParseAddr(ipAddr)
+		if err != nil {
+			return "", fmt.Errorf("invalid IP address %q: %w", ipAddr, err)
+		}
+		if name == NewRegistrationsPerIPAddress {
+			return newIPAddressBucketKey(name, ip), nil
+		}
+		return newIPv6RangeCIDRBucketKey(name, ip)
+
+	case NewOrdersPerAccount:
+		if regID == 0 {
+			return "", makeMissingErr("regID")
+		}
+		return newRegIdBucketKey(name, regID), nil
+
+	case CertificatesPerDomain:
+		if domain == "" {
+			return "", makeMissingErr("domain")
+		}
+		return newStringBucketKey(name, domain), nil
+
+	case CertificatesPerFQDNSet:
+		if domains == "" {
+			return "", makeMissingErr("domains")
+		}
+		var idents identifier.ACMEIdentifiers
+		for ident := range strings.SplitSeq(domains, ",") {
+			idents = append(idents, identifier.ACMEIdentifier{
+				Type:  identifier.TypeDNS,
+				Value: ident,
+			})
+		}
+		return newFQDNSetBucketKey(name, idents), nil
+
+	case FailedAuthorizationsPerDomainPerAccount, CertificatesPerDomainPerAccount, FailedAuthorizationsForPausingPerDomainPerAccount:
+		if domain != "" {
+			if regID == 0 {
+				return "", makeMissingErr("regID")
+			}
+			return newRegIdStringBucketKey(name, regID, domain), nil
+		}
+		if regID == 0 {
+			return "", makeMissingErr("regID")
+		}
+		return newRegIdBucketKey(name, regID), nil
+	}
+
+	return "", fmt.Errorf("unknown limit enum %s", name.EnumString())
+}

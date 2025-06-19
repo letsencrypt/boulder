@@ -12,7 +12,7 @@ import (
 
 func TestDecide(t *testing.T) {
 	clk := clock.NewFake()
-	limit := &limit{burst: 10, count: 1, period: config.Duration{Duration: time.Second}}
+	limit := &Limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
 	limit.precompute()
 
 	// Begin by using 1 of our 10 requests.
@@ -139,7 +139,7 @@ func TestDecide(t *testing.T) {
 
 func TestMaybeRefund(t *testing.T) {
 	clk := clock.NewFake()
-	limit := &limit{burst: 10, count: 1, period: config.Duration{Duration: time.Second}}
+	limit := &Limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
 	limit.precompute()
 
 	// Begin by using 1 of our 10 requests.
