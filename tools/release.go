@@ -54,6 +54,10 @@ type cmdError struct {
 	output string
 }
 
+func (e cmdError) Unwrap() error {
+	return e.error
+}
+
 func run(cmd *exec.Cmd) (string, error) {
 	fmt.Println("Running:", cmd.String())
 	out, err := cmd.CombinedOutput()
