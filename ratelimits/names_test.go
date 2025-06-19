@@ -342,7 +342,17 @@ func TestBuildBucketKey(t *testing.T) {
 		},
 		{
 			name:    CertificatesPerFQDNSet,
-			desc:    "valid fqdnSet",
+			desc:    "valid fqdnSet with only registered domains",
+			domains: "example.com,example.org",
+			bucketKeyTest: func(t *testing.T, key string) {
+				if !strings.HasPrefix(key, fmt.Sprintf("%d:", CertificatesPerFQDNSet)) {
+					t.Fatalf("expected key to start with %d:, got %s", CertificatesPerFQDNSet, key)
+				}
+			},
+		},
+		{
+			name:    CertificatesPerFQDNSet,
+			desc:    "valid fqdnSet with IPs and domains",
 			domains: "example.com,example.org",
 			bucketKeyTest: func(t *testing.T, key string) {
 				if !strings.HasPrefix(key, fmt.Sprintf("%d:", CertificatesPerFQDNSet)) {
