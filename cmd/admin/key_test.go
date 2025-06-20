@@ -178,6 +178,6 @@ func TestBlockSPKIHash(t *testing.T) {
 	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "")
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
-	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("dry-run: Block SPKI hash "+hex.EncodeToString(keyHash[:]))), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 0)
 }
