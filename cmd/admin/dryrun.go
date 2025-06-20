@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/prototext"
@@ -32,10 +33,6 @@ type dryRunSAC struct {
 }
 
 func (d dryRunSAC) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	b, err := prototext.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	d.log.Infof("dry-run: %#v", string(b))
+	d.log.Infof("dry-run: Block SPKI hash %s by %s %s", hex.EncodeToString(req.KeyHash), req.Comment, req.Source)
 	return &emptypb.Empty{}, nil
 }
