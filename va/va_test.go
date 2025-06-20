@@ -142,6 +142,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		fc,
 		logger,
 		accountURIPrefixes,
+		"https://acme-v01.api.letsencrypt.org/acme/acct/",
 		perspective,
 		"",
 		isNonLoopbackReservedIP,
@@ -320,6 +321,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		clock.NewFake(),
 		blog.NewMock(),
 		accountURIPrefixes,
+		"https://acme-v01.api.letsencrypt.org/acme/acct/",
 		"example perspective",
 		"",
 		isNonLoopbackReservedIP,
@@ -377,7 +379,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization)
+	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization, testAccountURI)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
