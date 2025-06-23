@@ -59,7 +59,7 @@ func TestForPurpose(t *testing.T) {
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
 		Log{Name: "Log B1", Operator: "B", State: loglist3.UsableLogStatus},
 	}
-	actual, err := input.forPurpose(Issuance)
+	actual, err := input.forPurpose(Issuance, nil)
 	test.AssertNotError(t, err, "should have two acceptable logs")
 	test.AssertDeepEquals(t, actual, expected)
 
@@ -71,14 +71,14 @@ func TestForPurpose(t *testing.T) {
 		Log{Name: "Log C1", Operator: "C", State: loglist3.PendingLogStatus},
 		Log{Name: "Log C2", Operator: "C", State: loglist3.ReadOnlyLogStatus},
 	}
-	_, err = input.forPurpose(Issuance)
+	_, err = input.forPurpose(Issuance, nil)
 	test.AssertError(t, err, "should only have one acceptable log")
 
 	expected = List{
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
 		Log{Name: "Log C2", Operator: "C", State: loglist3.ReadOnlyLogStatus},
 	}
-	actual, err = input.forPurpose(Validation)
+	actual, err = input.forPurpose(Validation, nil)
 	test.AssertNotError(t, err, "should have two acceptable logs")
 	test.AssertDeepEquals(t, actual, expected)
 
@@ -87,7 +87,7 @@ func TestForPurpose(t *testing.T) {
 		Log{Name: "Log B1", Operator: "B", State: loglist3.QualifiedLogStatus},
 		Log{Name: "Log C1", Operator: "C", State: loglist3.PendingLogStatus},
 	}
-	actual, err = input.forPurpose(Informational)
+	actual, err = input.forPurpose(Informational, nil)
 	test.AssertNotError(t, err, "should have three acceptable logs")
 	test.AssertDeepEquals(t, actual, expected)
 }
