@@ -7,11 +7,15 @@
 #
 set -u
 
-if git merge-base --is-ancestor "$1" origin/main || git name-rev --no-undefined --refs 'refs/remotes/origin/release-branch-*' "$1" ; then
+if git merge-base --is-ancestor "$1" origin/main ; then
+  echo "'$1' is an ancestor of main"
+  exit 0
+elif git for-each-ref --points-at="$1" "refs/remotes/origin/release-branch-*" | grep -q "^$1 commit refs/remotes/origin/release-branch-" ; then
+  echo "'$1' is equal to the tip of a hotfix branch (release-branch-*)"
   exit 0
 else
   echo
-  echo "Commit '$1' was neither an ancestor of main nor equal to a hotfix branch (release-branch-*)"
+  echo "Commit '$1' is neither an ancestor of main nor equal to a hotfix branch (release-branch-*)"
   echo
   exit 1
 fi
