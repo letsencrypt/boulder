@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/prototext"
