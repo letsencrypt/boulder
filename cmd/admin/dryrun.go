@@ -33,6 +33,6 @@ type dryRunSAC struct {
 }
 
 func (d dryRunSAC) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	d.log.Infof("dry-run: Block SPKI hash %s by %s %s", hex.EncodeToString(req.KeyHash), req.Comment, req.Source)
+	d.log.Infof("dry-run: Block SPKI hash %x by %s %s", req.KeyHash, req.Comment, req.Source)
 	return &emptypb.Empty{}, nil
 }
