@@ -636,7 +636,7 @@ func link(url, relation string) string {
 
 // contactsToEmails converts a slice of ACME contacts (e.g.
 // "mailto:person@example.com") to a slice of valid email addresses. If any of
-// the contacts contain non-mailto schemes, unparseable addresses, or forbidden
+// the contacts contain non-mailto schemes, unparsable addresses, or forbidden
 // mail domains, it returns an error so that we can provide feedback to
 // misconfigured clients.
 func contactsToEmails(contacts []string) ([]string, error) {
@@ -655,7 +655,7 @@ func contactsToEmails(contacts []string) ([]string, error) {
 
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			return nil, berrors.InvalidEmailError("unparseable contact")
+			return nil, berrors.InvalidEmailError("unparsable contact")
 		}
 
 		if parsed.Scheme != "mailto" {

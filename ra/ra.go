@@ -586,7 +586,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 		}
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			return berrors.InvalidEmailError("unparseable contact")
+			return berrors.InvalidEmailError("unparsable contact")
 		}
 		if parsed.Scheme != "mailto" {
 			return berrors.UnsupportedContactError("only contact scheme 'mailto:' is supported")
