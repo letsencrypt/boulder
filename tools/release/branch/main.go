@@ -127,7 +127,7 @@ func branch(args []string) error {
 	// Create the branch. We could skip this and instead push the tag directly
 	// to the desired ref name on the remote, but that wouldn't give the operator
 	// a chance to inspect it locally.
-	branch := fmt.Sprintf("release-branch-%s", tag)
+	branch := fmt.Sprintf("release-branch-%s.%s", major, minor)
 	_, err = git("branch", branch, tag)
 	if err != nil {
 		return err
