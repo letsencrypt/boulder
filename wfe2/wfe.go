@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -633,26 +634,55 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
-// contactsToEmails converts a *[]string of contacts (e.g. mailto:
-// person@example.com) to a []string of valid email addresses. Non-email
-// contacts or contacts with invalid email addresses are ignored.
-func contactsToEmails(contacts *[]string) []string {
-	if contacts == nil {
-		return nil
+// contactsToEmails converts a slice of ACME contacts (e.g.
+// "mailto:person@example.com") to a slice of valid email addresses. If any of
+// the contacts contain non-mailto schemes, unparseable addresses, or forbidden
+// mail domains, it returns an error so that we can provide feedback to
+// misconfigured clients.
+func contactsToEmails(contacts []string) ([]string, error) {
+	if len(contacts) == 0 {
+		return nil, nil
 	}
+
+	// TODO(#8199): Add a check that they haven't provided *too many* contacts. We
+	// historically had a configurable limit in the RA, set to 10 contacts per reg.
+
 	var emails []string
-	for _, c := range *contacts {
-		if !strings.HasPrefix(c, "mailto:") {
-			continue
+	for _, contact := range contacts {
+		if contact == "" {
+			return nil, berrors.InvalidEmailError("empty contact")
 		}
-		address := strings.TrimPrefix(c, "mailto:")
-		err := policy.ValidEmail(address)
+
+		parsed, err := url.Parse(contact)
+		if err != nil {
+			return nil, berrors.InvalidEmailError("unparseable contact")
+		}
+
+		if parsed.Scheme != "mailto" {
+			return nil, berrors.UnsupportedContactError("only contact scheme 'mailto:' is supported")
+		}
+
+		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
+			return nil, berrors.InvalidEmailError("contact email contains a question mark")
+		}
+
+		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
+			return nil, berrors.InvalidEmailError("contact email contains a '#'")
+		}
+
+		if !core.IsASCII(contact) {
+			return nil, berrors.InvalidEmailError("contact email contains non-ASCII characters")
+		}
+
+		err = policy.ValidEmail(parsed.Opaque)
 		if err != nil {
 			continue
 		}
-		emails = append(emails, address)
+
+		emails = append(emails, parsed.Opaque)
 	}
-	return emails
+
+	return emails, nil
 }
 
 // checkNewAccountLimits checks whether sufficient limit quota exists for the
@@ -703,9 +733,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	var accountCreateRequest struct {
-		Contact              *[]string `json:"contact"`
-		TermsOfServiceAgreed bool      `json:"termsOfServiceAgreed"`
-		OnlyReturnExisting   bool      `json:"onlyReturnExisting"`
+		Contact              []string `json:"contact"`
+		TermsOfServiceAgreed bool     `json:"termsOfServiceAgreed"`
+		OnlyReturnExisting   bool     `json:"onlyReturnExisting"`
 	}
 
 	err = json.Unmarshal(body, &accountCreateRequest)
@@ -773,21 +803,23 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
+	// Do this extraction now, so that we can reject requests whose contact field
+	// does not contain valid contacts before we actually create the account.
+	emails, err := contactsToEmails(accountCreateRequest.Contact)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "invalid contact"), nil)
+		return
+	}
+
 	ip, err := extractRequesterIP(request)
 	if err != nil {
 		wfe.sendError(
 			response,
 			logEvent,
 			probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
-			fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+			fmt.Errorf("couldn't parse RemoteAddr: %s", request.RemoteAddr),
 		)
 		return
-	}
-
-	// Create corepb.Registration from provided account information
-	reg := corepb.Registration{
-		Agreement: wfe.SubscriberAgreementURL,
-		Key:       keyBytes,
 	}
 
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
@@ -809,7 +841,12 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		}
 	}()
 
-	// Send the registration to the RA via grpc
+	// Create corepb.Registration from provided account information
+	reg := corepb.Registration{
+		Agreement: wfe.SubscriberAgreementURL,
+		Key:       keyBytes,
+	}
+
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
@@ -864,7 +901,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 	newRegistrationSuccessful = true
 
-	emails := contactsToEmails(accountCreateRequest.Contact)
 	if wfe.ee != nil && len(emails) > 0 {
 		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
 			// Note: We are explicitly using the contacts provided by the
