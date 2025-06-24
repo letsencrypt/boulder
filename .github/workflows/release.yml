@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
           fetch-depth: '0' # Needed for verify-release-ancestry.sh to see origin/main
 
-      - name: verify release ancestry
+      - name: Verify release ancestry
         run: ./tools/verify-release-ancestry.sh "$GITHUB_SHA"
 
       - name: Build .deb
