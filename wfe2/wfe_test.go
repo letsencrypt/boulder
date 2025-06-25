@@ -429,6 +429,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		blog.NewMock(),
 		10*time.Second,
 		10*time.Second,
+		2,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
 		nil,
@@ -1645,6 +1646,124 @@ func TestNewAccountNoID(t *testing.T) {
 		"createdAt": "2021-01-01T00:00:00Z",
 		"status": ""
 	}`)
+}
+
+func TestContactsToEmails(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
+	for _, tc := range []struct {
+		name     string
+		contacts []string
+		want     []string
+		wantErr  string
+	}{
+		{
+			name:     "no contacts",
+			contacts: []string{},
+			want:     []string{},
+		},
+		{
+			name:     "happy path",
+			contacts: []string{"mailto:one@mail.com", "mailto:two@mail.com"},
+			want:     []string{"one@mail.com", "two@mail.com"},
+		},
+		{
+			name:     "empty url",
+			contacts: []string{""},
+			wantErr:  "empty contact",
+		},
+		{
+			name:     "too many contacts",
+			contacts: []string{"mailto:one@mail.com", "mailto:two@mail.com", "mailto:three@mail.com"},
+			wantErr:  "too many contacts",
+		},
+		{
+			name:     "unknown scheme",
+			contacts: []string{"ansible:earth.sol.milkyway.laniakea/letsencrypt"},
+			wantErr:  "contact scheme",
+		},
+		{
+			name:     "malformed email",
+			contacts: []string{"mailto:admin.com"},
+			wantErr:  "unable to parse email address",
+		},
+		{
+			name:     "non-ascii email",
+			contacts: []string{"mailto:señor@email.com"},
+			wantErr:  "contains non-ASCII characters",
+		},
+		{
+			name:     "unarseable email",
+			contacts: []string{"mailto:a@mail.com, b@mail.com"},
+			wantErr:  "unable to parse email address",
+		},
+		{
+			name:     "forbidden example domain",
+			contacts: []string{"mailto:a@example.org"},
+			wantErr:  "forbidden",
+		},
+		{
+			name:     "forbidden non-public domain",
+			contacts: []string{"mailto:admin@localhost"},
+			wantErr:  "needs at least one dot",
+		},
+		{
+			name:     "forbidden non-iana domain",
+			contacts: []string{"mailto:admin@non.iana.suffix"},
+			wantErr:  "does not end with a valid public suffix",
+		},
+		{
+			name:     "forbidden ip domain",
+			contacts: []string{"mailto:admin@1.2.3.4"},
+			wantErr:  "value is an IP address",
+		},
+		{
+			name:     "forbidden bracketed ip domain",
+			contacts: []string{"mailto:admin@[1.2.3.4]"},
+			wantErr:  "contains an invalid character",
+		},
+		{
+			name:     "query parameter",
+			contacts: []string{"mailto:admin@a.com?no-reminder-emails"},
+			wantErr:  "contains a question mark",
+		},
+		{
+			name:     "empty query parameter",
+			contacts: []string{"mailto:admin@a.com?"},
+			wantErr:  "contains a question mark",
+		},
+		{
+			name:     "fragment url",
+			contacts: []string{"mailto:admin@a.com#optional"},
+			wantErr:  "contains a '#'",
+		},
+		{
+			name:     "empty frament url",
+			contacts: []string{"mailto:admin@a.com#"},
+			wantErr:  "contains a '#'",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := wfe.contactsToEmails(tc.contacts)
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("contactsToEmails(%#v) = nil, but want %q", tc.contacts, tc.wantErr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("contactsToEmails(%#v) = %q, but want %q", tc.contacts, err.Error(), tc.wantErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("contactsToEmails(%#v) = %q, but want %#v", tc.contacts, err.Error(), tc.want)
+				}
+				if !slices.Equal(got, tc.want) {
+					t.Errorf("contactsToEmails(%#v) = %#v, but want %#v", tc.contacts, got, tc.want)
+				}
+			}
+		})
+	}
 }
 
 func TestGetAuthorizationHandler(t *testing.T) {
@@ -4189,7 +4308,7 @@ func TestNewAccountCreatesContacts(t *testing.T) {
 		{
 			name:     "One valid email, one invalid email",
 			contacts: []string{"mailto:person@mail.com", "mailto:lol@%mail.com"},
-			expected: []string{"person@mail.com"},
+			expected: []string{},
 		},
 		{
 			name:     "Valid email with non-email prefix",

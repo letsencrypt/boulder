@@ -682,7 +682,7 @@ func (wfe *WebFrontEndImpl) contactsToEmails(contacts []string) ([]string, error
 
 		err = policy.ValidEmail(parsed.Opaque)
 		if err != nil {
-			continue
+			return nil, err
 		}
 
 		emails = append(emails, parsed.Opaque)
