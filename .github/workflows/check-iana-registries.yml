@@ -11,6 +11,7 @@ jobs:
 
     permissions:
       contents: write
+      org: read
       pull-requests: write
 
     steps:
