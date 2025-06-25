@@ -11,7 +11,6 @@ jobs:
 
     permissions:
       contents: write
-      org: read
       pull-requests: write
 
     steps:
@@ -50,5 +49,5 @@ jobs:
                 git commit \
                     --message "Update IANA special-purpose address registries"
                 git push origin HEAD
-                gh pr create --fill --reviewer letsencrypt/boulder-developers
+                gh pr create --fill
             fi
