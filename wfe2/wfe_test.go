@@ -1739,7 +1739,7 @@ func TestContactsToEmails(t *testing.T) {
 			wantErr:  "contains a '#'",
 		},
 		{
-			name:     "empty frament url",
+			name:     "empty fragment url",
 			contacts: []string{"mailto:admin@a.com#"},
 			wantErr:  "contains a '#'",
 		},
