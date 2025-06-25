@@ -145,6 +145,9 @@ type WebFrontEndImpl struct {
 	// CORS settings
 	AllowOrigins []string
 
+	// How many contacts to allow in a single NewAccount request.
+	maxContactsPerReg int
+
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
@@ -177,6 +180,7 @@ func NewWebFrontEndImpl(
 	logger blog.Logger,
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
+	maxContactsPerReg int,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	eec emailpb.ExporterClient,
@@ -216,6 +220,7 @@ func NewWebFrontEndImpl(
 		stats:              initStats(stats),
 		requestTimeout:     requestTimeout,
 		staleTimeout:       staleTimeout,
+		maxContactsPerReg:  maxContactsPerReg,
 		ra:                 rac,
 		sa:                 sac,
 		ee:                 eec,
@@ -639,13 +644,14 @@ func link(url, relation string) string {
 // the contacts contain non-mailto schemes, unparsable addresses, or forbidden
 // mail domains, it returns an error so that we can provide feedback to
 // misconfigured clients.
-func contactsToEmails(contacts []string) ([]string, error) {
+func (wfe *WebFrontEndImpl) contactsToEmails(contacts []string) ([]string, error) {
 	if len(contacts) == 0 {
 		return nil, nil
 	}
 
-	// TODO(#8199): Add a check that they haven't provided *too many* contacts. We
-	// historically had a configurable limit in the RA, set to 10 contacts per reg.
+	if wfe.maxContactsPerReg > 0 && len(contacts) > wfe.maxContactsPerReg {
+		return nil, berrors.MalformedError("too many contacts provided: %d > %d", len(contacts), wfe.maxContactsPerReg)
+	}
 
 	var emails []string
 	for _, contact := range contacts {
@@ -805,7 +811,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	// Do this extraction now, so that we can reject requests whose contact field
 	// does not contain valid contacts before we actually create the account.
-	emails, err := contactsToEmails(accountCreateRequest.Contact)
+	emails, err := wfe.contactsToEmails(accountCreateRequest.Contact)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "invalid contact"), nil)
 		return

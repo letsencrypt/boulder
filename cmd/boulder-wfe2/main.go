@@ -127,6 +127,11 @@ type Config struct {
 		// Deprecated: This field no longer has any effect.
 		PendingAuthorizationLifetimeDays int `validate:"-"`
 
+		// MaxContactsPerRegistration limits the number of contact addresses which
+		// can be provided in a single NewAccount request. Requests containing more
+		// contacts than this are rejected. Default: 10.
+		MaxContactsPerRegistration int `validate:"omitempty,min=1"`
+
 		AccountCache *CacheConfig
 
 		Limiter struct {
@@ -312,6 +317,10 @@ func main() {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
 
+	if c.WFE.MaxContactsPerRegistration == 0 {
+		c.WFE.MaxContactsPerRegistration = 10
+	}
+
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
 	var limiterRedis *bredis.Ring
@@ -346,6 +355,7 @@ func main() {
 		logger,
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
+		c.WFE.MaxContactsPerRegistration,
 		rac,
 		sac,
 		eec,
