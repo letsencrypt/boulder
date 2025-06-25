@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
@@ -39,6 +41,91 @@ func TestTooBigOrderError(t *testing.T) {
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
 	test.AssertContains(t, prob.Detail, "Order cannot contain more than 100 identifiers")
+}
+
+// TestAccountEmailError tests that registering a new account, or updating an
+// account, with invalid contact information produces the expected problem
+// result to ACME clients.
+func TestAccountEmailError(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name               string
+		contacts           []string
+		expectedProbType   string
+		expectedProbDetail string
+	}{
+		{
+			name:               "empty contact",
+			contacts:           []string{"mailto:valid@valid.com", ""},
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
+			expectedProbDetail: `empty contact`,
+		},
+		{
+			name:               "empty proto",
+			contacts:           []string{"mailto:valid@valid.com", " "},
+			expectedProbType:   "urn:ietf:params:acme:error:unsupportedContact",
+			expectedProbDetail: `only contact scheme 'mailto:' is supported`,
+		},
+		{
+			name:               "empty mailto",
+			contacts:           []string{"mailto:valid@valid.com", "mailto:"},
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
+			expectedProbDetail: `unable to parse email address`,
+		},
+		{
+			name:               "non-ascii mailto",
+			contacts:           []string{"mailto:valid@valid.com", "mailto:cpu@l̴etsencrypt.org"},
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
+			expectedProbDetail: `contact email contains non-ASCII characters`,
+		},
+		{
+			name:               "too many contacts",
+			contacts:           slices.Repeat([]string{"mailto:lots@valid.com"}, 11),
+			expectedProbType:   "urn:ietf:params:acme:error:malformed",
+			expectedProbDetail: `too many contacts provided`,
+		},
+		{
+			name:               "invalid contact",
+			contacts:           []string{"mailto:valid@valid.com", "mailto:a@"},
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
+			expectedProbDetail: `unable to parse email address`,
+		},
+		{
+			name:               "forbidden contact domain",
+			contacts:           []string{"mailto:valid@valid.com", "mailto:a@example.com"},
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
+			expectedProbDetail: "contact email has forbidden domain \"example.com\"",
+		},
+		{
+			name:               "contact domain invalid TLD",
+			contacts:           []string{"mailto:valid@valid.com", "mailto:a@example.cpu"},
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
+			expectedProbDetail: `contact email has invalid domain: Domain name does not end with a valid public suffix (TLD)`,
+		},
+		{
+			name:               "contact domain invalid",
+			contacts:           []string{"mailto:valid@valid.com", "mailto:a@example./.com"},
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
+			expectedProbDetail: "contact email has invalid domain: Domain name contains an invalid character",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var prob acme.Problem
+			_, err := makeClient(tc.contacts...)
+			if err != nil {
+				test.AssertErrorWraps(t, err, &prob)
+				test.AssertEquals(t, prob.Type, tc.expectedProbType)
+				test.AssertContains(t, prob.Detail, "Error validating contact(s)")
+				test.AssertContains(t, prob.Detail, tc.expectedProbDetail)
+			} else {
+				t.Errorf("expected %s type problem for %q, got nil",
+					tc.expectedProbType, strings.Join(tc.contacts, ","))
+			}
+		})
+	}
 }
 
 func TestRejectedIdentifier(t *testing.T) {
