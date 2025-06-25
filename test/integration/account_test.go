@@ -15,8 +15,8 @@ import (
 )
 
 // TestNewAccount tests that various new-account requests are handled correctly.
-// It does not test malform account contacts, as those are covered by
-// TestAccountEmailError in errors_test.go.
+// It does not test malformed account contacts, as we no longer care about
+// how well-formed the contact string is, since we no longer store them.
 func TestNewAccount(t *testing.T) {
 	t.Parallel()
 

@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -144,6 +145,9 @@ type WebFrontEndImpl struct {
 	// CORS settings
 	AllowOrigins []string
 
+	// How many contacts to allow in a single NewAccount request.
+	maxContactsPerReg int
+
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
@@ -176,6 +180,7 @@ func NewWebFrontEndImpl(
 	logger blog.Logger,
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
+	maxContactsPerReg int,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	eec emailpb.ExporterClient,
@@ -215,6 +220,7 @@ func NewWebFrontEndImpl(
 		stats:              initStats(stats),
 		requestTimeout:     requestTimeout,
 		staleTimeout:       staleTimeout,
+		maxContactsPerReg:  maxContactsPerReg,
 		ra:                 rac,
 		sa:                 sac,
 		ee:                 eec,
@@ -633,26 +639,56 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
-// contactsToEmails converts a *[]string of contacts (e.g. mailto:
-// person@example.com) to a []string of valid email addresses. Non-email
-// contacts or contacts with invalid email addresses are ignored.
-func contactsToEmails(contacts *[]string) []string {
-	if contacts == nil {
-		return nil
+// contactsToEmails converts a slice of ACME contacts (e.g.
+// "mailto:person@example.com") to a slice of valid email addresses. If any of
+// the contacts contain non-mailto schemes, unparsable addresses, or forbidden
+// mail domains, it returns an error so that we can provide feedback to
+// misconfigured clients.
+func (wfe *WebFrontEndImpl) contactsToEmails(contacts []string) ([]string, error) {
+	if len(contacts) == 0 {
+		return nil, nil
 	}
+
+	if wfe.maxContactsPerReg > 0 && len(contacts) > wfe.maxContactsPerReg {
+		return nil, berrors.MalformedError("too many contacts provided: %d > %d", len(contacts), wfe.maxContactsPerReg)
+	}
+
 	var emails []string
-	for _, c := range *contacts {
-		if !strings.HasPrefix(c, "mailto:") {
-			continue
+	for _, contact := range contacts {
+		if contact == "" {
+			return nil, berrors.InvalidEmailError("empty contact")
 		}
-		address := strings.TrimPrefix(c, "mailto:")
-		err := policy.ValidEmail(address)
+
+		parsed, err := url.Parse(contact)
 		if err != nil {
-			continue
+			return nil, berrors.InvalidEmailError("unparsable contact")
 		}
-		emails = append(emails, address)
+
+		if parsed.Scheme != "mailto" {
+			return nil, berrors.UnsupportedContactError("only contact scheme 'mailto:' is supported")
+		}
+
+		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
+			return nil, berrors.InvalidEmailError("contact email contains a question mark")
+		}
+
+		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
+			return nil, berrors.InvalidEmailError("contact email contains a '#'")
+		}
+
+		if !core.IsASCII(contact) {
+			return nil, berrors.InvalidEmailError("contact email contains non-ASCII characters")
+		}
+
+		err = policy.ValidEmail(parsed.Opaque)
+		if err != nil {
+			return nil, err
+		}
+
+		emails = append(emails, parsed.Opaque)
 	}
-	return emails
+
+	return emails, nil
 }
 
 // checkNewAccountLimits checks whether sufficient limit quota exists for the
@@ -703,9 +739,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	var accountCreateRequest struct {
-		Contact              *[]string `json:"contact"`
-		TermsOfServiceAgreed bool      `json:"termsOfServiceAgreed"`
-		OnlyReturnExisting   bool      `json:"onlyReturnExisting"`
+		Contact              []string `json:"contact"`
+		TermsOfServiceAgreed bool     `json:"termsOfServiceAgreed"`
+		OnlyReturnExisting   bool     `json:"onlyReturnExisting"`
 	}
 
 	err = json.Unmarshal(body, &accountCreateRequest)
@@ -773,27 +809,23 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
+	// Do this extraction now, so that we can reject requests whose contact field
+	// does not contain valid contacts before we actually create the account.
+	emails, err := wfe.contactsToEmails(accountCreateRequest.Contact)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "invalid contact"), nil)
+		return
+	}
+
 	ip, err := extractRequesterIP(request)
 	if err != nil {
 		wfe.sendError(
 			response,
 			logEvent,
 			probs.ServerInternal("couldn't parse the remote (that is, the client's) address"),
-			fmt.Errorf("Couldn't parse RemoteAddr: %s", request.RemoteAddr),
+			fmt.Errorf("couldn't parse RemoteAddr: %s", request.RemoteAddr),
 		)
 		return
-	}
-
-	var contacts []string
-	if accountCreateRequest.Contact != nil {
-		contacts = *accountCreateRequest.Contact
-	}
-
-	// Create corepb.Registration from provided account information
-	reg := corepb.Registration{
-		Contact:   contacts,
-		Agreement: wfe.SubscriberAgreementURL,
-		Key:       keyBytes,
 	}
 
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
@@ -815,7 +847,12 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		}
 	}()
 
-	// Send the registration to the RA via grpc
+	// Create corepb.Registration from provided account information
+	reg := corepb.Registration{
+		Agreement: wfe.SubscriberAgreementURL,
+		Key:       keyBytes,
+	}
+
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
@@ -870,7 +907,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 	newRegistrationSuccessful = true
 
-	emails := contactsToEmails(accountCreateRequest.Contact)
 	if wfe.ee != nil && len(emails) > 0 {
 		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
 			// Note: We are explicitly using the contacts provided by the
@@ -1411,11 +1447,10 @@ func (wfe *WebFrontEndImpl) Account(
 // valid update the resulting updated account is returned, otherwise a problem
 // is returned.
 func (wfe *WebFrontEndImpl) updateAccount(ctx context.Context, requestBody []byte, currAcct *core.Registration) (*core.Registration, error) {
-	// Only the Contact and Status fields of an account may be updated this way.
+	// Only the Status field of an account may be updated this way.
 	// For key updates clients should be using the key change endpoint.
 	var accountUpdateRequest struct {
-		Contact *[]string       `json:"contact"`
-		Status  core.AcmeStatus `json:"status"`
+		Status core.AcmeStatus `json:"status"`
 	}
 
 	err := json.Unmarshal(requestBody, &accountUpdateRequest)
@@ -1423,59 +1458,29 @@ func (wfe *WebFrontEndImpl) updateAccount(ctx context.Context, requestBody []byt
 		return nil, berrors.MalformedError("parsing account update request: %s", err)
 	}
 
-	// If a user tries to send both a deactivation request and an update to
-	// their contacts, the deactivation will take place and return before an
-	// update would be performed. Deactivation deletes the contacts field.
-	if accountUpdateRequest.Status == core.StatusDeactivated {
+	switch accountUpdateRequest.Status {
+	case core.StatusValid, "":
+		// They probably intended to update their contact address, but we don't do
+		// that anymore, so simply return their account as-is. We don't error out
+		// here because it would break too many clients.
+		return currAcct, nil
+
+	case core.StatusDeactivated:
 		updatedAcct, err := wfe.ra.DeactivateRegistration(
 			ctx, &rapb.DeactivateRegistrationRequest{RegistrationID: currAcct.ID})
 		if err != nil {
 			return nil, fmt.Errorf("deactivating account: %w", err)
 		}
 
-		if updatedAcct.Status == string(core.StatusDeactivated) {
-			// The request was handled by an updated RA/SA, which returned the updated
-			// account object.
-			updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
-			if err != nil {
-				return nil, fmt.Errorf("parsing deactivated account: %w", err)
-			}
-			return &updatedReg, nil
-		} else {
-			// The request was handled by an old RA/SA, which returned nothing.
-			// Instead, modify the existing account object in place and return it.
-			// TODO(#5554): Remove this after all RAs and SAs are updated.
-			currAcct.Status = core.StatusDeactivated
-			currAcct.Contact = nil
-			return currAcct, nil
+		updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
+		if err != nil {
+			return nil, fmt.Errorf("parsing deactivated account: %w", err)
 		}
-	}
+		return &updatedReg, nil
 
-	if accountUpdateRequest.Status != core.StatusValid && accountUpdateRequest.Status != "" {
+	default:
 		return nil, berrors.MalformedError("invalid status %q for account update request, must be %q or %q", accountUpdateRequest.Status, core.StatusValid, core.StatusDeactivated)
 	}
-
-	if accountUpdateRequest.Contact == nil {
-		// We use a pointer-to-slice for the contacts field so that we can tell the
-		// difference between the request not including the contact field, and the
-		// request including an empty contact list. If the field was omitted
-		// entirely, they don't want us to update it, so there's no work to do here.
-		return currAcct, nil
-	}
-
-	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{
-		RegistrationID: currAcct.ID, Contacts: *accountUpdateRequest.Contact})
-	if err != nil {
-		return nil, fmt.Errorf("updating account: %w", err)
-	}
-
-	// Convert proto to core.Registration for return
-	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
-	if err != nil {
-		return nil, fmt.Errorf("parsing updated account: %w", err)
-	}
-
-	return &updatedReg, nil
 }
 
 // deactivateAuthorization processes the given JWS POST body as a request to
