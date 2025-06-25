@@ -813,7 +813,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// does not contain valid contacts before we actually create the account.
 	emails, err := wfe.contactsToEmails(accountCreateRequest.Contact)
 	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "invalid contact"), nil)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating contact(s)"), nil)
 		return
 	}
 
