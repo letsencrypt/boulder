@@ -66,13 +66,11 @@ const (
 	challengePath     = "/acme/chall/"
 	finalizeOrderPath = "/acme/finalize/"
 	certPath          = "/acme/cert/"
+	renewalInfoPath   = "/acme/renewal-info/"
 
 	// Non-ACME paths.
 	getCertPath = "/get/cert/"
 	buildIDPath = "/build"
-
-	// Draft or likely-to-change paths
-	renewalInfoPath = "/draft-ietf-acme-ari-03/renewalInfo/"
 )
 
 const (
