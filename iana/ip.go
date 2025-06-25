@@ -88,6 +88,15 @@ func init() {
 	})
 }
 
+// Define regexps we'll use to clean up poorly formatted registry entries.
+var (
+	// 2+ sequential whitespace characters. The csv package takes care of
+	// newlines automatically.
+	ianaWhitespacesRE = regexp.MustCompile(`\s{2,}`)
+	// Footnotes at the end, like `[2]`.
+	ianaFootnotesRE = regexp.MustCompile(`\[\d+\]$`)
+)
+
 // parseReservedPrefixFile parses and returns the IANA special-purpose address
 // registry CSV data for a single address family, or returns an error if parsing
 // fails.
@@ -110,14 +119,6 @@ func parseReservedPrefixFile(registryData []byte, addressFamily string) ([]reser
 		return nil, fmt.Errorf("failed to parse reserved %s address registry header: must begin with \"Address Block\", \"Name\" and \"RFC\"", addressFamily)
 	}
 
-	// Define regexps we'll use to clean up poorly formatted registry entries.
-	//
-	// 2+ sequential whitespace characters. The csv package takes care of
-	// newlines automatically.
-	whitespacesRE := regexp.MustCompile(`\s{2,}`)
-	// Footnotes at the end, like `[2]`.
-	footnotesRE := regexp.MustCompile(`\[\d+\]$`)
-
 	// Parse the records.
 	var prefixes []reservedPrefix
 	for {
@@ -130,10 +131,12 @@ func parseReservedPrefixFile(registryData []byte, addressFamily string) ([]reser
 			break
 		} else if err != nil {
 			return nil, err
+		} else if len(row) < 3 {
+			return nil, fmt.Errorf("failed to parse reserved %s address registry: incomplete row", addressFamily)
 		}
 
 		// Remove any footnotes, then handle each comma-separated prefix.
-		for _, prefixStr := range strings.Split(footnotesRE.ReplaceAllLiteralString(row[0], ""), ",") {
+		for _, prefixStr := range strings.Split(ianaFootnotesRE.ReplaceAllLiteralString(row[0], ""), ",") {
 			prefix, err := netip.ParsePrefix(strings.TrimSpace(prefixStr))
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse reserved %s address registry: couldn't parse entry %q as an IP address prefix: %s", addressFamily, prefixStr, err)
@@ -144,7 +147,7 @@ func parseReservedPrefixFile(registryData []byte, addressFamily string) ([]reser
 				addressBlock:  prefix,
 				name:          row[1],
 				// Replace any whitespace sequences with a single space.
-				rfc: whitespacesRE.ReplaceAllLiteralString(row[2], " "),
+				rfc: ianaWhitespacesRE.ReplaceAllLiteralString(row[2], " "),
 			})
 		}
 	}

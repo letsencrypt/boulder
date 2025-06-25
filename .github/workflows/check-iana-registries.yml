@@ -33,8 +33,8 @@ jobs:
             REPO_IPV4="iana/data/iana-ipv4-special-registry-1.csv"
             REPO_IPV6="iana/data/iana-ipv6-special-registry-1.csv"
 
-            curl --output "${REPO_IPV4}" "${IANA_IPV4}"
-            curl --output "${REPO_IPV6}" "${IANA_IPV6}"
+            curl --fail --location --show-error --silent --output "${REPO_IPV4}" "${IANA_IPV4}"
+            curl --fail --location --show-error --silent --output "${REPO_IPV6}" "${IANA_IPV6}"
 
       - name: Create a commit and pull request
         env:
