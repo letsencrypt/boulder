@@ -122,23 +122,13 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 	}
 }
 
-// fromX509 extracts the Subject Alternative Names from a certificate or CSR's fields, and
-// returns a slice of ACMEIdentifiers.
-func fromX509(commonName string, dnsNames []string, ipAddresses []net.IP) ACMEIdentifiers {
+// fromValues turns a slice of DNS names and a slice of IP addresses into a
+// slice of ACMEIdentifiers.
+func fromValues(dnsNames []string, ipAddresses []net.IP) ACMEIdentifiers {
 	var sans ACMEIdentifiers
 	for _, name := range dnsNames {
 		sans = append(sans, NewDNS(name))
 	}
-	if commonName != "" {
-		// Boulder won't generate certificates with a CN that's not also present
-		// in the SANs, but such a certificate is possible. If appended, this is
-		// deduplicated later with Normalize(). We assume the CN is a DNSName,
-		// because CNs are untyped strings without metadata, and we will never
-		// configure a Boulder profile to issue a certificate that contains both
-		// an IP address identifier and a CN.
-		sans = append(sans, NewDNS(commonName))
-	}
-
 	for _, ip := range ipAddresses {
 		sans = append(sans, ACMEIdentifier{
 			Type:  TypeIP,
@@ -146,19 +136,36 @@ func fromX509(commonName string, dnsNames []string, ipAddresses []net.IP) ACMEId
 		})
 	}
 
-	return Normalize(sans)
+	return sans
 }
 
 // FromCert extracts the Subject Common Name and Subject Alternative Names from
 // a certificate, and returns a slice of ACMEIdentifiers.
 func FromCert(cert *x509.Certificate) ACMEIdentifiers {
-	return fromX509(cert.Subject.CommonName, cert.DNSNames, cert.IPAddresses)
+	sans := fromValues(cert.DNSNames, cert.IPAddresses)
+	cn := cert.Subject.CommonName
+	if cn != "" {
+		sans = append(sans, NewDNS(cn))
+	}
+
+	return Normalize(sans)
 }
 
 // FromCSR extracts the Subject Common Name and Subject Alternative Names from a
 // CSR, and returns a slice of ACMEIdentifiers.
 func FromCSR(csr *x509.CertificateRequest) ACMEIdentifiers {
-	return fromX509(csr.Subject.CommonName, csr.DNSNames, csr.IPAddresses)
+	sans := fromValues(csr.DNSNames, csr.IPAddresses)
+
+	// Only include the requested CN (as a DNS ident) if it doesn't look like an IP address.
+	cn := csr.Subject.CommonName
+	if cn != "" {
+		_, err := netip.ParseAddr(csr.Subject.CommonName)
+		if err != nil { // not an IP address
+			sans = append(sans, NewDNS(cn))
+		}
+	}
+
+	return Normalize(sans)
 }
 
 // Normalize returns the set of all unique ACME identifiers in the input after
