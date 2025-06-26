@@ -726,7 +726,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident.Value)
 
 	// Set the stored TAT to indicate that this bucket has exhausted its quota.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
@@ -802,7 +802,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident.Value)
 
 	// Set a stored TAT so that we can tell when it's been reset.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
