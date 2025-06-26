@@ -413,7 +413,8 @@ NewOrdersPerAccount,543219876,1000,1000,3h0m0s,Big Mart (IN-8180)
 NewOrdersPerAccount,987654321,1000,1000,3h0m0s,Buy More (IN-10057)
 NewRegistrationsPerIPAddress,2600:1f1c:5e0:e702:ca06:d2a3:c7ce:a02e,100000,100000,3h0m0s,example.org IN-2395
 NewRegistrationsPerIPAddress,55.66.77.88,100000,100000,3h0m0s,example.org IN-2395
-NewRegistrationsPerIPAddress,11.22.33.44,200,200,3h0m0s,example.net (IN-1583)`
+NewRegistrationsPerIPAddress,11.22.33.44,200,200,3h0m0s,example.net (IN-1583)
+`
 
 	tempFile := filepath.Join(t.TempDir(), "overrides.yaml")
 

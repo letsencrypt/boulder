@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -370,41 +371,47 @@ func BuildBucketKey(name Name, regID int64, domain, domains, ipAddr string) (str
 			return "", fmt.Errorf("invalid IP address %q: %w", ipAddr, err)
 		}
 		if name == NewRegistrationsPerIPAddress {
-			return newIPAddressBucketKey(name, ip)
+			return newIPAddressBucketKey(name, ip), nil
 		}
-		if name == NewRegistrationsPerIPv6Range {
-			return newIPv6RangeCIDRBucketKey(name, ip)
-		}
+		return newIPv6RangeCIDRBucketKey(name, ip)
 
 	case NewOrdersPerAccount:
 		if regID == 0 {
 			return "", makeMissingErr("regID")
 		}
-		return newRegIdBucketKey(name, regID)
+		return newRegIdBucketKey(name, regID), nil
 
 	case CertificatesPerDomain:
+		// TODO ADD IP
 		if domain == "" {
 			return "", makeMissingErr("domain")
 		}
-		return newDomainBucketKey(name, domain)
+		return newStringBucketKey(name, domain), nil
 
 	case CertificatesPerFQDNSet:
 		if domains == "" {
 			return "", makeMissingErr("domains")
 		}
-		return newFQDNSetBucketKey(name, strings.Split(domains, ","))
+		var idents identifier.ACMEIdentifiers
+		for ident := range strings.SplitSeq(domains, ",") {
+			idents = append(idents, identifier.ACMEIdentifier{
+				Type:  identifier.TypeDNS,
+				Value: ident,
+			})
+		}
+		return newFQDNSetBucketKey(name, idents), nil
 
 	case FailedAuthorizationsPerDomainPerAccount, CertificatesPerDomainPerAccount, FailedAuthorizationsForPausingPerDomainPerAccount:
 		if domain != "" {
 			if regID == 0 {
 				return "", makeMissingErr("regID")
 			}
-			return NewRegIdDomainBucketKey(name, regID, domain)
+			return newRegIdStringBucketKey(name, regID, domain), nil
 		}
 		if regID == 0 {
 			return "", makeMissingErr("regID")
 		}
-		return newRegIdBucketKey(name, regID)
+		return newRegIdBucketKey(name, regID), nil
 	}
 
 	return "", fmt.Errorf("unknown limit enum %s", name.EnumString())
