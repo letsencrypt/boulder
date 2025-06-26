@@ -7,7 +7,9 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -229,5 +231,74 @@ func TestIPShortLived(t *testing.T) {
 		if !strings.Contains(err.Error(), "Profile \"shortlived\" does not permit ip type identifiers") {
 			t.Errorf("issuing under shortlived profile failed for the wrong reason: %s", err)
 		}
+	}
+}
+
+// TestIPCNIgnored verifies that we will allow IP address identifiers only in
+// orders that use the shortlived profile.
+func TestIPCNIgnored(t *testing.T) {
+	t.Parallel()
+
+	// Create an account.
+	client, err := makeClient("mailto:example@letsencrypt.org")
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	// Create an IP address identifier to request.
+	ip := "64.112.117.122"
+	ipParsed := net.ParseIP(ip)
+	idents := []acme.Identifier{
+		{Type: "ip", Value: ip},
+	}
+
+	order, err := client.Client.NewOrderExtension(client.Account, idents, acme.OrderExtension{Profile: "shortlived"})
+	if err != nil {
+		t.Fatalf("creating order: %s", err)
+	}
+
+	if len(order.Authorizations) != 1 {
+		t.Fatalf("Got %d authorizations, expected 1", len(order.Authorizations))
+	}
+	auth, err := client.Client.FetchAuthorization(client.Account, order.Authorizations[0])
+	chal, ok := auth.ChallengeMap[acme.ChallengeTypeHTTP01]
+	if !ok {
+		t.Fatalf("no HTTP challenge at %s", order.Authorizations[0])
+	}
+
+	_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
+	if err != nil {
+		t.Fatalf("adding HTTP challenge response: %s", err)
+	}
+	defer testSrvClient.RemoveHTTP01Response(chal.Token)
+
+	chal, err = client.Client.UpdateChallenge(client.Account, chal)
+	if err != nil {
+		t.Fatalf("updating challenge: %s", err)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("creating random cert key: %s", err)
+	}
+	csrTemplate := &x509.CertificateRequest{
+		Subject:            pkix.Name{CommonName: ip},
+		SignatureAlgorithm: x509.ECDSAWithSHA256,
+		PublicKeyAlgorithm: x509.ECDSA,
+		PublicKey:          key.Public(),
+		IPAddresses:        []net.IP{ipParsed},
+	}
+	csrDer, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, key)
+	if err != nil {
+		t.Fatalf("making csr: %s", err)
+	}
+	csr, err := x509.ParseCertificateRequest(csrDer)
+	if err != nil {
+		t.Fatalf("parsing csr: %s", err)
+	}
+
+	_, err = client.Client.FinalizeOrder(client.Account, order, csr)
+	if err != nil {
+		t.Errorf("Finalizing order with IP in CN: %s", err)
 	}
 }
