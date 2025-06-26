@@ -122,6 +122,24 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 	}
 }
 
+// FromString converts a string to an ACMEIdentifier.
+func FromString(identStr string) ACMEIdentifier {
+	ip, err := netip.ParseAddr(identStr)
+	if err == nil {
+		return NewIP(ip)
+	}
+	return NewDNS(identStr)
+}
+
+// FromStringSlice converts a slice of strings to a slice of ACMEIdentifier.
+func FromStringSlice(identStrs []string) ACMEIdentifiers {
+	var idents ACMEIdentifiers
+	for _, identStr := range identStrs {
+		idents = append(idents, FromString(identStr))
+	}
+	return idents
+}
+
 // fromX509 extracts the Subject Alternative Names from a certificate or CSR's fields, and
 // returns a slice of ACMEIdentifiers.
 func fromX509(commonName string, dnsNames []string, ipAddresses []net.IP) ACMEIdentifiers {

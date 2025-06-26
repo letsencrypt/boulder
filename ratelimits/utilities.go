@@ -24,33 +24,45 @@ func joinWithColon(args ...string) string {
 func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 	var covers []string
 	for _, ident := range idents {
-		switch ident.Type {
-		case identifier.TypeDNS:
-			domain, err := publicsuffix.Domain(ident.Value)
-			if err != nil {
-				if err.Error() == fmt.Sprintf("%s is a suffix", ident.Value) {
-					// If the public suffix is the domain itself, that's fine.
-					// Include the original name in the result.
-					covers = append(covers, ident.Value)
-					continue
-				} else {
-					return nil, err
-				}
-			}
-			covers = append(covers, domain)
-		case identifier.TypeIP:
-			ip, err := netip.ParseAddr(ident.Value)
-			if err != nil {
-				return nil, err
-			}
-			prefix, err := coveringPrefix(ip)
-			if err != nil {
-				return nil, err
-			}
-			covers = append(covers, prefix.String())
+		cover, err := coveringIdentifier(ident)
+		if err != nil {
+			return nil, err
 		}
+		covers = append(covers, cover)
 	}
 	return core.UniqueLowerNames(covers), nil
+}
+
+// coveringIdentifier transforms a single ACMEIdentifier into its "covering"
+// identifier, for the CertificatesPerDomain and CertificatesPerDomainPerAccount
+// limits. For DNS identifiers, this is the eTLD+1; exact public suffix matches
+// are included. For IP address identifiers, this is the address (/32) for IPv4,
+// or the /64 prefix for IPv6, in CIDR notation.
+func coveringIdentifier(ident identifier.ACMEIdentifier) (string, error) {
+	switch ident.Type {
+	case identifier.TypeDNS:
+		domain, err := publicsuffix.Domain(ident.Value)
+		if err != nil {
+			if err.Error() == fmt.Sprintf("%s is a suffix", ident.Value) {
+				// If the public suffix is the domain itself, that's fine.
+				// Include the original name in the result.
+				return ident.Value, nil
+			}
+			return "", err
+		}
+		return domain, nil
+	case identifier.TypeIP:
+		ip, err := netip.ParseAddr(ident.Value)
+		if err != nil {
+			return "", err
+		}
+		prefix, err := coveringPrefix(ip)
+		if err != nil {
+			return "", err
+		}
+		return prefix.String(), nil
+	}
+	return "", fmt.Errorf("unsupported identifier type: %s", ident.Type)
 }
 
 // coveringPrefix transforms a netip.Addr into its "covering" prefix, for the

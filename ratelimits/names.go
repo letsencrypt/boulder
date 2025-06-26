@@ -356,19 +356,19 @@ var LimitNames = func() []string {
 // BuildBucketKey builds a valid bucketKey for the given rate limit name from
 // the provided components. It returns an error if the name is not valid or if
 // the components are not valid for the given name.
-func BuildBucketKey(name Name, regID int64, domain, domains, ipAddr string) (string, error) {
+func BuildBucketKey(name Name, regID int64, singleIdent, setOfIdents, subscriberIP string) (string, error) {
 	makeMissingErr := func(field string) error {
 		return fmt.Errorf("%s is required for limit %s (enum: %s)", field, name, name.EnumString())
 	}
 
 	switch name {
 	case NewRegistrationsPerIPAddress, NewRegistrationsPerIPv6Range:
-		if ipAddr == "" {
+		if subscriberIP == "" {
 			return "", makeMissingErr("ip")
 		}
-		ip, err := netip.ParseAddr(ipAddr)
+		ip, err := netip.ParseAddr(subscriberIP)
 		if err != nil {
-			return "", fmt.Errorf("invalid IP address %q: %w", ipAddr, err)
+			return "", fmt.Errorf("invalid IP address %q: %w", subscriberIP, err)
 		}
 		if name == NewRegistrationsPerIPAddress {
 			return newIPAddressBucketKey(name, ip), nil
@@ -382,35 +382,54 @@ func BuildBucketKey(name Name, regID int64, domain, domains, ipAddr string) (str
 		return newRegIdBucketKey(name, regID), nil
 
 	case CertificatesPerDomain:
-		// TODO ADD IP
-		if domain == "" {
-			return "", makeMissingErr("domain")
+		if singleIdent == "" {
+			return "", makeMissingErr("singleIdent")
 		}
-		return newStringBucketKey(name, domain), nil
+		coveringIdent, err := coveringIdentifier(identifier.FromString(singleIdent))
+		if err != nil {
+			return "", fmt.Errorf("invalid identifier %q: %w", singleIdent, err)
+		}
+		return newStringBucketKey(name, coveringIdent), nil
 
-	case CertificatesPerFQDNSet:
-		if domains == "" {
-			return "", makeMissingErr("domains")
-		}
-		var idents identifier.ACMEIdentifiers
-		for ident := range strings.SplitSeq(domains, ",") {
-			idents = append(idents, identifier.ACMEIdentifier{
-				Type:  identifier.TypeDNS,
-				Value: ident,
-			})
-		}
-		return newFQDNSetBucketKey(name, idents), nil
-
-	case FailedAuthorizationsPerDomainPerAccount, CertificatesPerDomainPerAccount, FailedAuthorizationsForPausingPerDomainPerAccount:
-		if domain != "" {
+	case CertificatesPerDomainPerAccount:
+		if singleIdent != "" {
 			if regID == 0 {
 				return "", makeMissingErr("regID")
 			}
-			return newRegIdStringBucketKey(name, regID, domain), nil
+			// Default: use 'enum:regId:identValue' bucket key format.
+			coveringIdent, err := coveringIdentifier(identifier.FromString(singleIdent))
+			if err != nil {
+				return "", fmt.Errorf("invalid identifier %q: %w", singleIdent, err)
+			}
+			return newRegIdStringBucketKey(name, regID, coveringIdent), nil
 		}
 		if regID == 0 {
 			return "", makeMissingErr("regID")
 		}
+		// Override: use 'enum:regId' bucket key format.
+		return newRegIdBucketKey(name, regID), nil
+
+	case CertificatesPerFQDNSet:
+		if setOfIdents == "" {
+			if singleIdent == "" {
+				return "", makeMissingErr("setOfIdentifiers or singleIdent")
+			}
+			setOfIdents = singleIdent
+		}
+		return newFQDNSetBucketKey(name, identifier.FromStringSlice(strings.Split(setOfIdents, ","))), nil
+
+	case FailedAuthorizationsPerDomainPerAccount, FailedAuthorizationsForPausingPerDomainPerAccount:
+		if singleIdent != "" {
+			if regID == 0 {
+				return "", makeMissingErr("regID")
+			}
+			// Default: use 'enum:regId:identValue' bucket key format.
+			return newRegIdStringBucketKey(name, regID, singleIdent), nil
+		}
+		if regID == 0 {
+			return "", makeMissingErr("regID")
+		}
+		// Override: use 'enum:regId' bucket key format.
 		return newRegIdBucketKey(name, regID), nil
 	}
 

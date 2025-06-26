@@ -240,17 +240,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 				case CertificatesPerFQDNSet:
 					// Compute the hash of a comma-separated list of identifier
 					// values.
-					var idents identifier.ACMEIdentifiers
-					for _, value := range strings.Split(id, ",") {
-						ip, err := netip.ParseAddr(value)
-						if err == nil {
-							idents = append(idents, identifier.NewIP(ip))
-						} else {
-							idents = append(idents, identifier.NewDNS(value))
-						}
-					}
-					id = fmt.Sprintf("%x", core.HashIdentifiers(idents))
-
+					id = fmt.Sprintf("%x", core.HashIdentifiers(identifier.FromStringSlice(strings.Split(id, ","))))
 				}
 
 				lim := &Limit{
