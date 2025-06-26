@@ -389,7 +389,7 @@ func BuildBucketKey(name Name, regID int64, singleIdent, setOfIdents, subscriber
 		if err != nil {
 			return "", fmt.Errorf("invalid identifier %q: %w", singleIdent, err)
 		}
-		return newStringBucketKey(name, coveringIdent), nil
+		return newDomainOrCIDRBucketKey(name, coveringIdent), nil
 
 	case CertificatesPerDomainPerAccount:
 		if singleIdent != "" {
@@ -401,7 +401,7 @@ func BuildBucketKey(name Name, regID int64, singleIdent, setOfIdents, subscriber
 			if err != nil {
 				return "", fmt.Errorf("invalid identifier %q: %w", singleIdent, err)
 			}
-			return newRegIdStringBucketKey(name, regID, coveringIdent), nil
+			return NewRegIdIdentValueBucketKey(name, regID, coveringIdent), nil
 		}
 		if regID == 0 {
 			return "", makeMissingErr("regID")
@@ -424,7 +424,7 @@ func BuildBucketKey(name Name, regID int64, singleIdent, setOfIdents, subscriber
 				return "", makeMissingErr("regID")
 			}
 			// Default: use 'enum:regId:identValue' bucket key format.
-			return newRegIdStringBucketKey(name, regID, singleIdent), nil
+			return NewRegIdIdentValueBucketKey(name, regID, singleIdent), nil
 		}
 		if regID == 0 {
 			return "", makeMissingErr("regID")
