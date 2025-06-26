@@ -41,26 +41,17 @@ func newRegIdBucketKey(name Name, regId int64) string {
 	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10))
 }
 
-// newStringBucketKey validates and returns a bucketKey for limits that use
-// the 'enum:identValue' or 'enum:domainOrCIDR' bucket key formats.
-func newStringBucketKey(name Name, value string) string {
-	return joinWithColon(name.EnumString(), value)
+// newDomainOrCIDRBucketKey validates and returns a bucketKey for limits that use
+// the 'enum:domainOrCIDR' bucket key formats.
+func newDomainOrCIDRBucketKey(name Name, domainOrCIDR string) string {
+	return joinWithColon(name.EnumString(), domainOrCIDR)
 }
 
 // NewRegIdIdentValueBucketKey returns a bucketKey for limits that use the
 // 'enum:regId:identValue' bucket key format. This function is exported for use
 // by the RA when resetting the account pausing limit.
-func NewRegIdIdentValueBucketKey(name Name, regId int64, orderIdent identifier.ACMEIdentifier) string {
-	return newRegIdStringBucketKey(name, regId, orderIdent.Value)
-}
-
-// newRegIdStringBucketKey returns a bucketKey for limits that use the
-// 'enum:regId:identValue' or 'enum:regId:domainOrCIDR' bucket key formats.
-//
-// This is split out from NewRegIdIdentValueBucketKey so that we can handle an
-// IP prefix in CIDR notation, which is not a valid identifier value.
-func newRegIdStringBucketKey(name Name, regId int64, value string) string {
-	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), value)
+func NewRegIdIdentValueBucketKey(name Name, regId int64, orderIdent string) string {
+	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), orderIdent)
 }
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
@@ -256,7 +247,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 	for _, ident := range orderIdents {
 		// FailedAuthorizationsPerDomainPerAccount limit uses the
 		// 'enum:regId:identValue' bucket key format for transactions.
-		perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident)
+		perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident.Value)
 
 		// Add a check-only transaction for each per identValue per account
 		// bucket.
@@ -287,7 +278,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 
 	// FailedAuthorizationsPerDomainPerAccount limit uses the
 	// 'enum:regId:identValue' bucket key format for transactions.
-	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderIdent)
+	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderIdent.Value)
 	txn, err := newSpendOnlyTransaction(limit, perIdentValuePerAccountBucketKey, 1)
 	if err != nil {
 		return Transaction{}, err
@@ -314,7 +305,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 
 	// FailedAuthorizationsForPausingPerDomainPerAccount limit uses the
 	// 'enum:regId:identValue' bucket key format for transactions.
-	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent)
+	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
 	txn, err := newTransaction(limit, perIdentValuePerAccountBucketKey, 1)
 	if err != nil {
 		return Transaction{}, err
@@ -354,21 +345,22 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 		}
 	}
 
-	var txns []Transaction
-	covers, err := coveringIdentifiers(orderIdents)
+	coveringIdents, err := coveringIdentifiers(orderIdents)
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range covers {
-		perDomainOrCIDRBucketKey := newStringBucketKey(CertificatesPerDomain, name)
+
+	var txns []Transaction
+	for _, ident := range coveringIdents {
+		perDomainOrCIDRBucketKey := newDomainOrCIDRBucketKey(CertificatesPerDomain, ident)
 		if accountOverride {
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerDomainOrCIDRKey := newRegIdStringBucketKey(CertificatesPerDomainPerAccount, regId, name)
+			perAccountPerDomainOrCIDRBucketKey := NewRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
 			// Add a check-only transaction for each per account per identValue
 			// bucket.
-			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRKey, 1)
+			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRBucketKey, 1)
 			if err != nil {
 				if errors.Is(err, errLimitDisabled) {
 					continue
@@ -432,21 +424,22 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 		}
 	}
 
-	var txns []Transaction
-	covers, err := coveringIdentifiers(orderIdents)
+	coveringIdents, err := coveringIdentifiers(orderIdents)
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range covers {
-		perDomainOrCIDRBucketKey := newStringBucketKey(CertificatesPerDomain, name)
+
+	var txns []Transaction
+	for _, ident := range coveringIdents {
+		perDomainOrCIDRBucketKey := newDomainOrCIDRBucketKey(CertificatesPerDomain, ident)
 		if accountOverride {
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerDomainOrCIDRKey := newRegIdStringBucketKey(CertificatesPerDomainPerAccount, regId, name)
+			perAccountPerDomainOrCIDRBucketKey := NewRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
 			// Add a spend-only transaction for each per account per
 			// domainOrCIDR bucket.
-			txn, err := newSpendOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRKey, 1)
+			txn, err := newSpendOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRBucketKey, 1)
 			if err != nil {
 				return nil, err
 			}
