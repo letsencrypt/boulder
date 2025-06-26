@@ -219,9 +219,11 @@ def start(fakeclock):
     signal.signal(signal.SIGINT, lambda _, __: stop())
 
     # Check that we can resolve the service names before we try to start any
-    # services. This prevents a confusing error (timed out health check).
+    # services. This prevents a confusing error (timed out health check). We use
+    # the boulder.service.consul name because it has no health check, and thus
+    # will be served by the DNS server even if it's non-responsive.
     try:
-        socket.getaddrinfo('publisher.service.consul', None)
+        socket.getaddrinfo('boulder.service.consul', None)
     except Exception as e:
         print("Error querying DNS. Is consul running? `docker compose ps bconsul`. %s" % (e))
         return False
