@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -123,11 +124,20 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// This is the names which are allowlisted at the server level, plus the union
 	// of all names which are allowlisted for any individual service.
 	acceptedSANs := make(map[string]struct{})
+	var acceptedSANsSlice []string
 	for _, service := range sb.cfg.Services {
 		for _, name := range service.ClientNames {
 			acceptedSANs[name] = struct{}{}
+			if !slices.Contains(acceptedSANsSlice, name) {
+				acceptedSANsSlice = append(acceptedSANsSlice, name)
+			}
 		}
 	}
+
+	// Ensure that the health service has the same ClientNames as the other
+	// services, so that health checks can be performed by clients which are
+	// allowed to connect to the server.
+	sb.cfg.Services[healthpb.Health_ServiceDesc.ServiceName].ClientNames = acceptedSANsSlice
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
@@ -224,8 +234,12 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 
 // initLongRunningCheck initializes a goroutine which will periodically check
 // the health of the provided service and update the health server accordingly.
+//
+// TODO(#8255): Remove the service parameter and instead rely on transitioning
+// the overall health of the server (e.g. "") instead of individual services.
 func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, service string, checkImpl func(context.Context) error) {
 	// Set the initial health status for the service.
+	sb.healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 	sb.healthSrv.SetServingStatus(service, healthpb.HealthCheckResponse_NOT_SERVING)
 
 	// check is a helper function that checks the health of the service and, if
@@ -249,10 +263,13 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 		}
 
 		if next != healthpb.HealthCheckResponse_SERVING {
+			sb.logger.Errf("transitioning overall health from %q to %q, due to: %s", last, next, err)
 			sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
 		} else {
+			sb.logger.Infof("transitioning overall health from %q to %q", last, next)
 			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)
 		}
+		sb.healthSrv.SetServingStatus("", next)
 		sb.healthSrv.SetServingStatus(service, next)
 		return next
 	}

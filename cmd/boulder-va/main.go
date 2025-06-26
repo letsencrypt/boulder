@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/va"
 	vaConfig "github.com/letsencrypt/boulder/va/config"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -82,16 +82,12 @@ func main() {
 	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
-	proto := "udp"
-	if features.Get().DOH {
-		proto = "tcp"
-	}
 
 	if len(c.VA.DNSStaticResolvers) != 0 {
 		servers, err = bdns.NewStaticProvider(c.VA.DNSStaticResolvers)
 		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
 	} else {
-		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
+		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, "tcp")
 		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	}
 	defer servers.Stop()
@@ -153,7 +149,7 @@ func main() {
 		c.VA.AccountURIPrefixes,
 		va.PrimaryPerspective,
 		"",
-		policy.IsReservedIP)
+		iana.IsReservedAddr)
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(

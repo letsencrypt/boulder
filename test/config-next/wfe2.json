@@ -12,6 +12,7 @@
 		"directoryWebsite": "https://github.com/letsencrypt/boulder",
 		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
 		"goodkey": {},
+		"maxContactsPerRegistration": 3,
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",

@@ -465,7 +465,7 @@ type GRPCServerConfig struct {
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
 	// the package names set in those files (e.g. "ca.CertificateAuthority").
-	Services map[string]GRPCServiceConfig `json:"services" validate:"required,dive,required"`
+	Services map[string]*GRPCServiceConfig `json:"services" validate:"required,dive,required"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
@@ -476,10 +476,10 @@ type GRPCServerConfig struct {
 
 // GRPCServiceConfig contains the information needed to configure a gRPC service.
 type GRPCServiceConfig struct {
-	// PerServiceClientNames is a map of gRPC service names to client certificate
-	// SANs. The upstream listening server will reject connections from clients
-	// which do not appear in this list, and the server interceptor will reject
-	// RPC calls for this service from clients which are not listed here.
+	// ClientNames is the list of accepted gRPC client certificate SANs.
+	// Connections from clients not in this list will be rejected by the
+	// upstream listener, and RPCs from unlisted clients will be denied by the
+	// server interceptor.
 	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
 }
 

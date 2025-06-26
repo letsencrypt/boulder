@@ -26,6 +26,7 @@ type Config struct {
 	MPICFullResults             bool
 	UnsplitIssuance             bool
 	ExpirationMailerUsesJoin    bool
+	DOH                         bool
 	IgnoreAccountContacts       bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
@@ -49,9 +50,6 @@ type Config struct {
 	// requires clients to properly implement polling the Order object to wait
 	// for the cert URL to appear.
 	AsyncFinalize bool
-
-	// DOH enables DNS-over-HTTPS queries for validation
-	DOH bool
 
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
