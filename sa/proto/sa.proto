@@ -39,7 +39,7 @@ service StorageAuthorityReadOnly {
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
-  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
+  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverrideResponse) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
@@ -74,7 +74,7 @@ service StorageAuthority {
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
-  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
+  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverrideResponse) {}
 
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}

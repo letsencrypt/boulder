@@ -67,3 +67,8 @@ func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	d.Duration = dur
 	return nil
 }
+
+// MarshalYAML returns the string form of the duration, as a string.
+func (d Duration) MarshalYAML() (any, error) {
+	return d.Duration.String(), nil
+}
