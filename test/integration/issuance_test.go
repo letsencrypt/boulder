@@ -237,6 +237,9 @@ func TestIPShortLived(t *testing.T) {
 // TestIPCNIgnored verifies that we will allow IP address identifiers only in
 // orders that use the shortlived profile.
 func TestIPCNIgnored(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip()
+	}
 	t.Parallel()
 
 	// Create an account.
