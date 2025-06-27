@@ -5,24 +5,28 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/policy"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type subcommandAddOverride struct {
-	limit   string
-	regID   int64
-	domain  string
-	domains string
-	ipAddr  string
-	count   int64
-	burst   int64
-	period  string
-	comment string
+	limit            string
+	regId            int64
+	singleIdentifier string
+	setOfIdentifiers string
+	subscriberIP     string
+	count            int64
+	burst            int64
+	period           string
+	comment          string
 }
 
 func (*subcommandAddOverride) Desc() string {
@@ -31,15 +35,34 @@ func (*subcommandAddOverride) Desc() string {
 
 func (c *subcommandAddOverride) Flags(f *flag.FlagSet) {
 	f.StringVar(&c.limit, "limit", "", "ratelimit name (required)")
-	f.Int64Var(&c.regID, "regid", 0, "a single registration/account ID")
-	f.StringVar(&c.domain, "domain", "", "single domain (e.g. example.com)")
-	f.StringVar(&c.domains, "domains", "", "comma-separated list of FQDNs (e.g. example.com,www.example.com)")
-	f.StringVar(&c.ipAddr, "ip", "", "IPv4/IPv6 address")
+	f.Int64Var(&c.regId, "regid", 0, "a single registration/account ID")
+	f.StringVar(&c.singleIdentifier, "singleIdentifier", "", "a single identifier (e.g. example.com or www.example.com or 55.66.77.88 or 2602:80a:6000::1)")
+	f.StringVar(&c.setOfIdentifiers, "setOfIdentifiers", "", "comma-separated list of unique identifiers (e.g. example.com,www.example.com,55.66.77.88,2602:80a:6000::1)")
+	f.StringVar(&c.subscriberIP, "subscriberIP", "", "a single IPv4/IPv6 address the subscriber uses for requests (e.g. 55.66.77.88 or 2602:80a:6000::1)")
 
 	f.Int64Var(&c.count, "count", 0, "allowed requests per period (required)")
 	f.Int64Var(&c.burst, "burst", 0, "burst size (required)")
 	f.StringVar(&c.period, "period", "", "period duration (e.g. 1h, 168h) (required)")
 	f.StringVar(&c.comment, "comment", "", "comment for the override (required)")
+}
+
+// validateIdentifiers checks that the provided identifiers are valid according policy.
+func validateIdentifiers(idents ...identifier.ACMEIdentifier) error {
+	for _, ident := range idents {
+		switch ident.Type {
+		case identifier.TypeDNS:
+			err := policy.ValidDomain(ident.Value)
+			if err != nil {
+				return fmt.Errorf("invalid domain %s: %s", ident.Value, err)
+			}
+		case identifier.TypeIP:
+			err := policy.ValidIP(ident.Value)
+			if err != nil {
+				return fmt.Errorf("invalid IP address %s", ident.Value)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
@@ -57,10 +80,37 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 
 	dur, err := time.ParseDuration(c.period)
 	if err != nil {
-		return fmt.Errorf("invalid --period value: %s", err)
+		return fmt.Errorf("invalid period value: %s", err)
 	}
 
-	bucketKey, err := rl.BuildBucketKey(name, c.regID, c.domain, c.domains, c.ipAddr)
+	var subscriberIP netip.Addr
+	if c.subscriberIP != "" {
+		subscriberIP, err = netip.ParseAddr(c.subscriberIP)
+		if err != nil {
+			return fmt.Errorf("invalid subscriberIP %q", err)
+		}
+		err := policy.ValidIP(c.subscriberIP)
+		if err != nil {
+			return fmt.Errorf("invalid subscriberIP %q: %w", c.subscriberIP, err)
+		}
+	}
+
+	singleIdent := identifier.FromString(c.singleIdentifier)
+	err = validateIdentifiers(singleIdent)
+	if err != nil {
+		return fmt.Errorf("invalid singleIdentifier: %w", err)
+	}
+
+	var setOfIdents identifier.ACMEIdentifiers
+	if c.setOfIdentifiers != "" {
+		setOfIdents = identifier.FromStringSlice(strings.Split(c.setOfIdentifiers, ","))
+		err := validateIdentifiers(setOfIdents...)
+		if err != nil {
+			return fmt.Errorf("invalid setOfIdentifiers: %w", err)
+		}
+	}
+
+	bucketKey, err := rl.BuildBucketKey(name, c.regId, singleIdent, setOfIdents, subscriberIP)
 	if err != nil {
 		return fmt.Errorf("building bucket key for limit %s: %s", name, err)
 	}
