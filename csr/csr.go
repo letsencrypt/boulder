@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"errors"
+	"github.com/letsencrypt/boulder/policy"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
@@ -68,6 +69,12 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidURIPresent
 	}
 
+	if csr.Subject.CommonName != "" {
+		err := policy.ValidDomain(csr.Subject.CommonName)
+		if err != nil {
+			return berrors.BadCSRError("CSR contains invalid CommonName %q (must match a DNS subjectAlternativeName)", csr.Subject.CommonName)
+		}
+	}
 	// FromCSR also performs normalization, returning values that may not match
 	// the literal CSR contents.
 	idents := identifier.FromCSR(csr)
