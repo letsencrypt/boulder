@@ -125,14 +125,6 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 	return registrationModelToPb(reg)
 }
 
-// UpdateRegistrationContact makes no changes, and simply returns the account
-// as it exists in the database.
-//
-// Deprecated: See https://github.com/letsencrypt/boulder/issues/8199 for removal.
-func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
-	return ssa.GetRegistration(ctx, &sapb.RegistrationID{Id: req.RegistrationID})
-}
-
 // UpdateRegistrationKey stores an updated key in a Registration.
 func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *sapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
@@ -407,7 +399,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	return &emptypb.Empty{}, nil
 }
 
-// DeactivateRegistration deactivates a currently valid registration and removes its contact field
+// DeactivateRegistration deactivates a currently valid registration
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
 	if req == nil || req.Id == 0 {
 		return nil, errIncompleteRequest

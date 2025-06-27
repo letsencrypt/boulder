@@ -10,7 +10,6 @@ import "google/protobuf/duration.proto";
 
 service RegistrationAuthority {
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
-  rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc DeactivateRegistration(DeactivateRegistrationRequest) returns (core.Registration) {}
   rpc PerformValidation(PerformValidationRequest) returns (core.Authorization) {}
@@ -41,11 +40,6 @@ message SCTResponse {
 
 message GenerateOCSPRequest {
   string serial = 1;
-}
-
-message UpdateRegistrationContactRequest {
-  int64 registrationID = 1;
-  repeated string contacts = 2;
 }
 
 message UpdateRegistrationKeyRequest {
