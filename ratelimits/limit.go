@@ -230,7 +230,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 					// (IPv6) prefixes in CIDR notation.
 					ip, err := netip.ParseAddr(id)
 					if err == nil {
-						prefix, err := coveringPrefix(ip)
+						prefix, err := coveringPrefix(name, ip)
 						if err != nil {
 							return nil, fmt.Errorf(
 								"computing prefix for IP address %q: %w", id, err)

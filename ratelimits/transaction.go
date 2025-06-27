@@ -16,32 +16,25 @@ var ErrInvalidCost = fmt.Errorf("invalid cost, must be >= 0")
 // ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
-// newIPAddressBucketKey validates and returns a bucketKey for limits that use
+// newIPAddressBucketKey returns a bucketKey for limits that use
 // the 'enum:ipAddress' bucket key format.
 func newIPAddressBucketKey(name Name, ip netip.Addr) string {
 	return joinWithColon(name.EnumString(), ip.String())
 }
 
-// newIPv6RangeCIDRBucketKey validates and returns a bucketKey for limits that
+// newIPv6RangeCIDRBucketKey returns a bucketKey for limits that
 // use the 'enum:ipv6RangeCIDR' bucket key format.
-func newIPv6RangeCIDRBucketKey(name Name, ip netip.Addr) (string, error) {
-	if ip.Is4() {
-		return "", fmt.Errorf("invalid IPv6 address, %q must be an IPv6 address", ip.String())
-	}
-	prefix, err := ip.Prefix(48)
-	if err != nil {
-		return "", fmt.Errorf("invalid IPv6 address, can't calculate prefix of %q: %s", ip.String(), err)
-	}
-	return joinWithColon(name.EnumString(), prefix.String()), nil
+func newIPv6RangeCIDRBucketKey(name Name, prefix netip.Prefix) string {
+	return joinWithColon(name.EnumString(), prefix.String())
 }
 
-// newRegIdBucketKey validates and returns a bucketKey for limits that use the
+// newRegIdBucketKey returns a bucketKey for limits that use the
 // 'enum:regId' bucket key format.
 func newRegIdBucketKey(name Name, regId int64) string {
 	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10))
 }
 
-// newDomainOrCIDRBucketKey validates and returns a bucketKey for limits that use
+// newDomainOrCIDRBucketKey returns a bucketKey for limits that use
 // the 'enum:domainOrCIDR' bucket key formats.
 func newDomainOrCIDRBucketKey(name Name, domainOrCIDR string) string {
 	return joinWithColon(name.EnumString(), domainOrCIDR)
@@ -197,10 +190,12 @@ func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip netip
 // NewRegistrationsPerIPv6Range limit for the /48 IPv6 range which contains the
 // provided IPv6 address.
 func (builder *TransactionBuilder) registrationsPerIPv6RangeTransaction(ip netip.Addr) (Transaction, error) {
-	bucketKey, err := newIPv6RangeCIDRBucketKey(NewRegistrationsPerIPv6Range, ip)
+	coveringPrefix, err := coveringPrefix(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
-		return Transaction{}, err
+		return Transaction{}, fmt.Errorf("computing covering prefix for %q: %w", ip, err)
 	}
+	bucketKey := newIPv6RangeCIDRBucketKey(NewRegistrationsPerIPv6Range, coveringPrefix)
+
 	limit, err := builder.getLimit(NewRegistrationsPerIPv6Range, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {

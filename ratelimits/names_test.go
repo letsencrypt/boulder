@@ -2,9 +2,11 @@ package ratelimits
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -299,118 +301,197 @@ func TestBuildBucketKey(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          Name
-		desc          string
-		regID         int64
-		domain        string
-		domains       string
-		ipAddr        string
-		expectErr     string
-		bucketKeyTest func(t *testing.T, key string)
+		name              Name
+		desc              string
+		regId             int64
+		singleIdent       identifier.ACMEIdentifier
+		setOfIdents       identifier.ACMEIdentifiers
+		subscriberIP      netip.Addr
+		expectErrContains string
+		outputTest        func(t *testing.T, key string)
 	}{
+		// NewRegistrationsPerIPAddress
 		{
-			name:   NewRegistrationsPerIPAddress,
-			desc:   "valid IPv4",
-			ipAddr: "1.2.3.4",
-			bucketKeyTest: func(t *testing.T, key string) {
+			name:         NewRegistrationsPerIPAddress,
+			desc:         "valid subscriber IPv4 address",
+			subscriberIP: netip.MustParseAddr("1.2.3.4"),
+			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:1.2.3.4", NewRegistrationsPerIPAddress), key)
 			},
 		},
 		{
-			name:   NewRegistrationsPerIPv6Range,
-			desc:   "valid IPv6",
-			ipAddr: "2001:db8:abcd:12::1",
-			bucketKeyTest: func(t *testing.T, key string) {
+			name:         NewRegistrationsPerIPAddress,
+			desc:         "valid subscriber IPv6 address",
+			subscriberIP: netip.MustParseAddr("2001:db8::1"),
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:2001:db8::1", NewRegistrationsPerIPAddress), key)
+			},
+		},
+		// NewRegistrationsPerIPv6Range
+		{
+			name:         NewRegistrationsPerIPv6Range,
+			desc:         "valid subscriber IPv6 address",
+			subscriberIP: netip.MustParseAddr("2001:db8:abcd:12::1"),
+			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:2001:db8:abcd::/48", NewRegistrationsPerIPv6Range), key)
 			},
 		},
 		{
+			name:              NewRegistrationsPerIPv6Range,
+			desc:              "subscriber IPv4 given for subscriber IPv6 range limit",
+			subscriberIP:      netip.MustParseAddr("1.2.3.4"),
+			expectErrContains: "requires an IPv6 address",
+		},
+
+		// NewOrdersPerAccount
+		{
 			name:  NewOrdersPerAccount,
-			desc:  "valid regID",
-			regID: 12345,
-			bucketKeyTest: func(t *testing.T, key string) {
-				test.AssertEquals(t, fmt.Sprintf("%d:12345", NewOrdersPerAccount), key)
+			desc:  "valid registration ID",
+			regId: 1337,
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:1337", NewOrdersPerAccount), key)
 			},
 		},
 		{
-			name:   CertificatesPerDomain,
-			desc:   "valid domain",
-			domain: "example.com",
-			bucketKeyTest: func(t *testing.T, key string) {
+			name:              NewOrdersPerAccount,
+			desc:              "registration ID missing",
+			expectErrContains: "regId is required",
+		},
+
+		// CertificatesPerDomain
+		{
+			name:        CertificatesPerDomain,
+			desc:        "DNS identifier → eTLD+1",
+			singleIdent: identifier.FromString("www.example.com"),
+			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:example.com", CertificatesPerDomain), key)
 			},
 		},
 		{
-			name:    CertificatesPerFQDNSet,
-			desc:    "valid fqdnSet with only registered domains",
-			domains: "example.com,example.org",
-			bucketKeyTest: func(t *testing.T, key string) {
+			name:        CertificatesPerDomain,
+			desc:        "valid IPv4 address used as identifier",
+			singleIdent: identifier.FromString("5.6.7.8"),
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:5.6.7.8/32", CertificatesPerDomain), key)
+			},
+		},
+		{
+			name:        CertificatesPerDomain,
+			desc:        "valid IPv6 address used as identifier",
+			singleIdent: identifier.FromString("2001:db8::1"),
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:2001:db8::/64", CertificatesPerDomain), key)
+			},
+		},
+		{
+			name:              CertificatesPerDomain,
+			desc:              "identifier missing",
+			expectErrContains: "singleIdent is required",
+		},
+
+		// CertificatesPerFQDNSet
+		{
+			name:        CertificatesPerFQDNSet,
+			desc:        "multiple valid DNS identifiers",
+			setOfIdents: identifier.FromStringSlice([]string{"example.com", "example.org"}),
+			outputTest: func(t *testing.T, key string) {
 				if !strings.HasPrefix(key, fmt.Sprintf("%d:", CertificatesPerFQDNSet)) {
-					t.Fatalf("expected key to start with %d:, got %s", CertificatesPerFQDNSet, key)
+					t.Errorf("expected key to start with %d: got %s", CertificatesPerFQDNSet, key)
 				}
 			},
 		},
 		{
-			name:    CertificatesPerFQDNSet,
-			desc:    "valid fqdnSet with IPs and domains",
-			domains: "example.com,example.org",
-			bucketKeyTest: func(t *testing.T, key string) {
+			name:        CertificatesPerFQDNSet,
+			desc:        "multiple valid DNS and IP identifiers",
+			setOfIdents: identifier.FromStringSlice([]string{"example.net", "192.0.2.1", "2001:db8::1"}),
+			outputTest: func(t *testing.T, key string) {
 				if !strings.HasPrefix(key, fmt.Sprintf("%d:", CertificatesPerFQDNSet)) {
-					t.Fatalf("expected key to start with %d:, got %s", CertificatesPerFQDNSet, key)
+					t.Errorf("expected key to start with %d: got %s", CertificatesPerFQDNSet, key)
 				}
 			},
 		},
+		{
+			name:              CertificatesPerFQDNSet,
+			desc:              "identifiers missing",
+			expectErrContains: "setOfIdents is required",
+		},
+
+		// CertificatesPerDomainPerAccount
 		{
 			name:  CertificatesPerDomainPerAccount,
-			desc:  "regID only",
-			regID: 9999,
-			bucketKeyTest: func(t *testing.T, key string) {
-				test.AssertEquals(t, fmt.Sprintf("%d:9999", CertificatesPerDomainPerAccount), key)
+			desc:  "only registration ID",
+			regId: 1337,
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:1337", CertificatesPerDomainPerAccount), key)
 			},
 		},
 		{
-			name:   CertificatesPerDomainPerAccount,
-			desc:   "regID + domain",
-			regID:  9999,
-			domain: "example.com",
-			bucketKeyTest: func(t *testing.T, key string) {
-				test.AssertEquals(t, fmt.Sprintf("%d:9999:example.com", CertificatesPerDomainPerAccount), key)
+			name:        CertificatesPerDomainPerAccount,
+			desc:        "registration ID and single DNS identifier provided",
+			regId:       1337,
+			singleIdent: identifier.FromString("example.com"),
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:1337:example.com", CertificatesPerDomainPerAccount), key)
 			},
 		},
 		{
-			name:      NewOrdersPerAccount,
-			desc:      "missing regID",
-			expectErr: "regID is required",
+			name:              CertificatesPerDomainPerAccount,
+			desc:              "single DNS identifier provided without registration ID",
+			singleIdent:       identifier.FromString("example.com"),
+			expectErrContains: "regId is required",
+		},
+
+		// FailedAuthorizationsPerDomainPerAccount
+		{
+			name:        FailedAuthorizationsPerDomainPerAccount,
+			desc:        "registration ID and single DNS identifier",
+			regId:       1337,
+			singleIdent: identifier.FromString("example.com"),
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:1337:example.com", FailedAuthorizationsPerDomainPerAccount), key)
+			},
 		},
 		{
-			name:      CertificatesPerDomain,
-			desc:      "missing domain",
-			expectErr: "domain is required",
+			name:  FailedAuthorizationsPerDomainPerAccount,
+			desc:  "only registration ID",
+			regId: 1337,
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:1337", FailedAuthorizationsPerDomainPerAccount), key)
+			},
+		},
+
+		// FailedAuthorizationsForPausingPerDomainPerAccount
+		{
+			name:        FailedAuthorizationsForPausingPerDomainPerAccount,
+			desc:        "registration ID and single DNS identifier",
+			regId:       1337,
+			singleIdent: identifier.FromString("example.com"),
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:1337:example.com", FailedAuthorizationsForPausingPerDomainPerAccount), key)
+			},
 		},
 		{
-			name:      CertificatesPerFQDNSet,
-			desc:      "missing domains",
-			expectErr: "domains is required",
-		},
-		{
-			name:      NewRegistrationsPerIPAddress,
-			desc:      "invalid IP",
-			ipAddr:    "nope",
-			expectErr: "invalid IP address",
+			name:  FailedAuthorizationsForPausingPerDomainPerAccount,
+			desc:  "only registration ID",
+			regId: 1337,
+			outputTest: func(t *testing.T, key string) {
+				test.AssertEquals(t, fmt.Sprintf("%d:1337", FailedAuthorizationsForPausingPerDomainPerAccount), key)
+			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(fmt.Sprintf("%s/%s", tc.name, tc.desc), func(t *testing.T) {
 			t.Parallel()
-			key, err := BuildBucketKey(tc.name, tc.regID, tc.domain, tc.domains, tc.ipAddr)
-			if tc.expectErr != "" {
+
+			key, err := BuildBucketKey(tc.name, tc.regId, tc.singleIdent, tc.setOfIdents, tc.subscriberIP)
+			if tc.expectErrContains != "" {
 				test.AssertError(t, err, "expected error")
-				test.AssertContains(t, err.Error(), tc.expectErr)
-			} else {
-				test.AssertNotError(t, err, "unexpected error")
-				tc.bucketKeyTest(t, key)
+				test.AssertContains(t, err.Error(), tc.expectErrContains)
+				return
 			}
+			test.AssertNotError(t, err, "unexpected error")
+			tc.outputTest(t, key)
 		})
 	}
 }
