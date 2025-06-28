@@ -28,10 +28,11 @@ import (
 type AuthorityImpl struct {
 	log blog.Logger
 
-	blocklist              map[string]bool
-	exactBlocklist         map[string]bool
-	wildcardExactBlocklist map[string]bool
-	blocklistMu            sync.RWMutex
+	domainBlocklist       map[string]bool
+	fqdnBlocklist         map[string]bool
+	wildcardFqdnBlocklist map[string]bool
+	prefixBlocklist       []netip.Prefix
+	blocklistMu           sync.RWMutex
 
 	enabledChallenges  map[core.AcmeChallenge]bool
 	enabledIdentifiers map[identifier.IdentifierType]bool
@@ -46,56 +47,62 @@ func New(identifierTypes map[identifier.IdentifierType]bool, challengeTypes map[
 	}, nil
 }
 
-// blockedNamesPolicy is a struct holding lists of blocked domain names. One for
-// exact blocks and one for blocks including all subdomains.
-type blockedNamesPolicy struct {
-	// ExactBlockedNames is a list of domain names. Issuance for names exactly
-	// matching an entry in the list will be forbidden. (e.g. `ExactBlockedNames`
-	// containing `www.example.com` will not block `example.com` or
-	// `mail.example.com`).
+// blockedIdentsPolicy is a struct holding lists of blocked identifiers.
+type blockedIdentsPolicy struct {
+	// ExactBlockedNames is a list of Fully Qualified Domain Names (FQDNs).
+	// Issuance for names exactly matching an entry in the list will be
+	// forbidden. (e.g. `ExactBlockedNames` containing `www.example.com` will
+	// not block `example.com` or `mail.example.com`).
 	ExactBlockedNames []string `yaml:"ExactBlockedNames"`
-	// HighRiskBlockedNames is like ExactBlockedNames except that issuance is
-	// blocked for subdomains as well. (e.g. BlockedNames containing `example.com`
-	// will block `www.example.com`).
+
+	// HighRiskBlockedNames is a list of eTLD+1 domain names: like
+	// ExactBlockedNames except that issuance is blocked for subdomains as well.
+	// (e.g. BlockedNames containing `example.com` will block
+	// `www.example.com`).
 	//
 	// This list typically doesn't change with much regularity.
 	HighRiskBlockedNames []string `yaml:"HighRiskBlockedNames"`
 
-	// AdminBlockedNames operates the same as BlockedNames but is changed with more
-	// frequency based on administrative blocks/revocations that are added over
-	// time above and beyond the high-risk domains. Managing these entries separately
-	// from HighRiskBlockedNames makes it easier to vet changes accurately.
+	// AdminBlockedNames operates the same as HighRiskBlockedNames but is
+	// changed with more frequency based on administrative blocks/revocations
+	// that are added over time above and beyond the high-risk domains. Managing
+	// these entries separately from HighRiskBlockedNames makes it easier to vet
+	// changes accurately.
 	AdminBlockedNames []string `yaml:"AdminBlockedNames"`
+
+	// AdminBlockedPrefixes is a list of IP address prefixes. All IP addresses
+	// contained within the prefix are blocked.
+	AdminBlockedPrefixes []string `yaml:"AdminBlockedPrefixes"`
 }
 
-// LoadHostnamePolicyFile will load the given policy file, returning an error if
-// it fails.
-func (pa *AuthorityImpl) LoadHostnamePolicyFile(f string) error {
+// LoadIdentPolicyFile will load the given policy file, returning an error if it
+// fails.
+func (pa *AuthorityImpl) LoadIdentPolicyFile(f string) error {
 	configBytes, err := os.ReadFile(f)
 	if err != nil {
 		return err
 	}
 	hash := sha256.Sum256(configBytes)
-	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
-	var policy blockedNamesPolicy
+	pa.log.Infof("loading identifier policy, sha256: %s", hex.EncodeToString(hash[:]))
+	var policy blockedIdentsPolicy
 	err = strictyaml.Unmarshal(configBytes, &policy)
 	if err != nil {
 		return err
 	}
 	if len(policy.HighRiskBlockedNames) == 0 {
-		return fmt.Errorf("No entries in HighRiskBlockedNames.")
+		return fmt.Errorf("no entries in HighRiskBlockedNames")
 	}
 	if len(policy.ExactBlockedNames) == 0 {
-		return fmt.Errorf("No entries in ExactBlockedNames.")
+		return fmt.Errorf("no entries in ExactBlockedNames")
 	}
-	return pa.processHostnamePolicy(policy)
+	return pa.processIdentPolicy(policy)
 }
 
-// processHostnamePolicy handles loading a new blockedNamesPolicy into the PA.
-// All of the policy.ExactBlockedNames will be added to the
-// wildcardExactBlocklist by processHostnamePolicy to ensure that wildcards for
-// exact blocked names entries are forbidden.
-func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error {
+// processIdentPolicy handles loading a new blockedIdentsPolicy into the PA. All
+// of the policy.ExactBlockedNames will be added to the wildcardExactBlocklist
+// by processIdentPolicy to ensure that wildcards for exact blocked names
+// entries are forbidden.
+func (pa *AuthorityImpl) processIdentPolicy(policy blockedIdentsPolicy) error {
 	nameMap := make(map[string]bool)
 	for _, v := range policy.HighRiskBlockedNames {
 		nameMap[v] = true
@@ -103,6 +110,7 @@ func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error 
 	for _, v := range policy.AdminBlockedNames {
 		nameMap[v] = true
 	}
+
 	exactNameMap := make(map[string]bool)
 	wildcardNameMap := make(map[string]bool)
 	for _, v := range policy.ExactBlockedNames {
@@ -119,16 +127,28 @@ func (pa *AuthorityImpl) processHostnamePolicy(policy blockedNamesPolicy) error 
 		// at least be a "something." and a TLD like "com"
 		if len(parts) < 2 {
 			return fmt.Errorf(
-				"Malformed ExactBlockedNames entry, only one label: %q", v)
+				"malformed ExactBlockedNames entry, only one label: %q", v)
 		}
 		// Add the second part, the domain minus the first label, to the
 		// wildcardNameMap to block issuance for `*.`+parts[1]
 		wildcardNameMap[parts[1]] = true
 	}
+
+	var prefixes []netip.Prefix
+	for _, p := range policy.AdminBlockedPrefixes {
+		prefix, err := netip.ParsePrefix(p)
+		if err != nil {
+			return fmt.Errorf(
+				"malformed AdminBlockedPrefixes entry, not a prefix: %q", p)
+		}
+		prefixes = append(prefixes, prefix)
+	}
+
 	pa.blocklistMu.Lock()
-	pa.blocklist = nameMap
-	pa.exactBlocklist = exactNameMap
-	pa.wildcardExactBlocklist = wildcardNameMap
+	pa.domainBlocklist = nameMap
+	pa.fqdnBlocklist = exactNameMap
+	pa.wildcardFqdnBlocklist = wildcardNameMap
+	pa.prefixBlocklist = prefixes
 	pa.blocklistMu.Unlock()
 	return nil
 }
@@ -423,31 +443,25 @@ func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error
 			continue
 		}
 
-		// Only DNS identifiers are subject to wildcard and blocklist checks.
-		// Unsupported identifier types will have been caught by
-		// WellFormedIdentifiers().
-		//
-		// TODO(#8237): We may want to implement IP address blocklists too.
-		if ident.Type == identifier.TypeDNS {
-			if strings.Count(ident.Value, "*") > 0 {
-				// The base domain is the wildcard request with the `*.` prefix removed
-				baseDomain := strings.TrimPrefix(ident.Value, "*.")
+		// Wildcard DNS identifiers are checked against an additional blocklist.
+		if ident.Type == identifier.TypeDNS && strings.Count(ident.Value, "*") > 0 {
+			// The base domain is the wildcard request with the `*.` prefix removed
+			baseDomain := strings.TrimPrefix(ident.Value, "*.")
 
-				// The base domain can't be in the wildcard exact blocklist
-				err = pa.checkWildcardHostList(baseDomain)
-				if err != nil {
-					subErrors = append(subErrors, subError(ident, err))
-					continue
-				}
-			}
-
-			// For both wildcard and non-wildcard domains, check whether any parent domain
-			// name is on the regular blocklist.
-			err := pa.checkHostLists(ident.Value)
+			// The base domain can't be in the wildcard exact blocklist
+			err = pa.checkWildcardBlocklist(baseDomain)
 			if err != nil {
 				subErrors = append(subErrors, subError(ident, err))
 				continue
 			}
+		}
+
+		// For all identifier types, check whether the identifier value is
+		// covered by the regular blocklists.
+		err := pa.checkBlocklists(ident)
+		if err != nil {
+			subErrors = append(subErrors, subError(ident, err))
+			continue
 		}
 	}
 	return combineSubErrors(subErrors)
@@ -528,42 +542,57 @@ func combineSubErrors(subErrors []berrors.SubBoulderError) error {
 	return nil
 }
 
-// checkWildcardHostList checks the wildcardExactBlocklist for a given domain.
+// checkWildcardBlocklist checks the wildcardExactBlocklist for a given domain.
 // If the domain is not present on the list nil is returned, otherwise
 // errPolicyForbidden is returned.
-func (pa *AuthorityImpl) checkWildcardHostList(domain string) error {
+func (pa *AuthorityImpl) checkWildcardBlocklist(domain string) error {
 	pa.blocklistMu.RLock()
 	defer pa.blocklistMu.RUnlock()
 
-	if pa.wildcardExactBlocklist == nil {
-		return fmt.Errorf("Hostname policy not yet loaded.")
+	if pa.wildcardFqdnBlocklist == nil {
+		return fmt.Errorf("identifier policy not yet loaded")
 	}
 
-	if pa.wildcardExactBlocklist[domain] {
+	if pa.wildcardFqdnBlocklist[domain] {
 		return errPolicyForbidden
 	}
 
 	return nil
 }
 
-func (pa *AuthorityImpl) checkHostLists(domain string) error {
+func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier) error {
 	pa.blocklistMu.RLock()
 	defer pa.blocklistMu.RUnlock()
 
-	if pa.blocklist == nil {
-		return fmt.Errorf("Hostname policy not yet loaded.")
+	if pa.domainBlocklist == nil {
+		return fmt.Errorf("identifier policy not yet loaded")
 	}
 
-	labels := strings.Split(domain, ".")
-	for i := range labels {
-		joined := strings.Join(labels[i:], ".")
-		if pa.blocklist[joined] {
+	switch ident.Type {
+	case identifier.TypeDNS:
+		labels := strings.Split(ident.Value, ".")
+		for i := range labels {
+			joined := strings.Join(labels[i:], ".")
+			if pa.domainBlocklist[joined] {
+				return errPolicyForbidden
+			}
+		}
+
+		if pa.fqdnBlocklist[ident.Value] {
 			return errPolicyForbidden
 		}
-	}
-
-	if pa.exactBlocklist[domain] {
-		return errPolicyForbidden
+	case identifier.TypeIP:
+		ip, err := netip.ParseAddr(ident.Value)
+		if err != nil {
+			return errIPInvalid
+		}
+		for _, prefix := range pa.prefixBlocklist {
+			if prefix.Contains(ip) {
+				return errPolicyForbidden
+			}
+		}
+	default:
+		return errUnsupportedIdent
 	}
 	return nil
 }

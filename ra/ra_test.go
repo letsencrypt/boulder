@@ -335,8 +335,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 		blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
 	stats := metrics.NoopRegisterer
 
@@ -2913,8 +2913,8 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 		},
 		ra.log)
 	test.AssertNotError(t, err, "creating test PA")
-	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
-	test.AssertNotError(t, err, "loading test hostname policy")
+	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+	test.AssertNotError(t, err, "loading test identifier policy")
 	ra.PA = pa
 
 	// Now finalizing this order should fail
