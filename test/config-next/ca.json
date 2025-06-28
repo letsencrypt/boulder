@@ -5,7 +5,7 @@
 			"certFile": "test/certs/ipki/ca.boulder/cert.pem",
 			"keyFile": "test/certs/ipki/ca.boulder/key.pem"
 		},
-		"hostnamePolicyFile": "test/hostname-policy.yaml",
+		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"grpcCA": {
 			"maxConnectionAge": "30s",
 			"services": {

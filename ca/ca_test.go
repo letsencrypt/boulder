@@ -150,8 +150,8 @@ func setup(t *testing.T) *testCtx {
 
 	pa, err := policy.New(map[identifier.IdentifierType]bool{"dns": true}, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
 	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
 	certProfiles["legacy"] = &issuance.ProfileConfig{

@@ -4,7 +4,7 @@
 			"dbConnectFile": "test/secrets/cert_checker_dburl",
 			"maxOpenConns": 10
 		},
-		"hostnamePolicyFile": "test/hostname-policy.yaml",
+		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"workers": 16,
 		"unexpiredOnly": true,
 		"badResultsOnly": true,
