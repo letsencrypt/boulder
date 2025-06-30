@@ -70,6 +70,9 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithIPAddress := new(x509.CertificateRequest)
 	*signedReqWithIPAddress = *signedReq
 	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
+	signedReqWithIPCN := new(x509.CertificateRequest)
+	*signedReqWithIPCN = *signedReq
+	signedReqWithIPCN.Subject.CommonName = "1.2.3.4"
 	signedReqWithURI := new(x509.CertificateRequest)
 	*signedReqWithURI = *signedReq
 	testURI, _ := url.ParseRequestURI("https://example.com/")
@@ -140,6 +143,12 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			&mockPA{},
 			nil,
+		},
+		{
+			signedReqWithIPCN,
+			100,
+			&mockPA{},
+			invalidIPCN,
 		},
 		{
 			signedReqWithURI,
