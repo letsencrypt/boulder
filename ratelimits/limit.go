@@ -38,26 +38,32 @@ type LimitConfig struct {
 
 type LimitConfigs map[string]*LimitConfig
 
-// limit defines the configuration for a rate limit or a rate limit override.
+// Limit defines the configuration for a rate limit or a rate limit override.
 //
-// The zero value of this struct is invalid, because some of the fields must
-// be greater than zero.
-type limit struct {
-	// burst specifies maximum concurrent allowed requests at any given time. It
+// The zero value of this struct is invalid, because some of the fields must be
+// greater than zero. It and several of its fields are exported to support admin
+// tooling used during the migration from overrides.yaml to the overrides
+// database table.
+type Limit struct {
+	// Burst specifies maximum concurrent allowed requests at any given time. It
 	// must be greater than zero.
-	burst int64
+	Burst int64
 
-	// count is the number of requests allowed per period. It must be greater
+	// Count is the number of requests allowed per period. It must be greater
 	// than zero.
-	count int64
+	Count int64
 
-	// period is the duration of time in which the count (of requests) is
+	// Period is the duration of time in which the count (of requests) is
 	// allowed. It must be greater than zero.
-	period config.Duration
+	Period config.Duration
 
-	// name is the name of the limit. It must be one of the Name enums defined
+	// Name is the name of the limit. It must be one of the Name enums defined
 	// in this package.
-	name Name
+	Name Name
+
+	// Comment is an optional field that can be used to provide additional
+	// context for an override. It is not used for default limits.
+	Comment string
 
 	// emissionInterval is the interval, in nanoseconds, at which tokens are
 	// added to a bucket (period / count). This is also the steady-state rate at
@@ -76,25 +82,25 @@ type limit struct {
 }
 
 // precompute calculates the emissionInterval and burstOffset for the limit.
-func (l *limit) precompute() {
-	l.emissionInterval = l.period.Nanoseconds() / l.count
-	l.burstOffset = l.emissionInterval * l.burst
+func (l *Limit) precompute() {
+	l.emissionInterval = l.Period.Nanoseconds() / l.Count
+	l.burstOffset = l.emissionInterval * l.Burst
 }
 
-func validateLimit(l *limit) error {
-	if l.burst <= 0 {
-		return fmt.Errorf("invalid burst '%d', must be > 0", l.burst)
+func ValidateLimit(l *Limit) error {
+	if l.Burst <= 0 {
+		return fmt.Errorf("invalid burst '%d', must be > 0", l.Burst)
 	}
-	if l.count <= 0 {
-		return fmt.Errorf("invalid count '%d', must be > 0", l.count)
+	if l.Count <= 0 {
+		return fmt.Errorf("invalid count '%d', must be > 0", l.Count)
 	}
-	if l.period.Duration <= 0 {
-		return fmt.Errorf("invalid period '%s', must be > 0", l.period)
+	if l.Period.Duration <= 0 {
+		return fmt.Errorf("invalid period '%s', must be > 0", l.Period)
 	}
 	return nil
 }
 
-type limits map[string]*limit
+type Limits map[string]*Limit
 
 // loadDefaults marshals the defaults YAML file at path into a map of limits.
 func loadDefaults(path string) (LimitConfigs, error) {
@@ -149,9 +155,9 @@ func parseOverrideNameId(key string) (Name, string, error) {
 		return Unknown, "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", key)
 	}
 
-	name, ok := stringToName[nameStr]
+	name, ok := StringToName[nameStr]
 	if !ok {
-		return Unknown, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, limitNames)
+		return Unknown, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, LimitNames)
 	}
 	id := nameAndId[1]
 	if id == "" {
@@ -164,26 +170,26 @@ func parseOverrideNameId(key string) (Name, string, error) {
 // formatted as a list of maps, where each map has a single key representing the
 // limit name and a value that is a map containing the limit fields and an
 // additional 'ids' field that is a list of ids that this override applies to.
-func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
-	parsed := make(limits)
+func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
+	parsed := make(Limits)
 
 	for _, ov := range newOverridesYAML {
 		for k, v := range ov {
-			name, ok := stringToName[k]
+			name, ok := StringToName[k]
 			if !ok {
-				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, limitNames)
+				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, LimitNames)
 			}
 
-			lim := &limit{
-				burst:      v.Burst,
-				count:      v.Count,
-				period:     v.Period,
-				name:       name,
+			lim := &Limit{
+				Burst:      v.Burst,
+				Count:      v.Count,
+				Period:     v.Period,
+				Name:       name,
 				isOverride: true,
 			}
 			lim.precompute()
 
-			err := validateLimit(lim)
+			err := ValidateLimit(lim)
 			if err != nil {
 				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
 			}
@@ -234,23 +240,23 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 }
 
 // parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
-func parseDefaultLimits(newDefaultLimits LimitConfigs) (limits, error) {
-	parsed := make(limits)
+func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
+	parsed := make(Limits)
 
 	for k, v := range newDefaultLimits {
-		name, ok := stringToName[k]
+		name, ok := StringToName[k]
 		if !ok {
-			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
+			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, LimitNames)
 		}
 
-		lim := &limit{
-			burst:  v.Burst,
-			count:  v.Count,
-			period: v.Period,
-			name:   name,
+		lim := &Limit{
+			Burst:  v.Burst,
+			Count:  v.Count,
+			Period: v.Period,
+			Name:   name,
 		}
 
-		err := validateLimit(lim)
+		err := ValidateLimit(lim)
 		if err != nil {
 			return nil, fmt.Errorf("parsing default limit %q: %w", k, err)
 		}
@@ -263,10 +269,10 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (limits, error) {
 
 type limitRegistry struct {
 	// defaults stores default limits by 'name'.
-	defaults limits
+	defaults Limits
 
 	// overrides stores override limits by 'name:id'.
-	overrides limits
+	overrides Limits
 }
 
 func newLimitRegistryFromFiles(defaults, overrides string) (*limitRegistry, error) {
@@ -308,7 +314,7 @@ func newLimitRegistry(defaults LimitConfigs, overrides overridesYAML) (*limitReg
 // required, bucketKey is optional. If bucketkey is empty, the default for the
 // limit specified by name is returned. If no default limit exists for the
 // specified name, errLimitDisabled is returned.
-func (l *limitRegistry) getLimit(name Name, bucketKey string) (*limit, error) {
+func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 	if !name.isValid() {
 		// This should never happen. Callers should only be specifying the limit
 		// Name enums defined in this package.

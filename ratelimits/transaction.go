@@ -80,7 +80,7 @@ func newFQDNSetBucketKey(name Name, orderIdents identifier.ACMEIdentifiers) stri
 // it would fail validateTransaction (for instance because cost and burst are zero).
 type Transaction struct {
 	bucketKey string
-	limit     *limit
+	limit     *Limit
 	cost      int64
 	check     bool
 	spend     bool
@@ -102,7 +102,7 @@ func validateTransaction(txn Transaction) (Transaction, error) {
 	if txn.cost < 0 {
 		return Transaction{}, ErrInvalidCost
 	}
-	if txn.limit.burst == 0 {
+	if txn.limit.Burst == 0 {
 		// This should never happen. If the limit was loaded from a file,
 		// Burst was validated then. If this is a zero-valued Transaction
 		// (that is, an allow-only transaction), then validateTransaction
@@ -110,13 +110,13 @@ func validateTransaction(txn Transaction) (Transaction, error) {
 		// valid.
 		return Transaction{}, fmt.Errorf("invalid limit, burst must be > 0")
 	}
-	if txn.cost > txn.limit.burst {
+	if txn.cost > txn.limit.Burst {
 		return Transaction{}, ErrInvalidCostOverLimit
 	}
 	return txn, nil
 }
 
-func newTransaction(limit *limit, bucketKey string, cost int64) (Transaction, error) {
+func newTransaction(limit *Limit, bucketKey string, cost int64) (Transaction, error) {
 	return validateTransaction(Transaction{
 		bucketKey: bucketKey,
 		limit:     limit,
@@ -126,7 +126,7 @@ func newTransaction(limit *limit, bucketKey string, cost int64) (Transaction, er
 	})
 }
 
-func newCheckOnlyTransaction(limit *limit, bucketKey string, cost int64) (Transaction, error) {
+func newCheckOnlyTransaction(limit *Limit, bucketKey string, cost int64) (Transaction, error) {
 	return validateTransaction(Transaction{
 		bucketKey: bucketKey,
 		limit:     limit,
@@ -135,7 +135,7 @@ func newCheckOnlyTransaction(limit *limit, bucketKey string, cost int64) (Transa
 	})
 }
 
-func newSpendOnlyTransaction(limit *limit, bucketKey string, cost int64) (Transaction, error) {
+func newSpendOnlyTransaction(limit *Limit, bucketKey string, cost int64) (Transaction, error) {
 	return validateTransaction(Transaction{
 		bucketKey: bucketKey,
 		limit:     limit,

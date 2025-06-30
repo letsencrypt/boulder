@@ -333,8 +333,8 @@ func validateIdForName(name Name, id string) error {
 	}
 }
 
-// stringToName is a map of string names to Name values.
-var stringToName = func() map[string]Name {
+// StringToName is a map of string names to Name values.
+var StringToName = func() map[string]Name {
 	m := make(map[string]Name, len(nameToString))
 	for k, v := range nameToString {
 		m[v] = k
@@ -342,8 +342,8 @@ var stringToName = func() map[string]Name {
 	return m
 }()
 
-// limitNames is a slice of all rate limit names.
-var limitNames = func() []string {
+// LimitNames is a slice of all rate limit names.
+var LimitNames = func() []string {
 	names := make([]string, 0, len(nameToString))
 	for _, v := range nameToString {
 		names = append(names, v)
