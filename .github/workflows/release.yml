@@ -7,7 +7,7 @@ name: Build release
 on:
   push:
     tags:
-      - *
+      - '**'
 
 jobs:
   push-release:
