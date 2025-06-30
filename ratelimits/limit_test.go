@@ -3,6 +3,8 @@ package ratelimits
 import (
 	"net/netip"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +69,64 @@ func TestParseOverrideNameId(t *testing.T) {
 	// Invalid enum.
 	_, _, err = parseOverrideNameId("lol:noexist")
 	test.AssertError(t, err, "invalid enum")
+}
+
+func TestParseOverrideNameEnumId(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input       string
+		wantName    Name
+		wantId      string
+		expectError bool
+		desc        string
+	}{
+		{
+			input:       NewRegistrationsPerIPAddress.EnumString() + ":10.0.0.1",
+			wantName:    NewRegistrationsPerIPAddress,
+			wantId:      "10.0.0.1",
+			expectError: false,
+			desc:        "valid IPv4 address",
+		},
+		{
+			input:       NewRegistrationsPerIPv6Range.EnumString() + ":2001:0db8:0000::/48",
+			wantName:    NewRegistrationsPerIPv6Range,
+			wantId:      "2001:0db8:0000::/48",
+			expectError: false,
+			desc:        "valid IPv6 address range",
+		},
+		{
+			input:       NewRegistrationsPerIPAddress.EnumString() + "10.0.0.1",
+			expectError: true,
+			desc:        "missing colon",
+		},
+		{
+			input:       "",
+			expectError: true,
+			desc:        "empty string",
+		},
+		{
+			input:       NewRegistrationsPerIPAddress.EnumString() + ":",
+			expectError: true,
+			desc:        "only a colon",
+		},
+		{
+			input:       "lol:noexist",
+			expectError: true,
+			desc:        "invalid enum",
+		},
+	}
+
+	for _, tc := range tests {
+		name, id, err := parseOverrideNameEnumId(tc.input)
+		if tc.expectError {
+			test.AssertError(t, err, tc.desc)
+		} else {
+			test.AssertNotError(t, err, tc.desc)
+			test.AssertEquals(t, name, tc.wantName)
+			test.AssertEquals(t, id, tc.wantId)
+		}
+	}
 }
 
 func TestValidateLimit(t *testing.T) {
@@ -229,4 +289,147 @@ func TestLoadAndParseDefaultLimits(t *testing.T) {
 	_, err = loadAndParseDefaultLimits("testdata/busted_defaults_second_entry_bad_name.yml")
 	test.AssertError(t, err, "multiple default limits, one is bad")
 	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+}
+
+func TestLoadAndDumpOverrides(t *testing.T) {
+	t.Parallel()
+
+	input := `
+- CertificatesPerDomain:
+    burst: 5000
+    count: 5000
+    period: 168h0m0s
+    ids:
+        - id: example.com
+          comment: IN-10057
+        - id: example.net
+          comment: IN-10057
+- CertificatesPerDomain:
+    burst: 300
+    count: 300
+    period: 168h0m0s
+    ids:
+        - id: example.org
+          comment: IN-10057
+- CertificatesPerDomainPerAccount:
+    burst: 12000
+    count: 12000
+    period: 168h0m0s
+    ids:
+        - id: "123456789"
+          comment: Affluent (IN-8322)
+- CertificatesPerDomainPerAccount:
+    burst: 6000
+    count: 6000
+    period: 168h0m0s
+    ids:
+        - id: "543219876"
+          comment: Affluent (IN-8322)
+        - id: "987654321"
+          comment: Affluent (IN-8322)
+- CertificatesPerFQDNSet:
+    burst: 50
+    count: 50
+    period: 168h0m0s
+    ids:
+        - id: example.co.uk,example.cn
+          comment: IN-6843
+- CertificatesPerFQDNSet:
+    burst: 24
+    count: 24
+    period: 168h0m0s
+    ids:
+        - id: example.org,example.com,example.net
+          comment: IN-6006
+- FailedAuthorizationsPerDomainPerAccount:
+    burst: 250
+    count: 250
+    period: 1h0m0s
+    ids:
+        - id: "123456789"
+          comment: Digital Lake (IN-6736)
+- FailedAuthorizationsPerDomainPerAccount:
+    burst: 50
+    count: 50
+    period: 1h0m0s
+    ids:
+        - id: "987654321"
+          comment: Digital Lake (IN-6856)
+- FailedAuthorizationsPerDomainPerAccount:
+    burst: 10
+    count: 10
+    period: 1h0m0s
+    ids:
+        - id: "543219876"
+          comment: Big Mart (IN-6949)
+- NewOrdersPerAccount:
+    burst: 3000
+    count: 3000
+    period: 3h0m0s
+    ids:
+        - id: "123456789"
+          comment: Galaxy Hoster (IN-8180)
+- NewOrdersPerAccount:
+    burst: 1000
+    count: 1000
+    period: 3h0m0s
+    ids:
+        - id: "543219876"
+          comment: Big Mart (IN-8180)
+        - id: "987654321"
+          comment: Buy More (IN-10057)
+- NewRegistrationsPerIPAddress:
+    burst: 100000
+    count: 100000
+    period: 3h0m0s
+    ids:
+        - id: 2600:1f1c:5e0:e702:ca06:d2a3:c7ce:a02e
+          comment: example.org IN-2395
+        - id: 55.66.77.88
+          comment: example.org IN-2395
+- NewRegistrationsPerIPAddress:
+    burst: 200
+    count: 200
+    period: 3h0m0s
+    ids:
+        - id: 11.22.33.44
+          comment: example.net (IN-1583)`
+
+	expectCSV := `
+name,id,count,burst,period,comment
+CertificatesPerDomain,example.com,5000,5000,168h0m0s,IN-10057
+CertificatesPerDomain,example.net,5000,5000,168h0m0s,IN-10057
+CertificatesPerDomain,example.org,300,300,168h0m0s,IN-10057
+CertificatesPerDomainPerAccount,123456789,12000,12000,168h0m0s,Affluent (IN-8322)
+CertificatesPerDomainPerAccount,543219876,6000,6000,168h0m0s,Affluent (IN-8322)
+CertificatesPerDomainPerAccount,987654321,6000,6000,168h0m0s,Affluent (IN-8322)
+CertificatesPerFQDNSet,7c956936126b492845ddb48f4d220034509e7c0ad54ed2c1ba2650406846d9c3,50,50,168h0m0s,IN-6843
+CertificatesPerFQDNSet,394e82811f52e2da38b970afdb21c9bc9af81060939c690183c00fce37408738,24,24,168h0m0s,IN-6006
+FailedAuthorizationsPerDomainPerAccount,123456789,250,250,1h0m0s,Digital Lake (IN-6736)
+FailedAuthorizationsPerDomainPerAccount,987654321,50,50,1h0m0s,Digital Lake (IN-6856)
+FailedAuthorizationsPerDomainPerAccount,543219876,10,10,1h0m0s,Big Mart (IN-6949)
+NewOrdersPerAccount,123456789,3000,3000,3h0m0s,Galaxy Hoster (IN-8180)
+NewOrdersPerAccount,543219876,1000,1000,3h0m0s,Big Mart (IN-8180)
+NewOrdersPerAccount,987654321,1000,1000,3h0m0s,Buy More (IN-10057)
+NewRegistrationsPerIPAddress,2600:1f1c:5e0:e702:ca06:d2a3:c7ce:a02e,100000,100000,3h0m0s,example.org IN-2395
+NewRegistrationsPerIPAddress,55.66.77.88,100000,100000,3h0m0s,example.org IN-2395
+NewRegistrationsPerIPAddress,11.22.33.44,200,200,3h0m0s,example.net (IN-1583)
+`
+
+	tempFile := filepath.Join(t.TempDir(), "overrides.yaml")
+
+	err := os.WriteFile(tempFile, []byte(input), 0644)
+	test.AssertNotError(t, err, "writing temp overrides.yaml")
+
+	original, err := LoadOverridesByBucketKey(tempFile)
+	test.AssertNotError(t, err, "loading overrides")
+	test.Assert(t, len(original) > 0, "expected at least one override loaded")
+
+	dumpFile := filepath.Join(t.TempDir(), "dumped.yaml")
+	err = DumpOverrides(dumpFile, original)
+	test.AssertNotError(t, err, "dumping overrides")
+
+	dumped, err := os.ReadFile(dumpFile)
+	test.AssertNotError(t, err, "reading dumped overrides file")
+	test.AssertEquals(t, strings.TrimLeft(string(dumped), "\n"), strings.TrimLeft(expectCSV, "\n"))
 }

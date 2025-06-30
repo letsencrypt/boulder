@@ -1,10 +1,13 @@
 package ratelimits
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"net/netip"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/letsencrypt/boulder/config"
@@ -116,15 +119,17 @@ func loadDefaults(path string) (LimitConfigs, error) {
 	return lm, nil
 }
 
+type overrideID struct {
+	Id string `yaml:"id"`
+	// Comment is an optional field that can be used to provide additional
+	// context for the override.
+	Comment string `yaml:"comment,omitempty"`
+}
+
 type overrideYAML struct {
 	LimitConfig `yaml:",inline"`
 	// Ids is a list of ids that this override applies to.
-	Ids []struct {
-		Id string `yaml:"id"`
-		// Comment is an optional field that can be used to provide additional
-		// context for the override.
-		Comment string `yaml:"comment,omitempty"`
-	} `yaml:"ids"`
+	Ids []overrideID `yaml:"ids"`
 }
 
 type overridesYAML []map[string]overrideYAML
@@ -166,6 +171,35 @@ func parseOverrideNameId(key string) (Name, string, error) {
 	return name, id, nil
 }
 
+// parseOverrideNameEnumId is like parseOverrideNameId, but it expects the
+// key to be formatted as 'name:id', where 'name' is a Name enum string and 'id'
+// is a string identifier. It returns an error if either part is missing or invalid.
+func parseOverrideNameEnumId(key string) (Name, string, error) {
+	if !strings.Contains(key, ":") {
+		// Avoids a potential panic in strings.SplitN below.
+		return Unknown, "", fmt.Errorf("invalid override %q, must be formatted 'name:id'", key)
+	}
+	nameStrAndId := strings.SplitN(key, ":", 2)
+	if len(nameStrAndId) != 2 {
+		return Unknown, "", fmt.Errorf("invalid override %q, must be formatted 'name:id'", key)
+	}
+
+	nameInt, err := strconv.Atoi(nameStrAndId[0])
+	if err != nil {
+		return Unknown, "", fmt.Errorf("invalid name %q in override limit %q, must be an integer", nameStrAndId[0], key)
+	}
+	name := Name(nameInt)
+	if !name.isValid() {
+		return Unknown, "", fmt.Errorf("invalid name %q in override limit %q, must be one of %v", nameStrAndId[0], key, LimitNames)
+
+	}
+	id := nameStrAndId[1]
+	if id == "" {
+		return Unknown, "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", key)
+	}
+	return name, id, nil
+}
+
 // parseOverrideLimits validates a YAML list of override limits. It must be
 // formatted as a list of maps, where each map has a single key representing the
 // limit name and a value that is a map containing the limit fields and an
@@ -180,23 +214,9 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, LimitNames)
 			}
 
-			lim := &Limit{
-				Burst:      v.Burst,
-				Count:      v.Count,
-				Period:     v.Period,
-				Name:       name,
-				isOverride: true,
-			}
-			lim.precompute()
-
-			err := ValidateLimit(lim)
-			if err != nil {
-				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
-			}
-
 			for _, entry := range v.Ids {
 				id := entry.Id
-				err = validateIdForName(name, id)
+				err := validateIdForName(name, id)
 				if err != nil {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
@@ -210,7 +230,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 					// (IPv6) prefixes in CIDR notation.
 					ip, err := netip.ParseAddr(id)
 					if err == nil {
-						prefix, err := coveringPrefix(ip)
+						prefix, err := coveringPrefix(name, ip)
 						if err != nil {
 							return nil, fmt.Errorf(
 								"computing prefix for IP address %q: %w", id, err)
@@ -220,16 +240,22 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 				case CertificatesPerFQDNSet:
 					// Compute the hash of a comma-separated list of identifier
 					// values.
-					var idents identifier.ACMEIdentifiers
-					for _, value := range strings.Split(id, ",") {
-						ip, err := netip.ParseAddr(value)
-						if err == nil {
-							idents = append(idents, identifier.NewIP(ip))
-						} else {
-							idents = append(idents, identifier.NewDNS(value))
-						}
-					}
-					id = fmt.Sprintf("%x", core.HashIdentifiers(idents))
+					id = fmt.Sprintf("%x", core.HashIdentifiers(identifier.FromStringSlice(strings.Split(id, ","))))
+				}
+
+				lim := &Limit{
+					Burst:      v.Burst,
+					Count:      v.Count,
+					Period:     v.Period,
+					Name:       name,
+					Comment:    entry.Comment,
+					isOverride: true,
+				}
+				lim.precompute()
+
+				err = ValidateLimit(lim)
+				if err != nil {
+					return nil, fmt.Errorf("validating override limit %q: %w", k, err)
 				}
 
 				parsed[joinWithColon(name.EnumString(), id)] = lim
@@ -332,4 +358,104 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 		return dl, nil
 	}
 	return nil, errLimitDisabled
+}
+
+// LoadOverridesByBucketKey loads the overrides YAML at the supplied path,
+// parses it with the existing helpers, and returns the resulting limits map
+// keyed by "<name>:<id>". This function is exported to support admin tooling
+// used during the migration from overrides.yaml to the overrides database
+// table.
+func LoadOverridesByBucketKey(path string) (Limits, error) {
+	ovs, err := loadOverrides(path)
+	if err != nil {
+		return nil, err
+	}
+	return parseOverrideLimits(ovs)
+}
+
+// DumpOverrides writes the provided overrides to CSV at the supplied path. Each
+// override is written as a single row, one per ID. Rows are sorted in the
+// following order:
+//   - Name    (ascending)
+//   - Count   (descending)
+//   - Burst   (descending)
+//   - Period  (ascending)
+//   - Comment (ascending)
+//   - ID      (ascending)
+//
+// This function supports admin tooling that routinely exports the overrides
+// table for investigation or auditing.
+func DumpOverrides(path string, overrides Limits) error {
+	type row struct {
+		name    string
+		id      string
+		count   int64
+		burst   int64
+		period  string
+		comment string
+	}
+
+	var rows []row
+	for bucketKey, limit := range overrides {
+		name, id, err := parseOverrideNameEnumId(bucketKey)
+		if err != nil {
+			return err
+		}
+
+		rows = append(rows, row{
+			name:    name.String(),
+			id:      id,
+			count:   limit.Count,
+			burst:   limit.Burst,
+			period:  limit.Period.Duration.String(),
+			comment: limit.Comment,
+		})
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		// Sort by limit name in ascending order.
+		if rows[i].name != rows[j].name {
+			return rows[i].name < rows[j].name
+		}
+		// Sort by count in descending order (higher counts first).
+		if rows[i].count != rows[j].count {
+			return rows[i].count > rows[j].count
+		}
+		// Sort by burst in descending order (higher bursts first).
+		if rows[i].burst != rows[j].burst {
+			return rows[i].burst > rows[j].burst
+		}
+		// Sort by period in ascending order (shorter durations first).
+		if rows[i].period != rows[j].period {
+			return rows[i].period < rows[j].period
+		}
+		// Sort by comment in ascending order.
+		if rows[i].comment != rows[j].comment {
+			return rows[i].comment < rows[j].comment
+		}
+		// Sort by ID in ascending order.
+		return rows[i].id < rows[j].id
+	})
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	err = w.Write([]string{"name", "id", "count", "burst", "period", "comment"})
+	if err != nil {
+		return err
+	}
+
+	for _, r := range rows {
+		err := w.Write([]string{r.name, r.id, strconv.FormatInt(r.count, 10), strconv.FormatInt(r.burst, 10), r.period, r.comment})
+		if err != nil {
+			return err
+		}
+	}
+	w.Flush()
+
+	return w.Error()
 }
