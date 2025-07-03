@@ -119,17 +119,15 @@ func loadDefaults(path string) (LimitConfigs, error) {
 	return lm, nil
 }
 
-type overrideID struct {
-	Id string `yaml:"id"`
-	// Comment is an optional field that can be used to provide additional
-	// context for the override.
-	Comment string `yaml:"comment,omitempty"`
-}
-
 type overrideYAML struct {
 	LimitConfig `yaml:",inline"`
 	// Ids is a list of ids that this override applies to.
-	Ids []overrideID `yaml:"ids"`
+	Ids []struct {
+		Id string `yaml:"id"`
+		// Comment is an optional field that can be used to provide additional
+		// context for the override.
+		Comment string `yaml:"comment,omitempty"`
+	} `yaml:"ids"`
 }
 
 type overridesYAML []map[string]overrideYAML
@@ -230,7 +228,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 					// (IPv6) prefixes in CIDR notation.
 					ip, err := netip.ParseAddr(id)
 					if err == nil {
-						prefix, err := coveringPrefix(name, ip)
+						prefix, err := coveringIPPrefix(name, ip)
 						if err != nil {
 							return nil, fmt.Errorf(
 								"computing prefix for IP address %q: %w", id, err)

@@ -224,7 +224,7 @@ func validateDomainOrCIDR(limit Name, id string) error {
 		return fmt.Errorf("invalid IP address %q, must be in canonical form (%q)", id, ip.String())
 	}
 
-	prefix, prefixErr := coveringPrefix(limit, ip)
+	prefix, prefixErr := coveringIPPrefix(limit, ip)
 	if prefixErr != nil {
 		return fmt.Errorf("invalid IP address %q, couldn't determine prefix: %w", id, prefixErr)
 	}
@@ -371,11 +371,11 @@ func BuildBucketKey(name Name, regId int64, singleIdent identifier.ACMEIdentifie
 		if !subscriberIP.IsValid() {
 			return "", makeMissingErr("subscriberIP")
 		}
-		coveringPrefix, err := coveringPrefix(name, subscriberIP)
+		prefix, err := coveringIPPrefix(name, subscriberIP)
 		if err != nil {
 			return "", err
 		}
-		return newIPv6RangeCIDRBucketKey(name, coveringPrefix), nil
+		return newIPv6RangeCIDRBucketKey(name, prefix), nil
 
 	case NewOrdersPerAccount:
 		if regId == 0 {

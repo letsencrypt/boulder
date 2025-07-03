@@ -361,8 +361,8 @@ func TestBuildBucketKey(t *testing.T) {
 		// CertificatesPerDomain
 		{
 			name:        CertificatesPerDomain,
-			desc:        "DNS identifier → eTLD+1",
-			singleIdent: identifier.FromString("www.example.com"),
+			desc:        "DNS identifier to eTLD+1",
+			singleIdent: identifier.NewDNS("www.example.com"),
 			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:example.com", CertificatesPerDomain), key)
 			},
@@ -370,7 +370,7 @@ func TestBuildBucketKey(t *testing.T) {
 		{
 			name:        CertificatesPerDomain,
 			desc:        "valid IPv4 address used as identifier",
-			singleIdent: identifier.FromString("5.6.7.8"),
+			singleIdent: identifier.NewIP(netip.MustParseAddr("5.6.7.8")),
 			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:5.6.7.8/32", CertificatesPerDomain), key)
 			},
@@ -378,7 +378,7 @@ func TestBuildBucketKey(t *testing.T) {
 		{
 			name:        CertificatesPerDomain,
 			desc:        "valid IPv6 address used as identifier",
-			singleIdent: identifier.FromString("2001:db8::1"),
+			singleIdent: identifier.NewIP(netip.MustParseAddr("2001:db8::1")),
 			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:2001:db8::/64", CertificatesPerDomain), key)
 			},
@@ -393,7 +393,7 @@ func TestBuildBucketKey(t *testing.T) {
 		{
 			name:        CertificatesPerFQDNSet,
 			desc:        "multiple valid DNS identifiers",
-			setOfIdents: identifier.FromStringSlice([]string{"example.com", "example.org"}),
+			setOfIdents: identifier.NewDNSSlice([]string{"example.com", "example.org"}),
 			outputTest: func(t *testing.T, key string) {
 				if !strings.HasPrefix(key, fmt.Sprintf("%d:", CertificatesPerFQDNSet)) {
 					t.Errorf("expected key to start with %d: got %s", CertificatesPerFQDNSet, key)
@@ -403,7 +403,7 @@ func TestBuildBucketKey(t *testing.T) {
 		{
 			name:        CertificatesPerFQDNSet,
 			desc:        "multiple valid DNS and IP identifiers",
-			setOfIdents: identifier.FromStringSlice([]string{"example.net", "192.0.2.1", "2001:db8::1"}),
+			setOfIdents: identifier.ACMEIdentifiers{identifier.NewDNS("example.net"), identifier.NewIP(netip.MustParseAddr("5.6.7.8")), identifier.NewIP(netip.MustParseAddr("2001:db8::1"))},
 			outputTest: func(t *testing.T, key string) {
 				if !strings.HasPrefix(key, fmt.Sprintf("%d:", CertificatesPerFQDNSet)) {
 					t.Errorf("expected key to start with %d: got %s", CertificatesPerFQDNSet, key)
@@ -429,7 +429,7 @@ func TestBuildBucketKey(t *testing.T) {
 			name:        CertificatesPerDomainPerAccount,
 			desc:        "registration ID and single DNS identifier provided",
 			regId:       1337,
-			singleIdent: identifier.FromString("example.com"),
+			singleIdent: identifier.NewDNS("example.com"),
 			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:1337:example.com", CertificatesPerDomainPerAccount), key)
 			},
@@ -437,7 +437,7 @@ func TestBuildBucketKey(t *testing.T) {
 		{
 			name:              CertificatesPerDomainPerAccount,
 			desc:              "single DNS identifier provided without registration ID",
-			singleIdent:       identifier.FromString("example.com"),
+			singleIdent:       identifier.NewDNS("example.com"),
 			expectErrContains: "regId is required",
 		},
 
@@ -446,7 +446,7 @@ func TestBuildBucketKey(t *testing.T) {
 			name:        FailedAuthorizationsPerDomainPerAccount,
 			desc:        "registration ID and single DNS identifier",
 			regId:       1337,
-			singleIdent: identifier.FromString("example.com"),
+			singleIdent: identifier.NewDNS("example.com"),
 			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:1337:example.com", FailedAuthorizationsPerDomainPerAccount), key)
 			},
@@ -465,7 +465,7 @@ func TestBuildBucketKey(t *testing.T) {
 			name:        FailedAuthorizationsForPausingPerDomainPerAccount,
 			desc:        "registration ID and single DNS identifier",
 			regId:       1337,
-			singleIdent: identifier.FromString("example.com"),
+			singleIdent: identifier.NewDNS("example.com"),
 			outputTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:1337:example.com", FailedAuthorizationsForPausingPerDomainPerAccount), key)
 			},

@@ -16,11 +16,13 @@ func joinWithColon(args ...string) string {
 	return strings.Join(args, ":")
 }
 
-// coveringIdentifiers transforms a slice of ACMEIdentifiers into strings of
-// their "covering" identifiers, for the CertificatesPerDomain limit. It also
-// de-duplicates the output. For DNS identifiers, this is eTLD+1's; exact public
-// suffix matches are included. For IP address identifiers, this is the address
-// (/32) for IPv4, or the /64 prefix for IPv6, in CIDR notation.
+// coveringIdentifiers returns the set of "covering" identifiers used to enforce
+// the CertificatesPerDomain rate limit. For DNS names, this is the eTLD+1 as
+// determined by the Public Suffix List; exact public suffix matches are
+// preserved. For IP addresses, the covering prefix is /32 for IPv4 and /64 for
+// IPv6. This groups requests by registered domain or address block to match the
+// scope of the limit. The result is deduplicated and lowercased. If the
+// identifier type is unsupported, an error is returned.
 func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 	var covers []string
 	for _, ident := range idents {
@@ -33,12 +35,22 @@ func coveringIdentifiers(idents identifier.ACMEIdentifiers) ([]string, error) {
 	return core.UniqueLowerNames(covers), nil
 }
 
-// coveringIdentifier transforms a single ACMEIdentifier into its "covering"
-// identifier, for the CertificatesPerDomain, CertificatesPerDomainPerAccount,
-// and NewRegistrationsPerIPv6Range limits. For DNS identifiers, this is the
-// eTLD+1; exact public suffix matches are included. For IP address identifiers,
-// this is the address (/32) for IPv4, or the /64 prefix for IPv6, in CIDR
-// notation.
+// coveringIdentifier returns the "covering" identifier used to enforce the
+// CertificatesPerDomain, CertificatesPerDomainPerAccount, and
+// NewRegistrationsPerIPv6Range rate limits. For DNS names, this is the eTLD+1
+// as determined by the Public Suffix List; exact public suffix matches are
+// preserved. For IP addresses, the covering prefix depends on the limit:
+//
+// - CertificatesPerDomain and CertificatesPerDomainPerAccount:
+//   - /32 for IPv4
+//   - /64 for IPv6
+//
+// - NewRegistrationsPerIPv6Range:
+//   - /48 for IPv6 only
+//
+// This groups requests by registered domain or address block to match the scope
+// of each limit. The result is deduplicated and lowercased. If the identifier
+// type or limit is unsupported, an error is returned.
 func coveringIdentifier(limit Name, ident identifier.ACMEIdentifier) (string, error) {
 	switch ident.Type {
 	case identifier.TypeDNS:
@@ -57,7 +69,7 @@ func coveringIdentifier(limit Name, ident identifier.ACMEIdentifier) (string, er
 		if err != nil {
 			return "", err
 		}
-		prefix, err := coveringPrefix(limit, ip)
+		prefix, err := coveringIPPrefix(limit, ip)
 		if err != nil {
 			return "", err
 		}
@@ -66,10 +78,21 @@ func coveringIdentifier(limit Name, ident identifier.ACMEIdentifier) (string, er
 	return "", fmt.Errorf("unsupported identifier type: %s", ident.Type)
 }
 
-// coveringPrefix transforms a netip.Addr into its "covering" prefix, for the
+// coveringIPPrefix returns the "covering" IP prefix used to enforce the
 // CertificatesPerDomain, CertificatesPerDomainPerAccount, and
-// NewRegistrationsPerIPv6Range limits.
-func coveringPrefix(limit Name, addr netip.Addr) (netip.Prefix, error) {
+// NewRegistrationsPerIPv6Range rate limits. The prefix length depends on the
+// limit and IP version:
+//
+// - CertificatesPerDomain and CertificatesPerDomainPerAccount:
+//   - /32 for IPv4
+//   - /64 for IPv6
+//
+// - NewRegistrationsPerIPv6Range:
+//   - /48 for IPv6 only
+//
+// This groups requests by address block to match the scope of each limit. If
+// the limit does not require a covering prefix, an error is returned.
+func coveringIPPrefix(limit Name, addr netip.Addr) (netip.Prefix, error) {
 	switch limit {
 	case CertificatesPerDomain, CertificatesPerDomainPerAccount:
 		var bits int

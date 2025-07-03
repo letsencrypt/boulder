@@ -75,57 +75,61 @@ func TestParseOverrideNameEnumId(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
+		name        string
 		input       string
-		wantName    Name
+		wantLimit   Name
 		wantId      string
 		expectError bool
-		desc        string
 	}{
 		{
+			name:        "valid IPv4 address",
 			input:       NewRegistrationsPerIPAddress.EnumString() + ":10.0.0.1",
-			wantName:    NewRegistrationsPerIPAddress,
+			wantLimit:   NewRegistrationsPerIPAddress,
 			wantId:      "10.0.0.1",
 			expectError: false,
-			desc:        "valid IPv4 address",
 		},
 		{
+			name:        "valid IPv6 address range",
 			input:       NewRegistrationsPerIPv6Range.EnumString() + ":2001:0db8:0000::/48",
-			wantName:    NewRegistrationsPerIPv6Range,
+			wantLimit:   NewRegistrationsPerIPv6Range,
 			wantId:      "2001:0db8:0000::/48",
 			expectError: false,
-			desc:        "valid IPv6 address range",
 		},
 		{
+			name:        "missing colon",
 			input:       NewRegistrationsPerIPAddress.EnumString() + "10.0.0.1",
 			expectError: true,
-			desc:        "missing colon",
 		},
 		{
+			name:        "empty string",
 			input:       "",
 			expectError: true,
-			desc:        "empty string",
 		},
 		{
+			name:        "only a colon",
 			input:       NewRegistrationsPerIPAddress.EnumString() + ":",
 			expectError: true,
-			desc:        "only a colon",
 		},
 		{
+			name:        "invalid enum",
 			input:       "lol:noexist",
 			expectError: true,
-			desc:        "invalid enum",
 		},
 	}
 
 	for _, tc := range tests {
-		name, id, err := parseOverrideNameEnumId(tc.input)
-		if tc.expectError {
-			test.AssertError(t, err, tc.desc)
-		} else {
-			test.AssertNotError(t, err, tc.desc)
-			test.AssertEquals(t, name, tc.wantName)
-			test.AssertEquals(t, id, tc.wantId)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			limit, id, err := parseOverrideNameEnumId(tc.input)
+			if tc.expectError {
+				if err == nil {
+					t.Errorf("expected error for input %q, but got none", tc.input)
+				}
+			} else {
+				test.AssertNotError(t, err, tc.name)
+				test.AssertEquals(t, limit, tc.wantLimit)
+				test.AssertEquals(t, id, tc.wantId)
+			}
+		})
 	}
 }
 
@@ -415,8 +419,8 @@ NewRegistrationsPerIPAddress,2600:1f1c:5e0:e702:ca06:d2a3:c7ce:a02e,100000,10000
 NewRegistrationsPerIPAddress,55.66.77.88,100000,100000,3h0m0s,example.org IN-2395
 NewRegistrationsPerIPAddress,11.22.33.44,200,200,3h0m0s,example.net (IN-1583)
 `
-
-	tempFile := filepath.Join(t.TempDir(), "overrides.yaml")
+	tempDir := t.TempDir()
+	tempFile := filepath.Join(tempDir, "overrides.yaml")
 
 	err := os.WriteFile(tempFile, []byte(input), 0644)
 	test.AssertNotError(t, err, "writing temp overrides.yaml")
@@ -425,7 +429,7 @@ NewRegistrationsPerIPAddress,11.22.33.44,200,200,3h0m0s,example.net (IN-1583)
 	test.AssertNotError(t, err, "loading overrides")
 	test.Assert(t, len(original) > 0, "expected at least one override loaded")
 
-	dumpFile := filepath.Join(t.TempDir(), "dumped.yaml")
+	dumpFile := filepath.Join(tempDir, "dumped.yaml")
 	err = DumpOverrides(dumpFile, original)
 	test.AssertNotError(t, err, "dumping overrides")
 

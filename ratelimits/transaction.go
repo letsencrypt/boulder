@@ -190,11 +190,11 @@ func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip netip
 // NewRegistrationsPerIPv6Range limit for the /48 IPv6 range which contains the
 // provided IPv6 address.
 func (builder *TransactionBuilder) registrationsPerIPv6RangeTransaction(ip netip.Addr) (Transaction, error) {
-	coveringPrefix, err := coveringPrefix(NewRegistrationsPerIPv6Range, ip)
+	prefix, err := coveringIPPrefix(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("computing covering prefix for %q: %w", ip, err)
 	}
-	bucketKey := newIPv6RangeCIDRBucketKey(NewRegistrationsPerIPv6Range, coveringPrefix)
+	bucketKey := newIPv6RangeCIDRBucketKey(NewRegistrationsPerIPv6Range, prefix)
 
 	limit, err := builder.getLimit(NewRegistrationsPerIPv6Range, bucketKey)
 	if err != nil {
