@@ -83,7 +83,7 @@ message Registration {
   // Next unused field number: 10
   int64 id = 1;
   bytes key = 2;
-  repeated string contact = 3;
+  reserved 3; // Previously contact
   reserved 4; // Previously contactsPresent
   string agreement = 5;
   reserved 6; // Previously initialIP

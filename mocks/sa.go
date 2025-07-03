@@ -77,7 +77,6 @@ func (sa *StorageAuthorityReadOnly) GetRegistration(_ context.Context, req *sapb
 		Id:        req.Id,
 		Key:       []byte(test1KeyPublicJSON),
 		Agreement: agreementURL,
-		Contact:   []string{"mailto:person@mail.com"},
 		Status:    string(core.StatusValid),
 	}
 
@@ -131,14 +130,11 @@ func (sa *StorageAuthorityReadOnly) GetRegistrationByKey(_ context.Context, req 
 		return nil, err
 	}
 
-	contacts := []string{"mailto:person@mail.com"}
-
 	if bytes.Equal(req.Jwk, []byte(test1KeyPublicJSON)) {
 		return &corepb.Registration{
 			Id:        1,
 			Key:       req.Jwk,
 			Agreement: agreementURL,
-			Contact:   contacts,
 			Status:    string(core.StatusValid),
 		}, nil
 	}
@@ -172,7 +168,6 @@ func (sa *StorageAuthorityReadOnly) GetRegistrationByKey(_ context.Context, req 
 			Id:        2,
 			Key:       req.Jwk,
 			Agreement: agreementURL,
-			Contact:   contacts,
 			Status:    string(core.StatusDeactivated),
 		}, nil
 	}

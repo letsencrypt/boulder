@@ -192,7 +192,6 @@ type MockRegistrationAuthority struct {
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
-	in.Contact = nil
 	created := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
 	in.CreatedAt = timestamppb.New(created)
 	return in, nil
@@ -1596,9 +1595,6 @@ func TestNewAccount(t *testing.T) {
 			"n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
 			"e": "AQAB"
 		},
-		"contact": [
-			"mailto:person@mail.com"
-		],
 		"status": "valid"
 	}`)
 }
