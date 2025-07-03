@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -85,63 +86,102 @@ func tag(args []string) error {
 		return fmt.Errorf("invalid flags: %w", err)
 	}
 
-	if len(fs.Args()) > 1 {
+	var branch string
+	switch len(fs.Args()) {
+	case 0:
+		branch = "main"
+	case 1:
+		branch = fs.Arg(0)
+		if !strings.HasPrefix(branch, "release-branch-") {
+			return fmt.Errorf("branch must be 'main' or 'release-branch-...', got %q", branch)
+		}
+	default:
 		return fmt.Errorf("too many args: %#v", fs.Args())
 	}
 
-	branch := "main"
-	if len(fs.Args()) == 1 {
-		branch = fs.Arg(0)
-	}
-
-	switch {
-	case branch == "main":
-		break
-	case strings.HasPrefix(branch, "release-branch-"):
-		return fmt.Errorf("sorry, tagging hotfix release branches is not yet supported")
-	default:
-		return fmt.Errorf("branch must be 'main' or 'release-branch-...', got %q", branch)
-	}
-
 	// Fetch all of the latest commits on this ref from origin, so that we can
-	// ensure we're tagging the tip of the upstream branch.
+	// ensure we're tagging the tip of the upstream branch, and that we have all
+	// of the extant tags along this branch if its a release branch.
 	_, err = git("fetch", "origin", branch)
 	if err != nil {
 		return err
 	}
 
-	// We use semver's vMajor.Minor.Patch format, where the Major version is
-	// always 0 (no backwards compatibility guarantees), the Minor version is
-	// the date of the release, and the Patch number is zero for normal releases
-	// and only non-zero for hotfix releases.
-	minor := time.Now().Format("20060102")
-	version := fmt.Sprintf("v0.%s.0", minor)
-	message := fmt.Sprintf("Release %s", version)
+	var tag string
+	switch branch {
+	case "main":
+		tag = fmt.Sprintf("v0.%s.0", time.Now().Format("20060102"))
+	default:
+		tag, err = nextTagOnBranch(branch)
+		if err != nil {
+			return fmt.Errorf("failed to compute next hotfix tag: %w", err)
+		}
+	}
 
 	// Produce the tag, using -s to PGP sign it. This will fail if a tag with
 	// that name already exists.
-	_, err = git("tag", "-s", "-m", message, version, "origin/"+branch)
+	message := fmt.Sprintf("Release %s", tag)
+	_, err = git("tag", "-s", "-m", message, tag, "origin/"+branch)
 	if err != nil {
 		return err
 	}
 
 	// Show the result of the tagging operation, including the tag message and
 	// signature, and the commit hash and message, but not the diff.
-	out, err := git("show", "-s", version)
+	out, err := git("show", "-s", tag)
 	if err != nil {
 		return err
 	}
 	show(out)
 
 	if push {
-		_, err = git("push", "origin", version)
+		_, err = git("push", "origin", tag)
 		if err != nil {
 			return err
 		}
 	} else {
 		fmt.Println()
 		fmt.Println("Please inspect the tag above, then run:")
-		fmt.Printf("    git push origin %s\n", version)
+		fmt.Printf("    git push origin %s\n", tag)
 	}
 	return nil
+}
+
+func nextTagOnBranch(branch string) (string, error) {
+	baseVersion := strings.TrimPrefix(branch, "release-branch-")
+	out, err := git("tag", "--list", "--no-column", baseVersion+".*")
+	if err != nil {
+		return "", fmt.Errorf("failed to list extant tags on branch %q: %w", branch, err)
+	}
+
+	maxPatch := 0
+	for tag := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		parts := strings.SplitN(tag, ".", 3)
+
+		major := parts[0]
+		if major != "v0" {
+			return "", fmt.Errorf("expected major portion of prior release tag %q to be 'v0'", tag)
+		}
+
+		minor := parts[1]
+		t, err := time.Parse("20060102", minor)
+		if err != nil {
+			return "", fmt.Errorf("expected minor portion of prior release tag %q to be a date: %w", tag, err)
+		}
+		if t.Year() < 2015 {
+			return "", fmt.Errorf("minor portion of prior release tag %q appears to be an unrealistic date: %q", tag, t.String())
+		}
+
+		patch := parts[2]
+		patchInt, err := strconv.Atoi(patch)
+		if err != nil {
+			return "", fmt.Errorf("patch portion of prior release tag %q is not an integer: %w", tag, err)
+		}
+
+		if patchInt > maxPatch {
+			maxPatch = patchInt
+		}
+	}
+
+	return fmt.Sprintf("%s.%d", baseVersion, maxPatch+1), nil
 }
