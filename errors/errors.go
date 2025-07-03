@@ -245,7 +245,7 @@ func CertificatesPerDomainError(retryAfter time.Duration, msg string, args ...an
 func CertificatesPerFQDNSetError(retryAfter time.Duration, msg string, args ...any) error {
 	return &BoulderError{
 		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames", args...),
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-identifiers", args...),
 		RetryAfter: retryAfter,
 	}
 }
