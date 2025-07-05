@@ -126,7 +126,6 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock, func()) {
 func createWorkingRegistration(t testing.TB, sa *SQLStorageAuthority) *corepb.Registration {
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
 		Key:       []byte(theKey),
-		Contact:   []string{"mailto:foo@example.com"},
 		CreatedAt: mustTimestamp("2003-05-10 00:00"),
 		Status:    string(core.StatusValid),
 	})
@@ -190,14 +189,12 @@ func TestAddRegistration(t *testing.T) {
 
 	jwkJSON, _ := goodTestJWK().MarshalJSON()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:     jwkJSON,
-		Contact: []string{"mailto:foo@example.com"},
+		Key: jwkJSON,
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new registration: %s", err)
 	}
 	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
-	test.AssertEquals(t, len(reg.Contact), 0)
 
 	// Confirm that the registration can be retrieved by ID.
 	dbReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
@@ -207,7 +204,6 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.Id, reg.Id)
 	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
 	test.AssertDeepEquals(t, dbReg.CreatedAt.AsTime(), createdAt)
-	test.AssertEquals(t, len(dbReg.Contact), 0)
 
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 0})
 	test.AssertError(t, err, "Registration object for ID 0 was returned")
@@ -254,8 +250,7 @@ func TestSelectRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "couldn't parse jwk.Key")
 
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:     jwkJSON,
-		Contact: []string{"mailto:foo@example.com"},
+		Key: jwkJSON,
 	})
 	test.AssertNotError(t, err, fmt.Sprintf("couldn't create new registration: %s", err))
 	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
@@ -884,7 +879,6 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertNotError(t, err, "DeactivateRegistration failed")
 	test.AssertEquals(t, got.Id, reg.Id)
 	test.AssertEquals(t, core.AcmeStatus(got.Status), core.StatusDeactivated)
-	test.AssertEquals(t, len(got.Contact), 0)
 
 	// Double-check that the DeactivateRegistration method returned the right
 	// thing, by fetching the same account ourselves.
@@ -892,7 +886,6 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertNotError(t, err, "GetRegistration failed")
 	test.AssertEquals(t, got.Id, reg.Id)
 	test.AssertEquals(t, core.AcmeStatus(got.Status), core.StatusDeactivated)
-	test.AssertEquals(t, len(got.Contact), 0)
 
 	// Attempting to deactivate it a second time should fail, since it is already
 	// deactivated.
@@ -4490,74 +4483,6 @@ func newAcctKey(t *testing.T) []byte {
 	acctKey, err := jwk.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	return acctKey
-}
-
-func TestUpdateRegistrationContact(t *testing.T) {
-	// TODO(#8199): Delete this.
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	noContact, _ := json.Marshal("")
-	exampleContact, _ := json.Marshal("test@example.com")
-	twoExampleContacts, _ := json.Marshal([]string{"test1@example.com", "test2@example.com"})
-
-	_, err := sa.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{})
-	test.AssertError(t, err, "should not have been able to update registration contact without a registration ID")
-	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
-
-	tests := []struct {
-		name            string
-		oldContactsJSON []string
-		newContacts     []string
-	}{
-		{
-			name:            "update a valid registration from no contacts to one email address",
-			oldContactsJSON: []string{string(noContact)},
-			newContacts:     []string{"mailto:test@example.com"},
-		},
-		{
-			name:            "update a valid registration from no contacts to two email addresses",
-			oldContactsJSON: []string{string(noContact)},
-			newContacts:     []string{"mailto:test1@example.com", "mailto:test2@example.com"},
-		},
-		{
-			name:            "update a valid registration from one email address to no contacts",
-			oldContactsJSON: []string{string(exampleContact)},
-			newContacts:     []string{},
-		},
-		{
-			name:            "update a valid registration from one email address to two email addresses",
-			oldContactsJSON: []string{string(exampleContact)},
-			newContacts:     []string{"mailto:test1@example.com", "mailto:test2@example.com"},
-		},
-		{
-			name:            "update a valid registration from two email addresses to no contacts",
-			oldContactsJSON: []string{string(twoExampleContacts)},
-			newContacts:     []string{},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-				Contact: tt.oldContactsJSON,
-				Key:     newAcctKey(t),
-			})
-			test.AssertNotError(t, err, "creating new registration")
-
-			updatedReg, err := sa.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
-				RegistrationID: reg.Id,
-				Contacts:       tt.newContacts,
-			})
-			test.AssertNotError(t, err, "unexpected error for UpdateRegistrationContact()")
-			test.AssertEquals(t, updatedReg.Id, reg.Id)
-			test.AssertEquals(t, len(updatedReg.Contact), 0)
-
-			refetchedReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
-			test.AssertNotError(t, err, "retrieving registration")
-			test.AssertEquals(t, refetchedReg.Id, reg.Id)
-			test.AssertEquals(t, len(refetchedReg.Contact), 0)
-		})
-	}
 }
 
 func TestUpdateRegistrationKey(t *testing.T) {
