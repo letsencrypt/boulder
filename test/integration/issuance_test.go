@@ -212,22 +212,16 @@ func TestIPShortLived(t *testing.T) {
 
 	// Get one cert for the shortlived profile.
 	res, err := authAndIssue(client, key, idents, false, "shortlived")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		if err != nil {
-			t.Errorf("issuing under shortlived profile: %s", err)
-		}
-		if res.Order.Profile != "shortlived" {
-			t.Errorf("got '%s' profile, wanted 'shortlived'", res.Order.Profile)
-		}
-		cert := res.certs[0]
+	if err != nil {
+		t.Errorf("issuing under shortlived profile: %s", err)
+	}
+	if res.Order.Profile != "shortlived" {
+		t.Errorf("got '%s' profile, wanted 'shortlived'", res.Order.Profile)
+	}
+	cert := res.certs[0]
 
-		// Check that the shortlived profile worked as expected.
-		if cert.IPAddresses[0].String() != ip {
-			t.Errorf("got cert with first IP SAN '%s', wanted '%s'", cert.IPAddresses[0], ip)
-		}
-	} else {
-		if !strings.Contains(err.Error(), "Profile \"shortlived\" does not permit ip type identifiers") {
-			t.Errorf("issuing under shortlived profile failed for the wrong reason: %s", err)
-		}
+	// Check that the shortlived profile worked as expected.
+	if cert.IPAddresses[0].String() != ip {
+		t.Errorf("got cert with first IP SAN '%s', wanted '%s'", cert.IPAddresses[0], ip)
 	}
 }

@@ -193,7 +193,8 @@
 			"tls-alpn-01": true
 		},
 		"identifiers": {
-			"dns": true
+			"dns": true,
+			"ip": true
 		}
 	},
 	"syslog": {

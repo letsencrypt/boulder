@@ -17,12 +17,7 @@ import (
 func TestDuplicateFQDNRateLimit(t *testing.T) {
 	t.Parallel()
 	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
-
-	// TODO(#8235): Remove this conditional once IP address identifiers are
-	// enabled in test/config.
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		idents = append(idents, acme.Identifier{Type: "ip", Value: "64.112.117.122"})
-	}
+	idents = append(idents, acme.Identifier{Type: "ip", Value: "64.112.117.122"})
 
 	// The global rate limit for a duplicate certificates is 2 per 3 hours.
 	_, err := authAndIssue(nil, nil, idents, true, "shortlived")
