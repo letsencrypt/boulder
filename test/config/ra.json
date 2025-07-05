@@ -61,7 +61,8 @@
 				"orderLifetime": "7h",
 				"maxNames": 10,
 				"identifierTypes": [
-					"dns"
+					"dns",
+					"ip"
 				]
 			}
 		},
@@ -193,7 +194,8 @@
 			"tls-alpn-01": true
 		},
 		"identifiers": {
-			"dns": true
+			"dns": true,
+			"ip": true
 		}
 	},
 	"syslog": {
