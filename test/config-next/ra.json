@@ -25,7 +25,7 @@
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"maxContactsPerRegistration": 3,
-		"hostnamePolicyFile": "test/hostname-policy.yaml",
+		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"goodkey": {},
 		"finalizeTimeout": "30s",
 		"issuerCerts": [

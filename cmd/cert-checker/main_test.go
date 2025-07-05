@@ -60,7 +60,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = pa.LoadHostnamePolicyFile("../../test/hostname-policy.yaml")
+	err = pa.LoadIdentPolicyFile("../../test/ident-policy.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -537,7 +537,7 @@ func TestIsForbiddenDomain(t *testing.T) {
 	// Note: These testcases are not an exhaustive representation of domains
 	// Boulder won't issue for, but are instead testing the defense-in-depth
 	// `isForbiddenDomain` function called *after* the PA has vetted the name
-	// against the complex hostname policy file.
+	// against the complex identifier policy file.
 	testcases := []struct {
 		Name     string
 		Expected bool

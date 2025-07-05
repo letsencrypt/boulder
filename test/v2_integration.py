@@ -524,7 +524,7 @@ def test_highrisk_blocklist():
     fail with a policy error.
     """
 
-    # We include "example.org" in `test/hostname-policy.yaml` in the
+    # We include "example.org" in `test/ident-policy.yaml` in the
     # HighRiskBlockedNames list so issuing for "foo.example.org" should be
     # blocked.
     domain = "foo.example.org"
@@ -538,7 +538,7 @@ def test_wildcard_exactblacklist():
     should fail with a policy error.
     """
 
-    # We include "highrisk.le-test.hoffman-andrews.com" in `test/hostname-policy.yaml`
+    # We include "highrisk.le-test.hoffman-andrews.com" in `test/ident-policy.yaml`
     # Issuing for "*.le-test.hoffman-andrews.com" should be blocked
     domain = "*.le-test.hoffman-andrews.com"
     # We expect this to produce a policy problem
@@ -955,7 +955,7 @@ def test_new_order_policy_errs():
     """
     client = chisel2.make_client(None)
 
-    # 'in-addr.arpa' is present in `test/hostname-policy.yaml`'s
+    # 'in-addr.arpa' is present in `test/ident-policy.yaml`'s
     # HighRiskBlockedNames list.
     csr_pem = chisel2.make_csr(["out-addr.in-addr.arpa", "between-addr.in-addr.arpa"])
 

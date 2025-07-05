@@ -1,5 +1,5 @@
 #
-# Example YAML Boulder hostname policy
+# Example YAML Boulder identifier policy
 #
 # This is *not* a production ready policy file and not reflective of Let's
 # Encrypt's policies! It is just an example.
@@ -31,3 +31,13 @@ HighRiskBlockedNames:
 # they are separated into their own list.
 AdminBlockedNames:
   - "sealand"
+
+# AdminBlockedPrefixes is a list of IP address prefixes. All IP addresses
+# contained within the prefix are blocked.
+#
+# To block a single IP, append "/32" for IPv4 or "/128" for IPv6.
+AdminBlockedPrefixes:
+  - "64.112.117.66/32"
+  - "64.112.117.68/30"
+  - "2602:80a:6000:baa:ffff:ffff:ffff:ffff/128"
+  - "2602:80a:6000:bad::/64"

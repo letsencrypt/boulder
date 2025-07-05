@@ -175,8 +175,8 @@ func main() {
 	if c.RA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile must be provided.")
 	}
-	err = pa.LoadHostnamePolicyFile(c.RA.HostnamePolicyFile)
-	cmd.FailOnError(err, "Couldn't load hostname policy file")
+	err = pa.LoadIdentPolicyFile(c.RA.HostnamePolicyFile)
+	cmd.FailOnError(err, "Couldn't load identifier policy file")
 
 	tlsConfig, err := c.RA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
