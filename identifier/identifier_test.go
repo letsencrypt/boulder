@@ -10,6 +10,39 @@ import (
 	"testing"
 )
 
+func TestNewIP(t *testing.T) {
+	cases := []struct {
+		name string
+		ip   netip.Addr
+		want ACMEIdentifier
+	}{
+		{
+			name: "IPv4 address",
+			ip:   netip.MustParseAddr("9.9.9.9"),
+			want: ACMEIdentifier{Type: TypeIP, Value: "9.9.9.9"},
+		},
+		{
+			name: "IPv6 address",
+			ip:   netip.MustParseAddr("fe80::cafe"),
+			want: ACMEIdentifier{Type: TypeIP, Value: "fe80::cafe"},
+		},
+		{
+			name: "IPv6 address with scope zone",
+			ip:   netip.MustParseAddr("fe80::cafe%lo"),
+			want: ACMEIdentifier{Type: TypeIP, Value: "fe80::cafe"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := NewIP(tc.ip)
+			if got != tc.want {
+				t.Errorf("Got identifier type %q & value %q, but want type %q & value %q", got.Type, got.Value, tc.want.Type, tc.want.Value)
+			}
+		})
+	}
+}
+
 // TestFromX509 tests FromCert and FromCSR, which are fromX509's public
 // wrappers.
 func TestFromX509(t *testing.T) {
