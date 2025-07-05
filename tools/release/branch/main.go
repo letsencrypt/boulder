@@ -89,9 +89,6 @@ func branch(args []string) error {
 	// Confirm the reasonableness of the given tag name by inspecting each of its
 	// components.
 	parts := strings.SplitN(tag, ".", 3)
-	if len(parts) != 3 {
-		return fmt.Errorf("failed to parse patch version from release tag %q", tag)
-	}
 
 	major := parts[0]
 	if major != "v0" {
@@ -101,7 +98,7 @@ func branch(args []string) error {
 	minor := parts[1]
 	t, err := time.Parse("20060102", minor)
 	if err != nil {
-		return fmt.Errorf("expected minor portion of release tag to be a ")
+		return fmt.Errorf("expected minor portion of release tag to be a date: %w", err)
 	}
 	if t.Year() < 2015 {
 		return fmt.Errorf("minor portion of release tag appears to be an unrealistic date: %q", t.String())
