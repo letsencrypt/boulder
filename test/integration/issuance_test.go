@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 

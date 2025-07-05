@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
