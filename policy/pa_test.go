@@ -178,6 +178,7 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewDNS(`lots.of.labels.website4.com`),
 		identifier.NewDNS(`banned.in.dc.com`),
 		identifier.NewDNS(`bad.brains.banned.in.dc.com`),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:666::1`)),
 	}
 	blocklistContents := []string{
 		`website2.com`,
@@ -191,8 +192,11 @@ func TestWillingToIssue(t *testing.T) {
 		`highvalue.website1.org`,
 		`dl.website1.org`,
 	}
-	adminBlockedContents := []string{
+	adminBlockedNamesContents := []string{
 		`banned.in.dc.com`,
+	}
+	adminBlockedPrefixesContents := []string{
+		`2602:80a:6000:666::/64`,
 	}
 
 	shouldBeAccepted := identifier.ACMEIdentifiers{
@@ -206,12 +210,14 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewDNS(`www.web-site2.com`),
 		identifier.NewIP(netip.MustParseAddr(`9.9.9.9`)),
 		identifier.NewIP(netip.MustParseAddr(`2620:fe::fe`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:667::`)),
 	}
 
 	policy := blockedIdentsPolicy{
 		HighRiskBlockedNames: blocklistContents,
 		ExactBlockedNames:    exactBlocklistContents,
-		AdminBlockedNames:    adminBlockedContents,
+		AdminBlockedNames:    adminBlockedNamesContents,
+		AdminBlockedPrefixes: adminBlockedPrefixesContents,
 	}
 
 	yamlPolicyBytes, err := yaml.Marshal(policy)
@@ -240,7 +246,7 @@ func TestWillingToIssue(t *testing.T) {
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
-	// Test expected blocked domains
+	// Test expected blocked identifiers
 	for _, ident := range shouldBeBlocked {
 		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
 		test.AssertError(t, err, "identifier was not correctly forbidden")
@@ -249,7 +255,7 @@ func TestWillingToIssue(t *testing.T) {
 		test.AssertContains(t, berr.Detail, errPolicyForbidden.Error())
 	}
 
-	// Test acceptance of good names
+	// Test acceptance of good identifiers
 	for _, ident := range shouldBeAccepted {
 		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
 		test.AssertNotError(t, err, "identifier was incorrectly forbidden")
