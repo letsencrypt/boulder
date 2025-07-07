@@ -326,6 +326,7 @@ func ValidDomain(domain string) error {
 // ValidIP checks that an IP address:
 //   - isn't empty
 //   - is an IPv4 or IPv6 address
+//   - doesn't contain a scope zone (RFC 4007)
 //   - isn't in an IANA special-purpose address registry
 //
 // It does NOT ensure that the IP address is absent from any PA blocked lists.
@@ -340,7 +341,7 @@ func ValidIP(ip string) error {
 	// 5952, Sec. 4 for IPv6.") ParseAddr() will accept a non-compliant but
 	// otherwise valid string; String() will output a compliant string.
 	parsedIP, err := netip.ParseAddr(ip)
-	if err != nil || parsedIP.String() != ip {
+	if err != nil || parsedIP.WithZone("").String() != ip {
 		return errIPInvalid
 	}
 
@@ -477,6 +478,7 @@ func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error
 //
 // For IP identifiers:
 //   - MUST match the syntax of an IP address
+//   - MUST NOT contain a scope zone (RFC 4007)
 //   - MUST NOT be in an IANA special-purpose address registry
 //
 // If multiple identifiers are invalid, the error will contain suberrors

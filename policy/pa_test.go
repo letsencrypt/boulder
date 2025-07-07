@@ -136,6 +136,8 @@ func TestWellFormedIdentifiers(t *testing.T) {
 		{identifier.ACMEIdentifier{Type: "ip", Value: `1.1.168.192.in-addr.arpa`}, errIPInvalid}, // reverse DNS
 
 		// Unexpected IPv6 variants
+		{identifier.ACMEIdentifier{Type: "ip", Value: `2602:80a:6000:abad:cafe::1%lo`}, errIPInvalid},                                             // scope zone (RFC 4007)
+		{identifier.ACMEIdentifier{Type: "ip", Value: `2602:80a:6000:abad:cafe::1%`}, errIPInvalid},                                               // empty scope zone (RFC 4007)
 		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa:a:c0ff:ee:a:bad:deed:ffff`}, errIPInvalid},                                        // extra octet
 		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa:a:c0ff:ee:a:bad:mead`}, errIPInvalid},                                             // character out of range
 		{identifier.ACMEIdentifier{Type: "ip", Value: `2001:db8::/32`}, errIPInvalid},                                                             // with CIDR

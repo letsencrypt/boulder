@@ -338,6 +338,10 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 
 	reqIP, err := netip.ParseAddr(reqHost)
 	if err == nil {
+		// Reject IPv6 addresses with a scope zone (RFCs 4007 & 6874)
+		if reqIP.Zone() != "" {
+			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: contains scope zone")
+		}
 		err := va.isReservedIPFunc(reqIP)
 		if err != nil {
 			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: %s", err)
