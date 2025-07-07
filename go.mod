@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.81.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.82.0
 	github.com/aws/smithy-go v1.22.4
 	github.com/eggsampler/acme/v3 v3.6.2-0.20250208073118-0466a0230941
 	github.com/go-jose/go-jose/v4 v4.1.0
