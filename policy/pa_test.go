@@ -178,7 +178,9 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewDNS(`lots.of.labels.website4.com`),
 		identifier.NewDNS(`banned.in.dc.com`),
 		identifier.NewDNS(`bad.brains.banned.in.dc.com`),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.66`)),
 		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:666::1`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:666::1%lo`)),
 	}
 	blocklistContents := []string{
 		`website2.com`,
@@ -196,6 +198,7 @@ func TestWillingToIssue(t *testing.T) {
 		`banned.in.dc.com`,
 	}
 	adminBlockedPrefixesContents := []string{
+		`64.112.117.66/32`,
 		`2602:80a:6000:666::/64`,
 	}
 
@@ -208,7 +211,8 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewDNS(`8675309.com`),
 		identifier.NewDNS(`web5ite2.com`),
 		identifier.NewDNS(`www.web-site2.com`),
-		identifier.NewIP(netip.MustParseAddr(`9.9.9.9`)),
+		identifier.NewDNS(`www.highvalue.website1.org`),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.67`)),
 		identifier.NewIP(netip.MustParseAddr(`2620:fe::fe`)),
 		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:667::`)),
 	}

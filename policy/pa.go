@@ -52,7 +52,7 @@ type blockedIdentsPolicy struct {
 	// ExactBlockedNames is a list of Fully Qualified Domain Names (FQDNs).
 	// Issuance for names exactly matching an entry in the list will be
 	// forbidden. (e.g. `ExactBlockedNames` containing `www.example.com` will
-	// not block `example.com` or `mail.example.com`).
+	// not block `example.com`, `mail.example.com`, or `dev.www.example.com`).
 	ExactBlockedNames []string `yaml:"ExactBlockedNames"`
 
 	// HighRiskBlockedNames is a list of eTLD+1 domain names: like
@@ -587,7 +587,7 @@ func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier) error 
 			return errIPInvalid
 		}
 		for _, prefix := range pa.prefixBlocklist {
-			if prefix.Contains(ip) {
+			if prefix.Contains(ip.WithZone("")) {
 				return errPolicyForbidden
 			}
 		}
