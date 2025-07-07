@@ -86,13 +86,12 @@ func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock) int6
 	test.AssertNotError(t, err, "failed to read rand")
 	res, err := dbMap.ExecContext(
 		context.Background(),
-		"INSERT INTO registrations (jwk, jwk_sha256, agreement, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO registrations (jwk, jwk_sha256, agreement, createdAt, status) VALUES (?, ?, ?, ?, ?)",
 		[]byte{},
 		fmt.Sprintf("%x", jwkHash),
 		"yes",
 		fc.Now(),
 		string(core.StatusValid),
-		0,
 	)
 	test.AssertNotError(t, err, "failed to insert test registrations row")
 	regID, err := res.LastInsertId()
