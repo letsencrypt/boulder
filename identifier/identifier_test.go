@@ -37,7 +37,7 @@ func TestNewIP(t *testing.T) {
 			t.Parallel()
 			got := NewIP(tc.ip)
 			if got != tc.want {
-				t.Errorf("Got identifier type %q & value %q, but want type %q & value %q", got.Type, got.Value, tc.want.Type, tc.want.Value)
+				t.Errorf("NewIP(%#v) = %#v, but want %#v", tc.ip, got, tc.want)
 			}
 		})
 	}
