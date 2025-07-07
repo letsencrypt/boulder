@@ -361,6 +361,14 @@ func TestExtractRequestTarget(t *testing.T) {
 				"IP address is in a reserved address block: [RFC9637]: Documentation"),
 		},
 		{
+			Name: "bare IPv6, scope zone",
+			Req: &http.Request{
+				URL: mustURL("http://[::1%25lo]"),
+			},
+			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
+				"contains scope zone"),
+		},
+		{
 			Name: "valid HTTP redirect, explicit port",
 			Req: &http.Request{
 				URL: mustURL("http://cpu.letsencrypt.org:80"),
