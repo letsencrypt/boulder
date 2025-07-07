@@ -10,7 +10,7 @@ import (
 // returns a Decision struct with the result of the decision and the updated
 // TAT. The cost must be 0 or greater and <= the burst capacity of the limit.
 func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
-	if txn.cost < 0 || txn.cost > txn.limit.burst {
+	if txn.cost < 0 || txn.cost > txn.limit.Burst {
 		// The condition above is the union of the conditions checked in Check
 		// and Spend methods of Limiter. If this panic is reached, it means that
 		// the caller has introduced a bug.
@@ -67,7 +67,7 @@ func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 // or greater. A cost will only be refunded up to the burst capacity of the
 // limit. A partial refund is still considered successful.
 func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
-	if txn.cost < 0 || txn.cost > txn.limit.burst {
+	if txn.cost < 0 || txn.cost > txn.limit.Burst {
 		// The condition above is checked in the Refund method of Limiter. If
 		// this panic is reached, it means that the caller has introduced a bug.
 		panic("invalid cost for maybeRefund")
@@ -80,7 +80,7 @@ func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 		// The TAT is in the past, therefore the bucket is full.
 		return &Decision{
 			allowed:     false,
-			remaining:   txn.limit.burst,
+			remaining:   txn.limit.Burst,
 			retryIn:     time.Duration(0),
 			resetIn:     time.Duration(0),
 			newTAT:      tat,
