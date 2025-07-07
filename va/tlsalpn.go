@@ -84,6 +84,10 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 			return nil, nil, validationRecord, fmt.Errorf("can't parse IP address %q: %s", ident.Value, err)
 		}
 		addrs = []netip.Addr{netIP}
+		// This field shouldn't be necessary: it's redundant with the Hostname
+		// field. But Challenge.RecordsSane expects it, and there's no easy way to
+		// special-case IP identifiers within that function.
+		validationRecord.AddressesResolved = addrs
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
