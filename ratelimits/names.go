@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/iana"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -17,8 +18,9 @@ import (
 // IMPORTANT: If you add or remove a limit Name, you MUST update:
 //   - the string representation of the Name in nameToString,
 //   - the validators for that name in validateIdForName(),
-//   - the transaction constructors for that name in bucket.go, and
-//   - the Subscriber facing error message in ErrForDecision().
+//   - the transaction constructors for that name in bucket.go
+//   - the Subscriber facing error message in ErrForDecision(), and
+//   - the case in BuildBucketKey() for that name.
 type Name int
 
 const (
@@ -206,7 +208,7 @@ func validateRegIdIdentValue(id string) error {
 // validateDomainOrCIDR validates that the provided string is either a domain
 // name or an IP address. IPv6 addresses must be the lowest address in their
 // /64, i.e. their last 64 bits must be zero.
-func validateDomainOrCIDR(id string) error {
+func validateDomainOrCIDR(limit Name, id string) error {
 	domainErr := policy.ValidDomain(id)
 	if domainErr == nil {
 		// This is a valid domain.
@@ -222,14 +224,13 @@ func validateDomainOrCIDR(id string) error {
 		return fmt.Errorf("invalid IP address %q, must be in canonical form (%q)", id, ip.String())
 	}
 
-	prefix, prefixErr := coveringPrefix(ip)
+	prefix, prefixErr := coveringIPPrefix(limit, ip)
 	if prefixErr != nil {
 		return fmt.Errorf("invalid IP address %q, couldn't determine prefix: %w", id, prefixErr)
 	}
 	if prefix.Addr() != ip {
 		return fmt.Errorf("invalid IP address %q, must be the lowest address in its prefix (%q)", id, prefix.Addr().String())
 	}
-
 	return iana.IsReservedPrefix(prefix)
 }
 
@@ -237,7 +238,7 @@ func validateDomainOrCIDR(id string) error {
 // 'regId:domainOrCIDR', where domainOrCIDR is either a domain name or an IP
 // address. IPv6 addresses must be the lowest address in their /64, i.e. their
 // last 64 bits must be zero.
-func validateRegIdDomainOrCIDR(id string) error {
+func validateRegIdDomainOrCIDR(limit Name, id string) error {
 	regIdDomainOrCIDR := strings.Split(id, ":")
 	if len(regIdDomainOrCIDR) != 2 {
 		return fmt.Errorf(
@@ -248,7 +249,7 @@ func validateRegIdDomainOrCIDR(id string) error {
 		return fmt.Errorf(
 			"invalid regId, %q must be formatted 'regId:domainOrCIDR'", id)
 	}
-	err = validateDomainOrCIDR(regIdDomainOrCIDR[1])
+	err = validateDomainOrCIDR(limit, regIdDomainOrCIDR[1])
 	if err != nil {
 		return fmt.Errorf("invalid domainOrCIDR, %q must be formatted 'regId:domainOrCIDR': %w", id, err)
 	}
@@ -301,7 +302,7 @@ func validateIdForName(name Name, id string) error {
 	case CertificatesPerDomainPerAccount:
 		if strings.Contains(id, ":") {
 			// 'enum:regId:domainOrCIDR' for transaction
-			return validateRegIdDomainOrCIDR(id)
+			return validateRegIdDomainOrCIDR(name, id)
 		} else {
 			// 'enum:regId' for overrides
 			return validateRegId(id)
@@ -309,7 +310,7 @@ func validateIdForName(name Name, id string) error {
 
 	case CertificatesPerDomain:
 		// 'enum:domainOrCIDR'
-		return validateDomainOrCIDR(id)
+		return validateDomainOrCIDR(name, id)
 
 	case CertificatesPerFQDNSet:
 		// 'enum:fqdnSet'
@@ -333,8 +334,8 @@ func validateIdForName(name Name, id string) error {
 	}
 }
 
-// stringToName is a map of string names to Name values.
-var stringToName = func() map[string]Name {
+// StringToName is a map of string names to Name values.
+var StringToName = func() map[string]Name {
 	m := make(map[string]Name, len(nameToString))
 	for k, v := range nameToString {
 		m[v] = k
@@ -342,11 +343,94 @@ var stringToName = func() map[string]Name {
 	return m
 }()
 
-// limitNames is a slice of all rate limit names.
-var limitNames = func() []string {
+// LimitNames is a slice of all rate limit names.
+var LimitNames = func() []string {
 	names := make([]string, 0, len(nameToString))
 	for _, v := range nameToString {
 		names = append(names, v)
 	}
 	return names
 }()
+
+// BuildBucketKey builds a bucketKey for the given rate limit name from the
+// provided components. It returns an error if the name is not valid or if the
+// components are not valid for the given name.
+func BuildBucketKey(name Name, regId int64, singleIdent identifier.ACMEIdentifier, setOfIdents identifier.ACMEIdentifiers, subscriberIP netip.Addr) (string, error) {
+	makeMissingErr := func(field string) error {
+		return fmt.Errorf("%s is required for limit %s (enum: %s)", field, name, name.EnumString())
+	}
+
+	switch name {
+	case NewRegistrationsPerIPAddress:
+		if !subscriberIP.IsValid() {
+			return "", makeMissingErr("subscriberIP")
+		}
+		return newIPAddressBucketKey(name, subscriberIP), nil
+
+	case NewRegistrationsPerIPv6Range:
+		if !subscriberIP.IsValid() {
+			return "", makeMissingErr("subscriberIP")
+		}
+		prefix, err := coveringIPPrefix(name, subscriberIP)
+		if err != nil {
+			return "", err
+		}
+		return newIPv6RangeCIDRBucketKey(name, prefix), nil
+
+	case NewOrdersPerAccount:
+		if regId == 0 {
+			return "", makeMissingErr("regId")
+		}
+		return newRegIdBucketKey(name, regId), nil
+
+	case CertificatesPerDomain:
+		if singleIdent.Value == "" {
+			return "", makeMissingErr("singleIdent")
+		}
+		coveringIdent, err := coveringIdentifier(name, singleIdent)
+		if err != nil {
+			return "", err
+		}
+		return newDomainOrCIDRBucketKey(name, coveringIdent), nil
+
+	case CertificatesPerDomainPerAccount:
+		if singleIdent.Value != "" {
+			if regId == 0 {
+				return "", makeMissingErr("regId")
+			}
+			// Default: use 'enum:regId:identValue' bucket key format.
+			coveringIdent, err := coveringIdentifier(name, singleIdent)
+			if err != nil {
+				return "", err
+			}
+			return NewRegIdIdentValueBucketKey(name, regId, coveringIdent), nil
+		}
+		if regId == 0 {
+			return "", makeMissingErr("regId")
+		}
+		// Override: use 'enum:regId' bucket key format.
+		return newRegIdBucketKey(name, regId), nil
+
+	case CertificatesPerFQDNSet:
+		if len(setOfIdents) == 0 {
+			return "", makeMissingErr("setOfIdents")
+		}
+		return newFQDNSetBucketKey(name, setOfIdents), nil
+
+	case FailedAuthorizationsPerDomainPerAccount, FailedAuthorizationsForPausingPerDomainPerAccount:
+		if singleIdent.Value != "" {
+			if regId == 0 {
+				return "", makeMissingErr("regId")
+			}
+			// Default: use 'enum:regId:identValue' bucket key format.
+			return NewRegIdIdentValueBucketKey(name, regId, singleIdent.Value), nil
+		}
+		if regId == 0 {
+			return "", makeMissingErr("regId")
+		}
+		// Override: use 'enum:regId' bucket key format.
+		return newRegIdBucketKey(name, regId), nil
+	}
+
+	return "", fmt.Errorf("unknown limit enum %s", name.EnumString())
+}
