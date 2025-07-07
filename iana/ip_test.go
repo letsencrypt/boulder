@@ -26,6 +26,9 @@ func TestIsReservedAddr(t *testing.T) {
 		{"febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "Link-Local Unicast"}, // highest IP in a reserved /10
 		{"fec0::1", ""}, // second-lowest IP just above a reserved /10
 
+		{"fe80::1%eth0", "Link-Local Unicast"}, // IPv6 link-local with zone
+		{"::1%lo", "Loopback Address"},         // IPv6 loopback with zone
+
 		{"192.0.0.170", "NAT64/DNS64 Discovery"},            // first of two reserved IPs that are comma-split in IANA's CSV; also a more-specific of a larger reserved block that comes first
 		{"192.0.0.171", "NAT64/DNS64 Discovery"},            // second of two reserved IPs that are comma-split in IANA's CSV; also a more-specific of a larger reserved block that comes first
 		{"2001:1::1", "Port Control Protocol Anycast"},      // reserved IP that comes after a line with a line break in IANA's CSV; also a more-specific of a larger reserved block that comes first
