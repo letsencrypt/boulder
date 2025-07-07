@@ -157,6 +157,8 @@ func parseReservedPrefixFile(registryData []byte, addressFamily string) ([]reser
 
 // IsReservedAddr returns an error if an IP address is part of a reserved range.
 func IsReservedAddr(ip netip.Addr) error {
+	// Strip zone from IPv6 addresses before checking
+	ip = ip.WithZone("")
 	for _, rpx := range reservedPrefixes {
 		if rpx.addressBlock.Contains(ip) {
 			return fmt.Errorf("IP address is in a reserved address block: %s: %s", rpx.rfc, rpx.name)
