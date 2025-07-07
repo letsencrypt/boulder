@@ -89,6 +89,9 @@ func branch(args []string) error {
 	// Confirm the reasonableness of the given tag name by inspecting each of its
 	// components.
 	parts := strings.SplitN(tag, ".", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("failed to parse release tag %q as semver", tag)
+	}
 
 	major := parts[0]
 	if major != "v0" {

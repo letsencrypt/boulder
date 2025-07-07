@@ -157,6 +157,9 @@ func nextTagOnBranch(branch string) (string, error) {
 	maxPatch := 0
 	for tag := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		parts := strings.SplitN(tag, ".", 3)
+		if len(parts) != 3 {
+			return "", fmt.Errorf("failed to parse release tag %q as semver", tag)
+		}
 
 		major := parts[0]
 		if major != "v0" {
