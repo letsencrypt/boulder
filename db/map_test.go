@@ -123,7 +123,7 @@ func TestTableFromQuery(t *testing.T) {
 		expectedTable string
 	}{
 		{
-			query:         "SELECT id, jwk, jwk_sha256, contact, agreement, createdAt, LockCol, status FROM registrations WHERE jwk_sha256 = ?",
+			query:         "SELECT id, jwk, jwk_sha256, contact, agreement, createdAt, status FROM registrations WHERE jwk_sha256 = ?",
 			expectedTable: "registrations",
 		},
 		{
@@ -135,11 +135,11 @@ func TestTableFromQuery(t *testing.T) {
 			expectedTable: "authz2",
 		},
 		{
-			query:         "insert into `registrations` (`id`,`jwk`,`jw      k_sha256`,`contact`,`agreement`,`createdAt`,`LockCol`,`status`) values (null,?,?,?,?,?,?,?,?);",
+			query:         "insert into `registrations` (`id`,`jwk`,`jwk_sha256`,`contact`,`agreement`,`createdAt`,`status`) values (null,?,?,?,?,?,?,?);",
 			expectedTable: "`registrations`",
 		},
 		{
-			query:         "update `registrations` set `jwk`=?, `jwk_sh      a256`=?, `contact`=?, `agreement`=?, `createdAt`=?, `LockCol`      =?, `status`=? where `id`=? and `LockCol`=?;",
+			query:         "update `registrations` set `jwk`=?, `jwk_sha256`=?, `contact`=?, `agreement`=?, `createdAt`=?, `status`=? where `id`=?;",
 			expectedTable: "`registrations`",
 		},
 		{

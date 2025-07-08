@@ -85,7 +85,7 @@ func (ts *testServer) checkToken(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Request) {
+func (ts *testServer) upsertContactsHandler(w http.ResponseWriter, r *http.Request) {
 	ts.checkToken(w, r)
 
 	businessUnitId := r.Header.Get("Pardot-Business-Unit-Id")
@@ -100,19 +100,22 @@ func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	type contactData struct {
-		Email string `json:"email"`
+	type upsertPayload struct {
+		MatchEmail string `json:"matchEmail"`
+		Prospect   struct {
+			Email string `json:"email"`
+		} `json:"prospect"`
 	}
 
-	var contact contactData
-	err = json.Unmarshal(body, &contact)
+	var payload upsertPayload
+	err = json.Unmarshal(body, &payload)
 	if err != nil {
 		http.Error(w, "Failed to parse request body", http.StatusBadRequest)
 		return
 	}
 
-	if contact.Email == "" {
-		http.Error(w, "Missing 'email' field in request body", http.StatusBadRequest)
+	if payload.MatchEmail == "" || payload.Prospect.Email == "" {
+		http.Error(w, "Missing 'matchEmail' or 'prospect.email' in request body", http.StatusBadRequest)
 		return
 	}
 
@@ -122,7 +125,7 @@ func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Reque
 		// with a small number of contacts, so it's fine.
 		ts.contacts.created = ts.contacts.created[1:]
 	}
-	ts.contacts.created = append(ts.contacts.created, contact.Email)
+	ts.contacts.created = append(ts.contacts.created, payload.Prospect.Email)
 	ts.contacts.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -198,7 +201,7 @@ func main() {
 
 	// Pardot API Server
 	pardotMux := http.NewServeMux()
-	pardotMux.HandleFunc("/api/v5/objects/prospects", ts.createContactsHandler)
+	pardotMux.HandleFunc("/api/v5/objects/prospects/do/upsertLatestByEmail", ts.upsertContactsHandler)
 	pardotMux.HandleFunc("/contacts", ts.queryContactsHandler)
 
 	pardotServer := &http.Server{
