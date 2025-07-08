@@ -60,7 +60,7 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 	}
 }
 
-const regFields = "id, jwk, jwk_sha256, agreement, createdAt, LockCol, status"
+const regFields = "id, jwk, jwk_sha256, agreement, createdAt, status"
 
 // selectRegistration selects all fields of one registration model
 func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
@@ -212,8 +212,7 @@ type regModel struct {
 	KeySHA256 string    `db:"jwk_sha256"`
 	Agreement string    `db:"agreement"`
 	CreatedAt time.Time `db:"createdAt"`
-	LockCol   int64
-	Status    string `db:"status"`
+	Status    string    `db:"status"`
 }
 
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
