@@ -31,7 +31,7 @@ type AuthorityImpl struct {
 	domainBlocklist       map[string]bool
 	fqdnBlocklist         map[string]bool
 	wildcardFqdnBlocklist map[string]bool
-	prefixBlocklist       []netip.Prefix
+	ipPrefixBlocklist     []netip.Prefix
 	blocklistMu           sync.RWMutex
 
 	enabledChallenges  map[core.AcmeChallenge]bool
@@ -55,10 +55,9 @@ type blockedIdentsPolicy struct {
 	// not block `example.com`, `mail.example.com`, or `dev.www.example.com`).
 	ExactBlockedNames []string `yaml:"ExactBlockedNames"`
 
-	// HighRiskBlockedNames is a list of eTLD+1 domain names: like
-	// ExactBlockedNames except that issuance is blocked for subdomains as well.
-	// (e.g. BlockedNames containing `example.com` will block
-	// `www.example.com`).
+	// HighRiskBlockedNames is a list of domain names: like ExactBlockedNames
+	// except that issuance is blocked for subdomains as well. (e.g.
+	// BlockedNames containing `example.com` will block `www.example.com`).
 	//
 	// This list typically doesn't change with much regularity.
 	HighRiskBlockedNames []string `yaml:"HighRiskBlockedNames"`
@@ -148,7 +147,7 @@ func (pa *AuthorityImpl) processIdentPolicy(policy blockedIdentsPolicy) error {
 	pa.domainBlocklist = nameMap
 	pa.fqdnBlocklist = exactNameMap
 	pa.wildcardFqdnBlocklist = wildcardNameMap
-	pa.prefixBlocklist = prefixes
+	pa.ipPrefixBlocklist = prefixes
 	pa.blocklistMu.Unlock()
 	return nil
 }
@@ -588,7 +587,7 @@ func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier) error 
 		if err != nil {
 			return errIPInvalid
 		}
-		for _, prefix := range pa.prefixBlocklist {
+		for _, prefix := range pa.ipPrefixBlocklist {
 			if prefix.Contains(ip.WithZone("")) {
 				return errPolicyForbidden
 			}
