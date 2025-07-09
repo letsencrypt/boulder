@@ -53,7 +53,7 @@
 		},
 		"issuance": {
 			"certProfiles": {
-				"classic": {
+				"legacy": {
 					"omitCommonName": false,
 					"omitKeyEncipherment": false,
 					"omitClientAuth": false,
@@ -82,7 +82,7 @@
 						"e_dnsname_not_valid_tld"
 					]
 				},
-				"tlsserver": {
+				"modern": {
 					"omitCommonName": true,
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
