@@ -180,6 +180,9 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewDNS(`lots.of.labels.website4.com`),
 		identifier.NewDNS(`banned.in.dc.com`),
 		identifier.NewDNS(`bad.brains.banned.in.dc.com`),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.66`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:666::1`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:666::1%lo`)),
 	}
 	blocklistContents := []string{
 		`website2.com`,
@@ -193,8 +196,12 @@ func TestWillingToIssue(t *testing.T) {
 		`highvalue.website1.org`,
 		`dl.website1.org`,
 	}
-	adminBlockedContents := []string{
+	adminBlockedNamesContents := []string{
 		`banned.in.dc.com`,
+	}
+	adminBlockedPrefixesContents := []string{
+		`64.112.117.66/32`,
+		`2602:80a:6000:666::/64`,
 	}
 
 	shouldBeAccepted := identifier.ACMEIdentifiers{
@@ -206,14 +213,17 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewDNS(`8675309.com`),
 		identifier.NewDNS(`web5ite2.com`),
 		identifier.NewDNS(`www.web-site2.com`),
-		identifier.NewIP(netip.MustParseAddr(`9.9.9.9`)),
+		identifier.NewDNS(`www.highvalue.website1.org`),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.67`)),
 		identifier.NewIP(netip.MustParseAddr(`2620:fe::fe`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:667::`)),
 	}
 
-	policy := blockedNamesPolicy{
+	policy := blockedIdentsPolicy{
 		HighRiskBlockedNames: blocklistContents,
 		ExactBlockedNames:    exactBlocklistContents,
-		AdminBlockedNames:    adminBlockedContents,
+		AdminBlockedNames:    adminBlockedNamesContents,
+		AdminBlockedPrefixes: adminBlockedPrefixesContents,
 	}
 
 	yamlPolicyBytes, err := yaml.Marshal(policy)
@@ -225,7 +235,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	pa := paImpl(t)
 
-	err = pa.LoadHostnamePolicyFile(yamlPolicyFile.Name())
+	err = pa.LoadIdentPolicyFile(yamlPolicyFile.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Invalid encoding
@@ -242,7 +252,7 @@ func TestWillingToIssue(t *testing.T) {
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
-	// Test expected blocked domains
+	// Test expected blocked identifiers
 	for _, ident := range shouldBeBlocked {
 		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
 		test.AssertError(t, err, "identifier was not correctly forbidden")
@@ -251,7 +261,7 @@ func TestWillingToIssue(t *testing.T) {
 		test.AssertContains(t, berr.Detail, errPolicyForbidden.Error())
 	}
 
-	// Test acceptance of good names
+	// Test acceptance of good identifiers
 	for _, ident := range shouldBeAccepted {
 		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
 		test.AssertNotError(t, err, "identifier was incorrectly forbidden")
@@ -267,7 +277,7 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	}
 	pa := paImpl(t)
 
-	bannedBytes, err := yaml.Marshal(blockedNamesPolicy{
+	bannedBytes, err := yaml.Marshal(blockedIdentsPolicy{
 		HighRiskBlockedNames: bannedDomains,
 		ExactBlockedNames:    exactBannedDomains,
 	})
@@ -276,7 +286,7 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	defer os.Remove(f.Name())
 	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
-	err = pa.LoadHostnamePolicyFile(f.Name())
+	err = pa.LoadIdentPolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
 	testCases := []struct {
@@ -361,7 +371,7 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 	}
 	pa := paImpl(t)
 
-	bannedBytes, err := yaml.Marshal(blockedNamesPolicy{
+	bannedBytes, err := yaml.Marshal(blockedIdentsPolicy{
 		HighRiskBlockedNames: banned,
 		ExactBlockedNames:    banned,
 	})
@@ -370,7 +380,7 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 	defer os.Remove(f.Name())
 	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
-	err = pa.LoadHostnamePolicyFile(f.Name())
+	err = pa.LoadIdentPolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
 	// Test multiple malformed domains and one banned domain; only the malformed ones will generate errors
@@ -513,7 +523,7 @@ func TestMalformedExactBlocklist(t *testing.T) {
 	}
 
 	// Create YAML for the exactBannedDomains
-	bannedBytes, err := yaml.Marshal(blockedNamesPolicy{
+	bannedBytes, err := yaml.Marshal(blockedIdentsPolicy{
 		HighRiskBlockedNames: bannedDomains,
 		ExactBlockedNames:    exactBannedDomains,
 	})
@@ -526,11 +536,11 @@ func TestMalformedExactBlocklist(t *testing.T) {
 	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
 
-	// Try to use the YAML tempfile as the hostname policy. It should produce an
+	// Try to use the YAML tempfile as the ident policy. It should produce an
 	// error since the exact blocklist contents are malformed.
-	err = pa.LoadHostnamePolicyFile(f.Name())
+	err = pa.LoadIdentPolicyFile(f.Name())
 	test.AssertError(t, err, "Loaded invalid exact blocklist content without error")
-	test.AssertEquals(t, err.Error(), "Malformed ExactBlockedNames entry, only one label: \"com\"")
+	test.AssertEquals(t, err.Error(), "malformed ExactBlockedNames entry, only one label: \"com\"")
 }
 
 func TestValidEmailError(t *testing.T) {
@@ -696,7 +706,7 @@ func TestWillingToIssue_IdentifierType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			policy := blockedNamesPolicy{
+			policy := blockedIdentsPolicy{
 				HighRiskBlockedNames: []string{"zombo.gov.us"},
 				ExactBlockedNames:    []string{`highvalue.website1.org`},
 				AdminBlockedNames:    []string{`banned.in.dc.com`},
@@ -711,7 +721,7 @@ func TestWillingToIssue_IdentifierType(t *testing.T) {
 
 			pa := paImpl(t)
 
-			err = pa.LoadHostnamePolicyFile(yamlPolicyFile.Name())
+			err = pa.LoadIdentPolicyFile(yamlPolicyFile.Name())
 			test.AssertNotError(t, err, "Couldn't load rules")
 
 			pa.enabledIdentifiers = tc.enabled
