@@ -89,15 +89,6 @@ func (d *DBConfig) URL() (string, error) {
 	return strings.TrimSpace(string(url)), err
 }
 
-// SMTPConfig is deprecated.
-// TODO(#8199): Delete this when it is removed from bad-key-revoker's config.
-type SMTPConfig struct {
-	PasswordConfig
-	Server   string `validate:"required"`
-	Port     string `validate:"required,numeric,min=1,max=65535"`
-	Username string `validate:"required"`
-}
-
 // PAConfig specifies how a policy authority should connect to its
 // database, what policies it should enforce, and what challenges
 // it should offer.
