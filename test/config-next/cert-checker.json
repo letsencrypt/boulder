@@ -10,12 +10,14 @@
 		"badResultsOnly": true,
 		"checkPeriod": "72h",
 		"acceptableValidityDurations": [
-			"7776000s"
+			"7776000s",
+			"160h"
 		],
 		"lintConfig": "test/config-next/zlint.toml",
 		"ignoredLints": [
-			"w_subject_common_name_included",
 			"w_ext_subject_key_identifier_missing_sub_cert",
+			"w_subject_common_name_included",
+			"e_dnsname_not_valid_tld",
 			"w_ext_subject_key_identifier_not_recommended_subscriber"
 		],
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
