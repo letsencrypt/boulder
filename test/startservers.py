@@ -50,10 +50,6 @@ SERVICES = (
         8109, 9491, 'publisher.boulder',
         ('./bin/boulder', 'boulder-publisher', '--config', os.path.join(config_dir, 'publisher.json'), '--addr', ':9491', '--debug-addr', ':8109'),
         None),
-    Service('mail-test-srv',
-        9380, None, None,
-        ('./bin/mail-test-srv', '--closeFirst', '5', '--cert', 'test/certs/ipki/localhost/cert.pem', '--key', 'test/certs/ipki/localhost/key.pem'),
-        None),
     Service('ocsp-responder',
         8005, None, None,
         ('./bin/boulder', 'ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json'), '--addr', ':4002', '--debug-addr', ':8005'),
@@ -116,7 +112,7 @@ SERVICES = (
     Service('bad-key-revoker',
         8020, None, None,
         ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json'), '--debug-addr', ':8020'),
-        ('boulder-ra-1', 'boulder-ra-2', 'mail-test-srv')),
+        ('boulder-ra-1', 'boulder-ra-2')),
     # Note: the nonce-service instances bind to specific ports, not "all interfaces",
     # because they use their explicitly bound port in calculating the nonce
     # prefix, which is used by WFEs when deciding where to redeem nonces.
