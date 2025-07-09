@@ -20,16 +20,6 @@
 			"noWaitForReady": true,
 			"timeout": "15s"
 		},
-		"mailer": {
-			"server": "localhost",
-			"port": "9380",
-			"username": "cert-manager@example.com",
-			"from": "bad key revoker <bad-key-revoker@test.org>",
-			"passwordFile": "test/secrets/smtp_password",
-			"SMTPTrustedRootFile": "test/certs/ipki/minica.pem",
-			"emailSubject": "Certificates you've issued have been revoked due to key compromise",
-			"emailTemplate": "test/example-bad-key-revoker-template"
-		},
 		"maximumRevocations": 15,
 		"findCertificatesBatchSize": 10,
 		"interval": "50ms",

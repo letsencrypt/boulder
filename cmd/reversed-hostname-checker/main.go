@@ -24,7 +24,7 @@ func init() {
 
 func main() {
 	inputFilename := flag.String("input", "", "File containing a list of reversed hostnames to check, newline separated. Defaults to stdin")
-	policyFile := flag.String("policy", "test/hostname-policy.yaml", "File containing a hostname policy in yaml.")
+	policyFile := flag.String("policy", "test/ident-policy.yaml", "File containing an identifier policy in YAML.")
 	flag.Parse()
 
 	var input io.Reader
@@ -45,7 +45,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = pa.LoadHostnamePolicyFile(*policyFile)
+	err = pa.LoadIdentPolicyFile(*policyFile)
 	if err != nil {
 		log.Fatalf("reading %s: %s", *policyFile, err)
 	}
