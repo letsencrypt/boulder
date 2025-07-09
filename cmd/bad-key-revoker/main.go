@@ -56,6 +56,8 @@ type badKeyRevoker struct {
 	backoffIntervalMax  time.Duration
 	backoffFactor       float64
 	backoffTicker       int
+	recheckInterval     time.Duration
+	maxValidityPeriod   time.Duration
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -76,8 +78,11 @@ func (bkr *badKeyRevoker) countUncheckedKeys(ctx context.Context) (int, error) {
 		&count,
 		`SELECT COUNT(*)
 		FROM (SELECT 1 FROM blockedKeys
-		WHERE extantCertificatesChecked = false
+		WHERE extantCertificatesChecked = 0
+		OR (extantCertificatesChecked < 2 AND added BETWEEN NOW() - INTERVAL ? SECOND AND NOW() - INTERVAL ? SECOND)
 		LIMIT ?) AS a`,
+		bkr.maxValidityPeriod.Seconds(),
+		bkr.recheckInterval.Seconds(),
 		blockedKeysGaugeLimit,
 	)
 	return count, err
@@ -90,8 +95,11 @@ func (bkr *badKeyRevoker) selectUncheckedKey(ctx context.Context) (uncheckedBloc
 		&row,
 		`SELECT keyHash, revokedBy
 		FROM blockedKeys
-		WHERE extantCertificatesChecked = false
+		WHERE extantCertificatesChecked = 0
+		OR (extantCertificatesChecked < 2 AND added BETWEEN NOW() - INTERVAL ? SECOND AND NOW() - INTERVAL ? SECOND)
 		LIMIT 1`,
+		bkr.maxValidityPeriod.Seconds(),
+		bkr.recheckInterval.Seconds(),
 	)
 	return row, err
 }
@@ -173,7 +181,7 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 // markRowChecked updates a row in the blockedKeys table to mark a keyHash
 // as having been checked for extant unrevoked certificates.
 func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked uncheckedBlockedKey) error {
-	_, err := bkr.dbMap.ExecContext(ctx, "UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = ?", unchecked.KeyHash)
+	_, err := bkr.dbMap.ExecContext(ctx, "UPDATE blockedKeys SET extantCertificatesChecked = extantCertificatesChecked + 1 WHERE keyHash = ?", unchecked.KeyHash)
 	return err
 }
 
@@ -275,6 +283,7 @@ type Config struct {
 		// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
 		// progress until this is addressed.
 		MaximumRevocations int `validate:"gte=0"`
+
 		// FindCertificatesBatchSize specifies the maximum number of serials to select from the
 		// keyHashToSerial table at once
 		FindCertificatesBatchSize int `validate:"required"`
@@ -288,6 +297,16 @@ type Config struct {
 		// algorithm will wait before retrying in the event of error
 		// or no work to do.
 		BackoffIntervalMax config.Duration `validate:"-"`
+
+		// RecheckInterval specifies the minimum duration bad-key-revoker should
+		// wait between its first and second searches for certificates matching
+		// a blockedKeys row. This should be greater than the database's maximum
+		// replication lag, and less than 24 hours.
+		RecheckInterval config.Duration `validate:"-"`
+
+		// MaxValidityPeriod specifies the longest validity period among this
+		// CA's unexpired certificates.
+		MaxValidityPeriod config.Duration `validate:"-"`
 
 		// Deprecated: the bad-key-revoker no longer sends emails; we use ARI.
 		// TODO(#8199): Remove this config stanza entirely.
@@ -349,6 +368,8 @@ func main() {
 		backoffIntervalMax:  config.BadKeyRevoker.BackoffIntervalMax.Duration,
 		backoffIntervalBase: config.BadKeyRevoker.Interval.Duration,
 		backoffFactor:       1.3,
+		recheckInterval:     config.BadKeyRevoker.RecheckInterval.Duration,
+		maxValidityPeriod:   config.BadKeyRevoker.MaxValidityPeriod.Duration,
 	}
 
 	// If `BackoffIntervalMax` was not set via the config, set it to 60
@@ -362,6 +383,18 @@ func main() {
 	// `bkr.backoffIntervalBase` to a default 1 second.
 	if bkr.backoffIntervalBase == 0 {
 		bkr.backoffIntervalBase = time.Second
+	}
+
+	// If `RecheckInterval` was not set via the config, then set
+	// `bkr.recheckInterval` to a default 15 minutes.
+	if bkr.recheckInterval == 0 {
+		bkr.recheckInterval = time.Minute * 15
+	}
+
+	// If `MaxValidityPeriod` was not set via the config, then set
+	// `bkr.maxValidityPeriod` to a default 7,776,000 seconds.
+	if bkr.maxValidityPeriod == 0 {
+		bkr.maxValidityPeriod = time.Second * 7776000
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.

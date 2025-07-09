@@ -30,7 +30,7 @@ func randHash(t *testing.T) []byte {
 	return h
 }
 
-func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, hash []byte, by int64, checked bool) {
+func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, hash []byte, by int64, checked int8) {
 	t.Helper()
 	_, err := dbMap.ExecContext(context.Background(), `INSERT INTO blockedKeys
 		(keyHash, added, source, revokedBy, extantCertificatesChecked)
@@ -55,21 +55,31 @@ func TestSelectUncheckedRows(t *testing.T) {
 	fc := clock.NewFake()
 
 	bkr := &badKeyRevoker{
-		dbMap:  dbMap,
-		logger: blog.NewMock(),
-		clk:    fc,
+		dbMap:             dbMap,
+		logger:            blog.NewMock(),
+		clk:               fc,
+		recheckInterval:   time.Minute * 15,
+		maxValidityPeriod: time.Second * 7776000,
 	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
-	insertBlockedRow(t, dbMap, fc, hashA, 1, true)
+
+	// insert a blocked key that's marked as already checked just now
+	insertBlockedRow(t, dbMap, fc, hashA, 1, 1)
 	count, err := bkr.countUncheckedKeys(ctx)
 	test.AssertNotError(t, err, "countUncheckedKeys failed")
 	test.AssertEquals(t, count, 0)
 	_, err = bkr.selectUncheckedKey(ctx)
 	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
 	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
-	insertBlockedRow(t, dbMap, fc, hashB, 1, false)
-	insertBlockedRow(t, dbMap, fc, hashC, 1, false)
+
+	// insert a blocked key that's marked as unchecked
+	insertBlockedRow(t, dbMap, fc, hashB, 1, 0)
+	// insert a blocked key that's marked as already checked 12 hours ago, so
+	// it's due to be rechecked
+	fc.Set(time.Now().Add(-time.Hour * 12))
+	insertBlockedRow(t, dbMap, fc, hashC, 1, 1)
+	fc.Set(time.Now())
 	count, err = bkr.countUncheckedKeys(ctx)
 	test.AssertNotError(t, err, "countUncheckedKeys failed")
 	test.AssertEquals(t, count, 2)
@@ -273,7 +283,7 @@ func TestCertificateAbsent(t *testing.T) {
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
-	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
+	insertBlockedRow(t, dbMap, fc, hashA, regIDA, 0)
 
 	// Add an entry to keyHashToSerial but not to certificateStatus or certificate
 	// status, and expect an error.
@@ -323,7 +333,7 @@ func TestInvoke(t *testing.T) {
 	regIDC := insertRegistration(t, dbMap, fc)
 	regIDD := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
-	insertBlockedRow(t, dbMap, fc, hashA, regIDC, false)
+	insertBlockedRow(t, dbMap, fc, hashA, regIDC, 0)
 	insertGoodCert(t, dbMap, fc, hashA, "ff", regIDA)
 	insertGoodCert(t, dbMap, fc, hashA, "ee", regIDB)
 	insertGoodCert(t, dbMap, fc, hashA, "dd", regIDC)
@@ -344,7 +354,7 @@ func TestInvoke(t *testing.T) {
 
 	// add a row with no associated valid certificates
 	hashB := randHash(t)
-	insertBlockedRow(t, dbMap, fc, hashB, regIDC, false)
+	insertBlockedRow(t, dbMap, fc, hashB, regIDC, 0)
 	insertCert(t, dbMap, fc, hashB, "bb", regIDA, Expired, Revoked)
 
 	noWork, err = bkr.invoke(ctx)
@@ -389,7 +399,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	hashA := randHash(t)
 
-	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
+	insertBlockedRow(t, dbMap, fc, hashA, regIDA, 0)
 
 	insertGoodCert(t, dbMap, fc, hashA, "ee", regIDB)
 	insertGoodCert(t, dbMap, fc, hashA, "dd", regIDB)
