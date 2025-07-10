@@ -307,16 +307,6 @@ type Config struct {
 		// MaxValidityPeriod specifies the longest validity period among this
 		// CA's unexpired certificates.
 		MaxValidityPeriod config.Duration `validate:"-"`
-
-		// Deprecated: the bad-key-revoker no longer sends emails; we use ARI.
-		// TODO(#8199): Remove this config stanza entirely.
-		Mailer struct {
-			cmd.SMTPConfig      `validate:"-"`
-			SMTPTrustedRootFile string
-			From                string
-			EmailSubject        string
-			EmailTemplate       string
-		}
 	}
 
 	Syslog        cmd.SyslogConfig
