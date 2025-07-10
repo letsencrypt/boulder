@@ -24,4 +24,7 @@ type CTConfig struct {
 	// This may include duplicates from the lists above, to submit both precerts
 	// and final certs to the same log.
 	FinalLogs []string
+	// AllowedSCTTypes allows non-empty log types (typically "test") to be used for
+	// SCTs. This should only be used in test environments.
+	AllowedSCTTypes []string
 }
