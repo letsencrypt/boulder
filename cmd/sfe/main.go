@@ -11,8 +11,10 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	rlo "github.com/letsencrypt/boulder/ratelimits/overriderequests"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe"
+	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -43,6 +45,20 @@ type Config struct {
 		// WFEs. This field is required to enable the pausing feature.
 		UnpauseHMACKey cmd.HMACKeyConfig
 
+		Zendesk struct {
+			BaseURL      string             `json:"baseURL"`
+			TokenEmail   string             `json:"tokenEmail"`
+			Token        cmd.PasswordConfig `json:"token"`
+			CustomFields struct {
+				RateLimit        int64 `json:"rateLimit"`
+				Organization     int64 `json:"organization"`
+				Tier             int64 `json:"tier"`
+				AccountID        int64 `json:"accountID"`
+				RegisteredDomain int64 `json:"registeredDomain"`
+				IPAddress        int64 `json:"ipAddress"`
+				ReviewStatus     int64 `json:"reviewStatus"`
+			} `json:"customFields"`
+		}
 		Features features.Config
 	}
 
@@ -98,6 +114,27 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
+	zendeskToken, err := c.SFE.Zendesk.Token.Pass()
+	cmd.FailOnError(err, "Failed to load Zendesk token")
+
+	zendeskClient, err := zendesk.NewClient(
+		c.SFE.Zendesk.BaseURL,
+		c.SFE.Zendesk.TokenEmail,
+		zendeskToken,
+		[]zendesk.CustomField{
+			{Name: rlo.RateLimitFieldName, ID: c.SFE.Zendesk.CustomFields.RateLimit},
+			{Name: rlo.OrganizationFieldName, ID: c.SFE.Zendesk.CustomFields.Organization},
+			{Name: rlo.TierFieldName, ID: c.SFE.Zendesk.CustomFields.Tier},
+			{Name: rlo.AccountURIFieldName, ID: c.SFE.Zendesk.CustomFields.AccountID},
+			{Name: rlo.RegisteredDomainFieldName, ID: c.SFE.Zendesk.CustomFields.RegisteredDomain},
+			{Name: rlo.IPAddressFieldName, ID: c.SFE.Zendesk.CustomFields.IPAddress},
+			{Name: rlo.ReviewStatusFieldName, ID: c.SFE.Zendesk.CustomFields.ReviewStatus},
+		},
+	)
+	if err != nil {
+		cmd.FailOnError(err, "Failed to create Zendesk client")
+	}
+
 	sfei, err := sfe.NewSelfServiceFrontEndImpl(
 		stats,
 		clk,
@@ -106,6 +143,7 @@ func main() {
 		rac,
 		sac,
 		unpauseHMACKey,
+		zendeskClient,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

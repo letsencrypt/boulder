@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/unpause"
 )
 
@@ -43,7 +44,9 @@ type SelfServiceFrontEndImpl struct {
 	requestTimeout time.Duration
 
 	unpauseHMACKey []byte
-	templatePages  *template.Template
+	zendeskClient  *zendesk.Client
+
+	templatePages *template.Template
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -55,12 +58,13 @@ func NewSelfServiceFrontEndImpl(
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	unpauseHMACKey []byte,
+	zendeskClient *zendesk.Client,
 ) (SelfServiceFrontEndImpl, error) {
 
 	// Parse the files once at startup to avoid each request causing the server
 	// to JIT parse. The pages are stored in an in-memory embed.FS to prevent
 	// unnecessary filesystem I/O on a physical HDD.
-	tmplPages := template.Must(template.New("pages").ParseFS(dynamicFS, "templates/layout.html", "pages/*"))
+	tmplPages := template.Must(template.New("pages").ParseFS(dynamicFS, "templates/*", "pages/*"))
 
 	sfe := SelfServiceFrontEndImpl{
 		log:            logger,
@@ -69,6 +73,7 @@ func NewSelfServiceFrontEndImpl(
 		ra:             rac,
 		sa:             sac,
 		unpauseHMACKey: unpauseHMACKey,
+		zendeskClient:  zendeskClient,
 		templatePages:  tmplPages,
 	}
 
@@ -99,9 +104,18 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 
 	sfe.handleWithTimeout(mux, "/", sfe.Index)
 	sfe.handleWithTimeout(mux, "GET /build", sfe.BuildID)
+
+	// Unpause
 	sfe.handleWithTimeout(mux, "GET "+unpause.GetForm, sfe.UnpauseForm)
 	sfe.handleWithTimeout(mux, "POST "+unpausePostForm, sfe.UnpauseSubmit)
 	sfe.handleWithTimeout(mux, "GET "+unpauseStatus, sfe.UnpauseStatus)
+
+	// Rate Limit Overrides
+	sfe.handleWithTimeout(mux, "POST /override/validate-field", sfe.ValidateOverrideFieldHandler)
+	sfe.handleWithTimeout(mux, "GET /override/new-orders-per-account", sfe.NewOrderPerAccountOverrideRequestHandler)
+	sfe.handleWithTimeout(mux, "GET /override/certificates-per-domain", sfe.CertificatesPerDomainOverrideRequestHandler)
+	sfe.handleWithTimeout(mux, "GET /override/certificates-per-ip", sfe.CertificatesPerIPOverrideRequestHandler)
+	sfe.handleWithTimeout(mux, "GET /override/certificates-per-domain-per-account", sfe.CertificatesPerDomainPerAccountOverrideRequestHandler)
 
 	return measured_http.New(mux, sfe.clk, stats, oTelHTTPOptions...)
 }
