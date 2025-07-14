@@ -79,9 +79,11 @@ func (bkr *badKeyRevoker) countUncheckedKeys(ctx context.Context) (int, error) {
 		`SELECT COUNT(*)
 		FROM (SELECT 1 FROM blockedKeys
 		WHERE extantCertificatesChecked = 0
-		OR (extantCertificatesChecked < 2 AND added BETWEEN NOW() - INTERVAL ? SECOND AND NOW() - INTERVAL ? SECOND)
+		OR (extantCertificatesChecked < 2 AND added BETWEEN ? - INTERVAL ? SECOND AND ? - INTERVAL ? SECOND)
 		LIMIT ?) AS a`,
+		bkr.clk.Now(),
 		bkr.maxValidityPeriod.Seconds(),
+		bkr.clk.Now(),
 		bkr.recheckInterval.Seconds(),
 		blockedKeysGaugeLimit,
 	)
