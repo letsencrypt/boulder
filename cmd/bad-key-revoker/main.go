@@ -98,9 +98,11 @@ func (bkr *badKeyRevoker) selectUncheckedKey(ctx context.Context) (uncheckedBloc
 		`SELECT keyHash, revokedBy
 		FROM blockedKeys
 		WHERE extantCertificatesChecked = 0
-		OR (extantCertificatesChecked < 2 AND added BETWEEN NOW() - INTERVAL ? SECOND AND NOW() - INTERVAL ? SECOND)
+		OR (extantCertificatesChecked < 2 AND added BETWEEN ? - INTERVAL ? SECOND AND ? - INTERVAL ? SECOND)
 		LIMIT 1`,
+		bkr.clk.Now(),
 		bkr.maxValidityPeriod.Seconds(),
+		bkr.clk.Now(),
 		bkr.recheckInterval.Seconds(),
 	)
 	return row, err
