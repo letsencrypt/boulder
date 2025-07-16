@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
+
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
 type hsmRandReader struct {
@@ -49,7 +50,7 @@ func generateKey(session *pkcs11helpers.Session, label string, outputPath string
 		{Type: pkcs11.CKA_LABEL, Value: []byte(label)},
 	})
 	if err != pkcs11helpers.ErrNoObject {
-		return nil, fmt.Errorf("expected no preexisting objects with label %q in slot for key storage. got error: %s", label, err)
+		return nil, fmt.Errorf("expected no preexisting objects with label %q in slot for key storage. got error: %w", label, err)
 	}
 
 	var pubKey crypto.PublicKey
@@ -58,25 +59,25 @@ func generateKey(session *pkcs11helpers.Session, label string, outputPath string
 	case "rsa":
 		pubKey, keyID, err = rsaGenerate(session, label, config.RSAModLength)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate RSA key pair: %s", err)
+			return nil, fmt.Errorf("failed to generate RSA key pair: %w", err)
 		}
 	case "ecdsa":
 		pubKey, keyID, err = ecGenerate(session, label, config.ECDSACurve)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate ECDSA key pair: %s", err)
+			return nil, fmt.Errorf("failed to generate ECDSA key pair: %w", err)
 		}
 	}
 
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to marshal public key: %s", err)
+		return nil, fmt.Errorf("failed to marshal public key: %w", err)
 	}
 
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})
 	log.Printf("Public key PEM:\n%s\n", pemBytes)
 	err = writeFile(outputPath, pemBytes)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to write public key to %q: %s", outputPath, err)
+		return nil, fmt.Errorf("failed to write public key to %q: %w", outputPath, err)
 	}
 	log.Printf("Public key written to %q\n", outputPath)
 
