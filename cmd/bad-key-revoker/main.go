@@ -368,9 +368,9 @@ func main() {
 	}
 
 	// If `MaxReplicationLag` was not set via the config, then set
-	// `bkr.maxReplicationLag` to a default 11 minutes.
+	// `bkr.maxReplicationLag` to a default 22 seconds.
 	if bkr.maxReplicationLag == 0 {
-		bkr.maxReplicationLag = time.Minute * 11
+		bkr.maxReplicationLag = time.Second * 22
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.

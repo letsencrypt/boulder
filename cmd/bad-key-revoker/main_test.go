@@ -58,7 +58,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 		dbMap:             dbMap,
 		logger:            blog.NewMock(),
 		clk:               fc,
-		maxReplicationLag: time.Minute * 11,
+		maxReplicationLag: time.Second * 22,
 	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
@@ -204,7 +204,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 		serialBatchSize:   1,
 		maxRevocations:    10,
 		clk:               fc,
-		maxReplicationLag: time.Minute * 11,
+		maxReplicationLag: time.Second * 22,
 	}
 	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
 	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
@@ -226,7 +226,7 @@ func TestFindUnrevoked(t *testing.T) {
 		serialBatchSize:   1,
 		maxRevocations:    10,
 		clk:               fc,
-		maxReplicationLag: time.Minute * 1,
+		maxReplicationLag: time.Second * 22,
 	}
 
 	hashA := randHash(t)
@@ -300,7 +300,7 @@ func TestCertificateAbsent(t *testing.T) {
 		raClient:          &mockRevoker{},
 		logger:            blog.NewMock(),
 		clk:               fc,
-		maxReplicationLag: time.Minute * 11,
+		maxReplicationLag: time.Second * 22,
 	}
 
 	// populate DB with all the test data
@@ -342,7 +342,7 @@ func TestInvoke(t *testing.T) {
 		raClient:          mr,
 		logger:            blog.NewMock(),
 		clk:               fc,
-		maxReplicationLag: time.Minute * 11,
+		maxReplicationLag: time.Second * 22,
 	}
 
 	// populate DB with all the test data
@@ -412,7 +412,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 		raClient:          mr,
 		logger:            blog.NewMock(),
 		clk:               fc,
-		maxReplicationLag: time.Minute * 11,
+		maxReplicationLag: time.Second * 22,
 	}
 
 	// populate DB with all the test data
