@@ -19,6 +19,8 @@ UNIT_PACKAGES=()
 UNIT_FLAGS=()
 INTEGRATION_FLAGS=()
 FILTER=()
+COVERAGE="false"
+COVERAGE_DIR="test/coverage/$(date +%Y-%m-%d_%H-%M-%S)"
 
 #
 # Cleanup Functions
@@ -104,7 +106,11 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -i, --integration                     Adds integration to the list of tests to run
     -s, --start-py                        Adds start to the list of tests to run
+    -m, --acme                            Adds acme test to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
+    -c, --coverage                        Enables coverage for tests
+    -d <DIR>, --coverage-directory=<DIR>  Directory to store coverage files in
+                                          Default: test/coverage/<timestamp>
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
 
                                           Note:
@@ -120,7 +126,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts luvwecismgnhp:f:-: OPT; do
+while getopts luvwecimsdgnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -138,6 +144,9 @@ while getopts luvwecismgnhp:f:-: OPT; do
     s | start-py )                   RUN+=("start") ;;
     g | generate )                   RUN+=("generate") ;;
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
+    m | acme )                       RUN+=("acme") ;;
+    c | coverage )                   COVERAGE="true" ;;
+    d | coverage-dir )               check_arg; COVERAGE_DIR="${OPTARG}" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
     ? )                              exit 2 ;;  # bad short option (error reported via getopts)
@@ -197,9 +206,14 @@ settings="$(cat -- <<-EOM
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
     UNIT_FLAGS:         ${UNIT_FLAGS[@]}
     FILTER:             ${FILTER[@]}
-
+    COVERAGE:           $COVERAGE
+    COVERAGE_DIR:       $COVERAGE_DIR
 EOM
 )"
+
+if [ "$COVERAGE" == "true" ]; then
+  mkdir -p "$COVERAGE_DIR"
+fi
 
 echo "$settings"
 print_heading "Starting..."
@@ -226,6 +240,11 @@ STAGE="unit"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
   flush_redis
+
+  if [ "$COVERAGE" == "true" ]; then
+    print_heading "Running unit test with coverage enabled"
+    export GOFLAGS="-cover -covermode=atomic -coverprofile=${COVERAGE_DIR}/unit.coverprofile -coverpkg=./..."
+  fi
   run_unit_tests
 fi
 
@@ -236,11 +255,54 @@ STAGE="integration"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
   flush_redis
+
+  # Set up test parameters
+  INTEGRATION_ARGS=("--chisel")
+
+  # Add verbose flag if requested
   if [[ "${INTEGRATION_FLAGS[@]}" =~ "-v" ]] ; then
-    python3 test/integration-test.py --chisel --gotestverbose "${FILTER[@]}"
+    INTEGRATION_ARGS+=("--gotestverbose")
   else
-    python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
+    INTEGRATION_ARGS+=("--gotest")
   fi
+
+  # Add coverage settings if enabled
+  if [ "$COVERAGE" == "true" ]; then
+    print_heading "Running go integration test with coverage enabled"
+    export GOFLAGS="-cover -covermode=atomic -coverprofile=${COVERAGE_DIR}/integration.coverprofile -coverpkg=./..."
+    INTEGRATION_ARGS+=("--coverage" "--coveragedir=${COVERAGE_DIR}")
+  fi
+
+  # Add any filters
+  INTEGRATION_ARGS+=("${FILTER[@]}")
+
+  # Run the integration tests with all collected arguments
+  python3 test/integration-test.py "${INTEGRATION_ARGS[@]}"
+fi
+
+#
+# ACME tests - these are the chisel tests separated from the main integration
+# tests which also includes go tests.
+#
+STAGE="acme"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
+  print_heading "Running ACME Tests"
+  flush_redis
+
+  # Set up test parameters
+  ACME_ARGS=("--chisel")
+
+  # Add coverage settings if enabled
+  if [ "$COVERAGE" == "true" ]; then
+    print_heading "Running go acme test with coverage enabled"
+    ACME_ARGS+=("--coverage" "--coveragedir=${COVERAGE_DIR}")
+  fi
+
+  # Add any filters
+  ACME_ARGS+=("${FILTER[@]}")
+
+  # Run the acme tests with all collected arguments
+  python3 test/integration-test.py "${ACME_ARGS[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
