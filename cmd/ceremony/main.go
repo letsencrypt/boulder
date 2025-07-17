@@ -239,7 +239,7 @@ type intermediateConfig struct {
 	SkipLints   []string    `yaml:"skip-lints"`
 }
 
-func (ic intermediateConfig) validate(ct certType) error {
+func (ic intermediateConfig) validate() error {
 	err := ic.PKCS11.validate()
 	if err != nil {
 		return err
@@ -260,7 +260,7 @@ func (ic intermediateConfig) validate(ct certType) error {
 	}
 
 	// Certificate profile
-	err = ic.CertProfile.verifyProfile(ct)
+	err = ic.CertProfile.verifyProfile(intermediateCert)
 	if err != nil {
 		return err
 	}
@@ -504,7 +504,7 @@ func loadCert(filename string) (*x509.Certificate, error) {
 	log.Printf("Loaded certificate from %s\n", filename)
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
-		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
+		return nil, fmt.Errorf("no data in cert PEM file %q", filename)
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
@@ -599,7 +599,7 @@ func loadPubKey(filename string) (crypto.PublicKey, []byte, error) {
 	log.Printf("Loaded public key from %s\n", filename)
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {
-		return nil, nil, fmt.Errorf("No data in cert PEM file %s", filename)
+		return nil, nil, fmt.Errorf("no data in cert PEM file %q", filename)
 	}
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
@@ -658,17 +658,14 @@ func rootCeremony(configBytes []byte) error {
 	return nil
 }
 
-func intermediateCeremony(configBytes []byte, ct certType) error {
-	if ct != intermediateCert && ct != ocspCert && ct != crlCert {
-		return fmt.Errorf("wrong certificate type provided")
-	}
+func intermediateCeremony(configBytes []byte) error {
 	var config intermediateConfig
 	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
 	log.Printf("Preparing intermediate ceremony for %s\n", config.Outputs.CertificatePath)
-	err = config.validate(ct)
+	err = config.validate()
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
@@ -684,7 +681,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, nil, ct)
+	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, nil, intermediateCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -713,10 +710,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	return nil
 }
 
-func crossCertCeremony(configBytes []byte, ct certType) error {
-	if ct != crossCert {
-		return fmt.Errorf("wrong certificate type provided")
-	}
+func crossCertCeremony(configBytes []byte) error {
 	var config crossCertConfig
 	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
@@ -743,7 +737,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, toBeCrossSigned, ct)
+	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, toBeCrossSigned, crossCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -1044,12 +1038,12 @@ func main() {
 			log.Fatalf("root ceremony failed: %s", err)
 		}
 	case "cross-certificate":
-		err = crossCertCeremony(configBytes, crossCert)
+		err = crossCertCeremony(configBytes)
 		if err != nil {
 			log.Fatalf("cross-certificate ceremony failed: %s", err)
 		}
 	case "intermediate":
-		err = intermediateCeremony(configBytes, intermediateCert)
+		err = intermediateCeremony(configBytes)
 		if err != nil {
 			log.Fatalf("intermediate ceremony failed: %s", err)
 		}
@@ -1057,11 +1051,6 @@ func main() {
 		err = csrCeremony(configBytes)
 		if err != nil {
 			log.Fatalf("cross-csr ceremony failed: %s", err)
-		}
-	case "ocsp-signer":
-		err = intermediateCeremony(configBytes, ocspCert)
-		if err != nil {
-			log.Fatalf("ocsp signer ceremony failed: %s", err)
 		}
 	case "key":
 		err = keyCeremony(configBytes)
@@ -1078,12 +1067,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("crl ceremony failed: %s", err)
 		}
-	case "crl-signer":
-		err = intermediateCeremony(configBytes, crlCert)
-		if err != nil {
-			log.Fatalf("crl signer ceremony failed: %s", err)
-		}
 	default:
-		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, ocsp-signer, key, ocsp-response, crl, crl-signer")
+		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, ocsp-response, crl")
 	}
 }

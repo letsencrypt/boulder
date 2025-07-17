@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -174,73 +173,6 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 	test.AssertEquals(t, cert.ExtKeyUsage[0], x509.ExtKeyUsageServerAuth)
 }
 
-func TestMakeTemplateOCSP(t *testing.T) {
-	s, ctx := pkcs11helpers.NewSessionWithMock()
-	ctx.GenerateRandomFunc = realRand
-	randReader := newRandReader(s)
-	profile := &certProfile{
-		SignatureAlgorithm: "SHA256WithRSA",
-		CommonName:         "common name",
-		Organization:       "organization",
-		Country:            "country",
-		OCSPURL:            "ocsp",
-		CRLURL:             "crl",
-		IssuerURL:          "issuer",
-		NotAfter:           "2018-05-18 11:31:00",
-		NotBefore:          "2018-05-18 11:31:00",
-	}
-	pubKey := samplePubkey()
-
-	cert, err := makeTemplate(randReader, profile, pubKey, nil, ocspCert)
-	test.AssertNotError(t, err, "makeTemplate failed")
-
-	test.Assert(t, !cert.IsCA, "IsCA is set")
-	// Check KU is only KeyUsageDigitalSignature
-	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature)
-	// Check there is a single EKU with id-kp-OCSPSigning
-	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
-	test.AssertEquals(t, cert.ExtKeyUsage[0], x509.ExtKeyUsageOCSPSigning)
-	// Check ExtraExtensions contains a single id-pkix-ocsp-nocheck
-	hasExt := false
-	asnNULL := []byte{5, 0}
-	for _, ext := range cert.ExtraExtensions {
-		if ext.Id.Equal(oidOCSPNoCheck) {
-			if hasExt {
-				t.Error("template contains multiple id-pkix-ocsp-nocheck extensions")
-			}
-			hasExt = true
-			if !bytes.Equal(ext.Value, asnNULL) {
-				t.Errorf("id-pkix-ocsp-nocheck has unexpected content: want %x, got %x", asnNULL, ext.Value)
-			}
-		}
-	}
-	test.Assert(t, hasExt, "template doesn't contain id-pkix-ocsp-nocheck extensions")
-}
-
-func TestMakeTemplateCRL(t *testing.T) {
-	s, ctx := pkcs11helpers.NewSessionWithMock()
-	ctx.GenerateRandomFunc = realRand
-	randReader := newRandReader(s)
-	profile := &certProfile{
-		SignatureAlgorithm: "SHA256WithRSA",
-		CommonName:         "common name",
-		Organization:       "organization",
-		Country:            "country",
-		OCSPURL:            "ocsp",
-		CRLURL:             "crl",
-		IssuerURL:          "issuer",
-		NotAfter:           "2018-05-18 11:31:00",
-		NotBefore:          "2018-05-18 11:31:00",
-	}
-	pubKey := samplePubkey()
-
-	cert, err := makeTemplate(randReader, profile, pubKey, nil, crlCert)
-	test.AssertNotError(t, err, "makeTemplate failed")
-
-	test.Assert(t, !cert.IsCA, "IsCA is set")
-	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageCRLSign)
-}
-
 func TestVerifyProfile(t *testing.T) {
 	for _, tc := range []struct {
 		profile     certProfile
@@ -365,114 +297,6 @@ func TestVerifyProfile(t *testing.T) {
 				Country:            "f",
 			},
 			certType: []certType{rootCert},
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-				KeyUsages:          []string{"j"},
-			},
-			certType:    []certType{ocspCert},
-			expectedErr: "key-usages cannot be set for a delegated signer",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-				CRLURL:             "i",
-			},
-			certType:    []certType{ocspCert},
-			expectedErr: "crl-url cannot be set for a delegated signer",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-				OCSPURL:            "h",
-			},
-			certType:    []certType{ocspCert},
-			expectedErr: "ocsp-url cannot be set for a delegated signer",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-			},
-			certType: []certType{ocspCert},
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-				KeyUsages:          []string{"j"},
-			},
-			certType:    []certType{crlCert},
-			expectedErr: "key-usages cannot be set for a delegated signer",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-				CRLURL:             "i",
-			},
-			certType:    []certType{crlCert},
-			expectedErr: "crl-url cannot be set for a delegated signer",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-				OCSPURL:            "h",
-			},
-			certType:    []certType{crlCert},
-			expectedErr: "ocsp-url cannot be set for a delegated signer",
-		},
-		{
-			profile: certProfile{
-				NotBefore:          "a",
-				NotAfter:           "b",
-				SignatureAlgorithm: "c",
-				CommonName:         "d",
-				Organization:       "e",
-				Country:            "f",
-				IssuerURL:          "g",
-			},
-			certType: []certType{crlCert},
 		},
 		{
 			profile: certProfile{
