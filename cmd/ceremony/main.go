@@ -771,8 +771,10 @@ func crossCertCeremony(configBytes []byte) error {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
 	if len(lintCert.ExtKeyUsage) == 0 {
-		// "Unrestricted" case, the issuer and subject need to be the same or at least affiliates.
-		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) {
+		// In the "Unrestricted" case, the issuer and subject organizations need to be the same...
+		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) && !(
+		// ...or at least affiliates.
+		slices.Equal(issuer.Subject.Organization, []string{"Internet Security Research Group"}) && slices.Equal(lintCert.Subject.Organization, []string{"ISRG"})) {
 			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
 		}
 	}
