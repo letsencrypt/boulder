@@ -286,6 +286,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 	case crossCert:
 		cert.ExtKeyUsage = tbcs.ExtKeyUsage
 		cert.MaxPathLenZero = tbcs.MaxPathLenZero
+		// The SKID needs to match the previous SKID, no matter how it was computed.
+		cert.SubjectKeyId = tbcs.SubjectKeyId
 	}
 
 	for _, policyConfig := range profile.Policies {
