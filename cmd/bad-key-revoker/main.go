@@ -56,8 +56,7 @@ type badKeyRevoker struct {
 	backoffIntervalMax  time.Duration
 	backoffFactor       float64
 	backoffTicker       int
-	recheckInterval     time.Duration
-	maxValidityPeriod   time.Duration
+	maxReplicationLag   time.Duration
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -78,13 +77,10 @@ func (bkr *badKeyRevoker) countUncheckedKeys(ctx context.Context) (int, error) {
 		&count,
 		`SELECT COUNT(*)
 		FROM (SELECT 1 FROM blockedKeys
-		WHERE extantCertificatesChecked = 0
-		OR (extantCertificatesChecked < 2 AND added BETWEEN ? - INTERVAL ? SECOND AND ? - INTERVAL ? SECOND)
+		WHERE extantCertificatesChecked = false AND added < ? - INTERVAL ? SECOND
 		LIMIT ?) AS a`,
 		bkr.clk.Now(),
-		bkr.maxValidityPeriod.Seconds(),
-		bkr.clk.Now(),
-		bkr.recheckInterval.Seconds(),
+		bkr.maxReplicationLag.Seconds(),
 		blockedKeysGaugeLimit,
 	)
 	return count, err
@@ -97,13 +93,10 @@ func (bkr *badKeyRevoker) selectUncheckedKey(ctx context.Context) (uncheckedBloc
 		&row,
 		`SELECT keyHash, revokedBy
 		FROM blockedKeys
-		WHERE extantCertificatesChecked = 0
-		OR (extantCertificatesChecked < 2 AND added BETWEEN ? - INTERVAL ? SECOND AND ? - INTERVAL ? SECOND)
+		WHERE extantCertificatesChecked = false AND added < ? - INTERVAL ? SECOND
 		LIMIT 1`,
 		bkr.clk.Now(),
-		bkr.maxValidityPeriod.Seconds(),
-		bkr.clk.Now(),
-		bkr.recheckInterval.Seconds(),
+		bkr.maxReplicationLag.Seconds(),
 	)
 	return row, err
 }
@@ -185,7 +178,7 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 // markRowChecked updates a row in the blockedKeys table to mark a keyHash
 // as having been checked for extant unrevoked certificates.
 func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked uncheckedBlockedKey) error {
-	_, err := bkr.dbMap.ExecContext(ctx, "UPDATE blockedKeys SET extantCertificatesChecked = extantCertificatesChecked + 1 WHERE keyHash = ?", unchecked.KeyHash)
+	_, err := bkr.dbMap.ExecContext(ctx, "UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = ?", unchecked.KeyHash)
 	return err
 }
 
@@ -302,15 +295,11 @@ type Config struct {
 		// or no work to do.
 		BackoffIntervalMax config.Duration `validate:"-"`
 
-		// RecheckInterval specifies the minimum duration bad-key-revoker should
-		// wait between its first and second searches for certificates matching
-		// a blockedKeys row. This should be greater than the database's maximum
-		// replication lag, and less than 24 hours.
-		RecheckInterval config.Duration `validate:"-"`
-
-		// MaxValidityPeriod specifies the longest validity period among this
-		// CA's unexpired certificates.
-		MaxValidityPeriod config.Duration `validate:"-"`
+		// MaxReplicationLag specifies the minimum duration bad-key-revoker
+		// should wait before searching for certificates matching a blockedKeys
+		// row. This should be just slightly greater than the database's maximum
+		// replication lag, and always well under 24 hours.
+		MaxReplicationLag config.Duration `validate:"-"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -362,8 +351,7 @@ func main() {
 		backoffIntervalMax:  config.BadKeyRevoker.BackoffIntervalMax.Duration,
 		backoffIntervalBase: config.BadKeyRevoker.Interval.Duration,
 		backoffFactor:       1.3,
-		recheckInterval:     config.BadKeyRevoker.RecheckInterval.Duration,
-		maxValidityPeriod:   config.BadKeyRevoker.MaxValidityPeriod.Duration,
+		maxReplicationLag:   config.BadKeyRevoker.MaxReplicationLag.Duration,
 	}
 
 	// If `BackoffIntervalMax` was not set via the config, set it to 60
@@ -379,16 +367,10 @@ func main() {
 		bkr.backoffIntervalBase = time.Second
 	}
 
-	// If `RecheckInterval` was not set via the config, then set
-	// `bkr.recheckInterval` to a default 15 minutes.
-	if bkr.recheckInterval == 0 {
-		bkr.recheckInterval = time.Minute * 15
-	}
-
-	// If `MaxValidityPeriod` was not set via the config, then set
-	// `bkr.maxValidityPeriod` to a default 7,776,000 seconds.
-	if bkr.maxValidityPeriod == 0 {
-		bkr.maxValidityPeriod = time.Second * 7776000
+	// If `MaxReplicationLag` was not set via the config, then set
+	// `bkr.maxReplicationLag` to a default 11 minutes.
+	if bkr.maxReplicationLag == 0 {
+		bkr.maxReplicationLag = time.Minute * 11
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.
