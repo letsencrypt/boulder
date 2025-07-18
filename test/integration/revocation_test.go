@@ -665,7 +665,7 @@ func TestBadKeyRevoker(t *testing.T) {
 				if i >= 4 {
 					t.Fatal("timed out waiting for correct OCSP status")
 				}
-				time.Sleep(time.Second * 22)
+				time.Sleep(time.Second)
 				continue
 			}
 			break
@@ -717,7 +717,7 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	// Note: this test is inherently racy because we don't have a signal
 	// for when the bad-key-revoker has completed a run after the revocation. However,
 	// the bad-key-revoker's configured interval is 50ms, so sleeping 1s should be good enough.
-	time.Sleep(time.Second * 22)
+	time.Sleep(time.Second)
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
 	allCRLs := getAllCRLs(t)

@@ -23,7 +23,7 @@
 		"findCertificatesBatchSize": 10,
 		"interval": "50ms",
 		"backoffIntervalMax": "2s",
-		"maxReplicationLag": "22s"
+		"maxReplicationLag": "100ms"
 	},
 	"syslog": {
 		"stdoutlevel": 4,
