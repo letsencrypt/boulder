@@ -76,8 +76,6 @@ type certType int
 const (
 	rootCert certType = iota
 	intermediateCert
-	ocspCert
-	crlCert
 	crossCert
 	requestCert
 )
@@ -153,23 +151,12 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 
 		// BR 7.1.2.10.5 CA Certificate Certificate Policies
-		// OID 2.23.140.1.2.1 is an anyPolicy
+		// OID 2.23.140.1.2.1 is CABF BRs Domain Validated
 		if len(profile.Policies) != 1 || profile.Policies[0].OID != "2.23.140.1.2.1" {
 			return errors.New("policy should be exactly BRs domain-validated for subordinate CAs")
 		}
 	}
 
-	if ct == ocspCert || ct == crlCert {
-		if len(profile.KeyUsages) != 0 {
-			return errors.New("key-usages cannot be set for a delegated signer")
-		}
-		if profile.CRLURL != "" {
-			return errors.New("crl-url cannot be set for a delegated signer")
-		}
-		if profile.OCSPURL != "" {
-			return errors.New("ocsp-url cannot be set for a delegated signer")
-		}
-	}
 	return nil
 }
 
@@ -193,8 +180,6 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 	"CRL Sign":          x509.KeyUsageCRLSign,
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
-
-var oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
 
 func generateSKID(pk []byte) ([]byte, error) {
 	var pkixPublicKey struct {
@@ -252,11 +237,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		}
 		ku |= kuBit
 	}
-	if ct == ocspCert {
-		ku = x509.KeyUsageDigitalSignature
-	} else if ct == crlCert {
-		ku = x509.KeyUsageCRLSign
-	}
 	if ku == 0 {
 		return nil, errors.New("at least one key usage must be set")
 	}
@@ -296,14 +276,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 	// 		BR 7.1.2.1.2 Root CA Extensions
 	// 		Extension 	Presence 	Critical 	Description
 	// 		extKeyUsage 	MUST NOT 	N 	-
-	case ocspCert:
-		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
-		// ASN.1 NULL is 0x05, 0x00
-		ocspNoCheckExt := pkix.Extension{Id: oidOCSPNoCheck, Value: []byte{5, 0}}
-		cert.ExtraExtensions = append(cert.ExtraExtensions, ocspNoCheckExt)
-		cert.IsCA = false
-	case crlCert:
-		cert.IsCA = false
 	case requestCert, intermediateCert:
 		// id-kp-serverAuth is included in intermediate certificates, as required by
 		// Section 7.1.2.10.6 of the CA/BF Baseline Requirements.
@@ -314,6 +286,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 	case crossCert:
 		cert.ExtKeyUsage = tbcs.ExtKeyUsage
 		cert.MaxPathLenZero = tbcs.MaxPathLenZero
+		// The SKID needs to match the previous SKID, no matter how it was computed.
+		cert.SubjectKeyId = tbcs.SubjectKeyId
 	}
 
 	for _, policyConfig := range profile.Policies {
