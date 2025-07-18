@@ -767,12 +767,24 @@ func crossCertCeremony(configBytes []byte) error {
 		return fmt.Errorf("cross-signed subordinate CA's NotBefore predates the existing CA's NotBefore")
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
+	// We want the Extended Key Usages of our cross-signs to be identical to those
+	// in the cert being cross-signed, for the sake of consistency. However, our
+	// Root CA Certificates do not contain any EKUs, as required by BR 7.1.2.1.2.
+	// Therefore, cross-signs of our roots count as "unrestricted" cross-signs per
+	// the definition in BR 7.1.2.2.3, and are subject to the requirement that
+	// the cross-sign's Issuer and Subject fields must either:
+	// - have identical organizationNames; or
+	// - have orgnaizationNames which are affiliates of each other.
+	// Therefore, we enforce that cross-signs with empty EKUs have identical
+	// Subject Organization Name fields... or allow one special case where the
+	// issuer is "Internet Security Research Group" and the subject is "ISRG" to
+	// allow us to migrate from the longer string to the shorter one.
 	if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
 	if len(lintCert.ExtKeyUsage) == 0 {
-		// "Unrestricted" case, the issuer and subject need to be the same or at least affiliates.
-		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) {
+		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) &&
+			!(slices.Equal(issuer.Subject.Organization, []string{"Internet Security Research Group"}) && slices.Equal(lintCert.Subject.Organization, []string{"ISRG"})) {
 			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
 		}
 	}
