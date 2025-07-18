@@ -46,17 +46,17 @@ type revoker interface {
 }
 
 type badKeyRevoker struct {
-	dbMap               *db.WrappedMap
-	maxRevocations      int
-	serialBatchSize     int
-	raClient            revoker
-	logger              blog.Logger
-	clk                 clock.Clock
-	backoffIntervalBase time.Duration
-	backoffIntervalMax  time.Duration
-	backoffFactor       float64
-	backoffTicker       int
-	maxReplicationLag   time.Duration
+	dbMap                     *db.WrappedMap
+	maxRevocations            int
+	serialBatchSize           int
+	raClient                  revoker
+	logger                    blog.Logger
+	clk                       clock.Clock
+	backoffIntervalBase       time.Duration
+	backoffIntervalMax        time.Duration
+	backoffFactor             float64
+	backoffTicker             int
+	maxExpectedReplicationLag time.Duration
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -80,7 +80,7 @@ func (bkr *badKeyRevoker) countUncheckedKeys(ctx context.Context) (int, error) {
 		WHERE extantCertificatesChecked = false AND added < ? - INTERVAL ? SECOND
 		LIMIT ?) AS a`,
 		bkr.clk.Now(),
-		bkr.maxReplicationLag.Seconds(),
+		bkr.maxExpectedReplicationLag.Seconds(),
 		blockedKeysGaugeLimit,
 	)
 	return count, err
@@ -96,7 +96,7 @@ func (bkr *badKeyRevoker) selectUncheckedKey(ctx context.Context) (uncheckedBloc
 		WHERE extantCertificatesChecked = false AND added < ? - INTERVAL ? SECOND
 		LIMIT 1`,
 		bkr.clk.Now(),
-		bkr.maxReplicationLag.Seconds(),
+		bkr.maxExpectedReplicationLag.Seconds(),
 	)
 	return row, err
 }
@@ -295,11 +295,12 @@ type Config struct {
 		// or no work to do.
 		BackoffIntervalMax config.Duration `validate:"-"`
 
-		// MaxReplicationLag specifies the minimum duration bad-key-revoker
-		// should wait before searching for certificates matching a blockedKeys
-		// row. This should be just slightly greater than the database's maximum
-		// replication lag, and always well under 24 hours.
-		MaxReplicationLag config.Duration `validate:"-"`
+		// MaxExpectedReplicationLag specifies the minimum duration
+		// bad-key-revoker should wait before searching for certificates
+		// matching a blockedKeys row. This should be just slightly greater than
+		// the database's maximum replication lag, and always well under 24
+		// hours.
+		MaxExpectedReplicationLag config.Duration `validate:"-"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -342,16 +343,16 @@ func main() {
 	rac := rapb.NewRegistrationAuthorityClient(conn)
 
 	bkr := &badKeyRevoker{
-		dbMap:               dbMap,
-		maxRevocations:      config.BadKeyRevoker.MaximumRevocations,
-		serialBatchSize:     config.BadKeyRevoker.FindCertificatesBatchSize,
-		raClient:            rac,
-		logger:              logger,
-		clk:                 clk,
-		backoffIntervalMax:  config.BadKeyRevoker.BackoffIntervalMax.Duration,
-		backoffIntervalBase: config.BadKeyRevoker.Interval.Duration,
-		backoffFactor:       1.3,
-		maxReplicationLag:   config.BadKeyRevoker.MaxReplicationLag.Duration,
+		dbMap:                     dbMap,
+		maxRevocations:            config.BadKeyRevoker.MaximumRevocations,
+		serialBatchSize:           config.BadKeyRevoker.FindCertificatesBatchSize,
+		raClient:                  rac,
+		logger:                    logger,
+		clk:                       clk,
+		backoffIntervalMax:        config.BadKeyRevoker.BackoffIntervalMax.Duration,
+		backoffIntervalBase:       config.BadKeyRevoker.Interval.Duration,
+		backoffFactor:             1.3,
+		maxExpectedReplicationLag: config.BadKeyRevoker.MaxExpectedReplicationLag.Duration,
 	}
 
 	// If `BackoffIntervalMax` was not set via the config, set it to 60
@@ -367,10 +368,12 @@ func main() {
 		bkr.backoffIntervalBase = time.Second
 	}
 
-	// If `MaxReplicationLag` was not set via the config, then set
-	// `bkr.maxReplicationLag` to a default 22 seconds.
-	if bkr.maxReplicationLag == 0 {
-		bkr.maxReplicationLag = time.Second * 22
+	// If `MaxExpectedReplicationLag` was not set via the config, then set
+	// `bkr.maxExpectedReplicationLag` to a default 22 seconds. This is based on
+	// ProxySQL's max_replication_lag for bad-key-revoker (10s), times two, plus
+	// two seconds.
+	if bkr.maxExpectedReplicationLag == 0 {
+		bkr.maxExpectedReplicationLag = time.Second * 22
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.

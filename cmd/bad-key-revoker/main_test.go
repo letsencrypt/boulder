@@ -55,10 +55,10 @@ func TestSelectUncheckedRows(t *testing.T) {
 	fc := clock.NewFake()
 
 	bkr := &badKeyRevoker{
-		dbMap:             dbMap,
-		logger:            blog.NewMock(),
-		clk:               fc,
-		maxReplicationLag: time.Second * 22,
+		dbMap:                     dbMap,
+		logger:                    blog.NewMock(),
+		clk:                       fc,
+		maxExpectedReplicationLag: time.Second * 22,
 	}
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
@@ -73,7 +73,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
 
 	// insert a blocked key that's due to be checked
-	fc.Set(time.Now().Add(-bkr.maxReplicationLag - time.Second))
+	fc.Set(time.Now().Add(-bkr.maxExpectedReplicationLag - time.Second))
 	insertBlockedRow(t, dbMap, fc, hashB, 1, false)
 	fc.Set(time.Now())
 	// insert a freshly blocked key, so it's not yet due to be checked
@@ -200,11 +200,11 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
 
 	bkr := &badKeyRevoker{
-		dbMap:             dbMap,
-		serialBatchSize:   1,
-		maxRevocations:    10,
-		clk:               fc,
-		maxReplicationLag: time.Second * 22,
+		dbMap:                     dbMap,
+		serialBatchSize:           1,
+		maxRevocations:            10,
+		clk:                       fc,
+		maxExpectedReplicationLag: time.Second * 22,
 	}
 	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
 	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
@@ -222,11 +222,11 @@ func TestFindUnrevoked(t *testing.T) {
 	regID := insertRegistration(t, dbMap, fc)
 
 	bkr := &badKeyRevoker{
-		dbMap:             dbMap,
-		serialBatchSize:   1,
-		maxRevocations:    10,
-		clk:               fc,
-		maxReplicationLag: time.Second * 22,
+		dbMap:                     dbMap,
+		serialBatchSize:           1,
+		maxRevocations:            10,
+		clk:                       fc,
+		maxExpectedReplicationLag: time.Second * 22,
 	}
 
 	hashA := randHash(t)
@@ -294,19 +294,19 @@ func TestCertificateAbsent(t *testing.T) {
 
 	fc := clock.NewFake()
 	bkr := &badKeyRevoker{
-		dbMap:             dbMap,
-		maxRevocations:    1,
-		serialBatchSize:   1,
-		raClient:          &mockRevoker{},
-		logger:            blog.NewMock(),
-		clk:               fc,
-		maxReplicationLag: time.Second * 22,
+		dbMap:                     dbMap,
+		maxRevocations:            1,
+		serialBatchSize:           1,
+		raClient:                  &mockRevoker{},
+		logger:                    blog.NewMock(),
+		clk:                       fc,
+		maxExpectedReplicationLag: time.Second * 22,
 	}
 
 	// populate DB with all the test data
 	regIDA := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
-	fc.Set(time.Now().Add(-bkr.maxReplicationLag - time.Second))
+	fc.Set(time.Now().Add(-bkr.maxExpectedReplicationLag - time.Second))
 	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
 	fc.Set(time.Now())
 
@@ -336,13 +336,13 @@ func TestInvoke(t *testing.T) {
 
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{
-		dbMap:             dbMap,
-		maxRevocations:    10,
-		serialBatchSize:   1,
-		raClient:          mr,
-		logger:            blog.NewMock(),
-		clk:               fc,
-		maxReplicationLag: time.Second * 22,
+		dbMap:                     dbMap,
+		maxRevocations:            10,
+		serialBatchSize:           1,
+		raClient:                  mr,
+		logger:                    blog.NewMock(),
+		clk:                       fc,
+		maxExpectedReplicationLag: time.Second * 22,
 	}
 
 	// populate DB with all the test data
@@ -351,7 +351,7 @@ func TestInvoke(t *testing.T) {
 	regIDC := insertRegistration(t, dbMap, fc)
 	regIDD := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
-	fc.Set(time.Now().Add(-bkr.maxReplicationLag - time.Second))
+	fc.Set(time.Now().Add(-bkr.maxExpectedReplicationLag - time.Second))
 	insertBlockedRow(t, dbMap, fc, hashA, regIDC, false)
 	fc.Set(time.Now())
 	insertGoodCert(t, dbMap, fc, hashA, "ff", regIDA)
@@ -374,7 +374,7 @@ func TestInvoke(t *testing.T) {
 
 	// add a row with no associated valid certificates
 	hashB := randHash(t)
-	fc.Set(time.Now().Add(-bkr.maxReplicationLag - time.Second))
+	fc.Set(time.Now().Add(-bkr.maxExpectedReplicationLag - time.Second))
 	insertBlockedRow(t, dbMap, fc, hashB, regIDC, false)
 	fc.Set(time.Now())
 	insertCert(t, dbMap, fc, hashB, "bb", regIDA, Expired, Revoked)
@@ -407,12 +407,12 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{dbMap: dbMap,
-		maxRevocations:    10,
-		serialBatchSize:   1,
-		raClient:          mr,
-		logger:            blog.NewMock(),
-		clk:               fc,
-		maxReplicationLag: time.Second * 22,
+		maxRevocations:            10,
+		serialBatchSize:           1,
+		raClient:                  mr,
+		logger:                    blog.NewMock(),
+		clk:                       fc,
+		maxExpectedReplicationLag: time.Second * 22,
 	}
 
 	// populate DB with all the test data
@@ -422,7 +422,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 
 	hashA := randHash(t)
 
-	fc.Set(time.Now().Add(-bkr.maxReplicationLag - time.Second))
+	fc.Set(time.Now().Add(-bkr.maxExpectedReplicationLag - time.Second))
 	insertBlockedRow(t, dbMap, fc, hashA, regIDA, false)
 	fc.Set(time.Now())
 
