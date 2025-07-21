@@ -45,14 +45,10 @@ func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, hash [
 	test.AssertNotError(t, err, "failed to add test row")
 }
 
-func fcAdd(clk clock.Clock, dur time.Duration) clock.FakeClock {
-	fc := clock.NewFake()
-	fc.Set(clk.Now().Add(dur))
-	return fc
-}
-
 func fcBeforeRepLag(clk clock.Clock, bkr *badKeyRevoker) clock.FakeClock {
-	return fcAdd(clk, -bkr.maxExpectedReplicationLag-time.Second)
+	fc := clock.NewFake()
+	fc.Set(clk.Now().Add(-bkr.maxExpectedReplicationLag - time.Second))
+	return fc
 }
 
 func TestSelectUncheckedRows(t *testing.T) {
