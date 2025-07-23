@@ -31,6 +31,23 @@
 		"unpauseHMACKey": {
 			"keyFile": "test/secrets/sfe_unpause_key"
 		},
+		"zendesk": {
+			"baseURL": "https://letsencrypt.zendesk.com",
+			"tokenEmail": "samantha@letsencrypt.org",
+			"token": {
+				"passwordFile": "test/secrets/sfe_zendesk_token"
+			},
+			"customFields": {
+				"organization": 37694426404251,
+				"tier": 37694290350235,
+				"rateLimit": 38979366705307,
+				"reviewStatus": 37694722659739,
+				"fundraising": 39296843763739,
+				"accountURI": 38842113530395,
+				"registeredDomain": 38842336152603,
+				"ipAddress": 38842329043739
+			}
+		},
 		"features": {}
 	},
 	"syslog": {
