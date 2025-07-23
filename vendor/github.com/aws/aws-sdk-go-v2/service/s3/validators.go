@@ -1830,6 +1830,26 @@ func (m *validateOpPutPublicAccessBlock) HandleInitialize(ctx context.Context, i
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpRenameObject struct {
+}
+
+func (*validateOpRenameObject) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpRenameObject) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*RenameObjectInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpRenameObjectInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpRestoreObject struct {
 }
 
@@ -2294,6 +2314,10 @@ func addOpPutPublicAccessBlockValidationMiddleware(stack *middleware.Stack) erro
 	return stack.Initialize.Add(&validateOpPutPublicAccessBlock{}, middleware.After)
 }
 
+func addOpRenameObjectValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpRenameObject{}, middleware.After)
+}
+
 func addOpRestoreObjectValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpRestoreObject{}, middleware.After)
 }
@@ -2532,6 +2556,23 @@ func validateCORSRules(v []types.CORSRule) error {
 	for i := range v {
 		if err := validateCORSRule(&v[i]); err != nil {
 			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateCreateBucketConfiguration(v *types.CreateBucketConfiguration) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateBucketConfiguration"}
+	if v.Tags != nil {
+		if err := validateTagSet(v.Tags); err != nil {
+			invalidParams.AddNested("Tags", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {
@@ -4034,6 +4075,11 @@ func validateOpCreateBucketInput(v *CreateBucketInput) error {
 	invalidParams := smithy.InvalidParamsError{Context: "CreateBucketInput"}
 	if v.Bucket == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("Bucket"))
+	}
+	if v.CreateBucketConfiguration != nil {
+		if err := validateCreateBucketConfiguration(v.CreateBucketConfiguration); err != nil {
+			invalidParams.AddNested("CreateBucketConfiguration", err.(smithy.InvalidParamsError))
+		}
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -5571,6 +5617,27 @@ func validateOpPutPublicAccessBlockInput(v *PutPublicAccessBlockInput) error {
 	}
 	if v.PublicAccessBlockConfiguration == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("PublicAccessBlockConfiguration"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpRenameObjectInput(v *RenameObjectInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "RenameObjectInput"}
+	if v.Bucket == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Bucket"))
+	}
+	if v.Key == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Key"))
+	}
+	if v.RenameSource == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("RenameSource"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams

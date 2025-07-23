@@ -416,9 +416,9 @@ type CertificateStatus struct {
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
 	// NotAfter and IsExpired are convenience columns which allow expensive
-	// queries to quickly filter out certificates that we don't need to care about
-	// anymore. These are particularly useful for the expiration mailer and CRL
-	// updater. See https://github.com/letsencrypt/boulder/issues/1864.
+	// queries to quickly filter out certificates that we don't need to care
+	// about anymore. These are particularly useful for the CRL updater. See
+	// https://github.com/letsencrypt/boulder/issues/1864.
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 

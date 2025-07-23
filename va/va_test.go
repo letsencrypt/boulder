@@ -27,10 +27,10 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -108,7 +108,7 @@ func isNonLoopbackReservedIP(ip netip.Addr) error {
 	if loopbackV4.Contains(ip) || loopbackV6.Contains(ip) {
 		return nil
 	}
-	return policy.IsReservedIP(ip)
+	return iana.IsReservedAddr(ip)
 }
 
 // setup returns an in-memory VA and a mock logger. The default resolver client

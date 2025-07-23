@@ -149,6 +149,9 @@ type ListObjectsV2Input struct {
 
 	// A delimiter is a character that you use to group keys.
 	//
+	// CommonPrefixes is filtered out from results if it is not lexicographically
+	// greater than the StartAfter value.
+	//
 	//   - Directory buckets - For directory buckets, / is the only supported delimiter.
 	//
 	//   - Directory buckets - When you query ListObjectsV2 with a delimiter during
@@ -263,8 +266,7 @@ type ListObjectsV2Output struct {
 
 	//  If ContinuationToken was sent with the request, it is included in the
 	// response. You can use the returned ContinuationToken for pagination of the list
-	// response. You can use this ContinuationToken for pagination of the list
-	// results.
+	// response.
 	ContinuationToken *string
 
 	// Causes keys that contain the same string between the prefix and the first

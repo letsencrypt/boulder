@@ -37,6 +37,7 @@ var (
 	invalidEmailPresent = berrors.BadCSRError("CSR contains one or more email address fields")
 	invalidURIPresent   = berrors.BadCSRError("CSR contains one or more URI fields")
 	invalidNoIdent      = berrors.BadCSRError("at least one identifier is required")
+	invalidIPCN         = berrors.BadCSRError("CSR contains IP address in Common Name")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. It uses
@@ -69,6 +70,16 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidURIPresent
 	}
 
+	// Reject all CSRs which have an IP address in the CN. We want to get rid of
+	// CNs entirely anyway, and IP addresses are a new feature, so don't let
+	// clients get in the habit of including them in the CN. We don't use
+	// CNFromCSR here because that also filters out IP address CNs, for defense
+	// in depth.
+	_, err = netip.ParseAddr(csr.Subject.CommonName)
+	if err == nil { // Inverted! Successful parsing is a bad thing in this case.
+		return invalidIPCN
+	}
+
 	// FromCSR also performs normalization, returning values that may not match
 	// the literal CSR contents.
 	idents := identifier.FromCSR(csr)
@@ -98,7 +109,7 @@ func CNFromCSR(csr *x509.CertificateRequest) string {
 
 	if csr.Subject.CommonName != "" {
 		_, err := netip.ParseAddr(csr.Subject.CommonName)
-		if err == nil { // inverted; we're looking for successful parsing here
+		if err == nil { // Inverted! Successful parsing is a bad thing in this case.
 			return ""
 		}
 

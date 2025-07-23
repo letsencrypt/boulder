@@ -21,9 +21,9 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/policy"
 )
 
 // ResolverAddrs contains DNS resolver(s) that were chosen to perform a
@@ -396,7 +396,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 				a, ok := answer.(*dns.A)
 				if ok && a.A.To4() != nil {
 					netIP, ok := netip.AddrFromSlice(a.A)
-					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
+					if ok && (iana.IsReservedAddr(netIP) == nil || dnsClient.allowRestrictedAddresses) {
 						addrsA = append(addrsA, netIP)
 					}
 				}
@@ -414,7 +414,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 				aaaa, ok := answer.(*dns.AAAA)
 				if ok && aaaa.AAAA.To16() != nil {
 					netIP, ok := netip.AddrFromSlice(aaaa.AAAA)
-					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
+					if ok && (iana.IsReservedAddr(netIP) == nil || dnsClient.allowRestrictedAddresses) {
 						addrsAAAA = append(addrsAAAA, netIP)
 					}
 				}

@@ -120,7 +120,7 @@ func TestLoadSigner(t *testing.T) {
 		{"invalid key file", IssuerLoc{File: "../test/hierarchy/int-e1.crl.pem"}, "unable to parse"},
 		{"ECDSA key file", IssuerLoc{File: "../test/hierarchy/int-e1.key.pem"}, ""},
 		{"RSA key file", IssuerLoc{File: "../test/hierarchy/int-r3.key.pem"}, ""},
-		{"invalid config file", IssuerLoc{ConfigFile: "../test/hostname-policy.yaml"}, "invalid character"},
+		{"invalid config file", IssuerLoc{ConfigFile: "../test/ident-policy.yaml"}, "invalid character"},
 		// Note that we don't have a test for "valid config file" because it would
 		// always fail -- in CI, the softhsm hasn't been initialized, so there's no
 		// key to look up; locally even if the softhsm has been initialized, the

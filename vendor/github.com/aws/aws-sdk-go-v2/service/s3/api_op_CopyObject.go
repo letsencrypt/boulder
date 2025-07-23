@@ -15,6 +15,18 @@ import (
 	"time"
 )
 
+// End of support notice: Beginning October 1, 2025, Amazon S3 will discontinue
+// support for creating new Email Grantee Access Control Lists (ACL). Email Grantee
+// ACLs created prior to this date will continue to work and remain accessible
+// through the Amazon Web Services Management Console, Command Line Interface
+// (CLI), SDKs, and REST API. However, you will no longer be able to create new
+// Email Grantee ACLs.
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
+// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
+// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
+//
 // Creates a copy of an object that is already stored in Amazon S3.
 //
 // You can store individual objects of up to 5 TB in Amazon S3. You create a copy
@@ -683,6 +695,13 @@ type CopyObjectInput struct {
 	//   the same customer managed key that you specified for the directory bucket's
 	//   default encryption configuration.
 	//
+	//   - S3 access points for Amazon FSx - When accessing data stored in Amazon FSx
+	//   file systems using S3 access points, the only valid server side encryption
+	//   option is aws:fsx . All Amazon FSx file systems have encryption configured by
+	//   default and are encrypted at rest. Data is automatically encrypted before being
+	//   written to the file system, and automatically decrypted as it is read. These
+	//   processes are handled transparently by Amazon FSx.
+	//
 	// [Using Server-Side Encryption]: https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html
 	// [Specifying server-side encryption with KMS for new object uploads]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html
 	// [customer managed key]: https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#customer-cmk
@@ -884,7 +903,10 @@ type CopyObjectOutput struct {
 	SSEKMSKeyId *string
 
 	// The server-side encryption algorithm used when you store this object in Amazon
-	// S3 (for example, AES256 , aws:kms , aws:kms:dsse ).
+	// S3 or Amazon FSx.
+	//
+	// When accessing data stored in Amazon FSx file systems using S3 access points,
+	// the only valid server side encryption option is aws:fsx .
 	ServerSideEncryption types.ServerSideEncryption
 
 	// Version ID of the newly created copy.

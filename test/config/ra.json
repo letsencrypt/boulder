@@ -26,7 +26,7 @@
 		},
 		"maxContactsPerRegistration": 3,
 		"debugAddr": ":8002",
-		"hostnamePolicyFile": "test/hostname-policy.yaml",
+		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"goodkey": {},
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",
@@ -61,7 +61,8 @@
 				"orderLifetime": "7h",
 				"maxNames": 10,
 				"identifierTypes": [
-					"dns"
+					"dns",
+					"ip"
 				]
 			}
 		},
@@ -193,7 +194,8 @@
 			"tls-alpn-01": true
 		},
 		"identifiers": {
-			"dns": true
+			"dns": true,
+			"ip": true
 		}
 	},
 	"syslog": {

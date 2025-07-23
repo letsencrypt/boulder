@@ -167,7 +167,6 @@ func TestValidationResult(t *testing.T) {
 }
 
 func TestRegistration(t *testing.T) {
-	contacts := []string{"email"}
 	var key jose.JSONWebKey
 	err := json.Unmarshal([]byte(`
 		{
@@ -181,7 +180,6 @@ func TestRegistration(t *testing.T) {
 	inReg := core.Registration{
 		ID:        1,
 		Key:       &key,
-		Contact:   &contacts,
 		Agreement: "yup",
 		CreatedAt: &createdAt,
 		Status:    core.StatusValid,
@@ -192,28 +190,9 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "PbToRegistration failed")
 	test.AssertDeepEquals(t, inReg, outReg)
 
-	inReg.Contact = nil
-	pbReg, err = RegistrationToPB(inReg)
-	test.AssertNotError(t, err, "registrationToPB failed")
-	pbReg.Contact = []string{}
-	outReg, err = PbToRegistration(pbReg)
-	test.AssertNotError(t, err, "PbToRegistration failed")
-	test.AssertDeepEquals(t, inReg, outReg)
-
-	var empty []string
-	inReg.Contact = &empty
-	pbReg, err = RegistrationToPB(inReg)
-	test.AssertNotError(t, err, "registrationToPB failed")
-	outReg, err = PbToRegistration(pbReg)
-	test.AssertNotError(t, err, "PbToRegistration failed")
-	if outReg.Contact != nil {
-		t.Errorf("Empty contacts should be a nil slice")
-	}
-
 	inRegNilCreatedAt := core.Registration{
 		ID:        1,
 		Key:       &key,
-		Contact:   &contacts,
 		Agreement: "yup",
 		CreatedAt: nil,
 		Status:    core.StatusValid,

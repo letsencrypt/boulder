@@ -5,7 +5,7 @@
 			"certFile": "test/certs/ipki/ca.boulder/cert.pem",
 			"keyFile": "test/certs/ipki/ca.boulder/key.pem"
 		},
-		"hostnamePolicyFile": "test/hostname-policy.yaml",
+		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"grpcCA": {
 			"maxConnectionAge": "30s",
 			"address": ":9093",
@@ -55,7 +55,11 @@
 		"issuance": {
 			"certProfiles": {
 				"legacy": {
-					"allowMustStaple": true,
+					"allowMustStaple": false,
+					"omitCommonName": false,
+					"omitKeyEncipherment": false,
+					"omitClientAuth": false,
+					"omitSKID": false,
 					"omitOCSP": true,
 					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "7776000s",
@@ -63,26 +67,12 @@
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
 						"w_subject_common_name_included",
+						"e_dnsname_not_valid_tld",
 						"w_ext_subject_key_identifier_not_recommended_subscriber"
 					]
 				},
-				"modern": {
-					"allowMustStaple": true,
-					"omitCommonName": true,
-					"omitKeyEncipherment": true,
-					"omitClientAuth": true,
-					"omitSKID": true,
-					"omitOCSP": true,
-					"includeCRLDistributionPoints": true,
-					"maxValidityPeriod": "583200s",
-					"maxValidityBackdate": "1h5m",
-					"lintConfig": "test/config-next/zlint.toml",
-					"ignoredLints": [
-						"w_ext_subject_key_identifier_missing_sub_cert"
-					]
-				},
 				"shortlived": {
-					"allowMustStaple": true,
+					"allowMustStaple": false,
 					"omitCommonName": true,
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
@@ -93,7 +83,24 @@
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
-						"w_ext_subject_key_identifier_missing_sub_cert"
+						"w_ext_subject_key_identifier_missing_sub_cert",
+						"e_dnsname_not_valid_tld"
+					]
+				},
+				"modern": {
+					"allowMustStaple": false,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"omitOCSP": true,
+					"includeCRLDistributionPoints": true,
+					"maxValidityPeriod": "583200s",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert",
+						"e_dnsname_not_valid_tld"
 					]
 				}
 			},
@@ -193,7 +200,8 @@
 			"tls-alpn-01": true
 		},
 		"identifiers": {
-			"dns": true
+			"dns": true,
+			"ip": true
 		}
 	},
 	"syslog": {

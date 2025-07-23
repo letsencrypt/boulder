@@ -3,10 +3,10 @@ module github.com/letsencrypt/boulder
 go 1.24.0
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.36.4
-	github.com/aws/aws-sdk-go-v2/config v1.29.16
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.80.2
-	github.com/aws/smithy-go v1.22.2
+	github.com/aws/aws-sdk-go-v2 v1.36.5
+	github.com/aws/aws-sdk-go-v2/config v1.29.17
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.83.0
+	github.com/aws/smithy-go v1.22.4
 	github.com/eggsampler/acme/v3 v3.6.2
 	github.com/go-jose/go-jose/v4 v4.1.0
 	github.com/go-logr/stdr v1.2.2
@@ -25,7 +25,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.1
 	github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
-	github.com/redis/go-redis/v9 v9.7.3
+	github.com/redis/go-redis/v9 v9.10.0
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.40.3-0.20250307081557-c05521c3453a
 	github.com/zmap/zcrypto v0.0.0-20250129210703-03c45d0bae98
@@ -49,20 +49,20 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.69 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.31 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.35 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.35 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.11 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.70 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.32 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.36 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.36 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.35 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.7.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.16 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.16 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.25.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.30.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.33.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.36 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.7.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.25.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.30.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.34.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

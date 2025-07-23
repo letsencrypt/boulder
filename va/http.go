@@ -338,6 +338,10 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 
 	reqIP, err := netip.ParseAddr(reqHost)
 	if err == nil {
+		// Reject IPv6 addresses with a scope zone (RFCs 4007 & 6874)
+		if reqIP.Zone() != "" {
+			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: contains scope zone")
+		}
 		err := va.isReservedIPFunc(reqIP)
 		if err != nil {
 			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: %s", err)
@@ -391,8 +395,14 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 				"host %q has no IP addresses remaining to use",
 				target.host)
 	}
-	// TODO(#8041): This could be a good place for a backstop check for reserved IP
-	// addresses.
+
+	// This is a backstop check to avoid connecting to reserved IP addresses.
+	// They should have been caught and excluded by `bdns.LookupHost`.
+	err := va.isReservedIPFunc(targetIP)
+	if err != nil {
+		return nil, record, err
+	}
+
 	record.AddressUsed = targetIP
 
 	dialer := &preresolvedDialer{

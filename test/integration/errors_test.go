@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -48,19 +49,6 @@ func TestTooBigOrderError(t *testing.T) {
 func TestAccountEmailError(t *testing.T) {
 	t.Parallel()
 
-	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
-	// the prefix "mailto:" and the suffix "@a.com" makes exactly 191 bytes of
-	// encoded JSON. The correct size to hit our maximum DB field length.
-	var longStringBuf strings.Builder
-	longStringBuf.WriteString("mailto:")
-	for range 175 {
-		longStringBuf.WriteRune('a')
-	}
-	longStringBuf.WriteString("@a.com")
-
-	createErrorPrefix := "Error creating new account :: "
-	updateErrorPrefix := "Unable to update account :: invalid contact: "
-
 	testCases := []struct {
 		name               string
 		contacts           []string
@@ -93,9 +81,9 @@ func TestAccountEmailError(t *testing.T) {
 		},
 		{
 			name:               "too many contacts",
-			contacts:           []string{"a", "b", "c", "d"},
+			contacts:           slices.Repeat([]string{"mailto:lots@valid.com"}, 11),
 			expectedProbType:   "urn:ietf:params:acme:error:malformed",
-			expectedProbDetail: `too many contacts provided: 4 > 3`,
+			expectedProbDetail: `too many contacts provided`,
 		},
 		{
 			name:               "invalid contact",
@@ -121,41 +109,19 @@ func TestAccountEmailError(t *testing.T) {
 			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: "contact email has invalid domain: Domain name contains an invalid character",
 		},
-		{
-			name: "too long contact",
-			contacts: []string{
-				longStringBuf.String(),
-			},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
-			expectedProbDetail: `too many/too long contact(s). Please use shorter or fewer email addresses`,
-		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// First try registering a new account and ensuring the expected problem occurs
 			var prob acme.Problem
 			_, err := makeClient(tc.contacts...)
 			if err != nil {
 				test.AssertErrorWraps(t, err, &prob)
 				test.AssertEquals(t, prob.Type, tc.expectedProbType)
-				test.AssertEquals(t, prob.Detail, createErrorPrefix+tc.expectedProbDetail)
+				test.AssertContains(t, prob.Detail, "Error validating contact(s)")
+				test.AssertContains(t, prob.Detail, tc.expectedProbDetail)
 			} else {
 				t.Errorf("expected %s type problem for %q, got nil",
-					tc.expectedProbType, strings.Join(tc.contacts, ","))
-			}
-
-			// Next try making a client with a good contact and updating with the test
-			// case contact info. The same problem should occur.
-			c, err := makeClient("mailto:valid@valid.com")
-			test.AssertNotError(t, err, "failed to create account with valid contact")
-			_, err = c.UpdateAccount(c.Account, tc.contacts...)
-			if err != nil {
-				test.AssertErrorWraps(t, err, &prob)
-				test.AssertEquals(t, prob.Type, tc.expectedProbType)
-				test.AssertEquals(t, prob.Detail, updateErrorPrefix+tc.expectedProbDetail)
-			} else {
-				t.Errorf("expected %s type problem after updating account to %q, got nil",
 					tc.expectedProbType, strings.Join(tc.contacts, ","))
 			}
 		})
