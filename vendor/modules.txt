@@ -259,10 +259,10 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redis/go-redis/extra/rediscmd/v9 v9.5.3
+# github.com/redis/go-redis/extra/rediscmd/v9 v9.10.0
 ## explicit; go 1.19
 github.com/redis/go-redis/extra/rediscmd/v9
-# github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
+# github.com/redis/go-redis/extra/redisotel/v9 v9.10.0
 ## explicit; go 1.19
 github.com/redis/go-redis/extra/redisotel/v9
 # github.com/redis/go-redis/v9 v9.10.0
