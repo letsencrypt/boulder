@@ -429,16 +429,6 @@ type CertificateStatus struct {
 	IssuerNameID int64 `db:"issuerID"`
 }
 
-// FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames
-// contained in a certificate.
-type FQDNSet struct {
-	ID      int64
-	SetHash []byte
-	Serial  string
-	Issued  time.Time
-	Expires time.Time
-}
-
 // SCTDERs is a convenience type
 type SCTDERs [][]byte
 
