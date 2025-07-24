@@ -159,6 +159,7 @@
 		"features": {
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
+			"DNSAccount01Enabled": true,
 			"NoPendingAuthzReuse": true
 		},
 		"ctLogs": {
@@ -190,7 +191,8 @@
 		"challenges": {
 			"http-01": true,
 			"dns-01": true,
-			"tls-alpn-01": true
+			"tls-alpn-01": true,
+			"dns-account-01": true
 		},
 		"identifiers": {
 			"dns": true,
