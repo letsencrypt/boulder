@@ -901,6 +901,16 @@ type crlEntryModel struct {
 	RevokedDate   time.Time         `db:"revokedDate"`
 }
 
+// fqdnSet contains the SHA256 hash of the lowercased, comma joined dNSNames
+// contained in a certificate.
+type fqdnSet struct {
+	ID      int64
+	SetHash []byte
+	Serial  string
+	Issued  time.Time
+	Expires time.Time
+}
+
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
 // from a new-order request, along with the corresponding orderID, the
 // registration ID, and the order expiry. This is used to find
@@ -914,7 +924,7 @@ type orderFQDNSet struct {
 }
 
 func addFQDNSet(ctx context.Context, db db.Inserter, idents identifier.ACMEIdentifiers, serial string, issued time.Time, expires time.Time) error {
-	return db.Insert(ctx, &core.FQDNSet{
+	return db.Insert(ctx, &fqdnSet{
 		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial,
 		Issued:  issued,
