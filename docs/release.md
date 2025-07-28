@@ -34,13 +34,16 @@ considered a guideline for normal releases but not a strict contract.
 
 ## Release Structure
 
-All releases are tagged with a tag of the form `release-YYYY-MM-DD[x]`, where
-the `YYYY-MM-DD` is the date that the initial release is cut (usually the Monday
-of the current week), and the `[x]` is an optional lowercase letter suffix
-indicating that the release is an incremental hotfix release. For example, the
-second hotfix release (i.e. third release overall) in the third week of January
-2022 was
-[`release-2022-01-18b`](https://github.com/letsencrypt/boulder/releases/tag/release-2022-01-18b).
+As of 2025-06-30, releases are tagged with a tag of the form `v0.YYYYMMDD.N`, where
+the `YYYYMMDD` is the date that the initial release is cut (usually the Monday
+of the current week), and `N` is an integer indicating the hotfix number,
+starting at `0`. For example, a regular release might be `v0.20250707.0`, and
+the first hotfix for that release would be `v0.20250707.1`.
+
+Historically, releases were tagged with the form `release-YYYY-MM-DD[x]`, where
+`[x]` was an optional lowercase letter suffix for hotfixes. For example, the
+second hotfix release (i.e. third release overall) in the third week of
+January 2022 was [`release-2022-01-18b`](https://github.com/letsencrypt/boulder/releases/tag/release-2022-01-18b).
 
 All release tags are signed with a key associated with a Boulder developer. Tag
 signatures are automatically verified by GitHub using the public keys that
@@ -75,9 +78,8 @@ tag message to just be a slightly more readable version of the tag name.
 
 ### Regular Releases
 
-Simply create a signed tag whose name and message both include the date that the
-release is being tagged (not the date that the release is expected to be
-deployed):
+Simply create a signed tag. The `release/tag` tool will automatically
+determine the correct tag name based on the current date.
 
 ```sh
 go run github.com/letsencrypt/boulder/tools/release/tag@main
