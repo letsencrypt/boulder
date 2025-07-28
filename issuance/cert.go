@@ -142,10 +142,10 @@ func (p *Profile) GenerateValidity(now time.Time) (time.Time, time.Time) {
 	// Don't use the full maxBackdate, to ensure that the actual backdate remains
 	// acceptable throughout the rest of the issuance process.
 	backdate := time.Duration(float64(p.maxBackdate.Nanoseconds()) * 0.9)
-	notBefore := now.Add(-1 * backdate)
+	notBefore := now.Add(-1 * backdate).Truncate(time.Second)
 	// Subtract one second, because certificate validity periods are *inclusive*
 	// of their final second (Baseline Requirements, Section 1.6.1).
-	notAfter := notBefore.Add(p.maxValidity).Add(-1 * time.Second)
+	notAfter := notBefore.Add(p.maxValidity).Add(-1 * time.Second).Truncate(time.Second)
 	return notBefore, notAfter
 }
 
