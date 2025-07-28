@@ -1,7 +1,6 @@
 # Boulder Release Process
 
-A description and demonstration of the full process for tagging a normal weekly
-release, a "clean" hotfix release, and a "dirty" hotfix release.
+A description and demonstration of the full process for tagging a normal weekly release and a hotfix release.
 
 Once a release is tagged, it will be generally deployed to
 [staging](https://letsencrypt.org/docs/staging-environment/) and then to
