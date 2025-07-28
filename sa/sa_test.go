@@ -2661,6 +2661,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		test.AssertNotError(t, err, "failed to insert valid authz with dns-account-01")
 		dac = am.ID
 	}
+
 	for _, tc := range []struct {
 		name        string
 		regID       int64
