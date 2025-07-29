@@ -2129,6 +2129,37 @@ func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Se
 	return &sapb.Incidents{}, nil
 }
 
+type mockSAWithSerialMetadata struct {
+	sapb.StorageAuthorityReadOnlyClient
+}
+
+func (sa *mockSAWithSerialMetadata) GetSerialMetadata(ctx context.Context, serial *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	return &sapb.SerialMetadata{
+		Expires: timestamppb.New(time.Date(2025, 7, 29, 0, 0, 0, 0, time.UTC)),
+	}, nil
+}
+
+func TestGetCertInfo(t *testing.T) {
+	wfe, _, _ := setupWFE(t)
+	wfe.sa = &mockSAWithSerialMetadata{}
+	responseWriter := httptest.NewRecorder()
+
+	wfe.CertificateInfo(context.Background(), newRequestEvent(), responseWriter, &http.Request{
+		Method: "GET",
+		URL:    &url.URL{Path: "aabbccddeeffaabbccddeeff000102030405"},
+	})
+
+	if responseWriter.Code != http.StatusOK {
+		t.Errorf("got HTTP status code %d, want %d", responseWriter.Code, http.StatusOK)
+	}
+	expected := `{
+  "notAfter": "2025-07-29T00:00:00Z"
+}`
+	if responseWriter.Body.String() != expected {
+		t.Errorf("got response body %q, want %q", responseWriter.Body.String(), expected)
+	}
+}
+
 func TestGetCertificate(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 	wfe.sa = newMockSAWithCert(t, wfe.sa)

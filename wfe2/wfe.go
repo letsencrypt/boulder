@@ -1636,11 +1636,12 @@ func (wfe *WebFrontEndImpl) Authorization(
 func (wfe *WebFrontEndImpl) CertificateInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	serial := request.URL.Path
 	if !core.ValidSerial(serial) {
+		fmt.Println("oh no ", serial, "x")
 		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		return
 	}
 	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error getting certificate metadata"), err)
 			return
@@ -1651,7 +1652,7 @@ func (wfe *WebFrontEndImpl) CertificateInfo(ctx context.Context, logEvent *web.R
 	}{
 		NotAfter: metadata.Expires.AsTime(),
 	}
-	wfe.writeJsonResponse(response, logEvent, http.StatusOK, certInfoStruct)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, certInfoStruct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling certInfoStruct"), err)
 		return
