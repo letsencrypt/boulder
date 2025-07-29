@@ -54,7 +54,7 @@ func NewOrdersPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, u
 	)
 }
 
-func CreateCertificatesPerDomainOverrideTicket(client *zendesk.Client, requesterEmail, useCase, fundraising, organization, tier, registeredDomainOrIP string) (int64, error) {
+func CreateCertificatesPerDomainOverrideTicket(client *zendesk.Client, requesterEmail, useCase, fundraising, organization, tier, registeredDomain, ipAddress string) (int64, error) {
 	return client.CreateTicket(
 		requesterEmail,
 		makeSubject(rl.NewOrdersPerAccount, organization),
@@ -65,7 +65,8 @@ func CreateCertificatesPerDomainOverrideTicket(client *zendesk.Client, requester
 			OrganizationFieldName:     organization,
 			FundraisingFieldName:      fundraising,
 			TierFieldName:             tier,
-			RegisteredDomainFieldName: registeredDomainOrIP,
+			RegisteredDomainFieldName: registeredDomain,
+			IPAddressFieldName:        ipAddress,
 		},
 	)
 }
