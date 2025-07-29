@@ -1642,10 +1642,8 @@ func (wfe *WebFrontEndImpl) CertificateInfo(ctx context.Context, logEvent *web.R
 	}
 	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		if err != nil {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error getting certificate metadata"), err)
-			return
-		}
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error getting certificate metadata"), err)
+		return
 	}
 	certInfoStruct := struct {
 		NotAfter time.Time `json:"notAfter"`
