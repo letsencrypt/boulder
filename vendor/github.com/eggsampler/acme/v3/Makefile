@@ -60,10 +60,11 @@ boulder_setup:
 	-git clone --depth 1 https://github.com/letsencrypt/boulder.git $(BOULDER_PATH)
 	(cd $(BOULDER_PATH); git checkout -f main && git reset --hard HEAD && git pull -q)
 	make boulder_stop
+	(cd $(BOULDER_PATH); docker compose run --rm bsetup)
 
 # runs an instance of boulder
 boulder_start:
-	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f docker-compose.boulder-temp.yml up -d
+	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml up -d
 
 # waits until boulder responds
 boulder_wait:

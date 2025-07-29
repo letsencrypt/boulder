@@ -2632,6 +2632,36 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		aaa = am.ID
 	}
 
+	var dac int64
+	{
+		tokenStr := core.NewToken()
+		token, err := base64.RawURLEncoding.DecodeString(tokenStr)
+		test.AssertNotError(t, err, "computing test authorization challenge token")
+
+		profile := "test"
+		attempted := challTypeToUint[string(core.ChallengeTypeDNSAccount01)]
+		attemptedAt := fc.Now()
+		vr, _ := json.Marshal([]core.ValidationRecord{})
+
+		am := authzModel{
+			IdentifierType:         identifierTypeToUint[string(identifier.TypeDNS)],
+			IdentifierValue:        "aaa",
+			RegistrationID:         3,
+			CertificateProfileName: &profile,
+			Status:                 statusToUint[core.StatusValid],
+			Expires:                fc.Now().Add(24 * time.Hour),
+			Challenges:             1 << challTypeToUint[string(core.ChallengeTypeDNSAccount01)],
+			Attempted:              &attempted,
+			AttemptedAt:            &attemptedAt,
+			Token:                  token,
+			ValidationError:        nil,
+			ValidationRecord:       vr,
+		}
+		err = sa.dbMap.Insert(context.Background(), &am)
+		test.AssertNotError(t, err, "failed to insert valid authz with dns-account-01")
+		dac = am.ID
+	}
+
 	for _, tc := range []struct {
 		name        string
 		regID       int64
@@ -2647,6 +2677,14 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			profile:     "test",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{aaa},
+		},
+		{
+			name:        "happy path, dns-account-01 challenge",
+			regID:       3,
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
+			profile:     "test",
+			validUntil:  fc.Now().Add(time.Hour),
+			wantIDs:     []int64{dac},
 		},
 		{
 			name:        "different identifier type",
