@@ -204,22 +204,21 @@ func newDefaultPortConfig() *portConfig {
 type ValidationAuthorityImpl struct {
 	vapb.UnsafeVAServer
 	vapb.UnsafeCAAServer
-	log                          blog.Logger
-	dnsClient                    bdns.Client
-	issuerDomain                 string
-	httpPort                     int
-	httpsPort                    int
-	tlsPort                      int
-	userAgent                    string
-	clk                          clock.Clock
-	remoteVAs                    []RemoteVA
-	maxRemoteFailures            int
-	accountURIPrefixes           []string
-	dnsAccountChallengeURIPrefix string
-	singleDialTimeout            time.Duration
-	perspective                  string
-	rir                          string
-	isReservedIPFunc             func(netip.Addr) error
+	log                blog.Logger
+	dnsClient          bdns.Client
+	issuerDomain       string
+	httpPort           int
+	httpsPort          int
+	tlsPort            int
+	userAgent          string
+	clk                clock.Clock
+	remoteVAs          []RemoteVA
+	maxRemoteFailures  int
+	accountURIPrefixes []string
+	singleDialTimeout  time.Duration
+	perspective        string
+	rir                string
+	isReservedIPFunc   func(netip.Addr) error
 
 	metrics *vaMetrics
 }
@@ -237,7 +236,6 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
-	dnsAccountChallengeURIPrefix string,
 	perspective string,
 	rir string,
 	reservedIPChecker func(netip.Addr) error,
@@ -258,19 +256,18 @@ func NewValidationAuthorityImpl(
 	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
-		log:                          logger,
-		dnsClient:                    resolver,
-		issuerDomain:                 issuerDomain,
-		httpPort:                     pc.HTTPPort,
-		httpsPort:                    pc.HTTPSPort,
-		tlsPort:                      pc.TLSPort,
-		userAgent:                    userAgent,
-		clk:                          clk,
-		metrics:                      initMetrics(stats),
-		remoteVAs:                    remoteVAs,
-		maxRemoteFailures:            maxAllowedFailures(len(remoteVAs)),
-		accountURIPrefixes:           accountURIPrefixes,
-		dnsAccountChallengeURIPrefix: dnsAccountChallengeURIPrefix,
+		log:                logger,
+		dnsClient:          resolver,
+		issuerDomain:       issuerDomain,
+		httpPort:           pc.HTTPPort,
+		httpsPort:          pc.HTTPSPort,
+		tlsPort:            pc.TLSPort,
+		userAgent:          userAgent,
+		clk:                clk,
+		metrics:            initMetrics(stats),
+		remoteVAs:          remoteVAs,
+		maxRemoteFailures:  maxAllowedFailures(len(remoteVAs)),
+		accountURIPrefixes: accountURIPrefixes,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
@@ -665,7 +662,7 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
+	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.Authz, req.Authz.RegID, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -723,9 +720,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// For dns-account-01 challenges, construct the account URI from the configured prefix
 	var accountURI string
 	if chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled {
-		if va.dnsAccountChallengeURIPrefix != "" && req.Authz.RegID != 0 {
-			accountURI = fmt.Sprintf("%s%d", va.dnsAccountChallengeURIPrefix, req.Authz.RegID)
-		}
+		accountURI = fmt.Sprintf("%s%d", va.accountURIPrefixes[0], req.Authz.RegID)
 	}
 
 	// *before* checking whether it returned an error. These few checks are

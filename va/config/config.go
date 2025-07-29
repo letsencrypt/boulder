@@ -28,8 +28,10 @@ type Common struct {
 	DNSTimeout                config.Duration `validate:"required"`
 	DNSAllowLoopbackAddresses bool
 
-	AccountURIPrefixes           []string `validate:"min=1,dive,required,url"`
-	DNSAccountChallengeURIPrefix string   `validate:"omitempty,url"`
+	// AccountURIPrefixes is a list of prefixes used to construct account URIs.
+	// The first prefix in the list is used for dns-account-01 challenges.
+	// All of the prefixes are used for CAA accounturi validation.
+	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 }
 
 // SetDefaultsAndValidate performs some basic sanity checks on fields stored in

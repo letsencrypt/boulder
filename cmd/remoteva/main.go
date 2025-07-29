@@ -136,7 +136,6 @@ func main() {
 		clk,
 		logger,
 		c.RVA.AccountURIPrefixes,
-		c.RVA.DNSAccountChallengeURIPrefix,
 		c.RVA.Perspective,
 		c.RVA.RIR,
 		iana.IsReservedAddr)
