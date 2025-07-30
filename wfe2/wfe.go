@@ -1629,7 +1629,8 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 }
 
-// CertificateInfo is a Boulder-specific endpoint to return notAfter.
+// CertificateInfo is a Boulder-specific endpoint to return notAfter, even for serials
+// which only appear in a precertificate and don't have a corresponding final cert.
 //
 // This is used by our CRL monitoring infrastructure to determine when it is acceptable
 // for a serial to be removed from a CRL.
