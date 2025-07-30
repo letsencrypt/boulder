@@ -1636,7 +1636,6 @@ func (wfe *WebFrontEndImpl) Authorization(
 func (wfe *WebFrontEndImpl) CertificateInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	serial := request.URL.Path
 	if !core.ValidSerial(serial) {
-		fmt.Println("oh no ", serial, "x")
 		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		return
 	}
