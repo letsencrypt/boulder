@@ -69,8 +69,9 @@ const (
 	renewalInfoPath   = "/acme/renewal-info/"
 
 	// Non-ACME paths.
-	getCertPath = "/get/cert/"
-	buildIDPath = "/build"
+	getCertPath     = "/get/cert/"
+	getCertInfoPath = "/get/certinfo/"
+	buildIDPath     = "/build"
 )
 
 const (
@@ -423,6 +424,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 
 	// Boulder specific endpoints
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
+	wfe.HandleFunc(m, getCertInfoPath, wfe.CertificateInfo, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 
 	// Endpoint for draft-ietf-acme-ari
@@ -1623,6 +1625,34 @@ func (wfe *WebFrontEndImpl) Authorization(
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal authz"), err)
+		return
+	}
+}
+
+// CertificateInfo is a Boulder-specific endpoint to return notAfter, even for serials
+// which only appear in a precertificate and don't have a corresponding final cert.
+//
+// This is used by our CRL monitoring infrastructure to determine when it is acceptable
+// for a serial to be removed from a CRL.
+func (wfe *WebFrontEndImpl) CertificateInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	serial := request.URL.Path
+	if !core.ValidSerial(serial) {
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		return
+	}
+	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error getting certificate metadata"), err)
+		return
+	}
+	certInfoStruct := struct {
+		NotAfter time.Time `json:"notAfter"`
+	}{
+		NotAfter: metadata.Expires.AsTime(),
+	}
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, certInfoStruct)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling certInfoStruct"), err)
 		return
 	}
 }
