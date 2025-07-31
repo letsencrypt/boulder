@@ -30,8 +30,6 @@ func InstrumentTracing(rdb redis.UniversalClient, opts ...TracingOption) error {
 		rdb.AddHook(newTracingHook(connString, opts...))
 		return nil
 	case *redis.ClusterClient:
-		rdb.AddHook(newTracingHook("", opts...))
-
 		rdb.OnNewNode(func(rdb *redis.Client) {
 			opt := rdb.Options()
 			opts = addServerAttributes(opts, opt.Addr)
@@ -40,8 +38,6 @@ func InstrumentTracing(rdb redis.UniversalClient, opts ...TracingOption) error {
 		})
 		return nil
 	case *redis.Ring:
-		rdb.AddHook(newTracingHook("", opts...))
-
 		rdb.OnNewNode(func(rdb *redis.Client) {
 			opt := rdb.Options()
 			opts = addServerAttributes(opts, opt.Addr)
@@ -105,14 +101,16 @@ func (th *tracingHook) DialHook(hook redis.DialHook) redis.DialHook {
 
 func (th *tracingHook) ProcessHook(hook redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
-		fn, file, line := funcFileLine("github.com/redis/go-redis")
 
 		attrs := make([]attribute.KeyValue, 0, 8)
-		attrs = append(attrs,
-			semconv.CodeFunction(fn),
-			semconv.CodeFilepath(file),
-			semconv.CodeLineNumber(line),
-		)
+		if th.conf.callerEnabled {
+			fn, file, line := funcFileLine("github.com/redis/go-redis")
+			attrs = append(attrs,
+				semconv.CodeFunction(fn),
+				semconv.CodeFilepath(file),
+				semconv.CodeLineNumber(line),
+			)
+		}
 
 		if th.conf.dbStmtEnabled {
 			cmdString := rediscmd.CmdString(cmd)
@@ -137,15 +135,19 @@ func (th *tracingHook) ProcessPipelineHook(
 	hook redis.ProcessPipelineHook,
 ) redis.ProcessPipelineHook {
 	return func(ctx context.Context, cmds []redis.Cmder) error {
-		fn, file, line := funcFileLine("github.com/redis/go-redis")
-
 		attrs := make([]attribute.KeyValue, 0, 8)
 		attrs = append(attrs,
-			semconv.CodeFunction(fn),
-			semconv.CodeFilepath(file),
-			semconv.CodeLineNumber(line),
 			attribute.Int("db.redis.num_cmd", len(cmds)),
 		)
+
+		if th.conf.callerEnabled {
+			fn, file, line := funcFileLine("github.com/redis/go-redis")
+			attrs = append(attrs,
+				semconv.CodeFunction(fn),
+				semconv.CodeFilepath(file),
+				semconv.CodeLineNumber(line),
+			)
+		}
 
 		summary, cmdsString := rediscmd.CmdsString(cmds)
 		if th.conf.dbStmtEnabled {
