@@ -1,7 +1,7 @@
 # Boulder Release Process
 
 A description and demonstration of the full process for tagging a normal weekly
-release, a "clean" hotfix release, and a "dirty" hotfix release.
+release and a hotfix release.
 
 Once a release is tagged, it will be generally deployed to
 [staging](https://letsencrypt.org/docs/staging-environment/) and then to
@@ -34,13 +34,16 @@ considered a guideline for normal releases but not a strict contract.
 
 ## Release Structure
 
-All releases are tagged with a tag of the form `release-YYYY-MM-DD[x]`, where
-the `YYYY-MM-DD` is the date that the initial release is cut (usually the Monday
-of the current week), and the `[x]` is an optional lowercase letter suffix
-indicating that the release is an incremental hotfix release. For example, the
-second hotfix release (i.e. third release overall) in the third week of January
-2022 was
-[`release-2022-01-18b`](https://github.com/letsencrypt/boulder/releases/tag/release-2022-01-18b).
+As of 2025-06-30, releases are tagged with a tag of the form `v0.YYYYMMDD.N`, where
+the `YYYYMMDD` is the date that the initial release is cut (usually the Monday
+of the current week), and `N` is an integer indicating the hotfix number,
+starting at `0`. For example, a regular release might be `v0.20250707.0`, and
+the first hotfix for that release would be `v0.20250707.1`.
+
+Historically, releases were tagged with the form `release-YYYY-MM-DD[x]`, where
+`[x]` was an optional lowercase letter suffix for hotfixes. For example, the
+second hotfix release (i.e. third release overall) in the third week of
+January 2022 was [`release-2022-01-18b`](https://github.com/letsencrypt/boulder/releases/tag/release-2022-01-18b).
 
 All release tags are signed with a key associated with a Boulder developer. Tag
 signatures are automatically verified by GitHub using the public keys that
@@ -75,9 +78,8 @@ tag message to just be a slightly more readable version of the tag name.
 
 ### Regular Releases
 
-Simply create a signed tag whose name and message both include the date that the
-release is being tagged (not the date that the release is expected to be
-deployed):
+Simply create a signed tag. The `tools/release/tag` tool will automatically
+determine the correct tag name based on the current date.
 
 ```sh
 go run github.com/letsencrypt/boulder/tools/release/tag@main
@@ -97,7 +99,9 @@ merged to `main` since the currently-deployed release was tagged.
 
 In this situation, we create a new hotfix release branch starting at the point
 of the previous release tag. We then use the normal GitHub PR and code-review
-process to merge the necessary fix(es) to the branch. Finally we create a new release tag at the tip of the release branch instead of the tip of main.
+process to copy the necessary fix(es) from `main` (where they must already be
+merged) to the release branch. Finally we create a new release tag at the tip
+of the release branch instead of the tip of main.
 
 To create the new release branch, substitute the name of the release tag which you want to use as the starting point into this command:
 
@@ -123,3 +127,5 @@ When doing a release, SRE's tooling will check that:
    `release-branch-XXX`, and all commits between `main` and the head of that
    branch are cherry-picks of commits which landed on `main` following the
    normal review process.
+
+These checks ensure that all deployed code has been properly reviewed and tested before reaching production environments.
