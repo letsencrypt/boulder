@@ -78,7 +78,7 @@ tag message to just be a slightly more readable version of the tag name.
 
 ### Regular Releases
 
-Simply create a signed tag. The `release/tag` tool will automatically
+Simply create a signed tag. The `tools/release/tag` tool will automatically
 determine the correct tag name based on the current date.
 
 ```sh
@@ -127,3 +127,5 @@ When doing a release, SRE's tooling will check that:
    `release-branch-XXX`, and all commits between `main` and the head of that
    branch are cherry-picks of commits which landed on `main` following the
    normal review process.
+
+These checks ensure that all deployed code has been properly reviewed and tested before reaching production environments.
