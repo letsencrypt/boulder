@@ -156,12 +156,6 @@
 				}
 			}
 		},
-		"features": {
-			"AsyncFinalize": true,
-			"AutomaticallyPauseZombieClients": true,
-			"DNSAccount01Enabled": true,
-			"NoPendingAuthzReuse": true
-		},
 		"ctLogs": {
 			"stagger": "500ms",
 			"logListFile": "test/ct-test-srv/log_list.json",
@@ -185,6 +179,12 @@
 				"C1",
 				"F1"
 			]
+		},
+		"features": {
+			"AsyncFinalize": true,
+			"AutomaticallyPauseZombieClients": true,
+			"DNSAccount01Enabled": true,
+			"NoPendingAuthzReuse": true
 		}
 	},
 	"pa": {

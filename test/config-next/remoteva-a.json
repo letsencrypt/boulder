@@ -34,15 +34,15 @@
 				}
 			}
 		},
-		"features": {
-			"DNSAccount01Enabled": true
-		},
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4001/acme/acct/",
 			"http://boulder.service.consul:4000/acme/reg/"
 		],
 		"perspective": "dadaist",
-		"rir": "ARIN"
+		"rir": "ARIN",
+		"features": {
+			"DNSAccount01Enabled": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 4,
