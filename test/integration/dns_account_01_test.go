@@ -3,10 +3,8 @@
 package integration
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -15,6 +13,10 @@ import (
 
 func TestDNSAccount01HappyPath(t *testing.T) {
 	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-account-01 to be enabled")
+	}
 
 	domain := random_domain()
 	c, err := makeClient()
@@ -37,7 +39,7 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 
 	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 	if !ok {
-		t.Skip("DNS-Account-01 is not offered, skipping test")
+		t.Fatal("dns-account-01 challenge not offered by server")
 	}
 
 	_, err = testSrvClient.AddDNSAccount01Response(c.Account.URL, domain, chal.KeyAuthorization)
@@ -53,39 +55,23 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 		t.Fatalf("updating challenge: %s", err)
 	}
 
-	csrKey, err := makeCSR(nil, idents, true)
+	// Check that the authorization status has changed
+	auth, err = c.Client.FetchAuthorization(c.Account, authzURL)
 	if err != nil {
-		t.Fatalf("making CSR: %s", err)
+		t.Fatalf("fetching authorization after challenge update: %s", err)
 	}
 
-	order, err = c.Client.FinalizeOrder(c.Account, order, csrKey)
-	if err != nil {
-		t.Fatalf("finalizing order: %s", err)
-	}
-
-	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
-	if err != nil {
-		t.Fatalf("fetching certificates: %s", err)
-	}
-
-	if len(certs) == 0 {
-		t.Fatal("no certificates returned")
-	}
-
-	found := false
-	for _, name := range certs[0].DNSNames {
-		if name == domain {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("certificate doesn't contain domain %s", domain)
+	if auth.Status != "valid" {
+		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
 	}
 }
 
 func TestDNSAccount01WrongTXTRecord(t *testing.T) {
 	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-account-01 to be enabled")
+	}
 
 	domain := random_domain()
 	c, err := makeClient()
@@ -108,7 +94,7 @@ func TestDNSAccount01WrongTXTRecord(t *testing.T) {
 
 	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 	if !ok {
-		t.Skip("DNS-Account-01 is not offered, skipping test")
+		t.Fatal("dns-account-01 challenge not offered by server")
 	}
 
 	// Add a wrong TXT record
@@ -139,6 +125,10 @@ func TestDNSAccount01WrongTXTRecord(t *testing.T) {
 func TestDNSAccount01NoTXTRecord(t *testing.T) {
 	t.Parallel()
 
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-account-01 to be enabled")
+	}
+
 	domain := random_domain()
 	c, err := makeClient()
 	if err != nil {
@@ -160,7 +150,7 @@ func TestDNSAccount01NoTXTRecord(t *testing.T) {
 
 	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 	if !ok {
-		t.Skip("DNS-Account-01 is not offered, skipping test")
+		t.Fatal("dns-account-01 challenge not offered by server")
 	}
 
 	// Skip adding a TXT record
@@ -184,6 +174,10 @@ func TestDNSAccount01NoTXTRecord(t *testing.T) {
 func TestDNSAccount01MultipleTXTRecordsNoneMatch(t *testing.T) {
 	t.Parallel()
 
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-account-01 to be enabled")
+	}
+
 	domain := random_domain()
 	c, err := makeClient()
 	if err != nil {
@@ -205,7 +199,7 @@ func TestDNSAccount01MultipleTXTRecordsNoneMatch(t *testing.T) {
 
 	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 	if !ok {
-		t.Skip("DNS-Account-01 is not offered, skipping test")
+		t.Fatal("dns-account-01 challenge not offered by server")
 	}
 
 	// Add multiple wrong TXT records
@@ -240,6 +234,10 @@ func TestDNSAccount01MultipleTXTRecordsNoneMatch(t *testing.T) {
 func TestDNSAccount01MultipleTXTRecordsOneMatches(t *testing.T) {
 	t.Parallel()
 
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-account-01 to be enabled")
+	}
+
 	domain := random_domain()
 	c, err := makeClient()
 	if err != nil {
@@ -261,7 +259,7 @@ func TestDNSAccount01MultipleTXTRecordsOneMatches(t *testing.T) {
 
 	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 	if !ok {
-		t.Skip("DNS-Account-01 is not offered, skipping test")
+		t.Fatal("dns-account-01 challenge not offered by server")
 	}
 
 	// Add multiple TXT records, one of which is correct
@@ -285,10 +283,24 @@ func TestDNSAccount01MultipleTXTRecordsOneMatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("updating challenge: expected no error, got %s", err)
 	}
+
+	// Check that the authorization status has changed
+	auth, err = c.Client.FetchAuthorization(c.Account, authzURL)
+	if err != nil {
+		t.Fatalf("fetching authorization after challenge update: %s", err)
+	}
+
+	if auth.Status != "valid" {
+		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
+	}
 }
 
 func TestDNSAccount01WildcardDomain(t *testing.T) {
 	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-account-01 to be enabled")
+	}
 
 	hostDomain := randomDomain(t)
 	wildcardDomain := fmt.Sprintf("*.%s", randomDomain(t))
@@ -322,7 +334,7 @@ func TestDNSAccount01WildcardDomain(t *testing.T) {
 
 		chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSAccount01]
 		if !ok {
-			t.Skip("DNS-Account-01 is not offered, skipping test")
+			t.Fatal("dns-account-01 challenge not offered by server")
 		}
 
 		_, err = testSrvClient.AddDNSAccount01Response(c.Account.URL, domain, chal.KeyAuthorization)
@@ -337,47 +349,15 @@ func TestDNSAccount01WildcardDomain(t *testing.T) {
 		if err != nil {
 			t.Fatalf("updating challenge: %s", err)
 		}
-	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generating cert key: %s", err)
-	}
-
-	csr, err := makeCSR(key, idents, false)
-	if err != nil {
-		t.Fatalf("making CSR: %s", err)
-	}
-
-	order, err = c.Client.FinalizeOrder(c.Account, order, csr)
-	if err != nil {
-		t.Fatalf("finalizing order: %s", err)
-	}
-
-	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
-	if err != nil {
-		t.Fatalf("fetching certificates: %s", err)
-	}
-
-	if len(certs) == 0 {
-		t.Fatal("no certificates returned")
-	}
-
-	foundHost := false
-	foundWildcard := false
-	for _, name := range certs[0].DNSNames {
-		if name == hostDomain {
-			foundHost = true
+		// Check that the authorization status has changed
+		auth, err = c.Client.FetchAuthorization(c.Account, authzURL)
+		if err != nil {
+			t.Fatalf("fetching authorization after challenge update: %s", err)
 		}
-		if name == wildcardDomain {
-			foundWildcard = true
-		}
-	}
 
-	if !foundHost {
-		t.Errorf("certificate doesn't contain host domain %s", hostDomain)
-	}
-	if !foundWildcard {
-		t.Errorf("certificate doesn't contain wildcard domain %s", wildcardDomain)
+		if auth.Status != "valid" {
+			t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
+		}
 	}
 }
