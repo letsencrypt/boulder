@@ -230,13 +230,13 @@ func main() {
 	allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
 	cmd.FailOnError(err, "Failed to parse log list")
 
-	sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance, c.RA.CTLogs.AllowedSCTTypes)
+	sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance, c.RA.CTLogs.SubmitToTestLogs)
 	cmd.FailOnError(err, "Failed to load SCT logs")
 
-	infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational, nil)
+	infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational, true)
 	cmd.FailOnError(err, "Failed to load informational logs")
 
-	finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational, nil)
+	finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational, true)
 	cmd.FailOnError(err, "Failed to load final logs")
 
 	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
