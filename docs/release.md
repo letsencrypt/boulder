@@ -1,6 +1,7 @@
 # Boulder Release Process
 
-A description and demonstration of the full process for tagging a normal weekly release and a hotfix release.
+A description and demonstration of the full process for tagging a normal weekly
+release and a hotfix release.
 
 Once a release is tagged, it will be generally deployed to
 [staging](https://letsencrypt.org/docs/staging-environment/) and then to
@@ -99,8 +100,8 @@ merged to `main` since the currently-deployed release was tagged.
 In this situation, we create a new hotfix release branch starting at the point
 of the previous release tag. We then use the normal GitHub PR and code-review
 process to merge the necessary fix(es) to `main` first. The fix commits are then
-cherry-picked onto the release branch, typically via another pull request for
-visibility. Finally we create a new release tag at the tip of the release branch instead of the tip of main.
+applied to the release branch via a pull request. Finally we create a new
+release tag at the tip of the release branch instead of the tip of main.
 
 To create the new release branch, substitute the name of the release tag which you want to use as the starting point into this command:
 
