@@ -40,3 +40,6 @@ tags
 
 # ProxySQL log files
 test/proxysql/*.log*
+
+# Coverage files
+test/coverage
