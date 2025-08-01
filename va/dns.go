@@ -54,7 +54,8 @@ func availableAddresses(allAddrs []netip.Addr) (v4 []netip.Addr, v6 []netip.Addr
 // validateDNSAccount01 handles the dns-account-01 challenge by calculating
 // the account-specific DNS query domain and expected digest, then calling
 // the common DNS validation logic.
-// This implements draft-ietf-acme-dns-account-label-01.
+// This implements draft-ietf-acme-dns-account-label-01, and is permitted by
+// CAB/F Ballot SC-84, which was incorporated into BR v2.1.4.
 func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURI string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
 		return nil, berrors.MalformedError("Identifier type for DNS-ACCOUNT-01 challenge was not DNS")
