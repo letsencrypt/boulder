@@ -99,9 +99,9 @@ merged to `main` since the currently-deployed release was tagged.
 
 In this situation, we create a new hotfix release branch starting at the point
 of the previous release tag. We then use the normal GitHub PR and code-review
-process to merge the necessary fix(es) to `main` first. The fix commits are then
-applied to the release branch via a pull request. Finally we create a new
-release tag at the tip of the release branch instead of the tip of main.
+process to copy the necessary fix(es) from `main` (where they must already be
+merged) to the release branch. Finally we create a new release tag at the tip
+of the release branch instead of the tip of main.
 
 To create the new release branch, substitute the name of the release tag which you want to use as the starting point into this command:
 
