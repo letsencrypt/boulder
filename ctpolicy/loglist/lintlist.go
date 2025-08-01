@@ -22,7 +22,7 @@ func InitLintList(path string) error {
 			return
 		}
 
-		l, err = l.forPurpose(Validation, nil)
+		l, err = l.forPurpose(Validation, false)
 		if err != nil {
 			lintlist.err = err
 			return
