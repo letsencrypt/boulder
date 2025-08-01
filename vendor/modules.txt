@@ -149,7 +149,7 @@ github.com/felixge/httpsnoop
 # github.com/fsnotify/fsnotify v1.6.0
 ## explicit; go 1.16
 github.com/fsnotify/fsnotify
-# github.com/go-jose/go-jose/v4 v4.1.2-0.20250718170453-a1565a41aa00
+# github.com/go-jose/go-jose/v4 v4.1.2
 ## explicit; go 1.23.0
 github.com/go-jose/go-jose/v4
 github.com/go-jose/go-jose/v4/cipher
