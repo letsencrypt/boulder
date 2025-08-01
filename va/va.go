@@ -716,13 +716,13 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		va.log.AuditObject("Validation result", logEvent)
 	}()
 
-	// Do local validation. Note that we process the result in a couple ways
 	// For dns-account-01 challenges, construct the account URI from the configured prefix
 	var accountURI string
 	if chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled {
 		accountURI = fmt.Sprintf("%s%d", va.accountURIPrefixes[0], req.Authz.RegID)
 	}
 
+	// Do local validation. Note that we process the result in a couple ways
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
