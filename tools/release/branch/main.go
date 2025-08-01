@@ -9,7 +9,7 @@ hotfix release will be tagged on the branch using the related Tag Release tool.
 
 Usage:
 
-	go run github.com/letsencrypt/boulder/tools/release/tag@main [-push] tagname
+	go run github.com/letsencrypt/boulder/tools/release/branch@main [-push] tagname
 
 The provided tagname must be a pre-existing release tag which is reachable from
 the "main" branch.
