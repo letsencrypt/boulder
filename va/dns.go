@@ -54,32 +54,32 @@ func availableAddresses(allAddrs []netip.Addr) (v4 []netip.Addr, v6 []netip.Addr
 // validateDNSAccount01 handles the dns-account-01 challenge by calculating
 // the account-specific DNS query domain and expected digest, then calling
 // the common DNS validation logic.
+// This implements draft-ietf-acme-dns-account-label-01.
 func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURI string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
 		return nil, berrors.MalformedError("Identifier type for DNS-ACCOUNT-01 challenge was not DNS")
 	}
 	if accountURI == "" {
-		va.log.Infof("DNS-ACCOUNT-01 validation for %q failed: missing accountURI", ident.Value)
 		return nil, berrors.InternalServerError("accountURI must be provided for dns-account-01")
 	}
 
 	// Calculate the DNS prefix label based on the account URI
 	sha256sum := sha256.Sum256([]byte(accountURI))
 	prefixBytes := sha256sum[0:10] // First 10 bytes
-	prefixLabel := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(prefixBytes)
+	prefixLabel := base32.StdEncoding.EncodeToString(prefixBytes)
 	prefixLabel = strings.ToLower(prefixLabel)
 
-	// Construct the full query domain specific to DNS-ACCOUNT-01
-	challengeSubdomain := fmt.Sprintf("_%s.%s.%s", prefixLabel, core.DNSPrefix, ident.Value)
-	va.log.Debugf("DNS-ACCOUNT-01: Querying TXT for %q (derived from account URI %q)", challengeSubdomain, accountURI)
+	// Construct the challenge prefix specific to DNS-ACCOUNT-01
+	challengePrefix := fmt.Sprintf("_%s.%s", prefixLabel, core.DNSPrefix)
+	va.log.Debugf("DNS-ACCOUNT-01: Querying TXT for %q (derived from account URI %q)", fmt.Sprintf("%s.%s", challengePrefix, ident.Value), accountURI)
 
 	// Call the common validation logic
-	records, err := va.validateDNS(ctx, ident, challengeSubdomain, keyAuthorization)
+	records, err := va.validateDNS(ctx, ident, challengePrefix, keyAuthorization)
 	if err != nil {
 		// Check if the error returned by validateDNS is of the Unauthorized type
 		if errors.Is(err, berrors.Unauthorized) {
 			// Enrich any UnauthorizedError from validateDNS with the account URI
-			enrichedError := berrors.UnauthorizedError("%s (account: %s)", err.Error(), accountURI)
+			enrichedError := berrors.UnauthorizedError("%s (account: %q)", err.Error(), accountURI)
 			return nil, enrichedError
 		}
 		// For other error types, return as is
@@ -91,23 +91,22 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
-		va.log.Infof("Identifier type for DNS-01 challenge was not DNS: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for DNS-01 challenge was not DNS")
 	}
 
-	// Construct the query domain specific to DNS-01
-	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
-
 	// Call the common validation logic
-	return va.validateDNS(ctx, ident, challengeSubdomain, keyAuthorization)
+	return va.validateDNS(ctx, ident, core.DNSPrefix, keyAuthorization)
 }
 
 // validateDNS performs the DNS TXT lookup and validation logic.
-func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identifier.ACMEIdentifier, challengeSubdomain string, keyAuthorization string) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identifier.ACMEIdentifier, challengePrefix string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	// Compute the digest of the key authorization file
 	h := sha256.New()
 	h.Write([]byte(keyAuthorization))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	// Construct the full challenge subdomain by concatenating prefix with identifier
+	challengeSubdomain := fmt.Sprintf("%s.%s", challengePrefix, ident.Value)
 
 	// Look for the required record in the DNS
 	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
