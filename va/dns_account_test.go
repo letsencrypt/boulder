@@ -2,6 +2,7 @@
 package va
 
 import (
+	"errors"
 	"net/netip"
 	"strings"
 	"testing"
@@ -22,40 +23,40 @@ const testAccountURI = "https://example.com/acme/acct/ExampleAccount"
 
 func TestDNSAccount01Validation(t *testing.T) {
 	testCases := []struct {
-		name       string
-		ident      identifier.ACMEIdentifier
-		wantErr    bool
-		wantErrMsg string
+		name        string
+		ident       identifier.ACMEIdentifier
+		wantErrType berrors.ErrorType
+		wantErrMsg  string
 	}{
 		{
-			name:       "wrong TXT record",
-			ident:      identifier.NewDNS("wrong-dns01.com"),
-			wantErr:    true,
-			wantErrMsg: "unauthorized :: Incorrect TXT record",
+			name:        "wrong TXT record",
+			ident:       identifier.NewDNS("wrong-dns01.com"),
+			wantErrType: berrors.Unauthorized,
+			wantErrMsg:  "Incorrect TXT record",
 		},
 		{
-			name:       "wrong TXT record with multiple values",
-			ident:      identifier.NewDNS("wrong-many-dns01.com"),
-			wantErr:    true,
-			wantErrMsg: "unauthorized :: Incorrect TXT record",
+			name:        "wrong TXT record with multiple values",
+			ident:       identifier.NewDNS("wrong-many-dns01.com"),
+			wantErrType: berrors.Unauthorized,
+			wantErrMsg:  "Incorrect TXT record",
 		},
 		{
-			name:       "wrong long TXT record",
-			ident:      identifier.NewDNS("long-dns01.com"),
-			wantErr:    true,
-			wantErrMsg: "unauthorized :: Incorrect TXT record",
+			name:        "wrong long TXT record",
+			ident:       identifier.NewDNS("long-dns01.com"),
+			wantErrType: berrors.Unauthorized,
+			wantErrMsg:  "Incorrect TXT record",
 		},
 		{
-			name:       "DNS failure on localhost",
-			ident:      identifier.NewDNS("localhost"),
-			wantErr:    true,
-			wantErrMsg: "unauthorized :: Incorrect TXT record",
+			name:        "DNS failure on localhost",
+			ident:       identifier.NewDNS("localhost"),
+			wantErrType: berrors.Unauthorized,
+			wantErrMsg:  "Incorrect TXT record",
 		},
 		{
-			name:       "IP identifier not supported",
-			ident:      identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
-			wantErr:    true,
-			wantErrMsg: "",
+			name:        "IP identifier not supported",
+			ident:       identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
+			wantErrType: berrors.Malformed,
+			wantErrMsg:  "Identifier type for DNS-ACCOUNT-01 challenge was not DNS",
 		},
 		{
 			name: "invalid identifier type",
@@ -63,24 +64,22 @@ func TestDNSAccount01Validation(t *testing.T) {
 				Type:  identifier.IdentifierType("iris"),
 				Value: "790DB180-A274-47A4-855F-31C428CB1072",
 			},
-			wantErr:    true,
-			wantErrMsg: "",
+			wantErrType: berrors.Malformed,
+			wantErrMsg:  "Identifier type for DNS-ACCOUNT-01 challenge was not DNS",
 		},
 		{
-			name:       "DNS server failure",
-			ident:      identifier.NewDNS("servfail.com"),
-			wantErr:    true,
-			wantErrMsg: "",
+			name:        "DNS server failure",
+			ident:       identifier.NewDNS("servfail.com"),
+			wantErrType: berrors.DNS,
+			wantErrMsg:  "SERVFAIL",
 		},
 		{
-			name:    "valid DNS record",
-			ident:   identifier.NewDNS("good-dns01.com"),
-			wantErr: false,
+			name:  "valid DNS record",
+			ident: identifier.NewDNS("good-dns01.com"),
 		},
 		{
-			name:    "valid DNS record with no authority",
-			ident:   identifier.NewDNS("no-authority-dns01.com"),
-			wantErr: false,
+			name:  "valid DNS record with no authority",
+			ident: identifier.NewDNS("no-authority-dns01.com"),
 		},
 	}
 
@@ -89,16 +88,17 @@ func TestDNSAccount01Validation(t *testing.T) {
 			va, _ := setup(nil, "", nil, nil)
 			_, err := va.validateDNSAccount01(ctx, tc.ident, expectedKeyAuthorization, testAccountURI)
 
-			if tc.wantErr {
+			if tc.wantErrMsg != "" {
 				if err == nil {
-					t.Errorf("validateDNSAccount01(%q) = success, but want error", tc.ident.Value)
+					t.Errorf("validateDNSAccount01(%q) = success, but want error %q", tc.ident.Value, tc.wantErrMsg)
 					return
 				}
-				if tc.wantErrMsg != "" {
-					prob := detailedError(err)
-					if !strings.Contains(prob.String(), tc.wantErrMsg) {
-						t.Errorf("validateDNSAccount01(%q) = %q, but want error containing %q", tc.ident.Value, prob.String(), tc.wantErrMsg)
-					}
+				if !errors.Is(err, tc.wantErrType) {
+					t.Errorf("validateDNSAccount01(%q) = error type %T, but want error type %T", tc.ident.Value, err, tc.wantErrType)
+				}
+				prob := detailedError(err)
+				if !strings.Contains(prob.String(), tc.wantErrMsg) {
+					t.Errorf("validateDNSAccount01(%q) = %q, but want error containing %q", tc.ident.Value, prob.String(), tc.wantErrMsg)
 				}
 			} else {
 				if err != nil {
