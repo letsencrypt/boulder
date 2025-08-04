@@ -67,8 +67,7 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 	// Calculate the DNS prefix label based on the account URI
 	sha256sum := sha256.Sum256([]byte(accountURI))
 	prefixBytes := sha256sum[0:10] // First 10 bytes
-	prefixLabel := base32.StdEncoding.EncodeToString(prefixBytes)
-	prefixLabel = strings.ToLower(prefixLabel)
+	prefixLabel := strings.ToLower(base32.StdEncoding.EncodeToString(prefixBytes))
 
 	// Construct the challenge prefix specific to DNS-ACCOUNT-01
 	challengePrefix := fmt.Sprintf("_%s.%s", prefixLabel, core.DNSPrefix)
