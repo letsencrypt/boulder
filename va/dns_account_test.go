@@ -90,8 +90,7 @@ func TestDNSAccount01Validation(t *testing.T) {
 
 			if tc.wantErrMsg != "" {
 				if err == nil {
-					t.Errorf("validateDNSAccount01(%q) = success, but want error %q", tc.ident.Value, tc.wantErrMsg)
-					return
+					t.Fatalf("validateDNSAccount01(%q) = success, but want error %q", tc.ident.Value, tc.wantErrMsg)
 				}
 				if !errors.Is(err, tc.wantErrType) {
 					t.Errorf("validateDNSAccount01(%q) = error type %T, but want error type %T", tc.ident.Value, err, tc.wantErrType)
