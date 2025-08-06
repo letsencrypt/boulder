@@ -5,7 +5,7 @@
 name: Try release
 on:
   push:
-    branches: [main, docker-time]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
