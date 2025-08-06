@@ -5,7 +5,7 @@
 name: Try release
 on:
   push:
-    branches: [main]
+    branches: [main, docker-time]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -27,17 +27,17 @@ jobs:
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
-        run: docker run -v $PWD:/boulder -e GO_VERSION=$GO_VERSION -e COMMIT_ID="$(git rev-parse --short=8 HEAD)" ubuntu:24.04 bash -c 'apt update && apt -y install gnupg2 curl sudo git gcc && cd /boulder/ && ./tools/make-assets.sh'
+        run: ./docker-build.sh
 
       - name: Compute checksums
         id: checksums
         # The files listed on this line must be identical to the files uploaded
         # in the last step of the real release action.
-        run: sha256sum boulder*.deb boulder*.tar.gz >| boulder-${{ matrix.GO_VERSION }}.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt
+        run: sha256sum boulder*.tar.gz >| boulder-${{ matrix.GO_VERSION }}.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt
 
       - name: List files
         id: files
-        run: ls boulder*.deb boulder*.tar.gz boulder*.checksums.txt
+        run: ls boulder*.tar.gz boulder*.checksums.txt
 
       - name: Show checksums
         id: check
