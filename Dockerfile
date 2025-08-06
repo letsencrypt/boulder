@@ -5,6 +5,7 @@ FROM docker.io/ubuntu:24.04 AS builder
 
 ARG COMMIT_ID
 ARG GO_VERSION
+ARG VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get --assume-yes --no-install-recommends --update install \
@@ -36,7 +37,7 @@ LABEL org.opencontainers.image.source="https://github.com/letsencrypt/boulder"
 LABEL org.opencontainers.image.title="Boulder"
 LABEL org.opencontainers.image.url="https://github.com/letsencrypt/boulder"
 LABEL org.opencontainers.image.vendor="Internet Security Research Group"
-#LABEL org.opencontainers.image.version="${GO_VERSION}.$(date +%s)"
+LABEL org.opencontainers.image.version="${VERSION}"
 
 COPY --from=builder \
     /opt/boulder/bin/admin /opt/boulder/bin/boulder /opt/boulder/bin/chall-test-srv /opt/boulder/bin/ct-test-srv /opt/boulder/bin/pardot-test-srv \

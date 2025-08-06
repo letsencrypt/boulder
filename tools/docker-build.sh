@@ -19,6 +19,7 @@ VERSION="${GO_VERSION}.$(date +%s)"
 docker buildx build \
     --build-arg "COMMIT_ID=${COMMIT_ID}" \
     --build-arg "GO_VERSION=${GO_VERSION}" \
+    --build-arg "VERSION=${VERSION}" \
     --tag "boulder:${COMMIT_ID}" \
     --tag boulder \
     .
