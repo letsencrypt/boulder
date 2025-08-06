@@ -10,13 +10,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   try-release:
     strategy:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.24.4"
+          - "1.24.6"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
