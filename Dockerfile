@@ -1,9 +1,3 @@
-# docker build \
-#     --build-arg COMMIT_ID=$(git rev-parse --short=8 HEAD) \
-#     --build-arg GO_VERSION=1.24.5 \
-#     --tag boulder:$(git rev-parse --short=8 HEAD) \
-#     .
-
 FROM docker.io/ubuntu:24.04 AS builder
 
 ARG COMMIT_ID
@@ -15,19 +9,24 @@ RUN apt-get --assume-yes --no-install-recommends --update install \
 
 COPY tools/fetch-and-verify-go.sh /tmp
 RUN /tmp/fetch-and-verify-go.sh ${GO_VERSION}
-RUN tar -C /usr/local -xzf go.tar.gz
+RUN tar -C /opt -xzf go.tar.gz
 
-COPY . /boulder
-WORKDIR /boulder
+COPY . /opt/boulder
+WORKDIR /opt/boulder
 
-ENV GOBIN=/usr/local/bin/
 ENV GO111MODULE=on
-RUN /usr/local/go/bin/go install \
+ENV GOBIN=/opt/boulder/bin/
+RUN /opt/go/bin/go install \
     -buildvcs=false \
     -ldflags="-X \"github.com/letsencrypt/boulder/core.BuildID=${COMMIT_ID}\" -X \"github.com/letsencrypt/boulder/core.BuildTime=$(date -u)\"" \
     -mod=vendor \
-    ./cmd/boulder
+    ./...
 
 FROM docker.io/ubuntu:24.04
 
-COPY --from=builder /usr/local/bin/boulder /usr/local/bin/boulder
+COPY --from=builder \
+    /opt/boulder/bin/admin /opt/boulder/bin/boulder /opt/boulder/bin/chall-test-srv /opt/boulder/bin/ct-test-srv /opt/boulder/bin/pardot-test-srv \
+    /opt/boulder/bin/
+COPY --from=builder /opt/boulder/data /opt/boulder/data
+COPY --from=builder /opt/boulder/sa/db /opt/boulder/sa/db
+COPY --from=builder /opt/boulder/test/config /opt/boulder/test/config
