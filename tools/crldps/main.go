@@ -1,6 +1,6 @@
 // crldps generates the list of CRL Distribution Point URIs for a given issuing
 // CA and number of shards. It fetches and validates all of those shards. If
-// it doesn't encouter any errors, it pretty-prints the list of all CRLDPs for
+// it doesn't encounter any errors, it pretty-prints the list of all CRLDPs for
 // disclosure in CCADB.
 package main
 
