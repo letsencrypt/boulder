@@ -1,3 +1,6 @@
+# This builds Boulder in a Docker container, then creates an image
+# containing just the built Boulder binaries plus some ancillary
+# files that are useful for predeployment testing.
 FROM docker.io/ubuntu:24.04 AS builder
 
 ARG COMMIT_ID
