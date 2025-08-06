@@ -1,2 +1,9 @@
 bin
+Dockerfile
 tags
+test/certs/ipki
+test/certs/misc
+test/certs/webpki
+test/certs/.softhsm-tokens
+.git
+.gocache
