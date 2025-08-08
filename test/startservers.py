@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 
-from helpers import waithealth, waitport, config_dir, CONFIG_NEXT
+from helpers import CONFIG_NEXT, config_dir, waithealth, waitport
 
 Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_port', 'host_override', 'cmd', 'deps'))
 
@@ -134,7 +134,7 @@ SERVICES = (
         None),
     Service('pardot-test-srv',
         # Uses port 9601 to mock Salesforce OAuth2 token API and 9602 to mock
-        # the Pardot API. 
+        # the Pardot API.
         9601, None, None,
         ('./bin/pardot-test-srv', '--config', os.path.join(config_dir, 'pardot-test-srv.json'),),
         None),
@@ -185,7 +185,7 @@ processes = []
 # to run the load-generator).
 challSrvProcess = None
 
-def install(race_detection):
+def install(race_detection, coverage=False):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
@@ -193,18 +193,28 @@ def install(race_detection):
     if race_detection:
         go_build_flags += ' -race'
 
+    if coverage:
+        go_build_flags += ' -cover' # https://go.dev/blog/integration-test-coverage
+        print("Building with flags: %s" % go_build_flags)
+
     return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
 
-def run(cmd, fakeclock):
+def run(cmd, fakeclock, coverage_dir=None):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
+    if coverage_dir:
+        abs_coverage_dir = os.path.abspath(coverage_dir)
+        print("Running with coverage in %s" % abs_coverage_dir)
+        #FIXME warning: GOCOVERDIR not set, no coverage data emitted - for a few binaries inspite of the environment variable being set
+        e.setdefault("GOCOVERDIR", abs_coverage_dir)
+        e.setdefault("GOCOVERMODE", "atomic")
     if fakeclock:
         e.setdefault("FAKECLOCK", fakeclock)
     p = subprocess.Popen(cmd, env=e)
     p.cmd = cmd
     return p
 
-def start(fakeclock):
+def start(fakeclock, coverage_dir=None):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -233,7 +243,7 @@ def start(fakeclock):
         print("Starting service", service.name)
         try:
             global processes
-            p = run(service.cmd, fakeclock)
+            p = run(service.cmd, fakeclock, coverage_dir)
             processes.append(p)
             if service.grpc_port is not None:
                 waithealth(' '.join(p.args), service.grpc_port, service.host_override)

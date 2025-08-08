@@ -14,18 +14,16 @@ import json
 import os
 import random
 import re
-import requests
-import subprocess
 import shlex
 import signal
+import subprocess
 import time
 
+import requests
 import startservers
-
 import v2_integration
-from helpers import *
-
 from acme import challenges
+from helpers import *
 
 # Set the environment variable RACE to anything other than 'true' to disable
 # race detection. This significantly speeds up integration testing cycles
@@ -55,6 +53,10 @@ def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
     parser.add_argument('--chisel', dest="run_chisel", action="store_true",
                         help="run integration tests using chisel")
+    parser.add_argument('--coverage', dest="coverage", action="store_true",
+                        help="run integration tests with coverage")
+    parser.add_argument('--coveragedir', dest="coverage_dir", action="store",
+                        help="directory to store coverage data")
     parser.add_argument('--gotest', dest="run_go", action="store_true",
                         help="run Go integration tests")
     parser.add_argument('--gotestverbose', dest="run_go_verbose", action="store_true",
@@ -64,31 +66,40 @@ def main():
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_chisel=False, test_case_filter="", skip_setup=False)
+    parser.set_defaults(run_chisel=False, test_case_filter="", skip_setup=False, coverage=False, coverage_dir=None)
     args = parser.parse_args()
+
+    if args.coverage and not args.coverage_dir:
+        raise(Exception("must specify --coveragedir when using --coverage"))
+
+    if args.coverage and args.coverage_dir:
+        if not os.path.exists(args.coverage_dir):
+            os.makedirs(args.coverage_dir)
+        if not os.path.isdir(args.coverage_dir):
+            raise(Exception("coveragedir must be a directory"))
 
     if not (args.run_chisel or args.custom  or args.run_go is not None):
         raise(Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"))
 
-    if not startservers.install(race_detection=race_detection):
+    if not startservers.install(race_detection=race_detection, coverage=args.coverage):
         raise(Exception("failed to build"))
 
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 
         six_months_ago = now+datetime.timedelta(days=-30*6)
-        if not startservers.start(fakeclock=fakeclock(six_months_ago)):
+        if not startservers.start(fakeclock=fakeclock(six_months_ago), coverage_dir=args.coverage_dir):
             raise(Exception("startservers failed (mocking six months ago)"))
         setup_six_months_ago()
         startservers.stop()
 
         twenty_days_ago = now+datetime.timedelta(days=-20)
-        if not startservers.start(fakeclock=fakeclock(twenty_days_ago)):
+        if not startservers.start(fakeclock=fakeclock(twenty_days_ago), coverage_dir=args.coverage_dir):
             raise(Exception("startservers failed (mocking twenty days ago)"))
         setup_twenty_days_ago()
         startservers.stop()
 
-    if not startservers.start(fakeclock=None):
+    if not startservers.start(fakeclock=None, coverage_dir=args.coverage_dir):
         raise(Exception("startservers failed"))
 
     if args.run_chisel:
@@ -96,7 +107,7 @@ def main():
 
     if args.run_go:
         run_go_tests(args.test_case_filter, False)
-    
+
     if args.run_go_verbose:
         run_go_tests(args.test_case_filter, True)
 
@@ -116,6 +127,7 @@ def main():
     exit_status = 0
 
 def run_chisel(test_case_filter):
+    print("Running ACME tests")
     for key, value in inspect.getmembers(v2_integration):
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()
