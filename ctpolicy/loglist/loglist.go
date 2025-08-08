@@ -48,6 +48,7 @@ type Log struct {
 	EndExclusive   time.Time
 	State          loglist3.LogStatus
 	Tiled          bool
+	Type           string
 }
 
 // usableForPurpose returns true if the log state is acceptable for the given
@@ -95,6 +96,7 @@ func newHelper(file []byte) (List, error) {
 				Url:      log.URL,
 				State:    log.State.LogStatus(),
 				Tiled:    false,
+				Type:     log.Type,
 			}
 
 			if log.TemporalInterval != nil {
@@ -114,6 +116,7 @@ func newHelper(file []byte) (List, error) {
 				Url:      log.SubmissionURL,
 				State:    log.State.LogStatus(),
 				Tiled:    true,
+				Type:     log.Type,
 			}
 
 			if log.TemporalInterval != nil {
@@ -133,13 +136,13 @@ func newHelper(file []byte) (List, error) {
 // given purpose. It returns an error if any of the given names are not found
 // in the starting list, or if the resulting list is too small to satisfy the
 // Chrome "two operators" policy.
-func (ll List) SubsetForPurpose(names []string, p purpose) (List, error) {
+func (ll List) SubsetForPurpose(names []string, p purpose, submitToTestLogs bool) (List, error) {
 	sub, err := ll.subset(names)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := sub.forPurpose(p)
+	res, err := sub.forPurpose(p, submitToTestLogs)
 	if err != nil {
 		return nil, err
 	}
@@ -171,17 +174,24 @@ func (ll List) subset(names []string) (List, error) {
 }
 
 // forPurpose returns a new log list containing only those logs whose states are
-// acceptable for the given purpose. It returns an error if the purpose is
-// Issuance or Validation and the set of remaining logs is too small to satisfy
-// the Google "two operators" log policy.
-func (ll List) forPurpose(p purpose) (List, error) {
+// acceptable for the given purpose. Test logs are included only when
+// submitToTestLogs is true. It returns an error if the purpose is Issuance or
+// Validation and the set of remaining logs is too small to satisfy the Google
+// "two operators" log policy.
+func (ll List) forPurpose(p purpose, submitToTestLogs bool) (List, error) {
 	res := make(List, 0)
 	operators := make(map[string]struct{})
+
+	// Test logs in Chrome's all_logs_list.json omit the "state" field. loglist3
+	// interprets this as "UndefinedLogStatus", which causes usableForPurpose()
+	// to return false. To account for this, we skip this check for test logs.
 	for _, log := range ll {
-		if !usableForPurpose(log.State, p) {
+		if log.Type == "test" && !submitToTestLogs {
 			continue
 		}
-
+		if log.Type != "test" && !usableForPurpose(log.State, p) {
+			continue
+		}
 		res = append(res, log)
 		operators[log.Operator] = struct{}{}
 	}
