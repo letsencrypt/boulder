@@ -60,9 +60,12 @@
 			}
 		],
 		"accountURIPrefixes": [
-			"http://boulder.service.consul:4000/acme/reg/",
-			"http://boulder.service.consul:4001/acme/acct/"
-		]
+			"http://boulder.service.consul:4001/acme/acct/",
+			"http://boulder.service.consul:4000/acme/reg/"
+		],
+		"features": {
+			"DNSAccount01Enabled": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

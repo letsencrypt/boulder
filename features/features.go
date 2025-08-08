@@ -80,6 +80,12 @@ type Config struct {
 	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
 	// ARI replaces field in the orders table.
 	StoreARIReplacesInOrders bool
+
+	// DNSAccount01Enabled controls support for the dns-account-01 challenge
+	// type. When enabled, the server can offer and validate this challenge
+	// during certificate issuance. This flag must be set to true in the
+	// RA, VA, and WFE2 services for full functionality.
+	DNSAccount01Enabled bool
 }
 
 var fMu = new(sync.RWMutex)

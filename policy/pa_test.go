@@ -19,9 +19,10 @@ import (
 
 func paImpl(t *testing.T) *AuthorityImpl {
 	enabledChallenges := map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01:    true,
-		core.ChallengeTypeDNS01:     true,
-		core.ChallengeTypeTLSALPN01: true,
+		core.ChallengeTypeHTTP01:       true,
+		core.ChallengeTypeDNS01:        true,
+		core.ChallengeTypeTLSALPN01:    true,
+		core.ChallengeTypeDNSAccount01: true,
 	}
 
 	enabledIdentifiers := map[identifier.IdentifierType]bool{
@@ -457,56 +458,122 @@ func TestChallengeTypesFor(t *testing.T) {
 	t.Parallel()
 	pa := paImpl(t)
 
-	testCases := []struct {
-		name       string
-		ident      identifier.ACMEIdentifier
-		wantChalls []core.AcmeChallenge
-		wantErr    string
-	}{
-		{
-			name:  "dns",
-			ident: identifier.NewDNS("example.com"),
-			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01,
-			},
-		},
-		{
-			name:  "dns wildcard",
-			ident: identifier.NewDNS("*.example.com"),
-			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeDNS01,
-			},
-		},
-		{
-			name:  "ip",
-			ident: identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
-			wantChalls: []core.AcmeChallenge{
-				core.ChallengeTypeHTTP01, core.ChallengeTypeTLSALPN01,
-			},
-		},
-		{
-			name:    "invalid",
-			ident:   identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"},
-			wantErr: "unrecognized identifier type",
-		},
-	}
+	t.Run("DNSAccount01Enabled=true", func(t *testing.T) {
+		features.Set(features.Config{DNSAccount01Enabled: true})
+		t.Cleanup(features.Reset)
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			challs, err := pa.ChallengeTypesFor(tc.ident)
+		testCases := []struct {
+			name       string
+			ident      identifier.ACMEIdentifier
+			wantChalls []core.AcmeChallenge
+			wantErr    string
+		}{
+			{
+				name:  "dns",
+				ident: identifier.NewDNS("example.com"),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeHTTP01,
+					core.ChallengeTypeDNS01,
+					core.ChallengeTypeTLSALPN01,
+					core.ChallengeTypeDNSAccount01,
+				},
+			},
+			{
+				name:  "dns wildcard",
+				ident: identifier.NewDNS("*.example.com"),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeDNS01,
+					core.ChallengeTypeDNSAccount01,
+				},
+			},
+			{
+				name:  "ip",
+				ident: identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeHTTP01, core.ChallengeTypeTLSALPN01,
+				},
+			},
+			{
+				name:    "invalid",
+				ident:   identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"},
+				wantErr: "unrecognized identifier type",
+			},
+		}
 
-			if len(tc.wantChalls) != 0 {
-				test.AssertNotError(t, err, "should have succeeded")
-				test.AssertDeepEquals(t, challs, tc.wantChalls)
-			}
+		for _, tc := range testCases {
+			tc := tc // Capture range variable
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				challs, err := pa.ChallengeTypesFor(tc.ident)
 
-			if tc.wantErr != "" {
-				test.AssertError(t, err, "should have errored")
-				test.AssertContains(t, err.Error(), tc.wantErr)
-			}
-		})
-	}
+				if len(tc.wantChalls) != 0 {
+					test.AssertNotError(t, err, "should have succeeded")
+					test.AssertDeepEquals(t, challs, tc.wantChalls)
+				}
+
+				if tc.wantErr != "" {
+					test.AssertError(t, err, "should have errored")
+					test.AssertContains(t, err.Error(), tc.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("DNSAccount01Enabled=false", func(t *testing.T) {
+		features.Set(features.Config{DNSAccount01Enabled: false})
+		t.Cleanup(features.Reset)
+
+		testCases := []struct {
+			name       string
+			ident      identifier.ACMEIdentifier
+			wantChalls []core.AcmeChallenge
+			wantErr    string
+		}{
+			{
+				name:  "dns",
+				ident: identifier.NewDNS("example.com"),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeHTTP01,
+					core.ChallengeTypeDNS01,
+					core.ChallengeTypeTLSALPN01,
+					// DNSAccount01 excluded
+				},
+			},
+			{
+				name:  "wildcard",
+				ident: identifier.NewDNS("*.example.com"),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeDNS01,
+					// DNSAccount01 excluded
+				},
+			},
+			{
+				name:  "ip",
+				ident: identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
+				wantChalls: []core.AcmeChallenge{
+					core.ChallengeTypeHTTP01, core.ChallengeTypeTLSALPN01,
+				},
+			},
+		}
+
+		for _, tc := range testCases {
+			tc := tc // Capture range variable
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				challs, err := pa.ChallengeTypesFor(tc.ident)
+
+				if len(tc.wantChalls) != 0 {
+					test.AssertNotError(t, err, "should have succeeded")
+					test.AssertDeepEquals(t, challs, tc.wantChalls)
+				}
+
+				if tc.wantErr != "" {
+					test.AssertError(t, err, "should have errored")
+					test.AssertContains(t, err.Error(), tc.wantErr)
+				}
+			})
+		}
+	})
 }
 
 // TestMalformedExactBlocklist tests that loading a YAML policy file with an
