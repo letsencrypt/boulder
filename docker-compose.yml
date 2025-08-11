@@ -16,7 +16,6 @@ services:
       FAKE_DNS: 64.112.117.122
       BOULDER_CONFIG_DIR: test/config
       GOCACHE: /boulder/.gocache/go-build
-      GOFLAGS: -mod=vendor
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
