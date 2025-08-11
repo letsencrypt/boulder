@@ -1,6 +1,6 @@
 bin
-Dockerfile
-docker-build.sh
+Containerfile
+container-build.sh
 tags
 test/certs/ipki
 test/certs/misc
