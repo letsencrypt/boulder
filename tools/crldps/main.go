@@ -27,7 +27,7 @@ func main() {
 	caPath := fs.String("ca", "", "path to an issuing intermediate CA certificate (required)")
 	numShards := fs.Int("shards", 128, "number of CRL shards issued by the CA")
 	err := fs.Parse(os.Args[1:])
-	if err != nil || len(fs.Args()) != 0 {
+	if err != nil || len(fs.Args()) != 0 || len(*caPath) == 0 {
 		log.Println("Incorrect command line flags; usage:")
 		fs.PrintDefaults()
 		os.Exit(1)
