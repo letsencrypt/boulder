@@ -186,14 +186,17 @@ processes = []
 challSrvProcess = None
 
 def install(race_detection):
+    e = os.environ.copy()
+    e.setdefault("GOBIN", os.path.join(os.getcwd(), "bin"))
+
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
-    go_build_flags='-tags "integration"'
+    go_install=["go", "install", "-tags", "integration"]
     if race_detection:
-        go_build_flags += ' -race'
-
-    return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
+        go_install.append("-race")
+    go_install.append("./...")
+    return subprocess.call(go_install, env=e) == 0
 
 def run(cmd, fakeclock):
     e = os.environ.copy()
