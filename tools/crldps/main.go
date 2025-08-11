@@ -12,9 +12,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/idp"
@@ -38,17 +40,21 @@ func main() {
 		log.Fatalf("Failed to load issuer certificate from %q: %s", os.Args[1], err)
 	}
 
-	crldpBase := fmt.Sprintf("http://%s.c.lencr.org", strings.ToLower(issuer.Subject.CommonName))
+	client := http.Client{Timeout: 10 * time.Second}
 
 	var (
 		anyErr bool
 		crldps []string
 	)
 	for shard := range *numShards {
-		// We 1-index our CRL shards.
-		crldp := fmt.Sprintf("%s/%d.crl", crldpBase, shard+1)
+		crldp := (&url.URL{
+			Scheme: "http",
+			Host:   fmt.Sprintf("%s.c.lencr.org", strings.ToLower(issuer.Subject.CommonName)),
+			// We 1-index our CRL shards.
+			Path: fmt.Sprintf("%d.crl", shard+1),
+		}).String()
 
-		resp, err := http.Get(crldp)
+		resp, err := client.Get(crldp)
 		if err != nil {
 			anyErr = true
 			log.Printf("Error downloading crl %q: %s", crldp, err)
@@ -100,8 +106,12 @@ func main() {
 	// Do a final check of the one-past-the-end shard, to ensure the operator
 	// gave the correct number of shards.
 	{
-		crldp := fmt.Sprintf("%s/%d.crl", crldpBase, *numShards+1)
-		resp, err := http.Get(crldp)
+		crldp := (&url.URL{
+			Scheme: "http",
+			Host:   fmt.Sprintf("%s.c.lencr.org", strings.ToLower(issuer.Subject.CommonName)),
+			Path:   fmt.Sprintf("%d.crl", *numShards+1),
+		}).String()
+		resp, err := client.Get(crldp)
 		if err == nil && resp.StatusCode != http.StatusNotFound {
 			log.Fatalf("Was unexpectedly able to fetch higher-numbered shard %q; please verify that the -shards flag is correct", crldp)
 		}
