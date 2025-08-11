@@ -14,19 +14,21 @@ RUN apt-get --assume-yes --no-install-recommends --update install \
 COPY tools/fetch-and-verify-go.sh /tmp
 RUN /tmp/fetch-and-verify-go.sh ${GO_VERSION}
 RUN tar -C /opt -xzf go.tar.gz
+ENV PATH="/opt/go/bin:${PATH}"
 
 COPY . /opt/boulder
 WORKDIR /opt/boulder
 
-ENV GO111MODULE=on
 ENV GOBIN=/opt/boulder/bin/
-RUN /opt/go/bin/go install \
+RUN go install \
     -buildvcs=false \
     -ldflags="-X \"github.com/letsencrypt/boulder/core.BuildID=${COMMIT_ID}\" -X \"github.com/letsencrypt/boulder/core.BuildTime=$(date -u)\"" \
     -mod=vendor \
     ./...
 
 FROM docker.io/ubuntu:24.04
+
+ARG VERSION
 
 LABEL org.opencontainers.image.authors="Internet Security Research Group, https://letsencrypt.org/"
 LABEL org.opencontainers.image.created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -40,8 +42,14 @@ LABEL org.opencontainers.image.vendor="Internet Security Research Group"
 LABEL org.opencontainers.image.version="${VERSION}"
 
 COPY --from=builder \
-    /opt/boulder/bin/admin /opt/boulder/bin/boulder /opt/boulder/bin/chall-test-srv /opt/boulder/bin/ct-test-srv /opt/boulder/bin/pardot-test-srv \
+    /opt/boulder/bin/admin \
+    /opt/boulder/bin/boulder \
+    /opt/boulder/bin/chall-test-srv \
+    /opt/boulder/bin/ct-test-srv \
+    /opt/boulder/bin/pardot-test-srv \
     /opt/boulder/bin/
 COPY --from=builder /opt/boulder/data /opt/boulder/data
 COPY --from=builder /opt/boulder/sa/db /opt/boulder/sa/db
 COPY --from=builder /opt/boulder/test/config /opt/boulder/test/config
+
+ENV PATH="/opt/boulder/bin:${PATH}"

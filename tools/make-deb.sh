@@ -8,15 +8,14 @@
 # -e Stops execution in the instance of a command or pipeline error.
 # -u Treat unset variables as an error and exit immediately.
 set -eu
-cd "$(realpath -- $(dirname -- "$0"))/.."
+cd "$(realpath -- "$(dirname -- "$0")")/.."
 
 BUILD="$(mktemp -d)"
-TARGET="${BUILD}/opt/boulder"
 
-mkdir "${BUILD}/opt"
+mkdir -p "${BUILD}/opt"
 cp -a /opt/boulder "${BUILD}/opt/boulder"
 
-mkdir "${BUILD}/DEBIAN"
+mkdir -p "${BUILD}/DEBIAN"
 cat > "${BUILD}/DEBIAN/control" <<-EOF
 Package: boulder
 Version: 1:${VERSION}

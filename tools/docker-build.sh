@@ -4,8 +4,15 @@
 # a .tar.gz and a .deb in the current directory, containing Boulder plus the
 # ancillary files.
 #
-# To run this on a Mac, set DOCKER_DEFAULT_PLATFORM=linux/amd64 in your environment.
-#
+
+set -ex
+
+# Without this, `go install` produces:
+# # runtime/cgo
+# gcc: error: unrecognized command-line option '-m64'
+if [ "$(uname -m)" = "arm64" ]; then
+  export DOCKER_DEFAULT_PLATFORM=linux/amd64
+fi
 
 if [ -z "${GO_VERSION}" ] ; then
   echo "GO_VERSION not set"
@@ -20,6 +27,7 @@ docker buildx build \
     --build-arg "COMMIT_ID=${COMMIT_ID}" \
     --build-arg "GO_VERSION=${GO_VERSION}" \
     --build-arg "VERSION=${VERSION}" \
+    --tag "boulder:${VERSION}" \
     --tag "boulder:${COMMIT_ID}" \
     --tag boulder \
     .
