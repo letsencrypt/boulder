@@ -38,7 +38,7 @@ func makeInitialComment(organization, useCase, tier string) string {
 	)
 }
 
-func NewOrdersPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, fundraising, organization, tier, accountID string) (int64, error) {
+func CreateNewOrdersPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, fundraising, organization, tier, accountID string) (int64, error) {
 	return client.CreateTicket(
 		requesterEmail,
 		makeSubject(rl.NewOrdersPerAccount, organization),

@@ -17,6 +17,9 @@ const (
 	searchJSONPath  = apiPath + "search.json"
 )
 
+// Client is a Zendesk client that allows you to create tickets, search for
+// tickets, and add comments to tickets via the Zendesk REST API. It uses basic
+// authentication with an API token.
 type Client struct {
 	httpClient *http.Client
 	tokenEmail string
@@ -71,6 +74,12 @@ func NewClient(baseURL, tokenEmail, token string, nameToFieldID map[string]int64
 	}, nil
 }
 
+// requester represents the requester of a Zendesk ticket. It contains the
+// requester's name and email address. Both fields are required when creating a
+// new ticket.
+//
+// For more information, see the Zendesk API documentation:
+// https://developer.zendesk.com/documentation/ticketing/managing-tickets/creating-and-updating-tickets/#creating-a-ticket-with-a-new-requester
 type requester struct {
 	// Name is the name of the requester, it is a required field.
 	Name string `json:"name"`
@@ -79,6 +88,12 @@ type requester struct {
 	Email string `json:"email"`
 }
 
+// comment represents a comment on a Zendesk ticket. It contains the body of the
+// comment and whether the comment is public or private. The body is a required
+// field when creating a new ticket or adding a comment to an existing ticket.
+//
+// For more information, see the Zendesk API documentation:
+// https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_comments/
 type comment struct {
 	// Body is the content of the comment, it is a required field.
 	Body string `json:"body"`
@@ -87,6 +102,11 @@ type comment struct {
 	Public bool `json:"public"`
 }
 
+// customField represents a custom field in a Zendesk ticket. It contains the ID
+// of the custom field and its value.
+//
+// For more information, see the Zendesk API documentation:
+// https://developer.zendesk.com/documentation/ticketing/managing-tickets/creating-and-updating-tickets/#setting-custom-field-values
 type customField struct {
 	// ID is the ID of the custom field in Zendesk. It is a required field.
 	ID int64 `json:"id"`
@@ -95,6 +115,13 @@ type customField struct {
 	Value string `json:"value"`
 }
 
+// ticket represents a Zendesk ticket. It contains the requester, subject,
+// initial comment, and optional custom fields. The requester and subject are
+// required fields when creating a new ticket.
+//
+// For more information, see the Zendesk API documentation:
+// https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_fields/#json-format
+// https://developer.zendesk.com/documentation/ticketing/managing-tickets/creating-and-updating-tickets/#creating-a-ticket-with-a-new-requester
 type ticket struct {
 	// Requester is the requester of the ticket, it is a required field.
 	Requester requester `json:"requester"`
@@ -109,24 +136,49 @@ type ticket struct {
 	// CustomFields is a list of custom fields and their corresponding values.
 	// It is optional, but if you want to set custom fields you must provide
 	// them here.
+	//
+	// For more information, see the Zendesk API documentation:
+	// https://developer.zendesk.com/documentation/ticketing/managing-tickets/creating-and-updating-tickets/#setting-custom-field-values
 	CustomFields []customField `json:"custom_fields,omitempty"`
 }
 
-func (c *Client) newJSONRequest(method, reqURL string, body []byte) (*http.Request, error) {
+// doJSONRequest constructs and sends an HTTP request to the Zendesk API using
+// the specified method and URL. It sets the appropriate headers for JSON
+// content and basic authentication using the tokenEmail and token. The response
+// body or an error is returned.
+//
+// https://developer.zendesk.com/api-reference/introduction/requests/#request-format
+// https://developer.zendesk.com/api-reference/introduction/security-and-auth/#api-token
+func (c *Client) doJSONRequest(method, reqURL string, body []byte) ([]byte, error) {
 	var reader io.Reader
 	if len(body) > 0 {
 		reader = bytes.NewReader(body)
 	}
 	req, err := http.NewRequest(method, reqURL, reader)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create zendesk request: %w", err)
 	}
 	req.SetBasicAuth(c.tokenEmail+"/token", c.token)
 	req.Header.Set("Accept", "application/json")
 	if reader != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	return req, nil
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("zendesk request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read zendesk response body: %w", err)
+	}
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("zendesk returned status %d: %s", resp.StatusCode, respBody)
+	}
+	return respBody, nil
 }
 
 // CreateTicket creates a new Zendesk ticket with the provided requester email,
@@ -140,6 +192,8 @@ func (c *Client) newJSONRequest(method, reqURL string, body []byte) (*http.Reque
 func (c *Client) CreateTicket(requesterEmail, subject, commentBody string, fields map[string]string) (int64, error) {
 	ticketContents := ticket{
 		Requester: requester{
+			// Here we use the requesterEmail as both the email and name. This
+			// is done intentionally to keep PII to a minimum.
 			Email: requesterEmail,
 			Name:  requesterEmail,
 		},
@@ -160,40 +214,30 @@ func (c *Client) CreateTicket(requesterEmail, subject, commentBody string, field
 		})
 	}
 
+	// For more information on the ticket creation format, see:
+	// https://developer.zendesk.com/api-reference/introduction/requests/#request-format
 	body, err := json.Marshal(struct {
 		Ticket ticket `json:"ticket"`
 	}{Ticket: ticketContents})
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to marshal zendesk ticket: %w", err)
 	}
 
-	req, err := c.newJSONRequest(http.MethodPost, c.ticketsURL, body)
+	body, err = c.doJSONRequest(http.MethodPost, c.ticketsURL, body)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create zendesk request: %w", err)
+		return 0, fmt.Errorf("failed to create zendesk ticket: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return 0, fmt.Errorf("zendesk status %d: failed to read response body: %w", resp.StatusCode, err)
-		}
-		return 0, fmt.Errorf("zendesk returned status %d: %s", resp.StatusCode, respBody)
-	}
-
+	// For more information on the response format, see:
+	// https://developer.zendesk.com/api-reference/introduction/requests/#response-format
 	var result struct {
 		Ticket struct {
 			ID int64 `json:"id"`
 		} `json:"ticket"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&result)
+	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to unmarshal zendesk response: %w", err)
 	}
 	if result.Ticket.ID == 0 {
 		return 0, fmt.Errorf("zendesk did not return a valid ticket ID")
@@ -212,41 +256,36 @@ func (c *Client) FindTickets(matchFields map[string]string) (map[int64]map[strin
 		return nil, fmt.Errorf("no match fields supplied")
 	}
 
-	var query strings.Builder
-	query.WriteString("type:ticket")
+	// Below we're building a very basic search query using the Zendesk query
+	// syntax, for more information see:
+	// https://developer.zendesk.com/documentation/api-basics/working-with-data/searching-with-the-zendesk-api/#basic-query-syntax
+
+	query := []string{"type:ticket"}
 
 	for name, want := range matchFields {
 		id, ok := c.nameToFieldID[name]
 		if !ok {
 			return nil, fmt.Errorf("unknown custom field %q", name)
 		}
+
+		// According to the Zendesk API documentation, if a value contains
+		// spaces, it must be quoted. If the value does not contain spaces, it
+		// must not be quoted. We have observed that the Zendesk API does reject
+		// queries with improper quoting.
 		val := want
-		if strings.ContainsRune(val, ' ') {
-			val = `"` + val + `"`
+		if strings.Contains(val, " ") {
+			val = fmt.Sprintf("%q", val)
 		}
-		fmt.Fprintf(&query, " custom_field_%d:%s", id, val)
+		query = append(query, fmt.Sprintf("custom_field_%d:%s", id, val))
 	}
 
-	searchURL := c.searchURL + "?query=" + url.QueryEscape(query.String())
+	searchURL := c.searchURL + "?query=" + url.QueryEscape(strings.Join(query, " "))
 	out := make(map[int64]map[string]string)
 
 	for searchURL != "" {
-		req, err := c.newJSONRequest(http.MethodGet, searchURL, nil)
+		body, err := c.doJSONRequest(http.MethodGet, searchURL, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create zendesk request: %w", err)
-		}
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		if resp.StatusCode >= 300 {
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return nil, fmt.Errorf("zendesk status %d: failed to read response body: %w", resp.StatusCode, err)
-			}
-			resp.Body.Close()
-			return nil, fmt.Errorf("zendesk status %d: %s", resp.StatusCode, body)
+			return nil, fmt.Errorf("failed to search zendesk tickets: %w", err)
 		}
 
 		var results struct {
@@ -259,12 +298,10 @@ func (c *Client) FindTickets(matchFields map[string]string) (map[int64]map[strin
 			} `json:"results"`
 			Next *string `json:"next_page"`
 		}
-		err = json.NewDecoder(resp.Body).Decode(&results)
+		err = json.Unmarshal(body, &results)
 		if err != nil {
-			resp.Body.Close()
 			return nil, fmt.Errorf("failed to decode zendesk response: %w", err)
 		}
-		resp.Body.Close()
 
 		for _, result := range results.Results {
 			fieldMap := make(map[string]string)
@@ -294,6 +331,8 @@ func (c *Client) AddComment(ticketID int64, commentBody string, public bool) err
 		return fmt.Errorf("failed to join ticket path: %w", err)
 	}
 
+	// For more information on the comment format, see:
+	// https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_comments/
 	payload := struct {
 		Ticket struct {
 			Comment comment `json:"comment"`
@@ -306,22 +345,9 @@ func (c *Client) AddComment(ticketID int64, commentBody string, public bool) err
 		return fmt.Errorf("failed to marshal zendesk comment: %w", err)
 	}
 
-	req, err := c.newJSONRequest(http.MethodPut, endpoint, body)
+	_, err = c.doJSONRequest(http.MethodPut, endpoint, body)
 	if err != nil {
-		return fmt.Errorf("failed to create zendesk request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("zendesk request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("zendesk status %d: failed to read response body: %w", resp.StatusCode, err)
-		}
-		return fmt.Errorf("zendesk status %d: %s", resp.StatusCode, respBody)
+		return fmt.Errorf("failed to add comment to zendesk ticket %d: %w", ticketID, err)
 	}
 	return nil
 }
