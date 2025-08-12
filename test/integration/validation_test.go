@@ -345,6 +345,47 @@ func TestCAARechecking(t *testing.T) {
 	}
 }
 
+func TestCAAAccountURI(t *testing.T) {
+	t.Parallel()
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	domain := random_domain()
+	idents := []acme.Identifier{{Type: "dns", Value: domain}}
+	record := fmt.Sprintf("happy-hacker-ca.invalid; accounturi=%s", client.Account.URL)
+	_, err = testSrvClient.AddCAAIssue(domain, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("domain %s\n", domain)
+	_, err = authAndIssue(client, nil, idents, true, "")
+	if err != nil {
+		t.Fatalf("authAndIssue: %s", err)
+	}
+
+	newClient, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	// New domain to avoid rate limiting; same old CAA record to trigger CAA error.
+	domain = random_domain()
+	idents = []acme.Identifier{{Type: "dns", Value: domain}}
+	_, err = testSrvClient.AddCAAIssue(domain, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = authAndIssue(newClient, nil, idents, true, "")
+	if err == nil {
+		t.Errorf("expected error with mismatched CAA account URI, but got success")
+	}
+	if err != nil && !strings.Contains(err.Error(), "CAA") {
+		t.Errorf("expected CAA error with mismatched CAA account URI, but got: %s", err)
+	}
+}
+
 func TestCAAValidationMethods(t *testing.T) {
 	t.Parallel()
 
