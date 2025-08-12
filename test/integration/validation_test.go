@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -341,5 +342,86 @@ func TestCAARechecking(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "CAA") {
 		t.Errorf("expected finalize to fail due to CAA, but got: %s", err)
+	}
+}
+
+func TestCAAValidationMethods(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		caa         string
+		challType   string
+		expectError bool
+	}{
+		{"dns-01", acme.ChallengeTypeDNS01, false},
+		{"dns-01", acme.ChallengeTypeHTTP01, true},
+		{"http-01", acme.ChallengeTypeHTTP01, false},
+		{"http-01", acme.ChallengeTypeDNS01, true},
+		{"dns-01,http-01", acme.ChallengeTypeDNS01, false},
+		{"dns-01,http-01", acme.ChallengeTypeHTTP01, false},
+	}
+
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%s-with-caa-allowing-%s", tc.challType, tc.caa), func(t *testing.T) {
+			domain := random_domain()
+			record := fmt.Sprintf("happy-hacker-ca.invalid; validationmethods=%s", tc.caa)
+			_, err = testSrvClient.AddCAAIssue(domain, record)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			idents := []acme.Identifier{{Type: "dns", Value: domain}}
+			order, err := client.Client.NewOrder(client.Account, idents)
+			if err != nil {
+				t.Fatalf("creating order: %s", err)
+			}
+
+			authz, err := client.Client.FetchAuthorization(client.Account, order.Authorizations[0])
+			if err != nil {
+				t.Fatalf("fetching authorization: %s", err)
+			}
+
+			var chal acme.Challenge
+			var ok bool
+			switch tc.challType {
+			case acme.ChallengeTypeDNS01:
+				chal, ok = authz.ChallengeMap[acme.ChallengeTypeDNS01]
+				if !ok {
+					t.Fatalf("no DNS challenge found in %#v", authz)
+				}
+				_, err = testSrvClient.AddDNS01Response(domain, chal.KeyAuthorization)
+				if err != nil {
+					t.Fatalf("adding DNS-01 response: %s", err)
+				}
+			case acme.ChallengeTypeHTTP01:
+				chal, ok = authz.ChallengeMap[acme.ChallengeTypeHTTP01]
+				if !ok {
+					t.Fatalf("no HTTP challenge found in %#v", authz)
+				}
+				_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
+				if err != nil {
+					t.Fatalf("adding HTTP-01 response: %s", err)
+				}
+			default:
+				t.Fatalf("unknown challenge type: %q", tc.challType)
+			}
+
+			chal, err = client.Client.UpdateChallenge(client.Account, chal)
+			if err != nil {
+				if tc.expectError && !strings.Contains(err.Error(), "CAA") {
+					t.Errorf("expected validation to fail due to CAA, but got: %s", err)
+				} else if !tc.expectError {
+					t.Errorf("issuing with challenge type %q and CAA %q failed: %s", tc.challType, tc.caa, err)
+				}
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("issuing with challenge type %q and CAA %q succeeded, but should have failed", tc.challType, tc.caa)
+			}
+		})
 	}
 }
