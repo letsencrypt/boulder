@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"sync"
 
 	"github.com/letsencrypt/boulder/ratelimits"
@@ -27,12 +28,16 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	if c.file == "" {
 		return errors.New("--file is required")
 	}
+	if c.parallelism <= 0 {
+		return errors.New("--parallelism must be greater than 0")
+	}
 	overrides, err := ratelimits.LoadOverridesByBucketKey(c.file)
 	if err != nil {
 		return err
 	}
+	var overrideCount = len(overrides)
 
-	work := make(chan *sapb.RateLimitOverride, len(overrides))
+	work := make(chan *sapb.RateLimitOverride, overrideCount)
 	for k, ov := range overrides {
 		work <- &sapb.RateLimitOverride{
 			LimitEnum: int64(ov.Name),
@@ -45,27 +50,39 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	}
 	close(work)
 
+	type result struct {
+		ov  *sapb.RateLimitOverride
+		err error
+	}
+	results := make(chan result, int(c.parallelism))
+
 	var wg sync.WaitGroup
-	errChan := make(chan error, c.parallelism)
 	for i := uint(0); i < c.parallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for ov := range work {
-				_, e := a.sac.AddRateLimitOverride(ctx,
-					&sapb.AddRateLimitOverrideRequest{Override: ov})
-				if e != nil {
-					errChan <- e
-				}
+				_, err := a.sac.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
+				results <- result{ov: ov, err: err}
 			}
 		}()
 	}
-	wg.Wait()
-	close(errChan)
 
-	e := <-errChan
-	if e != nil {
-		return e
+	var errorCount int
+	for range overrideCount {
+		result := <-results
+		if result.err != nil {
+			a.log.AuditErrf("failed to add override: key=%q limit=%d: %s", result.ov.BucketKey, result.ov.LimitEnum, result.err)
+			errorCount++
+		}
 	}
+
+	wg.Wait()
+	close(results)
+
+	if errorCount > 0 {
+		return fmt.Errorf("%d out of %d overrides failed to be added, see log message(s) for more details", errorCount, overrideCount)
+	}
+	a.log.Infof("Successfully added %d overrides", overrideCount)
 	return nil
 }

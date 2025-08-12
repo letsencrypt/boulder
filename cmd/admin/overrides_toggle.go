@@ -79,23 +79,23 @@ func (c *subcommandToggleOverride) Run(ctx context.Context, a *admin) error {
 	}
 
 	if c.enabled {
-		_, rpcErr := a.sac.EnableRateLimitOverride(ctx, &sapb.EnableRateLimitOverrideRequest{
+		_, err := a.sac.EnableRateLimitOverride(ctx, &sapb.EnableRateLimitOverrideRequest{
 			LimitEnum: int64(name),
 			BucketKey: bucketKey,
 		})
-		if rpcErr != nil {
-			return fmt.Errorf("enabling override for limit %s key %q: %s", name, bucketKey, rpcErr)
+		if err != nil {
+			return fmt.Errorf("enabling override for limit %s key %q: %s", name, bucketKey, err)
 		}
 		a.log.Infof("Enabled override for limit %s key %q\n", name, bucketKey)
 		return nil
 	}
 
-	_, rpcErr := a.sac.DisableRateLimitOverride(ctx, &sapb.DisableRateLimitOverrideRequest{
+	_, err = a.sac.DisableRateLimitOverride(ctx, &sapb.DisableRateLimitOverrideRequest{
 		LimitEnum: int64(name),
 		BucketKey: bucketKey,
 	})
-	if rpcErr != nil {
-		return fmt.Errorf("disabling override for limit %s key %q: %s", name, bucketKey, rpcErr)
+	if err != nil {
+		return fmt.Errorf("disabling override for limit %s key %q: %s", name, bucketKey, err)
 	}
 	a.log.Infof("Disabled override for limit %s key %q\n", name, bucketKey)
 	return nil
