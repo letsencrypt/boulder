@@ -45,7 +45,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_create
-        run: gh release create "${GITHUB_REF_NAME}"
+        run: gh release create --generate-notes "${GITHUB_REF_NAME}"
         continue-on-error: true
 
       - name: Upload release files
