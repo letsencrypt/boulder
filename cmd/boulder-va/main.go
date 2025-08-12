@@ -20,7 +20,6 @@ import (
 // client connection. The following GRPC client configuration field combinations
 // are allowed:
 //
-// ServerIPAddresses, [Timeout]
 // ServerAddress, DNSAuthority, [Timeout], [HostOverride]
 // SRVLookup, DNSAuthority, [Timeout], [HostOverride], [SRVResolver]
 // SRVLookups, DNSAuthority, [Timeout], [HostOverride], [SRVResolver]
