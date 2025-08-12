@@ -35,7 +35,6 @@
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
 						"admin.boulder",
-						"ocsp-responder.boulder",
 						"wfe.boulder",
 						"sfe.boulder"
 					]

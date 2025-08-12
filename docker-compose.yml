@@ -49,15 +49,12 @@ services:
       - "integration.trust:64.112.117.122"
     ports:
       - 4001:4001 # ACMEv2
-      - 4002:4002 # OCSP
       - 4003:4003 # SFE
     depends_on:
       - bmysql
       - bproxysql
       - bredis_1
       - bredis_2
-      - bredis_3
-      - bredis_4
       - bconsul
       - bjaeger
       - bpkimetal
@@ -115,34 +112,12 @@ services:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis-ocsp.config
-    networks:
-      bouldernet:
-        # TODO(#8215): Remove this static IP allocation (and similar below) when
-        # we tear down ocsp-responder. We only have it because ocsp-responder
-        # requires IPs in its "ShardAddrs" config, while ratelimit redis
-        # supports looking up shards via hostname and SRV record.
-        ipv4_address: 10.77.77.2
-
-  bredis_2:
-    image: redis:6.2.7
-    volumes:
-      - ./test/:/test/:cached
-    command: redis-server /test/redis-ocsp.config
-    networks:
-      bouldernet:
-        ipv4_address: 10.77.77.3
-
-  bredis_3:
-    image: redis:6.2.7
-    volumes:
-      - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
     networks:
       bouldernet:
         ipv4_address: 10.77.77.4
 
-  bredis_4:
+  bredis_2:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached

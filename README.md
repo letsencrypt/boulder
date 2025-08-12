@@ -30,11 +30,10 @@ Boulder is divided into the following main components:
 4. Certificate Authority
 5. Storage Authority
 6. Publisher
-7. OCSP Responder
-8. CRL Updater
+7. CRL Updater
 
 This component model lets us separate the function of the CA by security
-context. The Web Front End, Validation Authority, OCSP Responder and
+context. The Web Front End, Validation Authority, CRL Storer, and
 Publisher need access to the Internet, which puts them at greater risk of
 compromise. The Registration Authority can live without Internet
 connectivity, but still needs to talk to the Web Front End and Validation
@@ -50,7 +49,7 @@ lines indicating SA RPCs are not shown here.
                              |               ^
 Subscriber server <- VA <----+               |
                                              |
-          Browser -------------------> OCSP Responder
+          Browser -----> S3 <----- CRL Storer/Updater
 ```
 
 Internally, the logic of the system is based around five types of objects:
