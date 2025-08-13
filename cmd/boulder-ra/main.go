@@ -44,10 +44,6 @@ type Config struct {
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
-		// Deprecated: TODO(#8349): Remove this when removing the corresponding
-		// service from the CA.
-		OCSPService *cmd.GRPCClientConfig
-
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
 			// for rate limiting. This field is required to enable rate
