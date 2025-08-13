@@ -76,7 +76,6 @@ type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
 	rapb.UnsafeSCTProviderServer
 	CA        capb.CertificateAuthorityClient
-	OCSP      capb.OCSPGeneratorClient
 	VA        va.RemoteClients
 	SA        sapb.StorageAuthorityClient
 	PA        core.PolicyAuthority
@@ -2199,45 +2198,6 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		}
 	}
 	return &emptypb.Empty{}, nil
-}
-
-// GenerateOCSP looks up a certificate's status, then requests a signed OCSP
-// response for it from the CA. If the certificate status is not available
-// or the certificate is expired, it returns berrors.NotFoundError.
-func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
-	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
-	if errors.Is(err, berrors.NotFound) {
-		_, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: req.Serial})
-		if errors.Is(err, berrors.NotFound) {
-			return nil, berrors.UnknownSerialError()
-		} else {
-			return nil, berrors.NotFoundError("certificate not found")
-		}
-	} else if err != nil {
-		return nil, err
-	}
-
-	// If we get an OCSP query for a certificate where the status is still
-	// OCSPStatusNotReady, that means an error occurred, not here but at issuance
-	// time. Specifically, we succeeded in storing the linting certificate (and
-	// corresponding certificateStatus row), but failed before calling
-	// SetCertificateStatusReady. We expect this to be rare, and we expect such
-	// certificates not to get OCSP queries, so InternalServerError is appropriate.
-	if status.Status == string(core.OCSPStatusNotReady) {
-		return nil, errors.New("serial belongs to a certificate that errored during issuance")
-	}
-
-	if ra.clk.Now().After(status.NotAfter.AsTime()) {
-		return nil, berrors.NotFoundError("certificate is expired")
-	}
-
-	return ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:    req.Serial,
-		Status:    status.Status,
-		Reason:    int32(status.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
-		RevokedAt: status.RevokedDate,
-		IssuerID:  status.IssuerID,
-	})
 }
 
 // NewOrder creates a new order object

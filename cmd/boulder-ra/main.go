@@ -41,9 +41,12 @@ type Config struct {
 		SAService           *cmd.GRPCClientConfig
 		VAService           *cmd.GRPCClientConfig
 		CAService           *cmd.GRPCClientConfig
-		OCSPService         *cmd.GRPCClientConfig
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
+
+		// Deprecated: TODO(#8349): Remove this when removing the corresponding
+		// service from the CA.
+		OCSPService *cmd.GRPCClientConfig
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
@@ -100,7 +103,7 @@ type Config struct {
 		//
 		// Deprecated: This field no longer has any effect, all Must-Staple requests
 		// are rejected.
-		// TODO(#8177): Remove this field.
+		// TODO(#8345): Remove this field.
 		MustStapleAllowList string `validate:"omitempty"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
@@ -191,10 +194,6 @@ func main() {
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
-
-	ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to create CA OCSP client")
-	ocspc := capb.NewOCSPGeneratorClient(ocspConn)
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
@@ -302,7 +301,6 @@ func main() {
 		CAAClient: caaClient,
 	}
 	rai.CA = cac
-	rai.OCSP = ocspc
 	rai.SA = sac
 
 	start, err := bgrpc.NewServer(c.RA.GRPC, logger).Add(
