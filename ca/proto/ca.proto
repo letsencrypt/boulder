@@ -30,29 +30,6 @@ message IssueCertificateResponse {
   bytes DER = 1;
 }
 
-// OCSPGenerator generates OCSP. We separate this out from
-// CertificateAuthority so that we can restrict access to a different subset of
-// hosts, so the hosts that need to request OCSP generation don't need to be
-// able to request certificate issuance.
-service OCSPGenerator {
-  rpc GenerateOCSP(GenerateOCSPRequest) returns (OCSPResponse) {}
-}
-
-// Exactly one of certDER or [serial and issuerID] must be set.
-message GenerateOCSPRequest {
-  // Next unused field number: 8
-  string status = 2;
-  int32 reason = 3;
-  reserved 4; // Previously revokedAtNS
-  google.protobuf.Timestamp revokedAt = 7;
-  string serial = 5;
-  int64 issuerID = 6;
-}
-
-message OCSPResponse {
-  bytes response = 1;
-}
-
 // CRLGenerator signs CRLs. It is separated for the same reason as OCSPGenerator.
 service CRLGenerator {
   rpc GenerateCRL(stream GenerateCRLRequest) returns (stream GenerateCRLResponse) {}

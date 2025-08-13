@@ -15,11 +15,6 @@
 						"ra.boulder"
 					]
 				},
-				"ca.OCSPGenerator": {
-					"clientNames": [
-						"ra.boulder"
-					]
-				},
 				"ca.CRLGenerator": {
 					"clientNames": [
 						"crl-updater.boulder"

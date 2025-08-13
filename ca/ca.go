@@ -27,7 +27,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -257,12 +256,6 @@ func NewCertificateAuthorityImpl(
 	}
 
 	return ca, nil
-}
-
-var ocspStatusToCode = map[string]int{
-	"good":    ocsp.Good,
-	"revoked": ocsp.Revoked,
-	"unknown": ocsp.Unknown,
 }
 
 // issuePrecertificate is the first step in the [issuance cycle]. It allocates and stores a serial number,
