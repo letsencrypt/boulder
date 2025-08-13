@@ -24,6 +24,7 @@ COMMIT_ID="$(git rev-parse --short=8 HEAD)"
 VERSION="${GO_VERSION}.$(date +%s)"
 
 docker buildx build \
+    --file Containerfile \
     --build-arg "COMMIT_ID=${COMMIT_ID}" \
     --build-arg "GO_VERSION=${GO_VERSION}" \
     --build-arg "VERSION=${VERSION}" \
