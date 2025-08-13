@@ -18,6 +18,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -606,20 +607,28 @@ func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier) error 
 func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	switch ident.Type {
 	case identifier.TypeDNS:
-		// If the identifier is for a DNS wildcard name we only provide a DNS-01
-		// challenge, to comply with the BRs Sections 3.2.2.4.19 and 3.2.2.4.20
-		// stating that ACME HTTP-01 and TLS-ALPN-01 are not suitable for validating
-		// Wildcard Domains.
+		// If the identifier is for a DNS wildcard name we only provide DNS-01
+		// or DNS-ACCOUNT-01 challenges, to comply with the BRs Sections 3.2.2.4.19
+		// and 3.2.2.4.20 stating that ACME HTTP-01 and TLS-ALPN-01 are not
+		// suitable for validating Wildcard Domains.
 		if strings.HasPrefix(ident.Value, "*.") {
-			return []core.AcmeChallenge{core.ChallengeTypeDNS01}, nil
+			challenges := []core.AcmeChallenge{core.ChallengeTypeDNS01}
+			if features.Get().DNSAccount01Enabled {
+				challenges = append(challenges, core.ChallengeTypeDNSAccount01)
+			}
+			return challenges, nil
 		}
 
 		// Return all challenge types we support for non-wildcard DNS identifiers.
-		return []core.AcmeChallenge{
+		challenges := []core.AcmeChallenge{
 			core.ChallengeTypeHTTP01,
 			core.ChallengeTypeDNS01,
 			core.ChallengeTypeTLSALPN01,
-		}, nil
+		}
+		if features.Get().DNSAccount01Enabled {
+			challenges = append(challenges, core.ChallengeTypeDNSAccount01)
+		}
+		return challenges, nil
 	case identifier.TypeIP:
 		// Only HTTP-01 and TLS-ALPN-01 are suitable for IP address identifiers
 		// per RFC 8738, Sec. 4.

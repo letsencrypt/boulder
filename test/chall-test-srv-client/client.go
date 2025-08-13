@@ -3,6 +3,7 @@ package challtestsrvclient
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -398,6 +399,80 @@ func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
 		)
 	}
 	return resp, nil
+}
+
+// AddDNSAccount01Response adds an ACME DNS-ACCOUNT-01 challenge response for the
+// provided host to the challenge test server's DNS interfaces. The TXT record
+// name is constructed using the accountURL, and the TXT record value is the
+// base64url encoded SHA-256 hash of the provided value. Any failure returns an
+// error that includes the relevant operation and the payload.
+func (c *Client) AddDNSAccount01Response(accountURL, host, value string) ([]byte, error) {
+	if accountURL == "" {
+		return nil, fmt.Errorf("accountURL cannot be empty")
+	}
+	if host == "" {
+		return nil, fmt.Errorf("host cannot be empty")
+	}
+	label, err := calculateDNSAccount01Label(accountURL)
+	if err != nil {
+		return nil, fmt.Errorf("error calculating DNS label: %v", err)
+	}
+	host = fmt.Sprintf("%s._acme-challenge.%s", label, host)
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
+	h := sha256.Sum256([]byte(value))
+	value = base64.RawURLEncoding.EncodeToString(h[:])
+	payload := map[string]string{"host": host, "value": value}
+	resp, err := c.postURL(addTXT, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while adding DNS-ACCOUNT-01 response for host %q, val %q (payload: %v): %w",
+			host, value, payload, err,
+		)
+	}
+	return resp, nil
+}
+
+// RemoveDNSAccount01Response removes an ACME DNS-ACCOUNT-01 challenge
+// response for the provided host and accountURL combination from the
+// challenge test server's DNS interfaces. The TXT record name is
+// constructed using the accountURL. Any failure returns an error
+// that includes both the relevant operation and the payload.
+func (c *Client) RemoveDNSAccount01Response(accountURL, host string) ([]byte, error) {
+	if accountURL == "" {
+		return nil, fmt.Errorf("accountURL cannot be empty")
+	}
+	if host == "" {
+		return nil, fmt.Errorf("host cannot be empty")
+	}
+	label, err := calculateDNSAccount01Label(accountURL)
+	if err != nil {
+		return nil, fmt.Errorf("error calculating DNS label: %v", err)
+	}
+	host = fmt.Sprintf("%s._acme-challenge.%s", label, host)
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
+	payload := map[string]string{"host": host}
+	resp, err := c.postURL(delTXT, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while removing DNS-ACCOUNT-01 response for host %q (payload: %v): %w",
+			host, payload, err,
+		)
+	}
+	return resp, nil
+}
+
+func calculateDNSAccount01Label(accountURL string) (string, error) {
+	if accountURL == "" {
+		return "", fmt.Errorf("account URL cannot be empty")
+	}
+
+	h := sha256.Sum256([]byte(accountURL))
+	label := fmt.Sprintf("_%s", strings.ToLower(base32.StdEncoding.EncodeToString(h[:10])))
+	return label, nil
 }
 
 // DNSRequest is a single DNS request in the request history.

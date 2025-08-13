@@ -190,7 +190,7 @@ def test_failed_validation_limit():
     threshold = 3
     for _ in range(threshold):
         order = client.new_order(csr_pem)
-        chall = order.authorizations[0].body.challenges[0]
+        chall = chisel2.get_any_supported_chall(order.authorizations[0])
         client.answer_challenge(chall, chall.response(client.net.key))
         try:
             client.poll_and_finalize(order)
@@ -606,8 +606,9 @@ def test_order_reuse_failed_authz():
     order = client.new_order(csr_pem)
     firstOrderURI = order.uri
 
-    # Pick the first authz's first challenge, doesn't matter what type it is
-    chall_body = order.authorizations[0].body.challenges[0]
+    # Pick the first authz's first supported challenge, doesn't matter what
+    # type it is
+    chall_body = chisel2.get_any_supported_chall(order.authorizations[0])
     # Answer it, but with nothing set up to solve the challenge request
     client.answer_challenge(chall_body, chall_body.response(client.net.key))
 
