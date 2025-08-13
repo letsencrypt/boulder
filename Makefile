@@ -1,3 +1,4 @@
+# TODO(#8338): Remove Makefile
 OBJDIR ?= $(shell pwd)/bin
 DESTDIR ?= /usr/local/bin
 ARCHIVEDIR ?= /tmp
