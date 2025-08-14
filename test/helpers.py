@@ -134,22 +134,6 @@ def try_verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
             raise(Exception("OCSP response wasn't '%s'" % reason))
     return verify_output
 
-def reset_akamai_purges():
-    requests.post("http://localhost:6789/debug/reset-purges", data="{}")
-
-def verify_akamai_purge():
-    deadline = time.time() + .4
-    while True:
-        time.sleep(0.05)
-        if time.time() > deadline:
-            raise(Exception("Timed out waiting for Akamai purge"))
-        response = requests.get("http://localhost:6789/debug/get-purges")
-        purgeData = response.json()
-        if len(purgeData["V3"]) == 0:
-            continue
-        break
-    reset_akamai_purges()
-
 def waitport(port, prog, perTickCheck=None):
     """Wait until a port on localhost is open."""
     for _ in range(1000):
