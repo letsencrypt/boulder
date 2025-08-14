@@ -26,6 +26,11 @@ type Config struct {
 		// HTTP requests. Defaults to ":80".
 		ListenAddress string `validate:"omitempty,hostname_port"`
 
+		// TLSListenAddress is the address:port on which to listen for incoming
+		// HTTPS requests. If none is provided the SFE will not listen for HTTPS
+		// requests.
+		TLSListenAddress string `validate:"omitempty,hostname_port"`
+
 		// Timeout is the per-request overall timeout. This should be slightly
 		// lower than the upstream's timeout when making requests to this service.
 		Timeout config.Duration `validate:"-"`
@@ -54,8 +59,7 @@ type Config struct {
 				Tier             int64 `validate:"required"`
 				RateLimit        int64 `validate:"required"`
 				ReviewStatus     int64 `validate:"required"`
-				Fundraising      int64 `validate:"required"`
-				AccountID        int64 `validate:"required"`
+				AccountURI       int64 `validate:"required"`
 				RegisteredDomain int64 `validate:"required"`
 				IPAddress        int64 `validate:"required"`
 			} `validate:"required,dive"`
@@ -129,8 +133,7 @@ func main() {
 				rlo.TierFieldName:             c.SFE.Zendesk.CustomFields.Tier,
 				rlo.RateLimitFieldName:        c.SFE.Zendesk.CustomFields.RateLimit,
 				rlo.ReviewStatusFieldName:     c.SFE.Zendesk.CustomFields.ReviewStatus,
-				rlo.FundraisingFieldName:      c.SFE.Zendesk.CustomFields.Fundraising,
-				rlo.AccountURIFieldName:       c.SFE.Zendesk.CustomFields.AccountID,
+				rlo.AccountURIFieldName:       c.SFE.Zendesk.CustomFields.AccountURI,
 				rlo.RegisteredDomainFieldName: c.SFE.Zendesk.CustomFields.RegisteredDomain,
 				rlo.IPAddressFieldName:        c.SFE.Zendesk.CustomFields.IPAddress,
 			},
@@ -162,6 +165,17 @@ func main() {
 			cmd.FailOnError(err, "Running HTTP server")
 		}
 	}()
+
+	tlsSrv := web.NewServer(c.SFE.TLSListenAddress, handler, logger)
+	if tlsSrv.Addr != "" {
+		logger.Infof("Server running, listening on %s....", c.SFE.TLSListenAddress)
+		go func() {
+			err := tlsSrv.ListenAndServeTLS(c.SFE.TLS.CertFile, c.SFE.TLS.KeyFile)
+			if err != nil && err != http.ErrServerClosed {
+				cmd.FailOnError(err, "Running HTTPS server")
+			}
+		}()
+	}
 
 	// When main is ready to exit (because it has received a shutdown signal),
 	// gracefully shutdown the servers. Calling these shutdown functions causes

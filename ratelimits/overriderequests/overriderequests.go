@@ -8,20 +8,16 @@ import (
 )
 
 const (
-	// Used for the request form Web UI and in the Zendesk tickets.
+	// Meta fields (not user-entered)
+	ReviewStatusFieldName = "reviewStatus"
+	RateLimitFieldName    = "rateLimit"
+
+	// Shared user-entered fields (UI + API/Zendesk)
 	OrganizationFieldName     = "organization"
 	TierFieldName             = "tier"
-	RateLimitFieldName        = "rateLimit"
-	ReviewStatusFieldName     = "reviewStatus"
-	FundraisingFieldName      = "fundraising"
 	AccountURIFieldName       = "accountURI"
 	RegisteredDomainFieldName = "registeredDomain"
 	IPAddressFieldName        = "ipAddress"
-
-	// Only used for the request form Web UI.
-	PrivacyPolicyFieldName = "privacyPolicy"
-	EmailAddressFieldName  = "emailAddress"
-	UseCase                = "useCase"
 
 	// reviewStatusDefault is the initial status of a ticket when created.
 	reviewStatusDefault = "review-status-pending"
@@ -38,7 +34,9 @@ func makeInitialComment(organization, useCase, tier string) string {
 	)
 }
 
-func CreateNewOrdersPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, fundraising, organization, tier, accountID string) (int64, error) {
+// CreateNewOrdersPerAccountOverrideTicket creates a new Zendesk ticket for a
+// NewOrdersPerAccount override request. All fields are required.
+func CreateNewOrdersPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, organization, tier, accountID string) (int64, error) {
 	return client.CreateTicket(
 		requesterEmail,
 		makeSubject(rl.NewOrdersPerAccount, organization),
@@ -47,23 +45,24 @@ func CreateNewOrdersPerAccountOverrideTicket(client *zendesk.Client, requesterEm
 			RateLimitFieldName:    rl.NewOrdersPerAccount.String(),
 			ReviewStatusFieldName: reviewStatusDefault,
 			OrganizationFieldName: organization,
-			FundraisingFieldName:  fundraising,
 			TierFieldName:         tier,
 			AccountURIFieldName:   accountID,
 		},
 	)
 }
 
-func CreateCertificatesPerDomainOverrideTicket(client *zendesk.Client, requesterEmail, useCase, fundraising, organization, tier, registeredDomain, ipAddress string) (int64, error) {
+// CreateCertificatesPerDomainOverrideTicket creates a new Zendesk ticket for a
+// CertificatesPerDomain override request. Only registeredDomain or ipAddress
+// should be provided, not both. All other fields are required.
+func CreateCertificatesPerDomainOverrideTicket(client *zendesk.Client, requesterEmail, useCase, organization, tier, registeredDomain, ipAddress string) (int64, error) {
 	return client.CreateTicket(
 		requesterEmail,
-		makeSubject(rl.NewOrdersPerAccount, organization),
+		makeSubject(rl.CertificatesPerDomain, organization),
 		makeInitialComment(organization, useCase, tier),
 		map[string]string{
 			RateLimitFieldName:        rl.CertificatesPerDomain.String(),
 			ReviewStatusFieldName:     reviewStatusDefault,
 			OrganizationFieldName:     organization,
-			FundraisingFieldName:      fundraising,
 			TierFieldName:             tier,
 			RegisteredDomainFieldName: registeredDomain,
 			IPAddressFieldName:        ipAddress,
@@ -71,16 +70,18 @@ func CreateCertificatesPerDomainOverrideTicket(client *zendesk.Client, requester
 	)
 }
 
-func CreateCertificatesPerDomainPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, fundraising, organization, tier, accountID string) (int64, error) {
+// CreateCertificatesPerDomainPerAccountOverrideTicket creates a new Zendesk
+// ticket for a CertificatesPerDomainPerAccount override request. All fields are
+// required.
+func CreateCertificatesPerDomainPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, organization, tier, accountID string) (int64, error) {
 	return client.CreateTicket(
 		requesterEmail,
-		makeSubject(rl.NewOrdersPerAccount, organization),
+		makeSubject(rl.CertificatesPerDomainPerAccount, organization),
 		makeInitialComment(organization, useCase, tier),
 		map[string]string{
 			RateLimitFieldName:    rl.CertificatesPerDomainPerAccount.String(),
 			ReviewStatusFieldName: reviewStatusDefault,
 			OrganizationFieldName: organization,
-			FundraisingFieldName:  fundraising,
 			TierFieldName:         tier,
 			AccountURIFieldName:   accountID,
 		},

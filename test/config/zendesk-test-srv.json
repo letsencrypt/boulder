@@ -1,0 +1,6 @@
+{
+	"addr": ":9701",
+	"expectedTokenEmail": "admin@example.com",
+	"expectedAPIToken": "VfOskCDktyAXNqsIQEnFErQVm7tfpiUUemlYxkp2",
+	"ticketCapacity": 1000
+}

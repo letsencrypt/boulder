@@ -38,6 +38,35 @@ func startMockClient(t *testing.T) (*Client, *zendeskfake.Server) {
 	return c, srv
 }
 
+func TestNewClientWithDuplicateFieldID(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.NewServeMux())
+	defer ts.Close()
+	nameToID := map[string]int64{
+		"a": 1,
+		"b": 1,
+	}
+	_, err := NewClient(ts.URL, apiTokenEmail, apiToken, nameToID)
+	if err == nil || !strings.Contains(err.Error(), "duplicate field ID") {
+		t.Errorf("expected duplicate field ID error, got: %s", err)
+	}
+}
+
+func TestNewClientBaseURLJoin(t *testing.T) {
+	t.Parallel()
+
+	base := "http://example.test"
+	_, err := NewClient(base+"/", apiTokenEmail, apiToken, map[string]int64{})
+	if err != nil {
+		t.Errorf("NewClient with trailing slash failed: %s", err)
+	}
+	_, err = NewClient(base, apiTokenEmail, apiToken, map[string]int64{})
+	if err != nil {
+		t.Errorf("NewClient without trailing slash failed: %s", err)
+	}
+}
+
 func TestCreateTicketOK(t *testing.T) {
 	t.Parallel()
 
@@ -98,6 +127,26 @@ func TestCreateTicketUnknownField(t *testing.T) {
 	_, err := c.CreateTicket("x@example.com", "s", "b", map[string]string{"nope": "v"})
 	if err == nil || !strings.Contains(err.Error(), "unknown custom field") {
 		t.Errorf("expected unknown custom field error, got: %s", err)
+	}
+}
+
+func TestCreateTicketSetsRequesterNameToEmail(t *testing.T) {
+	t.Parallel()
+
+	c, srv := startMockClient(t)
+
+	id, err := c.CreateTicket("alice@example.com", "S", "B", nil)
+	if err != nil {
+		t.Errorf("CreateTicket(alice@example.com): %s", err)
+	}
+
+	got, ok := srv.GetTicket(id)
+	if !ok {
+		t.Errorf("ticket id %d not found in server", id)
+		return
+	}
+	if got.Requester.Email != "alice@example.com" || got.Requester.Name != "alice@example.com" {
+		t.Errorf("requester mismatch for ticket %d: %#v (want Email=%q Name=%q)", id, got.Requester, "alice@example.com", "alice@example.com")
 	}
 }
 
@@ -213,55 +262,6 @@ func TestFindTicketsUnknownFieldName(t *testing.T) {
 	_, err := c.FindTickets(map[string]string{"unknown": "v"})
 	if err == nil || !strings.Contains(err.Error(), "unknown custom field") {
 		t.Errorf("expected unknown custom field error, got: %s", err)
-	}
-}
-
-func TestNewClientWithDuplicateFieldID(t *testing.T) {
-	t.Parallel()
-
-	ts := httptest.NewServer(http.NewServeMux())
-	defer ts.Close()
-	nameToID := map[string]int64{
-		"a": 1,
-		"b": 1,
-	}
-	_, err := NewClient(ts.URL, apiTokenEmail, apiToken, nameToID)
-	if err == nil || !strings.Contains(err.Error(), "duplicate field ID") {
-		t.Errorf("expected duplicate field ID error, got: %s", err)
-	}
-}
-
-func TestNewClientBaseURLJoin(t *testing.T) {
-	t.Parallel()
-
-	base := "http://example.test"
-	_, err := NewClient(base+"/", apiTokenEmail, apiToken, map[string]int64{})
-	if err != nil {
-		t.Errorf("NewClient with trailing slash failed: %s", err)
-	}
-	_, err = NewClient(base, apiTokenEmail, apiToken, map[string]int64{})
-	if err != nil {
-		t.Errorf("NewClient without trailing slash failed: %s", err)
-	}
-}
-
-func TestCreateTicketSetsRequesterNameToEmail(t *testing.T) {
-	t.Parallel()
-
-	c, srv := startMockClient(t)
-
-	id, err := c.CreateTicket("alice@example.com", "S", "B", nil)
-	if err != nil {
-		t.Errorf("CreateTicket(alice@example.com): %s", err)
-	}
-
-	got, ok := srv.GetTicket(id)
-	if !ok {
-		t.Errorf("ticket id %d not found in server", id)
-		return
-	}
-	if got.Requester.Email != "alice@example.com" || got.Requester.Name != "alice@example.com" {
-		t.Errorf("requester mismatch for ticket %d: %#v (want Email=%q Name=%q)", id, got.Requester, "alice@example.com", "alice@example.com")
 	}
 }
 

@@ -1,6 +1,7 @@
 {
 	"sfe": {
 		"listenAddress": "0.0.0.0:4003",
+		"tlsListenAddress": "0.0.0.0:4433",
 		"timeout": "30s",
 		"shutdownStopTimeout": "10s",
 		"tls": {
@@ -30,6 +31,22 @@
 		},
 		"unpauseHMACKey": {
 			"keyFile": "test/secrets/sfe_unpause_key"
+		},
+		"zendesk": {
+			"baseURL": "http://localhost:9701",
+			"tokenEmail": "admin@example.com",
+			"token": {
+				"passwordFile": "test/secrets/zendesk_api_token"
+			},
+			"customFields": {
+				"Organization": 1234567,
+				"Tier": 2345678,
+				"RateLimit": 3456789,
+				"ReviewStatus": 34567890,
+				"AccountURI": 45678901,
+				"RegisteredDomain": 56789012,
+				"IPAddress": 67890123
+			}
 		},
 		"features": {}
 	},
