@@ -12,7 +12,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -23,6 +22,7 @@ import (
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -207,7 +207,7 @@ func reRevoked(a *proto.CRLEntry, b *proto.CRLEntry) (*proto.CRLEntry, error) {
 	if b.RevokedAt.AsTime().Before(a.RevokedAt.AsTime()) {
 		first, second = b, a
 	}
-	if first.Reason != ocsp.KeyCompromise && second.Reason == ocsp.KeyCompromise {
+	if revocation.Reason(first.Reason) != revocation.KeyCompromise && revocation.Reason(second.Reason) == revocation.KeyCompromise {
 		return second, nil
 	}
 	// The RA has logic to prevent re-revocation for any reason other than KeyCompromise,
