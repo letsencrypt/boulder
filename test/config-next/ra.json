@@ -112,16 +112,6 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
-		"akamaiPurgerService": {
-			"dnsAuthority": "consul.service.consul",
-			"srvLookup": {
-				"service": "akamai-purger",
-				"domain": "service.consul"
-			},
-			"timeout": "15s",
-			"noWaitForReady": true,
-			"hostOverride": "akamai-purger.boulder"
-		},
 		"grpc": {
 			"maxConnectionAge": "30s",
 			"services": {
