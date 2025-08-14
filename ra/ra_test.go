@@ -37,7 +37,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
@@ -384,7 +383,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
-		profiles, nil, 5*time.Minute, ctp, nil, nil)
+		profiles, nil, 5*time.Minute, ctp, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
@@ -3629,17 +3628,9 @@ func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *s
 	return &emptypb.Empty{}, nil
 }
 
-type mockPurger struct{}
-
-func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
 func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
@@ -3713,8 +3704,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.purger = &mockPurger{}
-
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
 	cert.IsCA = true
@@ -3752,8 +3741,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 func TestRevokeCertByKey(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
@@ -3803,8 +3790,6 @@ func TestRevokeCertByKey(t *testing.T) {
 func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	serial, cert := test.ThrowAwayCert(t, clk)
@@ -3869,26 +3854,13 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
 
-	// Duplicate administrative revocation of a serial for an unspecified reason
-	// should succeed because the akamai cache purge succeeds.
+	// Duplicate administrative revocation of a serial for any reason other than
+	// keyCompromise should fail.
 	// Note that we *don't* call reset() here, so it recognizes the duplicate.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    serial,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
-	})
-	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
-	test.AssertEquals(t, len(mockSA.blocked), 0)
-
-	// Duplicate administrative revocation of a serial for a *malformed* cert for
-	// an unspecified reason should fail because we can't attempt an akamai cache
-	// purge so the underlying AlreadyRevoked error gets propagated upwards.
-	// Note that we *don't* call reset() here, so it recognizes the duplicate.
-	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Serial:    serial,
-		Code:      ocsp.Unspecified,
-		AdminName: "root",
-		Malformed: true,
 	})
 	test.AssertError(t, err, "Should be revoked")
 	test.AssertContains(t, err.Error(), "already revoked")

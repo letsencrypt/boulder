@@ -5,7 +5,6 @@ import (
 	"flag"
 	"os"
 
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -38,15 +37,17 @@ type Config struct {
 
 		MaxContactsPerRegistration int
 
-		SAService           *cmd.GRPCClientConfig
-		VAService           *cmd.GRPCClientConfig
-		CAService           *cmd.GRPCClientConfig
-		PublisherService    *cmd.GRPCClientConfig
-		AkamaiPurgerService *cmd.GRPCClientConfig
+		SAService        *cmd.GRPCClientConfig
+		VAService        *cmd.GRPCClientConfig
+		CAService        *cmd.GRPCClientConfig
+		PublisherService *cmd.GRPCClientConfig
 
 		// Deprecated: TODO(#8349): Remove this when removing the corresponding
 		// service from the CA.
 		OCSPService *cmd.GRPCClientConfig
+
+		// Deprecated: TODO(#8345): Remove this.
+		AkamaiPurgerService *cmd.GRPCClientConfig
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
@@ -203,10 +204,6 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := pubpb.NewPublisherClient(conn)
 
-	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to create a Akamai Purger client")
-	apc := akamaipb.NewAkamaiPurgerClient(apConn)
-
 	issuerCertPaths := c.RA.IssuerCerts
 	issuerCerts := make([]*issuance.Certificate, len(issuerCertPaths))
 	for i, issuerCertPath := range issuerCertPaths {
@@ -289,7 +286,6 @@ func main() {
 		pubc,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
-		apc,
 		issuerCerts,
 	)
 	defer rai.Drain()
