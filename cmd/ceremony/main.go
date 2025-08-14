@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -447,7 +448,7 @@ type crlConfig struct {
 		RevokedCertificates []struct {
 			CertificatePath  string `yaml:"certificate-path"`
 			RevocationDate   string `yaml:"revocation-date"`
-			RevocationReason int    `yaml:"revocation-reason"`
+			RevocationReason string `yaml:"revocation-reason"`
 		} `yaml:"revoked-certificates"`
 	} `yaml:"crl-profile"`
 	SkipLints []string `yaml:"skip-lints"`
@@ -487,7 +488,7 @@ func (cc crlConfig) validate() error {
 		if rc.RevocationDate == "" {
 			return errors.New("crl-profile.revoked-certificates.revocation-date is required")
 		}
-		if rc.RevocationReason == 0 {
+		if rc.RevocationReason == "" {
 			return errors.New("crl-profile.revoked-certificates.revocation-reason is required")
 		}
 	}
@@ -994,9 +995,13 @@ func crlCeremony(configBytes []byte) error {
 			SerialNumber:   cert.SerialNumber,
 			RevocationTime: revokedAt,
 		}
-		encReason, err := asn1.Marshal(rc.RevocationReason)
+		reasonCode, err := revocation.StringToReason(rc.RevocationReason)
 		if err != nil {
-			return fmt.Errorf("failed to marshal revocation reason %q: %s", rc.RevocationReason, err)
+			return fmt.Errorf("looking up revocation reason: %w", err)
+		}
+		encReason, err := asn1.Marshal(reasonCode)
+		if err != nil {
+			return fmt.Errorf("failed to marshal revocation reason %d (%q): %s", reasonCode, rc.RevocationReason, err)
 		}
 		revokedCert.Extensions = []pkix.Extension{{
 			Id:    asn1.ObjectIdentifier{2, 5, 29, 21}, // id-ce-reasonCode

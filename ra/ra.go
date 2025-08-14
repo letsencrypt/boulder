@@ -21,7 +21,6 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -462,7 +461,7 @@ type certificateRevocationEvent struct {
 	// serial number.
 	SerialNumber string `json:",omitempty"`
 	// Reason is the integer representing the revocation reason used.
-	Reason int64 `json:"reason"`
+	Reason revocation.Reason `json:"reason"`
 	// Method is the way in which revocation was requested.
 	// It will be one of the strings: "applicant", "subscriber", "control", "key", or "admin".
 	Method string `json:",omitempty"`
@@ -1675,7 +1674,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		return err
 	}
 
-	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[reason]).Inc()
+	ra.revocationReasonCounter.WithLabelValues(reason.String()).Inc()
 	return nil
 }
 
@@ -1694,7 +1693,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		// unless the cert was already revoked.
 		return fmt.Errorf("unable to re-revoke serial %q which is not currently revoked", serialString)
 	}
-	if status.RevokedReason == ocsp.KeyCompromise {
+	if revocation.Reason(status.RevokedReason) == revocation.KeyCompromise {
 		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
 	}
 
@@ -1714,7 +1713,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
-		Reason:   int64(ocsp.KeyCompromise),
+		Reason:   int64(revocation.KeyCompromise),
 		Date:     timestamppb.New(ra.clk.Now()),
 		Backdate: status.RevokedDate,
 		IssuerID: int64(issuerID),
@@ -1724,7 +1723,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		return err
 	}
 
-	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[ocsp.KeyCompromise]).Inc()
+	ra.revocationReasonCounter.WithLabelValues(revocation.KeyCompromise.String()).Inc()
 	return nil
 }
 
@@ -1743,7 +1742,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, errIncompleteGRPCRequest
 	}
 
-	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
+	reasonCode := revocation.Reason(req.Code)
+	if !revocation.UserAllowedReason(reasonCode) {
 		return nil, berrors.BadRevocationReasonError(req.Code)
 	}
 
@@ -1757,7 +1757,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
 		SerialNumber: serialString,
-		Reason:       req.Code,
+		Reason:       reasonCode,
 		Method:       "applicant",
 		RequesterID:  req.RegID,
 	}
@@ -1812,15 +1812,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// revoke for any reason other than cessationOfOperation, which covers
 		// circumstances where "the certificate subscriber no longer owns the
 		// domain names in the certificate". Override the reason code to match.
-		req.Code = ocsp.CessationOfOperation
-		logEvent.Reason = req.Code
+		reasonCode = revocation.CessationOfOperation
+		logEvent.Reason = reasonCode
 	}
 
-	err = ra.revokeCertificate(
-		ctx,
-		cert,
-		revocation.Reason(req.Code),
-	)
+	err = ra.revokeCertificate(ctx, cert, reasonCode)
 	if err != nil {
 		return nil, err
 	}
@@ -1905,7 +1901,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
 		SerialNumber: core.SerialToString(cert.SerialNumber),
-		Reason:       ocsp.KeyCompromise,
+		Reason:       revocation.KeyCompromise,
 		Method:       "key",
 		RequesterID:  0,
 	}
@@ -1927,7 +1923,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	revokeErr := ra.revokeCertificate(
 		ctx,
 		cert,
-		revocation.Reason(ocsp.KeyCompromise),
+		revocation.KeyCompromise,
 	)
 
 	// Failing to add the key to the blocked keys list is a worse failure than
@@ -1976,20 +1972,20 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	reasonCode := revocation.Reason(req.Code)
-	if _, present := revocation.AdminAllowedReasons[reasonCode]; !present {
+	if !revocation.AdminAllowedReason(reasonCode) {
 		return nil, fmt.Errorf("cannot revoke for reason %d", reasonCode)
 	}
-	if req.SkipBlockKey && reasonCode != ocsp.KeyCompromise {
+	if req.SkipBlockKey && reasonCode != revocation.KeyCompromise {
 		return nil, fmt.Errorf("cannot skip key blocking for reasons other than KeyCompromise")
 	}
-	if reasonCode == ocsp.KeyCompromise && req.Malformed {
+	if reasonCode == revocation.KeyCompromise && req.Malformed {
 		return nil, fmt.Errorf("cannot revoke malformed certificate for KeyCompromise")
 	}
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
 		SerialNumber: req.Serial,
-		Reason:       req.Code,
+		Reason:       reasonCode,
 		CRLShard:     req.CrlShard,
 		Method:       "admin",
 		AdminName:    req.AdminName,
@@ -2055,13 +2051,13 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   req.Serial,
-		Reason:   req.Code,
+		Reason:   int64(reasonCode),
 		Date:     timestamppb.New(ra.clk.Now()),
 		IssuerID: int64(issuerID),
 		ShardIdx: shard,
 	})
 	if err != nil {
-		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
+		if reasonCode == revocation.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
 			err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
 			if err != nil {
 				return nil, err
@@ -2070,7 +2066,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return nil, err
 	}
 
-	if req.Code == ocsp.KeyCompromise && !req.SkipBlockKey {
+	if reasonCode == revocation.KeyCompromise && !req.SkipBlockKey {
 		if cert == nil {
 			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
 		}

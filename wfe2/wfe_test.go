@@ -32,7 +32,6 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -221,7 +220,7 @@ func (ra *MockRegistrationAuthority) RevokeCertByApplicant(ctx context.Context, 
 }
 
 func (ra *MockRegistrationAuthority) RevokeCertByKey(ctx context.Context, in *rapb.RevokeCertByKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	ra.lastRevocationReason = revocation.Reason(ocsp.KeyCompromise)
+	ra.lastRevocationReason = revocation.KeyCompromise
 	return &emptypb.Empty{}, nil
 }
 
@@ -3354,7 +3353,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
-	revocationReason := revocation.Reason(ocsp.KeyCompromise)
+	revocationReason := revocation.KeyCompromise
 	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 	_, _, jwsBody := signer.embeddedJWK(key, "http://localhost/revoke-cert", string(revokeRequestJSON))
@@ -3437,9 +3436,9 @@ func TestRevokeCertificateReasons(t *testing.T) {
 	wfe.sa = newMockSAWithCert(t, wfe.sa)
 	ra := wfe.ra.(*MockRegistrationAuthority)
 
-	reason0 := revocation.Reason(ocsp.Unspecified)
-	reason1 := revocation.Reason(ocsp.KeyCompromise)
-	reason2 := revocation.Reason(ocsp.CACompromise)
+	reason0 := revocation.Unspecified
+	reason1 := revocation.KeyCompromise
+	reason2 := revocation.CACompromise
 	reason100 := revocation.Reason(100)
 
 	testCases := []struct {
@@ -3506,7 +3505,7 @@ func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
-	revocationReason := revocation.Reason(ocsp.KeyCompromise)
+	revocationReason := revocation.KeyCompromise
 	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 	_, _, jwsBody := signer.embeddedJWK(key, "http://localhost/revoke-cert", string(revokeRequestJSON))
