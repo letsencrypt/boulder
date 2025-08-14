@@ -26,14 +26,6 @@ ports {
 }
 
 services {
-  id      = "akamai-purger-a"
-  name    = "akamai-purger"
-  address = "10.77.77.77"
-  port    = 9399
-  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-}
-
-services {
   id      = "email-exporter-a"
   name    = "email-exporter"
   address = "10.77.77.77"

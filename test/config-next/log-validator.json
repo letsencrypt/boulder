@@ -7,7 +7,6 @@
 		"sampleratio": 1
 	},
 	"files": [
-		"/var/log/akamai-purger.log",
 		"/var/log/bad-key-revoker.log",
 		"/var/log/boulder-*.log",
 		"/var/log/crl-*.log",
