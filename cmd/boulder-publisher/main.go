@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	ct "github.com/google/certificate-transparency-go"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -88,7 +89,7 @@ func main() {
 	tlsConfig, err := c.Publisher.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 

@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -181,7 +183,7 @@ func main() {
 	tlsConfig, err := c.RA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create VA client")

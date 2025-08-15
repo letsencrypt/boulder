@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -82,7 +84,7 @@ func main() {
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SFE.DebugAddr)
 	logger.Info(cmd.VersionString())
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	unpauseHMACKey, err := c.SFE.UnpauseHMACKey.Load()
 	cmd.FailOnError(err, "Failed to load unpauseHMACKey")
