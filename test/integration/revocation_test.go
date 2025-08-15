@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/eggsampler/acme/v3"
-	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/idp"
@@ -146,7 +145,7 @@ func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.Rev
 // The issuer argument is optional: it is used to verify the signature on the
 // fetched CRL, but is not always available in our tests (e.g. if the finalize
 // call purposefully failed so no chain file was provided).
-func waitAndCheckRevoked(t *testing.T, cert *x509.Certificate, issuer *x509.Certificate, wantReason int) {
+func waitAndCheckRevoked(t *testing.T, cert *x509.Certificate, issuer *x509.Certificate, wantReason revocation.Reason) {
 	t.Helper()
 
 	if len(cert.CRLDistributionPoints) != 1 {
@@ -163,10 +162,10 @@ func waitAndCheckRevoked(t *testing.T, cert *x509.Certificate, issuer *x509.Cert
 		runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
 
 		list := getCRL(t, crlURL, issuer)
-		var reasons []int
+		var reasons []revocation.Reason
 		for _, entry := range list.RevokedCertificateEntries {
 			if entry.SerialNumber.Cmp(cert.SerialNumber) == 0 {
-				reasons = append(reasons, entry.ReasonCode)
+				reasons = append(reasons, revocation.Reason(entry.ReasonCode))
 			}
 		}
 
@@ -200,7 +199,7 @@ func checkUnrevoked(t *testing.T, revocations map[string][]*x509.RevocationList,
 	}
 }
 
-func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, expectedReason int) {
+func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, expectedReason revocation.Reason) {
 	t.Helper()
 	akid := hex.EncodeToString(cert.AuthorityKeyId)
 	if len(revocations[akid]) == 0 {
@@ -217,7 +216,7 @@ func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, c
 					t.Errorf("getting IDP URIs: %s", err)
 				}
 				idpURI := idpURIs[0]
-				if entry.ReasonCode != expectedReason {
+				if revocation.Reason(entry.ReasonCode) != expectedReason {
 					t.Errorf("revoked certificate %x in CRL %s: revocation reason %d, want %d", cert.SerialNumber, idpURI, entry.ReasonCode, expectedReason)
 				}
 				matchingCRLs = append(matchingCRLs, idpURI)
@@ -264,7 +263,7 @@ func TestRevocation(t *testing.T) {
 
 	type testCase struct {
 		method authMethod
-		reason int
+		reason revocation.Reason
 		kind   certKind
 	}
 
@@ -321,7 +320,7 @@ func TestRevocation(t *testing.T) {
 				issueClient.Account,
 				cert,
 				issueClient.PrivateKey,
-				tc.reason,
+				int(tc.reason),
 			)
 			test.AssertNotError(t, err, "revocation should have succeeded")
 
@@ -338,7 +337,7 @@ func TestRevocation(t *testing.T) {
 				newClient.Account,
 				cert,
 				newClient.PrivateKey,
-				tc.reason,
+				int(tc.reason),
 			)
 			test.AssertNotError(t, err, "revocation should have succeeded")
 
@@ -351,7 +350,7 @@ func TestRevocation(t *testing.T) {
 				newClient.Account,
 				cert,
 				certKey,
-				tc.reason,
+				int(tc.reason),
 			)
 			test.AssertNotError(t, err, "revocation should have succeeded")
 
@@ -365,7 +364,7 @@ func TestRevocation(t *testing.T) {
 				"-dry-run=false",
 				"revoke-cert",
 				"-serial", core.SerialToString(cert.SerialNumber),
-				"-reason", revocation.ReasonToString[revocation.Reason(tc.reason)])
+				"-reason", tc.reason.String())
 			output, err := cmd.CombinedOutput()
 			t.Logf("admin revoke-cert output: %s\n", string(output))
 			test.AssertNotError(t, err, "revocation should have succeeded")
@@ -387,7 +386,7 @@ func TestRevocation(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for _, kind := range []certKind{precert, finalcert} {
-		for _, reason := range []int{ocsp.Unspecified, ocsp.KeyCompromise, ocsp.Superseded} {
+		for _, reason := range []revocation.Reason{revocation.Unspecified, revocation.KeyCompromise, revocation.Superseded} {
 			for _, method := range []authMethod{byAccount, byAuth, byKey, byAdmin} {
 				wg.Add(1)
 				go func() {
@@ -412,9 +411,9 @@ func TestRevocation(t *testing.T) {
 					expectedReason := reason
 					switch method {
 					case byAuth:
-						expectedReason = ocsp.CessationOfOperation
+						expectedReason = revocation.CessationOfOperation
 					case byKey:
-						expectedReason = ocsp.KeyCompromise
+						expectedReason = revocation.KeyCompromise
 					default:
 					}
 
@@ -455,18 +454,18 @@ func TestReRevocation(t *testing.T) {
 
 	type testCase struct {
 		method1     authMethod
-		reason1     int
+		reason1     revocation.Reason
 		method2     authMethod
-		reason2     int
+		reason2     revocation.Reason
 		expectError bool
 	}
 
 	testCases := []testCase{
-		{method1: byAccount, reason1: 0, method2: byAccount, reason2: 0, expectError: true},
-		{method1: byAccount, reason1: 1, method2: byAccount, reason2: 1, expectError: true},
-		{method1: byAccount, reason1: 0, method2: byKey, reason2: 1, expectError: false},
-		{method1: byAccount, reason1: 1, method2: byKey, reason2: 1, expectError: true},
-		{method1: byKey, reason1: 1, method2: byKey, reason2: 1, expectError: true},
+		{method1: byAccount, reason1: revocation.Unspecified, method2: byAccount, reason2: revocation.Unspecified, expectError: true},
+		{method1: byAccount, reason1: revocation.KeyCompromise, method2: byAccount, reason2: revocation.KeyCompromise, expectError: true},
+		{method1: byAccount, reason1: revocation.Unspecified, method2: byKey, reason2: revocation.KeyCompromise, expectError: false},
+		{method1: byAccount, reason1: revocation.KeyCompromise, method2: byKey, reason2: revocation.KeyCompromise, expectError: true},
+		{method1: byKey, reason1: revocation.KeyCompromise, method2: byKey, reason2: revocation.KeyCompromise, expectError: true},
 	}
 
 	for i, tc := range testCases {
@@ -509,7 +508,7 @@ func TestReRevocation(t *testing.T) {
 				revokeClient.Account,
 				cert,
 				revokeKey,
-				tc.reason1,
+				int(tc.reason1),
 			)
 			test.AssertNotError(t, err, "initial revocation should have succeeded")
 
@@ -541,7 +540,7 @@ func TestReRevocation(t *testing.T) {
 				revokeClient.Account,
 				cert,
 				revokeKey,
-				tc.reason2,
+				int(tc.reason2),
 			)
 
 			switch tc.expectError {
@@ -589,14 +588,14 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 		// issuing account, or via the certificate key itself.
 		switch method {
 		case byAccount:
-			err = c.RevokeCertificate(c.Account, cert, c.PrivateKey, ocsp.KeyCompromise)
+			err = c.RevokeCertificate(c.Account, cert, c.PrivateKey, int(revocation.KeyCompromise))
 		case byKey:
-			err = c.RevokeCertificate(acme.Account{}, cert, certKey, ocsp.KeyCompromise)
+			err = c.RevokeCertificate(acme.Account{}, cert, certKey, int(revocation.KeyCompromise))
 		}
 		test.AssertNotError(t, err, "failed to revoke certificate")
 
 		// Check the CRL. It should be revoked with reason = 1 (keyCompromise).
-		waitAndCheckRevoked(t, cert, issuer, ocsp.KeyCompromise)
+		waitAndCheckRevoked(t, cert, issuer, revocation.KeyCompromise)
 
 		// Attempt to create a new account using the compromised key. This should
 		// work when the key was just *reported* as compromised, but fail when
@@ -644,14 +643,14 @@ func TestBadKeyRevoker(t *testing.T) {
 		acme.Account{},
 		toBeRevoked.certs[0],
 		certKey,
-		ocsp.KeyCompromise,
+		int(revocation.KeyCompromise),
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
 
-	waitAndCheckRevoked(t, toBeRevoked.certs[0], toBeRevoked.certs[1], ocsp.KeyCompromise)
+	waitAndCheckRevoked(t, toBeRevoked.certs[0], toBeRevoked.certs[1], revocation.KeyCompromise)
 
 	for _, bundle := range bundles {
-		waitAndCheckRevoked(t, bundle.certs[0], bundle.certs[1], ocsp.KeyCompromise)
+		waitAndCheckRevoked(t, bundle.certs[0], bundle.certs[1], revocation.KeyCompromise)
 	}
 }
 
@@ -687,11 +686,11 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 		revokeClient.Account,
 		toBeRevoked.certs[0],
 		revokeClient.PrivateKey,
-		ocsp.KeyCompromise,
+		int(revocation.KeyCompromise),
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
 
-	waitAndCheckRevoked(t, toBeRevoked.certs[0], toBeRevoked.certs[1], ocsp.KeyCompromise)
+	waitAndCheckRevoked(t, toBeRevoked.certs[0], toBeRevoked.certs[1], revocation.KeyCompromise)
 
 	allCRLs := getAllCRLs(t)
 	for _, bundle := range bundles {

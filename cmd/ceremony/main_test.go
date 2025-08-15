@@ -1187,7 +1187,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1219,7 +1219,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1252,7 +1252,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1261,7 +1261,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{}},
 				},
 			},
@@ -1291,7 +1291,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1300,7 +1300,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{
 						CertificatePath: "path",
 					}},
@@ -1332,7 +1332,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1341,7 +1341,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{
 						CertificatePath: "path",
 						RevocationDate:  "date",
@@ -1374,7 +1374,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1383,11 +1383,11 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{
 						CertificatePath:  "path",
 						RevocationDate:   "date",
-						RevocationReason: 1,
+						RevocationReason: "keyCompromise",
 					}},
 				},
 			},
