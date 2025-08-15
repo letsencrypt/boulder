@@ -191,16 +191,14 @@ def install(race_detection):
 
     return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
 
-def run(cmd, fakeclock):
+def run(cmd):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
-    if fakeclock:
-        e.setdefault("FAKECLOCK", fakeclock)
     p = subprocess.Popen(cmd, env=e)
     p.cmd = cmd
     return p
 
-def start(fakeclock):
+def start():
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -229,7 +227,7 @@ def start(fakeclock):
         print("Starting service", service.name)
         try:
             global processes
-            p = run(service.cmd, fakeclock)
+            p = run(service.cmd)
             processes.append(p)
             if service.grpc_port is not None:
                 waithealth(' '.join(p.args), service.grpc_port, service.host_override)
@@ -289,8 +287,7 @@ def startChallSrv():
         '--management', ':8055',
         '--http01', '64.112.117.122:80',
         '-https01', '64.112.117.122:443',
-        '--tlsalpn01', '64.112.117.134:443'],
-        None)
+        '--tlsalpn01', '64.112.117.134:443'])
     # Wait for the chall-test-srv management port.
     if not waitport(8055, ' '.join(challSrvProcess.args)):
         return False
