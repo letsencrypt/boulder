@@ -51,7 +51,7 @@ func main() {
 		log.Fatalf("listen address must be provided via -addr or config file")
 	}
 	if c.ExpectedTokenEmail == "" || c.ExpectedAPIToken == "" {
-		log.Fatalf("both TokenEmail and APIToken are required (see config)")
+		log.Fatalf("both ExpectedTokenEmail and ExpectedAPIToken are required (see config)")
 	}
 
 	var store *zendeskfake.Store
