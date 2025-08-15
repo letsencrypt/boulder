@@ -54,7 +54,7 @@ type SelfServiceFrontEndImpl struct {
 	requestTimeout time.Duration
 
 	unpauseHMACKey []byte
-	zendeskClient  *zendesk.Client //nolint:unused // TODO(#8166): For periodic Zendesk sync.
+	zendeskClient  *zendesk.Client
 
 	templatePages *template.Template
 }
@@ -83,6 +83,7 @@ func NewSelfServiceFrontEndImpl(
 		ra:             rac,
 		sa:             sac,
 		unpauseHMACKey: unpauseHMACKey,
+		zendeskClient:  zendeskClient,
 		templatePages:  tmplPages,
 	}
 

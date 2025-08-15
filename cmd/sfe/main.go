@@ -54,8 +54,7 @@ type Config struct {
 				Tier             int64 `validate:"required"`
 				RateLimit        int64 `validate:"required"`
 				ReviewStatus     int64 `validate:"required"`
-				Fundraising      int64 `validate:"required"`
-				AccountID        int64 `validate:"required"`
+				AccountURI       int64 `validate:"required"`
 				RegisteredDomain int64 `validate:"required"`
 				IPAddress        int64 `validate:"required"`
 			} `validate:"required,dive"`
@@ -129,8 +128,7 @@ func main() {
 				rlo.TierFieldName:             c.SFE.Zendesk.CustomFields.Tier,
 				rlo.RateLimitFieldName:        c.SFE.Zendesk.CustomFields.RateLimit,
 				rlo.ReviewStatusFieldName:     c.SFE.Zendesk.CustomFields.ReviewStatus,
-				rlo.FundraisingFieldName:      c.SFE.Zendesk.CustomFields.Fundraising,
-				rlo.AccountURIFieldName:       c.SFE.Zendesk.CustomFields.AccountID,
+				rlo.AccountURIFieldName:       c.SFE.Zendesk.CustomFields.AccountURI,
 				rlo.RegisteredDomainFieldName: c.SFE.Zendesk.CustomFields.RegisteredDomain,
 				rlo.IPAddressFieldName:        c.SFE.Zendesk.CustomFields.IPAddress,
 			},

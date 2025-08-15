@@ -38,24 +38,24 @@ var (
 	customFieldRegexp = regexp.MustCompile(`custom_field_(\d+):("[^"]+"|\S+)`)
 )
 
-// Requester represents a requester in a Zendesk ticket.
-type Requester struct {
+// requester represents a requester in a Zendesk ticket.
+type requester struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
 
-// Comment represents a comment in a Zendesk ticket.
-type Comment struct {
+// comment represents a comment in a Zendesk ticket.
+type comment struct {
 	Body   string `json:"body"`
 	Public bool   `json:"public"`
 }
 
-// Ticket represents all the fields of a Zendesk ticket.
-type Ticket struct {
+// ticket represents all the fields of a Zendesk ticket.
+type ticket struct {
 	ID           int64            `json:"id"`
-	Requester    Requester        `json:"requester"`
+	Requester    requester        `json:"requester"`
 	Subject      string           `json:"subject"`
-	Comments     []Comment        `json:"comments"`
+	Comments     []comment        `json:"comments"`
 	CustomFields map[int64]string `json:"custom_fields"`
 }
 
@@ -66,30 +66,25 @@ type Store struct {
 	sync.Mutex
 	nextID int64
 	cap    int
-	stack  []*Ticket
-	byID   map[int64]*Ticket
-}
-
-func newStore() *Store {
-	return &Store{
-		nextID: 1,
-		cap:    defaultTicketCapacity,
-		stack:  make([]*Ticket, 0, defaultTicketCapacity),
-		byID:   make(map[int64]*Ticket, defaultTicketCapacity),
-	}
+	stack  []*ticket
+	byID   map[int64]*ticket
 }
 
 // NewStore creates a new Store with the specified capacity. If no capacity is
 // specified, it defaults to 200 tickets.
 func NewStore(capacity int) *Store {
-	s := newStore()
-	if capacity > 0 {
-		s.cap = capacity
+	if capacity == 0 {
+		capacity = defaultTicketCapacity
 	}
-	return s
+	return &Store{
+		nextID: 1,
+		cap:    capacity,
+		stack:  make([]*ticket, 0, defaultTicketCapacity),
+		byID:   make(map[int64]*ticket, defaultTicketCapacity),
+	}
 }
 
-func (s *Store) push(t *Ticket) int64 {
+func (s *Store) push(t *ticket) int64 {
 	s.Lock()
 	defer s.Unlock()
 
@@ -107,7 +102,7 @@ func (s *Store) push(t *Ticket) int64 {
 	return t.ID
 }
 
-func (s *Store) addComment(id int64, c Comment) error {
+func (s *Store) addComment(id int64, c comment) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -161,7 +156,7 @@ type Server struct {
 // is provided, it creates a new Store with the default capacity.
 func NewServer(tokenEmail, apiToken string, s *Store) *Server {
 	if s == nil {
-		s = newStore()
+		s = NewStore(0)
 	}
 	return &Server{
 		tokenUser: tokenEmail,
@@ -185,9 +180,9 @@ func (s *Server) auth(next http.Handler) http.Handler {
 func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Ticket struct {
-			Requester Requester `json:"requester"`
+			Requester requester `json:"requester"`
 			Subject   string    `json:"subject"`
-			Comment   Comment   `json:"comment"`
+			Comment   comment   `json:"comment"`
 			Custom    []struct {
 				ID    int64 `json:"id"`
 				Value any   `json:"value"`
@@ -209,10 +204,10 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newTicket := &Ticket{
+	newTicket := &ticket{
 		Requester:    req.Ticket.Requester,
 		Subject:      req.Ticket.Subject,
-		Comments:     []Comment{req.Ticket.Comment},
+		Comments:     []comment{req.Ticket.Comment},
 		CustomFields: make(map[int64]string),
 	}
 
@@ -249,7 +244,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Ticket struct {
-			Comment Comment `json:"comment"`
+			Comment comment `json:"comment"`
 		} `json:"ticket"`
 	}
 
@@ -418,16 +413,16 @@ func (s *Server) Handler() http.Handler {
 // GetTicket retrieves a ticket by its ID directly from the inner store. It
 // returns a copy of the ticket to ensure that the original ticket in the store
 // is never modified. If the ticket does not exist, it returns false.
-func (s *Server) GetTicket(id int64) (Ticket, bool) {
+func (s *Server) GetTicket(id int64) (ticket, bool) {
 	s.store.Lock()
 	defer s.store.Unlock()
 	t, ok := s.store.byID[id]
 	if !ok {
-		return Ticket{}, false
+		return ticket{}, false
 	}
 	cp := *t
 	cp.CustomFields = make(map[int64]string, len(t.CustomFields))
 	maps.Copy(cp.CustomFields, t.CustomFields)
-	cp.Comments = append([]Comment(nil), t.Comments...)
+	cp.Comments = append([]comment(nil), t.Comments...)
 	return cp, true
 }

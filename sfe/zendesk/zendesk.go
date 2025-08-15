@@ -313,11 +313,10 @@ func (c *Client) FindTickets(matchFields map[string]string) (map[int64]map[strin
 			}
 			out[result.ID] = fieldMap
 		}
-		if results.Next != nil {
-			searchURL = *results.Next
-			continue
+		if results.Next == nil {
+			break
 		}
-		searchURL = ""
+		searchURL = *results.Next
 	}
 	return out, nil
 }
