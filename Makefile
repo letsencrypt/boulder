@@ -1,3 +1,4 @@
+# TODO(#8338): Remove Makefile
 OBJDIR ?= $(shell pwd)/bin
 DESTDIR ?= /usr/local/bin
 ARCHIVEDIR ?= /tmp
@@ -36,7 +37,7 @@ $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
 	echo $(OBJECTS)
-	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
+	GOBIN=$(OBJDIR) go install -mod=vendor $(GO_BUILD_FLAGS) ./...
 
 # Building a .deb requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.
