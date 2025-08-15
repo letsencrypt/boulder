@@ -26,11 +26,6 @@ type Config struct {
 		// HTTP requests. Defaults to ":80".
 		ListenAddress string `validate:"omitempty,hostname_port"`
 
-		// TLSListenAddress is the address:port on which to listen for incoming
-		// HTTPS requests. If none is provided the SFE will not listen for HTTPS
-		// requests.
-		TLSListenAddress string `validate:"omitempty,hostname_port"`
-
 		// Timeout is the per-request overall timeout. This should be slightly
 		// lower than the upstream's timeout when making requests to this service.
 		Timeout config.Duration `validate:"-"`
@@ -165,17 +160,6 @@ func main() {
 			cmd.FailOnError(err, "Running HTTP server")
 		}
 	}()
-
-	tlsSrv := web.NewServer(c.SFE.TLSListenAddress, handler, logger)
-	if tlsSrv.Addr != "" {
-		logger.Infof("Server running, listening on %s....", c.SFE.TLSListenAddress)
-		go func() {
-			err := tlsSrv.ListenAndServeTLS(c.SFE.TLS.CertFile, c.SFE.TLS.KeyFile)
-			if err != nil && err != http.ErrServerClosed {
-				cmd.FailOnError(err, "Running HTTPS server")
-			}
-		}()
-	}
 
 	// When main is ready to exit (because it has received a shutdown signal),
 	// gracefully shutdown the servers. Calling these shutdown functions causes

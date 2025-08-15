@@ -151,7 +151,7 @@ SERVICES = (
         ('./bin/zendesk-test-srv', '--config', os.path.join(config_dir, 'zendesk-test-srv.json'),),
         None),
     Service('sfe',
-        # Uses port 4003 for HTTP and 4433 for HTTPS.
+        # Uses port 4003 for HTTP.
         4003, None, None,
         ('./bin/boulder', 'sfe', '--config', os.path.join(config_dir, 'sfe.json'), '--debug-addr', ':8015'),
         ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'zendesk-test-srv')),
