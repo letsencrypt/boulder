@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -75,7 +77,7 @@ func main() {
 		cmd.FailOnError(err, "While initializing dbIncidentsMap")
 	}
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	parallel := c.SA.ParallelismPerRPC
 	if parallel < 1 {

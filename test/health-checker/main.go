@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmhodges/clock"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -53,7 +54,7 @@ func main() {
 	}
 
 	// GRPC connection prerequisites.
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	// Health check retry and timeout.
 	ticker := time.NewTicker(100 * time.Millisecond)

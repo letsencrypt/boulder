@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	awsl "github.com/aws/smithy-go/logging"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/crl/storer"
@@ -93,7 +94,7 @@ func main() {
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	tlsConfig, err := c.CRLStorer.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")

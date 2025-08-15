@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/email"
 	emailpb "github.com/letsencrypt/boulder/email/proto"
@@ -87,7 +89,7 @@ func main() {
 
 	logger.Info(cmd.VersionString())
 
-	clk := cmd.Clock()
+	clk := clock.New()
 	clientId, err := c.EmailExporter.ClientId.Pass()
 	cmd.FailOnError(err, "Loading clientId")
 	clientSecret, err := c.EmailExporter.ClientSecret.Pass()

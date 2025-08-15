@@ -630,7 +630,7 @@ func main() {
 
 	checker := newChecker(
 		saDbMap,
-		cmd.Clock(),
+		clock.New(),
 		pa,
 		kp,
 		config.CertChecker.CheckPeriod.Duration,

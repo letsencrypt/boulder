@@ -41,10 +41,6 @@ def temppath(name):
 def fakeclock(date):
     return date.strftime("%a %b %d %H:%M:%S UTC %Y")
 
-def get_future_output(cmd, date):
-    return subprocess.check_output(cmd, stderr=subprocess.STDOUT,
-        env={'FAKECLOCK': fakeclock(date)}).decode()
-
 def random_domain():
     """Generate a random domain for testing (to avoid rate limiting)."""
     return "rand.%x.xyz" % random.randrange(2**32)
