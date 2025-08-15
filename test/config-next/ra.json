@@ -139,7 +139,6 @@
 					"clientNames": [
 						"admin.boulder",
 						"bad-key-revoker.boulder",
-						"ocsp-responder.boulder",
 						"wfe.boulder",
 						"sfe.boulder"
 					]

@@ -57,7 +57,7 @@ type Config struct {
 	// until the paused identifiers are unpaused and the order is resubmitted.
 	CheckIdentifiersPaused bool
 
-	// PropagateCancels controls whether the WFE and ocsp-responder allows
+	// PropagateCancels controls whether the WFE allows
 	// cancellation of an inbound request to cancel downstream gRPC and other
 	// queries. In practice, cancellation of an inbound request is achieved by
 	// Nginx closing the connection on which the request was happening. This may

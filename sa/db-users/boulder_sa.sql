@@ -5,7 +5,6 @@
 CREATE USER IF NOT EXISTS 'policy'@'localhost';
 CREATE USER IF NOT EXISTS 'sa'@'localhost';
 CREATE USER IF NOT EXISTS 'sa_ro'@'localhost';
-CREATE USER IF NOT EXISTS 'ocsp_resp'@'localhost';
 CREATE USER IF NOT EXISTS 'revoker'@'localhost';
 CREATE USER IF NOT EXISTS 'importer'@'localhost';
 CREATE USER IF NOT EXISTS 'mailer'@'localhost';
@@ -55,9 +54,6 @@ GRANT SELECT ON revokedCertificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON replacementOrders TO 'sa_ro'@'localhost';
 GRANT SELECT ON paused TO 'sa_ro'@'localhost';
 GRANT SELECT ON overrides TO 'sa_ro'@'localhost';
-
--- OCSP Responder
-GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
 
 -- Revoker Tool
 GRANT SELECT,UPDATE ON registrations TO 'revoker'@'localhost';
