@@ -27,8 +27,6 @@
         comment: Let's Encrypt Test Domain 3
       - id: nginx.wtf
         comment: Nginx Test Domain
-      - id: good-caa-reserved.com
-        comment: Good CAA Reserved Domain
       - id: bad-caa-reserved.com
         comment: Bad CAA Reserved Domain
       - id: ecdsa.le.wtf
@@ -50,8 +48,6 @@
         comment: Let's Encrypt Test Domain 3
       - id: le.wtf,le1.wtf
         comment: Let's Encrypt Test Domain, Let's Encrypt Test Domain 1
-      - id: good-caa-reserved.com
-        comment: Good CAA Reserved Domain
       - id: nginx.wtf
         comment: Nginx Test Domain
       - id: ecdsa.le.wtf
