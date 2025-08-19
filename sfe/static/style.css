@@ -80,7 +80,7 @@ a:hover {
 
 .section {
     padding: 10px 20px;
-    margin-bottom: -20px;
+    margin: 0 auto;
 }
 
 .highlight {
@@ -89,6 +89,92 @@ a:hover {
     background-color: #e9f0fa;
     border-left: 5px solid #003C66;
     border-radius: 8px;
+}
+
+.form-field {
+    margin-bottom: 1.5rem;
+}
+
+.form-field label {
+    font-weight: 600;
+    color: #222;
+    font-size: 1rem;
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+.form-field .field-description {
+    display: block;
+    color: #666;
+    font-size: 0.875rem;
+    margin: 0.1rem 0 0.4rem 0;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+    width: 100%;
+    padding: 8px;
+    box-sizing: border-box;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: inherit;
+    line-height: 1.4;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+    border-color: #003C66;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 60, 102, 0.2);
+}
+
+.form-field input.valid,
+.form-field select.valid,
+.form-field textarea.valid {
+    border: 1px solid green;
+    outline: 2px solid rgba(0, 128, 0, 0.4);
+    box-shadow: 0 0 0 3px rgba(0, 128, 0, 0.2);
+}
+
+.form-field input.invalid,
+.form-field select.invalid,
+.form-field textarea.invalid {
+    border: 1px solid red;
+    outline: 2px solid rgba(255, 0, 0, 0.4);
+    box-shadow: 0 0 0 3px rgba(255, 0, 0, 0.2);
+}
+
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+
+.checkbox-row input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    transform: scale(1.1);
+    box-sizing: content-box;
+}
+
+.checkbox-text {
+    font-size: 0.875rem;
+    color: #666;
+    line-height: 1.4;
+}
+
+.checkbox-row input.invalid {
+    outline: 2px solid rgba(255, 0, 0, 0.6);
+}
+
+.form-field .error-message {
+    color: red;
+    font-size: 0.875rem;
+    margin-top: 0.3rem;
 }
 
 button.primary {
@@ -109,4 +195,26 @@ button.primary {
 
 button.primary:hover {
     background-color: #285999;
+}
+
+button.primary.btn-disabled {
+    background: #999;
+    cursor: not-allowed;
+}
+
+#override-form {
+    padding-bottom: 2.5rem;
+}
+
+#form-error-banner {
+    display: none;
+    color: #fff;
+    background: #c00;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+#logo {
+    height: 50px;
 }
