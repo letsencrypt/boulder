@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/unpause"
 )
 
@@ -53,7 +54,9 @@ type SelfServiceFrontEndImpl struct {
 	requestTimeout time.Duration
 
 	unpauseHMACKey []byte
-	templatePages  *template.Template
+	zendeskClient  *zendesk.Client
+
+	templatePages *template.Template
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -65,6 +68,7 @@ func NewSelfServiceFrontEndImpl(
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	unpauseHMACKey []byte,
+	zendeskClient *zendesk.Client,
 ) (SelfServiceFrontEndImpl, error) {
 
 	// Parse the files once at startup to avoid each request causing the server
@@ -79,6 +83,7 @@ func NewSelfServiceFrontEndImpl(
 		ra:             rac,
 		sa:             sac,
 		unpauseHMACKey: unpauseHMACKey,
+		zendeskClient:  zendeskClient,
 		templatePages:  tmplPages,
 	}
 

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -394,7 +395,7 @@ func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string) {
 
 // daemon initializes the akamai-purger gRPC service.
 func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	tlsConfig, err := c.AkamaiPurger.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")

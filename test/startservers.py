@@ -142,10 +142,15 @@ SERVICES = (
         4001, None, None,
         ('./bin/boulder', 'boulder-wfe2', '--config', os.path.join(config_dir, 'wfe2.json'), '--addr', ':4001', '--tls-addr', ':4431', '--debug-addr', ':8013'),
         ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro-1', 'nonce-service-taro-2', 'nonce-service-zinc-1', 'email-exporter')),
+    Service('zendesk-test-srv',
+        9701, None, None,
+        ('./bin/zendesk-test-srv', '--config', os.path.join(config_dir, 'zendesk-test-srv.json'),),
+        None),
     Service('sfe',
+        # Uses port 4003 for HTTP.
         4003, None, None,
-        ('./bin/boulder', 'sfe', '--config', os.path.join(config_dir, 'sfe.json'), '--addr', ':4003', '--debug-addr', ':8015'),
-        ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2',)),
+        ('./bin/boulder', 'sfe', '--config', os.path.join(config_dir, 'sfe.json'), '--debug-addr', ':8015'),
+        ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'zendesk-test-srv')),
     Service('log-validator',
         8016, None, None,
         ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json'), '--debug-addr', ':8016'),
@@ -191,16 +196,14 @@ def install(race_detection):
 
     return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
 
-def run(cmd, fakeclock):
+def run(cmd):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
-    if fakeclock:
-        e.setdefault("FAKECLOCK", fakeclock)
     p = subprocess.Popen(cmd, env=e)
     p.cmd = cmd
     return p
 
-def start(fakeclock):
+def start():
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -229,7 +232,7 @@ def start(fakeclock):
         print("Starting service", service.name)
         try:
             global processes
-            p = run(service.cmd, fakeclock)
+            p = run(service.cmd)
             processes.append(p)
             if service.grpc_port is not None:
                 waithealth(' '.join(p.args), service.grpc_port, service.host_override)
@@ -289,8 +292,7 @@ def startChallSrv():
         '--management', ':8055',
         '--http01', '64.112.117.122:80',
         '-https01', '64.112.117.122:443',
-        '--tlsalpn01', '64.112.117.134:443'],
-        None)
+        '--tlsalpn01', '64.112.117.134:443'])
     # Wait for the chall-test-srv management port.
     if not waitport(8055, ' '.join(challSrvProcess.args)):
         return False

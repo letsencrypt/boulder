@@ -68,10 +68,14 @@ func main() {
 
 	// This is the registry of all subcommands that the admin tool can run.
 	subcommands := map[string]subcommand{
-		"revoke-cert":      &subcommandRevokeCert{},
-		"block-key":        &subcommandBlockKey{},
-		"pause-identifier": &subcommandPauseIdentifier{},
-		"unpause-account":  &subcommandUnpauseAccount{},
+		"revoke-cert":            &subcommandRevokeCert{},
+		"block-key":              &subcommandBlockKey{},
+		"pause-identifier":       &subcommandPauseIdentifier{},
+		"unpause-account":        &subcommandUnpauseAccount{},
+		"import-limit-overrides": &subcommandImportOverrides{},
+		"dump-limit-overrides":   &subcommandDumpEnabledOverrides{},
+		"toggle-limit-override":  &subcommandToggleOverride{},
+		"add-limit-override":     &subcommandAddOverride{},
 	}
 
 	defaultUsage := flag.Usage

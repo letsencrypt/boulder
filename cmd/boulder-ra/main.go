@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -41,13 +43,13 @@ type Config struct {
 		VAService        *cmd.GRPCClientConfig
 		CAService        *cmd.GRPCClientConfig
 		PublisherService *cmd.GRPCClientConfig
+		
+    // Deprecated: TODO(#8345): Remove this.
+    AkamaiPurgerService *cmd.GRPCClientConfig
 
 		// Deprecated: TODO(#8349): Remove this when removing the corresponding
 		// service from the CA.
 		OCSPService *cmd.GRPCClientConfig
-
-		// Deprecated: TODO(#8345): Remove this.
-		AkamaiPurgerService *cmd.GRPCClientConfig
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
@@ -185,7 +187,7 @@ func main() {
 	tlsConfig, err := c.RA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create VA client")

@@ -8,6 +8,8 @@ import (
 	"net/netip"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
@@ -93,7 +95,7 @@ func main() {
 
 	nonceServer := nonce.NewServer(ns)
 	start, err := bgrpc.NewServer(c.NonceService.GRPC, logger).Add(
-		&noncepb.NonceService_ServiceDesc, nonceServer).Build(tlsConfig, scope, cmd.Clock())
+		&noncepb.NonceService_ServiceDesc, nonceServer).Build(tlsConfig, scope, clock.New())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
 
 	cmd.FailOnError(start(), "Nonce service gRPC server failed")
