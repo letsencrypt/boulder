@@ -44,8 +44,8 @@ type Config struct {
 		CAService        *cmd.GRPCClientConfig
 		PublisherService *cmd.GRPCClientConfig
 		
-    // Deprecated: TODO(#8345): Remove this.
-    AkamaiPurgerService *cmd.GRPCClientConfig
+		// Deprecated: TODO(#8345): Remove this.
+		AkamaiPurgerService *cmd.GRPCClientConfig
 
 		// Deprecated: TODO(#8349): Remove this when removing the corresponding
 		// service from the CA.
