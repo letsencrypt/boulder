@@ -34,7 +34,7 @@ docker buildx build \
     .
 
 docker run boulder tar -C /opt/boulder -cpz . > "./boulder-${VERSION}-${COMMIT_ID}.${ARCH}.tar.gz" .
-# Produces e.g. boulder-1.24.5.1754519595-591c0545.x86_64.deb
+# Produces e.g. boulder-1.25.0.1754519595-591c0545.x86_64.deb
 docker run -v .:/boulderrepo \
   -e "COMMIT_ID=$(git rev-parse --short=8 HEAD)" \
   -e "VERSION=${VERSION}" \
