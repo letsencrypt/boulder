@@ -1,3 +1,4 @@
+# TODO(#8338): Remove Makefile
 OBJDIR ?= $(shell pwd)/bin
 DESTDIR ?= /usr/local/bin
 ARCHIVEDIR ?= /tmp
@@ -6,7 +7,7 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-CMDS = admin boulder ceremony ct-test-srv pardot-test-srv chall-test-srv
+CMDS = admin boulder ceremony ct-test-srv pardot-test-srv chall-test-srv zendesk-test-srv
 CMD_BINS = $(addprefix bin/, $(CMDS) )
 OBJECTS = $(CMD_BINS)
 
@@ -36,7 +37,7 @@ $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
 	echo $(OBJECTS)
-	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
+	GOBIN=$(OBJDIR) go install -mod=vendor $(GO_BUILD_FLAGS) ./...
 
 # Building a .deb requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.

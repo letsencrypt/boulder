@@ -365,11 +365,7 @@ release by GitHub Actions.
 
 # Dependencies
 
-We use [go modules](https://github.com/golang/go/wiki/Modules) and vendor our
-dependencies. As of Go 1.12, this may require setting the `GO111MODULE=on` and
-`GOFLAGS=-mod=vendor` environment variables. Inside the Docker containers for
-Boulder tests, these variables are set for you, but if you ever work outside
-those containers you will want to set them yourself.
+We use [go modules](https://github.com/golang/go/wiki/Modules) and vendor our dependencies.
 
 To add a dependency, add the import statement to your .go file, then run
 `go build` on it. This will automatically add the dependency to go.mod. Next,

@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -155,7 +157,7 @@ func main() {
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	tlsConfig, err := c.CRLUpdater.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
