@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	emailpb "github.com/letsencrypt/boulder/email/proto"
@@ -261,7 +263,7 @@ func main() {
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
 	logger.Info(cmd.VersionString())
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	var unpauseSigner unpause.JWTSigner
 	if features.Get().CheckIdentifiersPaused {

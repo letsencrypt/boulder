@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -78,7 +80,7 @@ func main() {
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.VA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	var servers bdns.ServerProvider
 

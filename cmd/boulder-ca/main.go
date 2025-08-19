@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -182,7 +184,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
-	clk := cmd.Clock()
+	clk := clock.New()
 	var crlShards int
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for i, issuerConfig := range c.CA.Issuance.Issuers {

@@ -52,7 +52,7 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	clk := cmd.Clock()
+	clk := clock.New()
 	features.Set(c.Admin.Features)
 
 	tlsConfig, err := c.Admin.TLS.Load(scope)
