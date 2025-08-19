@@ -43,7 +43,7 @@ type Config struct {
 		VAService        *cmd.GRPCClientConfig
 		CAService        *cmd.GRPCClientConfig
 		PublisherService *cmd.GRPCClientConfig
-		
+
 		// Deprecated: TODO(#8345): Remove this.
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
