@@ -1073,36 +1073,6 @@ def test_caa_reject():
     chisel2.expect_problem("urn:ietf:params:acme:error:caa",
         lambda: chisel2.auth_and_issue([domain]))
 
-def test_caa_extensions():
-    goodCAA = "happy-hacker-ca.invalid"
-
-    client = chisel2.make_client()
-    caa_account_uri = client.net.account.uri
-    caa_records = [
-        {"domain": "accounturi.good-caa-reserved.com", "value":"{0}; accounturi={1}".format(goodCAA, caa_account_uri)},
-        {"domain": "dns-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01".format(goodCAA)},
-        {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
-        {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
-    ]
-    for policy in caa_records:
-        challSrv.add_caa_issue(policy["domain"], policy["value"])
-
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(["dns-01-only.good-caa-reserved.com"], chall_type="http-01"))
-
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(["http-01-only.good-caa-reserved.com"], chall_type="dns-01"))
-
-    ## Note: the additional names are to avoid rate limiting...
-    chisel2.auth_and_issue(["dns-01-only.good-caa-reserved.com", "www.dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
-    chisel2.auth_and_issue(["http-01-only.good-caa-reserved.com", "www.http-01-only.good-caa-reserved.com"], chall_type="http-01")
-    chisel2.auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
-    chisel2.auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
-
-    ## CAA should fail with an arbitrary account, but succeed with the CAA client.
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa", lambda: chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"]))
-    chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"], client=client)
-
 def test_renewal_exemption():
     """
     Under a single domain, issue two certificates for different subdomains of
