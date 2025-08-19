@@ -359,7 +359,6 @@ func TestCAAAccountURI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("domain %s\n", domain)
 	_, err = authAndIssue(client, nil, idents, true, "")
 	if err != nil {
 		t.Fatalf("authAndIssue: %s", err)
