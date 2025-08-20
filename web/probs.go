@@ -3,6 +3,9 @@ package web
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/netip"
 
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
@@ -96,4 +99,20 @@ func subProblemDetailsForSubError(subErr berrors.SubBoulderError, msg string) pr
 		Identifier:     subErr.Identifier,
 		ProblemDetails: *problemDetailsForBoulderError(subErr.BoulderError, msg),
 	}
+}
+
+// ExtractRequesterIP extracts the IP address of the requester from the HTTP
+// request. It first checks the "X-Real-IP" header, and if that is not set, it
+// falls back to the RemoteAddr field of the request. An error is returned if
+// the IP address cannot be determined.
+func ExtractRequesterIP(req *http.Request) (netip.Addr, error) {
+	ip, err := netip.ParseAddr(req.Header.Get("X-Real-IP"))
+	if err == nil {
+		return ip, nil
+	}
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	return netip.ParseAddr(host)
 }

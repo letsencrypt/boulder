@@ -327,3 +327,49 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 		})
 	}
 }
+
+func TestSubmitOverrideRequestHandlerRateLimited(t *testing.T) {
+	t.Parallel()
+
+	sfe, _ := setupSFE(t)
+	sfe.templatePages = minimalTemplates(t)
+	client := createFakeZendeskClientServer(t)
+	sfe.zendeskClient = client
+
+	for attempt := range 101 {
+		reqObj := overrideRequest{
+			RateLimit: rl.CertificatesPerDomainPerAccount.String(),
+			Fields: map[string]string{
+				rlo.SubscriberAgreementFieldName: "true",
+				rlo.PrivacyPolicyFieldName:       "true",
+				rlo.MailingListFieldName:         "false",
+				rlo.FundraisingFieldName:         rlo.FundraisingOptions[0],
+				rlo.EmailAddressFieldName:        "foo@bar.co",
+				rlo.OrganizationFieldName:        "Big Host Inc.",
+				rlo.UseCaseFieldName:             strings.Repeat("x", 60),
+				rlo.TierFieldName:                rlo.CertificatesPerDomainPerAccountTiers[0],
+				rlo.AccountURIFieldName:          "https://acme-v02.api.letsencrypt.org/acme/acct/67890",
+			},
+		}
+		body, err := json.Marshal(reqObj)
+		if err != nil {
+			t.Errorf("Unexpected failure to marshal JSON overrideRequest: %s", err)
+		}
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+
+		sfe.submitOverrideRequestHandler(rec, req)
+		if attempt < 100 {
+			if rec.Code != http.StatusOK {
+				t.Errorf("Unexpected status=%d, expected status=200", rec.Code)
+			}
+		} else {
+			if rec.Code != http.StatusTooManyRequests {
+				t.Errorf("Unexpected status=%d, expected status=429", rec.Code)
+			}
+			if !strings.Contains(rec.Body.String(), "too many override request form submissions (100)") {
+				t.Errorf("Expected rate limit error message, got: %s", rec.Body.String())
+			}
+		}
+	}
+}

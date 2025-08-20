@@ -558,6 +558,22 @@ func TestRateLimitError(t *testing.T) {
 			expectedErrType: berrors.RateLimit,
 		},
 		{
+			name: "LimitOverrideRequestsPerIPAddress limit reached",
+			decision: &Decision{
+				allowed: false,
+				retryIn: 20 * time.Second,
+				transaction: Transaction{
+					limit: &Limit{
+						Name:   LimitOverrideRequestsPerIPAddress,
+						Burst:  3,
+						Period: config.Duration{Duration: time.Hour},
+					},
+				},
+			},
+			expectedErr:     "too many override request form submissions (3) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#limit-override-requests-per-ip-address",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
 			name: "Unknown rate limit name",
 			decision: &Decision{
 				allowed: false,
