@@ -572,3 +572,18 @@ func (builder *TransactionBuilder) NewAccountLimitTransactions(ip netip.Addr) ([
 	}
 	return append(transactions, txn), nil
 }
+
+// LimitOverrideRequestsPerIPAddressTransaction returns a Transaction for the
+// LimitOverrideRequestsPerIPAddress limit for the provided IP address. This
+// limit is used to rate limit requests to the SFE override request endpoint.
+func (builder *TransactionBuilder) LimitOverrideRequestsPerIPAddressTransaction(ip netip.Addr) (Transaction, error) {
+	bucketKey := newIPAddressBucketKey(LimitOverrideRequestsPerIPAddress, ip)
+	limit, err := builder.getLimit(LimitOverrideRequestsPerIPAddress, bucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
+		return Transaction{}, err
+	}
+	return newTransaction(limit, bucketKey, 1)
+}

@@ -21,6 +21,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
 	rlo "github.com/letsencrypt/boulder/ratelimits/overriderequests"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
@@ -67,6 +68,9 @@ type SelfServiceFrontEndImpl struct {
 
 	templatePages *template.Template
 	cop           *http.CrossOriginProtection
+
+	limiter    *ratelimits.Limiter
+	txnBuilder *ratelimits.TransactionBuilder
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -79,6 +83,8 @@ func NewSelfServiceFrontEndImpl(
 	sac sapb.StorageAuthorityReadOnlyClient,
 	unpauseHMACKey []byte,
 	zendeskClient *zendesk.Client,
+	limiter *ratelimits.Limiter,
+	txnBuilder *ratelimits.TransactionBuilder,
 ) (SelfServiceFrontEndImpl, error) {
 
 	// Parse the files once at startup to avoid each request causing the server
@@ -99,6 +105,8 @@ func NewSelfServiceFrontEndImpl(
 		zendeskClient:  zendeskClient,
 		templatePages:  tmplPages,
 		cop:            http.NewCrossOriginProtection(),
+		limiter:        limiter,
+		txnBuilder:     txnBuilder,
 	}
 
 	return sfe, nil

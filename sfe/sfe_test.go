@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/must"
+	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/unpause"
 
@@ -51,6 +52,11 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 	key, err := hmacKey.Load()
 	test.AssertNotError(t, err, "Unable to load HMAC key")
 
+	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
+	test.AssertNotError(t, err, "making limiter")
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/sfe-ratelimit-defaults.yml", "")
+	test.AssertNotError(t, err, "making transaction composer")
+
 	sfe, err := NewSelfServiceFrontEndImpl(
 		stats,
 		fc,
@@ -60,6 +66,8 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 		mockSA,
 		key,
 		nil,
+		limiter,
+		txnBuilder,
 	)
 	test.AssertNotError(t, err, "Unable to create SFE")
 

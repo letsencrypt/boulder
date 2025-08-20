@@ -18,8 +18,8 @@ import (
 // IMPORTANT: If you add or remove a limit Name, you MUST update:
 //   - the string representation of the Name in nameToString,
 //   - the validators for that name in validateIdForName(),
-//   - the transaction constructors for that name in bucket.go
-//   - the Subscriber facing error message in ErrForDecision(), and
+//   - the transaction constructors for that name in transaction.go
+//   - the Subscriber facing error message in Decision.Result(), and
 //   - the case in BuildBucketKey() for that name.
 type Name int
 
@@ -99,6 +99,11 @@ const (
 	//    the account and identValue is the value of an identifier in the
 	//    certificate.
 	FailedAuthorizationsForPausingPerDomainPerAccount
+
+	// LimitOverrideRequestsPerIPAddress is used to limit the number of requests
+	// to the rate limit override request endpoint per IP address. It uses
+	// bucket key 'enum:ipAddress'.
+	LimitOverrideRequestsPerIPAddress
 )
 
 // nameToString is a map of Name values to string names.
@@ -112,6 +117,7 @@ var nameToString = map[Name]string{
 	CertificatesPerDomainPerAccount:                   "CertificatesPerDomainPerAccount",
 	CertificatesPerFQDNSet:                            "CertificatesPerFQDNSet",
 	FailedAuthorizationsForPausingPerDomainPerAccount: "FailedAuthorizationsForPausingPerDomainPerAccount",
+	LimitOverrideRequestsPerIPAddress:                 "LimitOverrideRequestsPerIPAddress",
 }
 
 // isValid returns true if the Name is a valid rate limit name.
@@ -278,7 +284,7 @@ func validateFQDNSet(id string) error {
 
 func validateIdForName(name Name, id string) error {
 	switch name {
-	case NewRegistrationsPerIPAddress:
+	case NewRegistrationsPerIPAddress, LimitOverrideRequestsPerIPAddress:
 		// 'enum:ipaddress'
 		return validIPAddress(id)
 
@@ -361,7 +367,7 @@ func BuildBucketKey(name Name, regId int64, singleIdent identifier.ACMEIdentifie
 	}
 
 	switch name {
-	case NewRegistrationsPerIPAddress:
+	case NewRegistrationsPerIPAddress, LimitOverrideRequestsPerIPAddress:
 		if !subscriberIP.IsValid() {
 			return "", makeMissingErr("subscriberIP")
 		}
