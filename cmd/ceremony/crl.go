@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/linter"
 )
 
-func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nextUpdate time.Time, number int64, revokedCertificates []x509.RevocationListEntry) ([]byte, error) {
+func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nextUpdate time.Time, number int64, revokedCertificates []x509.RevocationListEntry, skipLints []string) ([]byte, error) {
 	template := &x509.RevocationList{
 		RevokedCertificateEntries: revokedCertificates,
 		Number:                    big.NewInt(number),
@@ -42,7 +42,7 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	}
 	template.ExtraExtensions = append(template.ExtraExtensions, *idp)
 
-	err = linter.CheckCRL(template, issuer, signer, []string{})
+	err = linter.CheckCRL(template, issuer, signer, skipLints)
 	if err != nil {
 		return nil, fmt.Errorf("crl failed pre-issuance lint: %w", err)
 	}
