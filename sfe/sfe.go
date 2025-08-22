@@ -144,8 +144,8 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 
 	// Rate Limit Override Requests
 	if sfe.zendeskClient != nil {
-		sfe.handleGet(mux, overridesNewOrdersPerAccount, http.HandlerFunc(
-			sfe.makeOverrideRequestFormHandler(newOrdersPerAccountForm, rl.NewOrdersPerAccount.String(), rl.NewOrdersPerAccount.String())),
+		sfe.handleGet(mux, overridesNewOrdersPerAccount, sfe.makeOverrideRequestFormHandler(
+			newOrdersPerAccountForm, rl.NewOrdersPerAccount.String(), rl.NewOrdersPerAccount.String()),
 		)
 		// CertificatesPerDomain has two forms, one for DNS names and one
 		// for IP addresses, we differentiate them by appending a suffix to
