@@ -563,11 +563,8 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
-	getRaw := func(name string) string {
-		return strings.TrimSpace(req.Fields[name])
-	}
 	getValidated := func(name string) (string, error) {
-		val := getRaw(name)
+		val := strings.TrimSpace(req.Fields[name])
 		err := validateOverrideRequestField(name, val, req.RateLimit)
 		if err != nil {
 			return "", fmt.Errorf("invalid field %q: %w", name, err)
