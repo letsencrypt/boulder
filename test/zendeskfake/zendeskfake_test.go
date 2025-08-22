@@ -92,7 +92,7 @@ func postTicket(t *testing.T, baseURL string, body []byte) (*http.Response, []by
 	return doJSON(t, http.MethodPost, baseURL+TicketsJSONPath, basicAuthHeader(apiTokenEmail, apiToken), body, true)
 }
 
-func putComment(t *testing.T, baseURL string, id int64, body []byte) (*http.Response, []byte) {
+func putUpdate(t *testing.T, baseURL string, id int64, body []byte) (*http.Response, []byte) {
 	t.Helper()
 
 	endpoint := fmt.Sprintf("%s%s%d.json", baseURL, TicketsPath, id)
@@ -248,6 +248,9 @@ func TestCreateTicketSuccessAndStored(t *testing.T) {
 		t.Errorf("ticket id %d not found in store", res.Ticket.ID)
 		return
 	}
+	if got.Status != "new" {
+		t.Errorf("ticket default status mismatch: got %q, want %q", got.Status, "new")
+	}
 	if got.Subject != "Subject A" {
 		t.Errorf("ticket subject mismatch: got %q, want %q", got.Subject, "Subject A")
 	}
@@ -329,38 +332,84 @@ func TestCreateTicketUnhappyPaths(t *testing.T) {
 	}
 }
 
-func TestUpdateTicketAddsComment(t *testing.T) {
+func TestUpdateTicketVariants(t *testing.T) {
 	t.Parallel()
 
-	srv, ts := startTestServer(t)
-
-	id := createTicketAndReturnID(t, ts.URL)
-
-	updatePayload := []byte(`{
-		"ticket": {
-			"comment": {"body":"Follow-up","public":false}
-		}
-	}`)
-	resp, body := putComment(t, ts.URL, id, updatePayload)
-	if resp == nil {
-		t.Errorf("update ticket: unexpected nil response")
-		return
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("update ticket: expected HTTP %d, got HTTP %d body=%s", http.StatusOK, resp.StatusCode, string(body))
+	type tc struct {
+		name          string
+		payload       []byte
+		wantHTTP      int
+		expectStatus  string
+		expectComment *comment
 	}
 
-	got, ok := srv.GetTicket(id)
-	if !ok {
-		t.Errorf("update ticket: id %d not found in store", id)
-		return
+	cases := []tc{
+		{
+			name:          "adds comment only",
+			payload:       []byte(`{"ticket":{"comment":{"body":"Follow-up","public":false}}}`),
+			wantHTTP:      http.StatusOK,
+			expectStatus:  "new",
+			expectComment: &comment{Body: "Follow-up", Public: false},
+		},
+		{
+			name:         "status only (open)",
+			payload:      []byte(`{"ticket":{"status":"open"}}`),
+			wantHTTP:     http.StatusOK,
+			expectStatus: "open",
+		},
+		{
+			name:          "status with comment (solved, public)",
+			payload:       []byte(`{"ticket":{"status":"solved","comment":{"body":"Resolved","public":true}}}`),
+			wantHTTP:      http.StatusOK,
+			expectStatus:  "solved",
+			expectComment: &comment{Body: "Resolved", Public: true},
+		},
+		{
+			name:         "invalid status",
+			payload:      []byte(`{"ticket":{"status":"bogus"}}`),
+			wantHTTP:     http.StatusUnprocessableEntity,
+			expectStatus: "new",
+		},
 	}
-	if len(got.Comments) != 2 {
-		t.Errorf("update ticket: expected 2 comments, got %d", len(got.Comments))
-	} else {
-		if got.Comments[1].Body != "Follow-up" || got.Comments[1].Public {
-			t.Errorf("update ticket: second comment incorrect: %#v (want body=%q, public=false)", got.Comments[1], "Follow-up")
-		}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv, ts := startTestServer(t)
+			id := createTicketAndReturnID(t, ts.URL)
+
+			resp, body := putUpdate(t, ts.URL, id, tc.payload)
+			if resp == nil {
+				t.Fatalf("unexpected nil response from putUpdate %s", tc.name)
+			}
+			if resp.StatusCode != tc.wantHTTP {
+				t.Errorf("expected HTTP %d, got %d body=%s", tc.wantHTTP, resp.StatusCode, string(body))
+			}
+
+			got, ok := srv.GetTicket(id)
+			if !ok {
+				t.Errorf("id %d not found in store after update %s", id, tc.name)
+			}
+
+			if got.Status != tc.expectStatus {
+				t.Errorf("status mismatch: got %q, expected %q", got.Status, tc.expectStatus)
+			}
+			if tc.expectComment != nil {
+				found := false
+				for _, c := range got.Comments {
+					if c.Body == tc.expectComment.Body && c.Public == tc.expectComment.Public {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected comment %q public=%t not found in ticket comments: %#v", tc.expectComment.Body, tc.expectComment.Public, got.Comments)
+				}
+			} else if len(got.Comments) > 1 {
+				t.Errorf("expected no additional comments, got %d comments: %#v", len(got.Comments), got.Comments)
+			}
+		})
 	}
 }
 

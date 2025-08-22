@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -188,6 +189,134 @@ func TestAddComment404(t *testing.T) {
 	}
 }
 
+func TestAddCommentEmptyBody422(t *testing.T) {
+	t.Parallel()
+
+	c, _ := startMockClient(t)
+
+	id, err := c.CreateTicket("a@example.com", "s", "init", nil)
+	if err != nil {
+		t.Errorf("CreateTicket(a@example.com): %s", err)
+	}
+
+	err = c.AddComment(id, "", true)
+	if err == nil || !strings.Contains(err.Error(), "status 422") {
+		t.Errorf("expected HTTP 422 for empty comment body on ticket %d, got: %s", id, err)
+	}
+}
+
+func TestUpdateTicketStatus(t *testing.T) {
+	t.Parallel()
+
+	type tc struct {
+		name          string
+		status        string
+		comment       *comment
+		expectErr     bool
+		expectStatus  string
+		expectComment *comment
+	}
+
+	cases := []tc{
+		{
+			name:         "Update to open without comment",
+			status:       "open",
+			expectErr:    false,
+			expectStatus: "open",
+		},
+		{
+			name:          "Update to pending with comment",
+			status:        "solved",
+			comment:       &comment{Body: "Resolved", Public: true},
+			expectErr:     false,
+			expectStatus:  "solved",
+			expectComment: &comment{Body: "Resolved", Public: true},
+		},
+		{
+			name:         "Update from new to foo (invalid status)",
+			status:       "foo",
+			expectErr:    true,
+			expectStatus: "new",
+		},
+		{
+			name:         "unknown id",
+			status:       "open",
+			expectErr:    true,
+			expectStatus: "new",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fake := zendeskfake.NewServer(apiTokenEmail, apiToken, nil)
+			ts := httptest.NewServer(fake.Handler())
+			t.Cleanup(ts.Close)
+
+			client, err := NewClient(ts.URL, apiTokenEmail, apiToken, map[string]int64{})
+			if err != nil {
+				t.Errorf("Unexpected error from NewClient(%q): %s", ts.URL, err)
+			}
+
+			client.updateURL, err = url.JoinPath(ts.URL, "/api/v2/tickets")
+			if err != nil {
+				t.Errorf("Failed to join update URL: %s", err)
+			}
+
+			id, err := client.CreateTicket("foo@bar.co", "Some subject", "Some comment", nil)
+			if err != nil {
+				t.Errorf("Unexpected error from CreateTicket: %s", err)
+			}
+
+			updateID := id
+			if tc.name == "unknown id" {
+				updateID = 999999
+			}
+
+			var commentBody string
+			var public bool
+			if tc.comment != nil {
+				commentBody = tc.comment.Body
+				public = tc.comment.Public
+			}
+			err = client.UpdateTicketStatus(updateID, tc.status, commentBody, public)
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected error for status %q, got nil", tc.status)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error for UpdateTicketStatus(%d, %q): %s", updateID, tc.status, err)
+				}
+			}
+
+			got, ok := fake.GetTicket(id)
+			if !ok {
+				t.Errorf("Ticket with id %d not found after update", id)
+			}
+
+			if got.Status != tc.expectStatus {
+				t.Errorf("Expected status %q, got %q", tc.expectStatus, got.Status)
+			}
+			if tc.expectComment != nil {
+				found := false
+				for _, c := range got.Comments {
+					if c.Body == tc.expectComment.Body && c.Public == tc.expectComment.Public {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected comment not found: %#v in %#v", tc.expectComment, got.Comments)
+				}
+			} else if len(got.Comments) > 1 {
+				t.Errorf("Expected no additional comment, got %d: %#v", len(got.Comments), got.Comments)
+			}
+		})
+	}
+}
+
 func TestFindTicketsSimple(t *testing.T) {
 	t.Parallel()
 
@@ -206,7 +335,7 @@ func TestFindTicketsSimple(t *testing.T) {
 		t.Errorf("creating ticket 3: %s", err)
 	}
 
-	got, err := c.FindTickets(map[string]string{"reviewStatus": "pending"})
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "pending"}, "new")
 	if err != nil {
 		t.Errorf("FindTickets(reviewStatus=pending): %s", err)
 	}
@@ -234,7 +363,7 @@ func TestFindTicketsQuotedValueReturnsAll(t *testing.T) {
 		}
 	}
 
-	got, err := c.FindTickets(map[string]string{"reviewStatus": "needs review"})
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "new")
 	if err != nil {
 		t.Errorf("FindTickets(needs review): %s", err)
 	}
@@ -248,7 +377,7 @@ func TestFindTicketsNoMatchFieldsError(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	_, err := c.FindTickets(map[string]string{})
+	_, err := c.FindTickets(map[string]string{}, "new")
 	if err == nil || !strings.Contains(err.Error(), "no match fields") {
 		t.Errorf("expected error for empty match fields, got: %s", err)
 	}
@@ -259,25 +388,9 @@ func TestFindTicketsUnknownFieldName(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	_, err := c.FindTickets(map[string]string{"unknown": "v"})
+	_, err := c.FindTickets(map[string]string{"unknown": "v"}, "new")
 	if err == nil || !strings.Contains(err.Error(), "unknown custom field") {
 		t.Errorf("expected unknown custom field error, got: %s", err)
-	}
-}
-
-func TestAddCommentEmptyBody422(t *testing.T) {
-	t.Parallel()
-
-	c, _ := startMockClient(t)
-
-	id, err := c.CreateTicket("a@example.com", "s", "init", nil)
-	if err != nil {
-		t.Errorf("CreateTicket(a@example.com): %s", err)
-	}
-
-	err = c.AddComment(id, "", true)
-	if err == nil || !strings.Contains(err.Error(), "status 422") {
-		t.Errorf("expected HTTP 422 for empty comment body on ticket %d, got: %s", id, err)
 	}
 }
 
@@ -290,7 +403,7 @@ func TestFindTicketsNoResults(t *testing.T) {
 	if err != nil {
 		t.Errorf("creating ticket with reviewStatus=approved: %s", err)
 	}
-	got, err := c.FindTickets(map[string]string{"reviewStatus": "pending"})
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "pending"}, "new")
 	if err != nil {
 		t.Errorf("FindTickets(reviewStatus=pending): %s", err)
 	}
@@ -335,7 +448,7 @@ func TestFindTicketsPaginationFollowed(t *testing.T) {
 		}
 	}
 
-	got, err := c.FindTickets(map[string]string{"reviewStatus": "needs review"})
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "")
 	if err != nil {
 		t.Errorf("FindTickets(needs review): %s", err)
 	}
@@ -362,7 +475,7 @@ func TestFindTicketsHTTP400(t *testing.T) {
 	if err != nil {
 		t.Errorf("NewClient(%q): %s", ts.URL, err)
 	}
-	_, err = c.FindTickets(map[string]string{"reviewStatus": "needs review"})
+	_, err = c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "new")
 	if err == nil || !strings.Contains(err.Error(), "status 400") {
 		t.Errorf("expected HTTP 400 from search, got: %s", err)
 	}
@@ -382,7 +495,7 @@ func TestFindTicketsHTTP500(t *testing.T) {
 	if err != nil {
 		t.Errorf("NewClient(%q): %s", ts.URL, err)
 	}
-	_, err = c.FindTickets(map[string]string{"reviewStatus": "needs review"})
+	_, err = c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "new")
 	if err == nil || !strings.Contains(err.Error(), "status 500") {
 		t.Errorf("expected HTTP 500 from search, got: %s", err)
 	}

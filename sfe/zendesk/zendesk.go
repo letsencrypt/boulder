@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -16,6 +17,12 @@ const (
 	ticketsJSONPath = apiPath + "tickets.json"
 	searchJSONPath  = apiPath + "search.json"
 )
+
+// Note: This is client is NOT compatible with custom ticket statuses, it only
+// supports the default Zendesk ticket statuses. For more information, see:
+// https://developer.zendesk.com/api-reference/ticketing/tickets/custom_ticket_statuses
+// https://developer.zendesk.com/api-reference/ticketing/tickets/tickets/#custom-ticket-statuses
+var validStatuses = []string{"new", "open", "pending", "hold", "solved"}
 
 // Client is a Zendesk client that allows you to create tickets, search for
 // tickets, and add comments to tickets via the Zendesk REST API. It uses basic
@@ -27,7 +34,7 @@ type Client struct {
 
 	ticketsURL string
 	searchURL  string
-	commentURL string
+	updateURL  string
 
 	nameToFieldID map[string]int64
 	fieldIDToName map[int64]string
@@ -50,7 +57,7 @@ func NewClient(baseURL, tokenEmail, token string, nameToFieldID map[string]int64
 	if err != nil {
 		return nil, fmt.Errorf("failed to join search path: %w", err)
 	}
-	commentURL, err := url.JoinPath(baseURL, apiPath, "tickets")
+	updateURL, err := url.JoinPath(baseURL, apiPath, "tickets")
 	if err != nil {
 		return nil, fmt.Errorf("failed to join comment path: %w", err)
 	}
@@ -68,7 +75,7 @@ func NewClient(baseURL, tokenEmail, token string, nameToFieldID map[string]int64
 		token:         token,
 		ticketsURL:    ticketsURL,
 		searchURL:     searchURL,
-		commentURL:    commentURL,
+		updateURL:     updateURL,
 		nameToFieldID: nameToFieldID,
 		fieldIDToName: fieldIDToName,
 	}, nil
@@ -245,13 +252,13 @@ func (c *Client) CreateTicket(requesterEmail, subject, commentBody string, field
 	return result.Ticket.ID, nil
 }
 
-// FindTickets returns all tickets whose custom fields match the supplied
-// matchFields. The matchFields map should contain the display names of the
-// custom fields as keys and the desired values as values. The method returns a
-// map where the keys are ticket IDs and the values are maps of custom field
-// names to their values. If no matchFields are supplied, an error is returned.
-// If a custom field name is unknown, an error is returned.
-func (c *Client) FindTickets(matchFields map[string]string) (map[int64]map[string]string, error) {
+// FindTickets returns all tickets whose custom fields match the required
+// matchFields and optional status. The matchFields map should contain the
+// display names of the custom fields as keys and the desired values as values.
+// The method returns a map where the keys are ticket IDs and the values are
+// maps of custom field names to their values. If no matchFields are supplied,
+// an error is returned. If a custom field name is unknown, an error is returned.
+func (c *Client) FindTickets(matchFields map[string]string, status string) (map[int64]map[string]string, error) {
 	if len(matchFields) == 0 {
 		return nil, fmt.Errorf("no match fields supplied")
 	}
@@ -261,6 +268,13 @@ func (c *Client) FindTickets(matchFields map[string]string) (map[int64]map[strin
 	// https://developer.zendesk.com/documentation/api-basics/working-with-data/searching-with-the-zendesk-api/#basic-query-syntax
 
 	query := []string{"type:ticket"}
+
+	if status != "" {
+		if !slices.Contains(validStatuses, status) {
+			return nil, fmt.Errorf("invalid status %q, must be one of %s", status, validStatuses)
+		}
+		query = append(query, fmt.Sprintf("status:%s", status))
+	}
 
 	for name, want := range matchFields {
 		id, ok := c.nameToFieldID[name]
@@ -325,7 +339,7 @@ func (c *Client) FindTickets(matchFields map[string]string) (map[int64]map[strin
 // added as a public or private comment based on the provided boolean value. An
 // error is returned if the request fails.
 func (c *Client) AddComment(ticketID int64, commentBody string, public bool) error {
-	endpoint, err := url.JoinPath(c.commentURL, fmt.Sprintf("%d.json", ticketID))
+	endpoint, err := url.JoinPath(c.updateURL, fmt.Sprintf("%d.json", ticketID))
 	if err != nil {
 		return fmt.Errorf("failed to join ticket path: %w", err)
 	}
@@ -347,6 +361,43 @@ func (c *Client) AddComment(ticketID int64, commentBody string, public bool) err
 	_, err = c.doJSONRequest(http.MethodPut, endpoint, body)
 	if err != nil {
 		return fmt.Errorf("failed to add comment to zendesk ticket %d: %w", ticketID, err)
+	}
+	return nil
+}
+
+// UpdateTicketStatus updates the status of the specified ticket to the provided
+// status and adds a comment with the provided body. The comment is added as a
+// public or private comment based on the provided boolean value. An error is
+// returned if the request fails or if the provided status is invalid.
+func (c *Client) UpdateTicketStatus(ticketID int64, status string, commentBody string, public bool) error {
+	if !slices.Contains(validStatuses, status) {
+		return fmt.Errorf("invalid status %q, must be one of %s", status, validStatuses)
+	}
+
+	endpoint, err := url.JoinPath(c.updateURL, fmt.Sprintf("%d.json", ticketID))
+	if err != nil {
+		return fmt.Errorf("failed to join ticket path: %w", err)
+	}
+
+	// For more information on the status update format, see:
+	// https://developer.zendesk.com/api-reference/ticketing/tickets/tickets/#update-ticket
+	payload := struct {
+		Ticket struct {
+			Comment comment `json:"comment"`
+			Status  string  `json:"status"`
+		} `json:"ticket"`
+	}{}
+	payload.Ticket.Comment = comment{Body: commentBody, Public: public}
+	payload.Ticket.Status = status
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal zendesk status update: %w", err)
+	}
+
+	_, err = c.doJSONRequest(http.MethodPut, endpoint, body)
+	if err != nil {
+		return fmt.Errorf("failed to update zendesk ticket %d: %w", ticketID, err)
 	}
 	return nil
 }
