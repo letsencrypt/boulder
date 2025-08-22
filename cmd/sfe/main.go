@@ -13,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	rlo "github.com/letsencrypt/boulder/ratelimits/overriderequests"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
@@ -126,13 +125,13 @@ func main() {
 			c.SFE.Zendesk.TokenEmail,
 			zendeskToken,
 			map[string]int64{
-				rlo.OrganizationFieldName:     c.SFE.Zendesk.CustomFields.Organization,
-				rlo.TierFieldName:             c.SFE.Zendesk.CustomFields.Tier,
-				rlo.RateLimitFieldName:        c.SFE.Zendesk.CustomFields.RateLimit,
-				rlo.ReviewStatusFieldName:     c.SFE.Zendesk.CustomFields.ReviewStatus,
-				rlo.AccountURIFieldName:       c.SFE.Zendesk.CustomFields.AccountURI,
-				rlo.RegisteredDomainFieldName: c.SFE.Zendesk.CustomFields.RegisteredDomain,
-				rlo.IPAddressFieldName:        c.SFE.Zendesk.CustomFields.IPAddress,
+				sfe.OrganizationFieldName:     c.SFE.Zendesk.CustomFields.Organization,
+				sfe.TierFieldName:             c.SFE.Zendesk.CustomFields.Tier,
+				sfe.RateLimitFieldName:        c.SFE.Zendesk.CustomFields.RateLimit,
+				sfe.ReviewStatusFieldName:     c.SFE.Zendesk.CustomFields.ReviewStatus,
+				sfe.AccountURIFieldName:       c.SFE.Zendesk.CustomFields.AccountURI,
+				sfe.RegisteredDomainFieldName: c.SFE.Zendesk.CustomFields.RegisteredDomain,
+				sfe.IPAddressFieldName:        c.SFE.Zendesk.CustomFields.IPAddress,
 			},
 		)
 		if err != nil {

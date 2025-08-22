@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	rl "github.com/letsencrypt/boulder/ratelimits"
-	rlo "github.com/letsencrypt/boulder/ratelimits/overriderequests"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/test/zendeskfake"
 )
@@ -87,20 +86,6 @@ func TestSetOverrideRequestFormHeaders(t *testing.T) {
 	}
 }
 
-func TestValidateOverrideFieldHandlerMethodNotAllowed(t *testing.T) {
-	t.Parallel()
-
-	sfe, _ := setupSFE(t)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-
-	sfe.validateOverrideFieldHandler(rec, req)
-
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("status=%d; expect 405", rec.Code)
-	}
-}
-
 func TestValidateOverrideFieldHandlerBadJSON(t *testing.T) {
 	t.Parallel()
 
@@ -122,7 +107,7 @@ func TestValidateOverrideFieldHandlerInvalidValue(t *testing.T) {
 
 	payload := validationRequest{
 		RateLimit: rl.NewOrdersPerAccount.String(),
-		Field:     rlo.EmailAddressFieldName,
+		Field:     emailAddressFieldName,
 		Value:     "definitely-not-an-email",
 	}
 	body, err := json.Marshal(payload)
@@ -171,16 +156,16 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 	// when only one of these is allowed.
 	body, err := json.Marshal(overrideRequest{
 		RateLimit: rl.CertificatesPerDomain.String(), Fields: map[string]string{
-			rlo.SubscriberAgreementFieldName: "true",
-			rlo.PrivacyPolicyFieldName:       "true",
-			rlo.MailingListFieldName:         "false",
-			rlo.FundraisingFieldName:         rlo.FundraisingOptions[0],
-			rlo.EmailAddressFieldName:        "foo@bar.co",
-			rlo.OrganizationFieldName:        "Big Host Inc.",
-			rlo.UseCaseFieldName:             strings.Repeat("x", 60),
-			rlo.TierFieldName:                rlo.CertificatesPerDomainTiers[0],
-			rlo.RegisteredDomainFieldName:    "bar.co",
-			rlo.IPAddressFieldName:           "2606:4700:4700::1111",
+			subscriberAgreementFieldName: "true",
+			privacyPolicyFieldName:       "true",
+			mailingListFieldName:         "false",
+			fundraisingFieldName:         FundraisingOptions[0],
+			emailAddressFieldName:        "foo@bar.co",
+			OrganizationFieldName:        "Big Host Inc.",
+			useCaseFieldName:             strings.Repeat("x", 60),
+			TierFieldName:                certificatesPerDomainTierOptions[0],
+			RegisteredDomainFieldName:    "bar.co",
+			IPAddressFieldName:           "2606:4700:4700::1111",
 		},
 	})
 	if err != nil {
@@ -204,14 +189,14 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 
 	// All of these fields are perfectly valid.
 	testBase := map[string]string{
-		rlo.SubscriberAgreementFieldName: "true",
-		rlo.PrivacyPolicyFieldName:       "true",
-		rlo.MailingListFieldName:         "false",
-		rlo.FundraisingFieldName:         rlo.FundraisingOptions[0],
-		rlo.EmailAddressFieldName:        "foo@bar.co",
-		rlo.OrganizationFieldName:        "Big Host Inc.",
-		rlo.UseCaseFieldName:             strings.Repeat("x", 60),
-		rlo.TierFieldName:                rlo.NewOrdersPerAccountTiers[0],
+		subscriberAgreementFieldName: "true",
+		privacyPolicyFieldName:       "true",
+		mailingListFieldName:         "false",
+		fundraisingFieldName:         FundraisingOptions[0],
+		emailAddressFieldName:        "foo@bar.co",
+		OrganizationFieldName:        "Big Host Inc.",
+		useCaseFieldName:             strings.Repeat("x", 60),
+		TierFieldName:                newOrdersPerAccountTierOptions[0],
 	}
 
 	type tc struct {
@@ -225,59 +210,59 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 			name:      "NewOrdersPerAccount with valid Account URI",
 			rateLimit: rl.NewOrdersPerAccount.String(),
 			fields: map[string]string{
-				rlo.AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
+				AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
 			},
 			zendeskMatch: map[string]string{
-				rlo.RateLimitFieldName:  rl.NewOrdersPerAccount.String(),
-				rlo.AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
+				RateLimitFieldName:  rl.NewOrdersPerAccount.String(),
+				AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
 			},
 		},
 		{
 			name:      "CertificatesPerDomainPerAccount with valid Account URI",
 			rateLimit: rl.CertificatesPerDomainPerAccount.String(),
 			fields: map[string]string{
-				rlo.TierFieldName:       rlo.CertificatesPerDomainPerAccountTiers[0],
-				rlo.AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/67890",
+				TierFieldName:       certificatesPerDomainPerAccountTierOptions[0],
+				AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/67890",
 			},
 			zendeskMatch: map[string]string{
-				rlo.RateLimitFieldName:  rl.CertificatesPerDomainPerAccount.String(),
-				rlo.AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/67890",
+				RateLimitFieldName:  rl.CertificatesPerDomainPerAccount.String(),
+				AccountURIFieldName: "https://acme-v02.api.letsencrypt.org/acme/acct/67890",
 			},
 		},
 		{
 			name:      "CertificatesPerDomain with valid Registered Domain",
-			rateLimit: rl.CertificatesPerDomain.String(),
+			rateLimit: rl.CertificatesPerDomain.String() + perDNSNameSuffix,
 			fields: map[string]string{
-				rlo.TierFieldName:             rlo.CertificatesPerDomainTiers[0],
-				rlo.RegisteredDomainFieldName: "bar.co",
+				TierFieldName:             certificatesPerDomainTierOptions[0],
+				RegisteredDomainFieldName: "bar.co",
 			},
 			zendeskMatch: map[string]string{
-				rlo.RateLimitFieldName:        rl.CertificatesPerDomain.String(),
-				rlo.RegisteredDomainFieldName: "bar.co",
+				RateLimitFieldName:        rl.CertificatesPerDomain.String(),
+				RegisteredDomainFieldName: "bar.co",
 			},
 		},
 		{
 			name:      "CertificatesPerDomain with valid IPv6 Address",
-			rateLimit: rl.CertificatesPerDomain.String(),
+			rateLimit: rl.CertificatesPerDomain.String() + perIPSuffix,
 			fields: map[string]string{
-				rlo.TierFieldName:      rlo.CertificatesPerDomainTiers[0],
-				rlo.IPAddressFieldName: "2606:4700:4700::1111",
+				TierFieldName:      certificatesPerDomainTierOptions[0],
+				IPAddressFieldName: "2606:4700:4700::1111",
 			},
 			zendeskMatch: map[string]string{
-				rlo.RateLimitFieldName: rl.CertificatesPerDomain.String(),
-				rlo.IPAddressFieldName: "2606:4700:4700::1111",
+				RateLimitFieldName: rl.CertificatesPerDomain.String(),
+				IPAddressFieldName: "2606:4700:4700::1111",
 			},
 		},
 		{
 			name:      "CertificatesPerDomain with valid IPv4 Address",
-			rateLimit: rl.CertificatesPerDomain.String(),
+			rateLimit: rl.CertificatesPerDomain.String() + perIPSuffix,
 			fields: map[string]string{
-				rlo.TierFieldName:      rlo.CertificatesPerDomainTiers[0],
-				rlo.IPAddressFieldName: "64.112.11.11",
+				TierFieldName:      certificatesPerDomainTierOptions[0],
+				IPAddressFieldName: "64.112.11.11",
 			},
 			zendeskMatch: map[string]string{
-				rlo.RateLimitFieldName: rl.CertificatesPerDomain.String(),
-				rlo.IPAddressFieldName: "64.112.11.11",
+				RateLimitFieldName: rl.CertificatesPerDomain.String(),
+				IPAddressFieldName: "64.112.11.11",
 			},
 		},
 	}
@@ -323,6 +308,105 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 					}
 				}
 				break
+			}
+		})
+	}
+}
+
+func TestValidateOverrideRequestField(t *testing.T) {
+	type testCase struct {
+		name              string
+		fieldName         string
+		fieldValue        string
+		ratelimitName     string
+		expectErr         bool
+		expectErrContains string
+	}
+
+	var cases []testCase
+	// Empty Field
+	cases = append(cases,
+		testCase{"Empty field name", "", "x", "rl", true, "field name cannot be empty"},
+		testCase{"Empty field value", "some", "", "rl", true, "cannot be empty"},
+		testCase{"Tier without rate limit", TierFieldName, "10", "", true, "must be specified"},
+		testCase{"Unknown field", "not-a-field", "x", "rl", true, "unknown field"},
+	)
+	// MailingListFieldName
+	cases = append(cases,
+		testCase{"MailingList true", mailingListFieldName, "true", "", false, ""},
+		testCase{"MailingList false", mailingListFieldName, "false", "", false, ""},
+		testCase{"MailingList yup", mailingListFieldName, "yup", "", true, "true or false"},
+	)
+	// SubscriberAgreement/PrivacyPolicy
+	for _, fieldName := range []string{subscriberAgreementFieldName, privacyPolicyFieldName} {
+		cases = append(cases,
+			testCase{fieldName + " true", fieldName, "true", "", false, ""},
+			testCase{fieldName + " false", fieldName, "false", "", true, "required"},
+			testCase{fieldName + " yep", fieldName, "yep", "", true, "true or false"},
+		)
+	}
+	// FundraisingFieldName
+	cases = append(cases,
+		testCase{"Fundraising valid", fundraisingFieldName, FundraisingOptions[0], "", false, ""},
+		testCase{"Fundraising invalid", fundraisingFieldName, "explicitly not an option", "", true, "valid options are"},
+	)
+	// EmailAddressFieldName
+	cases = append(cases,
+		testCase{"EmailAddress valid email", emailAddressFieldName, "foo@bar.co", "", false, ""},
+		testCase{"EmailAddress invalid", emailAddressFieldName, "foo@", "", true, "invalid"},
+	)
+	// OrganizationFieldName
+	cases = append(cases,
+		testCase{"Organization valid", OrganizationFieldName, "Big Host Inc", "", false, ""},
+		testCase{"Organization too short", OrganizationFieldName, "Big", "", true, "at least five"},
+	)
+	// UseCaseFieldName
+	cases = append(cases,
+		testCase{"UseCase exactly long enough", useCaseFieldName, strings.Repeat("x", 60), "", false, ""},
+		testCase{"UseCase too short", useCaseFieldName, strings.Repeat("x", 59), "", true, "at least 60"},
+	)
+	// IPAddressFieldName
+	cases = append(cases,
+		testCase{"IPAddress IPv4 valid", IPAddressFieldName, "64.112.11.11", "", false, ""},
+		testCase{"IPAddress IPv4 invalid", IPAddressFieldName, "64.112.11.256", "", true, "invalid"},
+		testCase{"IPAddress IPv6 valid", IPAddressFieldName, "2606:4700:4700::1111", "", false, ""},
+		testCase{"IPAddress IPv6 invalid", IPAddressFieldName, "2606:4700:4700::1111:12345", "", true, "invalid"},
+	)
+	// RegisteredDomainFieldName
+	cases = append(cases,
+		testCase{"RegisteredDomain valid eTLD+1", RegisteredDomainFieldName, "example.com", "", false, ""},
+		testCase{"RegisteredDomain bare TLD", RegisteredDomainFieldName, "com", "", true, "registered domain name is invalid"},
+		testCase{"RegisteredDomain eTLD+2", RegisteredDomainFieldName, "foo.bar.example.com", "", true, "only the eTLD+1"},
+		testCase{"RegisteredDomain invalid syntax", RegisteredDomainFieldName, "not even close to a domain", "", true, "invalid"},
+	)
+	// AccountURIFieldName
+	cases = append(cases,
+		testCase{"AccountURI valid", AccountURIFieldName, "https://acme-v02.api.letsencrypt.org/acme/acct/12345", "", false, ""},
+		testCase{"AccountURI bad host", AccountURIFieldName, "https://acme-v02.ap1.letsencrypt.org/acme/acct/1", "", true, "account URI is invalid"},
+		testCase{"AccountURI bad id", AccountURIFieldName, "https://acme-v02.api.letsencrypt.org/acme/acct/notnum", "", true, "positive integer"},
+		testCase{"AccountURI bad path shape", AccountURIFieldName, "https://acme-v02.api.letsencrypt.org/acme/acct/1/extra", "", true, "path must be"},
+	)
+	// TierFieldName
+	cases = append(cases,
+		testCase{"Tier valid", TierFieldName, "1000", "NewOrdersPerAccount", false, ""},
+		testCase{"Tier invalid option", TierFieldName, "999", "NewOrdersPerAccount", true, "valid options are"},
+		testCase{"Tier unknown rl", TierFieldName, "10", "DoesNotExist", true, "unknown rate limit"},
+	)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateOverrideRequestField(tc.fieldName, tc.fieldValue, tc.ratelimitName)
+			if tc.expectErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
+					t.Fatalf("Error %q does not contain %q", err.Error(), tc.expectErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error, got %s", err)
 			}
 		})
 	}

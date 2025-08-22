@@ -21,7 +21,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	rlo "github.com/letsencrypt/boulder/ratelimits/overriderequests"
+	rl "github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/unpause"
@@ -31,13 +31,13 @@ const (
 	unpausePostForm = unpause.APIPrefix + "/do-unpause"
 	unpauseStatus   = unpause.APIPrefix + "/unpause-status"
 
-	overridesNewOrdersPerAccount             = rlo.APIPrefix + "/overrides/new-orders-per-account"
-	overridesCertificatesPerDomain           = rlo.APIPrefix + "/overrides/certificates-per-domain"
-	overridesCertificatesPerIP               = rlo.APIPrefix + "/overrides/certificates-per-ip"
-	overridesCertificatesPerDomainPerAccount = rlo.APIPrefix + "/overrides/certificates-per-domain-per-account"
-	overridesValidateField                   = rlo.APIPrefix + "/overrides/validate-field"
-	overridesSubmitRequest                   = rlo.APIPrefix + "/overrides/submit-override-request"
-	overridesSubmitSuccess                   = rlo.APIPrefix + "/overrides/success"
+	overridesNewOrdersPerAccount             = overridesAPIPrefix + "/overrides/new-orders-per-account"
+	overridesCertificatesPerDomain           = overridesAPIPrefix + "/overrides/certificates-per-domain"
+	overridesCertificatesPerIP               = overridesAPIPrefix + "/overrides/certificates-per-ip"
+	overridesCertificatesPerDomainPerAccount = overridesAPIPrefix + "/overrides/certificates-per-domain-per-account"
+	overridesValidateField                   = overridesAPIPrefix + "/overrides/validate-field"
+	overridesSubmitRequest                   = overridesAPIPrefix + "/overrides/submit-override-request"
+	overridesSubmitSuccess                   = overridesAPIPrefix + "/overrides/success"
 )
 
 var (
@@ -144,10 +144,21 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 
 	// Rate Limit Override Requests
 	if sfe.zendeskClient != nil {
-		sfe.handleGet(mux, overridesNewOrdersPerAccount, http.HandlerFunc(sfe.newOrderPerAccountOverrideRequestHandler))
-		sfe.handleGet(mux, overridesCertificatesPerDomain, http.HandlerFunc(sfe.certificatesPerDomainOverrideRequestHandler))
-		sfe.handleGet(mux, overridesCertificatesPerIP, http.HandlerFunc(sfe.certificatesPerIPOverrideRequestHandler))
-		sfe.handleGet(mux, overridesCertificatesPerDomainPerAccount, http.HandlerFunc(sfe.certificatesPerDomainPerAccountOverrideRequestHandler))
+		sfe.handleGet(mux, overridesNewOrdersPerAccount, http.HandlerFunc(
+			sfe.makeOverrideRequestFormHandler(newOrdersPerAccountForm, rl.NewOrdersPerAccount.String(), rl.NewOrdersPerAccount.String())),
+		)
+		// CertificatesPerDomain has two forms, one for DNS names and one
+		// for IP addresses, we differentiate them by appending a suffix to
+		// the rate limit name.
+		sfe.handleGet(mux, overridesCertificatesPerDomain, sfe.makeOverrideRequestFormHandler(
+			certificatesPerDomainForm, rl.CertificatesPerDomain.String()+perDNSNameSuffix, rl.CertificatesPerDomain.String()),
+		)
+		sfe.handleGet(mux, overridesCertificatesPerIP, sfe.makeOverrideRequestFormHandler(
+			certificatesPerIPForm, rl.CertificatesPerDomain.String()+perIPSuffix, rl.CertificatesPerDomain.String()),
+		)
+		sfe.handleGet(mux, overridesCertificatesPerDomainPerAccount, sfe.makeOverrideRequestFormHandler(
+			certificatesPerDomainPerAccountForm, rl.CertificatesPerDomainPerAccount.String(), rl.CertificatesPerDomainPerAccount.String()),
+		)
 		sfe.handleGet(mux, overridesSubmitSuccess, http.HandlerFunc(sfe.overrideSuccessHandler))
 		sfe.handlePost(mux, overridesValidateField, http.HandlerFunc(sfe.validateOverrideFieldHandler))
 		sfe.handlePost(mux, overridesSubmitRequest, http.HandlerFunc(sfe.submitOverrideRequestHandler))
