@@ -27,8 +27,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/akamai"
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
@@ -92,7 +90,6 @@ type RegistrationAuthorityImpl struct {
 	drainWG           sync.WaitGroup
 
 	issuersByNameID map[issuance.NameID]*issuance.Certificate
-	purger          akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
 
@@ -128,7 +125,6 @@ func NewRegistrationAuthorityImpl(
 	pubc pubpb.PublisherClient,
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
-	purger akamaipb.AkamaiPurgerClient,
 	issuers []*issuance.Certificate,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := prometheus.NewHistogramVec(
@@ -243,7 +239,6 @@ func NewRegistrationAuthorityImpl(
 		finalizeTimeout:           finalizeTimeout,
 		ctpolicy:                  ctp,
 		ctpolicyResults:           ctpolicyResults,
-		purger:                    purger,
 		issuersByNameID:           issuersByNameID,
 		namesPerCert:              namesPerCert,
 		newRegCounter:             newRegCounter,
@@ -1735,33 +1730,6 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	return nil
 }
 
-// purgeOCSPCache makes a request to akamai-purger to purge the cache entries
-// for the given certificate.
-func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID issuance.NameID) error {
-	if len(cert.OCSPServer) == 0 {
-		// We can't purge the cache (and there should be no responses in the cache)
-		// for certs that have no AIA OCSP URI.
-		return nil
-	}
-
-	issuer, ok := ra.issuersByNameID[issuerID]
-	if !ok {
-		return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
-	}
-
-	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
-	if err != nil {
-		return err
-	}
-
-	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // RevokeCertByApplicant revokes the certificate in question. It allows any
 // revocation reason from (0, 1, 3, 4, 5, 9), because Subscribers are allowed to
 // request any revocation reason for their own certificates. However, if the
@@ -1771,9 +1739,7 @@ func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x
 // where "the certificate subscriber no longer owns the domain names in the
 // certificate". It does not add the key to the blocked keys list, even if
 // reason 1 (keyCompromise) is requested, as it does not demonstrate said
-// compromise. It attempts to purge the certificate from the Akamai cache, but
-// it does not hard-fail if doing so is not successful, because the cache will
-// drop the old OCSP response in less than 24 hours anyway.
+// compromise.
 func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, req *rapb.RevokeCertByApplicantRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil || req.RegID == 0 {
 		return nil, errIncompleteGRPCRequest
@@ -1861,10 +1827,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	// Don't propagate purger errors to the client.
-	issuerID := issuance.IssuerNameID(cert)
-	_ = ra.purgeOCSPCache(ctx, cert, issuerID)
-
 	return &emptypb.Empty{}, nil
 }
 
@@ -1931,10 +1893,7 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 
 // RevokeCertByKey revokes the certificate in question. It always uses
 // reason code 1 (keyCompromise). It ensures that they public key is added to
-// the blocked keys list, even if revocation otherwise fails. It attempts to
-// purge the certificate from the Akamai cache, but it does not hard-fail if
-// doing so is not successful, because the cache will drop the old OCSP response
-// in less than 24 hours anyway.
+// the blocked keys list, even if revocation otherwise fails.
 func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *rapb.RevokeCertByKeyRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil {
 		return nil, errIncompleteGRPCRequest
@@ -1985,30 +1944,20 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 	// Check the error returned from revokeCertificate itself.
 	err = revokeErr
-	if err == nil {
-		// If the revocation and blocked keys list addition were successful, then
-		// just purge and return.
-		// Don't propagate purger errors to the client.
-		_ = ra.purgeOCSPCache(ctx, cert, issuerID)
-		return &emptypb.Empty{}, nil
-	} else if errors.Is(err, berrors.AlreadyRevoked) {
+	if errors.Is(err, berrors.AlreadyRevoked) {
 		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
 		// it was revoked for a reason other than keyCompromise.
 		err = ra.updateRevocationForKeyCompromise(ctx, core.SerialToString(cert.SerialNumber), issuerID)
-
-		// Perform an Akamai cache purge to handle occurrences of a client
-		// previously successfully revoking a certificate, but the cache purge had
-		// unexpectedly failed. Allows clients to re-attempt revocation and purge the
-		// Akamai cache.
-		_ = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
 			return nil, err
 		}
 		return &emptypb.Empty{}, nil
-	} else {
+	} else if err != nil {
 		// Error out if the error was anything other than AlreadyRevoked.
 		return nil, err
 	}
+
+	return &emptypb.Empty{}, nil
 }
 
 // AdministrativelyRevokeCertificate terminates trust in the certificate
@@ -2016,9 +1965,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 // method is only called from the `admin` tool. It trusts that the admin
 // is doing the right thing, so if the requested reason is keyCompromise, it
 // blocks the key from future issuance even though compromise has not been
-// demonstrated here. It purges the certificate from the Akamai cache, and
-// returns an error if that purge fails, since this method may be called late
-// in the BRs-mandated revocation timeframe.
+// demonstrated here.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	if req == nil || req.AdminName == "" {
 		return nil, errIncompleteGRPCRequest
@@ -2079,8 +2026,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		}
 	} else if !req.Malformed {
 		// As long as we don't believe the cert will be malformed, we should
-		// get the precertificate so we can block its pubkey if necessary and purge
-		// the akamai OCSP cache.
+		// get the precertificate so we can block its pubkey if necessary.
 		var certPB *corepb.Certificate
 		certPB, err = ra.SA.GetLintPrecertificate(ctx, &sapb.Serial{Serial: req.Serial})
 		if err != nil {
@@ -2116,17 +2062,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		IssuerID: int64(issuerID),
 		ShardIdx: shard,
 	})
-	// Perform an Akamai cache purge to handle occurrences of a client
-	// successfully revoking a certificate, but the initial cache purge failing.
-	if errors.Is(err, berrors.AlreadyRevoked) {
-		if cert != nil {
-			err = ra.purgeOCSPCache(ctx, cert, issuerID)
-			if err != nil {
-				err = fmt.Errorf("OCSP cache purge for already revoked serial %v failed: %w", req.Serial, err)
-				return nil, err
-			}
-		}
-	}
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
 			err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
@@ -2143,14 +2078,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		}
 		err = ra.addToBlockedKeys(ctx, cert.PublicKey, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 		if err != nil {
-			return nil, err
-		}
-	}
-
-	if cert != nil {
-		err = ra.purgeOCSPCache(ctx, cert, issuerID)
-		if err != nil {
-			err = fmt.Errorf("OCSP cache purge for serial %v failed: %w", req.Serial, err)
 			return nil, err
 		}
 	}
