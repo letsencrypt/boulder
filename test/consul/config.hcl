@@ -31,6 +31,18 @@ services {
   address = "10.77.77.77"
   port    = 9399
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "akamai-purger-a-grpc"
+      name            = "akamai-purger-a-grpc"
+      grpc            = "10.77.77.77:9399"
+      grpc_use_tls    = true
+      tls_server_name = "akamai-purger.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -39,6 +51,18 @@ services {
   address = "10.77.77.77"
   port    = 9603
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "email-exporter-a-grpc"
+      name            = "email-exporter-a-grpc"
+      grpc            = "10.77.77.77:9603"
+      grpc_use_tls    = true
+      tls_server_name = "email-exporter.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -59,6 +83,18 @@ services {
   address = "10.77.77.77"
   port    = 9393
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "ca-a-grpc"
+      name            = "ca-a-grpc"
+      grpc            = "10.77.77.77:9393"
+      grpc_use_tls    = true
+      tls_server_name = "ca.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -67,6 +103,18 @@ services {
   address = "10.77.77.77"
   port    = 9493
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "ca-b-grpc"
+      name            = "ca-b-grpc"
+      grpc            = "10.77.77.77:9493"
+      grpc_use_tls    = true
+      tls_server_name = "ca.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -75,6 +123,18 @@ services {
   address = "10.77.77.77"
   port    = 9309
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "crl-storer-a-grpc"
+      name            = "crl-storer-a-grpc"
+      grpc            = "10.77.77.77:9309"
+      grpc_use_tls    = true
+      tls_server_name = "crl-storer.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -118,6 +178,18 @@ services {
   address = "10.77.77.77"
   port    = 9301
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "nonce-taro-a-grpc"
+      name            = "nonce-taro-a-grpc"
+      grpc            = "10.77.77.77:9301"
+      grpc_use_tls    = true
+      tls_server_name = "nonce.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -126,6 +198,18 @@ services {
   address = "10.77.77.77"
   port    = 9501
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "nonce-taro-b-grpc"
+      name            = "nonce-taro-b-grpc"
+      grpc            = "10.77.77.77:9501"
+      grpc_use_tls    = true
+      tls_server_name = "nonce.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -134,6 +218,18 @@ services {
   address = "10.77.77.77"
   port    = 9401
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "nonce-zinc-grpc"
+      name            = "nonce-zinc-grpc"
+      grpc            = "10.77.77.77:9401"
+      grpc_use_tls    = true
+      tls_server_name = "nonce.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -142,6 +238,18 @@ services {
   address = "10.77.77.77"
   port    = 9391
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "publisher-a-grpc"
+      name            = "publisher-a-grpc"
+      grpc            = "10.77.77.77:9391"
+      grpc_use_tls    = true
+      tls_server_name = "publisher.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -150,6 +258,18 @@ services {
   address = "10.77.77.77"
   port    = 9491
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "publisher-b-grpc"
+      name            = "publisher-b-grpc"
+      grpc            = "10.77.77.77:9491"
+      grpc_use_tls    = true
+      tls_server_name = "publisher.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -158,6 +278,18 @@ services {
   address = "10.77.77.77"
   port    = 9594
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "ra-sct-provider-a-grpc"
+      name            = "ra-sct-provider-a-grpc"
+      grpc            = "10.77.77.77:9594"
+      grpc_use_tls    = true
+      tls_server_name = "ra.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -166,6 +298,18 @@ services {
   address = "10.77.77.77"
   port    = 9694
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "ra-sct-provider-b-grpc"
+      name            = "ra-sct-provider-b-grpc"
+      grpc            = "10.77.77.77:9694"
+      grpc_use_tls    = true
+      tls_server_name = "ra.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -174,6 +318,18 @@ services {
   address = "10.77.77.77"
   port    = 9394
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "ra-a-grpc"
+      name            = "ra-a-grpc"
+      grpc            = "10.77.77.77:9394"
+      grpc_use_tls    = true
+      tls_server_name = "ra.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -182,6 +338,18 @@ services {
   address = "10.77.77.77"
   port    = 9494
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "ra-b-grpc"
+      name            = "ra-b-grpc"
+      grpc            = "10.77.77.77:9494"
+      grpc_use_tls    = true
+      tls_server_name = "ra.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -190,6 +358,18 @@ services {
   address = "10.77.77.77"
   port    = 9397
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "rva1-a-grpc"
+      name            = "rva1-a-grpc"
+      grpc            = "10.77.77.77:9397"
+      grpc_use_tls    = true
+      tls_server_name = "rva.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -198,6 +378,18 @@ services {
   address = "10.77.77.77"
   port    = 9498
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "rva1-b-grpc"
+      name            = "rva1-b-grpc"
+      grpc            = "10.77.77.77:9498"
+      grpc_use_tls    = true
+      tls_server_name = "rva.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -206,23 +398,18 @@ services {
   address = "10.77.77.77"
   port    = 9499
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-}
-
-# TODO(#5294) Remove rva2-a/b in favor of rva1-a/b
-services {
-  id      = "rva2-a"
-  name    = "rva2"
-  address = "10.77.77.77"
-  port    = 9897
-  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-}
-
-services {
-  id      = "rva2-b"
-  name    = "rva2"
-  address = "10.77.77.77"
-  port    = 9998
-  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "rva1-c-grpc"
+      name            = "rva1-c-grpc"
+      grpc            = "10.77.77.77:9499"
+      grpc_use_tls    = true
+      tls_server_name = "rva.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -239,7 +426,8 @@ services {
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
-      interval        = "2s"
+      interval        = "1s"
+      timeout         = "500ms"
     },
     {
       id              = "sa-a-grpc-sa"
@@ -248,7 +436,8 @@ services {
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
-      interval        = "2s"
+      interval        = "1s"
+      timeout         = "500ms"
     },
     {
       id              = "sa-a-grpc-saro"
@@ -257,7 +446,8 @@ services {
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
-      interval        = "2s"
+      interval        = "1s"
+      timeout         = "500ms"
     }
   ]
 }
@@ -276,7 +466,8 @@ services {
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
-      interval        = "2s"
+      interval        = "1s"
+      timeout         = "500ms"
     },
     {
       id              = "sa-b-grpc-sa"
@@ -285,7 +476,8 @@ services {
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
-      interval        = "2s"
+      interval        = "1s"
+      timeout         = "500ms"
     },
     {
       id              = "sa-b-grpc-saro"
@@ -294,7 +486,8 @@ services {
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
-      interval        = "2s"
+      interval        = "1s"
+      timeout         = "500ms"
     }
   ]
 }
@@ -305,6 +498,18 @@ services {
   address = "10.77.77.77"
   port    = 9392
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "va-a-grpc"
+      name            = "va-a-grpc"
+      grpc            = "10.77.77.77:9392"
+      grpc_use_tls    = true
+      tls_server_name = "va.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -313,6 +518,18 @@ services {
   address = "10.77.77.77"
   port    = 9492
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id              = "va-b-grpc"
+      name            = "va-b-grpc"
+      grpc            = "10.77.77.77:9492"
+      grpc_use_tls    = true
+      tls_server_name = "va.boulder"
+      tls_skip_verify = false
+      interval        = "1s"
+      timeout         = "500ms"
+    }
+  ]
 }
 
 services {
@@ -351,7 +568,7 @@ services {
       name     = "case1a-failing"
       http     = "http://localhost:12345" // invalid url
       method   = "GET"
-      interval = "2s"
+      interval = "500ms"
     }
   ]
 }
