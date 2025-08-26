@@ -14,7 +14,7 @@ func NewForm(fields ...Field) *Form {
 func (form *Form) RenderForm() template.HTML {
 	var res template.HTML
 	for _, field := range *form {
-		res = res + field.RenderField()
+		res += field.RenderField()
 	}
 	return res
 }
