@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
+
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
 var stringToCurve = map[string]elliptic.Curve{
@@ -70,7 +71,7 @@ func ecPub(
 		return nil, err
 	}
 	if pubKey.Curve != expectedCurve {
-		return nil, errors.New("Returned EC parameters doesn't match expected curve")
+		return nil, errors.New("returned EC parameters doesn't match expected curve")
 	}
 	log.Printf("\tX: %X\n", pubKey.X.Bytes())
 	log.Printf("\tY: %X\n", pubKey.Y.Bytes())

@@ -7,7 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
-	"os"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -117,14 +117,7 @@ func TestMPICTLSALPN01(t *testing.T) {
 		}
 	}
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this conditional once the DoH feature flag has
-		// been defaulted to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 }
 
 func TestMPICDNS01(t *testing.T) {
@@ -180,14 +173,7 @@ func TestMPICDNS01(t *testing.T) {
 		}
 	}
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
-		// to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
 
 	domainDNSEvents, err := testSrvClient.DNSRequestHistory(domain)
 	if err != nil {
@@ -201,14 +187,7 @@ func TestMPICDNS01(t *testing.T) {
 		}
 	}
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
-		// to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 }
 
 func TestMPICHTTP01(t *testing.T) {
@@ -279,14 +258,7 @@ func TestMPICHTTP01(t *testing.T) {
 	}
 
 	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We can only check the user-agent for DNS requests if the DOH
-		// feature-flag is enabled.
-		//
-		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
-		// to true.
-		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
-	}
+	assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 }
 
 func TestCAARechecking(t *testing.T) {
@@ -370,5 +342,126 @@ func TestCAARechecking(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "CAA") {
 		t.Errorf("expected finalize to fail due to CAA, but got: %s", err)
+	}
+}
+
+func TestCAAAccountURI(t *testing.T) {
+	t.Parallel()
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	domain := random_domain()
+	idents := []acme.Identifier{{Type: "dns", Value: domain}}
+	record := fmt.Sprintf("happy-hacker-ca.invalid; accounturi=%s", client.Account.URL)
+	_, err = testSrvClient.AddCAAIssue(domain, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = authAndIssue(client, nil, idents, true, "")
+	if err != nil {
+		t.Fatalf("authAndIssue: %s", err)
+	}
+
+	newClient, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	// New domain to avoid rate limiting; same old CAA record to trigger CAA error.
+	domain = random_domain()
+	idents = []acme.Identifier{{Type: "dns", Value: domain}}
+	_, err = testSrvClient.AddCAAIssue(domain, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = authAndIssue(newClient, nil, idents, true, "")
+	if err == nil {
+		t.Errorf("expected error with mismatched CAA account URI, but got success")
+	}
+	if err != nil && !strings.Contains(err.Error(), "CAA") {
+		t.Errorf("expected CAA error with mismatched CAA account URI, but got: %s", err)
+	}
+}
+
+func TestCAAValidationMethods(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		caa         string
+		challType   string
+		expectError bool
+	}{
+		{"dns-01", acme.ChallengeTypeDNS01, false},
+		{"dns-01", acme.ChallengeTypeHTTP01, true},
+		{"http-01", acme.ChallengeTypeHTTP01, false},
+		{"http-01", acme.ChallengeTypeDNS01, true},
+		{"dns-01,http-01", acme.ChallengeTypeDNS01, false},
+		{"dns-01,http-01", acme.ChallengeTypeHTTP01, false},
+	}
+
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%s-with-caa-allowing-%s", tc.challType, tc.caa), func(t *testing.T) {
+			domain := random_domain()
+			record := fmt.Sprintf("happy-hacker-ca.invalid; validationmethods=%s", tc.caa)
+			_, err = testSrvClient.AddCAAIssue(domain, record)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			idents := []acme.Identifier{{Type: "dns", Value: domain}}
+			order, err := client.Client.NewOrder(client.Account, idents)
+			if err != nil {
+				t.Fatalf("creating order: %s", err)
+			}
+
+			authz, err := client.Client.FetchAuthorization(client.Account, order.Authorizations[0])
+			if err != nil {
+				t.Fatalf("fetching authorization: %s", err)
+			}
+
+			var chal acme.Challenge
+			var ok bool
+			switch tc.challType {
+			case acme.ChallengeTypeDNS01:
+				chal, ok = authz.ChallengeMap[acme.ChallengeTypeDNS01]
+				if !ok {
+					t.Fatalf("no DNS challenge found in %#v", authz)
+				}
+				_, err = testSrvClient.AddDNS01Response(domain, chal.KeyAuthorization)
+				if err != nil {
+					t.Fatalf("adding DNS-01 response: %s", err)
+				}
+			case acme.ChallengeTypeHTTP01:
+				chal, ok = authz.ChallengeMap[acme.ChallengeTypeHTTP01]
+				if !ok {
+					t.Fatalf("no HTTP challenge found in %#v", authz)
+				}
+				_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
+				if err != nil {
+					t.Fatalf("adding HTTP-01 response: %s", err)
+				}
+			default:
+				t.Fatalf("unknown challenge type: %q", tc.challType)
+			}
+
+			chal, err = client.Client.UpdateChallenge(client.Account, chal)
+			if err != nil {
+				if tc.expectError && !strings.Contains(err.Error(), "CAA") {
+					t.Errorf("expected validation to fail due to CAA, but got: %s", err)
+				} else if !tc.expectError {
+					t.Errorf("issuing with challenge type %q and CAA %q failed: %s", tc.challType, tc.caa, err)
+				}
+			}
+			if err == nil && tc.expectError {
+				t.Errorf("issuing with challenge type %q and CAA %q succeeded, but should have failed", tc.challType, tc.caa)
+			}
+		})
 	}
 }

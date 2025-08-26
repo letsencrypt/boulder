@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	emailpb "github.com/letsencrypt/boulder/email/proto"
@@ -126,6 +128,11 @@ type Config struct {
 		// PendingAuthorizationLifetimeDays duplicates the RA's config of the same name.
 		// Deprecated: This field no longer has any effect.
 		PendingAuthorizationLifetimeDays int `validate:"-"`
+
+		// MaxContactsPerRegistration limits the number of contact addresses which
+		// can be provided in a single NewAccount request. Requests containing more
+		// contacts than this are rejected. Default: 10.
+		MaxContactsPerRegistration int `validate:"omitempty,min=1"`
 
 		AccountCache *CacheConfig
 
@@ -256,7 +263,7 @@ func main() {
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
 	logger.Info(cmd.VersionString())
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	var unpauseSigner unpause.JWTSigner
 	if features.Get().CheckIdentifiersPaused {
@@ -312,6 +319,10 @@ func main() {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
 
+	if c.WFE.MaxContactsPerRegistration == 0 {
+		c.WFE.MaxContactsPerRegistration = 10
+	}
+
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
 	var limiterRedis *bredis.Ring
@@ -346,6 +357,7 @@ func main() {
 		logger,
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
+		c.WFE.MaxContactsPerRegistration,
 		rac,
 		sac,
 		eec,

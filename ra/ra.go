@@ -27,8 +27,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/akamai"
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
@@ -76,7 +74,6 @@ type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
 	rapb.UnsafeSCTProviderServer
 	CA        capb.CertificateAuthorityClient
-	OCSP      capb.OCSPGeneratorClient
 	VA        va.RemoteClients
 	SA        sapb.StorageAuthorityClient
 	PA        core.PolicyAuthority
@@ -93,7 +90,6 @@ type RegistrationAuthorityImpl struct {
 	drainWG           sync.WaitGroup
 
 	issuersByNameID map[issuance.NameID]*issuance.Certificate
-	purger          akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
 
@@ -111,9 +107,6 @@ type RegistrationAuthorityImpl struct {
 	// TODO(#8177): Remove once the rate of requests failing to finalize due to
 	// requesting Must-Staple has diminished.
 	mustStapleRequestsCounter *prometheus.CounterVec
-	// TODO(#7966): Remove once the rate of registrations with contacts has been
-	// determined.
-	newOrUpdatedContactCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -132,7 +125,6 @@ func NewRegistrationAuthorityImpl(
 	pubc pubpb.PublisherClient,
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
-	purger akamaipb.AkamaiPurgerClient,
 	issuers []*issuance.Certificate,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := prometheus.NewHistogramVec(
@@ -230,45 +222,35 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"allowlist"})
 	stats.MustRegister(mustStapleRequestsCounter)
 
-	// TODO(#7966): Remove once the rate of registrations with contacts has been
-	// determined.
-	newOrUpdatedContactCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "new_or_updated_contact",
-		Help: "A counter of new or updated contacts, labeled by new=[bool]",
-	}, []string{"new"})
-	stats.MustRegister(newOrUpdatedContactCounter)
-
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
 
 	ra := &RegistrationAuthorityImpl{
-		clk:                        clk,
-		log:                        logger,
-		profiles:                   profiles,
-		maxContactsPerReg:          maxContactsPerReg,
-		keyPolicy:                  keyPolicy,
-		limiter:                    limiter,
-		txnBuilder:                 txnBuilder,
-		publisher:                  pubc,
-		finalizeTimeout:            finalizeTimeout,
-		ctpolicy:                   ctp,
-		ctpolicyResults:            ctpolicyResults,
-		purger:                     purger,
-		issuersByNameID:            issuersByNameID,
-		namesPerCert:               namesPerCert,
-		newRegCounter:              newRegCounter,
-		recheckCAACounter:          recheckCAACounter,
-		newCertCounter:             newCertCounter,
-		revocationReasonCounter:    revocationReasonCounter,
-		authzAges:                  authzAges,
-		orderAges:                  orderAges,
-		inflightFinalizes:          inflightFinalizes,
-		certCSRMismatch:            certCSRMismatch,
-		pauseCounter:               pauseCounter,
-		mustStapleRequestsCounter:  mustStapleRequestsCounter,
-		newOrUpdatedContactCounter: newOrUpdatedContactCounter,
+		clk:                       clk,
+		log:                       logger,
+		profiles:                  profiles,
+		maxContactsPerReg:         maxContactsPerReg,
+		keyPolicy:                 keyPolicy,
+		limiter:                   limiter,
+		txnBuilder:                txnBuilder,
+		publisher:                 pubc,
+		finalizeTimeout:           finalizeTimeout,
+		ctpolicy:                  ctp,
+		ctpolicyResults:           ctpolicyResults,
+		issuersByNameID:           issuersByNameID,
+		namesPerCert:              namesPerCert,
+		newRegCounter:             newRegCounter,
+		recheckCAACounter:         recheckCAACounter,
+		newCertCounter:            newCertCounter,
+		revocationReasonCounter:   revocationReasonCounter,
+		authzAges:                 authzAges,
+		orderAges:                 orderAges,
+		inflightFinalizes:         inflightFinalizes,
+		certCSRMismatch:           certCSRMismatch,
+		pauseCounter:              pauseCounter,
+		mustStapleRequestsCounter: mustStapleRequestsCounter,
 	}
 	return ra
 }
@@ -527,16 +509,9 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 
-	// Check that contacts conform to our expectations.
-	err = ra.validateContacts(request.Contact)
-	if err != nil {
-		return nil, err
-	}
-
 	// Don't populate ID or CreatedAt because those will be set by the SA.
 	req := &corepb.Registration{
 		Key:       request.Key,
-		Contact:   request.Contact,
 		Agreement: request.Agreement,
 		Status:    string(core.StatusValid),
 	}
@@ -545,12 +520,6 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	res, err := ra.SA.NewRegistration(ctx, req)
 	if err != nil {
 		return nil, err
-	}
-
-	// TODO(#7966): Remove once the rate of registrations with contacts has been
-	// determined.
-	for range request.Contact {
-		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "true"}).Inc()
 	}
 
 	ra.newRegCounter.Inc()
@@ -585,7 +554,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 		}
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			return berrors.InvalidEmailError("invalid contact")
+			return berrors.InvalidEmailError("unparsable contact")
 		}
 		if parsed.Scheme != "mailto" {
 			return berrors.UnsupportedContactError("only contact scheme 'mailto:' is supported")
@@ -1399,35 +1368,6 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []b
 	return scts, nil
 }
 
-// UpdateRegistrationContact updates an existing Registration's contact.
-// The updated contacts field may be empty.
-func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID) {
-		return nil, errIncompleteGRPCRequest
-	}
-
-	err := ra.validateContacts(req.Contacts)
-	if err != nil {
-		return nil, fmt.Errorf("invalid contact: %w", err)
-	}
-
-	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
-		RegistrationID: req.RegistrationID,
-		Contacts:       req.Contacts,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to update registration contact: %w", err)
-	}
-
-	// TODO(#7966): Remove once the rate of registrations with contacts has
-	// been determined.
-	for range req.Contacts {
-		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
-	}
-
-	return update, nil
-}
-
 // UpdateRegistrationKey updates an existing Registration's key.
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, req *rapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
@@ -1517,7 +1457,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
 // There is no reason to surface errors from this function to the Subscriber.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident)
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
 	err := ra.limiter.Reset(ctx, bucketKey)
 	if err != nil {
 		ra.log.Warningf("resetting bucket for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
@@ -1790,33 +1730,6 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	return nil
 }
 
-// purgeOCSPCache makes a request to akamai-purger to purge the cache entries
-// for the given certificate.
-func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID issuance.NameID) error {
-	if len(cert.OCSPServer) == 0 {
-		// We can't purge the cache (and there should be no responses in the cache)
-		// for certs that have no AIA OCSP URI.
-		return nil
-	}
-
-	issuer, ok := ra.issuersByNameID[issuerID]
-	if !ok {
-		return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
-	}
-
-	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
-	if err != nil {
-		return err
-	}
-
-	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // RevokeCertByApplicant revokes the certificate in question. It allows any
 // revocation reason from (0, 1, 3, 4, 5, 9), because Subscribers are allowed to
 // request any revocation reason for their own certificates. However, if the
@@ -1826,9 +1739,7 @@ func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x
 // where "the certificate subscriber no longer owns the domain names in the
 // certificate". It does not add the key to the blocked keys list, even if
 // reason 1 (keyCompromise) is requested, as it does not demonstrate said
-// compromise. It attempts to purge the certificate from the Akamai cache, but
-// it does not hard-fail if doing so is not successful, because the cache will
-// drop the old OCSP response in less than 24 hours anyway.
+// compromise.
 func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, req *rapb.RevokeCertByApplicantRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil || req.RegID == 0 {
 		return nil, errIncompleteGRPCRequest
@@ -1916,10 +1827,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	// Don't propagate purger errors to the client.
-	issuerID := issuance.IssuerNameID(cert)
-	_ = ra.purgeOCSPCache(ctx, cert, issuerID)
-
 	return &emptypb.Empty{}, nil
 }
 
@@ -1986,10 +1893,7 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 
 // RevokeCertByKey revokes the certificate in question. It always uses
 // reason code 1 (keyCompromise). It ensures that they public key is added to
-// the blocked keys list, even if revocation otherwise fails. It attempts to
-// purge the certificate from the Akamai cache, but it does not hard-fail if
-// doing so is not successful, because the cache will drop the old OCSP response
-// in less than 24 hours anyway.
+// the blocked keys list, even if revocation otherwise fails.
 func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *rapb.RevokeCertByKeyRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil {
 		return nil, errIncompleteGRPCRequest
@@ -2040,30 +1944,20 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 	// Check the error returned from revokeCertificate itself.
 	err = revokeErr
-	if err == nil {
-		// If the revocation and blocked keys list addition were successful, then
-		// just purge and return.
-		// Don't propagate purger errors to the client.
-		_ = ra.purgeOCSPCache(ctx, cert, issuerID)
-		return &emptypb.Empty{}, nil
-	} else if errors.Is(err, berrors.AlreadyRevoked) {
+	if errors.Is(err, berrors.AlreadyRevoked) {
 		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
 		// it was revoked for a reason other than keyCompromise.
 		err = ra.updateRevocationForKeyCompromise(ctx, core.SerialToString(cert.SerialNumber), issuerID)
-
-		// Perform an Akamai cache purge to handle occurrences of a client
-		// previously successfully revoking a certificate, but the cache purge had
-		// unexpectedly failed. Allows clients to re-attempt revocation and purge the
-		// Akamai cache.
-		_ = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
 			return nil, err
 		}
 		return &emptypb.Empty{}, nil
-	} else {
+	} else if err != nil {
 		// Error out if the error was anything other than AlreadyRevoked.
 		return nil, err
 	}
+
+	return &emptypb.Empty{}, nil
 }
 
 // AdministrativelyRevokeCertificate terminates trust in the certificate
@@ -2071,9 +1965,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 // method is only called from the `admin` tool. It trusts that the admin
 // is doing the right thing, so if the requested reason is keyCompromise, it
 // blocks the key from future issuance even though compromise has not been
-// demonstrated here. It purges the certificate from the Akamai cache, and
-// returns an error if that purge fails, since this method may be called late
-// in the BRs-mandated revocation timeframe.
+// demonstrated here.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	if req == nil || req.AdminName == "" {
 		return nil, errIncompleteGRPCRequest
@@ -2134,8 +2026,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		}
 	} else if !req.Malformed {
 		// As long as we don't believe the cert will be malformed, we should
-		// get the precertificate so we can block its pubkey if necessary and purge
-		// the akamai OCSP cache.
+		// get the precertificate so we can block its pubkey if necessary.
 		var certPB *corepb.Certificate
 		certPB, err = ra.SA.GetLintPrecertificate(ctx, &sapb.Serial{Serial: req.Serial})
 		if err != nil {
@@ -2171,17 +2062,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		IssuerID: int64(issuerID),
 		ShardIdx: shard,
 	})
-	// Perform an Akamai cache purge to handle occurrences of a client
-	// successfully revoking a certificate, but the initial cache purge failing.
-	if errors.Is(err, berrors.AlreadyRevoked) {
-		if cert != nil {
-			err = ra.purgeOCSPCache(ctx, cert, issuerID)
-			if err != nil {
-				err = fmt.Errorf("OCSP cache purge for already revoked serial %v failed: %w", req.Serial, err)
-				return nil, err
-			}
-		}
-	}
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
 			err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
@@ -2198,14 +2078,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		}
 		err = ra.addToBlockedKeys(ctx, cert.PublicKey, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 		if err != nil {
-			return nil, err
-		}
-	}
-
-	if cert != nil {
-		err = ra.purgeOCSPCache(ctx, cert, issuerID)
-		if err != nil {
-			err = fmt.Errorf("OCSP cache purge for serial %v failed: %w", req.Serial, err)
 			return nil, err
 		}
 	}
@@ -2253,45 +2125,6 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		}
 	}
 	return &emptypb.Empty{}, nil
-}
-
-// GenerateOCSP looks up a certificate's status, then requests a signed OCSP
-// response for it from the CA. If the certificate status is not available
-// or the certificate is expired, it returns berrors.NotFoundError.
-func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
-	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
-	if errors.Is(err, berrors.NotFound) {
-		_, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: req.Serial})
-		if errors.Is(err, berrors.NotFound) {
-			return nil, berrors.UnknownSerialError()
-		} else {
-			return nil, berrors.NotFoundError("certificate not found")
-		}
-	} else if err != nil {
-		return nil, err
-	}
-
-	// If we get an OCSP query for a certificate where the status is still
-	// OCSPStatusNotReady, that means an error occurred, not here but at issuance
-	// time. Specifically, we succeeded in storing the linting certificate (and
-	// corresponding certificateStatus row), but failed before calling
-	// SetCertificateStatusReady. We expect this to be rare, and we expect such
-	// certificates not to get OCSP queries, so InternalServerError is appropriate.
-	if status.Status == string(core.OCSPStatusNotReady) {
-		return nil, errors.New("serial belongs to a certificate that errored during issuance")
-	}
-
-	if ra.clk.Now().After(status.NotAfter.AsTime()) {
-		return nil, berrors.NotFoundError("certificate is expired")
-	}
-
-	return ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:    req.Serial,
-		Status:    status.Status,
-		Reason:    int32(status.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
-		RevokedAt: status.RevokedDate,
-		IssuerID:  status.IssuerID,
-	})
 }
 
 // NewOrder creates a new order object

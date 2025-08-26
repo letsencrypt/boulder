@@ -1,10 +1,13 @@
 package ratelimits
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"net/netip"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/letsencrypt/boulder/config"
@@ -38,26 +41,32 @@ type LimitConfig struct {
 
 type LimitConfigs map[string]*LimitConfig
 
-// limit defines the configuration for a rate limit or a rate limit override.
+// Limit defines the configuration for a rate limit or a rate limit override.
 //
-// The zero value of this struct is invalid, because some of the fields must
-// be greater than zero.
-type limit struct {
-	// burst specifies maximum concurrent allowed requests at any given time. It
+// The zero value of this struct is invalid, because some of the fields must be
+// greater than zero. It and several of its fields are exported to support admin
+// tooling used during the migration from overrides.yaml to the overrides
+// database table.
+type Limit struct {
+	// Burst specifies maximum concurrent allowed requests at any given time. It
 	// must be greater than zero.
-	burst int64
+	Burst int64
 
-	// count is the number of requests allowed per period. It must be greater
+	// Count is the number of requests allowed per period. It must be greater
 	// than zero.
-	count int64
+	Count int64
 
-	// period is the duration of time in which the count (of requests) is
+	// Period is the duration of time in which the count (of requests) is
 	// allowed. It must be greater than zero.
-	period config.Duration
+	Period config.Duration
 
-	// name is the name of the limit. It must be one of the Name enums defined
+	// Name is the name of the limit. It must be one of the Name enums defined
 	// in this package.
-	name Name
+	Name Name
+
+	// Comment is an optional field that can be used to provide additional
+	// context for an override. It is not used for default limits.
+	Comment string
 
 	// emissionInterval is the interval, in nanoseconds, at which tokens are
 	// added to a bucket (period / count). This is also the steady-state rate at
@@ -76,25 +85,25 @@ type limit struct {
 }
 
 // precompute calculates the emissionInterval and burstOffset for the limit.
-func (l *limit) precompute() {
-	l.emissionInterval = l.period.Nanoseconds() / l.count
-	l.burstOffset = l.emissionInterval * l.burst
+func (l *Limit) precompute() {
+	l.emissionInterval = l.Period.Nanoseconds() / l.Count
+	l.burstOffset = l.emissionInterval * l.Burst
 }
 
-func validateLimit(l *limit) error {
-	if l.burst <= 0 {
-		return fmt.Errorf("invalid burst '%d', must be > 0", l.burst)
+func ValidateLimit(l *Limit) error {
+	if l.Burst <= 0 {
+		return fmt.Errorf("invalid burst '%d', must be > 0", l.Burst)
 	}
-	if l.count <= 0 {
-		return fmt.Errorf("invalid count '%d', must be > 0", l.count)
+	if l.Count <= 0 {
+		return fmt.Errorf("invalid count '%d', must be > 0", l.Count)
 	}
-	if l.period.Duration <= 0 {
-		return fmt.Errorf("invalid period '%s', must be > 0", l.period)
+	if l.Period.Duration <= 0 {
+		return fmt.Errorf("invalid period '%s', must be > 0", l.Period)
 	}
 	return nil
 }
 
-type limits map[string]*limit
+type Limits map[string]*Limit
 
 // loadDefaults marshals the defaults YAML file at path into a map of limits.
 func loadDefaults(path string) (LimitConfigs, error) {
@@ -149,11 +158,40 @@ func parseOverrideNameId(key string) (Name, string, error) {
 		return Unknown, "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", key)
 	}
 
-	name, ok := stringToName[nameStr]
+	name, ok := StringToName[nameStr]
 	if !ok {
-		return Unknown, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, limitNames)
+		return Unknown, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, LimitNames)
 	}
 	id := nameAndId[1]
+	if id == "" {
+		return Unknown, "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", key)
+	}
+	return name, id, nil
+}
+
+// parseOverrideNameEnumId is like parseOverrideNameId, but it expects the
+// key to be formatted as 'name:id', where 'name' is a Name enum string and 'id'
+// is a string identifier. It returns an error if either part is missing or invalid.
+func parseOverrideNameEnumId(key string) (Name, string, error) {
+	if !strings.Contains(key, ":") {
+		// Avoids a potential panic in strings.SplitN below.
+		return Unknown, "", fmt.Errorf("invalid override %q, must be formatted 'name:id'", key)
+	}
+	nameStrAndId := strings.SplitN(key, ":", 2)
+	if len(nameStrAndId) != 2 {
+		return Unknown, "", fmt.Errorf("invalid override %q, must be formatted 'name:id'", key)
+	}
+
+	nameInt, err := strconv.Atoi(nameStrAndId[0])
+	if err != nil {
+		return Unknown, "", fmt.Errorf("invalid name %q in override limit %q, must be an integer", nameStrAndId[0], key)
+	}
+	name := Name(nameInt)
+	if !name.isValid() {
+		return Unknown, "", fmt.Errorf("invalid name %q in override limit %q, must be one of %v", nameStrAndId[0], key, LimitNames)
+
+	}
+	id := nameStrAndId[1]
 	if id == "" {
 		return Unknown, "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", key)
 	}
@@ -164,33 +202,19 @@ func parseOverrideNameId(key string) (Name, string, error) {
 // formatted as a list of maps, where each map has a single key representing the
 // limit name and a value that is a map containing the limit fields and an
 // additional 'ids' field that is a list of ids that this override applies to.
-func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
-	parsed := make(limits)
+func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
+	parsed := make(Limits)
 
 	for _, ov := range newOverridesYAML {
 		for k, v := range ov {
-			name, ok := stringToName[k]
+			name, ok := StringToName[k]
 			if !ok {
-				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, limitNames)
-			}
-
-			lim := &limit{
-				burst:      v.Burst,
-				count:      v.Count,
-				period:     v.Period,
-				name:       name,
-				isOverride: true,
-			}
-			lim.precompute()
-
-			err := validateLimit(lim)
-			if err != nil {
-				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
+				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, LimitNames)
 			}
 
 			for _, entry := range v.Ids {
 				id := entry.Id
-				err = validateIdForName(name, id)
+				err := validateIdForName(name, id)
 				if err != nil {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
@@ -204,7 +228,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 					// (IPv6) prefixes in CIDR notation.
 					ip, err := netip.ParseAddr(id)
 					if err == nil {
-						prefix, err := coveringPrefix(ip)
+						prefix, err := coveringIPPrefix(name, ip)
 						if err != nil {
 							return nil, fmt.Errorf(
 								"computing prefix for IP address %q: %w", id, err)
@@ -214,16 +238,22 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 				case CertificatesPerFQDNSet:
 					// Compute the hash of a comma-separated list of identifier
 					// values.
-					var idents identifier.ACMEIdentifiers
-					for _, value := range strings.Split(id, ",") {
-						ip, err := netip.ParseAddr(value)
-						if err == nil {
-							idents = append(idents, identifier.NewIP(ip))
-						} else {
-							idents = append(idents, identifier.NewDNS(value))
-						}
-					}
-					id = fmt.Sprintf("%x", core.HashIdentifiers(idents))
+					id = fmt.Sprintf("%x", core.HashIdentifiers(identifier.FromStringSlice(strings.Split(id, ","))))
+				}
+
+				lim := &Limit{
+					Burst:      v.Burst,
+					Count:      v.Count,
+					Period:     v.Period,
+					Name:       name,
+					Comment:    entry.Comment,
+					isOverride: true,
+				}
+				lim.precompute()
+
+				err = ValidateLimit(lim)
+				if err != nil {
+					return nil, fmt.Errorf("validating override limit %q: %w", k, err)
 				}
 
 				parsed[joinWithColon(name.EnumString(), id)] = lim
@@ -234,23 +264,23 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 }
 
 // parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
-func parseDefaultLimits(newDefaultLimits LimitConfigs) (limits, error) {
-	parsed := make(limits)
+func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
+	parsed := make(Limits)
 
 	for k, v := range newDefaultLimits {
-		name, ok := stringToName[k]
+		name, ok := StringToName[k]
 		if !ok {
-			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
+			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, LimitNames)
 		}
 
-		lim := &limit{
-			burst:  v.Burst,
-			count:  v.Count,
-			period: v.Period,
-			name:   name,
+		lim := &Limit{
+			Burst:  v.Burst,
+			Count:  v.Count,
+			Period: v.Period,
+			Name:   name,
 		}
 
-		err := validateLimit(lim)
+		err := ValidateLimit(lim)
 		if err != nil {
 			return nil, fmt.Errorf("parsing default limit %q: %w", k, err)
 		}
@@ -263,10 +293,10 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (limits, error) {
 
 type limitRegistry struct {
 	// defaults stores default limits by 'name'.
-	defaults limits
+	defaults Limits
 
 	// overrides stores override limits by 'name:id'.
-	overrides limits
+	overrides Limits
 }
 
 func newLimitRegistryFromFiles(defaults, overrides string) (*limitRegistry, error) {
@@ -308,7 +338,7 @@ func newLimitRegistry(defaults LimitConfigs, overrides overridesYAML) (*limitReg
 // required, bucketKey is optional. If bucketkey is empty, the default for the
 // limit specified by name is returned. If no default limit exists for the
 // specified name, errLimitDisabled is returned.
-func (l *limitRegistry) getLimit(name Name, bucketKey string) (*limit, error) {
+func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 	if !name.isValid() {
 		// This should never happen. Callers should only be specifying the limit
 		// Name enums defined in this package.
@@ -326,4 +356,104 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*limit, error) {
 		return dl, nil
 	}
 	return nil, errLimitDisabled
+}
+
+// LoadOverridesByBucketKey loads the overrides YAML at the supplied path,
+// parses it with the existing helpers, and returns the resulting limits map
+// keyed by "<name>:<id>". This function is exported to support admin tooling
+// used during the migration from overrides.yaml to the overrides database
+// table.
+func LoadOverridesByBucketKey(path string) (Limits, error) {
+	ovs, err := loadOverrides(path)
+	if err != nil {
+		return nil, err
+	}
+	return parseOverrideLimits(ovs)
+}
+
+// DumpOverrides writes the provided overrides to CSV at the supplied path. Each
+// override is written as a single row, one per ID. Rows are sorted in the
+// following order:
+//   - Name    (ascending)
+//   - Count   (descending)
+//   - Burst   (descending)
+//   - Period  (ascending)
+//   - Comment (ascending)
+//   - ID      (ascending)
+//
+// This function supports admin tooling that routinely exports the overrides
+// table for investigation or auditing.
+func DumpOverrides(path string, overrides Limits) error {
+	type row struct {
+		name    string
+		id      string
+		count   int64
+		burst   int64
+		period  string
+		comment string
+	}
+
+	var rows []row
+	for bucketKey, limit := range overrides {
+		name, id, err := parseOverrideNameEnumId(bucketKey)
+		if err != nil {
+			return err
+		}
+
+		rows = append(rows, row{
+			name:    name.String(),
+			id:      id,
+			count:   limit.Count,
+			burst:   limit.Burst,
+			period:  limit.Period.Duration.String(),
+			comment: limit.Comment,
+		})
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		// Sort by limit name in ascending order.
+		if rows[i].name != rows[j].name {
+			return rows[i].name < rows[j].name
+		}
+		// Sort by count in descending order (higher counts first).
+		if rows[i].count != rows[j].count {
+			return rows[i].count > rows[j].count
+		}
+		// Sort by burst in descending order (higher bursts first).
+		if rows[i].burst != rows[j].burst {
+			return rows[i].burst > rows[j].burst
+		}
+		// Sort by period in ascending order (shorter durations first).
+		if rows[i].period != rows[j].period {
+			return rows[i].period < rows[j].period
+		}
+		// Sort by comment in ascending order.
+		if rows[i].comment != rows[j].comment {
+			return rows[i].comment < rows[j].comment
+		}
+		// Sort by ID in ascending order.
+		return rows[i].id < rows[j].id
+	})
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	err = w.Write([]string{"name", "id", "count", "burst", "period", "comment"})
+	if err != nil {
+		return err
+	}
+
+	for _, r := range rows {
+		err := w.Write([]string{r.name, r.id, strconv.FormatInt(r.count, 10), strconv.FormatInt(r.burst, 10), r.period, r.comment})
+		if err != nil {
+			return err
+		}
+	}
+	w.Flush()
+
+	return w.Error()
 }

@@ -21,10 +21,9 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/policy"
 )
 
 // ResolverAddrs contains DNS resolver(s) that were chosen to perform a
@@ -77,30 +76,23 @@ func New(
 	tlsConfig *tls.Config,
 ) Client {
 	var client exchanger
-	if features.Get().DOH {
-		// Clone the default transport because it comes with various settings
-		// that we like, which are different from the zero value of an
-		// `http.Transport`.
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.TLSClientConfig = tlsConfig
-		// The default transport already sets this field, but it isn't
-		// documented that it will always be set. Set it again to be sure,
-		// because Unbound will reject non-HTTP/2 DoH requests.
-		transport.ForceAttemptHTTP2 = true
-		client = &dohExchanger{
-			clk: clk,
-			hc: http.Client{
-				Timeout:   readTimeout,
-				Transport: transport,
-			},
-			userAgent: userAgent,
-		}
-	} else {
-		client = &dns.Client{
-			// Set timeout for underlying net.Conn
-			ReadTimeout: readTimeout,
-			Net:         "udp",
-		}
+
+	// Clone the default transport because it comes with various settings
+	// that we like, which are different from the zero value of an
+	// `http.Transport`.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConfig
+	// The default transport already sets this field, but it isn't
+	// documented that it will always be set. Set it again to be sure,
+	// because Unbound will reject non-HTTP/2 DoH requests.
+	transport.ForceAttemptHTTP2 = true
+	client = &dohExchanger{
+		clk: clk,
+		hc: http.Client{
+			Timeout:   readTimeout,
+			Transport: transport,
+		},
+		userAgent: userAgent,
 	}
 
 	queryTime := prometheus.NewHistogramVec(
@@ -281,17 +273,10 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 		case r := <-ch:
 			if r.err != nil {
 				var isRetryable bool
-				if features.Get().DOH {
-					// According to the http package documentation, retryable
-					// errors emitted by the http package are of type *url.Error.
-					var urlErr *url.Error
-					isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
-				} else {
-					// According to the net package documentation, retryable
-					// errors emitted by the net package are of type *net.OpError.
-					var opErr *net.OpError
-					isRetryable = errors.As(r.err, &opErr) && opErr.Temporary()
-				}
+				// According to the http package documentation, retryable
+				// errors emitted by the http package are of type *url.Error.
+				var urlErr *url.Error
+				isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
@@ -411,7 +396,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 				a, ok := answer.(*dns.A)
 				if ok && a.A.To4() != nil {
 					netIP, ok := netip.AddrFromSlice(a.A)
-					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
+					if ok && (iana.IsReservedAddr(netIP) == nil || dnsClient.allowRestrictedAddresses) {
 						addrsA = append(addrsA, netIP)
 					}
 				}
@@ -429,7 +414,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 				aaaa, ok := answer.(*dns.AAAA)
 				if ok && aaaa.AAAA.To16() != nil {
 					netIP, ok := netip.AddrFromSlice(aaaa.AAAA)
-					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
+					if ok && (iana.IsReservedAddr(netIP) == nil || dnsClient.allowRestrictedAddresses) {
 						addrsAAAA = append(addrsAAAA, netIP)
 					}
 				}

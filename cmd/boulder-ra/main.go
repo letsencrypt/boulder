@@ -5,7 +5,8 @@ import (
 	"flag"
 	"os"
 
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/jmhodges/clock"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -38,12 +39,17 @@ type Config struct {
 
 		MaxContactsPerRegistration int
 
-		SAService           *cmd.GRPCClientConfig
-		VAService           *cmd.GRPCClientConfig
-		CAService           *cmd.GRPCClientConfig
-		OCSPService         *cmd.GRPCClientConfig
-		PublisherService    *cmd.GRPCClientConfig
+		SAService        *cmd.GRPCClientConfig
+		VAService        *cmd.GRPCClientConfig
+		CAService        *cmd.GRPCClientConfig
+		PublisherService *cmd.GRPCClientConfig
+
+		// Deprecated: TODO(#8345): Remove this.
 		AkamaiPurgerService *cmd.GRPCClientConfig
+
+		// Deprecated: TODO(#8349): Remove this when removing the corresponding
+		// service from the CA.
+		OCSPService *cmd.GRPCClientConfig
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
@@ -100,7 +106,7 @@ type Config struct {
 		//
 		// Deprecated: This field no longer has any effect, all Must-Staple requests
 		// are rejected.
-		// TODO(#8177): Remove this field.
+		// TODO(#8345): Remove this field.
 		MustStapleAllowList string `validate:"omitempty"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
@@ -175,13 +181,13 @@ func main() {
 	if c.RA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile must be provided.")
 	}
-	err = pa.LoadHostnamePolicyFile(c.RA.HostnamePolicyFile)
-	cmd.FailOnError(err, "Couldn't load hostname policy file")
+	err = pa.LoadIdentPolicyFile(c.RA.HostnamePolicyFile)
+	cmd.FailOnError(err, "Couldn't load identifier policy file")
 
 	tlsConfig, err := c.RA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create VA client")
@@ -192,10 +198,6 @@ func main() {
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
 
-	ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to create CA OCSP client")
-	ocspc := capb.NewOCSPGeneratorClient(ocspConn)
-
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
@@ -203,10 +205,6 @@ func main() {
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := pubpb.NewPublisherClient(conn)
-
-	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to create a Akamai Purger client")
-	apc := akamaipb.NewAkamaiPurgerClient(apConn)
 
 	issuerCertPaths := c.RA.IssuerCerts
 	issuerCerts := make([]*issuance.Certificate, len(issuerCertPaths))
@@ -227,13 +225,13 @@ func main() {
 	allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
 	cmd.FailOnError(err, "Failed to parse log list")
 
-	sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance)
+	sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance, c.RA.CTLogs.SubmitToTestLogs)
 	cmd.FailOnError(err, "Failed to load SCT logs")
 
-	infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational)
+	infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational, true)
 	cmd.FailOnError(err, "Failed to load informational logs")
 
-	finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
+	finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational, true)
 	cmd.FailOnError(err, "Failed to load final logs")
 
 	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
@@ -290,7 +288,6 @@ func main() {
 		pubc,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
-		apc,
 		issuerCerts,
 	)
 	defer rai.Drain()
@@ -302,7 +299,6 @@ func main() {
 		CAAClient: caaClient,
 	}
 	rai.CA = cac
-	rai.OCSP = ocspc
 	rai.SA = sac
 
 	start, err := bgrpc.NewServer(c.RA.GRPC, logger).Add(

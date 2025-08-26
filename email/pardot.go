@@ -18,10 +18,12 @@ const (
 	// tokenPath is the path to the Salesforce OAuth2 token endpoint.
 	tokenPath = "/services/oauth2/token"
 
-	// contactsPath is the path to the Pardot v5 Prospects endpoint. This
-	// endpoint will create a new Prospect if one does not already exist with
-	// the same email address.
-	contactsPath = "/api/v5/objects/prospects"
+	// contactsPath is the path to the Pardot v5 Prospect upsert-by-email
+	// endpoint. This endpoint will create a new Prospect if one does not
+	// already exist with the same email address.
+	//
+	// https://developer.salesforce.com/docs/marketing/pardot/guide/prospect-v5.html#prospect-upsert-by-email
+	contactsPath = "/api/v5/objects/prospects/do/upsertLatestByEmail"
 
 	// maxAttempts is the maximum number of attempts to retry a request.
 	maxAttempts = 3
@@ -60,18 +62,17 @@ type PardotClientImpl struct {
 	businessUnit string
 	clientId     string
 	clientSecret string
-	contactsURL  string
+	endpointURL  string
 	tokenURL     string
 	token        *oAuthToken
-	emailCache   *EmailCache
 	clk          clock.Clock
 }
 
 var _ PardotClient = &PardotClientImpl{}
 
 // NewPardotClientImpl creates a new PardotClientImpl.
-func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string, cache *EmailCache) (*PardotClientImpl, error) {
-	contactsURL, err := url.JoinPath(pardotBaseURL, contactsPath)
+func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string) (*PardotClientImpl, error) {
+	endpointURL, err := url.JoinPath(pardotBaseURL, contactsPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to join contacts path: %w", err)
 	}
@@ -84,10 +85,9 @@ func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, 
 		businessUnit: businessUnit,
 		clientId:     clientId,
 		clientSecret: clientSecret,
-		contactsURL:  contactsURL,
+		endpointURL:  endpointURL,
 		tokenURL:     tokenURL,
 		token:        &oAuthToken{},
-		emailCache:   cache,
 		clk:          clk,
 	}, nil
 }
@@ -142,18 +142,22 @@ func redactEmail(body []byte, email string) string {
 	return string(bytes.ReplaceAll(body, []byte(email), []byte("[REDACTED]")))
 }
 
+type prospect struct {
+	// Email is the email address of the prospect.
+	Email string `json:"email"`
+}
+
+type upsertPayload struct {
+	// MatchEmail is the email address to match against existing prospects to
+	// avoid adding duplicates.
+	MatchEmail string `json:"matchEmail"`
+	// Prospect is the prospect data to be upserted.
+	Prospect prospect `json:"prospect"`
+}
+
 // SendContact submits an email to the Pardot Contacts endpoint, retrying up
 // to 3 times with exponential backoff.
 func (pc *PardotClientImpl) SendContact(email string) error {
-	if pc.emailCache.Seen(email) {
-		// Another goroutine has already sent this email address.
-		return nil
-	}
-	// There is a possible race here where two goroutines could enqueue and send
-	// the same email address between this check and the actual HTTP request.
-	// However, at an average rate of ~1 email every 2 seconds, this is unlikely
-	// to happen in practice.
-
 	var err error
 	for attempt := range maxAttempts {
 		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
@@ -167,7 +171,10 @@ func (pc *PardotClientImpl) SendContact(email string) error {
 		return fmt.Errorf("failed to update token: %w", err)
 	}
 
-	payload, err := json.Marshal(map[string]string{"email": email})
+	payload, err := json.Marshal(upsertPayload{
+		MatchEmail: email,
+		Prospect:   prospect{Email: email},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
@@ -176,7 +183,7 @@ func (pc *PardotClientImpl) SendContact(email string) error {
 	for attempt := range maxAttempts {
 		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
 
-		req, err := http.NewRequest("POST", pc.contactsURL, bytes.NewReader(payload))
+		req, err := http.NewRequest("POST", pc.endpointURL, bytes.NewReader(payload))
 		if err != nil {
 			finalErr = fmt.Errorf("failed to create new contact request: %w", err)
 			continue
@@ -193,7 +200,6 @@ func (pc *PardotClientImpl) SendContact(email string) error {
 
 		defer resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			pc.emailCache.Store(email)
 			return nil
 		}
 

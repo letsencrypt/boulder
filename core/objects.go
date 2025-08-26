@@ -53,15 +53,16 @@ type AcmeChallenge string
 
 // These types are the available challenges
 const (
-	ChallengeTypeHTTP01    = AcmeChallenge("http-01")
-	ChallengeTypeDNS01     = AcmeChallenge("dns-01")
-	ChallengeTypeTLSALPN01 = AcmeChallenge("tls-alpn-01")
+	ChallengeTypeHTTP01       = AcmeChallenge("http-01")
+	ChallengeTypeDNS01        = AcmeChallenge("dns-01")
+	ChallengeTypeTLSALPN01    = AcmeChallenge("tls-alpn-01")
+	ChallengeTypeDNSAccount01 = AcmeChallenge("dns-account-01")
 )
 
 // IsValid tests whether the challenge is a known challenge
 func (c AcmeChallenge) IsValid() bool {
 	switch c {
-	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01:
+	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01, ChallengeTypeDNSAccount01:
 		return true
 	default:
 		return false
@@ -228,7 +229,7 @@ func (ch Challenge) RecordsSane() bool {
 			(ch.ValidationRecord[0].AddressUsed == netip.Addr{}) || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
-	case ChallengeTypeDNS01:
+	case ChallengeTypeDNS01, ChallengeTypeDNSAccount01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
@@ -415,9 +416,9 @@ type CertificateStatus struct {
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
 	// NotAfter and IsExpired are convenience columns which allow expensive
-	// queries to quickly filter out certificates that we don't need to care about
-	// anymore. These are particularly useful for the expiration mailer and CRL
-	// updater. See https://github.com/letsencrypt/boulder/issues/1864.
+	// queries to quickly filter out certificates that we don't need to care
+	// about anymore. These are particularly useful for the CRL updater. See
+	// https://github.com/letsencrypt/boulder/issues/1864.
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 
@@ -427,16 +428,6 @@ type CertificateStatus struct {
 	// the DB, but update the Go field name to be clear which type of ID this
 	// is.
 	IssuerNameID int64 `db:"issuerID"`
-}
-
-// FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames
-// contained in a certificate.
-type FQDNSet struct {
-	ID      int64
-	SetHash []byte
-	Serial  string
-	Issued  time.Time
-	Expires time.Time
 }
 
 // SCTDERs is a convenience type

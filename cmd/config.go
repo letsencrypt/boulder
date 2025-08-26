@@ -89,15 +89,6 @@ func (d *DBConfig) URL() (string, error) {
 	return strings.TrimSpace(string(url)), err
 }
 
-// SMTPConfig is deprecated.
-// TODO(#8199): Delete this when it is removed from bad-key-revoker's config.
-type SMTPConfig struct {
-	PasswordConfig
-	Server   string `validate:"required"`
-	Port     string `validate:"required,numeric,min=1,max=65535"`
-	Username string `validate:"required"`
-}
-
 // PAConfig specifies how a policy authority should connect to its
 // database, what policies it should enforce, and what challenges
 // it should offer.
@@ -259,7 +250,6 @@ type ServiceDomain struct {
 // GRPCClientConfig contains the information necessary to setup a gRPC client
 // connection. The following field combinations are allowed:
 //
-// ServerIPAddresses, [Timeout]
 // ServerAddress, DNSAuthority, [Timeout], [HostOverride]
 // SRVLookup, DNSAuthority, [Timeout], [HostOverride], [SRVResolver]
 // SRVLookups, DNSAuthority, [Timeout], [HostOverride], [SRVResolver]
@@ -302,7 +292,7 @@ type GRPCClientConfig struct {
 	// $ dig @10.77.77.10 -t SRV _foo._tcp.service.consul +short
 	// 1 1 8080 0a585858.addr.dc1.consul.
 	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
-	SRVLookup *ServiceDomain `validate:"required_without_all=SRVLookups ServerAddress ServerIPAddresses"`
+	SRVLookup *ServiceDomain `validate:"required_without_all=SRVLookups ServerAddress"`
 
 	// SRVLookups allows you to pass multiple SRV records to the gRPC client.
 	// The gRPC client will resolves each SRV record and use the results to
@@ -310,13 +300,13 @@ type GRPCClientConfig struct {
 	// documentation for the SRVLookup field. Note: while you can pass multiple
 	// targets to the gRPC client using this field, all of the targets will use
 	// the same HostOverride and TLS configuration.
-	SRVLookups []*ServiceDomain `validate:"required_without_all=SRVLookup ServerAddress ServerIPAddresses"`
+	SRVLookups []*ServiceDomain `validate:"required_without_all=SRVLookup ServerAddress"`
 
 	// SRVResolver is an optional override to indicate that a specific
 	// implementation of the SRV resolver should be used. The default is 'srv'
 	// For more details, see the documentation in:
 	// grpc/internal/resolver/dns/dns_resolver.go.
-	SRVResolver string `validate:"excluded_with=ServerAddress ServerIPAddresses,isdefault|oneof=srv nonce-srv"`
+	SRVResolver string `validate:"excluded_with=ServerAddress,isdefault|oneof=srv nonce-srv"`
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
@@ -342,18 +332,11 @@ type GRPCClientConfig struct {
 	// $ dig A @10.77.77.10 foo.service.consul +short
 	// 10.77.77.77
 	// 10.88.88.88
-	ServerAddress string `validate:"required_without_all=ServerIPAddresses SRVLookup SRVLookups,omitempty,hostname_port"`
-
-	// ServerIPAddresses is a comma separated list of IP addresses, in the
-	// format `<IPv4|[IPv6]>:<port>` or `:<port>`, that the gRPC client will
-	// connect to. If the addresses provided are ["10.77.77.77", "10.88.88.88"]
-	// then the iPAddress' to be authenticated in the server certificate would
-	// be '10.77.77.77' and '10.88.88.88'.
-	ServerIPAddresses []string `validate:"required_without_all=ServerAddress SRVLookup SRVLookups,omitempty,dive,hostname_port"`
+	ServerAddress string `validate:"required_without_all=SRVLookup SRVLookups,omitempty,hostname_port"`
 
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
-	HostOverride string `validate:"excluded_with=ServerIPAddresses,omitempty,hostname"`
+	HostOverride string `validate:"omitempty,hostname"`
 	Timeout      config.Duration
 
 	// NoWaitForReady turns off our (current) default of setting grpc.WaitForReady(true).
@@ -371,9 +354,9 @@ type GRPCClientConfig struct {
 func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 	var hostOverride string
 	if c.ServerAddress != "" {
-		if c.ServerIPAddresses != nil || c.SRVLookup != nil {
+		if c.SRVLookup != nil {
 			return "", "", errors.New(
-				"both 'serverAddress' and 'serverIPAddresses' or 'SRVLookup' in gRPC client config. Only one should be provided",
+				"both 'serverAddress' and 'SRVLookup' in gRPC client config. Only one should be provided",
 			)
 		}
 		// Lookup backends using DNS A records.
@@ -396,11 +379,6 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		if c.ServerIPAddresses != nil {
-			return "", "", errors.New(
-				"both 'SRVLookup' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
-			)
-		}
 		// Lookup backends using DNS SRV records.
 		targetHost := c.SRVLookup.Service + "." + c.SRVLookup.Domain
 
@@ -418,11 +396,6 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		if c.ServerIPAddresses != nil {
-			return "", "", errors.New(
-				"both 'SRVLookups' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
-			)
-		}
 		// Lookup backends using multiple DNS SRV records.
 		var targetHosts []string
 		for _, s := range c.SRVLookups {
@@ -434,13 +407,9 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, strings.Join(targetHosts, ",")), hostOverride, nil
 
 	} else {
-		if c.ServerIPAddresses == nil {
-			return "", "", errors.New(
-				"neither 'serverAddress', 'SRVLookup', 'SRVLookups' nor 'serverIPAddresses' in gRPC client config. One should be provided",
-			)
-		}
-		// Specify backends as a list of IP addresses.
-		return "static:///" + strings.Join(c.ServerIPAddresses, ","), "", nil
+		return "", "", errors.New(
+			"at least one of 'serverAddress', 'SRVLookup', or 'SRVLookups' required in gRPC client config",
+		)
 	}
 }
 

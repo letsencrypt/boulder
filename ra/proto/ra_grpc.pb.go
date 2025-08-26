@@ -8,7 +8,6 @@ package proto
 
 import (
 	context "context"
-	proto1 "github.com/letsencrypt/boulder/ca/proto"
 	proto "github.com/letsencrypt/boulder/core/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -23,7 +22,6 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	RegistrationAuthority_NewRegistration_FullMethodName                   = "/ra.RegistrationAuthority/NewRegistration"
-	RegistrationAuthority_UpdateRegistrationContact_FullMethodName         = "/ra.RegistrationAuthority/UpdateRegistrationContact"
 	RegistrationAuthority_UpdateRegistrationKey_FullMethodName             = "/ra.RegistrationAuthority/UpdateRegistrationKey"
 	RegistrationAuthority_DeactivateRegistration_FullMethodName            = "/ra.RegistrationAuthority/DeactivateRegistration"
 	RegistrationAuthority_PerformValidation_FullMethodName                 = "/ra.RegistrationAuthority/PerformValidation"
@@ -34,7 +32,6 @@ const (
 	RegistrationAuthority_NewOrder_FullMethodName                          = "/ra.RegistrationAuthority/NewOrder"
 	RegistrationAuthority_GetAuthorization_FullMethodName                  = "/ra.RegistrationAuthority/GetAuthorization"
 	RegistrationAuthority_FinalizeOrder_FullMethodName                     = "/ra.RegistrationAuthority/FinalizeOrder"
-	RegistrationAuthority_GenerateOCSP_FullMethodName                      = "/ra.RegistrationAuthority/GenerateOCSP"
 	RegistrationAuthority_UnpauseAccount_FullMethodName                    = "/ra.RegistrationAuthority/UnpauseAccount"
 	RegistrationAuthority_AddRateLimitOverride_FullMethodName              = "/ra.RegistrationAuthority/AddRateLimitOverride"
 )
@@ -44,7 +41,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RegistrationAuthorityClient interface {
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
-	UpdateRegistrationContact(ctx context.Context, in *UpdateRegistrationContactRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRegistrationKey(ctx context.Context, in *UpdateRegistrationKeyRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	DeactivateRegistration(ctx context.Context, in *DeactivateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
@@ -55,8 +51,6 @@ type RegistrationAuthorityClient interface {
 	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetAuthorization(ctx context.Context, in *GetAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
-	// Generate an OCSP response based on the DB's current status and reason code.
-	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error)
 	UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*UnpauseAccountResponse, error)
 	AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error)
 }
@@ -73,16 +67,6 @@ func (c *registrationAuthorityClient) NewRegistration(ctx context.Context, in *p
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, RegistrationAuthority_NewRegistration_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *registrationAuthorityClient) UpdateRegistrationContact(ctx context.Context, in *UpdateRegistrationContactRequest, opts ...grpc.CallOption) (*proto.Registration, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Registration)
-	err := c.cc.Invoke(ctx, RegistrationAuthority_UpdateRegistrationContact_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -189,16 +173,6 @@ func (c *registrationAuthorityClient) FinalizeOrder(ctx context.Context, in *Fin
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto1.OCSPResponse)
-	err := c.cc.Invoke(ctx, RegistrationAuthority_GenerateOCSP_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *registrationAuthorityClient) UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*UnpauseAccountResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UnpauseAccountResponse)
@@ -224,7 +198,6 @@ func (c *registrationAuthorityClient) AddRateLimitOverride(ctx context.Context, 
 // for forward compatibility.
 type RegistrationAuthorityServer interface {
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
-	UpdateRegistrationContact(context.Context, *UpdateRegistrationContactRequest) (*proto.Registration, error)
 	UpdateRegistrationKey(context.Context, *UpdateRegistrationKeyRequest) (*proto.Registration, error)
 	DeactivateRegistration(context.Context, *DeactivateRegistrationRequest) (*proto.Registration, error)
 	PerformValidation(context.Context, *PerformValidationRequest) (*proto.Authorization, error)
@@ -235,8 +208,6 @@ type RegistrationAuthorityServer interface {
 	NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error)
 	GetAuthorization(context.Context, *GetAuthorizationRequest) (*proto.Authorization, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
-	// Generate an OCSP response based on the DB's current status and reason code.
-	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error)
 	UnpauseAccount(context.Context, *UnpauseAccountRequest) (*UnpauseAccountResponse, error)
 	AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error)
 	mustEmbedUnimplementedRegistrationAuthorityServer()
@@ -251,9 +222,6 @@ type UnimplementedRegistrationAuthorityServer struct{}
 
 func (UnimplementedRegistrationAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
-}
-func (UnimplementedRegistrationAuthorityServer) UpdateRegistrationContact(context.Context, *UpdateRegistrationContactRequest) (*proto.Registration, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistrationContact not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) UpdateRegistrationKey(context.Context, *UpdateRegistrationKeyRequest) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistrationKey not implemented")
@@ -284,9 +252,6 @@ func (UnimplementedRegistrationAuthorityServer) GetAuthorization(context.Context
 }
 func (UnimplementedRegistrationAuthorityServer) FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinalizeOrder not implemented")
-}
-func (UnimplementedRegistrationAuthorityServer) GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GenerateOCSP not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) UnpauseAccount(context.Context, *UnpauseAccountRequest) (*UnpauseAccountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
@@ -329,24 +294,6 @@ func _RegistrationAuthority_NewRegistration_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RegistrationAuthorityServer).NewRegistration(ctx, req.(*proto.Registration))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RegistrationAuthority_UpdateRegistrationContact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRegistrationContactRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RegistrationAuthorityServer).UpdateRegistrationContact(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RegistrationAuthority_UpdateRegistrationContact_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistrationAuthorityServer).UpdateRegistrationContact(ctx, req.(*UpdateRegistrationContactRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -531,24 +478,6 @@ func _RegistrationAuthority_FinalizeOrder_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RegistrationAuthority_GenerateOCSP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GenerateOCSPRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RegistrationAuthorityServer).GenerateOCSP(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RegistrationAuthority_GenerateOCSP_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistrationAuthorityServer).GenerateOCSP(ctx, req.(*GenerateOCSPRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _RegistrationAuthority_UnpauseAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UnpauseAccountRequest)
 	if err := dec(in); err != nil {
@@ -597,10 +526,6 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RegistrationAuthority_NewRegistration_Handler,
 		},
 		{
-			MethodName: "UpdateRegistrationContact",
-			Handler:    _RegistrationAuthority_UpdateRegistrationContact_Handler,
-		},
-		{
 			MethodName: "UpdateRegistrationKey",
 			Handler:    _RegistrationAuthority_UpdateRegistrationKey_Handler,
 		},
@@ -639,10 +564,6 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FinalizeOrder",
 			Handler:    _RegistrationAuthority_FinalizeOrder_Handler,
-		},
-		{
-			MethodName: "GenerateOCSP",
-			Handler:    _RegistrationAuthority_GenerateOCSP_Handler,
 		},
 		{
 			MethodName: "UnpauseAccount",

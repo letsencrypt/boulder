@@ -36,7 +36,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/policy"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -100,7 +99,6 @@ func mustRead(path string) []byte {
 
 type testCtx struct {
 	pa             core.PolicyAuthority
-	ocsp           *ocspImpl
 	crl            *crlImpl
 	certProfiles   map[string]*issuance.ProfileConfig
 	serialPrefix   byte
@@ -150,8 +148,8 @@ func setup(t *testing.T) *testCtx {
 
 	pa, err := policy.New(map[identifier.IdentifierType]bool{"dns": true}, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
 	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
 	certProfiles["legacy"] = &issuance.ProfileConfig{
@@ -213,18 +211,6 @@ func setup(t *testing.T) *testCtx {
 		}, []string{"profile"})
 	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificatesCount}
 
-	ocsp, err := NewOCSPImpl(
-		boulderIssuers,
-		24*time.Hour,
-		0,
-		time.Second,
-		blog.NewMock(),
-		metrics.NoopRegisterer,
-		cametrics,
-		fc,
-	)
-	test.AssertNotError(t, err, "Failed to create ocsp impl")
-
 	crl, err := NewCRLImpl(
 		boulderIssuers,
 		issuance.CRLProfileConfig{
@@ -239,7 +225,6 @@ func setup(t *testing.T) *testCtx {
 
 	return &testCtx{
 		pa:             pa,
-		ocsp:           ocsp,
 		crl:            crl,
 		certProfiles:   certProfiles,
 		serialPrefix:   0x11,

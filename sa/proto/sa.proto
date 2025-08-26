@@ -39,7 +39,7 @@ service StorageAuthorityReadOnly {
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
-  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
+  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverrideResponse) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
@@ -74,7 +74,7 @@ service StorageAuthority {
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
-  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
+  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverrideResponse) {}
 
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
@@ -91,7 +91,6 @@ service StorageAuthority {
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
-  rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
@@ -434,11 +433,6 @@ message PauseRequest {
 message PauseIdentifiersResponse {
   int64 paused = 1;
   int64 repaused = 2;
-}
-
-message UpdateRegistrationContactRequest {
-  int64 registrationID = 1;
-  repeated string contacts = 2;
 }
 
 message UpdateRegistrationKeyRequest {

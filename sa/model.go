@@ -12,7 +12,6 @@ import (
 	"math"
 	"net/netip"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -61,69 +60,7 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 	}
 }
 
-const regFields = "id, jwk, jwk_sha256, agreement, createdAt, LockCol, status"
-
-// ClearEmail removes the provided email address from one specified registration. If
-// there are multiple email addresses present, it does not modify other ones. If the email
-// address is not present, it does not modify the registration and will return a nil error.
-func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email string) error {
-	_, overallError := db.WithTransaction(ctx, dbMap, func(tx db.Executor) (interface{}, error) {
-		curr, err := selectRegistration(ctx, tx, "id", regID)
-		if err != nil {
-			return nil, err
-		}
-
-		currPb, err := registrationModelToPb(curr)
-		if err != nil {
-			return nil, err
-		}
-
-		// newContacts will be a copy of all emails in currPb.Contact _except_ the one to be removed
-		var newContacts []string
-		for _, contact := range currPb.Contact {
-			if contact != "mailto:"+email {
-				newContacts = append(newContacts, contact)
-			}
-		}
-
-		if slices.Equal(currPb.Contact, newContacts) {
-			return nil, nil
-		}
-
-		// We don't want to write literal JSON "null" strings into the database if the
-		// list of contact addresses is empty. Replace any possibly-`nil` slice with
-		// an empty JSON array. We don't need to check reg.ContactPresent, because
-		// we're going to write the whole object to the database anyway.
-		jsonContact := []byte("[]")
-		if len(newContacts) != 0 {
-			jsonContact, err = json.Marshal(newContacts)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		// UPDATE the row with a direct database query, in order to avoid LockCol issues.
-		result, err := tx.ExecContext(ctx,
-			"UPDATE registrations SET contact = ? WHERE id = ? LIMIT 1",
-			jsonContact,
-			regID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil || rowsAffected != 1 {
-			return nil, berrors.InternalServerError("no registration updated with new contact field")
-		}
-
-		return nil, nil
-	})
-	if overallError != nil {
-		return overallError
-	}
-
-	return nil
-}
+const regFields = "id, jwk, jwk_sha256, agreement, createdAt, status"
 
 // selectRegistration selects all fields of one registration model
 func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
@@ -275,8 +212,7 @@ type regModel struct {
 	KeySHA256 string    `db:"jwk_sha256"`
 	Agreement string    `db:"agreement"`
 	CreatedAt time.Time `db:"createdAt"`
-	LockCol   int64
-	Status    string `db:"status"`
+	Status    string    `db:"status"`
 }
 
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
@@ -480,15 +416,17 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 }
 
 var challTypeToUint = map[string]uint8{
-	"http-01":     0,
-	"dns-01":      1,
-	"tls-alpn-01": 2,
+	"http-01":        0,
+	"dns-01":         1,
+	"tls-alpn-01":    2,
+	"dns-account-01": 3,
 }
 
 var uintToChallType = map[uint8]string{
 	0: "http-01",
 	1: "dns-01",
 	2: "tls-alpn-01",
+	3: "dns-account-01",
 }
 
 var identifierTypeToUint = map[string]uint8{
@@ -963,6 +901,16 @@ type crlEntryModel struct {
 	RevokedDate   time.Time         `db:"revokedDate"`
 }
 
+// fqdnSet contains the SHA256 hash of the lowercased, comma joined dNSNames
+// contained in a certificate.
+type fqdnSet struct {
+	ID      int64
+	SetHash []byte
+	Serial  string
+	Issued  time.Time
+	Expires time.Time
+}
+
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
 // from a new-order request, along with the corresponding orderID, the
 // registration ID, and the order expiry. This is used to find
@@ -976,7 +924,7 @@ type orderFQDNSet struct {
 }
 
 func addFQDNSet(ctx context.Context, db db.Inserter, idents identifier.ACMEIdentifiers, serial string, issued time.Time, expires time.Time) error {
-	return db.Insert(ctx, &core.FQDNSet{
+	return db.Insert(ctx, &fqdnSet{
 		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial,
 		Issued:  issued,

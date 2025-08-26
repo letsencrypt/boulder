@@ -25,7 +25,7 @@
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"maxContactsPerRegistration": 3,
-		"hostnamePolicyFile": "test/hostname-policy.yaml",
+		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"goodkey": {},
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
@@ -92,16 +92,6 @@
 			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
-		"ocspService": {
-			"dnsAuthority": "consul.service.consul",
-			"srvLookup": {
-				"service": "ca",
-				"domain": "service.consul"
-			},
-			"timeout": "15s",
-			"noWaitForReady": true,
-			"hostOverride": "ca.boulder"
-		},
 		"publisherService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
@@ -122,16 +112,6 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
-		"akamaiPurgerService": {
-			"dnsAuthority": "consul.service.consul",
-			"srvLookup": {
-				"service": "akamai-purger",
-				"domain": "service.consul"
-			},
-			"timeout": "15s",
-			"noWaitForReady": true,
-			"hostOverride": "akamai-purger.boulder"
-		},
 		"grpc": {
 			"maxConnectionAge": "30s",
 			"services": {
@@ -139,7 +119,6 @@
 					"clientNames": [
 						"admin.boulder",
 						"bad-key-revoker.boulder",
-						"ocsp-responder.boulder",
 						"wfe.boulder",
 						"sfe.boulder"
 					]

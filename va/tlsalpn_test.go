@@ -216,7 +216,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "198.51.100.1: Timeout during connect (likely firewall problem)"
+	expected := "64.112.117.254: Timeout during connect (likely firewall problem)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
@@ -368,9 +368,12 @@ func TestTLSALPN01SuccessDNS(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	res, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Validation failed: %v", err)
+	}
+	if !(core.Challenge{Type: core.ChallengeTypeTLSALPN01, ValidationRecord: res}).RecordsSane() {
+		t.Errorf("got validation record %#v, but want something sane", res)
 	}
 	test.AssertMetricWithLabelsEquals(
 		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
@@ -384,9 +387,12 @@ func TestTLSALPN01SuccessIPv4(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	res, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Validation failed: %v", err)
+	}
+	if !(core.Challenge{Type: core.ChallengeTypeTLSALPN01, ValidationRecord: res}).RecordsSane() {
+		t.Errorf("got validation record %#v, but want something sane", res)
 	}
 	test.AssertMetricWithLabelsEquals(
 		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
@@ -400,9 +406,12 @@ func TestTLSALPN01SuccessIPv6(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
+	res, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Validation failed: %v", err)
+	}
+	if !(core.Challenge{Type: core.ChallengeTypeTLSALPN01, ValidationRecord: res}).RecordsSane() {
+		t.Errorf("got validation record %#v, but want something sane", res)
 	}
 	test.AssertMetricWithLabelsEquals(
 		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)

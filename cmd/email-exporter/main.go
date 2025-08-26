@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/email"
 	emailpb "github.com/letsencrypt/boulder/email/proto"
@@ -87,7 +89,7 @@ func main() {
 
 	logger.Info(cmd.VersionString())
 
-	clk := cmd.Clock()
+	clk := clock.New()
 	clientId, err := c.EmailExporter.ClientId.Pass()
 	cmd.FailOnError(err, "Loading clientId")
 	clientSecret, err := c.EmailExporter.ClientSecret.Pass()
@@ -105,10 +107,9 @@ func main() {
 		clientSecret,
 		c.EmailExporter.SalesforceBaseURL,
 		c.EmailExporter.PardotBaseURL,
-		cache,
 	)
 	cmd.FailOnError(err, "Creating Pardot API client")
-	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
+	exporterServer := email.NewExporterImpl(pardotClient, cache, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
 
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading email-exporter TLS config")

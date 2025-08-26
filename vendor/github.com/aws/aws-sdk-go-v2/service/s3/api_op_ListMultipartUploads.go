@@ -13,6 +13,17 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// End of support notice: Beginning October 1, 2025, Amazon S3 will stop returning
+// DisplayName . Update your applications to use canonical IDs (unique identifier
+// for Amazon Web Services accounts), Amazon Web Services account ID (12 digit
+// identifier) or IAM ARNs (full resource naming) as a direct replacement of
+// DisplayName .
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
+// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
+// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
+//
 // This operation lists in-progress multipart uploads in a bucket. An in-progress
 // multipart upload is a multipart upload that has been initiated by the
 // CreateMultipartUpload request, but has not yet been completed or aborted.
@@ -171,6 +182,9 @@ type ListMultipartUploadsInput struct {
 	// result element, CommonPrefixes . If you don't specify the prefix parameter, then
 	// the substring starts at the beginning of the key. The keys that are grouped
 	// under CommonPrefixes result element are not returned elsewhere in the response.
+	//
+	// CommonPrefixes is filtered out from results if it is not lexicographically
+	// greater than the key-marker.
 	//
 	// Directory buckets - For directory buckets, / is the only supported delimiter.
 	Delimiter *string

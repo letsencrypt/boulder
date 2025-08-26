@@ -30,13 +30,6 @@ func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertifica
 	return &capb.IssueCertificateResponse{DER: sampleDER.Raw}, nil
 }
 
-type MockOCSPGenerator struct{}
-
-// GenerateOCSP is a mock
-func (ca *MockOCSPGenerator) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	return nil, nil
-}
-
 type MockCRLGenerator struct{}
 
 // GenerateCRL is a mock

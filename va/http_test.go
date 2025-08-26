@@ -62,7 +62,7 @@ type dnsMockReturnsUnroutable struct {
 }
 
 func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return []netip.Addr{netip.MustParseAddr("198.51.100.1")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
+	return []netip.Addr{netip.MustParseAddr("64.112.117.254")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
 }
 
 // TestDialerTimeout tests that the preresolvedDialer's DialContext
@@ -318,7 +318,7 @@ func TestExtractRequestTarget(t *testing.T) {
 				URL: mustURL("http://10.10.10.10"),
 			},
 			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
-				"IP address is in a reserved address block: RFC 1918: Private-Use"),
+				"IP address is in a reserved address block: [RFC1918]: Private-Use"),
 		},
 		{
 			Name: "bare IPv6, implicit port",
@@ -358,7 +358,15 @@ func TestExtractRequestTarget(t *testing.T) {
 				URL: mustURL("http://[3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee]"),
 			},
 			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
-				"IP address is in a reserved address block: RFC 9637: Documentation"),
+				"IP address is in a reserved address block: [RFC9637]: Documentation"),
+		},
+		{
+			Name: "bare IPv6, scope zone",
+			Req: &http.Request{
+				URL: mustURL("http://[::1%25lo]"),
+			},
+			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
+				"contains scope zone"),
 		},
 		{
 			Name: "valid HTTP redirect, explicit port",

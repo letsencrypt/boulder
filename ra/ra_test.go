@@ -37,7 +37,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
@@ -335,8 +334,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 		blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
-	test.AssertNotError(t, err, "Couldn't set hostname policy")
+	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
 	stats := metrics.NoopRegisterer
 
@@ -384,11 +383,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
-		profiles, nil, 5*time.Minute, ctp, nil, nil)
+		profiles, nil, 5*time.Minute, ctp, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
-	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
 	return dummyVA, sa, ra, rlSource, fc, cleanUp
 }
@@ -473,12 +471,10 @@ func TestValidateContacts(t *testing.T) {
 func TestNewRegistration(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	mailto := "mailto:foo@letsencrypt.org"
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact: []string{mailto},
-		Key:     acctKeyB,
+		Key: acctKeyB,
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -486,7 +482,6 @@ func TestNewRegistration(t *testing.T) {
 		t.Fatalf("could not create new registration: %s", err)
 	}
 	test.AssertByteEquals(t, result.Key, acctKeyB)
-	test.Assert(t, len(result.Contact) == 0, "Wrong number of contacts")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
 	reg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: result.Id})
@@ -509,8 +504,7 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := corepb.Registration{
-		Contact: []string{"mailto:test@example.com"},
-		Key:     acctKeyB,
+		Key: acctKeyB,
 	}
 	result, err := ra.NewRegistration(ctx, &input)
 	if err == nil {
@@ -521,13 +515,11 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	mailto := "mailto:foo@letsencrypt.org"
 	acctKeyC, err := AccountKeyC.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
 		Id:        23,
 		Key:       acctKeyC,
-		Contact:   []string{mailto},
 		Agreement: "I agreed",
 	}
 
@@ -541,12 +533,10 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 func TestNewRegistrationBadKey(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	mailto := "mailto:foo@letsencrypt.org"
 	shortKey, err := ShortKey.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact: []string{mailto},
-		Key:     shortKey,
+		Key: shortKey,
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
@@ -726,7 +716,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident.Value)
 
 	// Set the stored TAT to indicate that this bucket has exhausted its quota.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
@@ -802,7 +792,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
+	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident.Value)
 
 	// Set a stored TAT so that we can tell when it's been reset.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
@@ -2913,8 +2903,8 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 		},
 		ra.log)
 	test.AssertNotError(t, err, "creating test PA")
-	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
-	test.AssertNotError(t, err, "loading test hostname policy")
+	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+	test.AssertNotError(t, err, "loading test identifier policy")
 	ra.PA = pa
 
 	// Now finalizing this order should fail
@@ -3638,126 +3628,9 @@ func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *s
 	return &emptypb.Empty{}, nil
 }
 
-type mockOCSPA struct {
-	mocks.MockCA
-}
-
-func (mcao *mockOCSPA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
-}
-
-type mockPurger struct{}
-
-func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-// mockSAGenerateOCSP is a mock SA that always returns a good OCSP response, with a constant NotAfter.
-type mockSAGenerateOCSP struct {
-	sapb.StorageAuthorityClient
-	expiration time.Time
-}
-
-func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	return &corepb.CertificateStatus{
-		Serial:   req.Serial,
-		Status:   "good",
-		NotAfter: timestamppb.New(msgo.expiration.UTC()),
-	}, nil
-}
-
-func TestGenerateOCSP(t *testing.T) {
-	_, _, ra, _, clk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.SA = &mockSAGenerateOCSP{expiration: clk.Now().Add(time.Hour)}
-
-	req := &rapb.GenerateOCSPRequest{
-		Serial: core.SerialToString(big.NewInt(1)),
-	}
-
-	resp, err := ra.GenerateOCSP(context.Background(), req)
-	test.AssertNotError(t, err, "generating OCSP")
-	test.AssertByteEquals(t, resp.Response, []byte{1, 2, 3})
-
-	ra.SA = &mockSAGenerateOCSP{expiration: clk.Now().Add(-time.Hour)}
-	_, err = ra.GenerateOCSP(context.Background(), req)
-	if !errors.Is(err, berrors.NotFound) {
-		t.Errorf("expected NotFound error, got %s", err)
-	}
-}
-
-// mockSALongExpiredSerial is a mock SA that treats every serial as if it expired a long time ago.
-// Specifically, it returns NotFound to GetCertificateStatus (simulating the serial having been
-// removed from the certificateStatus table), but returns success to GetSerialMetadata (simulating
-// a serial number staying in the `serials` table indefinitely).
-type mockSALongExpiredSerial struct {
-	sapb.StorageAuthorityClient
-}
-
-func (msgo *mockSALongExpiredSerial) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	return nil, berrors.NotFoundError("not found")
-}
-
-func (msgo *mockSALongExpiredSerial) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	return &sapb.SerialMetadata{
-		Serial: req.Serial,
-	}, nil
-}
-
-func TestGenerateOCSPLongExpiredSerial(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.SA = &mockSALongExpiredSerial{}
-
-	req := &rapb.GenerateOCSPRequest{
-		Serial: core.SerialToString(big.NewInt(1)),
-	}
-
-	_, err := ra.GenerateOCSP(context.Background(), req)
-	test.AssertError(t, err, "generating OCSP")
-	if !errors.Is(err, berrors.NotFound) {
-		t.Errorf("expected NotFound error, got %#v", err)
-	}
-}
-
-// mockSAUnknownSerial is a mock SA that always returns NotFound to certificate status and serial lookups.
-// It emulates an SA that has never issued a certificate.
-type mockSAUnknownSerial struct {
-	mockSALongExpiredSerial
-}
-
-func (msgo *mockSAUnknownSerial) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	return nil, berrors.NotFoundError("not found")
-}
-
-func TestGenerateOCSPUnknownSerial(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.SA = &mockSAUnknownSerial{}
-
-	req := &rapb.GenerateOCSPRequest{
-		Serial: core.SerialToString(big.NewInt(1)),
-	}
-
-	_, err := ra.GenerateOCSP(context.Background(), req)
-	test.AssertError(t, err, "generating OCSP")
-	if !errors.Is(err, berrors.UnknownSerial) {
-		t.Errorf("expected UnknownSerial error, got %#v", err)
-	}
-}
-
 func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
@@ -3831,9 +3704,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
-
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
 	cert.IsCA = true
@@ -3871,9 +3741,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 func TestRevokeCertByKey(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
@@ -3923,9 +3790,6 @@ func TestRevokeCertByKey(t *testing.T) {
 func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	serial, cert := test.ThrowAwayCert(t, clk)
@@ -3990,26 +3854,13 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
 
-	// Duplicate administrative revocation of a serial for an unspecified reason
-	// should succeed because the akamai cache purge succeeds.
+	// Duplicate administrative revocation of a serial for any reason other than
+	// keyCompromise should fail.
 	// Note that we *don't* call reset() here, so it recognizes the duplicate.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    serial,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
-	})
-	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
-	test.AssertEquals(t, len(mockSA.blocked), 0)
-
-	// Duplicate administrative revocation of a serial for a *malformed* cert for
-	// an unspecified reason should fail because we can't attempt an akamai cache
-	// purge so the underlying AlreadyRevoked error gets propagated upwards.
-	// Note that we *don't* call reset() here, so it recognizes the duplicate.
-	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Serial:    serial,
-		Code:      ocsp.Unspecified,
-		AdminName: "root",
-		Malformed: true,
 	})
 	test.AssertError(t, err, "Should be revoked")
 	test.AssertContains(t, err.Error(), "already revoked")
@@ -4190,32 +4041,15 @@ type NoUpdateSA struct {
 	sapb.StorageAuthorityClient
 }
 
-func (sa *NoUpdateSA) UpdateRegistrationContact(_ context.Context, _ *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, fmt.Errorf("UpdateRegistrationContact() is mocked to always error")
-}
-
 func (sa *NoUpdateSA) UpdateRegistrationKey(_ context.Context, _ *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, fmt.Errorf("UpdateRegistrationKey() is mocked to always error")
 }
 
-// mockSARecordingRegistration tests UpdateRegistrationContact and UpdateRegistrationKey.
+// mockSARecordingRegistration tests UpdateRegistrationKey.
 type mockSARecordingRegistration struct {
 	sapb.StorageAuthorityClient
 	providedRegistrationID int64
-	providedContacts       []string
 	providedJwk            []byte
-}
-
-// UpdateRegistrationContact records the registration ID and updated contacts
-// (optional) provided.
-func (sa *mockSARecordingRegistration) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	sa.providedRegistrationID = req.RegistrationID
-	sa.providedContacts = req.Contacts
-
-	return &corepb.Registration{
-		Id:      req.RegistrationID,
-		Contact: req.Contacts,
-	}, nil
 }
 
 // UpdateRegistrationKey records the registration ID and updated key provided.
@@ -4227,62 +4061,6 @@ func (sa *mockSARecordingRegistration) UpdateRegistrationKey(ctx context.Context
 		Id:  req.RegistrationID,
 		Key: req.Jwk,
 	}, nil
-}
-
-// TestUpdateRegistrationContact tests that the RA's UpdateRegistrationContact
-// method correctly: requires a registration ID; validates the contact provided;
-// does not require a contact; passes the requested registration ID and contact
-// to the SA; passes the updated Registration back to the caller; and can return
-// an error.
-func TestUpdateRegistrationContact(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	expectRegID := int64(1)
-	expectContacts := []string{"mailto:test@contoso.com"}
-	mockSA := mockSARecordingRegistration{}
-	ra.SA = &mockSA
-
-	_, err := ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{})
-	test.AssertError(t, err, "should not have been able to update registration contact without a registration ID")
-	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
-
-	_, err = ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{
-		RegistrationID: expectRegID,
-		Contacts:       []string{"tel:+44123"},
-	})
-	test.AssertError(t, err, "should not have been able to update registration contact to an invalid contact")
-	test.AssertContains(t, err.Error(), "invalid contact")
-
-	res, err := ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{
-		RegistrationID: expectRegID,
-	})
-	test.AssertNotError(t, err, "should have been able to update registration with a blank contact")
-	test.AssertEquals(t, res.Id, expectRegID)
-	test.AssertEquals(t, mockSA.providedRegistrationID, expectRegID)
-	test.AssertDeepEquals(t, res.Contact, []string(nil))
-	test.AssertDeepEquals(t, mockSA.providedContacts, []string(nil))
-
-	res, err = ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{
-		RegistrationID: expectRegID,
-		Contacts:       expectContacts,
-	})
-	test.AssertNotError(t, err, "should have been able to update registration with a populated contact")
-	test.AssertEquals(t, res.Id, expectRegID)
-	test.AssertEquals(t, mockSA.providedRegistrationID, expectRegID)
-	test.AssertDeepEquals(t, res.Contact, expectContacts)
-	test.AssertDeepEquals(t, mockSA.providedContacts, expectContacts)
-
-	// Switch to a mock SA that will always error if UpdateRegistrationContact()
-	// is called.
-	ra.SA = &NoUpdateSA{}
-	_, err = ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{
-		RegistrationID: expectRegID,
-		Contacts:       expectContacts,
-	})
-	test.AssertError(t, err, "should have received an error from the SA")
-	test.AssertContains(t, err.Error(), "failed to update registration contact")
-	test.AssertContains(t, err.Error(), "mocked to always error")
 }
 
 // TestUpdateRegistrationKey tests that the RA's UpdateRegistrationKey method

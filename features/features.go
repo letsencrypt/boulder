@@ -26,6 +26,7 @@ type Config struct {
 	MPICFullResults             bool
 	UnsplitIssuance             bool
 	ExpirationMailerUsesJoin    bool
+	DOH                         bool
 	IgnoreAccountContacts       bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
@@ -50,16 +51,13 @@ type Config struct {
 	// for the cert URL to appear.
 	AsyncFinalize bool
 
-	// DOH enables DNS-over-HTTPS queries for validation
-	DOH bool
-
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
 	// returned to the Subscriber indicating that the order cannot be processed
 	// until the paused identifiers are unpaused and the order is resubmitted.
 	CheckIdentifiersPaused bool
 
-	// PropagateCancels controls whether the WFE and ocsp-responder allows
+	// PropagateCancels controls whether the WFE allows
 	// cancellation of an inbound request to cancel downstream gRPC and other
 	// queries. In practice, cancellation of an inbound request is achieved by
 	// Nginx closing the connection on which the request was happening. This may

@@ -18,28 +18,28 @@ import (
 )
 
 func TestGenerateCRLTimeBounds(t *testing.T) {
-	_, err := generateCRL(nil, nil, time.Now().Add(time.Hour), time.Now(), 1, nil)
+	_, err := generateCRL(nil, nil, time.Now().Add(time.Hour), time.Now(), 1, nil, []string{})
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "thisUpdate must be before nextUpdate")
 
 	_, err = generateCRL(nil, &x509.Certificate{
 		NotBefore: time.Now().Add(time.Hour),
 		NotAfter:  time.Now(),
-	}, time.Now(), time.Now(), 1, nil)
+	}, time.Now(), time.Now(), 1, nil, []string{})
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "thisUpdate is before issuing certificate's notBefore")
 
 	_, err = generateCRL(nil, &x509.Certificate{
 		NotBefore: time.Now(),
 		NotAfter:  time.Now().Add(time.Hour * 2),
-	}, time.Now().Add(time.Hour), time.Now().Add(time.Hour*3), 1, nil)
+	}, time.Now().Add(time.Hour), time.Now().Add(time.Hour*3), 1, nil, []string{})
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "nextUpdate is after issuing certificate's notAfter")
 
 	_, err = generateCRL(nil, &x509.Certificate{
 		NotBefore: time.Now(),
 		NotAfter:  time.Now().Add(time.Hour * 24 * 370),
-	}, time.Now(), time.Now().Add(time.Hour*24*366), 1, nil)
+	}, time.Now(), time.Now().Add(time.Hour*24*366), 1, nil, []string{})
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "nextUpdate must be less than 12 months after thisUpdate")
 }
@@ -79,17 +79,26 @@ func TestGenerateCRLLints(t *testing.T) {
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse test cert")
 
-	// This CRL should fail the following lint:
-	// - e_crl_acceptable_reason_codes (because 6 is forbidden)
+	// This CRL should fail the "e_crl_next_update_invalid" lint because the
+	// validity interval is more than 10 days, and this lint can't tell the
+	// difference between end-entity and CA CRLs.
 	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
 			SerialNumber:   big.NewInt(12345),
 			RevocationTime: time.Now().Add(time.Hour),
-			ReasonCode:     6,
 		},
-	})
+	}, []string{})
 	test.AssertError(t, err, "generateCRL did not fail")
-	test.AssertContains(t, err.Error(), "e_crl_acceptable_reason_codes")
+	test.AssertContains(t, err.Error(), "e_crl_next_update_invalid")
+
+	// But we can tell it to ignore that lint, too.
+	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
+		{
+			SerialNumber:   big.NewInt(12345),
+			RevocationTime: time.Now().Add(time.Hour),
+		},
+	}, []string{"e_crl_next_update_invalid"})
+	test.AssertNotError(t, err, "generateCRL should have ignored the failing lint")
 }
 
 func TestGenerateCRL(t *testing.T) {
@@ -112,7 +121,7 @@ func TestGenerateCRL(t *testing.T) {
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse test cert")
 
-	crlPEM, err := generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(time.Hour*2), 1, nil)
+	crlPEM, err := generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(time.Hour*2), 1, nil, []string{})
 	test.AssertNotError(t, err, "generateCRL failed with valid profile")
 
 	pemBlock, _ := pem.Decode(crlPEM)

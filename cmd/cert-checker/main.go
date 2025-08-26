@@ -38,8 +38,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-// For defense-in-depth in addition to using the PA & its hostnamePolicy to
-// check domain names we also perform a check against the regex's from the
+// For defense-in-depth in addition to using the PA & its identPolicy to check
+// domain names we also perform a check against the regex's from the
 // forbiddenDomains array
 var forbiddenDomainPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^\s*$`),
@@ -612,7 +612,7 @@ func main() {
 	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
 
-	err = pa.LoadHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+	err = pa.LoadIdentPolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 	if config.CertChecker.CTLogListFile != "" {
@@ -630,7 +630,7 @@ func main() {
 
 	checker := newChecker(
 		saDbMap,
-		cmd.Clock(),
+		clock.New(),
 		pa,
 		kp,
 		config.CertChecker.CheckPeriod.Duration,

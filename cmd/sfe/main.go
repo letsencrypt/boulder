@@ -6,13 +6,17 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	rlo "github.com/letsencrypt/boulder/ratelimits/overriderequests"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe"
+	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -43,6 +47,20 @@ type Config struct {
 		// WFEs. This field is required to enable the pausing feature.
 		UnpauseHMACKey cmd.HMACKeyConfig
 
+		Zendesk *struct {
+			BaseURL      string             `validate:"required,url"`
+			TokenEmail   string             `validate:"required,email"`
+			Token        cmd.PasswordConfig `validate:"required,dive"`
+			CustomFields struct {
+				Organization     int64 `validate:"required"`
+				Tier             int64 `validate:"required"`
+				RateLimit        int64 `validate:"required"`
+				ReviewStatus     int64 `validate:"required"`
+				AccountURI       int64 `validate:"required"`
+				RegisteredDomain int64 `validate:"required"`
+				IPAddress        int64 `validate:"required"`
+			} `validate:"required,dive"`
+		} `validate:"omitempty,dive"`
 		Features features.Config
 	}
 
@@ -82,7 +100,7 @@ func main() {
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SFE.DebugAddr)
 	logger.Info(cmd.VersionString())
 
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	unpauseHMACKey, err := c.SFE.UnpauseHMACKey.Load()
 	cmd.FailOnError(err, "Failed to load unpauseHMACKey")
@@ -98,6 +116,30 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
+	var zendeskClient *zendesk.Client
+	if c.SFE.Zendesk != nil {
+		zendeskToken, err := c.SFE.Zendesk.Token.Pass()
+		cmd.FailOnError(err, "Failed to load Zendesk token")
+
+		zendeskClient, err = zendesk.NewClient(
+			c.SFE.Zendesk.BaseURL,
+			c.SFE.Zendesk.TokenEmail,
+			zendeskToken,
+			map[string]int64{
+				rlo.OrganizationFieldName:     c.SFE.Zendesk.CustomFields.Organization,
+				rlo.TierFieldName:             c.SFE.Zendesk.CustomFields.Tier,
+				rlo.RateLimitFieldName:        c.SFE.Zendesk.CustomFields.RateLimit,
+				rlo.ReviewStatusFieldName:     c.SFE.Zendesk.CustomFields.ReviewStatus,
+				rlo.AccountURIFieldName:       c.SFE.Zendesk.CustomFields.AccountURI,
+				rlo.RegisteredDomainFieldName: c.SFE.Zendesk.CustomFields.RegisteredDomain,
+				rlo.IPAddressFieldName:        c.SFE.Zendesk.CustomFields.IPAddress,
+			},
+		)
+		if err != nil {
+			cmd.FailOnError(err, "Failed to create Zendesk client")
+		}
+	}
+
 	sfei, err := sfe.NewSelfServiceFrontEndImpl(
 		stats,
 		clk,
@@ -106,6 +148,7 @@ func main() {
 		rac,
 		sac,
 		unpauseHMACKey,
+		zendeskClient,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

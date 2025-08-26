@@ -9,14 +9,11 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"database/sql"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/eggsampler/acme/v3"
 	_ "github.com/go-sql-driver/mysql"
@@ -25,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
-	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
@@ -60,22 +56,6 @@ func getPrecertByName(db *sql.DB, reversedName string) (*x509.Certificate, error
 	}
 
 	return cert, nil
-}
-
-// expectOCSP500 queries OCSP for the given certificate and expects a 500 error.
-func expectOCSP500(cert *x509.Certificate) error {
-	_, err := ocsp_helper.Req(cert, ocspConf())
-	if err == nil {
-		return errors.New("Expected error getting OCSP for certificate that failed status storage")
-	}
-
-	var statusCodeError ocsp_helper.StatusCodeError
-	if !errors.As(err, &statusCodeError) {
-		return fmt.Errorf("Got wrong kind of error for OCSP. Expected status code error, got %s", err)
-	} else if statusCodeError.Code != 500 {
-		return fmt.Errorf("Got wrong error status for OCSP. Expected 500, got %d", statusCodeError.Code)
-	}
-	return nil
 }
 
 // TestIssuanceCertStorageFailed tests what happens when a storage RPC fails
@@ -144,9 +124,6 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	cert, err := getPrecertByName(db, revokeMeDomain)
 	test.AssertNotError(t, err, "failed to get certificate by name")
 
-	err = expectOCSP500(cert)
-	test.AssertNotError(t, err, "expected 500 error from OCSP")
-
 	// Revoke by invoking admin-revoker
 	config := fmt.Sprintf("%s/%s", os.Getenv("BOULDER_CONFIG_DIR"), "admin.json")
 	output, err := exec.Command(
@@ -159,8 +136,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	).CombinedOutput()
 	test.AssertNotError(t, err, fmt.Sprintf("revoking via admin-revoker: %s", string(output)))
 
-	_, err = ocsp_helper.Req(cert,
-		ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.Unspecified))
+	waitAndCheckRevoked(t, cert, nil, ocsp.Unspecified)
 
 	// ---- Test revocation by key ----
 	blockMyKeyDomain := "blockmykey.wantserror.com"
@@ -171,9 +147,6 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	cert, err = getPrecertByName(db, blockMyKeyDomain)
 	test.AssertNotError(t, err, "failed to get certificate by name")
 
-	err = expectOCSP500(cert)
-	test.AssertNotError(t, err, "expected 500 error from OCSP")
-
 	// Time to revoke! We'll do it by creating a different, successful certificate
 	// with the same key, then revoking that certificate for keyCompromise.
 	revokeClient, err := makeClient()
@@ -181,28 +154,16 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	res, err := authAndIssue(nil, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	test.AssertNotError(t, err, "issuing second cert")
 
-	successfulCert := res.certs[0]
-	successfulCertIssuer := res.certs[1]
 	err = revokeClient.RevokeCertificate(
 		revokeClient.Account,
-		successfulCert,
+		res.certs[0],
 		certKey,
 		1,
 	)
 	test.AssertNotError(t, err, "revoking second certificate")
 
-	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
-	fetchAndCheckRevoked(t, successfulCert, successfulCertIssuer, ocsp.KeyCompromise)
-
-	for range 300 {
-		_, err = ocsp_helper.Req(successfulCert,
-			ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
-		if err == nil {
-			break
-		}
-		time.Sleep(15 * time.Millisecond)
-	}
-	test.AssertNotError(t, err, "expected status to eventually become revoked")
+	waitAndCheckRevoked(t, res.certs[0], res.certs[1], ocsp.KeyCompromise)
+	waitAndCheckRevoked(t, cert, nil, ocsp.KeyCompromise)
 
 	// Try to issue again with the same key, expecting an error because of the key is blocked.
 	_, err = authAndIssue(nil, certKey, []acme.Identifier{{Type: "dns", Value: "123.example.com"}}, true, "")
