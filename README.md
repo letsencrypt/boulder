@@ -133,6 +133,12 @@ To run all integration tests:
 docker compose run --use-aliases boulder ./test.sh --integration
 ```
 
+To run unit tests and integration tests with coverage:
+
+```shell
+docker compose run --use-aliases boulder ./test.sh --unit --integration --coverage --coverage-dir=./test/coverage/mytestrun
+```
+
 To run specific integration tests (example runs TestAkamaiPurgerDrainQueueFails and TestWFECORS):
 
 ```shell

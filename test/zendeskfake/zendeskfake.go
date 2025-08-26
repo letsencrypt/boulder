@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,7 +19,6 @@ import (
 
 const (
 	defaultTicketCapacity = 200
-	searchPageSize        = 2
 	apiPrefix             = "/api/v2"
 	TicketsJSONPath       = apiPrefix + "/tickets.json"
 	SearchJSONPath        = apiPrefix + "/search.json"
@@ -36,6 +36,14 @@ var (
 	// unquoted values. It captures the field ID as the first group and the
 	// value as the second group.
 	customFieldRegexp = regexp.MustCompile(`custom_field_(\d+):("[^"]+"|\S+)`)
+
+	// statusRegexp matches the status in the format status:<status>, where
+	// <status> is one of the valid statuses. It captures the status as the
+	// first group. It is used to validate the status in search queries.
+	statusRegexp = regexp.MustCompile(`\bstatus:(\w+)\b`)
+
+	// validStatuses is the list of valid default Zendesk ticket statuses.
+	validStatuses = []string{"new", "open", "pending", "hold", "solved", "closed"}
 )
 
 // requester represents a requester in a Zendesk ticket.
@@ -53,6 +61,7 @@ type comment struct {
 // ticket represents all the fields of a Zendesk ticket.
 type ticket struct {
 	ID           int64            `json:"id"`
+	Status       string           `json:"status"`
 	Requester    requester        `json:"requester"`
 	Subject      string           `json:"subject"`
 	Comments     []comment        `json:"comments"`
@@ -100,6 +109,18 @@ func (s *Store) push(t *ticket) int64 {
 	s.stack = append(s.stack, t)
 	s.byID[t.ID] = t
 	return t.ID
+}
+
+func (s *Store) setStatus(id int64, status string) error {
+	s.Lock()
+	defer s.Unlock()
+
+	t, ok := s.byID[id]
+	if !ok {
+		return errors.New("ticket not found")
+	}
+	t.Status = status
+	return nil
 }
 
 func (s *Store) addComment(id int64, c comment) error {
@@ -205,6 +226,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newTicket := &ticket{
+		Status:       "new",
 		Requester:    req.Ticket.Requester,
 		Subject:      req.Ticket.Subject,
 		Comments:     []comment{req.Ticket.Comment},
@@ -244,6 +266,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Ticket struct {
+			Status  string  `json:"status"`
 			Comment comment `json:"comment"`
 		} `json:"ticket"`
 	}
@@ -254,7 +277,10 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Ticket.Comment.Body == "" {
+	updateComment := req.Ticket.Comment.Body != ""
+	updateStatus := req.Ticket.Status != ""
+
+	if !updateComment && !updateStatus {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"error":       "RecordInvalid",
 			"description": "Record validation errors",
@@ -267,13 +293,34 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.store.addComment(id, req.Ticket.Comment)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{
-			"error":       "RecordNotFound",
-			"description": "Not found",
+	if updateComment {
+		err = s.store.addComment(id, req.Ticket.Comment)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{
+				"error":       "RecordNotFound",
+				"description": "Not found",
+			})
+			return
+		}
+	}
+
+	if updateStatus && !slices.Contains(validStatuses, req.Ticket.Status) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":       "RecordInvalid",
+			"description": "invalid status",
 		})
 		return
+	}
+
+	if updateStatus {
+		err = s.store.setStatus(id, strings.ToLower(req.Ticket.Status))
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{
+				"error":       "RecordNotFound",
+				"description": "Not found",
+			})
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -292,6 +339,18 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 			"count":     0,
 		})
 		return
+	}
+
+	var wantStatus string
+	if statusRegexp.MatchString(queryParam) {
+		m := statusRegexp.FindStringSubmatch(queryParam)
+		if len(m) == 2 {
+			wantStatus = strings.ToLower(m[1])
+			if !slices.Contains(validStatuses, wantStatus) {
+				http.Error(w, "invalid status", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	type criterion struct {
@@ -331,6 +390,9 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 
 	for _, ticket := range s.store.stack {
 		allMatch := true
+		if wantStatus != "" && strings.ToLower(ticket.Status) != wantStatus {
+			continue
+		}
 		for _, c := range criteria {
 			curr, ok := ticket.CustomFields[c.fieldID]
 			if !ok || curr != c.value {
@@ -390,6 +452,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	for _, row := range resultRows[start:end] {
 		encodedResults = append(encodedResults, map[string]any{
 			"id":            row.id,
+			"status":        s.store.byID[row.id].Status,
 			"custom_fields": row.fields,
 		})
 	}
