@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
+
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -76,14 +77,16 @@ type Config struct {
 
 		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
 		// Section 4.9.10, it MUST NOT be more than 10 days. Default 96h.
+		//
+		// Deprecated: TODO(#8345): Remove this.
 		LifespanOCSP config.Duration
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		// Maximum length (in bytes) of a line accumulating OCSP audit log entries.
-		// Recommended to be around 4000. If this is 0, do not perform OCSP audit
-		// logging.
+		// Maximum length (in bytes) of a line documenting the signing of a CRL.
+		// The name is a carryover from when this config was shared between both
+		// OCSP and CRL audit log emission. Recommended to be around 4000.
 		OCSPLogMaxLength int
 
 		// Maximum period (in Go duration format) to wait to accumulate a max-length
@@ -93,6 +96,8 @@ type Config struct {
 		// means logging more often than necessary, which is inefficient in terms
 		// of bytes and log system resources.
 		// Recommended to be around 500ms.
+		//
+		// Deprecated: TODO(#8345): Remove this.
 		OCSPLogPeriod config.Duration
 
 		// CTLogListFile is the path to a JSON file on disk containing the set of
@@ -103,8 +108,10 @@ type Config struct {
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
 		DisableCertService bool
-		// DisableCertService causes the OCSPGenerator gRPC service to not start,
+		// DisableOCSPService causes the OCSPGenerator gRPC service to not start,
 		// preventing any OCSP responses from being issued.
+		//
+		// Deprecated: TODO(#8345): Remove this.
 		DisableOCSPService bool
 		// DisableCRLService causes the CRLGenerator gRPC service to not start,
 		// preventing any CRLs from being issued.
@@ -153,10 +160,6 @@ func main() {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
-	if c.CA.LifespanOCSP.Duration == 0 {
-		c.CA.LifespanOCSP.Duration = 96 * time.Hour
-	}
-
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
@@ -182,7 +185,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
-	clk := cmd.Clock()
+	clk := clock.New()
 	var crlShards int
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for i, issuerConfig := range c.CA.Issuance.Issuers {
@@ -222,24 +225,6 @@ func main() {
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)
-
-	if !c.CA.DisableOCSPService {
-		ocspi, err := ca.NewOCSPImpl(
-			issuers,
-			c.CA.LifespanOCSP.Duration,
-			c.CA.OCSPLogMaxLength,
-			c.CA.OCSPLogPeriod.Duration,
-			logger,
-			scope,
-			metrics,
-			clk,
-		)
-		cmd.FailOnError(err, "Failed to create OCSP impl")
-		go ocspi.LogOCSPLoop()
-		defer ocspi.Stop()
-
-		srv = srv.Add(&capb.OCSPGenerator_ServiceDesc, ocspi)
-	}
 
 	if !c.CA.DisableCRLService {
 		crli, err := ca.NewCRLImpl(

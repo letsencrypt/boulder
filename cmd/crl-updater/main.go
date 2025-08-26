@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -79,8 +81,7 @@ type Config struct {
 		// This should be set to the current set of serial prefixes in production.
 		// When deploying explicit sharding (i.e. the CRLDistributionPoints extension),
 		// the CAs should be configured with a new set of serial prefixes that haven't
-		// been used before (and the OCSP Responder config should be updated to
-		// recognize the new prefixes as well as the old ones).
+		// been used before.
 		TemporallyShardedSerialPrefixes []string
 
 		// MaxParallelism controls how many workers may be running in parallel.
@@ -156,7 +157,7 @@ func main() {
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	tlsConfig, err := c.CRLUpdater.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")

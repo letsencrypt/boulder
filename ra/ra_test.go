@@ -37,7 +37,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
@@ -384,11 +383,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
-		profiles, nil, 5*time.Minute, ctp, nil, nil)
+		profiles, nil, 5*time.Minute, ctp, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
-	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
 	return dummyVA, sa, ra, rlSource, fc, cleanUp
 }
@@ -3630,126 +3628,9 @@ func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *s
 	return &emptypb.Empty{}, nil
 }
 
-type mockOCSPA struct {
-	mocks.MockCA
-}
-
-func (mcao *mockOCSPA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
-}
-
-type mockPurger struct{}
-
-func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-// mockSAGenerateOCSP is a mock SA that always returns a good OCSP response, with a constant NotAfter.
-type mockSAGenerateOCSP struct {
-	sapb.StorageAuthorityClient
-	expiration time.Time
-}
-
-func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	return &corepb.CertificateStatus{
-		Serial:   req.Serial,
-		Status:   "good",
-		NotAfter: timestamppb.New(msgo.expiration.UTC()),
-	}, nil
-}
-
-func TestGenerateOCSP(t *testing.T) {
-	_, _, ra, _, clk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.SA = &mockSAGenerateOCSP{expiration: clk.Now().Add(time.Hour)}
-
-	req := &rapb.GenerateOCSPRequest{
-		Serial: core.SerialToString(big.NewInt(1)),
-	}
-
-	resp, err := ra.GenerateOCSP(context.Background(), req)
-	test.AssertNotError(t, err, "generating OCSP")
-	test.AssertByteEquals(t, resp.Response, []byte{1, 2, 3})
-
-	ra.SA = &mockSAGenerateOCSP{expiration: clk.Now().Add(-time.Hour)}
-	_, err = ra.GenerateOCSP(context.Background(), req)
-	if !errors.Is(err, berrors.NotFound) {
-		t.Errorf("expected NotFound error, got %s", err)
-	}
-}
-
-// mockSALongExpiredSerial is a mock SA that treats every serial as if it expired a long time ago.
-// Specifically, it returns NotFound to GetCertificateStatus (simulating the serial having been
-// removed from the certificateStatus table), but returns success to GetSerialMetadata (simulating
-// a serial number staying in the `serials` table indefinitely).
-type mockSALongExpiredSerial struct {
-	sapb.StorageAuthorityClient
-}
-
-func (msgo *mockSALongExpiredSerial) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	return nil, berrors.NotFoundError("not found")
-}
-
-func (msgo *mockSALongExpiredSerial) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	return &sapb.SerialMetadata{
-		Serial: req.Serial,
-	}, nil
-}
-
-func TestGenerateOCSPLongExpiredSerial(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.SA = &mockSALongExpiredSerial{}
-
-	req := &rapb.GenerateOCSPRequest{
-		Serial: core.SerialToString(big.NewInt(1)),
-	}
-
-	_, err := ra.GenerateOCSP(context.Background(), req)
-	test.AssertError(t, err, "generating OCSP")
-	if !errors.Is(err, berrors.NotFound) {
-		t.Errorf("expected NotFound error, got %#v", err)
-	}
-}
-
-// mockSAUnknownSerial is a mock SA that always returns NotFound to certificate status and serial lookups.
-// It emulates an SA that has never issued a certificate.
-type mockSAUnknownSerial struct {
-	mockSALongExpiredSerial
-}
-
-func (msgo *mockSAUnknownSerial) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	return nil, berrors.NotFoundError("not found")
-}
-
-func TestGenerateOCSPUnknownSerial(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.SA = &mockSAUnknownSerial{}
-
-	req := &rapb.GenerateOCSPRequest{
-		Serial: core.SerialToString(big.NewInt(1)),
-	}
-
-	_, err := ra.GenerateOCSP(context.Background(), req)
-	test.AssertError(t, err, "generating OCSP")
-	if !errors.Is(err, berrors.UnknownSerial) {
-		t.Errorf("expected UnknownSerial error, got %#v", err)
-	}
-}
-
 func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
@@ -3823,9 +3704,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
-
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
 	cert.IsCA = true
@@ -3863,9 +3741,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 func TestRevokeCertByKey(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
@@ -3915,9 +3790,6 @@ func TestRevokeCertByKey(t *testing.T) {
 func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
 
 	// Use the same self-signed cert as both issuer and issuee for revocation.
 	serial, cert := test.ThrowAwayCert(t, clk)
@@ -3982,26 +3854,13 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
 
-	// Duplicate administrative revocation of a serial for an unspecified reason
-	// should succeed because the akamai cache purge succeeds.
+	// Duplicate administrative revocation of a serial for any reason other than
+	// keyCompromise should fail.
 	// Note that we *don't* call reset() here, so it recognizes the duplicate.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    serial,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
-	})
-	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
-	test.AssertEquals(t, len(mockSA.blocked), 0)
-
-	// Duplicate administrative revocation of a serial for a *malformed* cert for
-	// an unspecified reason should fail because we can't attempt an akamai cache
-	// purge so the underlying AlreadyRevoked error gets propagated upwards.
-	// Note that we *don't* call reset() here, so it recognizes the duplicate.
-	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Serial:    serial,
-		Code:      ocsp.Unspecified,
-		AdminName: "root",
-		Malformed: true,
 	})
 	test.AssertError(t, err, "Should be revoked")
 	test.AssertContains(t, err.Error(), "already revoked")

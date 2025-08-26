@@ -21,10 +21,8 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/email-exporter"
 	_ "github.com/letsencrypt/boulder/cmd/log-validator"
 	_ "github.com/letsencrypt/boulder/cmd/nonce-service"
-	_ "github.com/letsencrypt/boulder/cmd/ocsp-responder"
 	_ "github.com/letsencrypt/boulder/cmd/remoteva"
 	_ "github.com/letsencrypt/boulder/cmd/reversed-hostname-checker"
-	_ "github.com/letsencrypt/boulder/cmd/rocsp-tool"
 	_ "github.com/letsencrypt/boulder/cmd/sfe"
 	"github.com/letsencrypt/boulder/core"
 

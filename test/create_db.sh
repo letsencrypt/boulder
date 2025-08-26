@@ -54,7 +54,7 @@ mysql ${dbconn} -e "SET GLOBAL binlog_format = 'MIXED';"
 
 # MariaDB sets the default @@max_connections value to 100. The SA alone is
 # configured to use up to 100 connections. We increase the max connections here
-# to give headroom for other components (ocsp-responder for example).
+# to give headroom for other components.
 mysql ${dbconn} -e "SET GLOBAL max_connections = 500;"
 
 for db in $DBS; do

@@ -92,16 +92,6 @@
 			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
-		"ocspService": {
-			"dnsAuthority": "consul.service.consul",
-			"srvLookup": {
-				"service": "ca",
-				"domain": "service.consul"
-			},
-			"timeout": "15s",
-			"noWaitForReady": true,
-			"hostOverride": "ca.boulder"
-		},
 		"publisherService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
@@ -139,7 +129,6 @@
 					"clientNames": [
 						"admin.boulder",
 						"bad-key-revoker.boulder",
-						"ocsp-responder.boulder",
 						"wfe.boulder",
 						"sfe.boulder"
 					]

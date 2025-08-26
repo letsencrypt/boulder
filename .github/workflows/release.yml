@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.24.4"
+          - "1.25.0"
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -33,7 +33,7 @@ jobs:
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
-        run: docker run -v $PWD:/boulder -e GO_VERSION=$GO_VERSION -e COMMIT_ID="$(git rev-parse --short=8 HEAD)" ubuntu:24.04 bash -c 'apt update && apt -y install gnupg2 curl sudo git gcc && cd /boulder/ && ./tools/make-assets.sh'
+        run: ./tools/container-build.sh
 
       - name: Compute checksums
         id: checksums
@@ -45,7 +45,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_create
-        run: gh release create "${GITHUB_REF_NAME}"
+        run: gh release create --generate-notes "${GITHUB_REF_NAME}"
         continue-on-error: true
 
       - name: Upload release files

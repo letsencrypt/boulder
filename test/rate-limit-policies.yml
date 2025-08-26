@@ -11,7 +11,6 @@ certificatesPerName:
     le2.wtf: 10000
     le3.wtf: 10000
     nginx.wtf: 10000
-    good-caa-reserved.com: 10000
     bad-caa-reserved.com: 10000
     ecdsa.le.wtf: 10000
     must-staple.le.wtf: 10000
@@ -45,7 +44,6 @@ certificatesPerFQDNSet:
     le2.wtf: 10000
     le3.wtf: 10000
     le.wtf,le1.wtf: 10000
-    good-caa-reserved.com: 10000
     nginx.wtf: 10000
     ecdsa.le.wtf: 10000
     must-staple.le.wtf: 10000

@@ -59,7 +59,7 @@ role of internal authentication between Let's Encrypt components:
 This PKI is loaded by virtually every Boulder component.
 
 **Note:** the minica issuer certificate and the "localhost" end-entity
-certificate are also used by several rocsp and ratelimit unit tests. The tests
+certificate are also used by several ratelimit unit tests. The tests
 use these certificates to authenticate to the docker-compose redis cluster, and
 therefore cannot succeed outside of the docker environment anyway, so a
 dependency on the ipki hierarchy having been generated does not break them

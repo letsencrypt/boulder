@@ -327,7 +327,7 @@ func main() {
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
-	clk := cmd.Clock()
+	clk := clock.New()
 
 	scope.MustRegister(keysProcessed)
 	scope.MustRegister(certsRevoked)

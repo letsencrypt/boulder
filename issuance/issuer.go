@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/jmhodges/clock"
-	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
@@ -44,21 +43,10 @@ func IssuerNameID(ee *x509.Certificate) NameID {
 	return truncatedHash(ee.RawIssuer)
 }
 
-// ResponderNameID returns the NameID (a truncated hash over the raw
-// bytes of the Responder Distinguished Name) of the given OCSP Response.
-// As per the OCSP spec, it is technically possible for this field to not be
-// populated: the OCSP Response can instead contain a SHA-1 hash of the Issuer
-// Public Key as the Responder ID. However, all OCSP responses that we produce
-// contain it, because the Go stdlib always includes it.
-func ResponderNameID(resp *ocsp.Response) NameID {
-	return truncatedHash(resp.RawResponderName)
-}
-
 // truncatedHash computes a truncated SHA1 hash across arbitrary bytes. Uses
 // SHA1 because that is the algorithm most commonly used in OCSP requests.
 // PURPOSEFULLY NOT EXPORTED. Exists only to ensure that the implementations of
-// SubjectNameID(), IssuerNameID(), and ResponderNameID never diverge. Use those
-// instead.
+// SubjectNameID() and IssuerNameID() never diverge. Use those instead.
 func truncatedHash(name []byte) NameID {
 	h := crypto.SHA1.New()
 	h.Write(name)

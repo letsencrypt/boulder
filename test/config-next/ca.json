@@ -14,11 +14,6 @@
 						"ra.boulder"
 					]
 				},
-				"ca.OCSPGenerator": {
-					"clientNames": [
-						"ra.boulder"
-					]
-				},
 				"ca.CRLGenerator": {
 					"clientNames": [
 						"crl-updater.boulder"
@@ -173,10 +168,8 @@
 		},
 		"serialPrefixHex": "6e",
 		"maxNames": 100,
-		"lifespanOCSP": "96h",
 		"goodkey": {},
 		"ocspLogMaxLength": 4000,
-		"ocspLogPeriod": "500ms",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {}
 	},

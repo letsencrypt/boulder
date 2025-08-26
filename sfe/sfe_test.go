@@ -59,6 +59,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 		&MockRegistrationAuthority{},
 		mockSA,
 		key,
+		nil,
 	)
 	test.AssertNotError(t, err, "Unable to create SFE")
 

@@ -450,6 +450,7 @@ type crlConfig struct {
 			RevocationReason int    `yaml:"revocation-reason"`
 		} `yaml:"revoked-certificates"`
 	} `yaml:"crl-profile"`
+	SkipLints []string `yaml:"skip-lints"`
 }
 
 func (cc crlConfig) validate() error {
@@ -1004,7 +1005,7 @@ func crlCeremony(configBytes []byte) error {
 		revokedCertificates = append(revokedCertificates, revokedCert)
 	}
 
-	crlBytes, err := generateCRL(signer, issuer, thisUpdate, nextUpdate, config.CRLProfile.Number, revokedCertificates)
+	crlBytes, err := generateCRL(signer, issuer, thisUpdate, nextUpdate, config.CRLProfile.Number, revokedCertificates, config.SkipLints)
 	if err != nil {
 		return err
 	}

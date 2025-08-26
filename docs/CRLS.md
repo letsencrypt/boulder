@@ -71,8 +71,7 @@ crl-updater de-duplicates by serial number.
 Explicit sharding is enabled at the CA by configuring each issuer with a number
 of CRL shards. This number must be the same across all issuers and must match
 the number of shards configured on the crl-updater. As part of the same config
-deploy, the CA must be updated to issue using a new serial prefix. Note: the
-ocsp-responder must also be updated to recognize the new serial prefix.
+deploy, the CA must be updated to issue using a new serial prefix.
 
 The crl-updater must also be updated to add the `temporallyShardedPrefixes`
 field, listing the _old_ serial prefixes (i.e., those that were issued by a CA
