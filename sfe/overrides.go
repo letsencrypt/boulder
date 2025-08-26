@@ -111,7 +111,8 @@ Would your organization consider financially supporting Let's Encrypt as a Spons
 		FundraisingOptions,
 		true,
 	)
-	base = forms.NewBaseOverrideForm(
+
+	baseFields = []forms.Field{
 		forms.NewCheckboxField(
 			"Subscriber Agreement",
 			subscriberAgreementFieldName,
@@ -159,9 +160,18 @@ understand the need for the override and how it will be used.`,
 contact person if needed.`,
 			true,
 		),
-	).RenderForm()
+	}
+)
 
-	newOrdersPerAccountForm = base + forms.NewNewOrdersPerAccountOverrideForm(
+// overridesForm creates a new form with the base fields and the provided custom
+// fields. The custom fields will appear after the baseFields and before the
+// fundraising field.
+func overridesForm(customFields ...forms.Field) *forms.Form {
+	return forms.NewForm(append(append(baseFields, customFields...), fundraisingField)...)
+}
+
+var (
+	newOrdersPerAccountForm = overridesForm(
 		forms.NewDropdownField(
 			"Maximum Orders Per Week",
 			TierFieldName,
@@ -180,7 +190,7 @@ IDs <a href="https://letsencrypt.org/docs/account-id">here</a>.`,
 		),
 	).RenderForm()
 
-	certificatesPerDomainForm = base + forms.NewCertificatesPerDomainOverrideForm(
+	certificatesPerDomainForm = overridesForm(
 		forms.NewDropdownField(
 			"Maximum Certificates Per Week",
 			TierFieldName,
@@ -201,7 +211,7 @@ xn--bcher-kva.com.`,
 		),
 	).RenderForm()
 
-	certificatesPerDomainPerAccountForm = base + forms.NewCertificatesPerDomainPerAccountOverrideForm(
+	certificatesPerDomainPerAccountForm = overridesForm(
 		forms.NewDropdownField(
 			"Maximum Certificates Per Week",
 			TierFieldName,
@@ -220,7 +230,7 @@ https://acme-v02.api.letsencrypt.org/acme/acct/12345.`,
 		),
 	).RenderForm()
 
-	certificatesPerIPForm = base + forms.NewCertificatesPerIPOverrideForm(
+	certificatesPerIPForm = overridesForm(
 		forms.NewDropdownField(
 			"Maximum Certificates Per Week",
 			TierFieldName,
@@ -470,10 +480,7 @@ func (sfe *SelfServiceFrontEndImpl) makeOverrideRequestFormHandler(formHTML temp
 func (sfe *SelfServiceFrontEndImpl) overrideRequestHandler(w http.ResponseWriter, formHTML template.HTML, rateLimit, displayRateLimit string) {
 	setOverrideRequestFormHeaders(w)
 	sfe.renderTemplate(w, "overrideForm.html", map[string]any{
-		// It's a little wonky, but we're appending the fundraising field to the
-		// form HTML here. This was the easiest way to accommodate a request
-		// that it come after all of the other fields.
-		"FormHTML":          formHTML + fundraisingField.RenderField(),
+		"FormHTML":          formHTML,
 		"RateLimit":         rateLimit,
 		"DisplayRateLimit":  displayRateLimit,
 		"ValidateFieldPath": overridesValidateField,
