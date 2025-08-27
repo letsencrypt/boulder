@@ -258,6 +258,14 @@ func FailedAuthorizationsPerDomainPerAccountError(retryAfter time.Duration, msg 
 	}
 }
 
+func LimitOverrideRequestsPerIPAddressError(retryAfter time.Duration, msg string, args ...any) error {
+	return &BoulderError{
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#limit-override-requests-per-ip-address", args...),
+		RetryAfter: retryAfter,
+	}
+}
+
 func RejectedIdentifierError(msg string, args ...any) error {
 	return newf(RejectedIdentifier, msg, args...)
 }

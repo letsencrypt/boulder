@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand/v2"
-	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -817,7 +816,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	ip, err := extractRequesterIP(request)
+	ip, err := web.ExtractRequesterIP(request)
 	if err != nil {
 		wfe.sendError(
 			response,
@@ -2729,18 +2728,6 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
 	}
-}
-
-func extractRequesterIP(req *http.Request) (netip.Addr, error) {
-	ip, err := netip.ParseAddr(req.Header.Get("X-Real-IP"))
-	if err == nil {
-		return ip, nil
-	}
-	host, _, err := net.SplitHostPort(req.RemoteAddr)
-	if err != nil {
-		return netip.Addr{}, err
-	}
-	return netip.ParseAddr(host)
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {

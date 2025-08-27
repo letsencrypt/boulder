@@ -67,6 +67,9 @@ type SelfServiceFrontEndImpl struct {
 
 	templatePages *template.Template
 	cop           *http.CrossOriginProtection
+
+	limiter    *rl.Limiter
+	txnBuilder *rl.TransactionBuilder
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -79,6 +82,8 @@ func NewSelfServiceFrontEndImpl(
 	sac sapb.StorageAuthorityReadOnlyClient,
 	unpauseHMACKey []byte,
 	zendeskClient *zendesk.Client,
+	limiter *rl.Limiter,
+	txnBuilder *rl.TransactionBuilder,
 ) (SelfServiceFrontEndImpl, error) {
 
 	// Parse the files once at startup to avoid each request causing the server
@@ -99,6 +104,8 @@ func NewSelfServiceFrontEndImpl(
 		zendeskClient:  zendeskClient,
 		templatePages:  tmplPages,
 		cop:            http.NewCrossOriginProtection(),
+		limiter:        limiter,
+		txnBuilder:     txnBuilder,
 	}
 
 	return sfe, nil
