@@ -191,8 +191,7 @@ func TestUpdateNowWithAllFailingSRVs(t *testing.T) {
 	// eventually result in a non-temporary error when no shards are resolved.
 	lookup.dnsAuthority = "consuls.services.consuls:53"
 
-	testCtx := t.Context()
-	tempErr, nonTempErr := lookup.updateNow(testCtx)
+	tempErr, nonTempErr := lookup.updateNow(t.Context())
 	test.AssertError(t, tempErr, "Expected temporary errors")
 	test.AssertError(t, nonTempErr, "Expected a non-temporary error")
 	test.AssertErrorIs(t, nonTempErr, ErrNoShardsResolved)
