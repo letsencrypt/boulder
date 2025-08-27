@@ -117,9 +117,8 @@ func TestWeightedDoesntBlockIfTooBig(t *testing.T) {
 	const n = 2
 	sem := semaphore.NewWeighted(n, 0)
 	{
-		ctx := t.Context()
 		go func() {
-			_ = sem.Acquire(ctx, n+1)
+			_ = sem.Acquire(t.Context(), n+1)
 		}()
 	}
 
