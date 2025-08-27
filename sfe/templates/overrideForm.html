@@ -1,0 +1,15 @@
+{{template "header"}}
+<div class="section">
+    <h1>{{.DisplayRateLimit}} Override Request Form</h1>
+    For more information about this form and our rate limits, please see the documentation: <a
+        href="https://letsencrypt.org/docs/rate-limits/">letsencrypt.org/docs/rate-limits</a>.
+    <div id="form-error-banner"></div>
+    <form id="override-form" referrerpolicy="no-referrer" data-rate-limit="{{.RateLimit}}"
+        data-validate-field-path="{{.ValidateFieldPath}}" data-submit-request-path="{{.SubmitRequestPath}}"
+        data-submit-success-path="{{.SubmitSuccessPath}}">
+        {{ .FormHTML }}
+        <button type="submit" class="primary btn-disabled" id="submit-button">Submit</button>
+    </form>
+</div>
+<script src="/static/overriderequest.js" defer></script>
+{{template "footer"}}

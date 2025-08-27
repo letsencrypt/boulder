@@ -21,6 +21,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	rl "github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/unpause"
@@ -29,6 +30,14 @@ import (
 const (
 	unpausePostForm = unpause.APIPrefix + "/do-unpause"
 	unpauseStatus   = unpause.APIPrefix + "/unpause-status"
+
+	overridesNewOrdersPerAccount             = overridesAPIPrefix + "/overrides/new-orders-per-account"
+	overridesCertificatesPerDomain           = overridesAPIPrefix + "/overrides/certificates-per-domain"
+	overridesCertificatesPerIP               = overridesAPIPrefix + "/overrides/certificates-per-ip"
+	overridesCertificatesPerDomainPerAccount = overridesAPIPrefix + "/overrides/certificates-per-domain-per-account"
+	overridesValidateField                   = overridesAPIPrefix + "/overrides/validate-field"
+	overridesSubmitRequest                   = overridesAPIPrefix + "/overrides/submit-override-request"
+	overridesSubmitSuccess                   = overridesAPIPrefix + "/overrides/success"
 )
 
 var (
@@ -57,6 +66,7 @@ type SelfServiceFrontEndImpl struct {
 	zendeskClient  *zendesk.Client
 
 	templatePages *template.Template
+	cop           *http.CrossOriginProtection
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -74,7 +84,10 @@ func NewSelfServiceFrontEndImpl(
 	// Parse the files once at startup to avoid each request causing the server
 	// to JIT parse. The pages are stored in an in-memory embed.FS to prevent
 	// unnecessary filesystem I/O on a physical HDD.
-	tmplPages := template.Must(template.New("pages").ParseFS(dynamicFS, "templates/layout.html", "pages/*"))
+	tmplPages, err := template.New("pages").ParseFS(dynamicFS, "templates/*", "pages/*")
+	if err != nil {
+		return SelfServiceFrontEndImpl{}, fmt.Errorf("while parsing templates: %w", err)
+	}
 
 	sfe := SelfServiceFrontEndImpl{
 		log:            logger,
@@ -85,21 +98,30 @@ func NewSelfServiceFrontEndImpl(
 		unpauseHMACKey: unpauseHMACKey,
 		zendeskClient:  zendeskClient,
 		templatePages:  tmplPages,
+		cop:            http.NewCrossOriginProtection(),
 	}
 
 	return sfe, nil
 }
 
-// handleWithTimeout registers a handler with a timeout using an
-// http.TimeoutHandler.
-func (sfe *SelfServiceFrontEndImpl) handleWithTimeout(mux *http.ServeMux, path string, handler http.HandlerFunc) {
+// wrapWithTimeout wraps an http.Handler with a timeout handler.
+func (sfe *SelfServiceFrontEndImpl) wrapWithTimeout(h http.Handler) http.Handler {
 	timeout := sfe.requestTimeout
 	if timeout <= 0 {
 		// Default to 5 minutes if no timeout is set.
 		timeout = 5 * time.Minute
 	}
-	timeoutHandler := http.TimeoutHandler(handler, timeout, "Request timed out")
-	mux.Handle(path, timeoutHandler)
+	return http.TimeoutHandler(h, timeout, "Request timed out")
+}
+
+// handleGet handles GET requests with timeout.
+func (sfe *SelfServiceFrontEndImpl) handleGet(mux *http.ServeMux, path string, h http.Handler) {
+	mux.Handle(fmt.Sprintf("%s %s", http.MethodGet, path), sfe.wrapWithTimeout(h))
+}
+
+// handlePost handles POST requests with timeout and Cross-Origin Protection.
+func (sfe *SelfServiceFrontEndImpl) handlePost(mux *http.ServeMux, path string, h http.Handler) {
+	mux.Handle(fmt.Sprintf("%s %s", http.MethodPost, path), sfe.wrapWithTimeout(sfe.cop.Handler(h)))
 }
 
 // Handler returns an http.Handler that uses various functions for various
@@ -112,11 +134,35 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 	staticAssetsHandler := http.StripPrefix("/static/", http.FileServerFS(sfs))
 	mux.Handle("GET /static/", staticAssetsHandler)
 
-	sfe.handleWithTimeout(mux, "/", sfe.Index)
-	sfe.handleWithTimeout(mux, "GET /build", sfe.BuildID)
-	sfe.handleWithTimeout(mux, "GET "+unpause.GetForm, sfe.UnpauseForm)
-	sfe.handleWithTimeout(mux, "POST "+unpausePostForm, sfe.UnpauseSubmit)
-	sfe.handleWithTimeout(mux, "GET "+unpauseStatus, sfe.UnpauseStatus)
+	sfe.handleGet(mux, "/", http.HandlerFunc(sfe.Index))
+	sfe.handleGet(mux, "/build", http.HandlerFunc(sfe.BuildID))
+
+	// Unpause
+	sfe.handleGet(mux, unpause.GetForm, http.HandlerFunc(sfe.UnpauseForm))
+	sfe.handlePost(mux, unpausePostForm, http.HandlerFunc(sfe.UnpauseSubmit))
+	sfe.handleGet(mux, unpauseStatus, http.HandlerFunc(sfe.UnpauseStatus))
+
+	// Rate Limit Override Requests
+	if sfe.zendeskClient != nil {
+		sfe.handleGet(mux, overridesNewOrdersPerAccount, sfe.makeOverrideRequestFormHandler(
+			newOrdersPerAccountForm, rl.NewOrdersPerAccount.String(), rl.NewOrdersPerAccount.String()),
+		)
+		// CertificatesPerDomain has two forms, one for DNS names and one
+		// for IP addresses, we differentiate them by appending a suffix to
+		// the rate limit name.
+		sfe.handleGet(mux, overridesCertificatesPerDomain, sfe.makeOverrideRequestFormHandler(
+			certificatesPerDomainForm, rl.CertificatesPerDomain.String()+perDNSNameSuffix, rl.CertificatesPerDomain.String()),
+		)
+		sfe.handleGet(mux, overridesCertificatesPerIP, sfe.makeOverrideRequestFormHandler(
+			certificatesPerIPForm, rl.CertificatesPerDomain.String()+perIPSuffix, rl.CertificatesPerDomain.String()),
+		)
+		sfe.handleGet(mux, overridesCertificatesPerDomainPerAccount, sfe.makeOverrideRequestFormHandler(
+			certificatesPerDomainPerAccountForm, rl.CertificatesPerDomainPerAccount.String(), rl.CertificatesPerDomainPerAccount.String()),
+		)
+		sfe.handleGet(mux, overridesSubmitSuccess, http.HandlerFunc(sfe.overrideSuccessHandler))
+		sfe.handlePost(mux, overridesValidateField, http.HandlerFunc(sfe.validateOverrideFieldHandler))
+		sfe.handlePost(mux, overridesSubmitRequest, http.HandlerFunc(sfe.submitOverrideRequestHandler))
+	}
 
 	return measured_http.New(mux, sfe.clk, stats, oTelHTTPOptions...)
 }
@@ -132,6 +178,7 @@ func (sfe *SelfServiceFrontEndImpl) renderTemplate(w http.ResponseWriter, filena
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := sfe.templatePages.ExecuteTemplate(w, filename, dynamicData)
 	if err != nil {
+		sfe.log.Warningf("template %q execute failed: %s", filename, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
