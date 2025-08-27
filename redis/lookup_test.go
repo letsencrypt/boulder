@@ -161,9 +161,7 @@ func TestUpdateNowWithAllFailingSRV(t *testing.T) {
 		},
 	}
 
-	testCtx := t.Context()
-
-	tempErr, nonTempErr := lookup.updateNow(testCtx)
+	tempErr, nonTempErr := lookup.updateNow(t.Context())
 	test.AssertNotError(t, tempErr, "Expected no temporary errors")
 	test.AssertError(t, nonTempErr, "Expected non-temporary errors to have occurred")
 }
