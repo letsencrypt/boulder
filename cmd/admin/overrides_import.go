@@ -58,14 +58,12 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 
 	var wg sync.WaitGroup
 	for i := 0; i < c.parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for ov := range work {
 				_, err := a.sac.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
 				results <- result{ov: ov, err: err}
 			}
-		}()
+		})
 	}
 
 	var errorCount int

@@ -87,9 +87,9 @@ type reportEntry struct {
 // parts of cert-checker rely on. Using this adapter shim allows tests to swap
 // out the saDbMap implementation.
 type certDB interface {
-	Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectOne(ctx context.Context, i interface{}, query string, args ...interface{}) error
-	SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error)
+	Select(ctx context.Context, i any, query string, args ...any) ([]any, error)
+	SelectOne(ctx context.Context, i any, query string, args ...any) error
+	SelectNullInt(ctx context.Context, query string, args ...any) (sql.NullInt64, error)
 }
 
 // A function that looks up a precertificate by serial and returns its DER bytes. Used for
@@ -165,7 +165,7 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 			`SELECT MIN(id) FROM certificates
 				WHERE issued >= :begin AND
 					  issued < :end`,
-			map[string]interface{}{
+			map[string]any{
 				"begin": queryBegin,
 				"end":   queryEnd,
 			},
@@ -222,7 +222,7 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 			       issued >= :begin AND
 				   issued < :end
 			 ORDER BY id LIMIT :limit`,
-			map[string]interface{}{
+			map[string]any{
 				"begin": c.issuedReport.begin,
 				"end":   c.issuedReport.end,
 				// Retrieve certs in batches of 1000 (the size of the certificate channel)

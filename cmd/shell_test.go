@@ -75,19 +75,19 @@ func TestMysqlLogger(t *testing.T) {
 	mLog := mysqlLogger{log}
 
 	testCases := []struct {
-		args     []interface{}
+		args     []any
 		expected string
 	}{
 		{
-			[]interface{}{nil},
+			[]any{nil},
 			`ERR: [AUDIT] [mysql] <nil>`,
 		},
 		{
-			[]interface{}{""},
+			[]any{""},
 			`ERR: [AUDIT] [mysql] `,
 		},
 		{
-			[]interface{}{"Sup ", 12345, " Sup sup"},
+			[]any{"Sup ", 12345, " Sup sup"},
 			`ERR: [AUDIT] [mysql] Sup 12345 Sup sup`,
 		},
 	}

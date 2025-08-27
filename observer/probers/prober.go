@@ -59,7 +59,7 @@ type Configurer interface {
 // of `MonConf`. `Settings` is always marshaled back to bytes and then
 // unmarshalled into the `Configurer` specified by the `Kind` field of
 // the `MonConf`.
-type Settings map[string]interface{}
+type Settings map[string]any
 
 // normalizeKind normalizes the input string by stripping spaces and
 // transforming it into lowercase

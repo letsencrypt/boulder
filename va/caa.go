@@ -548,7 +548,7 @@ func caaValidationMethodMatches(caaParams []caaParameter, method core.AcmeChalle
 		return true
 	}
 
-	for _, m := range strings.Split(validationMethods, ",") {
+	for m := range strings.SplitSeq(validationMethods, ",") {
 		// The value of the "validationmethods" parameter MUST comply with the
 		// following ABNF [RFC5234]:
 		//

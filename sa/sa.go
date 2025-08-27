@@ -144,7 +144,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 		return nil, fmt.Errorf("computing key digest: %w", err)
 	}
 
-	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx,
 			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? LIMIT 1",
 			req.Jwk,
@@ -254,7 +254,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Expires:        parsed.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		// Select to see if precert exists
 		var row struct {
 			Count int64
@@ -343,7 +343,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		// Select to see if cert exists
 		var row struct {
 			Count int64
@@ -372,7 +372,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// used for order reuse. Since the effect of failing the write is just a
 	// missed opportunity to reuse an order, we choose to not fail the
 	// AddCertificate operation if this update transaction fails.
-	_, fqdnTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, fqdnTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		// Update the FQDN sets now that there is a final certificate to ensure
 		// reuse is determined correctly.
 		err = addFQDNSet(
@@ -460,7 +460,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 
 	_, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
-		map[string]interface{}{
+		map[string]any{
 			"deactivated": statusUint(core.StatusDeactivated),
 			"id":          req.Id,
 			"valid":       statusUint(core.StatusValid),
@@ -492,7 +492,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 	}
 
-	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0, len(req.NewAuthzs))
 		for _, authz := range req.NewAuthzs {
@@ -530,7 +530,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		for _, id := range allAuthzIds {
-			err := inserter.Add([]interface{}{orderID, id})
+			err := inserter.Add([]any{orderID, id})
 			if err != nil {
 				return nil, err
 			}
@@ -611,7 +611,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET beganProcessing = ?
@@ -642,7 +642,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 	if req.Id == 0 || req.Error == nil {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		om, err := orderToModel(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
@@ -682,7 +682,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 	if req.Id == 0 || req.CertificateSerial == "" {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET certificateSerial = ?
@@ -776,7 +776,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		val := req.AttemptedAt.AsTime()
 		attemptedTime = &val
 	}
-	params := map[string]interface{}{
+	params := map[string]any{
 		"status":           statusToUint[core.AcmeStatus(req.Status)],
 		"attempted":        challTypeToUint[req.Attempted],
 		"attemptedAt":      attemptedTime,
@@ -852,7 +852,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		revokedDate := req.Date.AsTime()
 
 		res, err := tx.ExecContext(ctx,
@@ -908,7 +908,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		thisUpdate := req.Date.AsTime()
 		revokedDate := req.Backdate.AsTime()
 
@@ -990,7 +990,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 		return nil, errors.New("unknown source")
 	}
 	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
-	vals := []interface{}{
+	vals := []any{
 		req.KeyHash,
 		req.Added.AsTime(),
 		sourceInt,
@@ -1054,7 +1054,7 @@ func (ssa *SQLStorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.Lea
 // leased or are previously-unknown indices are considered older than any other
 // shard. It returns an error if all shards for the issuer are already leased.
 func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sapb.LeaseCRLShardRequest) (*sapb.LeaseCRLShardResponse, error) {
-	shardIdx, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	shardIdx, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		var shards []*crlShardModel
 		_, err := tx.Select(
 			ctx,
@@ -1159,7 +1159,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 		return nil, fmt.Errorf("request must identify a single shard index: %d != %d", req.MinShardIdx, req.MaxShardIdx)
 	}
 
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		needToInsert := false
 		var shardModel crlShardModel
 		err := tx.SelectOne(ctx,
@@ -1252,7 +1252,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 		nextUpdate = &nut
 	}
 
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
 				SET thisUpdate = ?, nextUpdate = ?, leasedUntil = ?
@@ -1308,7 +1308,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 	}
 
 	response := &sapb.PauseIdentifiersResponse{}
-	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		for _, ident := range idents {
 			pauseError := func(op string, err error) error {
 				return fmt.Errorf("while %s identifier %s for registration ID %d: %w",
@@ -1410,7 +1410,7 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 
 	total := &sapb.Count{}
 
-	for i := 0; i < unpause.MaxBatches; i++ {
+	for range unpause.MaxBatches {
 		result, err := ssa.dbMap.ExecContext(ctx, `
 			UPDATE paused
 			SET unpausedAt = ?

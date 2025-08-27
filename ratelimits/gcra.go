@@ -17,14 +17,11 @@ func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 		panic("invalid cost for maybeSpend")
 	}
 	nowUnix := clk.Now().UnixNano()
-	tatUnix := tat.UnixNano()
-
-	// If the TAT is in the future, use it as the starting point for the
-	// calculation. Otherwise, use the current time. This is to prevent the
-	// bucket from being filled with capacity from the past.
-	if nowUnix > tatUnix {
-		tatUnix = nowUnix
-	}
+	tatUnix := max(
+		// If the TAT is in the future, use it as the starting point for the
+		// calculation. Otherwise, use the current time. This is to prevent the
+		// bucket from being filled with capacity from the past.
+		nowUnix, tat.UnixNano())
 
 	// Compute the cost increment.
 	costIncrement := txn.limit.emissionInterval * txn.cost
@@ -92,12 +89,9 @@ func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 	refundIncrement := txn.limit.emissionInterval * txn.cost
 
 	// Subtract the refund increment from the TAT to find the new TAT.
-	newTAT := tatUnix - refundIncrement
-
-	// Ensure the new TAT is not earlier than now.
-	if newTAT < nowUnix {
-		newTAT = nowUnix
-	}
+	newTAT := max(
+		// Ensure the new TAT is not earlier than now.
+		tatUnix-refundIncrement, nowUnix)
 
 	// Calculate the new capacity.
 	difference := nowUnix - (newTAT - txn.limit.burstOffset)

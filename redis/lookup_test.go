@@ -161,8 +161,7 @@ func TestUpdateNowWithAllFailingSRV(t *testing.T) {
 		},
 	}
 
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	testCtx := t.Context()
 
 	tempErr, nonTempErr := lookup.updateNow(testCtx)
 	test.AssertNotError(t, tempErr, "Expected no temporary errors")
@@ -194,8 +193,7 @@ func TestUpdateNowWithAllFailingSRVs(t *testing.T) {
 	// eventually result in a non-temporary error when no shards are resolved.
 	lookup.dnsAuthority = "consuls.services.consuls:53"
 
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	testCtx := t.Context()
 	tempErr, nonTempErr := lookup.updateNow(testCtx)
 	test.AssertError(t, tempErr, "Expected temporary errors")
 	test.AssertError(t, nonTempErr, "Expected a non-temporary error")
@@ -230,8 +228,7 @@ func TestUpdateNowWithOneFailingSRV(t *testing.T) {
 	// two SRV targets. We should only have two shards in the ring.
 	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
 
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	testCtx := t.Context()
 
 	// Ensure we can reach both shards using the PING command.
 	err = ring.ForEachShard(testCtx, func(ctx context.Context, shard *redis.Client) error {

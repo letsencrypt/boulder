@@ -490,10 +490,8 @@ func sortHeader(s string) string {
 }
 
 func addHeadIfGet(s []string) []string {
-	for _, a := range s {
-		if a == "GET" {
-			return append(s, "HEAD")
-		}
+	if slices.Contains(s, "GET") {
+		return append(s, "HEAD")
 	}
 	return s
 }
@@ -760,7 +758,7 @@ func TestIndex(t *testing.T) {
 // if `randomDirKeyExplanationLink` appears as the value of a key in the directory
 // object.
 func randomDirectoryKeyPresent(t *testing.T, buf []byte) bool {
-	var dir map[string]interface{}
+	var dir map[string]any
 	err := json.Unmarshal(buf, &dir)
 	if err != nil {
 		t.Errorf("Failed to unmarshal directory: %s", err)
@@ -2169,7 +2167,7 @@ func TestGetCertificate(t *testing.T) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
 	}
 
-	makePost := func(keyID int64, key interface{}, path, body string) *http.Request {
+	makePost := func(keyID int64, key any, path, body string) *http.Request {
 		_, _, jwsBody := signer.byKeyID(keyID, key, fmt.Sprintf("http://localhost%s", path), body)
 		return makePostRequestWithPath(path, jwsBody)
 	}
@@ -2318,11 +2316,8 @@ func TestGetCertificate(t *testing.T) {
 			if tc.ExpectedLink != "" {
 				found := false
 				links := headers["Link"]
-				for _, link := range links {
-					if link == tc.ExpectedLink {
-						found = true
-						break
-					}
+				if slices.Contains(links, tc.ExpectedLink) {
+					found = true
 				}
 				if !found {
 					t.Errorf("Expected link '%s', but did not find it in (%v)",
@@ -2423,7 +2418,7 @@ func TestGetCertificateNew(t *testing.T) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
 	}
 
-	makePost := func(keyID int64, key interface{}, path, body string) *http.Request {
+	makePost := func(keyID int64, key any, path, body string) *http.Request {
 		_, _, jwsBody := signer.byKeyID(keyID, key, fmt.Sprintf("http://localhost%s", path), body)
 		return makePostRequestWithPath(path, jwsBody)
 	}
@@ -2586,7 +2581,7 @@ func TestGetCertificateServerError(t *testing.T) {
 }
 
 func newRequestEvent() *web.RequestEvent {
-	return &web.RequestEvent{Extra: make(map[string]interface{})}
+	return &web.RequestEvent{Extra: make(map[string]any)}
 }
 
 func TestHeaderBoulderRequester(t *testing.T) {
@@ -3816,7 +3811,7 @@ func TestARI(t *testing.T) {
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]any{}}
 	}
 
 	// Load the leaf certificate.
@@ -3895,7 +3890,7 @@ func TestIncidentARI(t *testing.T) {
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]any{}}
 	}
 
 	var issuer issuance.NameID
@@ -4096,7 +4091,7 @@ func TestNewOrderWithProfile(t *testing.T) {
 	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, invalidOrderBody)
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
-	var errorResp map[string]interface{}
+	var errorResp map[string]any
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp)
 	test.AssertNotError(t, err, "Failed to unmarshal error response")
 	test.AssertEquals(t, errorResp["type"], "urn:ietf:params:acme:error:invalidProfile")
@@ -4114,7 +4109,7 @@ func TestNewOrderWithProfile(t *testing.T) {
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, validOrderBody)
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
-	var errorResp1 map[string]interface{}
+	var errorResp1 map[string]any
 	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
 	test.AssertNotError(t, err, "Failed to unmarshal order response")
 	test.AssertEquals(t, errorResp1["status"], "valid")
@@ -4125,7 +4120,7 @@ func TestNewOrderWithProfile(t *testing.T) {
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, validOrderBody)
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
-	var errorResp2 map[string]interface{}
+	var errorResp2 map[string]any
 	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp2)
 	test.AssertNotError(t, err, "Failed to unmarshal error response")
 	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:invalidProfile")

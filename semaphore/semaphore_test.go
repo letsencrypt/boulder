@@ -20,7 +20,7 @@ import (
 const maxSleep = 1 * time.Millisecond
 
 func HammerWeighted(sem *semaphore.Weighted, n int64, loops int) {
-	for i := 0; i < loops; i++ {
+	for range loops {
 		_ = sem.Acquire(context.Background(), n)
 		time.Sleep(time.Duration(rand.Int64N(int64(maxSleep/time.Nanosecond))) * time.Nanosecond)
 		sem.Release(n)
@@ -35,7 +35,7 @@ func TestWeighted(t *testing.T) {
 	sem := semaphore.NewWeighted(int64(n), 0)
 	var wg sync.WaitGroup
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		i := i
 		go func() {
 			defer wg.Done()
@@ -117,8 +117,7 @@ func TestWeightedDoesntBlockIfTooBig(t *testing.T) {
 	const n = 2
 	sem := semaphore.NewWeighted(n, 0)
 	{
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		go func() {
 			_ = sem.Acquire(ctx, n+1)
 		}()
@@ -205,12 +204,11 @@ func TestAllocCancelDoesntStarve(t *testing.T) {
 }
 
 func TestMaxWaiters(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	sem := semaphore.NewWeighted(1, 10)
 	_ = sem.Acquire(ctx, 1)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			_ = sem.Acquire(ctx, 1)
 			<-ctx.Done()

@@ -41,7 +41,7 @@ type integrationSrv struct {
 	userAgent     string
 }
 
-func readJSON(r *http.Request, output interface{}) error {
+func readJSON(r *http.Request, output any) error {
 	if r.Method != "POST" {
 		return fmt.Errorf("incorrect method; only POST allowed")
 	}

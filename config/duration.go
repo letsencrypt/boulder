@@ -16,7 +16,7 @@ type Duration struct {
 // DurationCustomTypeFunc enables registration of our custom config.Duration
 // type as a time.Duration and performing validation on the configured value
 // using the standard suite of validation functions.
-func DurationCustomTypeFunc(field reflect.Value) interface{} {
+func DurationCustomTypeFunc(field reflect.Value) any {
 	if c, ok := field.Interface().(Duration); ok {
 		return c.Duration
 	}
@@ -53,7 +53,7 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 
 // UnmarshalYAML uses the same format as JSON, but is called by the YAML
 // parser (vs. the JSON parser).
-func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (d *Duration) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	err := unmarshal(&s)
 	if err != nil {

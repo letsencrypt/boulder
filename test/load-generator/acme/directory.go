@@ -160,12 +160,12 @@ func getRawDirectory(directoryURL string) ([]byte, error) {
 
 // termsOfService reads the termsOfService key from the meta key of the raw
 // directory resource.
-func termsOfService(rawDirectory map[string]interface{}) (string, error) {
-	var directoryMeta map[string]interface{}
+func termsOfService(rawDirectory map[string]any) (string, error) {
+	var directoryMeta map[string]any
 
 	if rawDirectoryMeta, ok := rawDirectory["meta"]; !ok {
 		return "", ErrInvalidDirectoryMeta
-	} else if directoryMetaMap, ok := rawDirectoryMeta.(map[string]interface{}); !ok {
+	} else if directoryMetaMap, ok := rawDirectoryMeta.(map[string]any); !ok {
 		return "", ErrInvalidDirectoryMeta
 	} else {
 		directoryMeta = directoryMetaMap
@@ -194,7 +194,7 @@ func NewDirectory(directoryURL string) (*Directory, error) {
 	}
 
 	// Unmarshal the directory
-	var dirResource map[string]interface{}
+	var dirResource map[string]any
 	err = json.Unmarshal(dirContents, &dirResource)
 	if err != nil {
 		return nil, ErrInvalidDirectoryJSON

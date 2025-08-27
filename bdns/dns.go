@@ -372,16 +372,12 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 	var resolverA, resolverAAAA string
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		recordsA, resolverA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		recordsAAAA, resolverAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
-	}()
+	})
 	wg.Wait()
 
 	resolvers := ResolverAddrs{resolverA, resolverAAAA}

@@ -89,10 +89,8 @@ func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, paralle
 
 	var wg sync.WaitGroup
 	var errCount atomic.Uint64
-	for i := uint(0); i < parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range parallelism {
+		wg.Go(func() {
 			for accountID := range work {
 				totalCount := int64(0)
 				for {
@@ -110,7 +108,7 @@ func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, paralle
 				}
 				countChan <- unpauseCount{accountID: accountID, count: totalCount}
 			}
-		}()
+		})
 	}
 
 	go func() {

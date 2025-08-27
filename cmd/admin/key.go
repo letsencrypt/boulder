@@ -202,10 +202,8 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 	var errCount atomic.Uint64
 	wg := new(sync.WaitGroup)
 	work := make(chan []byte, parallelism)
-	for i := uint(0); i < parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range parallelism {
+		wg.Go(func() {
 			for spkiHash := range work {
 				err = a.blockSPKIHash(ctx, spkiHash, u, comment)
 				if err != nil {
@@ -217,7 +215,7 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	for _, spkiHash := range spkiHashes {

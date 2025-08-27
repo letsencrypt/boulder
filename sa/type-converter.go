@@ -18,7 +18,7 @@ import (
 type BoulderTypeConverter struct{}
 
 // ToDb converts a Boulder object to one suitable for the DB representation.
-func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
+func (tc BoulderTypeConverter) ToDb(val any) (any, error) {
 	switch t := val.(type) {
 	case identifier.ACMEIdentifier, []core.Challenge, []string, [][]int:
 		jsonBytes, err := json.Marshal(t)
@@ -54,10 +54,10 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 }
 
 // FromDb converts a DB representation back into a Boulder object.
-func (tc BoulderTypeConverter) FromDb(target interface{}) (borp.CustomScanner, bool) {
+func (tc BoulderTypeConverter) FromDb(target any) (borp.CustomScanner, bool) {
 	switch target.(type) {
 	case *identifier.ACMEIdentifier, *[]core.Challenge, *[]string, *[][]int:
-		binder := func(holder, target interface{}) error {
+		binder := func(holder, target any) error {
 			s, ok := holder.(*string)
 			if !ok {
 				return errors.New("FromDb: Unable to convert *string")
@@ -74,7 +74,7 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (borp.CustomScanner, b
 		}
 		return borp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *jose.JSONWebKey:
-		binder := func(holder, target interface{}) error {
+		binder := func(holder, target any) error {
 			s, ok := holder.(*string)
 			if !ok {
 				return fmt.Errorf("FromDb: Unable to convert %T to *string", holder)
@@ -98,7 +98,7 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (borp.CustomScanner, b
 		}
 		return borp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:
-		binder := func(holder, target interface{}) error {
+		binder := func(holder, target any) error {
 			s, ok := holder.(*string)
 			if !ok {
 				return fmt.Errorf("FromDb: Unable to convert %T to *string", holder)
@@ -113,7 +113,7 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (borp.CustomScanner, b
 		}
 		return borp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.OCSPStatus:
-		binder := func(holder, target interface{}) error {
+		binder := func(holder, target any) error {
 			s, ok := holder.(*string)
 			if !ok {
 				return fmt.Errorf("FromDb: Unable to convert %T to *string", holder)

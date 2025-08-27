@@ -79,7 +79,7 @@ func TestCRLConf_UnmarshalSettings(t *testing.T) {
 	}{
 		{"valid", probers.Settings{"url": "google.com"}, CRLConf{"google.com", false}, false},
 		{"valid with partitioned", probers.Settings{"url": "google.com", "partitioned": true}, CRLConf{"google.com", true}, false},
-		{"invalid (map)", probers.Settings{"url": make(map[string]interface{})}, nil, true},
+		{"invalid (map)", probers.Settings{"url": make(map[string]any)}, nil, true},
 		{"invalid (list)", probers.Settings{"url": make([]string, 0)}, nil, true},
 	}
 	for _, tt := range tests {

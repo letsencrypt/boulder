@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"golang.org/x/crypto/ocsp"
@@ -25,14 +26,7 @@ func generateOCSPResponse(signer crypto.Signer, issuer, delegatedIssuer, cert *x
 			return nil, fmt.Errorf("invalid signature on delegated issuer from issuer: %s", err)
 		}
 
-		gotOCSPEKU := false
-		for _, eku := range delegatedIssuer.ExtKeyUsage {
-			if eku == x509.ExtKeyUsageOCSPSigning {
-				gotOCSPEKU = true
-				break
-			}
-		}
-		if !gotOCSPEKU {
+		if !slices.Contains(delegatedIssuer.ExtKeyUsage, x509.ExtKeyUsageOCSPSigning) {
 			return nil, errors.New("delegated issuer certificate doesn't contain OCSPSigning extended key usage")
 		}
 	}

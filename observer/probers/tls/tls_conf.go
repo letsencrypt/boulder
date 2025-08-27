@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -74,10 +75,8 @@ func (c TLSConf) validateHostname() error {
 
 func (c TLSConf) validateResponse() error {
 	acceptable := []string{"valid", "expired", "revoked"}
-	for _, a := range acceptable {
-		if strings.ToLower(c.Response) == a {
-			return nil
-		}
+	if slices.Contains(acceptable, strings.ToLower(c.Response)) {
+		return nil
 	}
 
 	return fmt.Errorf(

@@ -2193,7 +2193,6 @@ func TestNewOrderWildcard(t *testing.T) {
 	// Check each of the authz IDs in the order
 	for _, authzID := range order.V2Authorizations {
 		// We should be able to retrieve the authz from the db without error
-		authzID := authzID
 		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)
@@ -2244,7 +2243,6 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	for _, authzID := range order.V2Authorizations {
 		// We should be able to retrieve the authz from the db without error
-		authzID := authzID
 		authzPB, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 		authz, err := bgrpc.PBToAuthz(authzPB)

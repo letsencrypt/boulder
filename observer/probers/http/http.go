@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/letsencrypt/boulder/observer/obsdialer"
@@ -37,12 +38,7 @@ func (p HTTPProbe) Kind() string {
 // isExpected ensures that the received HTTP response code matches one
 // that's expected.
 func (p HTTPProbe) isExpected(received int) bool {
-	for _, c := range p.rcodes {
-		if received == c {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.rcodes, received)
 }
 
 // Probe performs the configured HTTP request.

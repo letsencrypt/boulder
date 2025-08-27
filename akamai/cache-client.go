@@ -313,7 +313,7 @@ func CheckSignature(secret string, url string, r *http.Request, body []byte) err
 
 	authorization := r.Header.Get("Authorization")
 	authValues := make(map[string]string)
-	for _, v := range strings.Split(authorization, ";") {
+	for v := range strings.SplitSeq(authorization, ";") {
 		splitValue := strings.Split(v, "=")
 		authValues[splitValue[0]] = splitValue[1]
 	}
@@ -322,12 +322,12 @@ func CheckSignature(secret string, url string, r *http.Request, body []byte) err
 	shortenedHeader, signature := splitHeader[0], splitHeader[1]
 	hostPort := strings.Split(url, "://")[1]
 	h := hmac.New(sha256.New, signingKey(secret, headerTimestamp))
-	input := []byte(fmt.Sprintf("POST\thttp\t%s\t%s\t\t%s\t%s",
+	input := fmt.Appendf(nil, "POST\thttp\t%s\t%s\t\t%s\t%s",
 		hostPort,
 		r.URL.Path,
 		bodyHashB64,
 		shortenedHeader,
-	))
+	)
 	h.Write(input)
 	expectedSignature := base64.StdEncoding.EncodeToString(h.Sum(nil))
 	if signature != expectedSignature {

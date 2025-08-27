@@ -427,12 +427,12 @@ type certificateRequestEvent struct {
 	// Identifiers are the identifiers from the issued cert
 	Identifiers identifier.ACMEIdentifiers `json:",omitempty"`
 	// NotBefore is the starting timestamp of the issued cert's validity period
-	NotBefore time.Time `json:",omitempty"`
+	NotBefore time.Time 
 	// NotAfter is the ending timestamp of the issued cert's validity period
-	NotAfter time.Time `json:",omitempty"`
+	NotAfter time.Time 
 	// RequestTime and ResponseTime are for tracking elapsed time during issuance
-	RequestTime  time.Time `json:",omitempty"`
-	ResponseTime time.Time `json:",omitempty"`
+	RequestTime  time.Time 
+	ResponseTime time.Time 
 	// Error contains any encountered errors
 	Error string `json:",omitempty"`
 	// Authorizations is a map of identifier names to certificateRequestAuthz
@@ -448,7 +448,7 @@ type certificateRequestEvent struct {
 	// PreviousCertificateIssued is present when this certificate uses the same set
 	// of FQDNs as a previous certificate (from any account) and contains the
 	// notBefore of the most recent such certificate.
-	PreviousCertificateIssued time.Time `json:",omitempty"`
+	PreviousCertificateIssued time.Time 
 	// UserAgent is the User-Agent header from the ACME client (provided to the
 	// RA via gRPC metadata).
 	UserAgent string
@@ -1002,8 +1002,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		//
 		// We track this goroutine's lifetime in a waitgroup global to this RA, so
 		// that it can wait for all goroutines to drain during shutdown.
-		ra.drainWG.Add(1)
-		go func() {
+		&{ra drainWG}.Go(func() {
 			// The original context will be canceled in the RPC layer when FinalizeOrder returns,
 			// so split off a context that won't be canceled (and has its own timeout).
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
@@ -1014,8 +1013,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 				// no parent goroutine waiting for it to receive the error.
 				ra.log.AuditErrf("Asynchronous finalization failed: %s", err.Error())
 			}
-			ra.drainWG.Done()
-		}()
+		})
 		return order, nil
 	} else {
 		return ra.issueCertificateOuter(ctx, order, csr, logEvent)

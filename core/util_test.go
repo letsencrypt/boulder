@@ -193,7 +193,7 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 	var thyme *time.Time
 	var sage *time.Duration
 	var table = []struct {
-		input interface{}
+		input any
 	}{
 		{input: int(0)},
 		{input: int(1)},
@@ -243,7 +243,7 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 
 	for _, v := range table {
 		b.Run(fmt.Sprintf("input_%T_%v", v.input, v.input), func(b *testing.B) {
-			for range b.N {
+			for b.Loop() {
 				_ = IsAnyNilOrZero(v.input)
 			}
 		})

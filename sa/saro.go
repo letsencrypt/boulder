@@ -332,7 +332,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.F
 
 // oneSelectorFunc is a func type that matches both borp.Transaction.SelectOne
 // and borp.DbMap.SelectOne.
-type oneSelectorFunc func(ctx context.Context, holder interface{}, query string, args ...interface{}) error
+type oneSelectorFunc func(ctx context.Context, holder any, query string, args ...any) error
 
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
@@ -354,7 +354,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		return nil, errIncompleteRequest
 	}
 
-	txn := func(tx db.Executor) (interface{}, error) {
+	txn := func(tx db.Executor) (any, error) {
 		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
@@ -570,7 +570,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		identConditions,
 	)
 
-	params := []interface{}{
+	params := []any{
 		req.RegistrationID,
 		statusUint(core.StatusValid), statusUint(core.StatusPending),
 		req.ValidUntil.AsTime(),
@@ -630,7 +630,7 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 		registrationID = :regID AND
 		expires > :expires AND
 		status = :status`,
-		map[string]interface{}{
+		map[string]any{
 			"regID":   req.Id,
 			"expires": ssa.clk.Now(),
 			"status":  statusUint(core.StatusPending),
@@ -675,7 +675,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 			WHERE orderToAuthz2.orderID = :orderID`,
 			strings.Join(qualifiedAuthzFields, " "),
 		),
-		map[string]interface{}{
+		map[string]any{
 			"orderID": req.Id,
 		},
 	)
@@ -726,7 +726,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		expires <= :expiresLatest AND
 		identifierType = :identType AND
 		identifierValue = :identValue`,
-		map[string]interface{}{
+		map[string]any{
 			"regID":           req.RegistrationID,
 			"identType":       idType,
 			"identValue":      ident.Value,
@@ -766,7 +766,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		identConditions,
 	)
 
-	params := []interface{}{
+	params := []any{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		req.ValidUntil.AsTime(),
@@ -937,7 +937,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCer
 		WHERE issuerID = ?
 		AND shardIdx = ?
 		AND notAfterHour >= ?`
-	params := []interface{}{
+	params := []any{
 		req.IssuerNameID,
 		req.ShardIdx,
 		// Round the expiry down to the nearest hour, to take advantage of our
@@ -991,7 +991,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 		AND notAfter < ?
 		AND issuerID = ?
 		AND status = ?`
-	params := []interface{}{
+	params := []any{
 		req.ExpiresAfter.AsTime(),
 		req.ExpiresBefore.AsTime(),
 		req.IssuerNameID,
@@ -1122,7 +1122,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream grp
 	clauses := `
 		WHERE keyHash = ?
 		AND certNotAfter > ?`
-	params := []interface{}{
+	params := []any{
 		req.KeyHash,
 		ssa.clk.Now(),
 	}
@@ -1149,7 +1149,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 	clauses := `
 		WHERE registrationID = ?
 		AND expires > ?`
-	params := []interface{}{
+	params := []any{
 		req.Id,
 		ssa.clk.Now(),
 	}
@@ -1208,7 +1208,7 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 	// "example.net", "example.org", 1, "1.2.3.4"]
 
 	var conditions []string
-	args := []interface{}{req.RegistrationID}
+	args := []any{req.RegistrationID}
 	for idType, values := range identsByType {
 		conditions = append(conditions,
 			fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)",

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -73,10 +74,8 @@ func (c DNSConf) validateServer() error {
 func (c DNSConf) validateProto() error {
 	validProtos := []string{"udp", "tcp"}
 	proto := strings.Trim(strings.ToLower(c.Proto), " ")
-	for _, i := range validProtos {
-		if proto == i {
-			return nil
-		}
+	if slices.Contains(validProtos, proto) {
+		return nil
 	}
 	return fmt.Errorf(
 		"invalid `protocol`, got: %q, expected one in: %s", c.Proto, validProtos)

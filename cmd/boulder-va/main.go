@@ -121,7 +121,6 @@ func main() {
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
-			rva := rva
 			vaConn, err := bgrpc.ClientSetup(&rva.GRPCClientConfig, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
 			remotes = append(

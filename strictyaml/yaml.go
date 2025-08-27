@@ -19,7 +19,7 @@ import (
 // TODO(https://github.com/go-yaml/yaml/issues/639): Replace this function with
 // yaml.Unmarshal once a more ergonomic way to set unmarshal options is added
 // upstream.
-func Unmarshal(b []byte, yamlObj interface{}) error {
+func Unmarshal(b []byte, yamlObj any) error {
 	r := bytes.NewReader(b)
 
 	d := yaml.NewDecoder(r)

@@ -136,7 +136,7 @@ func parseReservedPrefixFile(registryData []byte, addressFamily string) ([]reser
 		}
 
 		// Remove any footnotes, then handle each comma-separated prefix.
-		for _, prefixStr := range strings.Split(ianaFootnotesRE.ReplaceAllLiteralString(row[0], ""), ",") {
+		for prefixStr := range strings.SplitSeq(ianaFootnotesRE.ReplaceAllLiteralString(row[0], ""), ",") {
 			prefix, err := netip.ParsePrefix(strings.TrimSpace(prefixStr))
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse reserved %s address registry: couldn't parse entry %q as an IP address prefix: %s", addressFamily, prefixStr, err)
