@@ -1263,8 +1263,9 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	// corresponds to a wildcard request (e.g. to handle CAA properly). We strip
 	// the "*." prefix from the Authz's Identifier's Value here to respect the law
 	// of the protocol.
-	if after, ok := strings.CutPrefix(authz.Identifier.Value, "*."); ok {
-		authz.Identifier.Value = after
+	ident, isWildcard := strings.CutPrefix(authz.Identifier.Value, "*.")
+	if isWildcard {
+		authz.Identifier.Value = ident
 		// Mark that the authorization corresponds to a wildcard request since we've
 		// now removed the wildcard prefix from the identifier.
 		authz.Wildcard = true
