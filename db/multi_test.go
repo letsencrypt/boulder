@@ -32,20 +32,20 @@ func TestMultiAdd(t *testing.T) {
 	mi, err := NewMultiInserter("table", []string{"a", "b", "c"})
 	test.AssertNotError(t, err, "Failed to create test MultiInserter")
 
-	err = mi.Add([]interface{}{})
+	err = mi.Add([]any{})
 	test.AssertError(t, err, "Adding empty row should fail")
 
-	err = mi.Add([]interface{}{"foo"})
+	err = mi.Add([]any{"foo"})
 	test.AssertError(t, err, "Adding short row should fail")
 
-	err = mi.Add([]interface{}{"foo", "bar", "baz", "bing", "boom"})
+	err = mi.Add([]any{"foo", "bar", "baz", "bing", "boom"})
 	test.AssertError(t, err, "Adding long row should fail")
 
-	err = mi.Add([]interface{}{"one", "two", "three"})
+	err = mi.Add([]any{"one", "two", "three"})
 	test.AssertNotError(t, err, "Adding correct-length row shouldn't fail")
 	test.AssertEquals(t, len(mi.values), 1)
 
-	err = mi.Add([]interface{}{1, "two", map[string]int{"three": 3}})
+	err = mi.Add([]any{1, "two", map[string]int{"three": 3}})
 	test.AssertNotError(t, err, "Adding heterogeneous row shouldn't fail")
 	test.AssertEquals(t, len(mi.values), 2)
 	// Note that .Add does *not* enforce that each row is of the same types.
@@ -54,12 +54,12 @@ func TestMultiAdd(t *testing.T) {
 func TestMultiQuery(t *testing.T) {
 	mi, err := NewMultiInserter("table", []string{"a", "b", "c"})
 	test.AssertNotError(t, err, "Failed to create test MultiInserter")
-	err = mi.Add([]interface{}{"one", "two", "three"})
+	err = mi.Add([]any{"one", "two", "three"})
 	test.AssertNotError(t, err, "Failed to insert test row")
-	err = mi.Add([]interface{}{"egy", "kettö", "három"})
+	err = mi.Add([]any{"egy", "kettö", "három"})
 	test.AssertNotError(t, err, "Failed to insert test row")
 
 	query, queryArgs := mi.query()
 	test.AssertEquals(t, query, "INSERT INTO table (a,b,c) VALUES (?,?,?),(?,?,?)")
-	test.AssertDeepEquals(t, queryArgs, []interface{}{"one", "two", "three", "egy", "kettö", "három"})
+	test.AssertDeepEquals(t, queryArgs, []any{"one", "two", "three", "egy", "kettö", "három"})
 }

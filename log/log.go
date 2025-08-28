@@ -25,19 +25,19 @@ import (
 // added to the govet configuration in .golangci.yml
 type Logger interface {
 	Err(msg string)
-	Errf(format string, a ...interface{})
+	Errf(format string, a ...any)
 	Warning(msg string)
-	Warningf(format string, a ...interface{})
+	Warningf(format string, a ...any)
 	Info(msg string)
-	Infof(format string, a ...interface{})
-	InfoObject(string, interface{})
+	Infof(format string, a ...any)
+	InfoObject(string, any)
 	Debug(msg string)
-	Debugf(format string, a ...interface{})
+	Debugf(format string, a ...any)
 	AuditInfo(msg string)
-	AuditInfof(format string, a ...interface{})
-	AuditObject(string, interface{})
+	AuditInfof(format string, a ...any)
+	AuditObject(string, any)
 	AuditErr(string)
-	AuditErrf(format string, a ...interface{})
+	AuditErrf(format string, a ...any)
 }
 
 // impl implements Logger.
@@ -136,7 +136,7 @@ func Get() Logger {
 }
 
 type writer interface {
-	logAtLevel(syslog.Priority, string, ...interface{})
+	logAtLevel(syslog.Priority, string, ...any)
 }
 
 // bothWriter implements writer and writes to both syslog and stdout.
@@ -175,7 +175,7 @@ func checkSummed(msg string) string {
 
 // logAtLevel logs the provided message at the appropriate level, writing to
 // both stdout and the Logger
-func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...interface{}) {
+func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
 	var err error
 
 	// Apply conditional formatting for f functions
@@ -219,7 +219,7 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...interfac
 }
 
 // logAtLevel logs the provided message to stdout, or stderr if it is at Warning or Error level.
-func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interface{}) {
+func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
 	if int(level) <= w.level {
 		output := w.stdout
 		if int(level) <= int(syslog.LOG_WARNING) {
@@ -266,7 +266,7 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interf
 	}
 }
 
-func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...interface{}) {
+func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...any) {
 	msg = fmt.Sprintf("%s %s", auditTag, msg)
 	log.w.logAtLevel(level, msg, a...)
 }
@@ -279,7 +279,7 @@ func (log *impl) Err(msg string) {
 
 // Errf level messages are always marked with the audit tag, for special handling
 // at the upstream system logger.
-func (log *impl) Errf(format string, a ...interface{}) {
+func (log *impl) Errf(format string, a ...any) {
 	log.auditAtLevel(syslog.LOG_ERR, format, a...)
 }
 
@@ -289,7 +289,7 @@ func (log *impl) Warning(msg string) {
 }
 
 // Warningf level messages pass through normally.
-func (log *impl) Warningf(format string, a ...interface{}) {
+func (log *impl) Warningf(format string, a ...any) {
 	log.w.logAtLevel(syslog.LOG_WARNING, format, a...)
 }
 
@@ -299,12 +299,12 @@ func (log *impl) Info(msg string) {
 }
 
 // Infof level messages pass through normally.
-func (log *impl) Infof(format string, a ...interface{}) {
+func (log *impl) Infof(format string, a ...any) {
 	log.w.logAtLevel(syslog.LOG_INFO, format, a...)
 }
 
 // InfoObject logs an INFO level JSON-serialized object message.
-func (log *impl) InfoObject(msg string, obj interface{}) {
+func (log *impl) InfoObject(msg string, obj any) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
 		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
@@ -321,7 +321,7 @@ func (log *impl) Debug(msg string) {
 }
 
 // Debugf level messages pass through normally.
-func (log *impl) Debugf(format string, a ...interface{}) {
+func (log *impl) Debugf(format string, a ...any) {
 	log.w.logAtLevel(syslog.LOG_DEBUG, format, a...)
 }
 
@@ -333,13 +333,13 @@ func (log *impl) AuditInfo(msg string) {
 
 // AuditInfof sends an INFO-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
-func (log *impl) AuditInfof(format string, a ...interface{}) {
+func (log *impl) AuditInfof(format string, a ...any) {
 	log.auditAtLevel(syslog.LOG_INFO, format, a...)
 }
 
 // AuditObject sends an INFO-severity JSON-serialized object message that is prefixed
 // with the audit tag, for special handling at the upstream system logger.
-func (log *impl) AuditObject(msg string, obj interface{}) {
+func (log *impl) AuditObject(msg string, obj any) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
 		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
@@ -355,6 +355,6 @@ func (log *impl) AuditErr(msg string) {
 }
 
 // AuditErrf can format an error for auditing; it does so at ERR level.
-func (log *impl) AuditErrf(format string, a ...interface{}) {
+func (log *impl) AuditErrf(format string, a ...any) {
 	log.auditAtLevel(syslog.LOG_ERR, format, a...)
 }

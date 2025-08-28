@@ -10,7 +10,7 @@ import (
 )
 
 type ConfigValidator struct {
-	Config     interface{}
+	Config     any
 	Validators map[string]validator.Func
 }
 

@@ -29,8 +29,8 @@ const (
 )
 
 type serverInterceptor interface {
-	Unary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error)
-	Stream(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error
+	Unary(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error)
+	Stream(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error
 }
 
 // noopServerInterceptor provides no-op interceptors. It can be substituted for
@@ -38,12 +38,12 @@ type serverInterceptor interface {
 type noopServerInterceptor struct{}
 
 // Unary is a gRPC unary interceptor.
-func (n *noopServerInterceptor) Unary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func (n *noopServerInterceptor) Unary(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	return handler(ctx, req)
 }
 
 // Stream is a gRPC stream interceptor.
-func (n *noopServerInterceptor) Stream(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func (n *noopServerInterceptor) Stream(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	return handler(srv, ss)
 }
 
@@ -51,7 +51,7 @@ func (n *noopServerInterceptor) Stream(srv interface{}, ss grpc.ServerStream, in
 var _ serverInterceptor = &noopServerInterceptor{}
 
 type clientInterceptor interface {
-	Unary(ctx context.Context, method string, req interface{}, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error
+	Unary(ctx context.Context, method string, req any, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error
 	Stream(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error)
 }
 
@@ -73,9 +73,9 @@ func newServerMetadataInterceptor(metrics serverMetrics, clk clock.Clock) server
 // Unary implements the grpc.UnaryServerInterceptor interface.
 func (smi *serverMetadataInterceptor) Unary(
 	ctx context.Context,
-	req interface{},
+	req any,
 	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler) (interface{}, error) {
+	handler grpc.UnaryHandler) (any, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
@@ -142,7 +142,7 @@ func (iss interceptedServerStream) Context() context.Context {
 
 // Stream implements the grpc.StreamServerInterceptor interface.
 func (smi *serverMetadataInterceptor) Stream(
-	srv interface{},
+	srv any,
 	ss grpc.ServerStream,
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler) error {
@@ -260,7 +260,7 @@ func (cmi *clientMetadataInterceptor) Unary(
 	ctx context.Context,
 	fullMethod string,
 	req,
-	reply interface{},
+	reply any,
 	cc *grpc.ClientConn,
 	invoker grpc.UnaryInvoker,
 	opts ...grpc.CallOption) error {
@@ -341,7 +341,7 @@ func (ics interceptedClientStream) Header() (metadata.MD, error) {
 }
 
 // SendMsg implements part of the grpc.ClientStream interface.
-func (ics interceptedClientStream) SendMsg(m interface{}) error {
+func (ics interceptedClientStream) SendMsg(m any) error {
 	err := ics.ClientStream.SendMsg(m)
 	if err != nil {
 		err = ics.finish(err)
@@ -350,7 +350,7 @@ func (ics interceptedClientStream) SendMsg(m interface{}) error {
 }
 
 // RecvMsg implements part of the grpc.ClientStream interface.
-func (ics interceptedClientStream) RecvMsg(m interface{}) error {
+func (ics interceptedClientStream) RecvMsg(m any) error {
 	err := ics.ClientStream.RecvMsg(m)
 	if err != nil {
 		err = ics.finish(err)
@@ -484,7 +484,7 @@ func newServiceAuthChecker(c *cmd.GRPCServerConfig) *authInterceptor {
 }
 
 // Unary is a gRPC unary interceptor.
-func (ac *authInterceptor) Unary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func (ac *authInterceptor) Unary(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	err := ac.checkContextAuth(ctx, info.FullMethod)
 	if err != nil {
 		return nil, err
@@ -493,7 +493,7 @@ func (ac *authInterceptor) Unary(ctx context.Context, req interface{}, info *grp
 }
 
 // Stream is a gRPC stream interceptor.
-func (ac *authInterceptor) Stream(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func (ac *authInterceptor) Stream(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	err := ac.checkContextAuth(ss.Context(), info.FullMethod)
 	if err != nil {
 		return err

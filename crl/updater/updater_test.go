@@ -314,7 +314,7 @@ func TestUpdateShard(t *testing.T) {
 		"037d6a05a0f6a975380456ae605cee9889": int32(ocsp.AffiliationChanged),
 		"03aa617ab8ee58896ba082bfa25199c884": int32(ocsp.Unspecified),
 	}
-	for _, r := range bytes.Split(recordingUploader.crlBody, []byte("\n")) {
+	for r := range bytes.SplitSeq(recordingUploader.crlBody, []byte("\n")) {
 		if len(r) == 0 {
 			continue
 		}

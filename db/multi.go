@@ -17,7 +17,7 @@ type MultiInserter struct {
 	table  string
 	fields []string
 
-	values [][]interface{}
+	values [][]any
 }
 
 // NewMultiInserter creates a new MultiInserter, checking for reasonable table
@@ -43,12 +43,12 @@ func NewMultiInserter(table string, fields []string) (*MultiInserter, error) {
 	return &MultiInserter{
 		table:  table,
 		fields: fields,
-		values: make([][]interface{}, 0),
+		values: make([][]any, 0),
 	}, nil
 }
 
 // Add registers another row to be included in the Insert query.
-func (mi *MultiInserter) Add(row []interface{}) error {
+func (mi *MultiInserter) Add(row []any) error {
 	if len(row) != len(mi.fields) {
 		return fmt.Errorf("field count mismatch, got %d, expected %d", len(row), len(mi.fields))
 	}
@@ -59,9 +59,9 @@ func (mi *MultiInserter) Add(row []interface{}) error {
 // query returns the formatted query string, and the slice of arguments for
 // for borp to use in place of the query's question marks. Currently only
 // used by .Insert(), below.
-func (mi *MultiInserter) query() (string, []interface{}) {
+func (mi *MultiInserter) query() (string, []any) {
 	var questionsBuf strings.Builder
-	var queryArgs []interface{}
+	var queryArgs []any
 	for _, row := range mi.values {
 		// Safety: We are interpolating a string that will be used in a SQL
 		// query, but we constructed that string in this function and know it

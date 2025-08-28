@@ -56,7 +56,7 @@ var levelName = map[syslog.Priority]string{
 	syslog.LOG_DEBUG:   "DEBUG",
 }
 
-func (w *mockWriter) logAtLevel(p syslog.Priority, msg string, a ...interface{}) {
+func (w *mockWriter) logAtLevel(p syslog.Priority, msg string, a ...any) {
 	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
 }
 
@@ -143,7 +143,7 @@ func newWaitingMockWriter() *waitingMockWriter {
 	}
 }
 
-func (m *waitingMockWriter) logAtLevel(p syslog.Priority, msg string, a ...interface{}) {
+func (m *waitingMockWriter) logAtLevel(p syslog.Priority, msg string, a ...any) {
 	m.logChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
 }
 

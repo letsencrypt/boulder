@@ -33,7 +33,7 @@ import (
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
 // testing object if the sig alg is unknown.
-func sigAlgForKey(t *testing.T, key interface{}) jose.SignatureAlgorithm {
+func sigAlgForKey(t *testing.T, key any) jose.SignatureAlgorithm {
 	var sigAlg jose.SignatureAlgorithm
 	var err error
 	// Gracefully handle the case where a non-pointer public key is given where
@@ -54,7 +54,7 @@ func sigAlgForKey(t *testing.T, key interface{}) jose.SignatureAlgorithm {
 
 // keyAlgForKey returns a JWK key algorithm based on the provided private key.
 // Only ECDSA and RSA private keys are supported.
-func keyAlgForKey(t *testing.T, key interface{}) string {
+func keyAlgForKey(t *testing.T, key any) string {
 	switch key.(type) {
 	case *rsa.PrivateKey, rsa.PrivateKey:
 		return "RSA"
@@ -67,7 +67,7 @@ func keyAlgForKey(t *testing.T, key interface{}) string {
 
 // pubKeyForKey returns the public key of an RSA/ECDSA private key provided as
 // argument.
-func pubKeyForKey(t *testing.T, privKey interface{}) interface{} {
+func pubKeyForKey(t *testing.T, privKey any) any {
 	switch k := privKey.(type) {
 	case *rsa.PrivateKey:
 		return k.PublicKey
@@ -91,11 +91,11 @@ type requestSigner struct {
 // are set based on the additional arguments. A computed JWS, the corresponding
 // embedded JWK and the JWS in serialized string form are returned.
 func (rs requestSigner) embeddedJWK(
-	privateKey interface{},
+	privateKey any,
 	url string,
 	req string) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
-	var publicKey interface{}
+	var publicKey any
 	if privateKey == nil {
 		signer := loadKey(rs.t, []byte(test1KeyPrivatePEM))
 		privateKey = signer
@@ -114,7 +114,7 @@ func (rs requestSigner) embeddedJWK(
 		EmbedJWK:    true,
 	}
 	if url != "" {
-		opts.ExtraHeaders = map[jose.HeaderKey]interface{}{
+		opts.ExtraHeaders = map[jose.HeaderKey]any{
 			"url": url,
 		}
 	}
@@ -138,7 +138,7 @@ func (rs requestSigner) embeddedJWK(
 // embedded JWK and the JWS in serialized string form are returned.
 func (rs requestSigner) byKeyID(
 	keyID int64,
-	privateKey interface{},
+	privateKey any,
 	url string,
 	req string) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
@@ -159,7 +159,7 @@ func (rs requestSigner) byKeyID(
 
 	opts := &jose.SignerOptions{
 		NonceSource: rs.nonceService,
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": url,
 		},
 	}
@@ -191,7 +191,7 @@ func (rs requestSigner) missingNonce() *jose.JSONWebSignature {
 	}
 
 	opts := &jose.SignerOptions{
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": "https://example.com/acme/foo",
 		},
 	}
@@ -219,7 +219,7 @@ func (rs requestSigner) invalidNonce() *jose.JSONWebSignature {
 
 	opts := &jose.SignerOptions{
 		NonceSource: badNonceProvider{},
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": "https://example.com/acme/foo",
 		},
 	}
@@ -252,7 +252,7 @@ func (rs requestSigner) malformedNonce() *jose.JSONWebSignature {
 
 	opts := &jose.SignerOptions{
 		NonceSource: badNonceProvider{malformed: true},
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": "https://example.com/acme/foo",
 		},
 	}
@@ -285,7 +285,7 @@ func (rs requestSigner) shortNonce() *jose.JSONWebSignature {
 
 	opts := &jose.SignerOptions{
 		NonceSource: badNonceProvider{shortNonce: true},
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": "https://example.com/acme/foo",
 		},
 	}
@@ -792,7 +792,7 @@ func TestValidNonce_NoMatchingBackendFound(t *testing.T) {
 }
 
 func (rs requestSigner) signExtraHeaders(
-	headers map[jose.HeaderKey]interface{}) (*jose.JSONWebSignature, string) {
+	headers map[jose.HeaderKey]any) (*jose.JSONWebSignature, string) {
 	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
 
 	signerKey := jose.SigningKey{
@@ -827,14 +827,14 @@ func TestValidPOSTURL(t *testing.T) {
 	noHeadersRequest := makePostRequestWithPath("test-path", noHeadersJWSBody)
 
 	// A JWS and HTTP request with extra headers, but no "url" extra header
-	noURLHeaders := map[jose.HeaderKey]interface{}{
+	noURLHeaders := map[jose.HeaderKey]any{
 		"nifty": "swell",
 	}
 	noURLHeaderJWS, noURLHeaderJWSBody := signer.signExtraHeaders(noURLHeaders)
 	noURLHeaderRequest := makePostRequestWithPath("test-path", noURLHeaderJWSBody)
 
 	// A JWS and HTTP request with a mismatched HTTP URL to JWS "url" header
-	wrongURLHeaders := map[jose.HeaderKey]interface{}{
+	wrongURLHeaders := map[jose.HeaderKey]any{
 		"url": "foobar",
 	}
 	wrongURLHeaderJWS, wrongURLHeaderJWSBody := signer.signExtraHeaders(wrongURLHeaders)
@@ -1153,7 +1153,7 @@ func (rs requestSigner) specifyKeyID(keyID string) (*jose.JSONWebSignature, stri
 
 	opts := &jose.SignerOptions{
 		NonceSource: rs.nonceService,
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": "http://localhost",
 		},
 	}
@@ -1328,7 +1328,7 @@ func TestValidJWSForKey(t *testing.T) {
 	}
 
 	// A JWS and HTTP request with a mismatched HTTP URL to JWS "url" header
-	wrongURLHeaders := map[jose.HeaderKey]interface{}{
+	wrongURLHeaders := map[jose.HeaderKey]any{
 		"url": "foobar",
 	}
 	wrongURLHeaderJWS, _ := signer.signExtraHeaders(wrongURLHeaders)

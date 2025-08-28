@@ -76,10 +76,8 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 	}, parallelism)
 
 	var wg sync.WaitGroup
-	for i := uint(0); i < parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range parallelism {
+		wg.Go(func() {
 			for data := range work {
 				response, err := a.sac.PauseIdentifiers(ctx, &sapb.PauseRequest{
 					RegistrationID: data.accountID,
@@ -92,7 +90,7 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 					respChan <- response
 				}
 			}
-		}()
+		})
 	}
 
 	for accountID, idents := range accountToIdents {

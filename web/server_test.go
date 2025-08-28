@@ -15,12 +15,10 @@ func TestNewServer(t *testing.T) {
 	srv := NewServer(":0", nil, blog.NewMock())
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		err := srv.ListenAndServe()
 		test.Assert(t, errors.Is(err, http.ErrServerClosed), "Could not start server")
-		wg.Done()
-	}()
+	})
 
 	err := srv.Shutdown(context.TODO())
 	test.AssertNotError(t, err, "Could not shut down server")

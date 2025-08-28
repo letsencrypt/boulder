@@ -75,10 +75,10 @@ func TestTLSConf_MakeProber(t *testing.T) {
 
 func TestTLSConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		hostname interface{}
-		rootOrg  interface{}
-		rootCN   interface{}
-		response interface{}
+		hostname any
+		rootOrg  any
+		rootCN   any
+		response any
 	}
 	tests := []struct {
 		name    string
@@ -87,7 +87,7 @@ func TestTLSConf_UnmarshalSettings(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid", fields{"google.com", "", "ISRG Root X1", "valid"}, TLSConf{"google.com", "", "ISRG Root X1", "valid"}, false},
-		{"invalid hostname (map)", fields{make(map[string]interface{}), 42, 42, 42}, nil, true},
+		{"invalid hostname (map)", fields{make(map[string]any), 42, 42, 42}, nil, true},
 		{"invalid rootOrg (list)", fields{42, make([]string, 0), 42, 42}, nil, true},
 		{"invalid response (list)", fields{42, 42, 42, make([]string, 0)}, nil, true},
 	}

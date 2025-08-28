@@ -63,7 +63,7 @@ func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"access_token": ts.token,
 		"token_type":   "Bearer",
 		"expires_in":   3600,
@@ -140,7 +140,7 @@ func (ts *testServer) queryContactsHandler(w http.ResponseWriter, r *http.Reques
 	ts.contacts.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(map[string]interface{}{"contacts": respContacts})
+	err := json.NewEncoder(w).Encode(map[string]any{"contacts": respContacts})
 	if err != nil {
 		log.Printf("Failed to encode contacts query response: %v", err)
 		http.Error(w, "Failed to encode contacts query response", http.StatusInternalServerError)

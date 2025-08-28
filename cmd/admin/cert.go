@@ -318,10 +318,8 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 	var errCount atomic.Uint64
 	wg := new(sync.WaitGroup)
 	work := make(chan string, parallelism)
-	for i := uint(0); i < parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range parallelism {
+		wg.Go(func() {
 			for serial := range work {
 				_, err := a.rac.AdministrativelyRevokeCertificate(
 					ctx,
@@ -345,7 +343,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	for _, serial := range serials {

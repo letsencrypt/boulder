@@ -59,7 +59,7 @@ type awsLogger struct {
 	blog.Logger
 }
 
-func (log awsLogger) Logf(c awsl.Classification, format string, v ...interface{}) {
+func (log awsLogger) Logf(c awsl.Classification, format string, v ...any) {
 	switch c {
 	case awsl.Debug:
 		log.Debugf(format, v...)

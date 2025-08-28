@@ -59,11 +59,13 @@ func getConfigPath() string {
 				return os.Args[i+1]
 			}
 		}
-		if strings.HasPrefix(arg, "--config=") {
-			return strings.TrimPrefix(arg, "--config=")
+		config, ok := strings.CutPrefix(arg, "--config=")
+		if ok {
+			return config
 		}
-		if strings.HasPrefix(arg, "-config=") {
-			return strings.TrimPrefix(arg, "-config=")
+		config, ok = strings.CutPrefix(arg, "-config=")
+		if ok {
+			return config
 		}
 	}
 	return ""

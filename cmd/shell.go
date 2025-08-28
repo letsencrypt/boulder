@@ -58,7 +58,7 @@ type mysqlLogger struct {
 	blog.Logger
 }
 
-func (m mysqlLogger) Print(v ...interface{}) {
+func (m mysqlLogger) Print(v ...any) {
 	m.AuditErrf("[mysql] %s", fmt.Sprint(v...))
 }
 
@@ -69,38 +69,38 @@ type grpcLogger struct {
 
 // Ensure that fatal logs exit, because we use neither the gRPC default logger
 // nor the stdlib default logger, both of which would call os.Exit(1) for us.
-func (log grpcLogger) Fatal(args ...interface{}) {
+func (log grpcLogger) Fatal(args ...any) {
 	log.Error(args...)
 	os.Exit(1)
 }
-func (log grpcLogger) Fatalf(format string, args ...interface{}) {
+func (log grpcLogger) Fatalf(format string, args ...any) {
 	log.Errorf(format, args...)
 	os.Exit(1)
 }
-func (log grpcLogger) Fatalln(args ...interface{}) {
+func (log grpcLogger) Fatalln(args ...any) {
 	log.Errorln(args...)
 	os.Exit(1)
 }
 
 // Treat all gRPC error logs as potential audit events.
-func (log grpcLogger) Error(args ...interface{}) {
+func (log grpcLogger) Error(args ...any) {
 	log.Logger.AuditErr(fmt.Sprint(args...))
 }
-func (log grpcLogger) Errorf(format string, args ...interface{}) {
+func (log grpcLogger) Errorf(format string, args ...any) {
 	log.Logger.AuditErrf(format, args...)
 }
-func (log grpcLogger) Errorln(args ...interface{}) {
+func (log grpcLogger) Errorln(args ...any) {
 	log.Logger.AuditErr(fmt.Sprintln(args...))
 }
 
 // Pass through most Warnings, but filter out a few noisy ones.
-func (log grpcLogger) Warning(args ...interface{}) {
+func (log grpcLogger) Warning(args ...any) {
 	log.Logger.Warning(fmt.Sprint(args...))
 }
-func (log grpcLogger) Warningf(format string, args ...interface{}) {
+func (log grpcLogger) Warningf(format string, args ...any) {
 	log.Logger.Warningf(format, args...)
 }
-func (log grpcLogger) Warningln(args ...interface{}) {
+func (log grpcLogger) Warningln(args ...any) {
 	msg := fmt.Sprintln(args...)
 	// See https://github.com/letsencrypt/boulder/issues/4628
 	if strings.Contains(msg, `ccResolverWrapper: error parsing service config: no JSON service config provided`) {
@@ -116,9 +116,9 @@ func (log grpcLogger) Warningln(args ...interface{}) {
 
 // Don't log any INFO-level gRPC stuff. In practice this is all noise, like
 // failed TXT lookups for service discovery (we only use A records).
-func (log grpcLogger) Info(args ...interface{})                 {}
-func (log grpcLogger) Infof(format string, args ...interface{}) {}
-func (log grpcLogger) Infoln(args ...interface{})               {}
+func (log grpcLogger) Info(args ...any)                 {}
+func (log grpcLogger) Infof(format string, args ...any) {}
+func (log grpcLogger) Infoln(args ...any)               {}
 
 // V returns true if the verbosity level l is less than the verbosity we want to
 // log at.
@@ -135,7 +135,7 @@ type promLogger struct {
 	blog.Logger
 }
 
-func (log promLogger) Println(args ...interface{}) {
+func (log promLogger) Println(args ...any) {
 	log.AuditErr(fmt.Sprint(args...))
 }
 
@@ -143,7 +143,7 @@ type redisLogger struct {
 	blog.Logger
 }
 
-func (rl redisLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+func (rl redisLogger) Printf(ctx context.Context, format string, v ...any) {
 	rl.Infof(format, v...)
 }
 
@@ -411,7 +411,7 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-func decodeJSONStrict(in io.Reader, out interface{}) error {
+func decodeJSONStrict(in io.Reader, out any) error {
 	decoder := json.NewDecoder(in)
 	decoder.DisallowUnknownFields()
 
@@ -423,7 +423,7 @@ func decodeJSONStrict(in io.Reader, out interface{}) error {
 // configuration of a boulder component. Any config keys in the JSON
 // file which do not correspond to expected keys in the config struct
 // will result in errors.
-func ReadConfigFile(filename string, out interface{}) error {
+func ReadConfigFile(filename string, out any) error {
 	file, err := os.Open(filename)
 	if err != nil {
 		return err

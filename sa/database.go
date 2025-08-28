@@ -253,7 +253,7 @@ type SQLLogger struct {
 }
 
 // Printf adapts the Logger to borp's interface
-func (log *SQLLogger) Printf(format string, v ...interface{}) {
+func (log *SQLLogger) Printf(format string, v ...any) {
 	log.Debugf(format, v...)
 }
 

@@ -169,11 +169,11 @@ func TestDNSConf_MakeProber(t *testing.T) {
 
 func TestDNSConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		protocol   interface{}
-		server     interface{}
-		recurse    interface{}
-		query_name interface{}
-		query_type interface{}
+		protocol   any
+		server     any
+		recurse    any
+		query_name any
+		query_type any
 	}
 	tests := []struct {
 		name    string

@@ -152,10 +152,7 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 	)
 
 	for i := 0; i < len(crlBytes); i += 1000 {
-		j := i + 1000
-		if j > len(crlBytes) {
-			j = len(crlBytes)
-		}
+		j := min(i+1000, len(crlBytes))
 		err = stream.Send(&capb.GenerateCRLResponse{
 			Chunk: crlBytes[i:j],
 		})

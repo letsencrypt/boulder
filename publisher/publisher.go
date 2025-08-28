@@ -92,7 +92,7 @@ type logAdaptor struct {
 	blog.Logger
 }
 
-func (la logAdaptor) Printf(s string, args ...interface{}) {
+func (la logAdaptor) Printf(s string, args ...any) {
 	la.Logger.Infof(s, args...)
 }
 

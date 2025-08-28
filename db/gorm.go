@@ -94,7 +94,7 @@ type mappedSelector[T any] struct {
 // The caller is responsible for calling `Rows.Close()` when they are done with
 // the query. The caller is also responsible for ensuring that the clauses
 // argument does not contain any user-influenced input.
-func (ts mappedSelector[T]) QueryContext(ctx context.Context, clauses string, args ...interface{}) (Rows[T], error) {
+func (ts mappedSelector[T]) QueryContext(ctx context.Context, clauses string, args ...any) (Rows[T], error) {
 	// Look up the table to use based on the type of this TypeSelector.
 	var throwaway T
 	tableMap, err := ts.wrapped.TableFor(reflect.TypeOf(throwaway), false)
@@ -112,7 +112,7 @@ func (ts mappedSelector[T]) QueryContext(ctx context.Context, clauses string, ar
 // The caller is responsible for calling `Rows.Close()` when they are done with
 // the query. The caller is also responsible for ensuring that the clauses
 // argument does not contain any user-influenced input.
-func (ts mappedSelector[T]) QueryFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (Rows[T], error) {
+func (ts mappedSelector[T]) QueryFrom(ctx context.Context, tablename string, clauses string, args ...any) (Rows[T], error) {
 	err := validMariaDBUnquotedIdentifier(tablename)
 	if err != nil {
 		return nil, err
@@ -197,7 +197,7 @@ func (r rows[T]) Get() (*T, error) {
 	// Because sql.Rows.Scan(...) takes a variadic number of individual targets to
 	// read values into, build a slice that can be splatted into the call. Use the
 	// pre-computed list of in-order column names to populate it.
-	scanTargets := make([]interface{}, r.numCols)
+	scanTargets := make([]any, r.numCols)
 	for i := range scanTargets {
 		field := v.Elem().Field(i)
 		scanTargets[i] = field.Addr().Interface()

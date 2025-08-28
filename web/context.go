@@ -59,8 +59,8 @@ type RequestEvent struct {
 	IgnoredRateLimitError string `json:",omitempty"`
 	UserAgent             string `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
-	Origin string                 `json:",omitempty"`
-	Extra  map[string]interface{} `json:",omitempty"`
+	Origin string         `json:",omitempty"`
+	Extra  map[string]any `json:",omitempty"`
 
 	// For endpoints that create objects, the ID of the newly created object.
 	Created string `json:",omitempty"`
@@ -84,7 +84,7 @@ type RequestEvent struct {
 // AddError formats the given message with the given args and appends it to the
 // list of internal errors that have occurred as part of handling this event.
 // If the RequestEvent has been suppressed, this un-suppresses it.
-func (e *RequestEvent) AddError(msg string, args ...interface{}) {
+func (e *RequestEvent) AddError(msg string, args ...any) {
 	e.InternalErrors = append(e.InternalErrors, fmt.Sprintf(msg, args...))
 	e.suppressed = false
 }
@@ -148,7 +148,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Method:    r.Method,
 		UserAgent: userAgent,
 		Origin:    r.Header.Get("Origin"),
-		Extra:     make(map[string]interface{}),
+		Extra:     make(map[string]any),
 	}
 
 	ctx := WithUserAgent(r.Context(), userAgent)

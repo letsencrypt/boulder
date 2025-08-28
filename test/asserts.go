@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ func Assert(t *testing.T, result bool, message string) {
 
 // AssertNil checks that an object is nil. Being a "boxed nil" (a nil value
 // wrapped in a non-nil interface type) is not good enough.
-func AssertNil(t *testing.T, obj interface{}, message string) {
+func AssertNil(t *testing.T, obj any, message string) {
 	t.Helper()
 	if obj != nil {
 		t.Fatal(message)
@@ -35,7 +36,7 @@ func AssertNil(t *testing.T, obj interface{}, message string) {
 // wrapped in a non-nil interface type) is not good enough.
 // Note that there is a gap between AssertNil and AssertNotNil. Both fail when
 // called with a boxed nil. This is intentional: we want to avoid boxed nils.
-func AssertNotNil(t *testing.T, obj interface{}, message string) {
+func AssertNotNil(t *testing.T, obj any, message string) {
 	t.Helper()
 	if obj == nil {
 		t.Fatal(message)
@@ -51,7 +52,7 @@ func AssertNotNil(t *testing.T, obj interface{}, message string) {
 
 // AssertBoxedNil checks that an inner object is nil. This is intentional for
 // testing purposes only.
-func AssertBoxedNil(t *testing.T, obj interface{}, message string) {
+func AssertBoxedNil(t *testing.T, obj any, message string) {
 	t.Helper()
 	typ := reflect.TypeOf(obj).Kind()
 	switch typ {
@@ -83,7 +84,7 @@ func AssertError(t *testing.T, err error, message string) {
 
 // AssertErrorWraps checks that err can be unwrapped into the given target.
 // NOTE: Has the side effect of actually performing that unwrapping.
-func AssertErrorWraps(t *testing.T, err error, target interface{}) {
+func AssertErrorWraps(t *testing.T, err error, target any) {
 	t.Helper()
 	if !errors.As(err, target) {
 		t.Fatalf("error does not wrap an error of the expected type: %q !> %+T", err.Error(), target)
@@ -104,7 +105,7 @@ func AssertErrorIs(t *testing.T, err error, target error) {
 }
 
 // AssertEquals uses the equality operator (==) to measure one and two
-func AssertEquals(t *testing.T, one interface{}, two interface{}) {
+func AssertEquals(t *testing.T, one any, two any) {
 	t.Helper()
 	if reflect.TypeOf(one) != reflect.TypeOf(two) {
 		t.Fatalf("cannot test equality of different types: %T != %T", one, two)
@@ -115,7 +116,7 @@ func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 }
 
 // AssertDeepEquals uses the reflect.DeepEqual method to measure one and two
-func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
+func AssertDeepEquals(t *testing.T, one any, two any) {
 	t.Helper()
 	if !reflect.DeepEqual(one, two) {
 		t.Fatalf("[%#v] !(deep)= [%#v]", one, two)
@@ -124,7 +125,7 @@ func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
 
 // AssertMarshaledEquals marshals one and two to JSON, and then uses
 // the equality operator to measure them
-func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
+func AssertMarshaledEquals(t *testing.T, one any, two any) {
 	t.Helper()
 	oneJSON, err := json.Marshal(one)
 	AssertNotError(t, err, "Could not marshal 1st argument")
@@ -141,7 +142,7 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 // the same
 func AssertUnmarshaledEquals(t *testing.T, got, expected string) {
 	t.Helper()
-	var gotMap, expectedMap map[string]interface{}
+	var gotMap, expectedMap map[string]any
 	err := json.Unmarshal([]byte(got), &gotMap)
 	AssertNotError(t, err, "Could not unmarshal 'got'")
 	err = json.Unmarshal([]byte(expected), &expectedMap)
@@ -158,7 +159,7 @@ func AssertUnmarshaledEquals(t *testing.T, got, expected string) {
 
 // AssertNotEquals uses the equality operator to measure that one and two
 // are different
-func AssertNotEquals(t *testing.T, one interface{}, two interface{}) {
+func AssertNotEquals(t *testing.T, one any, two any) {
 	t.Helper()
 	if one == two {
 		t.Fatalf("%#v == %#v", one, two)
@@ -194,10 +195,8 @@ func AssertNotContains(t *testing.T, haystack string, needle string) {
 // AssertSliceContains determines if needle can be found in haystack
 func AssertSliceContains[T comparable](t *testing.T, haystack []T, needle T) {
 	t.Helper()
-	for _, item := range haystack {
-		if item == needle {
-			return
-		}
+	if slices.Contains(haystack, needle) {
+		return
 	}
 	t.Fatalf("Slice %v does not contain %v", haystack, needle)
 }

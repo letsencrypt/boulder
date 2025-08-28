@@ -18,22 +18,22 @@ import (
 
 // A OneSelector is anything that provides a `SelectOne` function.
 type OneSelector interface {
-	SelectOne(context.Context, interface{}, string, ...interface{}) error
+	SelectOne(context.Context, any, string, ...any) error
 }
 
 // A Selector is anything that provides a `Select` function.
 type Selector interface {
-	Select(context.Context, interface{}, string, ...interface{}) ([]interface{}, error)
+	Select(context.Context, any, string, ...any) ([]any, error)
 }
 
 // A Inserter is anything that provides an `Insert` function
 type Inserter interface {
-	Insert(context.Context, ...interface{}) error
+	Insert(context.Context, ...any) error
 }
 
 // A Execer is anything that provides an `ExecContext` function
 type Execer interface {
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
 // SelectExecer offers a subset of borp.SqlExecutor's methods: Select and
@@ -58,10 +58,10 @@ type Executor interface {
 	OneSelector
 	Inserter
 	SelectExecer
-	Delete(context.Context, ...interface{}) (int64, error)
-	Get(context.Context, interface{}, ...interface{}) (interface{}, error)
-	Update(context.Context, ...interface{}) (int64, error)
-	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+	Delete(context.Context, ...any) (int64, error)
+	Get(context.Context, any, ...any) (any, error)
+	Update(context.Context, ...any) (int64, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
 // Transaction extends an Executor and adds Rollback and Commit
@@ -74,14 +74,14 @@ type Transaction interface {
 // MappedExecutor is anything that can map types to tables
 type MappedExecutor interface {
 	TableFor(reflect.Type, bool) (*borp.TableMap, error)
-	QueryContext(ctx context.Context, clauses string, args ...interface{}) (*sql.Rows, error)
+	QueryContext(ctx context.Context, clauses string, args ...any) (*sql.Rows, error)
 }
 
 // MappedSelector is anything that can execute various kinds of SQL statements
 // against a table automatically determined from the parameterized type.
 type MappedSelector[T any] interface {
-	QueryContext(ctx context.Context, clauses string, args ...interface{}) (Rows[T], error)
-	QueryFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (Rows[T], error)
+	QueryContext(ctx context.Context, clauses string, args ...any) (Rows[T], error)
+	QueryFrom(ctx context.Context, tablename string, clauses string, args ...any) (Rows[T], error)
 }
 
 // Rows is anything which lets you iterate over the result rows of a SELECT
@@ -105,48 +105,48 @@ type Rows[T any] interface {
 // to override the specific methods they need to implement (e.g. SelectOne).
 type MockSqlExecutor struct{}
 
-func (mse MockSqlExecutor) Get(ctx context.Context, i interface{}, keys ...interface{}) (interface{}, error) {
+func (mse MockSqlExecutor) Get(ctx context.Context, i any, keys ...any) (any, error) {
 	return nil, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) Insert(ctx context.Context, list ...interface{}) error {
+func (mse MockSqlExecutor) Insert(ctx context.Context, list ...any) error {
 	return errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) Update(ctx context.Context, list ...interface{}) (int64, error) {
+func (mse MockSqlExecutor) Update(ctx context.Context, list ...any) (int64, error) {
 	return 0, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) Delete(ctx context.Context, list ...interface{}) (int64, error) {
+func (mse MockSqlExecutor) Delete(ctx context.Context, list ...any) (int64, error) {
 	return 0, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (mse MockSqlExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return nil, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error) {
+func (mse MockSqlExecutor) Select(ctx context.Context, i any, query string, args ...any) ([]any, error) {
 	return nil, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) SelectInt(ctx context.Context, query string, args ...interface{}) (int64, error) {
+func (mse MockSqlExecutor) SelectInt(ctx context.Context, query string, args ...any) (int64, error) {
 	return 0, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error) {
+func (mse MockSqlExecutor) SelectNullInt(ctx context.Context, query string, args ...any) (sql.NullInt64, error) {
 	return sql.NullInt64{}, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) SelectFloat(ctx context.Context, query string, args ...interface{}) (float64, error) {
+func (mse MockSqlExecutor) SelectFloat(ctx context.Context, query string, args ...any) (float64, error) {
 	return 0, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) SelectNullFloat(ctx context.Context, query string, args ...interface{}) (sql.NullFloat64, error) {
+func (mse MockSqlExecutor) SelectNullFloat(ctx context.Context, query string, args ...any) (sql.NullFloat64, error) {
 	return sql.NullFloat64{}, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) SelectStr(ctx context.Context, query string, args ...interface{}) (string, error) {
+func (mse MockSqlExecutor) SelectStr(ctx context.Context, query string, args ...any) (string, error) {
 	return "", errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) SelectNullStr(ctx context.Context, query string, args ...interface{}) (sql.NullString, error) {
+func (mse MockSqlExecutor) SelectNullStr(ctx context.Context, query string, args ...any) (sql.NullString, error) {
 	return sql.NullString{}, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error {
+func (mse MockSqlExecutor) SelectOne(ctx context.Context, holder any, query string, args ...any) error {
 	return errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (mse MockSqlExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return nil, errors.New("unimplemented")
 }
-func (mse MockSqlExecutor) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (mse MockSqlExecutor) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return nil
 }

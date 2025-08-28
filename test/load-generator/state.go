@@ -84,7 +84,7 @@ func (c *acmeCache) signEmbeddedV2Request(data []byte, url string) (*jose.JSONWe
 	signer, err := jose.NewSigner(signingKey, &jose.SignerOptions{
 		NonceSource: c.ns,
 		EmbedJWK:    true,
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": url,
 		},
 	})
@@ -123,7 +123,7 @@ func (c *acmeCache) signKeyIDV2Request(data []byte, url string) (*jose.JSONWebSi
 	// Ensure the signer's nonce source and URL header will be set
 	opts := &jose.SignerOptions{
 		NonceSource: c.ns,
-		ExtraHeaders: map[jose.HeaderKey]interface{}{
+		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": url,
 		},
 	}

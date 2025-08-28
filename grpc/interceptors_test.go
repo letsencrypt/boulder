@@ -33,7 +33,7 @@ import (
 
 var fc = clock.NewFake()
 
-func testHandler(_ context.Context, i interface{}) (interface{}, error) {
+func testHandler(_ context.Context, i any) (any, error) {
 	if i != nil {
 		return nil, errors.New("")
 	}
@@ -41,7 +41,7 @@ func testHandler(_ context.Context, i interface{}) (interface{}, error) {
 	return nil, nil
 }
 
-func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
+func testInvoker(_ context.Context, method string, _, _ any, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
 	switch method {
 	case "-service-brokeTest":
 		return errors.New("")

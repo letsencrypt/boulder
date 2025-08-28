@@ -52,7 +52,7 @@ const (
 	delServfail    = "clear-servfail"
 )
 
-func (c *Client) postURL(path string, body interface{}) ([]byte, error) {
+func (c *Client) postURL(path string, body any) ([]byte, error) {
 	endpoint, err := url.JoinPath(c.baseURL, path)
 	if err != nil {
 		return nil, fmt.Errorf("joining URL %q with path %q: %w", c.baseURL, path, err)
@@ -119,7 +119,7 @@ func (c *Client) SetDefaultIPv6(addr string) ([]byte, error) {
 // the given host and IPv4 addresses. Any failure returns an error that includes
 // both the relevant operation and the payload.
 func (c *Client) AddARecord(host string, addresses []string) ([]byte, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"host":      host,
 		"addresses": addresses,
 	}
@@ -152,7 +152,7 @@ func (c *Client) RemoveARecord(host string) ([]byte, error) {
 // interface for the given host and IPv6 addresses. Any failure returns an error
 // that includes both the relevant operation and the payload.
 func (c *Client) AddAAAARecord(host string, addresses []string) ([]byte, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"host":      host,
 		"addresses": addresses,
 	}
@@ -186,7 +186,7 @@ func (c *Client) RemoveAAAARecord(host string) ([]byte, error) {
 // the provided value. Any failure returns an error that includes both the
 // relevant operation and the payload.
 func (c *Client) AddCAAIssue(host, value string) ([]byte, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"host": host,
 		"policies": []map[string]string{
 			{"tag": "issue", "value": value},

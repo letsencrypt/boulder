@@ -42,7 +42,7 @@ func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
 	crl, err := x509.ParseRevocationList(body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("failed to parse body: %s", err)))
+		w.Write(fmt.Appendf(nil, "failed to parse body: %s", err))
 		return
 	}
 
@@ -90,7 +90,7 @@ func (srv *s3TestSrv) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("%d", reason)))
+	w.Write(fmt.Appendf(nil, "%d", reason))
 }
 
 func (srv *s3TestSrv) handleReset(w http.ResponseWriter, r *http.Request) {

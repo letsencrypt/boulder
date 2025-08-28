@@ -118,7 +118,7 @@ type dynamicProvider struct {
 	// ports (Port fields in SRV records) associated with those addresses.
 	addrs map[string][]uint16
 	// Other internal bookkeeping state.
-	cancel        chan interface{}
+	cancel        chan any
 	mu            sync.RWMutex
 	refresh       time.Duration
 	updateCounter *prometheus.CounterVec
@@ -208,7 +208,7 @@ func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration, proto strin
 		proto:        proto,
 		domain:       c.SRVLookup.Domain,
 		addrs:        make(map[string][]uint16),
-		cancel:       make(chan interface{}),
+		cancel:       make(chan any),
 		refresh:      refresh,
 		updateCounter: prometheus.NewCounterVec(
 			prometheus.CounterOpts{

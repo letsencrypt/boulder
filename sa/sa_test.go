@@ -720,10 +720,10 @@ func TestFQDNSetExists(t *testing.T) {
 type execRecorder struct {
 	valuesPerRow int
 	query        string
-	args         []interface{}
+	args         []any
 }
 
-func (e *execRecorder) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (e *execRecorder) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	e.query = query
 	e.args = args
 	return rowsResult{int64(len(args) / e.valuesPerRow)}, nil
@@ -755,7 +755,7 @@ func TestAddIssuedNames(t *testing.T) {
 		SerialNumber *big.Int
 		NotBefore    time.Time
 		Renewal      bool
-		ExpectedArgs []interface{}
+		ExpectedArgs []any
 	}{
 		{
 			Name:         "One domain, not a renewal",
@@ -763,7 +763,7 @@ func TestAddIssuedNames(t *testing.T) {
 			SerialNumber: serial,
 			NotBefore:    notBefore,
 			Renewal:      false,
-			ExpectedArgs: []interface{}{
+			ExpectedArgs: []any{
 				"uk.co.example",
 				expectedSerial,
 				expectedNotBefore,
@@ -776,7 +776,7 @@ func TestAddIssuedNames(t *testing.T) {
 			SerialNumber: serial,
 			NotBefore:    notBefore,
 			Renewal:      false,
-			ExpectedArgs: []interface{}{
+			ExpectedArgs: []any{
 				"uk.co.example",
 				expectedSerial,
 				expectedNotBefore,
@@ -793,7 +793,7 @@ func TestAddIssuedNames(t *testing.T) {
 			SerialNumber: serial,
 			NotBefore:    notBefore,
 			Renewal:      true,
-			ExpectedArgs: []interface{}{
+			ExpectedArgs: []any{
 				"uk.co.example",
 				expectedSerial,
 				expectedNotBefore,
@@ -806,7 +806,7 @@ func TestAddIssuedNames(t *testing.T) {
 			SerialNumber: serial,
 			NotBefore:    notBefore,
 			Renewal:      true,
-			ExpectedArgs: []interface{}{
+			ExpectedArgs: []any{
 				"uk.co.example",
 				expectedSerial,
 				expectedNotBefore,
@@ -3991,20 +3991,17 @@ func TestUnpauseAccount(t *testing.T) {
 func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, count int) error {
 	const batchSize = 1000
 
-	values := make([]interface{}, 0, batchSize*4)
+	values := make([]any, 0, batchSize*4)
 	now := sa.clk.Now().Add(-time.Hour)
 	batches := (count + batchSize - 1) / batchSize
 
-	for batch := 0; batch < batches; batch++ {
+	for batch := range batches {
 		query := `
 		INSERT INTO paused (registrationID, identifierType, identifierValue, pausedAt)
 		VALUES`
 
 		start := batch * batchSize
-		end := start + batchSize
-		if end > count {
-			end = count
-		}
+		end := min(start+batchSize, count)
 
 		for i := start; i < end; i++ {
 			if i > start {

@@ -31,7 +31,7 @@ func (srv *aiaTestSrv) handleIssuer(w http.ResponseWriter, r *http.Request) {
 	issuer, ok := srv.issuersByName[issuerName]
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("issuer %q not found", issuerName)))
+		w.Write(fmt.Appendf(nil, "issuer %q not found", issuerName))
 		return
 	}
 

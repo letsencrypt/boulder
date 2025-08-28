@@ -17,8 +17,8 @@ var (
 // connection. It is satisfied by *sql.DB.
 type CleanUpDB interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
-	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 
 	io.Closer
 }

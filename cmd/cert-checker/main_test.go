@@ -91,8 +91,8 @@ func BenchmarkCheckCert(b *testing.B) {
 		Issued:  timestamppb.New(time.Now()),
 		Expires: timestamppb.New(expiry),
 	}
-	b.ResetTimer()
-	for range b.N {
+
+	for b.Loop() {
 		checker.checkCert(context.Background(), cert)
 	}
 }
@@ -390,7 +390,7 @@ type mismatchedCountDB struct{}
 // `getCerts` calls `SelectInt` first to determine how many rows there are
 // matching the `getCertsCountQuery` criteria. For this mock we return
 // a non-zero number
-func (db mismatchedCountDB) SelectNullInt(_ context.Context, _ string, _ ...interface{}) (sql.NullInt64, error) {
+func (db mismatchedCountDB) SelectNullInt(_ context.Context, _ string, _ ...any) (sql.NullInt64, error) {
 	return sql.NullInt64{
 			Int64: 99999,
 			Valid: true,
@@ -400,11 +400,11 @@ func (db mismatchedCountDB) SelectNullInt(_ context.Context, _ string, _ ...inte
 
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
 // a dastardly switch-a-roo here and return an empty set
-func (db mismatchedCountDB) Select(_ context.Context, output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
+func (db mismatchedCountDB) Select(_ context.Context, output any, _ string, _ ...any) ([]any, error) {
 	return nil, nil
 }
 
-func (db mismatchedCountDB) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
+func (db mismatchedCountDB) SelectOne(_ context.Context, _ any, _ string, _ ...any) error {
 	return errors.New("unimplemented")
 }
 
@@ -445,7 +445,7 @@ type emptyDB struct {
 
 // SelectNullInt is a method that returns a false sql.NullInt64 struct to
 // mock a null DB response
-func (db emptyDB) SelectNullInt(_ context.Context, _ string, _ ...interface{}) (sql.NullInt64, error) {
+func (db emptyDB) SelectNullInt(_ context.Context, _ string, _ ...any) (sql.NullInt64, error) {
 	return sql.NullInt64{Valid: false},
 		nil
 }
@@ -473,8 +473,8 @@ type lateDB struct {
 
 // SelectNullInt is a method that returns a false sql.NullInt64 struct to
 // mock a null DB response
-func (db *lateDB) SelectNullInt(_ context.Context, _ string, args ...interface{}) (sql.NullInt64, error) {
-	args2 := args[0].(map[string]interface{})
+func (db *lateDB) SelectNullInt(_ context.Context, _ string, args ...any) (sql.NullInt64, error) {
+	args2 := args[0].(map[string]any)
 	begin := args2["begin"].(time.Time)
 	end := args2["end"].(time.Time)
 	if begin.Compare(db.issuedTime) < 0 && end.Compare(db.issuedTime) > 0 {
@@ -483,14 +483,14 @@ func (db *lateDB) SelectNullInt(_ context.Context, _ string, args ...interface{}
 	return sql.NullInt64{Valid: false}, nil
 }
 
-func (db *lateDB) Select(_ context.Context, output interface{}, _ string, args ...interface{}) ([]interface{}, error) {
+func (db *lateDB) Select(_ context.Context, output any, _ string, args ...any) ([]any, error) {
 	db.selectedACert = true
 	// For expediency we respond with an empty list of certificates; the checker will treat this as if it's
 	// reached the end of the list of certificates to process.
 	return nil, nil
 }
 
-func (db *lateDB) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
+func (db *lateDB) SelectOne(_ context.Context, _ any, _ string, _ ...any) error {
 	return nil
 }
 

@@ -517,7 +517,7 @@ func TestUnpredictableIssuance(t *testing.T) {
 	seenE2 := false
 	seenR3 := false
 	profile := ca.certProfiles["legacy"]
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		precertDER, err := ca.issuePrecertificate(ctx, profile, req)
 		test.AssertNotError(t, err, "Failed to issue test certificate")
 		cert, err := x509.ParseCertificate(precertDER)

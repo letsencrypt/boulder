@@ -85,7 +85,7 @@ func ignore(g string) bool {
 func interestingGoroutines() (gs []string) {
 	buf := make([]byte, 2<<20)
 	buf = buf[:runtime.Stack(buf, true)]
-	for _, g := range strings.Split(string(buf), "\n\n") {
+	for g := range strings.SplitSeq(string(buf), "\n\n") {
 		if !ignore(g) {
 			gs = append(gs, g)
 		}
@@ -97,7 +97,7 @@ func interestingGoroutines() (gs []string) {
 // Errorfer is the interface that wraps the Errorf method. It's a subset of
 // testing.TB to make it easy to use Check.
 type Errorfer interface {
-	Errorf(format string, args ...interface{})
+	Errorf(format string, args ...any)
 }
 
 func check(efer Errorfer, timeout time.Duration) {

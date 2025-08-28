@@ -3,6 +3,7 @@ package ratelimits
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 )
@@ -78,9 +79,7 @@ func NewInmemSource() *inmem {
 func (in *inmem) BatchSet(_ context.Context, bucketKeys map[string]time.Time) error {
 	in.Lock()
 	defer in.Unlock()
-	for k, v := range bucketKeys {
-		in.m[k] = v
-	}
+	maps.Copy(in.m, bucketKeys)
 	return nil
 }
 

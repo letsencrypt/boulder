@@ -128,7 +128,7 @@ type ValidationRecord struct {
 	Hostname          string       `json:"hostname,omitempty"`
 	Port              string       `json:"port,omitempty"`
 	AddressesResolved []netip.Addr `json:"addressesResolved,omitempty"`
-	AddressUsed       netip.Addr   `json:"addressUsed,omitempty"`
+	AddressUsed       netip.Addr   `json:"addressUsed"`
 
 	// AddressesTried contains a list of addresses tried before the `AddressUsed`.
 	// Presently this will only ever be one IP from `AddressesResolved` since the
@@ -282,7 +282,7 @@ type Authorization struct {
 	ID string `json:"-"`
 
 	// The identifier for which authorization is being given
-	Identifier identifier.ACMEIdentifier `json:"identifier,omitempty"`
+	Identifier identifier.ACMEIdentifier `json:"identifier"`
 
 	// The registration ID associated with the authorization
 	RegistrationID int64 `json:"-"`

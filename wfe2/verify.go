@@ -340,7 +340,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, error) {
 	// these headers.
 	var unprotected struct {
 		Header     map[string]string
-		Signatures []interface{}
+		Signatures []any
 	}
 	err := json.Unmarshal(body, &unprotected)
 	if err != nil {
@@ -461,13 +461,12 @@ func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request)
 	// expected URL prefix and a legacy URL prefix are permitted in order to allow
 	// ACME v1 clients to use legacy accounts with unmodified account URLs for V2
 	// requests.
-	var accountIDStr string
-	if strings.HasPrefix(acctURL, expectedURLPrefix) {
-		accountIDStr = strings.TrimPrefix(acctURL, expectedURLPrefix)
-	} else if strings.HasPrefix(acctURL, wfe.LegacyKeyIDPrefix) {
-		accountIDStr = strings.TrimPrefix(acctURL, wfe.LegacyKeyIDPrefix)
-	} else {
-		return 0, berrors.MalformedError("KeyID header contained an invalid account URL: %q", acctURL)
+	accountIDStr, hasPrefix := strings.CutPrefix(acctURL, expectedURLPrefix)
+	if !hasPrefix {
+		accountIDStr, hasPrefix = strings.CutPrefix(acctURL, wfe.LegacyKeyIDPrefix)
+		if !hasPrefix {
+			return 0, berrors.MalformedError("KeyID header contained an invalid account URL: %q", acctURL)
+		}
 	}
 
 	// Convert the raw account ID string to an int64 for use with the SA's

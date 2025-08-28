@@ -235,10 +235,7 @@ func (ap *akamaiPurger) takeBatch() [][]string {
 
 	// If the stack contains less than a full batch, set the batch size to the
 	// current stack size.
-	batchSize := ap.entriesPerBatch
-	if stackSize < batchSize {
-		batchSize = stackSize
-	}
+	batchSize := min(stackSize, ap.entriesPerBatch)
 
 	batchBegin := stackSize - batchSize
 	batchEnd := stackSize

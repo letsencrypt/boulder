@@ -79,10 +79,7 @@ func main() {
 
 	clk := clock.New()
 
-	parallel := c.SA.ParallelismPerRPC
-	if parallel < 1 {
-		parallel = 1
-	}
+	parallel := max(c.SA.ParallelismPerRPC, 1)
 
 	tls, err := c.SA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")

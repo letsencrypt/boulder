@@ -327,11 +327,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	mux.Handle(pattern, handler)
 }
 
-func marshalIndent(v interface{}) ([]byte, error) {
+func marshalIndent(v any) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
-func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *web.RequestEvent, status int, v interface{}) error {
+func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *web.RequestEvent, status int, v any) error {
 	jsonReply, err := marshalIndent(v)
 	if err != nil {
 		return err // All callers are responsible for handling this error
@@ -370,10 +370,10 @@ func requestProto(request *http.Request) string {
 
 const randomDirKeyExplanationLink = "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 
-func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]interface{}) ([]byte, error) {
+func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]any) ([]byte, error) {
 	// Create an empty map sized equal to the provided directory to store the
 	// relative-ized result
-	relativeDir := make(map[string]interface{}, len(directory))
+	relativeDir := make(map[string]any, len(directory))
 
 	// Copy each entry of the provided directory into the new relative map,
 	// prefixing it with the request protocol and host.
@@ -496,7 +496,7 @@ func (wfe *WebFrontEndImpl) Directory(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	directoryEndpoints := map[string]interface{}{
+	directoryEndpoints := map[string]any{
 		"newAccount": newAcctPath,
 		"newNonce":   newNoncePath,
 		"revokeCert": revokeCertPath,
@@ -529,7 +529,7 @@ func (wfe *WebFrontEndImpl) Directory(
 	// ACME since draft-02 describes an optional "meta" directory entry. The
 	// meta entry may optionally contain a "termsOfService" URI for the
 	// current ToS.
-	metaMap := map[string]interface{}{
+	metaMap := map[string]any{
 		"termsOfService": wfe.SubscriberAgreementURL,
 	}
 	// The "meta" directory entry may also include a []string of CAA identities
@@ -1263,8 +1263,9 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	// corresponds to a wildcard request (e.g. to handle CAA properly). We strip
 	// the "*." prefix from the Authz's Identifier's Value here to respect the law
 	// of the protocol.
-	if strings.HasPrefix(authz.Identifier.Value, "*.") {
-		authz.Identifier.Value = strings.TrimPrefix(authz.Identifier.Value, "*.")
+	ident, isWildcard := strings.CutPrefix(authz.Identifier.Value, "*.")
+	if isWildcard {
+		authz.Identifier.Value = ident
 		// Mark that the authorization corresponds to a wildcard request since we've
 		// now removed the wildcard prefix from the identifier.
 		authz.Wildcard = true

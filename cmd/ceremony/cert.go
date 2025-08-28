@@ -162,7 +162,7 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 
 func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	var oid asn1.ObjectIdentifier
-	for _, a := range strings.Split(oidStr, ".") {
+	for a := range strings.SplitSeq(oidStr, ".") {
 		i, err := strconv.Atoi(a)
 		if err != nil {
 			return nil, err

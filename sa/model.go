@@ -63,7 +63,7 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 const regFields = "id, jwk, jwk_sha256, agreement, createdAt, status"
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
+func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, args ...any) (*regModel, error) {
 	if whereCol != "id" && whereCol != "jwk_sha256" {
 		return nil, fmt.Errorf("column name %q invalid for registrations table WHERE clause", whereCol)
 	}
@@ -116,7 +116,7 @@ func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) 
 // Returns a slice of *corepb.Certificate along with the highest ID field seen
 // (which can be used as input to a subsequent query when iterating in primary
 // key order).
-func SelectCertificates(ctx context.Context, s db.Selector, q string, args map[string]interface{}) ([]*corepb.Certificate, int64, error) {
+func SelectCertificates(ctx context.Context, s db.Selector, q string, args map[string]any) ([]*corepb.Certificate, int64, error) {
 	var models []certificateModel
 	_, err := s.Select(
 		ctx,
@@ -775,7 +775,6 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	for i, r := range records {
 		// Fixes implicit memory aliasing in for loop so we can deference r
 		// later on for rehydrateHostPort.
-		r := r
 		if challenge.Type == string(core.ChallengeTypeHTTP01) {
 			err := rehydrateHostPort(&r)
 			if err != nil {
@@ -817,7 +816,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	// to core.StatusValid or core.StatusInvalid depending on if there is anything
 	// in ValidationError and populate the ValidationRecord and ValidationError
 	// fields.
-	for pos := uint8(0); pos < 8; pos++ {
+	for pos := range uint8(8) {
 		if (am.Challenges>>pos)&1 == 1 {
 			challType := uintToChallType[pos]
 			challenge := &corepb.Challenge{
@@ -990,7 +989,7 @@ func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certifica
 		return err
 	}
 	for _, name := range cert.DNSNames {
-		err = multiInserter.Add([]interface{}{
+		err = multiInserter.Add([]any{
 			reverseFQDN(name),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore.Truncate(24 * time.Hour),
@@ -1001,7 +1000,7 @@ func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certifica
 		}
 	}
 	for _, ip := range cert.IPAddresses {
-		err = multiInserter.Add([]interface{}{
+		err = multiInserter.Add([]any{
 			ip.String(),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore.Truncate(24 * time.Hour),
@@ -1181,7 +1180,7 @@ type authzValidity struct {
 // getAuthorizationStatuses takes a sequence of authz IDs, and returns the
 // status and expiration date of each of them.
 func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) ([]authzValidity, error) {
-	var params []interface{}
+	var params []any
 	for _, id := range ids {
 		params = append(params, id)
 	}

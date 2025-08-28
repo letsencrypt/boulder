@@ -44,10 +44,10 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 
 func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		url       interface{}
-		rcodes    interface{}
-		useragent interface{}
-		insecure  interface{}
+		url       any
+		rcodes    any
+		useragent any
+		insecure  any
 	}
 	tests := []struct {
 		name    string

@@ -303,7 +303,7 @@ func (inmem *inMemVA) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest, _ 
 
 func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 	var remoteVAs []RemoteVA
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		remoteVAs = append(remoteVAs, RemoteVA{
 			RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
 			Perspective:   "dadaist",
