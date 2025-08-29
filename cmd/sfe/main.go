@@ -13,6 +13,8 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
@@ -60,6 +62,20 @@ type Config struct {
 				IPAddress        int64 `validate:"required"`
 			} `validate:"required,dive"`
 		} `validate:"omitempty,dive"`
+
+		Limiter struct {
+			// Redis contains the configuration necessary to connect to Redis
+			// for rate limiting. This field is required to enable rate
+			// limiting.
+			Redis *bredis.Config `validate:"required_with=Defaults"`
+
+			// Defaults is a path to a YAML file containing default rate limits.
+			// See: ratelimits/README.md for details. This field is required to
+			// enable rate limiting. If any individual rate limit is not set,
+			// that limit will be disabled. Failed Authorizations limits passed
+			// in this file must be identical to those in the RA.
+			Defaults string `validate:"required_with=Redis"`
+		}
 		Features features.Config
 	}
 
@@ -139,6 +155,20 @@ func main() {
 		}
 	}
 
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
+	var limiterRedis *bredis.Ring
+	if c.SFE.Limiter.Defaults != "" {
+		limiterRedis, err = bredis.NewRingFromConfig(*c.SFE.Limiter.Redis, stats, logger)
+		cmd.FailOnError(err, "Failed to create Redis ring")
+
+		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
+		limiter, err = ratelimits.NewLimiter(clk, source, stats)
+		cmd.FailOnError(err, "Failed to create rate limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.SFE.Limiter.Defaults, "")
+		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+	}
+
 	sfei, err := sfe.NewSelfServiceFrontEndImpl(
 		stats,
 		clk,
@@ -148,6 +178,8 @@ func main() {
 		sac,
 		unpauseHMACKey,
 		zendeskClient,
+		limiter,
+		txnBuilder,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

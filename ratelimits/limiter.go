@@ -172,6 +172,15 @@ func (d *Decision) Result(now time.Time) error {
 			retryAfterTs,
 		)
 
+	case LimitOverrideRequestsPerIPAddress:
+		return berrors.LimitOverrideRequestsPerIPAddressError(
+			retryAfter,
+			"too many override request form submissions (%d) from this IP address in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+
 	default:
 		return berrors.InternalServerError("cannot generate error for unknown rate limit")
 	}

@@ -2,6 +2,7 @@ package sfe
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -10,11 +11,13 @@ import (
 	"strconv"
 	"strings"
 
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/policy"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/forms"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
+	"github.com/letsencrypt/boulder/web"
 )
 
 const (
@@ -556,7 +559,54 @@ type overrideRequest struct {
 // either the form logic is flawed or the requester has bypassed the form and
 // submitting (malformed) requests directly to this endpoint.
 func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO(#8359): Check per-IP rate limits for this endpoint.
+	var refundLimits func()
+	var submissionSuccess bool
+	if sfe.limiter != nil && sfe.txnBuilder != nil {
+		requesterIP, err := web.ExtractRequesterIP(r)
+		if err != nil {
+			sfe.log.Errf("determining requester IP address: %s", err)
+			http.Error(w, "failed to determine the IP address of the requester", http.StatusInternalServerError)
+			return
+		}
+
+		txns, err := sfe.txnBuilder.LimitOverrideRequestsPerIPAddressTransaction(requesterIP)
+		if err != nil {
+			sfe.log.Errf("building transaction for override request form limits: %s", err)
+			http.Error(w, "failed to build transaction for override request form limits", http.StatusInternalServerError)
+			return
+		}
+
+		d, err := sfe.limiter.Spend(r.Context(), txns)
+		if err != nil {
+			sfe.log.Errf("spending transaction for override request form limits: %s", err)
+			http.Error(w, "failed to spend transaction for override request form limits", http.StatusInternalServerError)
+			return
+		}
+
+		err = d.Result(sfe.clk.Now())
+		if err != nil {
+			var bErr *berrors.BoulderError
+			if errors.As(err, &bErr) && bErr.Type == berrors.RateLimit {
+				http.Error(w, bErr.Detail, http.StatusTooManyRequests)
+				return
+			}
+			sfe.log.Errf("determining result of override request form limits transaction: %s", err)
+			http.Error(w, "failed to determine result of override request form limits transaction", http.StatusInternalServerError)
+			return
+		}
+
+		refundLimits = func() {
+			_, err := sfe.limiter.Refund(r.Context(), txns)
+			if err != nil {
+				sfe.log.Errf("refunding transaction for override request form limits: %s", err)
+			}
+		}
+	}
+	defer func() {
+		if !submissionSuccess && refundLimits != nil {
+			refundLimits()
+		}
+	}()
 
 	var req overrideRequest
 	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, submitOverrideRequestBodyLimit)).Decode(&req)
@@ -710,5 +760,6 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	// TODO(#8362): If FundraisingFieldName value is true, use the Salesforce
 	// API to create a new Lead record with the provided information.
 
+	submissionSuccess = true
 	w.WriteHeader(http.StatusOK)
 }

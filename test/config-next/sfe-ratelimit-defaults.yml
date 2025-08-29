@@ -1,0 +1,4 @@
+LimitOverrideRequestsPerIPAddress:
+  count: 100
+  burst: 100
+  period: 168h
