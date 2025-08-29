@@ -5,6 +5,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/jmhodges/clock"
 
@@ -76,6 +77,21 @@ type Config struct {
 			// in this file must be identical to those in the RA.
 			Defaults string `validate:"required_with=Redis"`
 		}
+
+		// OverridesImporter configures the periodic import of approved rate
+		// limit override requests from Zendesk.
+		OverridesImporter struct {
+			// Mode controls which tickets are processed. Valid values are:
+			//   - "all": process all tickets
+			//   - "even": process only tickets with even IDs
+			//   - "odd": process only tickets with odd IDs
+			// If unspecified or empty, defaults to "all".
+			Mode string `validate:"omitempty,required_with=Interval,oneof=all even odd"`
+			// Interval is the amount of time between runs of the importer. If
+			// zero or unspecified, the importer is disabled. Minimum value is
+			// 20 minutes.
+			Interval config.Duration `validate:"omitempty,required_with=Mode,min=1200s"`
+		} `validate:"omitempty,dive"`
 		Features features.Config
 	}
 
@@ -132,6 +148,8 @@ func main() {
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	var zendeskClient *zendesk.Client
+	var overridesImporterShutdown func()
+	var overridesImporterWG sync.WaitGroup
 	if c.SFE.Zendesk != nil {
 		zendeskToken, err := c.SFE.Zendesk.Token.Pass()
 		cmd.FailOnError(err, "Failed to load Zendesk token")
@@ -152,6 +170,30 @@ func main() {
 		)
 		if err != nil {
 			cmd.FailOnError(err, "Failed to create Zendesk client")
+		}
+
+		if c.SFE.OverridesImporter.Interval.Duration > 0 {
+			mode := sfe.ProcessMode(c.SFE.OverridesImporter.Mode)
+			if mode == "" {
+				mode = sfe.ProcessAll
+			}
+
+			importer, ierr := sfe.NewOverridesImporter(
+				mode,
+				c.SFE.OverridesImporter.Interval.Duration,
+				zendeskClient,
+				rac,
+				clk,
+				logger,
+			)
+			cmd.FailOnError(ierr, "Creating overrides importer")
+
+			var ctx context.Context
+			ctx, overridesImporterShutdown = context.WithCancel(context.Background())
+			overridesImporterWG.Go(func() {
+				importer.Start(ctx)
+			})
+			logger.Infof("Overrides importer started with mode=%s interval=%s", mode, c.SFE.OverridesImporter.Interval.Duration)
 		}
 	}
 
@@ -201,6 +243,10 @@ func main() {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.SFE.ShutdownStopTimeout.Duration)
 		defer cancel()
+		if overridesImporterShutdown != nil {
+			overridesImporterShutdown()
+			overridesImporterWG.Wait()
+		}
 		_ = srv.Shutdown(ctx)
 		oTelShutdown(ctx)
 	}()

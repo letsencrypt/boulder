@@ -47,6 +47,10 @@
 				"IPAddress": 67890123
 			}
 		},
+		"overridesImporter": {
+			"mode": "all",
+			"interval": "20m"
+		},
 		"features": {}
 	},
 	"syslog": {
