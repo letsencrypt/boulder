@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/letsencrypt/boulder/core"
+	emailpb "github.com/letsencrypt/boulder/email/proto"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -55,6 +56,7 @@ var (
 type SelfServiceFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
+	ee emailpb.ExporterClient
 
 	log blog.Logger
 	clk clock.Clock
@@ -80,6 +82,7 @@ func NewSelfServiceFrontEndImpl(
 	requestTimeout time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
+	eec emailpb.ExporterClient,
 	unpauseHMACKey []byte,
 	zendeskClient *zendesk.Client,
 	limiter *rl.Limiter,
@@ -100,6 +103,7 @@ func NewSelfServiceFrontEndImpl(
 		requestTimeout: requestTimeout,
 		ra:             rac,
 		sa:             sac,
+		ee:             eec,
 		unpauseHMACKey: unpauseHMACKey,
 		zendeskClient:  zendeskClient,
 		templatePages:  tmplPages,

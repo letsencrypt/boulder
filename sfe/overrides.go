@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/policy"
@@ -88,9 +89,11 @@ var (
 	// the CertificatesPerDomainPerAccount rate limit override requests.
 	certificatesPerDomainPerAccountTierOptions = []string{"300", "1000", "5000", "10000", "25000", "50000", "75000", "100000", "175000", "250000", "500000", "1000000", "1750000", "2500000"}
 
+	fundraisingYesOption = "Yes, email me more information."
+
 	// FundraisingOptions is the list of options for the fundraising field.
 	FundraisingOptions = []string{
-		"Yes, email me more information.",
+		fundraisingYesOption,
 		"No, not at this time.",
 	}
 
@@ -754,8 +757,12 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
-	// TODO(#8363): If MailingListFieldName value is true, dispatch a request to
-	// the Salesforce Pardot email exporter.
+	if sfe.ee != nil && baseFields[fundraisingFieldName] == fundraisingYesOption {
+		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{baseFields[emailAddressFieldName]}})
+		if err != nil {
+			sfe.log.Errf("failed to send contact to email service: %s", err)
+		}
+	}
 
 	// TODO(#8362): If FundraisingFieldName value is true, use the Salesforce
 	// API to create a new Lead record with the provided information.
