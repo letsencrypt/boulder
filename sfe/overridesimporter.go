@@ -160,15 +160,15 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 	}
 	tierStr, err := im.getValidatedFieldValue(fields, TierFieldName, rateLimit)
 	if err != nil {
-		return nil, "", fmt.Errorf("getting/validating tier field: %s", err)
+		return nil, "", fmt.Errorf("getting/validating tier field: %w", err)
 	}
 	tier, err := strconv.ParseInt(tierStr, 10, 64)
 	if err != nil {
-		return nil, "", fmt.Errorf("parsing tier: %s", err)
+		return nil, "", fmt.Errorf("parsing tier: %w", err)
 	}
 	organization, err := im.getValidatedFieldValue(fields, OrganizationFieldName, "")
 	if err != nil {
-		return nil, "", fmt.Errorf("getting/validating organization: %s", err)
+		return nil, "", fmt.Errorf("getting/validating organization: %w", err)
 	}
 
 	var req *rapb.AddRateLimitOverrideRequest
@@ -178,15 +178,15 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 	case rl.NewOrdersPerAccount.String():
 		accountURI, err := im.getValidatedFieldValue(fields, AccountURIFieldName, "")
 		if err != nil {
-			return nil, "", fmt.Errorf("getting/validating accountURI: %s", err)
+			return nil, "", fmt.Errorf("getting/validating accountURI: %w", err)
 		}
 		accountID, err := accountURIToID(accountURI)
 		if err != nil {
-			return nil, "", fmt.Errorf("parsing accountURI to accountID: %s", err)
+			return nil, "", fmt.Errorf("parsing accountURI to accountID: %w", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.NewOrdersPerAccount, accountID, identifier.ACMEIdentifier{}, identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			return nil, "", fmt.Errorf("building bucket key: %s", err)
+			return nil, "", fmt.Errorf("building bucket key: %w", err)
 		}
 		req = makeReq(rl.NewOrdersPerAccount, bucketKey, organization, tier)
 		accountDomainOrIP = accountURI
@@ -194,15 +194,15 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 	case rl.CertificatesPerDomainPerAccount.String():
 		accountURI, err := im.getValidatedFieldValue(fields, AccountURIFieldName, "")
 		if err != nil {
-			return nil, "", fmt.Errorf("getting/validating accountURI: %s", err)
+			return nil, "", fmt.Errorf("getting/validating accountURI: %w", err)
 		}
 		accountID, err := accountURIToID(accountURI)
 		if err != nil {
-			return nil, "", fmt.Errorf("parsing accountURI to accountID: %s", err)
+			return nil, "", fmt.Errorf("parsing accountURI to accountID: %w", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.CertificatesPerDomainPerAccount, accountID, identifier.ACMEIdentifier{}, identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			return nil, "", fmt.Errorf("building bucket key: %s", err)
+			return nil, "", fmt.Errorf("building bucket key: %w", err)
 		}
 		req = makeReq(rl.CertificatesPerDomainPerAccount, bucketKey, organization, tier)
 		accountDomainOrIP = accountURI
@@ -210,11 +210,11 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 	case rl.CertificatesPerDomain.String() + perDNSNameSuffix:
 		dnsName, err := im.getValidatedFieldValue(fields, RegisteredDomainFieldName, rateLimit)
 		if err != nil {
-			return nil, "", fmt.Errorf("getting/validating registeredDomain: %s", err)
+			return nil, "", fmt.Errorf("getting/validating registeredDomain: %w", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.CertificatesPerDomain, 0, identifier.NewDNS(dnsName), identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			return nil, "", fmt.Errorf("building bucket key: %s", err)
+			return nil, "", fmt.Errorf("building bucket key: %w", err)
 		}
 		accountDomainOrIP = dnsName
 		req = makeReq(rl.CertificatesPerDomain, bucketKey, organization, tier)
@@ -222,15 +222,15 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 	case rl.CertificatesPerDomain.String() + perIPSuffix:
 		ipAddrStr, err := im.getValidatedFieldValue(fields, IPAddressFieldName, rateLimit)
 		if err != nil {
-			return nil, "", fmt.Errorf("getting/validating ipAddress: %s", err)
+			return nil, "", fmt.Errorf("getting/validating ipAddress: %w", err)
 		}
 		ipAddr, err := netip.ParseAddr(ipAddrStr)
 		if err != nil {
-			return nil, "", fmt.Errorf("parsing ipAddress: %s", err)
+			return nil, "", fmt.Errorf("parsing ipAddress: %w", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.CertificatesPerDomain, 0, identifier.NewIP(ipAddr), identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			return nil, "", fmt.Errorf("building bucket key: %s", err)
+			return nil, "", fmt.Errorf("building bucket key: %w", err)
 		}
 		req = makeReq(rl.CertificatesPerDomain, bucketKey, organization, tier)
 		accountDomainOrIP = ipAddrStr
