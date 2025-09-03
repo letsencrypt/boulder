@@ -50,7 +50,7 @@ func (s *raFakeServer) AddRateLimitOverride(ctx context.Context, r *rapb.AddRate
 	case alwaysAdministrativelyDisabled:
 		return &rapb.AddRateLimitOverrideResponse{Enabled: false}, nil
 	case alwaysError:
-		return nil, status.Error(codes.Internal, "oh no, something has gone terriby awry!")
+		return nil, status.Error(codes.Internal, "oh no, something has gone terribly awry!")
 	default:
 		return &rapb.AddRateLimitOverrideResponse{Enabled: true}, nil
 	}

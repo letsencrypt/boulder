@@ -178,7 +178,7 @@ func main() {
 				mode = sfe.ProcessAll
 			}
 
-			importer, ierr := sfe.NewOverridesImporter(
+			importer, err := sfe.NewOverridesImporter(
 				mode,
 				c.SFE.OverridesImporter.Interval.Duration,
 				zendeskClient,
@@ -186,7 +186,7 @@ func main() {
 				clk,
 				logger,
 			)
-			cmd.FailOnError(ierr, "Creating overrides importer")
+			cmd.FailOnError(err, "Creating overrides importer")
 
 			var ctx context.Context
 			ctx, overridesImporterShutdown = context.WithCancel(context.Background())

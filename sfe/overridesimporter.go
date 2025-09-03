@@ -113,15 +113,8 @@ func accountURIToID(s string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 3 {
-		return 0, fmt.Errorf("unexpected path %q", u.Path)
-	}
-	id, convErr := strconv.ParseInt(parts[len(parts)-1], 10, 64)
-	if convErr != nil {
-		return 0, convErr
-	}
-	return id, nil
+	rawID := strings.TrimPrefix(u.Path, "/acme/acct/")
+	return strconv.ParseInt(rawID, 10, 64)
 }
 
 // transitionToPendingWithComment sets the status of the given ticket to
@@ -131,23 +124,12 @@ func (im *OverridesImporter) transitionToPendingWithComment(ticketID int64, caus
 	privateBody := fmt.Sprintf(
 		"A failure occurred while importing this override:\n\n%s\n\n"+
 			"This ticket's status has been set to pending.\n\n"+
-			"Once the error has been corrected, change the status back to \"solved\" to retry.\n",
+			"Once the error has been corrected, change the status back to \"open\" to retry.\n",
 		cause,
 	)
 	err := im.zendesk.UpdateTicketStatus(ticketID, "pending", privateBody, false)
 	if err != nil {
 		im.log.Errf("failed to update ticket %d: %s", ticketID, err)
-	}
-}
-
-func makeAddOverrideRequest(limit rl.Name, bucket, organization string, tier int64) *rapb.AddRateLimitOverrideRequest {
-	return &rapb.AddRateLimitOverrideRequest{
-		LimitEnum: int64(limit),
-		BucketKey: bucket,
-		Count:     tier,
-		Burst:     tier,
-		Period:    durationpb.New(7 * 24 * time.Hour),
-		Comment:   organization,
 	}
 }
 
@@ -160,33 +142,33 @@ func (im *OverridesImporter) getValidatedFieldValue(fields map[string]string, fi
 	return val, nil
 }
 
-func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, fields map[string]string) error {
-	var pendingComment string
-	defer func() {
-		if pendingComment != "" {
-			im.transitionToPendingWithComment(ticketID, pendingComment)
+func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*rapb.AddRateLimitOverrideRequest, string, error) {
+	makeReq := func(limit rl.Name, bucket, organization string, tier int64) *rapb.AddRateLimitOverrideRequest {
+		return &rapb.AddRateLimitOverrideRequest{
+			LimitEnum: int64(limit),
+			BucketKey: bucket,
+			Count:     tier,
+			Burst:     tier,
+			Period:    durationpb.New(7 * 24 * time.Hour),
+			Comment:   organization,
 		}
-	}()
+	}
 
 	rateLimit, ok := fields[RateLimitFieldName]
 	if !ok {
-		pendingComment = "missing rate limit field"
-		return fmt.Errorf("missing rate limit field")
+		return nil, "", fmt.Errorf("missing rate limit field")
 	}
 	tierStr, err := im.getValidatedFieldValue(fields, TierFieldName, rateLimit)
 	if err != nil {
-		pendingComment = fmt.Sprintf("getting/validating tier field: %s", err)
-		return err
+		return nil, "", fmt.Errorf("getting/validating tier field: %s", err)
 	}
 	tier, err := strconv.ParseInt(tierStr, 10, 64)
 	if err != nil {
-		pendingComment = fmt.Sprintf("parsing tier: %s", err)
-		return err
+		return nil, "", fmt.Errorf("parsing tier: %s", err)
 	}
 	organization, err := im.getValidatedFieldValue(fields, OrganizationFieldName, "")
 	if err != nil {
-		pendingComment = fmt.Sprintf("getting/validating organization: %s", err)
-		return err
+		return nil, "", fmt.Errorf("getting/validating organization: %s", err)
 	}
 
 	var req *rapb.AddRateLimitOverrideRequest
@@ -196,102 +178,94 @@ func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, 
 	case rl.NewOrdersPerAccount.String():
 		accountURI, err := im.getValidatedFieldValue(fields, AccountURIFieldName, "")
 		if err != nil {
-			pendingComment = fmt.Sprintf("getting/validating accountURI: %s", err)
-			return err
+			return nil, "", fmt.Errorf("getting/validating accountURI: %s", err)
 		}
 		accountID, err := accountURIToID(accountURI)
 		if err != nil {
-			pendingComment = fmt.Sprintf("parsing accountURI to accountID: %s", err)
-			return err
+			return nil, "", fmt.Errorf("parsing accountURI to accountID: %s", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.NewOrdersPerAccount, accountID, identifier.ACMEIdentifier{}, identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			pendingComment = fmt.Sprintf("building bucket key: %s", err)
-			return err
+			return nil, "", fmt.Errorf("building bucket key: %s", err)
 		}
-		req = makeAddOverrideRequest(rl.NewOrdersPerAccount, bucketKey, organization, tier)
+		req = makeReq(rl.NewOrdersPerAccount, bucketKey, organization, tier)
 		accountDomainOrIP = accountURI
 
 	case rl.CertificatesPerDomainPerAccount.String():
 		accountURI, err := im.getValidatedFieldValue(fields, AccountURIFieldName, "")
 		if err != nil {
-			pendingComment = fmt.Sprintf("getting/validating accountURI: %s", err)
-			return err
+			return nil, "", fmt.Errorf("getting/validating accountURI: %s", err)
 		}
 		accountID, err := accountURIToID(accountURI)
 		if err != nil {
-			pendingComment = fmt.Sprintf("parsing accountURI to accountID: %s", err)
-			return err
+			return nil, "", fmt.Errorf("parsing accountURI to accountID: %s", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.CertificatesPerDomainPerAccount, accountID, identifier.ACMEIdentifier{}, identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			pendingComment = fmt.Sprintf("building bucket key: %s", err)
-			return err
+			return nil, "", fmt.Errorf("building bucket key: %s", err)
 		}
-		req = makeAddOverrideRequest(rl.CertificatesPerDomainPerAccount, bucketKey, organization, tier)
+		req = makeReq(rl.CertificatesPerDomainPerAccount, bucketKey, organization, tier)
 		accountDomainOrIP = accountURI
 
 	case rl.CertificatesPerDomain.String() + perDNSNameSuffix:
 		dnsName, err := im.getValidatedFieldValue(fields, RegisteredDomainFieldName, rateLimit)
 		if err != nil {
-			pendingComment = fmt.Sprintf("getting/validating registeredDomain: %s", err)
-			return err
+			return nil, "", fmt.Errorf("getting/validating registeredDomain: %s", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.CertificatesPerDomain, 0, identifier.NewDNS(dnsName), identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			pendingComment = fmt.Sprintf("building bucket key: %s", err)
-			return err
+			return nil, "", fmt.Errorf("building bucket key: %s", err)
 		}
-		req = makeAddOverrideRequest(rl.CertificatesPerDomain, bucketKey, organization, tier)
 		accountDomainOrIP = dnsName
+		req = makeReq(rl.CertificatesPerDomain, bucketKey, organization, tier)
 
 	case rl.CertificatesPerDomain.String() + perIPSuffix:
 		ipAddrStr, err := im.getValidatedFieldValue(fields, IPAddressFieldName, rateLimit)
 		if err != nil {
-			pendingComment = fmt.Sprintf("getting/validating ipAddress: %s", err)
-			return err
+			return nil, "", fmt.Errorf("getting/validating ipAddress: %s", err)
 		}
 		ipAddr, err := netip.ParseAddr(ipAddrStr)
 		if err != nil {
-			pendingComment = fmt.Sprintf("parsing ipAddress: %s", err)
-			return err
+			return nil, "", fmt.Errorf("parsing ipAddress: %s", err)
 		}
 		bucketKey, err := rl.BuildBucketKey(rl.CertificatesPerDomain, 0, identifier.NewIP(ipAddr), identifier.ACMEIdentifiers{}, netip.Addr{})
 		if err != nil {
-			pendingComment = fmt.Sprintf("building bucket key: %s", err)
-			return err
+			return nil, "", fmt.Errorf("building bucket key: %s", err)
 		}
-		req = makeAddOverrideRequest(rl.CertificatesPerDomain, bucketKey, organization, tier)
+		req = makeReq(rl.CertificatesPerDomain, bucketKey, organization, tier)
 		accountDomainOrIP = ipAddrStr
 
 	default:
-		err = fmt.Errorf("unknown rate limit %q", rateLimit)
-		pendingComment = "unknown rate limit"
-		return err
+		return nil, "", fmt.Errorf("unknown rate limit")
 	}
+	return req, accountDomainOrIP, nil
+}
 
-	if accountDomainOrIP == "" {
-		// If this has occurred we have failed to set the accountDNSNameOrIP in
-		// one of the above cases, which is a bug.
-		return fmt.Errorf("no account/domain/IP specified for rate limit %s", rateLimit)
+func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, fields map[string]string) error {
+	req, accountDomainOrIP, err := im.makeAddOverrideRequest(fields)
+	if err != nil {
+		// This will recur until the operator corrects the ticket.
+		im.transitionToPendingWithComment(ticketID, err.Error())
+		return fmt.Errorf("preparing override request: %w", err)
 	}
 
 	resp, err := im.ra.AddRateLimitOverride(ctx, req)
 	if err != nil {
-		// This is likely a transient error, so we leave the ticket as "solved"
-		// so that it will be retried on the next pass.
+		// This is likely a transient error, we'll re-attempt on the next pass.
 		return fmt.Errorf("calling ra.AddRateLimitOverride: %w", err)
 	}
 
+	rateLimit := rl.Name(req.LimitEnum).String()
 	if !resp.Enabled {
-		pendingComment = "An existing override for this limit and requester is currently administratively disabled."
+		// This will recur until the existing override is re-enabled.
+		im.transitionToPendingWithComment(ticketID, "An existing override for this limit and requester is currently administratively disabled.")
 		return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is administratively disabled", rateLimit, accountDomainOrIP)
 	}
 
 	successCommentBody := fmt.Sprintf(
 		"Your override request for rate limit %s and account/domain/IP: %s "+
 			"has been approved. Your new limit is %d per week. Please allow up to 30 minutes for this change to take effect.",
-		rateLimit, accountDomainOrIP, tier,
+		rateLimit, accountDomainOrIP, req.Count,
 	)
 
 	err = im.zendesk.UpdateTicketStatus(ticketID, "solved", successCommentBody, true)
