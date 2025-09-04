@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/mocks"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/test/zendeskfake"
@@ -143,6 +144,8 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 	sfe.templatePages = minimalTemplates(t)
 	client := createFakeZendeskClientServer(t)
 	sfe.zendeskClient = client
+	mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
+	sfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
 
 	// Submit valid JSON with no rateLimit field.
 	rec := httptest.NewRecorder()
@@ -176,6 +179,9 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 	sfe.submitOverrideRequestHandler(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("Both domain and IP: status=%d; expect 400", rec.Code)
+	}
+	if len(mockImpl.GetCreatedContacts()) != 0 {
+		t.Errorf("PardotClient.SendContact called unexpectedly")
 	}
 }
 
@@ -269,6 +275,9 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
+			sfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+
 			iterationBase := map[string]string{}
 			maps.Copy(iterationBase, testBase)
 			maps.Copy(iterationBase, tt.fields)
@@ -308,6 +317,9 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 					}
 				}
 				break
+			}
+			if len(mockImpl.GetCreatedContacts()) != 1 {
+				t.Errorf("PardotClient.SendContact not called exactly once")
 			}
 		})
 	}

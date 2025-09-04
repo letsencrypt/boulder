@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	emailpb "github.com/letsencrypt/boulder/email/proto"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -40,8 +41,9 @@ type Config struct {
 
 		TLS cmd.TLSConfig
 
-		RAService *cmd.GRPCClientConfig
-		SAService *cmd.GRPCClientConfig
+		RAService     *cmd.GRPCClientConfig
+		SAService     *cmd.GRPCClientConfig
+		EmailExporter *cmd.GRPCClientConfig
 
 		// UnpauseHMACKey validates incoming JWT signatures at the unpause
 		// endpoint. This key must be the same as the one configured for all
@@ -131,6 +133,13 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
+	var eec emailpb.ExporterClient
+	if c.SFE.EmailExporter != nil {
+		emailExporterConn, err := bgrpc.ClientSetup(c.SFE.EmailExporter, tlsConfig, stats, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to email-exporter")
+		eec = emailpb.NewExporterClient(emailExporterConn)
+	}
+
 	var zendeskClient *zendesk.Client
 	if c.SFE.Zendesk != nil {
 		zendeskToken, err := c.SFE.Zendesk.Token.Pass()
@@ -176,6 +185,7 @@ func main() {
 		c.SFE.Timeout.Duration,
 		rac,
 		sac,
+		eec,
 		unpauseHMACKey,
 		zendeskClient,
 		limiter,
