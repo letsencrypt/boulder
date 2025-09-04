@@ -244,7 +244,7 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, fields map[string]string) error {
 	req, accountDomainOrIP, err := im.makeAddOverrideRequest(fields)
 	if err != nil {
-		// This will recur until the operator corrects the ticket.
+		// Move to "pending" so the next tick won't comment again.
 		im.transitionToPendingWithComment(ticketID, err.Error())
 		return fmt.Errorf("preparing override request: %w", err)
 	}
@@ -257,7 +257,7 @@ func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, 
 
 	rateLimit := rl.Name(req.LimitEnum).String()
 	if !resp.Enabled {
-		// This will recur until the existing override is re-enabled.
+		// Move to "pending" so the next tick won't comment again.
 		im.transitionToPendingWithComment(ticketID, "An existing override for this limit and requester is currently administratively disabled.")
 		return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is administratively disabled", rateLimit, accountDomainOrIP)
 	}
