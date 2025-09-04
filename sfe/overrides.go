@@ -47,6 +47,9 @@ const (
 	// reviewStatusDefault is the initial status of a ticket when created.
 	reviewStatusDefault = "review-status-pending"
 
+	// reviewStatusApproved is the status of a ticket when it has been approved.
+	reviewStatusApproved = "review-status-approved"
+
 	// validateOverrideFieldBodyLimit is the maximum size of request body
 	// accepted by validateOverrideFieldHandler. It should be large enough to
 	// accommodate the JSON encoded validationRequest struct, but small enough

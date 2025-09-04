@@ -21,10 +21,11 @@ const (
 	apiToken      = "someToken"
 )
 
-func createFakeZendeskClientServer(t *testing.T) *zendesk.Client {
+func createFakeZendeskClientServer(t *testing.T) (*zendeskfake.Server, *zendesk.Client) {
 	t.Helper()
 
-	ts := httptest.NewServer(zendeskfake.NewServer(apiTokenEmail, apiToken, nil).Handler())
+	server := zendeskfake.NewServer(apiTokenEmail, apiToken, nil)
+	ts := httptest.NewServer(server.Handler())
 	t.Cleanup(ts.Close)
 
 	client, err := zendesk.NewClient(ts.URL, apiTokenEmail, apiToken, map[string]int64{
@@ -39,7 +40,7 @@ func createFakeZendeskClientServer(t *testing.T) *zendesk.Client {
 	if err != nil {
 		t.Errorf("NewClient(%q) returned error: %s", ts.URL, err)
 	}
-	return client
+	return server, client
 }
 
 func minimalTemplates(t *testing.T) *template.Template {
@@ -142,7 +143,7 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 
 	sfe, _ := setupSFE(t)
 	sfe.templatePages = minimalTemplates(t)
-	client := createFakeZendeskClientServer(t)
+	_, client := createFakeZendeskClientServer(t)
 	sfe.zendeskClient = client
 	mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
 	sfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
@@ -190,7 +191,7 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 
 	sfe, _ := setupSFE(t)
 	sfe.templatePages = minimalTemplates(t)
-	client := createFakeZendeskClientServer(t)
+	_, client := createFakeZendeskClientServer(t)
 	sfe.zendeskClient = client
 
 	// All of these fields are perfectly valid.
@@ -429,7 +430,7 @@ func TestSubmitOverrideRequestHandlerRateLimited(t *testing.T) {
 
 	sfe, _ := setupSFE(t)
 	sfe.templatePages = minimalTemplates(t)
-	client := createFakeZendeskClientServer(t)
+	_, client := createFakeZendeskClientServer(t)
 	sfe.zendeskClient = client
 
 	for attempt := range 101 {
