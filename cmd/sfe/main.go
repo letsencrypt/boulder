@@ -94,7 +94,14 @@ type Config struct {
 			// 20 minutes.
 			Interval config.Duration `validate:"omitempty,required_with=Mode,min=1200s"`
 		} `validate:"omitempty,dive"`
-		Features features.Config
+
+		// AutoApproveOverrides enables automatic approval of override requests
+		// for the following limits and tiers:
+		//   - NewOrdersPerAccount: 1000
+		//   - CertificatesPerDomain: 300
+		//   - CertificatesPerDomainPerAccount: 300
+		AutoApproveOverrides bool `validate:"-"`
+		Features             features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -232,6 +239,7 @@ func main() {
 		zendeskClient,
 		limiter,
 		txnBuilder,
+		c.SFE.AutoApproveOverrides,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

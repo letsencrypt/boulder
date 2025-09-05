@@ -38,7 +38,8 @@ const (
 	overridesCertificatesPerDomainPerAccount = overridesAPIPrefix + "/overrides/certificates-per-domain-per-account"
 	overridesValidateField                   = overridesAPIPrefix + "/overrides/validate-field"
 	overridesSubmitRequest                   = overridesAPIPrefix + "/overrides/submit-override-request"
-	overridesSubmitSuccess                   = overridesAPIPrefix + "/overrides/success"
+	overridesCreatedSuccess                  = overridesAPIPrefix + "/overrides/created-success"
+	overridesAcceptedSuccess                 = overridesAPIPrefix + "/overrides/accepted-success"
 )
 
 var (
@@ -72,6 +73,10 @@ type SelfServiceFrontEndImpl struct {
 
 	limiter    *rl.Limiter
 	txnBuilder *rl.TransactionBuilder
+
+	// autoApproveOverrides only affects specific tiers and limits, see
+	// cmd/sfe/main.go for details.
+	autoApproveOverrides bool
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -87,6 +92,7 @@ func NewSelfServiceFrontEndImpl(
 	zendeskClient *zendesk.Client,
 	limiter *rl.Limiter,
 	txnBuilder *rl.TransactionBuilder,
+	autoApproveOverrides bool,
 ) (SelfServiceFrontEndImpl, error) {
 
 	// Parse the files once at startup to avoid each request causing the server
@@ -98,18 +104,19 @@ func NewSelfServiceFrontEndImpl(
 	}
 
 	sfe := SelfServiceFrontEndImpl{
-		log:            logger,
-		clk:            clk,
-		requestTimeout: requestTimeout,
-		ra:             rac,
-		sa:             sac,
-		ee:             eec,
-		unpauseHMACKey: unpauseHMACKey,
-		zendeskClient:  zendeskClient,
-		templatePages:  tmplPages,
-		cop:            http.NewCrossOriginProtection(),
-		limiter:        limiter,
-		txnBuilder:     txnBuilder,
+		log:                  logger,
+		clk:                  clk,
+		requestTimeout:       requestTimeout,
+		ra:                   rac,
+		sa:                   sac,
+		ee:                   eec,
+		unpauseHMACKey:       unpauseHMACKey,
+		zendeskClient:        zendeskClient,
+		templatePages:        tmplPages,
+		cop:                  http.NewCrossOriginProtection(),
+		limiter:              limiter,
+		txnBuilder:           txnBuilder,
+		autoApproveOverrides: autoApproveOverrides,
 	}
 
 	return sfe, nil
@@ -170,7 +177,8 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 		sfe.handleGet(mux, overridesCertificatesPerDomainPerAccount, sfe.makeOverrideRequestFormHandler(
 			certificatesPerDomainPerAccountForm, rl.CertificatesPerDomainPerAccount.String(), rl.CertificatesPerDomainPerAccount.String()),
 		)
-		sfe.handleGet(mux, overridesSubmitSuccess, http.HandlerFunc(sfe.overrideSuccessHandler))
+		sfe.handleGet(mux, overridesCreatedSuccess, http.HandlerFunc(sfe.overrideCreatedSuccessHandler))
+		sfe.handleGet(mux, overridesAcceptedSuccess, http.HandlerFunc(sfe.overrideAcceptedSuccessHandler))
 		sfe.handlePost(mux, overridesValidateField, http.HandlerFunc(sfe.validateOverrideFieldHandler))
 		sfe.handlePost(mux, overridesSubmitRequest, http.HandlerFunc(sfe.submitOverrideRequestHandler))
 	}
