@@ -45,7 +45,10 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 		},
 		tlsConf,
 		metrics.NoopRegisterer,
-		clock.NewFake(),
+		// We're calling the integration test SA, which uses a real clock.
+		// We need to use a real clock here too, or the SA will reject the
+		// request as having the wrong time attached.
+		clock.New(),
 	)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	saClient := sapb.NewStorageAuthorityClient(saConn)
