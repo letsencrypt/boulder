@@ -15,13 +15,24 @@ BUILD="$(mktemp -d)"
 mkdir -p "${BUILD}/opt"
 cp -a /opt/boulder "${BUILD}/opt/boulder"
 
+# Determine architecture - use ARCH env var if set, otherwise detect from uname
+if [ -n "${ARCH:-}" ]; then
+    DEB_ARCH="${ARCH}"
+else
+    case "$(uname -m)" in
+        "x86_64") DEB_ARCH="amd64" ;;
+        "aarch64"|"arm64") DEB_ARCH="arm64" ;;
+        *) echo "Unsupported architecture: $(uname -m)" && exit 1 ;;
+    esac
+fi
+
 mkdir -p "${BUILD}/DEBIAN"
 cat > "${BUILD}/DEBIAN/control" <<-EOF
 Package: boulder
 Version: 1:${VERSION}
 License: Mozilla Public License v2.0
 Vendor: ISRG
-Architecture: amd64
+Architecture: ${DEB_ARCH}
 Maintainer: Community
 Section: default
 Priority: extra
@@ -29,4 +40,4 @@ Homepage: https://github.com/letsencrypt/boulder
 Description: Boulder is an ACME-compatible X.509 Certificate Authority
 EOF
 
-dpkg-deb -Zgzip -b "${BUILD}" "boulder-${VERSION}-${COMMIT_ID}.x86_64.deb"
+dpkg-deb -Zgzip -b "${BUILD}" "boulder-${VERSION}-${COMMIT_ID}.${DEB_ARCH}.deb"

@@ -6,13 +6,19 @@ FROM docker.io/ubuntu:24.04 AS builder
 ARG COMMIT_ID
 ARG GO_VERSION
 ARG VERSION
+ARG TARGETPLATFORM
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get --assume-yes --no-install-recommends --update install \
     ca-certificates curl gcc git gnupg2 libc6-dev
 
 COPY tools/fetch-and-verify-go.sh /tmp
-RUN /tmp/fetch-and-verify-go.sh ${GO_VERSION}
+RUN case "${TARGETPLATFORM}" in \
+        "linux/amd64") PLATFORM="linux-amd64" ;; \
+        "linux/arm64") PLATFORM="linux-arm64" ;; \
+        *) echo "Unsupported platform: ${TARGETPLATFORM}" && exit 1 ;; \
+    esac && \
+    /tmp/fetch-and-verify-go.sh ${GO_VERSION} ${PLATFORM}
 RUN tar -C /opt -xzf go.tar.gz
 ENV PATH="/opt/go/bin:${PATH}"
 
