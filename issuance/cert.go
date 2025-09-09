@@ -75,12 +75,7 @@ type ProfileConfig struct {
 	IgnoredLints []string
 }
 
-// PolicyConfig describes a policy
-type PolicyConfig struct {
-	OID string `validate:"required"`
-}
-
-// Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
+// Profile is the validated structure created by reading in a ProfileConfig
 type Profile struct {
 	omitCommonName      bool
 	omitKeyEncipherment bool

@@ -72,8 +72,9 @@ type issuanceEvent struct {
 // PublicKeyAlgorithm. Lookup by NameID is useful for looking up a specific
 // issuer based on the issuer of a given (pre)certificate.
 type issuerMaps struct {
-	byAlg    map[x509.PublicKeyAlgorithm][]*issuance.Issuer
-	byNameID map[issuance.NameID]*issuance.Issuer
+	byAlg     map[x509.PublicKeyAlgorithm][]*issuance.Issuer
+	byNameID  map[issuance.NameID]*issuance.Issuer
+	byProfile map[string]*issuance.Issuer
 }
 
 type certProfileWithID struct {
@@ -156,8 +157,9 @@ var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
 // or by unique ID (useful for final certs and CRLs). If two issuers with
 // the same unique ID are encountered, an error is returned.
 func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
-	issuersByAlg := make(map[x509.PublicKeyAlgorithm][]*issuance.Issuer, 2)
-	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
+	issuersByAlg := make(map[x509.PublicKeyAlgorithm][]*issuance.Issuer)
+	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer)
+	issuersByProfile := make(map[string]*issuance.Issuer)
 	for _, issuer := range issuers {
 		if _, found := issuersByNameID[issuer.NameID()]; found {
 			return issuerMaps{}, fmt.Errorf("two issuers with same NameID %d (%s) configured", issuer.NameID(), issuer.Name())
@@ -173,7 +175,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 	if i, ok := issuersByAlg[x509.RSA]; !ok || len(i) == 0 {
 		return issuerMaps{}, errors.New("no RSA issuers configured")
 	}
-	return issuerMaps{issuersByAlg, issuersByNameID}, nil
+	return issuerMaps{issuersByAlg, issuersByNameID, issuersByProfile}, nil
 }
 
 // makeCertificateProfilesMap processes a set of named certificate issuance
@@ -490,7 +492,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[0:20:20], nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, certProfile *certProfileWithID, serialBigInt *big.Int, notBefore time.Time, notAfter time.Time) ([]byte, *certProfileWithID, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, certProfile certProfileWithID, serialBigInt *big.Int, notBefore time.Time, notAfter time.Time) ([]byte, *certProfileWithID, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, err

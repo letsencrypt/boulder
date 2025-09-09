@@ -149,9 +149,10 @@ type IssuerConfig struct {
 	Active bool
 
 	// Profiles is the list of profiles for which this issuer is willing to issue.
-	// For the moment, this does nothing, and exists only for deployability.
-	// TODO(#8390): Make this field required once it is configured in prod.
-	Profiles []string `validate:"omitempty,dive,alphanum,min=1,max=32"`
+	// The names listed here must match the names of configured profiles (see
+	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's
+	// ProfileConfig).
+	Profiles []string `validate:"required,dive,alphanum,min=1,max=32"`
 
 	IssuerURL  string `validate:"required,url"`
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
