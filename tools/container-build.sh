@@ -15,21 +15,25 @@ fi
 COMMIT_ID="$(git rev-parse --short=8 HEAD)"
 VERSION="${GO_VERSION}.$(date +%s)"
 
-# Detect architecture to build for (allow override via DOCKER_DEFAULT_PLATFORM)
+# Determine what architecture to build for
 if [ -n "${DOCKER_DEFAULT_PLATFORM}" ]; then
+    # User specified a platform override
     PLATFORM="${DOCKER_DEFAULT_PLATFORM}"
 else
-    case "$(uname -m)" in
-        "x86_64") PLATFORM="linux/amd64" ;;
-        "aarch64"|"arm64") PLATFORM="linux/arm64" ;;
-        *) echo "Unsupported architecture: $(uname -m)" && exit 1 ;;
+    # No override - detect from current machine
+    MACHINE_ARCH=$(uname -m)
+    case "${MACHINE_ARCH}" in
+        x86_64)    PLATFORM="linux/amd64" ;;
+        aarch64)   PLATFORM="linux/arm64" ;;
+        arm64)     PLATFORM="linux/arm64" ;;
+        *) echo "Unsupported machine architecture: ${MACHINE_ARCH}" && exit 1 ;;
     esac
 fi
 
-# Extract architecture from platform
-case "$PLATFORM" in
-    "linux/amd64") ARCH="amd64" ;;
-    "linux/arm64") ARCH="arm64" ;;
+# Convert platform to short architecture name for file naming
+case "${PLATFORM}" in
+    linux/amd64) ARCH="amd64" ;;
+    linux/arm64) ARCH="arm64" ;;
     *) echo "Unsupported platform: ${PLATFORM}" && exit 1 ;;
 esac
 
@@ -45,6 +49,7 @@ docker buildx build \
     --build-arg "VERSION=${VERSION}" \
     --tag "${TAG}" \
     --load \
+    --progress=plain \
     .
 
 # Create tarball
