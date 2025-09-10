@@ -142,13 +142,21 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
-    try:
-        order = client.poll_and_finalize(order)
-        if cert_output is not None:
-            with open(cert_output, "w") as f:
-                f.write(order.fullchain_pem)
-    finally:
-        cleanup()
+    # Retry up to twice upon badNonce errors
+    for n in range(2):
+        try:
+            order = client.poll_and_finalize(order)
+            if cert_output is not None:
+                with open(cert_output, "w") as f:
+                    f.write(order.fullchain_pem)
+        except messages.Error as e:
+            if e.typ == "urn:ietf:params:acme:error:badNonce":
+                time.sleep(0.01)
+                continue
+        else:
+            break
+        finally:
+            cleanup()
 
     return order
 
@@ -234,8 +242,15 @@ if __name__ == "__main__":
     if len(domains) == 0:
         print(__doc__)
         sys.exit(0)
-    try:
-        auth_and_issue(domains)
-    except messages.Error as e:
-        print(e)
-        sys.exit(1)
+    # Retry up to twice upon badNonce errors
+    for n in range(2):
+        try:
+            auth_and_issue(domains)
+        except messages.Error as e:
+            if e.typ == "urn:ietf:params:acme:error:badNonce":
+                time.sleep(0.01)
+                continue
+            print(e)
+            sys.exit(1)
+        else:
+            break
