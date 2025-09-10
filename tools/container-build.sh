@@ -33,6 +33,9 @@ case "$PLATFORM" in
     *) echo "Unsupported platform: ${PLATFORM}" && exit 1 ;;
 esac
 
+# Define single tag to avoid collisions and redundancy
+TAG="boulder:${VERSION}-${ARCH}"
+
 # Create platform-specific image
 docker buildx build \
     --file Containerfile \
@@ -40,20 +43,17 @@ docker buildx build \
     --build-arg "COMMIT_ID=${COMMIT_ID}" \
     --build-arg "GO_VERSION=${GO_VERSION}" \
     --build-arg "VERSION=${VERSION}" \
-    --tag "boulder:${VERSION}-${ARCH}" \
-    --tag "boulder:${VERSION}" \
-    --tag "boulder:${COMMIT_ID}" \
-    --tag boulder \
+    --tag "${TAG}" \
     --load \
     .
 
 # Create tarball
-docker run "boulder:${VERSION}-${ARCH}" tar -C /opt/boulder -cpz . > "./boulder-${VERSION}-${COMMIT_ID}.${ARCH}.tar.gz"
+docker run "${TAG}" tar -C /opt/boulder -cpz . > "./boulder-${VERSION}-${COMMIT_ID}.${ARCH}.tar.gz"
 
 # Create .deb package
 docker run -v .:/boulderrepo \
     -e "COMMIT_ID=${COMMIT_ID}" \
     -e "VERSION=${VERSION}" \
     -e "ARCH=${ARCH}" \
-    "boulder:${VERSION}-${ARCH}" \
+    "${TAG}" \
     /boulderrepo/tools/make-deb.sh
