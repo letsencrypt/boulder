@@ -20,6 +20,43 @@ type MockClient struct {
 
 // LookupTXT is a mock
 func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddrs, error) {
+	// Use the example account-specific label prefix derived from
+	// "https://example.com/acme/acct/ExampleAccount"
+	const accountLabelPrefix = "_ujmmovf2vn55tgye._acme-challenge"
+
+	if hostname == accountLabelPrefix+".servfail.com" {
+		// Mirror dns-01 servfail behaviour
+		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
+	}
+	if hostname == accountLabelPrefix+".good-dns01.com" {
+		// Mirror dns-01 good record
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == accountLabelPrefix+".wrong-dns01.com" {
+		// Mirror dns-01 wrong record
+		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == accountLabelPrefix+".wrong-many-dns01.com" {
+		// Mirror dns-01 wrong-many record
+		return []string{"a", "b", "c", "d", "e"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == accountLabelPrefix+".long-dns01.com" {
+		// Mirror dns-01 long record
+		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == accountLabelPrefix+".no-authority-dns01.com" {
+		// Mirror dns-01 no-authority good record
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == accountLabelPrefix+".empty-txts.com" {
+		// Mirror dns-01 zero TXT records
+		return []string{}, ResolverAddrs{"MockClient"}, nil
+	}
+
 	if hostname == "_acme-challenge.servfail.com" {
 		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
 	}
@@ -48,6 +85,8 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 	if hostname == "_acme-challenge.empty-txts.com" {
 		return []string{}, ResolverAddrs{"MockClient"}, nil
 	}
+
+	// Default fallback
 	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
 }
 

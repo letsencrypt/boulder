@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -407,12 +408,15 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
+// The accountURI parameter is required for dns-account-01 challenges to
+// calculate the account-specific label.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
+	accountURI string,
 ) ([]core.ValidationRecord, error) {
 	switch kind {
 	case core.ChallengeTypeHTTP01:
@@ -423,6 +427,12 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
+	case core.ChallengeTypeDNSAccount01:
+		if features.Get().DNSAccount01Enabled {
+			// Strip a (potential) leading wildcard token from the identifier.
+			ident.Value = strings.TrimPrefix(ident.Value, "*.")
+			return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+		}
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
@@ -652,7 +662,7 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
+	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.Authz, req.Authz.RegID, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -706,6 +716,12 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		va.log.AuditObject("Validation result", logEvent)
 	}()
 
+	// For dns-account-01 challenges, construct the account URI from the configured prefix
+	var accountURI string
+	if chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled {
+		accountURI = fmt.Sprintf("%s%d", va.accountURIPrefixes[0], req.Authz.RegID)
+	}
+
 	// Do local validation. Note that we process the result in a couple ways
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
@@ -716,6 +732,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
+		accountURI,
 	)
 
 	// Stop the clock for local validation latency.

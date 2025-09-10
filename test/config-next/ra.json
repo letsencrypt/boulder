@@ -135,11 +135,6 @@
 				}
 			}
 		},
-		"features": {
-			"AsyncFinalize": true,
-			"AutomaticallyPauseZombieClients": true,
-			"NoPendingAuthzReuse": true
-		},
 		"ctLogs": {
 			"stagger": "500ms",
 			"logListFile": "test/ct-test-srv/log_list.json",
@@ -163,13 +158,20 @@
 				"C1",
 				"F1"
 			]
+		},
+		"features": {
+			"AsyncFinalize": true,
+			"AutomaticallyPauseZombieClients": true,
+			"DNSAccount01Enabled": true,
+			"NoPendingAuthzReuse": true
 		}
 	},
 	"pa": {
 		"challenges": {
 			"http-01": true,
 			"dns-01": true,
-			"tls-alpn-01": true
+			"tls-alpn-01": true,
+			"dns-account-01": true
 		},
 		"identifiers": {
 			"dns": true,
