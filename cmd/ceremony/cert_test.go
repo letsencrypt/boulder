@@ -109,7 +109,6 @@ func TestMakeTemplateRoot(t *testing.T) {
 	profile.CommonName = "common name"
 	profile.Organization = "organization"
 	profile.Country = "country"
-	profile.OCSPURL = "ocsp"
 	profile.CRLURL = "crl"
 	profile.IssuerURL = "issuer"
 	cert, err := makeTemplate(randReader, profile, pubKey, nil, rootCert)
@@ -119,8 +118,6 @@ func TestMakeTemplateRoot(t *testing.T) {
 	test.AssertEquals(t, cert.Subject.Organization[0], profile.Organization)
 	test.AssertEquals(t, len(cert.Subject.Country), 1)
 	test.AssertEquals(t, cert.Subject.Country[0], profile.Country)
-	test.AssertEquals(t, len(cert.OCSPServer), 1)
-	test.AssertEquals(t, cert.OCSPServer[0], profile.OCSPURL)
 	test.AssertEquals(t, len(cert.CRLDistributionPoints), 1)
 	test.AssertEquals(t, cert.CRLDistributionPoints[0], profile.CRLURL)
 	test.AssertEquals(t, len(cert.IssuingCertificateURL), 1)
@@ -147,7 +144,6 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 		Organization:       "organization",
 		Country:            "country",
 		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
-		OCSPURL:            "ocsp",
 		CRLURL:             "crl",
 		IssuerURL:          "issuer",
 		NotAfter:           "2020-10-10 11:31:00",
@@ -237,7 +233,6 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 				Country:            "f",
-				OCSPURL:            "g",
 			},
 			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "crl-url is required for subordinate CAs",
@@ -250,7 +245,6 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 				Country:            "f",
-				OCSPURL:            "g",
 				CRLURL:             "h",
 			},
 			certType:    []certType{intermediateCert, crossCert},
@@ -264,7 +258,6 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 				Country:            "f",
-				OCSPURL:            "g",
 				CRLURL:             "h",
 				IssuerURL:          "i",
 			},
@@ -279,7 +272,6 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 				Country:            "f",
-				OCSPURL:            "g",
 				CRLURL:             "h",
 				IssuerURL:          "i",
 				Policies:           []policyInfoConfig{{OID: "1.2.3"}, {OID: "4.5.6"}},
@@ -318,13 +310,6 @@ func TestVerifyProfile(t *testing.T) {
 			},
 			certType:    []certType{requestCert},
 			expectedErr: "signature-algorithm cannot be set for a CSR",
-		},
-		{
-			profile: certProfile{
-				OCSPURL: "a",
-			},
-			certType:    []certType{requestCert},
-			expectedErr: "ocsp-url cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{

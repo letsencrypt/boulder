@@ -128,7 +128,6 @@ certificate-profile:
     country: US
     not-before: 2020-01-01 12:00:00
     not-after: 2040-01-01 12:00:00
-    ocsp-url: http://good-guys.com/ocsp
     crl-url:  http://good-guys.com/crl
     issuer-url:  http://good-guys.com/root
     policies:
@@ -193,7 +192,6 @@ certificate-profile:
     country: US
     not-before: 2020-01-01 12:00:00
     not-after: 2040-01-01 12:00:00
-    ocsp-url: http://good-guys.com/ocsp
     crl-url:  http://good-guys.com/crl
     issuer-url:  http://good-guys.com/root
     policies:
@@ -419,7 +417,6 @@ The certificate profile defines a restricted set of fields that are used to gene
 | `country` | Specifies the subject country |
 | `not-before` | Specifies the certificate notBefore date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
 | `not-after` | Specifies the certificate notAfter date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
-| `ocsp-url` | Specifies the AIA OCSP responder URL |
 | `crl-url` | Specifies the cRLDistributionPoints URL |
 | `issuer-url` | Specifies the AIA caIssuer URL |
 | `policies` | Specifies contents of a certificatePolicies extension. Should contain a list of policies with the field `oid`, indicating the policy OID. |
