@@ -142,7 +142,7 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 type IssuerConfig struct {
 	// Active determines if the issuer can be used to sign precertificates. All
 	// issuers, regardless of this field, can be used to sign final certificates
-	// (for which an issuance token is presented), OCSP responses, and CRLs.
+	// (for which an issuance token is presented) and CRLs.
 	// All Active issuers of a given key type (RSA or ECDSA) are part of a pool
 	// and each precertificate will be issued randomly from a selected pool.
 	// The selection of which pool depends on the precertificate's key algorithm.
@@ -154,10 +154,8 @@ type IssuerConfig struct {
 	// TODO(#8177): Remove this.
 	OCSPURL string `validate:"omitempty,url"`
 
-	// Number of CRL shards.
-	// This must be nonzero if adding CRLDistributionPoints to certificates
-	// (that is, if profile.IncludeCRLDistributionPoints is true).
-	CRLShards int
+	// Number of CRL shards. Must be positive, but can be 1 for no sharding.
+	CRLShards int `validate:"required,min=1"`
 
 	Location IssuerLoc
 }
@@ -239,6 +237,9 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	if !strings.HasSuffix(config.CRLURLBase, "/") {
 		return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
 	}
+	if config.CRLShards <= 0 {
+		return nil, errors.New("Number of CRL shards is required")
+	}
 
 	// We require that all of our issuers be capable of both issuing certs and
 	// providing revocation information.
@@ -280,7 +281,7 @@ func (i *Issuer) KeyType() x509.PublicKeyAlgorithm {
 }
 
 // IsActive is true if the issuer is willing to issue precertificates, and false
-// if the issuer is only willing to issue final certificates, OCSP, and CRLs.
+// if the issuer is only willing to issue final certificates and CRLs.
 func (i *Issuer) IsActive() bool {
 	return i.active
 }
