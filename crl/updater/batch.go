@@ -34,7 +34,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				err := cu.updateShardWithRetry(ctx, atTime, work.issuerNameID, work.shardIdx, nil)
+				err := cu.updateShardWithRetry(ctx, atTime, work.issuerNameID, work.shardIdx)
 				if err != nil {
 					cu.log.AuditErrf(
 						"Generating CRL failed: id=[%s] err=[%s]",
