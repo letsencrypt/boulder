@@ -14,8 +14,6 @@ import (
 	"sync/atomic"
 	"unicode"
 
-	"golang.org/x/crypto/ocsp"
-
 	core "github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -76,24 +74,18 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("got unacceptable parallelism %d", s.parallelism)
 	}
 
-	reasonCode := revocation.Reason(-1)
-	for code := range revocation.AdminAllowedReasons {
-		if s.reasonStr == revocation.ReasonToString[code] {
-			reasonCode = code
-			break
-		}
-	}
-	if reasonCode == revocation.Reason(-1) {
-		return fmt.Errorf("got unacceptable revocation reason %q", s.reasonStr)
+	reasonCode, err := revocation.StringToReason(s.reasonStr)
+	if err != nil {
+		return fmt.Errorf("looking up revocation reason: %w", err)
 	}
 
-	if s.skipBlock && reasonCode == ocsp.KeyCompromise {
+	if s.skipBlock && reasonCode == revocation.KeyCompromise {
 		// We would only add the SPKI hash of the pubkey to the blockedKeys table if
 		// the revocation reason is keyCompromise.
 		return errors.New("-skip-block-key only makes sense with -reason=1")
 	}
 
-	if s.malformed && reasonCode == ocsp.KeyCompromise {
+	if s.malformed && reasonCode == revocation.KeyCompromise {
 		// This is because we can't extract and block the pubkey if we can't
 		// parse the certificate.
 		return errors.New("cannot revoke malformed certs for reason keyCompromise")

@@ -17,9 +17,9 @@ import (
 
 	"github.com/eggsampler/acme/v3"
 	_ "github.com/go-sql-driver/mysql"
-	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -136,7 +136,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	).CombinedOutput()
 	test.AssertNotError(t, err, fmt.Sprintf("revoking via admin-revoker: %s", string(output)))
 
-	waitAndCheckRevoked(t, cert, nil, ocsp.Unspecified)
+	waitAndCheckRevoked(t, cert, nil, revocation.Unspecified)
 
 	// ---- Test revocation by key ----
 	blockMyKeyDomain := "blockmykey.wantserror.com"
@@ -162,8 +162,8 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "revoking second certificate")
 
-	waitAndCheckRevoked(t, res.certs[0], res.certs[1], ocsp.KeyCompromise)
-	waitAndCheckRevoked(t, cert, nil, ocsp.KeyCompromise)
+	waitAndCheckRevoked(t, res.certs[0], res.certs[1], revocation.KeyCompromise)
+	waitAndCheckRevoked(t, cert, nil, revocation.KeyCompromise)
 
 	// Try to issue again with the same key, expecting an error because of the key is blocked.
 	_, err = authAndIssue(nil, certKey, []acme.Identifier{{Type: "dns", Value: "123.example.com"}}, true, "")

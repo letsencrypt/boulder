@@ -19,11 +19,11 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
-	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
 )
 
@@ -612,10 +612,10 @@ func revokeCertificate(s *State, c *acmeCache) error {
 	pemBlock, _ := pem.Decode(certPEM)
 	revokeObj := struct {
 		Certificate string
-		Reason      int
+		Reason      revocation.Reason
 	}{
 		Certificate: base64.URLEncoding.EncodeToString(pemBlock.Bytes),
-		Reason:      ocsp.Unspecified,
+		Reason:      revocation.Unspecified,
 	}
 
 	revokeJSON, err := json.Marshal(revokeObj)

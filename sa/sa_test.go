@@ -30,7 +30,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -1883,7 +1882,7 @@ func TestRevokeCertificateWithShard(t *testing.T) {
 		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, core.SerialToString(eeCert.SerialNumber))
 	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
 	test.AssertEquals(t, result.ShardIdx, int64(9))
-	test.AssertEquals(t, result.RevokedReason, revocation.Reason(ocsp.KeyCompromise))
+	test.AssertEquals(t, result.RevokedReason, revocation.KeyCompromise)
 }
 
 func TestUpdateRevokedCertificate(t *testing.T) {
@@ -1910,7 +1909,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Serial:   serial,
 		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(now),
-		Reason:   ocsp.KeyCompromise,
+		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
@@ -1922,7 +1921,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		IssuerID: 1,
 		Serial:   serial,
 		Date:     timestamppb.New(revokedTime),
-		Reason:   ocsp.CessationOfOperation,
+		Reason:   int64(revocation.CessationOfOperation),
 		Response: []byte{1, 2, 3},
 	})
 	test.AssertNotError(t, err, "RevokeCertificate failed")
@@ -1931,7 +1930,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
-	test.AssertEquals(t, int(status.RevokedReason), ocsp.CessationOfOperation)
+	test.AssertEquals(t, revocation.Reason(status.RevokedReason), revocation.CessationOfOperation)
 	fc.Add(1 * time.Hour)
 
 	// Try to update its revocation info with no backdate
@@ -1940,7 +1939,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		IssuerID: 1,
 		Serial:   serial,
 		Date:     timestamppb.New(now),
-		Reason:   ocsp.KeyCompromise,
+		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
@@ -1952,7 +1951,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Serial:   serial,
 		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(revokedTime),
-		Reason:   ocsp.Unspecified,
+		Reason:   int64(revocation.Unspecified),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
@@ -1964,7 +1963,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Serial:   "000000000000000000000000000000021bd5",
 		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(revokedTime),
-		Reason:   ocsp.KeyCompromise,
+		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
@@ -1976,7 +1975,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Serial:   serial,
 		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(now),
-		Reason:   ocsp.KeyCompromise,
+		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
@@ -1988,7 +1987,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Serial:   serial,
 		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(revokedTime),
-		Reason:   ocsp.KeyCompromise,
+		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
@@ -2025,7 +2024,7 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 		ShardIdx: 9,
 		Serial:   serial,
 		Date:     timestamppb.New(revokedTime),
-		Reason:   ocsp.CessationOfOperation,
+		Reason:   int64(revocation.CessationOfOperation),
 		Response: []byte{1, 2, 3},
 	})
 	test.AssertNotError(t, err, "RevokeCertificate failed")
@@ -2038,7 +2037,7 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 		Serial:   serial,
 		Date:     timestamppb.New(fc.Now()),
 		Backdate: timestamppb.New(revokedTime),
-		Reason:   ocsp.KeyCompromise,
+		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
@@ -2048,7 +2047,7 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, serial)
 	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
 	test.AssertEquals(t, result.ShardIdx, int64(9))
-	test.AssertEquals(t, result.RevokedReason, revocation.Reason(ocsp.KeyCompromise))
+	test.AssertEquals(t, result.RevokedReason, revocation.KeyCompromise)
 }
 
 func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
@@ -2081,7 +2080,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 		IssuerID: 1,
 		Serial:   serial,
 		Date:     revokedTime,
-		Reason:   ocsp.CessationOfOperation,
+		Reason:   int64(revocation.CessationOfOperation),
 		Response: []byte{1, 2, 3},
 	})
 	test.AssertNotError(t, err, "RevokeCertificate failed")
@@ -2106,7 +2105,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 		Serial:   serial,
 		Date:     timestamppb.New(fc.Now()),
 		Backdate: revokedTime,
-		Reason:   ocsp.KeyCompromise,
+		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
@@ -2116,7 +2115,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, serial)
 	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
 	test.AssertEquals(t, result.ShardIdx, int64(9))
-	test.AssertEquals(t, result.RevokedReason, revocation.Reason(ocsp.KeyCompromise))
+	test.AssertEquals(t, result.RevokedReason, revocation.KeyCompromise)
 }
 
 func TestAddCertificateRenewalBit(t *testing.T) {

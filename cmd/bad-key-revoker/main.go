@@ -9,7 +9,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -20,6 +19,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -190,7 +190,7 @@ func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
 		_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 			Cert:      cert.DER,
 			Serial:    cert.Serial,
-			Code:      int64(ocsp.KeyCompromise),
+			Code:      int64(revocation.KeyCompromise),
 			AdminName: "bad-key-revoker",
 		})
 		if err != nil {

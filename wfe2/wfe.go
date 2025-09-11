@@ -968,7 +968,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	// Verify the revocation reason supplied is allowed
 	reason := revocation.Reason(0)
 	if revokeRequest.Reason != nil {
-		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
+		if !revocation.UserAllowedReason(*revokeRequest.Reason) {
 			return nil, 0, berrors.BadRevocationReasonError(int64(*revokeRequest.Reason))
 		}
 		reason = *revokeRequest.Reason
