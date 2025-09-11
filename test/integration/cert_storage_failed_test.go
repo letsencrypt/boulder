@@ -60,9 +60,8 @@ func getPrecertByName(db *sql.DB, reversedName string) (*x509.Certificate, error
 
 // TestIssuanceCertStorageFailed tests what happens when a storage RPC fails
 // during issuance. Specifically, it tests that case where we successfully
-// prepared and stored a linting certificate plus metadata, but after
-// issuing the precertificate we failed to mark the certificate as "ready"
-// to serve an OCSP "good" response.
+// prepared and stored a linting certificate plus metadata, but failed to store
+// the corresponding final certificate after issuance completed.
 //
 // To do this, we need to mess with the database, because we want to cause
 // a failure in one specific query, without control ever returning to the
