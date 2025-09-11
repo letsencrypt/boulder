@@ -3,6 +3,8 @@
 *.a
 *.so
 *.pyc
+boulder-*.deb
+boulder-*.tar.gz
 
 # Folders
 _obj

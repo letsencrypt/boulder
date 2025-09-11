@@ -10,16 +10,24 @@ on:
       - '**'
 
 jobs:
-  push-release:
+  build-artifacts:
     strategy:
       fail-fast: false
       matrix:
-        GO_VERSION:
-          - "1.25.2"
-    runs-on: ubuntu-24.04
+        include:
+          - GO_VERSION: "1.25.2"
+            ARCH: "amd64"
+            RUNNER: "ubuntu-24.04"
+          - GO_VERSION: "1.25.2"
+            ARCH: "arm64"
+            RUNNER: "ubuntu-24.04-arm"
+    runs-on: ${{ matrix.RUNNER }}
     permissions:
       contents: write
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      go_version: ${{ matrix.GO_VERSION }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,20 +37,61 @@ jobs:
       - name: Verify release ancestry
         run: ./tools/verify-release-ancestry.sh "$GITHUB_SHA"
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set version output
+        id: version
+        run: |
+          VERSION="${{ matrix.GO_VERSION }}.$(date +%s)"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
       - name: Build Boulder container and .deb
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
+          DOCKER_DEFAULT_PLATFORM: linux/${{ matrix.ARCH }}
         run: ./tools/container-build.sh
 
-      - name: Tag Boulder container
-        run: docker tag boulder "ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"
+      - name: Export container image for multi-platform
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          docker save "boulder:${VERSION}-${{ matrix.ARCH }}" | gzip > "boulder-image-${{ matrix.ARCH }}.tar.gz"
 
-      - name: Compute checksums
-        id: checksums
-        # The files listed on this line must be identical to the files uploaded
-        # in the last step.
-        run: sha256sum boulder*.deb boulder*.tar.gz >| boulder-${{ matrix.GO_VERSION }}.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: boulder-${{ matrix.ARCH }}
+          path: |
+            boulder*.deb
+            boulder*.tar.gz
+            boulder-image-${{ matrix.ARCH }}.tar.gz
+          retention-days: 1
+
+  create-release:
+    needs: build-artifacts
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: '0'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare release files
+        run: |
+          # Move all .deb and .tar.gz files to current directory
+          find artifacts/ -name "*.deb" -o -name "*.tar.gz" | grep -v "boulder-image-" | xargs -I {} cp {} .
+          
+          # Compute checksums for release files only
+          sha256sum boulder*.deb boulder*.tar.gz >| boulder-${{ needs.build-artifacts.outputs.version }}.$(git rev-parse --short=8 HEAD).checksums.txt
 
       - name: Create release
         env:
@@ -57,16 +106,68 @@ jobs:
         # https://cli.github.com/manual/gh_release_upload
         run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz boulder*.checksums.txt
 
-      - name: Build ct-test-srv container
-        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"
+  push-images:
+    needs: build-artifacts
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Load and tag images
+        run: |
+          # Load architecture-specific images
+          docker load < artifacts/boulder-amd64/boulder-image-amd64.tar.gz
+          docker load < artifacts/boulder-arm64/boulder-image-arm64.tar.gz
+          
+          VERSION="${{ needs.build-artifacts.outputs.version }}"
+          BASE_TAG="ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${VERSION}"
+          
+          # Tag with architecture-specific tags for manifest creation
+          docker tag "boulder:${VERSION}-amd64" "${BASE_TAG}-amd64"
+          docker tag "boulder:${VERSION}-arm64" "${BASE_TAG}-arm64"
 
       - name: Login to ghcr.io
         run: printenv GITHUB_TOKEN | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push Boulder container
-        run: docker push "ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"
+      - name: Push architecture-specific images
+        run: |
+          VERSION="${{ needs.build-artifacts.outputs.version }}"
+          BASE_TAG="ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${VERSION}"
+          docker push "${BASE_TAG}-amd64"
+          docker push "${BASE_TAG}-arm64"
 
-      - name: Push ct-test-srv container
-        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"
+      - name: Create and push multi-platform manifest
+        run: |
+          VERSION="${{ needs.build-artifacts.outputs.version }}"
+          BASE_TAG="ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${VERSION}"
+          
+          docker buildx imagetools create -t "${BASE_TAG}" \
+            "${BASE_TAG}-amd64" \
+            "${BASE_TAG}-arm64"
+
+      - name: Build and push ct-test-srv multi-platform
+        run: |
+          VERSION="${{ needs.build-artifacts.outputs.version }}"
+          docker buildx build . \
+            --build-arg "GO_VERSION=${{ needs.build-artifacts.outputs.go_version }}" \
+            -f test/ct-test-srv/Dockerfile \
+            --platform linux/amd64,linux/arm64 \
+            -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${VERSION}" \
+            --push
