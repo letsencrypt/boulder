@@ -321,8 +321,7 @@ func TestGenerateTemplate(t *testing.T) {
 		SignatureAlgorithm:    x509.SHA256WithRSA,
 		IssuingCertificateURL: []string{"http://issuer"},
 		Policies:              []x509.OID{domainValidatedOID},
-		// These fields are only included if specified in the profile.
-		OCSPServer:            nil,
+		// This field is computed based on the serial, so is not included in the template.
 		CRLDistributionPoints: nil,
 	}
 
@@ -488,7 +487,6 @@ func TestIssueWithCRLDP(t *testing.T) {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
 	profile := defaultProfile()
-	profile.includeCRLDistributionPoints = true
 	_, issuanceToken, err := signer.Prepare(profile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    goodSKID,
