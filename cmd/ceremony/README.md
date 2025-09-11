@@ -13,7 +13,6 @@ ceremony --config path/to/config.yml
 - `cross-csr`: creates a CSR for signing by a third party, outputting a PEM CSR.
 - `cross-certificate`: issues a certificate for one root, signed by another root. This is distinct from an intermediate because there is no path length constraint and there are no EKUs.
 - `key`: generates a signing key on HSM, outputting a PEM public key
-- `ocsp-response`: creates a OCSP response for the provided certificate and signs it using a signing key already on a HSM, outputting a base64 encoded response
 - `crl`: creates a CRL with the IDP extension and `onlyContainsCACerts = true` from the provided profile and signs it using a signing key already on a HSM, outputting a PEM CRL
 
 These modes are set in the `ceremony-type` field of the configuration file.
@@ -295,61 +294,6 @@ outputs:
 ```
 
 This config generates an ECDSA P-384 key in the HSM with the object label `intermediate signing key`. The public key is written to `/home/user/intermediate-signing-pub.pem`.
-
-### OCSP Response ceremony
-
-- `ceremony-type`: string describing the ceremony type, `ocsp-response`.
-- `pkcs11`: object containing PKCS#11 related fields.
-
-    | Field | Description |
-    | --- | --- |
-    | `module` | Path to the PKCS#11 module to use to communicate with a HSM. |
-    | `pin` | Specifies the login PIN, should only be provided if the HSM device requires one to interact with the slot. |
-    | `signing-key-slot` | Specifies which HSM object slot the signing key is in. |
-    | `signing-key-label` | Specifies the HSM object label for the signing keypair's public key. |
-
-- `inputs`: object containing paths for inputs
-
-    | Field | Description |
-    | --- | --- |
-    | `certificate-path` | Path to PEM certificate to create a response for. |
-    | `issuer-certificate-path` | Path to PEM issuer certificate. |
-    | `delegated-issuer-certificate-path` | Path to PEM delegated issuer certificate, if one is being used. |
-
-- `outputs`: object containing paths to write outputs.
-
-    | Field | Description |
-    | --- | --- |
-    | `response-path` | Path to store signed base64 encoded response. |
-
-- `ocsp-profile`: object containing profile for the OCSP response.
-
-    | Field | Description |
-    | --- | --- |
-    | `this-update` | Specifies the OCSP response thisUpdate date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
-    | `next-update` | Specifies the OCSP response nextUpdate date, in the format `2006-01-02 15:04:05`. The time will be interpreted as UTC. |
-    | `status` | Specifies the OCSP response status, either `good` or `revoked`. |
-
-Example:
-
-```yaml
-ceremony-type: ocsp-response
-pkcs11:
-    module: /usr/lib/opensc-pkcs11.so
-    signing-key-slot: 0
-    signing-key-label: root signing key
-inputs:
-    certificate-path: /home/user/certificate.pem
-    issuer-certificate-path: /home/user/root-cert.pem
-outputs:
-    response-path: /home/user/ocsp-resp.b64
-ocsp-profile:
-    this-update: 2020-01-01 12:00:00
-    next-update: 2021-01-01 12:00:00
-    status: good
-```
-
-This config generates a OCSP response signed by a key in the HSM, identified by the object label `root signing key` and object ID `ffff`. The response will be for the certificate in `/home/user/certificate.pem`, and will be written to `/home/user/ocsp-resp.b64`.
 
 ### CRL ceremony
 

@@ -18,7 +18,6 @@ import (
 	"slices"
 	"time"
 
-	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v3"
 
 	zlintx509 "github.com/zmap/zcrypto/x509"
@@ -374,59 +373,6 @@ func (kc keyConfig) validate() error {
 	err = checkOutputFile(kc.Outputs.PublicKeyPath, "public-key-path")
 	if err != nil {
 		return err
-	}
-
-	return nil
-}
-
-type ocspRespConfig struct {
-	CeremonyType string              `yaml:"ceremony-type"`
-	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
-	Inputs       struct {
-		CertificatePath                string `yaml:"certificate-path"`
-		IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
-		DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
-	} `yaml:"inputs"`
-	Outputs struct {
-		ResponsePath string `yaml:"response-path"`
-	} `yaml:"outputs"`
-	OCSPProfile struct {
-		ThisUpdate string `yaml:"this-update"`
-		NextUpdate string `yaml:"next-update"`
-		Status     string `yaml:"status"`
-	} `yaml:"ocsp-profile"`
-}
-
-func (orc ocspRespConfig) validate() error {
-	err := orc.PKCS11.validate()
-	if err != nil {
-		return err
-	}
-
-	// Input fields
-	if orc.Inputs.CertificatePath == "" {
-		return errors.New("inputs.certificate-path is required")
-	}
-	if orc.Inputs.IssuerCertificatePath == "" {
-		return errors.New("inputs.issuer-certificate-path is required")
-	}
-	// DelegatedIssuerCertificatePath may be omitted
-
-	// Output fields
-	err = checkOutputFile(orc.Outputs.ResponsePath, "response-path")
-	if err != nil {
-		return err
-	}
-
-	// OCSP fields
-	if orc.OCSPProfile.ThisUpdate == "" {
-		return errors.New("ocsp-profile.this-update is required")
-	}
-	if orc.OCSPProfile.NextUpdate == "" {
-		return errors.New("ocsp-profile.next-update is required")
-	}
-	if orc.OCSPProfile.Status != "good" && orc.OCSPProfile.Status != "revoked" {
-		return errors.New("ocsp-profile.status must be either \"good\" or \"revoked\"")
 	}
 
 	return nil
@@ -879,76 +825,6 @@ func keyCeremony(configBytes []byte) error {
 	return nil
 }
 
-func ocspRespCeremony(configBytes []byte) error {
-	var config ocspRespConfig
-	err := strictyaml.Unmarshal(configBytes, &config)
-	if err != nil {
-		return fmt.Errorf("failed to parse config: %s", err)
-	}
-	err = config.validate()
-	if err != nil {
-		return fmt.Errorf("failed to validate config: %s", err)
-	}
-
-	cert, err := loadCert(config.Inputs.CertificatePath)
-	if err != nil {
-		return fmt.Errorf("failed to load certificate %q: %s", config.Inputs.CertificatePath, err)
-	}
-	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
-	if err != nil {
-		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
-	}
-	var signer crypto.Signer
-	var delegatedIssuer *x509.Certificate
-	if config.Inputs.DelegatedIssuerCertificatePath != "" {
-		delegatedIssuer, err = loadCert(config.Inputs.DelegatedIssuerCertificatePath)
-		if err != nil {
-			return fmt.Errorf("failed to load delegated issuer certificate %q: %s", config.Inputs.DelegatedIssuerCertificatePath, err)
-		}
-
-		signer, _, err = openSigner(config.PKCS11, delegatedIssuer.PublicKey)
-		if err != nil {
-			return err
-		}
-	} else {
-		signer, _, err = openSigner(config.PKCS11, issuer.PublicKey)
-		if err != nil {
-			return err
-		}
-	}
-
-	thisUpdate, err := time.Parse(time.DateTime, config.OCSPProfile.ThisUpdate)
-	if err != nil {
-		return fmt.Errorf("unable to parse ocsp-profile.this-update: %s", err)
-	}
-	nextUpdate, err := time.Parse(time.DateTime, config.OCSPProfile.NextUpdate)
-	if err != nil {
-		return fmt.Errorf("unable to parse ocsp-profile.next-update: %s", err)
-	}
-	var status int
-	switch config.OCSPProfile.Status {
-	case "good":
-		status = int(ocsp.Good)
-	case "revoked":
-		status = int(ocsp.Revoked)
-	default:
-		// this shouldn't happen if the config is validated
-		return fmt.Errorf("unexpected ocsp-profile.stats: %s", config.OCSPProfile.Status)
-	}
-
-	resp, err := generateOCSPResponse(signer, issuer, delegatedIssuer, cert, thisUpdate, nextUpdate, status)
-	if err != nil {
-		return err
-	}
-
-	err = writeFile(config.Outputs.ResponsePath, resp)
-	if err != nil {
-		return fmt.Errorf("failed to write OCSP response to %q: %s", config.Outputs.ResponsePath, err)
-	}
-
-	return nil
-}
-
 func crlCeremony(configBytes []byte) error {
 	var config crlConfig
 	err := strictyaml.Unmarshal(configBytes, &config)
@@ -1075,17 +951,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("key ceremony failed: %s", err)
 		}
-	case "ocsp-response":
-		err = ocspRespCeremony(configBytes)
-		if err != nil {
-			log.Fatalf("ocsp response ceremony failed: %s", err)
-		}
 	case "crl":
 		err = crlCeremony(configBytes)
 		if err != nil {
 			log.Fatalf("crl ceremony failed: %s", err)
 		}
 	default:
-		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, ocsp-response, crl")
+		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, crl")
 	}
 }
