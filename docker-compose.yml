@@ -163,7 +163,7 @@ networks:
   # validate and issue for it. It is used by challtestsrv, which binds to
   # 64.112.117.122:80 and :443 for its HTTP-01 challenge responder.
   #
-  # TODO(#8215): Put akamai-test-srv and s3-test-srv on this network.
+  # TODO(#8215): Put s3-test-srv on this network.
   publicnet:
     driver: bridge
     ipam:

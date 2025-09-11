@@ -119,7 +119,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
                                            characters into a sequence of regular expressions
 
                                           Example:
-                                           TestAkamaiPurgerDrainQueueFails/TestWFECORS
+                                           TestGenerateValidity/TestWFECORS
     -h, --help                            Shows this help message
 
 EOM
