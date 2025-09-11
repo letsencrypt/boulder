@@ -96,6 +96,19 @@ def get_chall(authz, typ):
             return chall_body
     raise Exception("No %s challenge found" % typ.typ)
 
+def get_any_supported_chall(authz):
+    """
+    Return the first supported challenge from the given authorization.
+    Supports HTTP01, DNS01, and TLSALPN01 challenges.
+
+    Note: DNS-ACCOUNT-01 challenge type is excluded from the list of supported
+    challenge types until the Python ACME library adds support for it.
+    """
+    for chall_body in authz.body.challenges:
+        if isinstance(chall_body.chall, (challenges.HTTP01, challenges.DNS01, challenges.TLSALPN01)):
+            return chall_body
+    raise Exception("No supported challenge types found in authorization")
+
 def make_csr(domains):
     key = OpenSSL.crypto.PKey()
     key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
@@ -129,13 +142,21 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
-    try:
-        order = client.poll_and_finalize(order)
-        if cert_output is not None:
-            with open(cert_output, "w") as f:
-                f.write(order.fullchain_pem)
-    finally:
-        cleanup()
+    # Retry up to twice upon badNonce errors
+    for n in range(2):
+        try:
+            order = client.poll_and_finalize(order)
+            if cert_output is not None:
+                with open(cert_output, "w") as f:
+                    f.write(order.fullchain_pem)
+        except messages.Error as e:
+            if e.typ == "urn:ietf:params:acme:error:badNonce":
+                time.sleep(0.01)
+                continue
+        else:
+            break
+        finally:
+            cleanup()
 
     return order
 
@@ -221,8 +242,15 @@ if __name__ == "__main__":
     if len(domains) == 0:
         print(__doc__)
         sys.exit(0)
-    try:
-        auth_and_issue(domains)
-    except messages.Error as e:
-        print(e)
-        sys.exit(1)
+    # Retry up to twice upon badNonce errors
+    for n in range(2):
+        try:
+            auth_and_issue(domains)
+        except messages.Error as e:
+            if e.typ == "urn:ietf:params:acme:error:badNonce":
+                time.sleep(0.01)
+                continue
+            print(e)
+            sys.exit(1)
+        else:
+            break

@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/netip"
+	"strings"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -48,19 +51,64 @@ func availableAddresses(allAddrs []netip.Addr) (v4 []netip.Addr, v6 []netip.Addr
 	return
 }
 
-func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
+// validateDNSAccount01 handles the dns-account-01 challenge by calculating
+// the account-specific DNS query domain and expected digest, then calling
+// the common DNS validation logic.
+// This implements draft-ietf-acme-dns-account-label-01, and is permitted by
+// CAB/F Ballot SC-84, which was incorporated into BR v2.1.4.
+func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURI string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
-		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
-		return nil, berrors.MalformedError("Identifier type for DNS challenge was not DNS")
+		return nil, berrors.MalformedError("Identifier type for DNS-ACCOUNT-01 challenge was not DNS")
+	}
+	if accountURI == "" {
+		return nil, berrors.InternalServerError("accountURI must be provided for dns-account-01")
 	}
 
+	// Calculate the DNS prefix label based on the account URI
+	sha256sum := sha256.Sum256([]byte(accountURI))
+	prefixBytes := sha256sum[0:10] // First 10 bytes
+	prefixLabel := strings.ToLower(base32.StdEncoding.EncodeToString(prefixBytes))
+
+	// Construct the challenge prefix specific to DNS-ACCOUNT-01
+	challengePrefix := fmt.Sprintf("_%s.%s", prefixLabel, core.DNSPrefix)
+	va.log.Debugf("DNS-ACCOUNT-01: Querying TXT for %q (derived from account URI %q)", fmt.Sprintf("%s.%s", challengePrefix, ident.Value), accountURI)
+
+	// Call the common validation logic
+	records, err := va.validateDNS(ctx, ident, challengePrefix, keyAuthorization)
+	if err != nil {
+		// Check if the error returned by validateDNS is of the Unauthorized type
+		if errors.Is(err, berrors.Unauthorized) {
+			// Enrich any UnauthorizedError from validateDNS with the account URI
+			enrichedError := berrors.UnauthorizedError("%s (account: %q)", err.Error(), accountURI)
+			return nil, enrichedError
+		}
+		// For other error types, return as is
+		return nil, err
+	}
+
+	return records, nil
+}
+
+func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
+	if ident.Type != identifier.TypeDNS {
+		return nil, berrors.MalformedError("Identifier type for DNS-01 challenge was not DNS")
+	}
+
+	// Call the common validation logic
+	return va.validateDNS(ctx, ident, core.DNSPrefix, keyAuthorization)
+}
+
+// validateDNS performs the DNS TXT lookup and validation logic.
+func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identifier.ACMEIdentifier, challengePrefix string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	// Compute the digest of the key authorization file
 	h := sha256.New()
 	h.Write([]byte(keyAuthorization))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
+	// Construct the full challenge subdomain by concatenating prefix with identifier
+	challengeSubdomain := fmt.Sprintf("%s.%s", challengePrefix, ident.Value)
+
 	// Look for the required record in the DNS
-	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
 	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, berrors.DNSError("%s", err)
