@@ -29,7 +29,7 @@ jobs:
       - name: Verify release ancestry
         run: ./tools/verify-release-ancestry.sh "$GITHUB_SHA"
 
-      - name: Build .deb
+      - name: Build Boulder container and .deb
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
