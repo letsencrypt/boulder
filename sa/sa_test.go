@@ -3197,30 +3197,6 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 }
 
-func TestGetMaxExpiration(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
-	// up the certificateStatus row we need. This particular cert has a notAfter
-	// date of Mar 6 2023, and we lie about its IssuerNameID to make things easy.
-	reg := createWorkingRegistration(t, sa)
-	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
-	test.AssertNotError(t, err, "failed to load test cert")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          eeCert.Raw,
-		RegID:        reg.Id,
-		Issued:       timestamppb.New(eeCert.NotBefore),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "failed to add test cert")
-
-	lastExpiry, err := sa.GetMaxExpiration(context.Background(), &emptypb.Empty{})
-	test.AssertNotError(t, err, "getting last expriy should succeed")
-	test.Assert(t, lastExpiry.AsTime().Equal(eeCert.NotAfter), "times should be equal")
-	test.AssertEquals(t, timestamppb.New(eeCert.NotBefore).AsTime(), eeCert.NotBefore)
-}
-
 func TestLeaseOldestCRLShard(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()

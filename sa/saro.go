@@ -1025,28 +1025,6 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 	})
 }
 
-// GetMaxExpiration returns the timestamp of the farthest-future notAfter date
-// found in the certificateStatus table. This provides an upper bound on how far
-// forward operations that need to cover all currently-unexpired certificates
-// have to look.
-func (ssa *SQLStorageAuthorityRO) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
-	var model struct {
-		MaxNotAfter *time.Time `db:"maxNotAfter"`
-	}
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&model,
-		"SELECT MAX(notAfter) AS maxNotAfter FROM certificateStatus",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("selecting max notAfter: %w", err)
-	}
-	if model.MaxNotAfter == nil {
-		return nil, errors.New("certificateStatus table notAfter column is empty")
-	}
-	return timestamppb.New(*model.MaxNotAfter), err
-}
-
 // Health implements the grpc.checker interface.
 func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
 	err := ssa.dbReadOnlyMap.SelectOne(ctx, new(int), "SELECT 1")
