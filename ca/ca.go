@@ -82,8 +82,7 @@ type certProfileWithID struct {
 	profile *issuance.Profile
 }
 
-// caMetrics holds various metrics which are shared between caImpl, ocspImpl,
-// and crlImpl.
+// caMetrics holds various metrics which are shared between caImpl and crlImpl.
 type caMetrics struct {
 	signatureCount *prometheus.CounterVec
 	signErrorCount *prometheus.CounterVec
@@ -132,7 +131,6 @@ func (m *caMetrics) noteSignError(err error) {
 }
 
 // certificateAuthorityImpl represents a CA that signs certificates.
-// It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnsafeCertificateAuthorityServer
 	sa           sapb.StorageAuthorityCertificateClient
@@ -155,7 +153,7 @@ var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
 
 // makeIssuerMaps processes a list of issuers into a set of maps for easy
 // lookup either by key algorithm (useful for picking an issuer for a precert)
-// or by unique ID (useful for final certs, OCSP, and CRLs). If two issuers with
+// or by unique ID (useful for final certs and CRLs). If two issuers with
 // the same unique ID are encountered, an error is returned.
 func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm][]*issuance.Issuer, 2)
@@ -203,8 +201,7 @@ func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfig) (ma
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
-// from any number of issuance.Issuers according to their profiles, and can sign
-// OCSP (via delegation to an ocspImpl and its issuers).
+// from any number of issuance.Issuers and for any number of profiles.
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	sctService rapb.SCTProviderClient,
@@ -290,11 +287,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificate(ctx context.Context, cer
 	}
 
 	precertDER, _, err := ca.issuePrecertificateInner(ctx, issueReq, certProfile, serialBigInt, notBefore, notAfter)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = ca.sa.SetCertificateStatusReady(ctx, &sapb.Serial{Serial: serialHex})
 	if err != nil {
 		return nil, err
 	}
@@ -572,7 +564,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		RegID:        issueReq.RegistrationID,
 		Issued:       timestamppb.New(ca.clk.Now()),
 		IssuerNameID: int64(issuer.NameID()),
-		OcspNotReady: true,
 	})
 	if err != nil {
 		return nil, nil, err
