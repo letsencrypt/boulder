@@ -83,19 +83,17 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	_, err = db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
 	test.AssertNotError(t, err, "failed to drop trigger")
 
-	// Make a specific update to certificateStatus fail, for this test but not others.
+	// Make a specific insert into certificates fail, for this test but not others.
 	// To limit the effect to this one test, we make the trigger aware of a specific
-	// hostname used in this test. Since the UPDATE to the certificateStatus table
+	// hostname used in this test. Since the INSERT to the certificates table
 	// doesn't include the hostname, we look it up in the issuedNames table, keyed
-	// off of the serial being updated.
-	// We limit this to UPDATEs that set the status to "good" because otherwise we
-	// would fail to revoke the certificate later.
+	// off of the serial.
 	// NOTE: CREATE and DROP TRIGGER do not work in prepared statements. Go's
 	// database/sql will automatically try to use a prepared statement if you pass
 	// any arguments to Exec besides the query itself, so don't do that.
 	_, err = db.ExecContext(ctx, `
 		CREATE TRIGGER fail_ready
-		BEFORE UPDATE ON certificateStatus
+		BEFORE INSERT ON certificates
 		FOR EACH ROW BEGIN
 		DECLARE reversedName1 VARCHAR(255);
 		SELECT reversedName
@@ -103,8 +101,8 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 			FROM issuedNames
 			WHERE serial = NEW.serial
 			    AND reversedName LIKE "com.wantserror.%";
-		IF NEW.status = "good" AND reversedName1 != "" THEN
-			SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Pretend there was an error updating the certificateStatus';
+		IF reversedName1 != "" THEN
+			SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Pretend there was an error inserting into certificates';
 		END IF;
 		END
 	`)
@@ -117,7 +115,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 
 	// ---- Test revocation by serial ----
 	revokeMeDomain := "revokeme.wantserror.com"
-	// This should fail because the trigger prevented setting the certificate status to "ready"
+	// This should fail because the trigger prevented storing the final certificate.
 	_, err = authAndIssue(nil, certKey, []acme.Identifier{{Type: "dns", Value: revokeMeDomain}}, true, "")
 	test.AssertError(t, err, "expected authAndIssue to fail")
 
@@ -140,7 +138,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 
 	// ---- Test revocation by key ----
 	blockMyKeyDomain := "blockmykey.wantserror.com"
-	// This should fail because the trigger prevented setting the certificate status to "ready"
+	// This should fail because the trigger prevented storing the final certificate.
 	_, err = authAndIssue(nil, certKey, []acme.Identifier{{Type: "dns", Value: blockMyKeyDomain}}, true, "")
 	test.AssertError(t, err, "expected authAndIssue to fail")
 
