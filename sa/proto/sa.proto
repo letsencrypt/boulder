@@ -80,7 +80,6 @@ service StorageAuthority {
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
   rpc AddCertificate(AddCertificateRequest) returns (google.protobuf.Empty) {}
   rpc AddPrecertificate(AddCertificateRequest) returns (google.protobuf.Empty) {}
-  rpc SetCertificateStatusReady(Serial) returns (google.protobuf.Empty) {}
   rpc AddSerial(AddSerialRequest) returns (google.protobuf.Empty) {}
   rpc DeactivateAuthorization2(AuthorizationID2) returns (google.protobuf.Empty) {}
   rpc DeactivateRegistration(RegistrationID) returns (core.Registration) {}
@@ -204,21 +203,7 @@ message AddCertificateRequest {
   reserved 4; // Previously issuedNS
   google.protobuf.Timestamp issued = 7;
   int64 issuerNameID = 5; // https://pkg.go.dev/github.com/letsencrypt/boulder/issuance#IssuerNameID
-
-  // If this is set to true, the certificateStatus.status column will be set to
-  // "wait", which will cause us to serve internalError responses with OCSP is
-  // queried. This allows us to meet the BRs requirement:
-  //
-  // If the OCSP responder receives a request for the status of a certificate
-  // serial number that is “unused”, then ...
-  // the responder MUST NOT respond with a “good” status for such requests.
-  //
-  // Paraphrasing, a certificate serial number is unused if neither a
-  // Certificate nor a Precertificate has been issued with it. So when we write
-  // a linting certificate to the precertificates table, we want to make sure
-  // we never give a "good" response for that serial until the precertificate
-  // is actually issued.
-  bool ocspNotReady = 6;
+  reserved 6; // Previously ocspNotReady
 }
 
 message OrderRequest {
