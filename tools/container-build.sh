@@ -13,7 +13,9 @@ if [ -z "${GO_VERSION}" ] ; then
 fi
 
 COMMIT_ID="$(git rev-parse --short=8 HEAD)"
-VERSION="${GO_VERSION}.$(date +%s)"
+# Use commit timestamp for reproducible builds
+COMMIT_TIMESTAMP="$(git show -s --format=%ct HEAD)"
+VERSION="${GO_VERSION}.${COMMIT_TIMESTAMP}"
 
 # Determine what architecture to build for
 if [ -n "${DOCKER_DEFAULT_PLATFORM}" ]; then

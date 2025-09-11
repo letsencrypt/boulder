@@ -43,7 +43,9 @@ jobs:
       - name: Set version output
         id: version
         run: |
-          VERSION="${{ matrix.GO_VERSION }}.$(date +%s)"
+          # Use commit timestamp for reproducible builds
+          COMMIT_TIMESTAMP="$(git show -s --format=%ct HEAD)"
+          VERSION="${{ matrix.GO_VERSION }}.${COMMIT_TIMESTAMP}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build Boulder container and .deb
