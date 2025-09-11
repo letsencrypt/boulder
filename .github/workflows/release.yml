@@ -137,7 +137,7 @@ jobs:
           docker load < artifacts/boulder-arm64/boulder-image-arm64.tar.gz
           
           VERSION="${{ needs.build-artifacts.outputs.version }}"
-          BASE_TAG="ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${VERSION}"
+          BASE_TAG="ghcr.io/${{ github.repository_owner }}/boulder:${{ github.ref_name }}-go${VERSION}"
           
           # Tag with architecture-specific tags for manifest creation
           docker tag "boulder:${VERSION}-amd64" "${BASE_TAG}-amd64"
@@ -151,14 +151,14 @@ jobs:
       - name: Push architecture-specific images
         run: |
           VERSION="${{ needs.build-artifacts.outputs.version }}"
-          BASE_TAG="ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${VERSION}"
+          BASE_TAG="ghcr.io/${{ github.repository_owner }}/boulder:${{ github.ref_name }}-go${VERSION}"
           docker push "${BASE_TAG}-amd64"
           docker push "${BASE_TAG}-arm64"
 
       - name: Create and push multi-platform manifest
         run: |
           VERSION="${{ needs.build-artifacts.outputs.version }}"
-          BASE_TAG="ghcr.io/letsencrypt/boulder:${{ github.ref_name }}-go${VERSION}"
+          BASE_TAG="ghcr.io/${{ github.repository_owner }}/boulder:${{ github.ref_name }}-go${VERSION}"
           
           docker buildx imagetools create -t "${BASE_TAG}" \
             "${BASE_TAG}-amd64" \
@@ -171,5 +171,5 @@ jobs:
             --build-arg "GO_VERSION=${{ needs.build-artifacts.outputs.go_version }}" \
             -f test/ct-test-srv/Dockerfile \
             --platform linux/amd64,linux/arm64 \
-            -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${VERSION}" \
+            -t "ghcr.io/${{ github.repository_owner }}/ct-test-srv:${{ github.ref_name }}-go${VERSION}" \
             --push
