@@ -59,6 +59,9 @@ type ProfileConfig struct {
 	OmitOCSP bool
 	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
 	// be added to all certificates issued by this profile.
+	//
+	// Deprecated: This has no effect; CRLDP is always included.
+	// TODO(#8177): Remove this.
 	IncludeCRLDistributionPoints bool
 
 	MaxValidityPeriod   config.Duration
@@ -83,8 +86,6 @@ type Profile struct {
 	omitKeyEncipherment bool
 	omitClientAuth      bool
 	omitSKID            bool
-
-	includeCRLDistributionPoints bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -123,14 +124,13 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	}
 
 	sp := &Profile{
-		omitCommonName:               profileConfig.OmitCommonName,
-		omitKeyEncipherment:          profileConfig.OmitKeyEncipherment,
-		omitClientAuth:               profileConfig.OmitClientAuth,
-		omitSKID:                     profileConfig.OmitSKID,
-		includeCRLDistributionPoints: profileConfig.IncludeCRLDistributionPoints,
-		maxBackdate:                  profileConfig.MaxValidityBackdate.Duration,
-		maxValidity:                  profileConfig.MaxValidityPeriod.Duration,
-		lints:                        lints,
+		omitCommonName:      profileConfig.OmitCommonName,
+		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
+		omitClientAuth:      profileConfig.OmitClientAuth,
+		omitSKID:            profileConfig.OmitSKID,
+		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
+		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
+		lints:               lints,
 	}
 
 	return sp, nil
@@ -381,18 +381,12 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
 	}
 
-	// If explicit CRL sharding is enabled, pick a shard based on the serial number
-	// modulus the number of shards. This gives us random distribution that is
-	// nonetheless consistent between precert and cert.
-	if prof.includeCRLDistributionPoints {
-		if i.crlShards <= 0 {
-			return nil, nil, errors.New("IncludeCRLDistributionPoints was set but CRLShards was not set")
-		}
-		shardZeroBased := big.NewInt(0).Mod(template.SerialNumber, big.NewInt(int64(i.crlShards)))
-		shard := int(shardZeroBased.Int64()) + 1
-		url := i.crlURL(shard)
-		template.CRLDistributionPoints = []string{url}
-	}
+	// Pick a CRL shard based on the serial number modulo the number of shards.
+	// This gives us random distribution that is nonetheless consistent between
+	// precert and cert.
+	shardZeroBased := big.NewInt(0).Mod(template.SerialNumber, big.NewInt(int64(i.crlShards)))
+	shard := int(shardZeroBased.Int64()) + 1
+	template.CRLDistributionPoints = []string{i.crlURL(shard)}
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint

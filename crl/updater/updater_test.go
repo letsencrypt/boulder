@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -25,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -278,7 +278,7 @@ func TestUpdateShard(t *testing.T) {
 			entries: []*corepb.CRLEntry{
 				{
 					Serial:    "0311b5d430823cfa25b0fc85d14c54ee35",
-					Reason:    int32(ocsp.KeyCompromise),
+					Reason:    int32(revocation.KeyCompromise),
 					RevokedAt: now,
 				},
 			},
@@ -287,17 +287,17 @@ func TestUpdateShard(t *testing.T) {
 			entries: []*corepb.CRLEntry{
 				{
 					Serial:    "0311b5d430823cfa25b0fc85d14c54ee35",
-					Reason:    int32(ocsp.KeyCompromise),
+					Reason:    int32(revocation.KeyCompromise),
 					RevokedAt: now,
 				},
 				{
 					Serial:    "037d6a05a0f6a975380456ae605cee9889",
-					Reason:    int32(ocsp.AffiliationChanged),
+					Reason:    int32(revocation.AffiliationChanged),
 					RevokedAt: now,
 				},
 				{
 					Serial:    "03aa617ab8ee58896ba082bfa25199c884",
-					Reason:    int32(ocsp.Unspecified),
+					Reason:    int32(revocation.Unspecified),
 					RevokedAt: now,
 				},
 			},
@@ -310,9 +310,9 @@ func TestUpdateShard(t *testing.T) {
 	test.AssertNotError(t, err, "updateShard")
 
 	expectedEntries := map[string]int32{
-		"0311b5d430823cfa25b0fc85d14c54ee35": int32(ocsp.KeyCompromise),
-		"037d6a05a0f6a975380456ae605cee9889": int32(ocsp.AffiliationChanged),
-		"03aa617ab8ee58896ba082bfa25199c884": int32(ocsp.Unspecified),
+		"0311b5d430823cfa25b0fc85d14c54ee35": int32(revocation.KeyCompromise),
+		"037d6a05a0f6a975380456ae605cee9889": int32(revocation.AffiliationChanged),
+		"03aa617ab8ee58896ba082bfa25199c884": int32(revocation.Unspecified),
 	}
 	for r := range bytes.SplitSeq(recordingUploader.crlBody, []byte("\n")) {
 		if len(r) == 0 {
@@ -580,25 +580,25 @@ func TestAddFromStream(t *testing.T) {
 	yesterday := now.Add(-24 * time.Hour)
 	simpleEntry := &corepb.CRLEntry{
 		Serial:    "abcdefg",
-		Reason:    ocsp.CessationOfOperation,
+		Reason:    int32(revocation.CessationOfOperation),
 		RevokedAt: timestamppb.New(yesterday),
 	}
 
 	reRevokedEntry := &corepb.CRLEntry{
 		Serial:    "abcdefg",
-		Reason:    ocsp.KeyCompromise,
+		Reason:    int32(revocation.KeyCompromise),
 		RevokedAt: timestamppb.New(now),
 	}
 
 	reRevokedEntryOld := &corepb.CRLEntry{
 		Serial:    "abcdefg",
-		Reason:    ocsp.KeyCompromise,
+		Reason:    int32(revocation.KeyCompromise),
 		RevokedAt: timestamppb.New(now.Add(-48 * time.Hour)),
 	}
 
 	reRevokedEntryBadReason := &corepb.CRLEntry{
 		Serial:    "abcdefg",
-		Reason:    ocsp.AffiliationChanged,
+		Reason:    int32(revocation.AffiliationChanged),
 		RevokedAt: timestamppb.New(now),
 	}
 
@@ -691,12 +691,12 @@ func TestAddFromStreamDisallowedSerialPrefix(t *testing.T) {
 	input := []*corepb.CRLEntry{
 		{
 			Serial:    "abcdefg",
-			Reason:    ocsp.CessationOfOperation,
+			Reason:    int32(revocation.CessationOfOperation),
 			RevokedAt: timestamppb.New(yesterday),
 		},
 		{
 			Serial:    "01020304",
-			Reason:    ocsp.CessationOfOperation,
+			Reason:    int32(revocation.CessationOfOperation),
 			RevokedAt: timestamppb.New(yesterday),
 		},
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -904,7 +903,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 	if core.IsAnyNilOrZero(req.Serial, req.IssuerID, req.Date, req.Backdate) {
 		return nil, errIncompleteRequest
 	}
-	if req.Reason != ocsp.KeyCompromise {
+	if revocation.Reason(req.Reason) != revocation.KeyCompromise {
 		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
 	}
 
@@ -917,11 +916,11 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 					revokedReason = ?,
 					ocspLastUpdated = ?
 				WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
-			revocation.Reason(ocsp.KeyCompromise),
+			revocation.KeyCompromise,
 			thisUpdate,
 			req.Serial,
 			string(core.OCSPStatusRevoked),
-			revocation.Reason(ocsp.KeyCompromise),
+			revocation.KeyCompromise,
 			revokedDate,
 		)
 		if err != nil {
@@ -964,7 +963,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 				return nil, fmt.Errorf("retrieving revoked certificate row: %w", err)
 			}
 
-			rcm.RevokedReason = revocation.Reason(ocsp.KeyCompromise)
+			rcm.RevokedReason = revocation.KeyCompromise
 			_, err = tx.Update(ctx, &rcm)
 			if err != nil {
 				return nil, fmt.Errorf("updating revoked certificate row: %w", err)

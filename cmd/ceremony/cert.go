@@ -41,9 +41,6 @@ type certProfile struct {
 	// always be UTC.
 	NotAfter string `yaml:"not-after"`
 
-	// OCSPURL should contain the URL at which a OCSP responder that
-	// can respond to OCSP requests for this certificate operates
-	OCSPURL string `yaml:"ocsp-url"`
 	// CRLURL should contain the URL at which CRLs for this certificate
 	// can be found
 	CRLURL string `yaml:"crl-url"`
@@ -99,9 +96,6 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 		if profile.SignatureAlgorithm != "" {
 			return errors.New("signature-algorithm cannot be set for a CSR")
-		}
-		if profile.OCSPURL != "" {
-			return errors.New("ocsp-url cannot be set for a CSR")
 		}
 		if profile.CRLURL != "" {
 			return errors.New("crl-url cannot be set for a CSR")
@@ -205,10 +199,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		return nil, fmt.Errorf("toBeCrossSigned cert field was nil, but was required to gather EKUs for the lint cert")
 	}
 
-	var ocspServer []string
-	if profile.OCSPURL != "" {
-		ocspServer = []string{profile.OCSPURL}
-	}
 	var crlDistributionPoints []string
 	if profile.CRLURL != "" {
 		crlDistributionPoints = []string{profile.CRLURL}
@@ -246,7 +236,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		Subject:               profile.Subject(),
-		OCSPServer:            ocspServer,
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		KeyUsage:              ku,

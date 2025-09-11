@@ -403,7 +403,6 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CommonName:         "d",
 					Organization:       "e",
 					Country:            "f",
-					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
 					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}, {OID: "6.6.6"}},
@@ -438,7 +437,6 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CommonName:         "d",
 					Organization:       "e",
 					Country:            "f",
-					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
 					Policies:           []policyInfoConfig{},
@@ -473,7 +471,6 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CommonName:         "d",
 					Organization:       "e",
 					Country:            "f",
-					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
 					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
@@ -631,7 +628,6 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CommonName:         "d",
 					Organization:       "e",
 					Country:            "f",
-					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
 					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}, {OID: "6.6.6"}},
@@ -668,7 +664,6 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CommonName:         "d",
 					Organization:       "e",
 					Country:            "f",
-					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
 					Policies:           []policyInfoConfig{},
@@ -705,7 +700,6 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CommonName:         "d",
 					Organization:       "e",
 					Country:            "f",
-					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
 					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
@@ -905,199 +899,6 @@ func TestKeyConfigValidate(t *testing.T) {
 	}
 }
 
-func TestOCSPRespConfig(t *testing.T) {
-	cases := []struct {
-		name          string
-		config        ocspRespConfig
-		expectedError string
-	}{
-		{
-			name:          "no pkcs11.module",
-			config:        ocspRespConfig{},
-			expectedError: "pkcs11.module is required",
-		},
-		{
-			name: "no pkcs11.signing-key-label",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module: "module",
-				},
-			},
-			expectedError: "pkcs11.signing-key-label is required",
-		},
-		{
-			name: "no inputs.certificate-path",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-			},
-			expectedError: "inputs.certificate-path is required",
-		},
-		{
-			name: "no inputs.issuer-certificate-path",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-				Inputs: struct {
-					CertificatePath                string `yaml:"certificate-path"`
-					IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
-					DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
-				}{
-					CertificatePath: "path",
-				},
-			},
-			expectedError: "inputs.issuer-certificate-path is required",
-		},
-		{
-			name: "no outputs.response-path",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-				Inputs: struct {
-					CertificatePath                string `yaml:"certificate-path"`
-					IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
-					DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
-				}{
-					CertificatePath:       "path",
-					IssuerCertificatePath: "path",
-				},
-			},
-			expectedError: "outputs.response-path is required",
-		},
-		{
-			name: "no ocsp-profile.this-update",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-				Inputs: struct {
-					CertificatePath                string `yaml:"certificate-path"`
-					IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
-					DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
-				}{
-					CertificatePath:       "path",
-					IssuerCertificatePath: "path",
-				},
-				Outputs: struct {
-					ResponsePath string `yaml:"response-path"`
-				}{
-					ResponsePath: "path",
-				},
-			},
-			expectedError: "ocsp-profile.this-update is required",
-		},
-		{
-			name: "no ocsp-profile.next-update",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-				Inputs: struct {
-					CertificatePath                string `yaml:"certificate-path"`
-					IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
-					DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
-				}{
-					CertificatePath:       "path",
-					IssuerCertificatePath: "path",
-				},
-				Outputs: struct {
-					ResponsePath string `yaml:"response-path"`
-				}{
-					ResponsePath: "path",
-				},
-				OCSPProfile: struct {
-					ThisUpdate string `yaml:"this-update"`
-					NextUpdate string `yaml:"next-update"`
-					Status     string `yaml:"status"`
-				}{
-					ThisUpdate: "this-update",
-				},
-			},
-			expectedError: "ocsp-profile.next-update is required",
-		},
-		{
-			name: "no ocsp-profile.status",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-				Inputs: struct {
-					CertificatePath                string `yaml:"certificate-path"`
-					IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
-					DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
-				}{
-					CertificatePath:       "path",
-					IssuerCertificatePath: "path",
-				},
-				Outputs: struct {
-					ResponsePath string `yaml:"response-path"`
-				}{
-					ResponsePath: "path",
-				},
-				OCSPProfile: struct {
-					ThisUpdate string `yaml:"this-update"`
-					NextUpdate string `yaml:"next-update"`
-					Status     string `yaml:"status"`
-				}{
-					ThisUpdate: "this-update",
-					NextUpdate: "next-update",
-				},
-			},
-			expectedError: "ocsp-profile.status must be either \"good\" or \"revoked\"",
-		},
-		{
-			name: "good config",
-			config: ocspRespConfig{
-				PKCS11: PKCS11SigningConfig{
-					Module:       "module",
-					SigningLabel: "label",
-				},
-				Inputs: struct {
-					CertificatePath                string `yaml:"certificate-path"`
-					IssuerCertificatePath          string `yaml:"issuer-certificate-path"`
-					DelegatedIssuerCertificatePath string `yaml:"delegated-issuer-certificate-path"`
-				}{
-					CertificatePath:       "path",
-					IssuerCertificatePath: "path",
-				},
-				Outputs: struct {
-					ResponsePath string `yaml:"response-path"`
-				}{
-					ResponsePath: "path",
-				},
-				OCSPProfile: struct {
-					ThisUpdate string `yaml:"this-update"`
-					NextUpdate string `yaml:"next-update"`
-					Status     string `yaml:"status"`
-				}{
-					ThisUpdate: "this-update",
-					NextUpdate: "next-update",
-					Status:     "good",
-				},
-			},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.config.validate()
-			if err != nil && err.Error() != tc.expectedError {
-				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
-			} else if err == nil && tc.expectedError != "" {
-				t.Fatalf("validate didn't fail, wanted: %q", err)
-			}
-		})
-	}
-}
-
 func TestCRLConfig(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -1187,7 +988,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1219,7 +1020,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1252,7 +1053,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1261,7 +1062,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{}},
 				},
 			},
@@ -1291,7 +1092,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1300,7 +1101,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{
 						CertificatePath: "path",
 					}},
@@ -1332,7 +1133,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1341,7 +1142,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{
 						CertificatePath: "path",
 						RevocationDate:  "date",
@@ -1374,7 +1175,7 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
 				}{
 					ThisUpdate: "this-update",
@@ -1383,11 +1184,11 @@ func TestCRLConfig(t *testing.T) {
 					RevokedCertificates: []struct {
 						CertificatePath  string `yaml:"certificate-path"`
 						RevocationDate   string `yaml:"revocation-date"`
-						RevocationReason int    `yaml:"revocation-reason"`
+						RevocationReason string `yaml:"revocation-reason"`
 					}{{
 						CertificatePath:  "path",
 						RevocationDate:   "date",
-						RevocationReason: 1,
+						RevocationReason: "keyCompromise",
 					}},
 				},
 			},
