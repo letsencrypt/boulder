@@ -1,7 +1,10 @@
-# This builds Boulder in a Docker container, then creates an image
-# containing just the built Boulder binaries plus some ancillary
-# files that are useful for predeployment testing.
-FROM docker.io/ubuntu:24.04 AS builder
+# This multi-stage build first builds Boulder in a container, then
+# creates a minimal image containing the built Boulder binaries and
+# ancillary files for pre-deployment testing.
+ARG BUILDER_BASE=docker.io/ubuntu:24.04
+ARG FINAL_BASE=docker.io/ubuntu:24.04
+
+FROM ${BUILDER_BASE} AS builder
 
 ARG COMMIT_ID
 ARG GO_VERSION
@@ -32,7 +35,7 @@ RUN go install \
     -mod=vendor \
     ./...
 
-FROM docker.io/ubuntu:24.04
+FROM ${FINAL_BASE}
 
 ARG VERSION
 
