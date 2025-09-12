@@ -133,7 +133,7 @@ func (im *OverridesImporter) transitionToPendingWithComment(ticketID int64, caus
 	}
 }
 
-func (im *OverridesImporter) getValidatedFieldValue(fields map[string]string, fieldName, rateLimit string) (string, error) {
+func getValidatedFieldValue(fields map[string]string, fieldName, rateLimit string) (string, error) {
 	val := fields[fieldName]
 	err := validateOverrideRequestField(fieldName, val, rateLimit)
 	if err != nil {
@@ -142,7 +142,7 @@ func (im *OverridesImporter) getValidatedFieldValue(fields map[string]string, fi
 	return val, nil
 }
 
-func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*rapb.AddRateLimitOverrideRequest, string, error) {
+func makeAddOverrideRequest(rateLimitFieldValue string, fields map[string]string) (*rapb.AddRateLimitOverrideRequest, string, error) {
 	makeReq := func(limit rl.Name, bucket, organization string, tier int64) *rapb.AddRateLimitOverrideRequest {
 		return &rapb.AddRateLimitOverrideRequest{
 			LimitEnum: int64(limit),
@@ -154,11 +154,10 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 		}
 	}
 
-	rateLimit, ok := fields[RateLimitFieldName]
-	if !ok {
+	if rateLimitFieldValue == "" {
 		return nil, "", fmt.Errorf("missing rate limit field")
 	}
-	tierStr, err := im.getValidatedFieldValue(fields, TierFieldName, rateLimit)
+	tierStr, err := getValidatedFieldValue(fields, TierFieldName, rateLimitFieldValue)
 	if err != nil {
 		return nil, "", fmt.Errorf("getting/validating tier field: %w", err)
 	}
@@ -166,7 +165,7 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 	if err != nil {
 		return nil, "", fmt.Errorf("parsing tier: %w", err)
 	}
-	organization, err := im.getValidatedFieldValue(fields, OrganizationFieldName, "")
+	organization, err := getValidatedFieldValue(fields, OrganizationFieldName, "")
 	if err != nil {
 		return nil, "", fmt.Errorf("getting/validating organization: %w", err)
 	}
@@ -174,9 +173,9 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 	var req *rapb.AddRateLimitOverrideRequest
 	var accountDomainOrIP string
 
-	switch rateLimit {
+	switch rateLimitFieldValue {
 	case rl.NewOrdersPerAccount.String():
-		accountURI, err := im.getValidatedFieldValue(fields, AccountURIFieldName, "")
+		accountURI, err := getValidatedFieldValue(fields, AccountURIFieldName, "")
 		if err != nil {
 			return nil, "", fmt.Errorf("getting/validating accountURI: %w", err)
 		}
@@ -192,7 +191,7 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 		accountDomainOrIP = accountURI
 
 	case rl.CertificatesPerDomainPerAccount.String():
-		accountURI, err := im.getValidatedFieldValue(fields, AccountURIFieldName, "")
+		accountURI, err := getValidatedFieldValue(fields, AccountURIFieldName, "")
 		if err != nil {
 			return nil, "", fmt.Errorf("getting/validating accountURI: %w", err)
 		}
@@ -208,7 +207,7 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 		accountDomainOrIP = accountURI
 
 	case rl.CertificatesPerDomain.String() + perDNSNameSuffix:
-		dnsName, err := im.getValidatedFieldValue(fields, RegisteredDomainFieldName, rateLimit)
+		dnsName, err := getValidatedFieldValue(fields, RegisteredDomainFieldName, rateLimitFieldValue)
 		if err != nil {
 			return nil, "", fmt.Errorf("getting/validating registeredDomain: %w", err)
 		}
@@ -220,7 +219,7 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 		req = makeReq(rl.CertificatesPerDomain, bucketKey, organization, tier)
 
 	case rl.CertificatesPerDomain.String() + perIPSuffix:
-		ipAddrStr, err := im.getValidatedFieldValue(fields, IPAddressFieldName, rateLimit)
+		ipAddrStr, err := getValidatedFieldValue(fields, IPAddressFieldName, rateLimitFieldValue)
 		if err != nil {
 			return nil, "", fmt.Errorf("getting/validating ipAddress: %w", err)
 		}
@@ -233,7 +232,7 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 			return nil, "", fmt.Errorf("building bucket key: %w", err)
 		}
 		req = makeReq(rl.CertificatesPerDomain, bucketKey, organization, tier)
-		accountDomainOrIP = ipAddrStr
+		accountDomainOrIP = ipAddr.String()
 
 	default:
 		return nil, "", fmt.Errorf("unknown rate limit")
@@ -242,7 +241,7 @@ func (im *OverridesImporter) makeAddOverrideRequest(fields map[string]string) (*
 }
 
 func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, fields map[string]string) error {
-	req, accountDomainOrIP, err := im.makeAddOverrideRequest(fields)
+	req, accountDomainOrIP, err := makeAddOverrideRequest(fields[RateLimitFieldName], fields)
 	if err != nil {
 		// Move to "pending" so the next tick won't comment again.
 		im.transitionToPendingWithComment(ticketID, err.Error())

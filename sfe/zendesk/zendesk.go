@@ -211,6 +211,11 @@ func (c *Client) CreateTicket(requesterEmail, subject, commentBody string, field
 		},
 	}
 	for name, value := range fields {
+		if value == "" {
+			// Zendesk will ignore empty custom fields, but we can avoid sending
+			// them across the wire at all.
+			continue
+		}
 		id, ok := c.nameToFieldID[name]
 		if !ok {
 			return 0, fmt.Errorf("unknown custom field %q", name)

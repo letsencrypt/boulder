@@ -51,6 +51,7 @@
 			"mode": "all",
 			"interval": "20m"
 		},
+		"autoApproveOverrides": true,
 		"features": {}
 	},
 	"syslog": {
