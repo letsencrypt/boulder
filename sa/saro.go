@@ -22,6 +22,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -263,15 +264,35 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
+	var model struct {
+		RevokedDate   time.Time         `db:"revokedDate"`
+		RevokedReason revocation.Reason `db:"revokedReason"`
+	}
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&model,
+		"SELECT revokedDate, revokedReason FROM revokedCertificates WHERE serial = ? LIMIT 1",
+		req.Serial,
+	)
+	if db.IsNoRows(err) {
+		// The revokedCertificates table only holds revoked certificates, so serials
+		// that aren't found are considered to be not revoked. Double check that the
+		// serial exists at all before assering that it's good.
+		_, err := ssa.GetSerialMetadata(ctx, req)
+		if err != nil {
+			// GetSerialMetadata handles returning NotFound if appropriate.
+			return nil, err
 		}
+		return &sapb.RevocationStatus{Status: core.RevocationStatusGood}, nil
+	} else if err != nil {
 		return nil, err
 	}
 
-	return status, nil
+	return &sapb.RevocationStatus{
+		Status:        core.RevocationStatusRevoked,
+		RevokedDate:   timestamppb.New(model.RevokedDate),
+		RevokedReason: int64(model.RevokedReason),
+	}, nil
 }
 
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
