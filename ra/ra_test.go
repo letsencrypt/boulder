@@ -3511,20 +3511,20 @@ type mockSARevocation struct {
 	sapb.StorageAuthorityClient
 
 	known   map[string]*x509.Certificate
-	revoked map[string]*corepb.CertificateStatus
+	revoked map[string]*sapb.RevocationStatus
 	blocked []*sapb.AddBlockedKeyRequest
 }
 
 func newMockSARevocation(known *x509.Certificate) *mockSARevocation {
 	return &mockSARevocation{
 		known:   map[string]*x509.Certificate{core.SerialToString(known.SerialNumber): known},
-		revoked: make(map[string]*corepb.CertificateStatus),
+		revoked: make(map[string]*sapb.RevocationStatus),
 		blocked: make([]*sapb.AddBlockedKeyRequest, 0),
 	}
 }
 
 func (msar *mockSARevocation) reset() {
-	msar.revoked = make(map[string]*corepb.CertificateStatus)
+	msar.revoked = make(map[string]*sapb.RevocationStatus)
 	msar.blocked = make([]*sapb.AddBlockedKeyRequest, 0)
 }
 
@@ -3552,14 +3552,13 @@ func (msar *mockSARevocation) GetLintPrecertificate(_ context.Context, req *sapb
 	return nil, berrors.UnknownSerialError()
 }
 
-func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+func (msar *mockSARevocation) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	if status, present := msar.revoked[req.Serial]; present {
 		return status, nil
 	}
-	if cert, present := msar.known[req.Serial]; present {
-		return &corepb.CertificateStatus{
-			Serial:   core.SerialToString(cert.SerialNumber),
-			IssuerID: int64(issuance.IssuerNameID(cert)),
+	if _, present := msar.known[req.Serial]; present {
+		return &sapb.RevocationStatus{
+			Status: core.RevocationStatusGood,
 		}, nil
 	}
 	return nil, berrors.UnknownSerialError()
@@ -3598,14 +3597,12 @@ func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.Rev
 	if _, present := msar.revoked[req.Serial]; present {
 		return nil, berrors.AlreadyRevokedError("already revoked")
 	}
-	cert, present := msar.known[req.Serial]
+	_, present := msar.known[req.Serial]
 	if !present {
 		return nil, berrors.UnknownSerialError()
 	}
-	msar.revoked[req.Serial] = &corepb.CertificateStatus{
-		Serial:        req.Serial,
-		IssuerID:      int64(issuance.IssuerNameID(cert)),
-		Status:        string(core.OCSPStatusRevoked),
+	msar.revoked[req.Serial] = &sapb.RevocationStatus{
+		Status:        core.RevocationStatusRevoked,
 		RevokedReason: req.Reason,
 	}
 	return &emptypb.Empty{}, nil
@@ -3772,7 +3769,7 @@ func TestRevokeCertByKey(t *testing.T) {
 
 	// Reset and have the Subscriber revoke for a different reason.
 	// Then re-revoking using the key should work.
-	mockSA.revoked = make(map[string]*corepb.CertificateStatus)
+	mockSA.revoked = make(map[string]*sapb.RevocationStatus)
 	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
 		Cert:  cert.Raw,
 		Code:  int64(revocation.Unspecified),
