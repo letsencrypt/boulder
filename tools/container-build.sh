@@ -25,42 +25,43 @@ else
     # No override - detect from current machine
     MACHINE_ARCH=$(uname -m)
     case "${MACHINE_ARCH}" in
-        x86_64)    PLATFORM="linux/amd64" ;;
-        aarch64)   PLATFORM="linux/arm64" ;;
-        arm64)     PLATFORM="linux/arm64" ;;
-        *) echo "Unsupported machine architecture: ${MACHINE_ARCH}" && exit 1 ;;
+        x86_64)    PLATFORM="linux/amd64" ;; 
+        aarch64)   PLATFORM="linux/arm64" ;; 
+        arm64)     PLATFORM="linux/arm64" ;; 
+        *) echo "Unsupported machine architecture: ${MACHINE_ARCH}" && exit 1 ;; 
     esac
 fi
 
 # Convert platform to short architecture name for file naming
 case "${PLATFORM}" in
-    linux/amd64) ARCH="amd64" ;;
-    linux/arm64) ARCH="arm64" ;;
-    *) echo "Unsupported platform: ${PLATFORM}" && exit 1 ;;
+    linux/amd64) ARCH="amd64" ;; 
+    linux/arm64) ARCH="arm64" ;; 
+    *) echo "Unsupported platform: ${PLATFORM}" && exit 1 ;; 
 esac
 
-# Define single tag to avoid collisions and redundancy
-TAG="boulder:${VERSION}-${ARCH}"
-
 # Create platform-specific image
+# Keep generic tags for standalone use
 docker buildx build \
     --file Containerfile \
     --platform "$PLATFORM" \
     --build-arg "COMMIT_ID=${COMMIT_ID}" \
     --build-arg "GO_VERSION=${GO_VERSION}" \
     --build-arg "VERSION=${VERSION}" \
-    --tag "${TAG}" \
+    --tag "boulder:${VERSION}-${ARCH}" \
+    --tag "boulder:${VERSION}" \
+    --tag "boulder" \
     --load \
     --progress=plain \
     .
 
 # Create tarball
-docker run "${TAG}" tar -C /opt/boulder -cpz . > "./boulder-${VERSION}-${COMMIT_ID}.${ARCH}.tar.gz"
+docker run "boulder" tar -C /opt/boulder -cpz . \
+    > "./boulder-${VERSION}-${COMMIT_ID}.${ARCH}.tar.gz"
 
 # Create .deb package
 docker run -v .:/boulderrepo \
     -e "COMMIT_ID=${COMMIT_ID}" \
     -e "VERSION=${VERSION}" \
     -e "ARCH=${ARCH}" \
-    "${TAG}" \
+    "boulder" \
     /boulderrepo/tools/make-deb.sh
