@@ -5,12 +5,8 @@ package integration
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -203,88 +199,4 @@ func TestCRLPipeline(t *testing.T) {
 	test.AssertNotError(t, err, "s3-test-srv GET /query failed")
 	test.AssertEquals(t, resp.StatusCode, 404)
 	resp.Body.Close()
-}
-
-func TestCRLTemporalAndExplicitShardingCoexist(t *testing.T) {
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
-	if err != nil {
-		t.Fatalf("sql.Open: %s", err)
-	}
-	// Insert an old, revoked certificate in the certificateStatus table. Importantly this
-	// serial has the 7f prefix, which is in test/config-next/crl-updater.json in the
-	// `temporallyShardedPrefixes` list.
-	// Random serial that is unique to this test.
-	oldSerial := "7faa39be44fc95f3d19befe3cb715848e601"
-	// This is hardcoded to match one of the issuer names in our integration test environment's
-	// ca.json.
-	issuerID := 43104258997432926
-	_, err = db.Exec(`DELETE FROM certificateStatus WHERE serial = ?`, oldSerial)
-	if err != nil {
-		t.Fatalf("deleting old certificateStatus row: %s", err)
-	}
-	_, err = db.Exec(`
-		INSERT INTO certificateStatus (serial, issuerID, notAfter, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent)
-		VALUES (?, ?, ?, "revoked", NOW(), NOW(), 0, 0);`,
-		oldSerial, issuerID, time.Now().Add(24*time.Hour).Format("2006-01-02 15:04:05"))
-	if err != nil {
-		t.Fatalf("inserting old certificateStatus row: %s", err)
-	}
-
-	client, err := makeClient()
-	if err != nil {
-		t.Fatalf("creating acme client: %s", err)
-	}
-
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("creating cert key: %s", err)
-	}
-
-	// Issue and revoke a certificate. In the config-next world, this will be an explicitly
-	// sharded certificate. In the config world, this will be a temporally sharded certificate
-	// (until we move `config` to explicit sharding). This means that in the config world,
-	// this test only handles temporal sharding, but we don't config-gate it because it passes
-	// in both worlds.
-	result, err := authAndIssue(client, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
-	if err != nil {
-		t.Fatalf("authAndIssue: %s", err)
-	}
-
-	cert := result.certs[0]
-	err = client.RevokeCertificate(
-		client.Account,
-		cert,
-		client.PrivateKey,
-		0,
-	)
-	if err != nil {
-		t.Fatalf("revoking: %s", err)
-	}
-
-	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
-
-	allCRLs := getAllCRLs(t)
-	seen := make(map[string]bool)
-	// Range over CRLs from all issuers, because the "old" certificate (7faa...) has a
-	// different issuer than the "new" certificate issued by `authAndIssue`, which
-	// has a random issuer.
-	for _, crls := range allCRLs {
-		for _, crl := range crls {
-			for _, entry := range crl.RevokedCertificateEntries {
-				serial := fmt.Sprintf("%x", entry.SerialNumber)
-				if seen[serial] {
-					t.Errorf("revoked certificate %s seen on multiple CRLs", serial)
-				}
-				seen[serial] = true
-			}
-		}
-	}
-
-	newSerial := fmt.Sprintf("%x", cert.SerialNumber)
-	if !seen[newSerial] {
-		t.Errorf("revoked certificate %s not seen on any CRL", newSerial)
-	}
-	if !seen[oldSerial] {
-		t.Errorf("revoked certificate %s not seen on any CRL", oldSerial)
-	}
 }

@@ -4110,8 +4110,8 @@ func TestUpdateRegistrationKey(t *testing.T) {
 func TestCRLShard(t *testing.T) {
 	var cdp []string
 	n, err := crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
-	if err != nil || n != 0 {
-		t.Errorf("crlShard(%+v) = %d, %s, want 0, nil", cdp, n, err)
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
 	}
 
 	cdp = []string{

@@ -82,6 +82,9 @@ type Config struct {
 		// When deploying explicit sharding (i.e. the CRLDistributionPoints extension),
 		// the CAs should be configured with a new set of serial prefixes that haven't
 		// been used before.
+		//
+		// Deprecated: The updater no longer supports temporal sharding.
+		// TODO(#8345): Remove this.
 		TemporallyShardedSerialPrefixes []string
 
 		// MaxParallelism controls how many workers may be running in parallel.
@@ -202,7 +205,6 @@ func main() {
 		c.CRLUpdater.MaxAttempts,
 		c.CRLUpdater.CacheControl,
 		c.CRLUpdater.ExpiresMargin.Duration,
-		c.CRLUpdater.TemporallyShardedSerialPrefixes,
 		sac,
 		cac,
 		csc,
