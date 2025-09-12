@@ -1,18 +1,27 @@
-# This builds Boulder in a Docker container, then creates an image
-# containing just the built Boulder binaries plus some ancillary
-# files that are useful for predeployment testing.
-FROM docker.io/ubuntu:24.04 AS builder
+# This multi-stage build first builds Boulder in a container, then
+# creates a minimal image containing the built Boulder binaries and
+# ancillary files for pre-deployment testing.
+ARG BUILDER_BASE=docker.io/ubuntu:24.04
+ARG FINAL_BASE=docker.io/ubuntu:24.04
+
+FROM ${BUILDER_BASE} AS builder
 
 ARG COMMIT_ID
 ARG GO_VERSION
 ARG VERSION
+ARG TARGETPLATFORM
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get --assume-yes --no-install-recommends --update install \
     ca-certificates curl gcc git gnupg2 libc6-dev
 
 COPY tools/fetch-and-verify-go.sh /tmp
-RUN /tmp/fetch-and-verify-go.sh ${GO_VERSION}
+RUN case "${TARGETPLATFORM}" in \
+        "linux/amd64") PLATFORM="linux-amd64" ;; \
+        "linux/arm64") PLATFORM="linux-arm64" ;; \
+        *) echo "Unsupported platform: ${TARGETPLATFORM}" && exit 1 ;; \
+    esac && \
+    /tmp/fetch-and-verify-go.sh ${GO_VERSION} ${PLATFORM}
 RUN tar -C /opt -xzf go.tar.gz
 ENV PATH="/opt/go/bin:${PATH}"
 
@@ -26,7 +35,7 @@ RUN go install \
     -mod=vendor \
     ./...
 
-FROM docker.io/ubuntu:24.04
+FROM ${FINAL_BASE}
 
 ARG VERSION
 
