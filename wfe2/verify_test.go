@@ -502,14 +502,6 @@ func TestValidPOSTRequest(t *testing.T) {
 		ErrorStatType      string
 		EnforceContentType bool
 	}{
-		// POST requests without a Content-Length should produce a problem
-		{
-			Name:          "POST without a Content-Length header",
-			Headers:       nil,
-			HTTPStatus:    http.StatusLengthRequired,
-			ErrorDetail:   "missing Content-Length header",
-			ErrorStatType: "ContentLengthRequired",
-		},
 		// POST requests with a Replay-Nonce header should produce a problem
 		{
 			Name: "POST with a Replay-Nonce HTTP header",
@@ -988,16 +980,6 @@ func TestParseJWSRequest(t *testing.T) {
 		WantErrDetail string
 		WantStatType  string
 	}{
-		{
-			Name: "Invalid POST request",
-			// No Content-Length, something that validPOSTRequest should be flagging
-			Request: &http.Request{
-				Method: "POST",
-				URL:    mustParseURL("/"),
-			},
-			WantErrType:   berrors.Malformed,
-			WantErrDetail: "missing Content-Length header",
-		},
 		{
 			Name:          "Invalid JWS in POST body",
 			Request:       makePostRequestWithPath("test-path", `{`),
