@@ -469,6 +469,25 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 	return request
 }
 
+// makeChunkedPostRequestWithPath is the same as makePostRequestWithPath, but
+// with a chunked encoded request body instead of a fixed content length.
+func makeChunkedPostRequestWithPath(path string, body string) *http.Request {
+	request := &http.Request{
+		Method:     "POST",
+		RemoteAddr: "1.1.1.1:7882",
+		Header: map[string][]string{
+			"Transfer-Encoding": {"chunked"},
+			"Content-Type":      {expectedJWSContentType},
+		},
+		Body: makeBody(body),
+		Host: "localhost",
+	}
+	url := mustParseURL(path)
+	request.URL = url
+	request.RequestURI = url.Path
+	return request
+}
+
 // signAndPost constructs a JWS signed by the account with ID 1, over the given
 // payload, with the protected URL set to the provided signedURL. An HTTP
 // request constructed to the provided path with the encoded JWS body as the
