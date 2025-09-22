@@ -359,7 +359,7 @@ truncation, and performs it for SELECT queries as well as INSERT and UPDATE.
 # Release Process
 
 The current Boulder release process is described in
-[release.md](https://github.com/letsencrypt/boulder/docs/release.md). New
+[release.md](https://github.com/letsencrypt/boulder/blob/main/docs/release.md). New
 releases are tagged weekly, and artifacts are automatically produced for each
 release by GitHub Actions.
 
