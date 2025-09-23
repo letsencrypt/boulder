@@ -1791,7 +1791,14 @@ func TestRevokeCertificate(t *testing.T) {
 	// Add a cert to the DB to test with.
 	serial, testCert := test.ThrowAwayCert(t, fc)
 	issuedTime := sa.clk.Now()
-	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		RegID:   reg.Id,
+		Serial:  core.SerialToString(testCert.SerialNumber),
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        reg.Id,
 		Issued:       timestamppb.New(issuedTime),
@@ -1813,6 +1820,7 @@ func TestRevokeCertificate(t *testing.T) {
 		Serial:   serial,
 		Date:     timestamppb.New(now),
 		Reason:   reason,
+		ShardIdx: 1,
 	})
 	test.AssertNotError(t, err, "RevokeCertificate with no OCSP response should succeed")
 
@@ -1893,7 +1901,14 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	serial, testCert := test.ThrowAwayCert(t, fc)
 	issuedTime := fc.Now()
-	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		RegID:   reg.Id,
+		Serial:  core.SerialToString(testCert.SerialNumber),
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        reg.Id,
 		Issued:       timestamppb.New(issuedTime),
@@ -1911,6 +1926,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Backdate: timestamppb.New(now),
 		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
+		ShardIdx: 1,
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "no certificate with serial")
@@ -1923,6 +1939,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Date:     timestamppb.New(revokedTime),
 		Reason:   int64(revocation.CessationOfOperation),
 		Response: []byte{1, 2, 3},
+		ShardIdx: 1,
 	})
 	test.AssertNotError(t, err, "RevokeCertificate failed")
 
@@ -1941,6 +1958,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Date:     timestamppb.New(now),
 		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
+		ShardIdx: 1,
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "incomplete")
@@ -1953,6 +1971,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Backdate: timestamppb.New(revokedTime),
 		Reason:   int64(revocation.Unspecified),
 		Response: []byte{4, 5, 6},
+		ShardIdx: 1,
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "cannot update revocation for any reason other than keyCompromise")
@@ -1965,6 +1984,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Backdate: timestamppb.New(revokedTime),
 		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
+		ShardIdx: 1,
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "no certificate with serial")
@@ -1977,9 +1997,23 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Backdate: timestamppb.New(now),
 		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
+		ShardIdx: 1,
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "no certificate with serial")
+
+	// Try to update its revocation info with the wrong shard
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID: 1,
+		Serial:   serial,
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(revokedTime),
+		Reason:   int64(revocation.KeyCompromise),
+		Response: []byte{4, 5, 6},
+		ShardIdx: 2,
+	})
+	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
+	test.AssertContains(t, err.Error(), "mismatched shard index")
 
 	// Try to update its revocation info correctly
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
@@ -1989,133 +2023,9 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Backdate: timestamppb.New(revokedTime),
 		Reason:   int64(revocation.KeyCompromise),
 		Response: []byte{4, 5, 6},
+		ShardIdx: 1,
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
-}
-
-func TestUpdateRevokedCertificateWithShard(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Add a cert to the DB to test with.
-	reg := createWorkingRegistration(t, sa)
-	serial, testCert := test.ThrowAwayCert(t, fc)
-	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:   reg.Id,
-		Serial:  core.SerialToString(testCert.SerialNumber),
-		Created: timestamppb.New(testCert.NotBefore),
-		Expires: timestamppb.New(testCert.NotAfter),
-	})
-	test.AssertNotError(t, err, "failed to add test serial")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          testCert.Raw,
-		RegID:        reg.Id,
-		Issued:       timestamppb.New(testCert.NotBefore),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Couldn't add test cert")
-	fc.Add(1 * time.Hour)
-
-	// Now revoke it with a shardIdx, so that it gets updated in both the
-	// certificateStatus table and the revokedCertificates table.
-	revokedTime := fc.Now()
-	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID: 1,
-		ShardIdx: 9,
-		Serial:   serial,
-		Date:     timestamppb.New(revokedTime),
-		Reason:   int64(revocation.CessationOfOperation),
-		Response: []byte{1, 2, 3},
-	})
-	test.AssertNotError(t, err, "RevokeCertificate failed")
-
-	// Updating revocation should succeed, with the revokedCertificates row being
-	// updated.
-	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID: 1,
-		ShardIdx: 9,
-		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
-		Backdate: timestamppb.New(revokedTime),
-		Reason:   int64(revocation.KeyCompromise),
-		Response: []byte{4, 5, 6},
-	})
-	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
-
-	var result revokedCertModel
-	err = sa.dbMap.SelectOne(
-		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, serial)
-	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
-	test.AssertEquals(t, result.ShardIdx, int64(9))
-	test.AssertEquals(t, result.RevokedReason, revocation.KeyCompromise)
-}
-
-func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Add a cert to the DB to test with.
-	reg := createWorkingRegistration(t, sa)
-	serial, testCert := test.ThrowAwayCert(t, fc)
-	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:   reg.Id,
-		Serial:  serial,
-		Created: timestamppb.New(testCert.NotBefore),
-		Expires: timestamppb.New(testCert.NotAfter),
-	})
-	test.AssertNotError(t, err, "failed to add test serial")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          testCert.Raw,
-		RegID:        reg.Id,
-		Issued:       timestamppb.New(testCert.NotBefore),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Couldn't add test cert")
-	fc.Add(1 * time.Hour)
-
-	// Now revoke it *without* a shardIdx, so that it only gets updated in the
-	// certificateStatus table, and not the revokedCertificates table.
-	revokedTime := timestamppb.New(fc.Now())
-	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID: 1,
-		Serial:   serial,
-		Date:     revokedTime,
-		Reason:   int64(revocation.CessationOfOperation),
-		Response: []byte{1, 2, 3},
-	})
-	test.AssertNotError(t, err, "RevokeCertificate failed")
-
-	// Confirm that setup worked as expected.
-	status, err := sa.GetCertificateStatus(
-		ctx, &sapb.Serial{Serial: serial})
-	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
-
-	c, err := sa.dbMap.SelectNullInt(
-		ctx, "SELECT count(*) FROM revokedCertificates")
-	test.AssertNotError(t, err, "SELECT from revokedCertificates failed")
-	test.Assert(t, c.Valid, "SELECT from revokedCertificates got no result")
-	test.AssertEquals(t, c.Int64, int64(0))
-
-	// Updating revocation should succeed, with a new row being written into the
-	// revokedCertificates table.
-	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID: 1,
-		ShardIdx: 9,
-		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
-		Backdate: revokedTime,
-		Reason:   int64(revocation.KeyCompromise),
-		Response: []byte{4, 5, 6},
-	})
-	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
-
-	var result revokedCertModel
-	err = sa.dbMap.SelectOne(
-		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, serial)
-	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
-	test.AssertEquals(t, result.ShardIdx, int64(9))
-	test.AssertEquals(t, result.RevokedReason, revocation.KeyCompromise)
 }
 
 func TestAddCertificateRenewalBit(t *testing.T) {
@@ -3130,6 +3040,7 @@ func TestGetRevokedCerts(t *testing.T) {
 		Date:     mustTimestamp("2023-01-01 00:00"),
 		Reason:   1,
 		Response: []byte{1, 2, 3},
+		ShardIdx: 1,
 	})
 	test.AssertNotError(t, err, "failed to revoke test cert")
 

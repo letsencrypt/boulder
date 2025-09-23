@@ -1838,7 +1838,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 // on this certificate comes from one of our issuers.
 func crlShard(cert *x509.Certificate) (int64, error) {
 	if len(cert.CRLDistributionPoints) == 0 {
-		return 0, nil
+		return 0, errors.New("no crlDistributionPoints in certificate")
 	}
 	if len(cert.CRLDistributionPoints) > 1 {
 		return 0, errors.New("too many crlDistributionPoints in certificate")
@@ -1969,6 +1969,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 	if req.CrlShard != 0 && !req.Malformed {
 		return nil, errors.New("non-zero CRLShard is only allowed for malformed certificates (shard is automatic for well formed certificates)")
+	}
+	if req.Malformed && req.CrlShard == 0 {
+		return nil, errors.New("CRLShard is required for malformed certificates")
 	}
 
 	reasonCode := revocation.Reason(req.Code)

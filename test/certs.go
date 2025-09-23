@@ -93,7 +93,8 @@ func ThrowAwayCert(t *testing.T, clk clock.Clock) (string, *x509.Certificate) {
 		IPAddresses:           []net.IP{ip},
 		NotBefore:             clk.Now(),
 		NotAfter:              clk.Now().Add(6 * 24 * time.Hour),
-		IssuingCertificateURL: []string{"http://localhost:4001/acme/issuer-cert/1234"},
+		IssuingCertificateURL: []string{"http://localhost:4001/issuer/1234/cert"},
+		CRLDistributionPoints: []string{"http://localhost:4002/issuer/1234/crl/1"},
 	}
 
 	testCertDER, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
