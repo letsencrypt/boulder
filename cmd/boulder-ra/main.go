@@ -201,6 +201,8 @@ func main() {
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
+	// TODO(#8382):
+	// saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
@@ -272,7 +274,11 @@ func main() {
 		limiter, err = ratelimits.NewLimiter(clk, source, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
 		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides)
+		// TODO(#8382):
+		// txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides)
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+		overrideRefresherShutdown := txnBuilder.NewRefresher()
+		defer overrideRefresherShutdown()
 	}
 
 	rai := ra.NewRegistrationAuthorityImpl(

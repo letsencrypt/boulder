@@ -1,13 +1,20 @@
 package ratelimits
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"strconv"
 
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -149,23 +156,88 @@ type TransactionBuilder struct {
 	*limitRegistry
 }
 
+// GetOverridesFunc is used to pass in the sa.GetEnabledRateLimitOverrides
+// method to NewTransactionBuilderFromDatabase, rather than storing a full
+// sa.SQLStorageAuthority. This makes testing significantly simpler.
+type GetOverridesFunc func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error)
+
+// NewTransactionBuilderFromDatabase returns a new *TransactionBuilder. The
+// provided defaults path is expected to be a path to a YAML file that contains
+// the default limits. The provided overrides function is expected to be an SA's
+// GetEnabledRateLimitOverrides. Both are required.
+//
+// FIXME: We had considered wrapping the function signature elsewhere (maybe in
+// saro), so that we wouldn't have to understand PBs in this package at all. But
+// the current sa.GetEnabledRateLimitOverrides implementation is designed around
+// delivering a stream. It feels like that's right: it would be worse to try to
+// assemble the data in-memory in the SA and then deliver it whole to the
+// client. So, I copied this impl from cmd/admin/overrides_dump.go.
+func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFunc) (*TransactionBuilder, error) {
+	defaultsData, err := loadDefaultsFromFile(defaults)
+	if err != nil {
+		return nil, err
+	}
+
+	refresher := func(ctx context.Context) (Limits, error) {
+		stream, err := overrides(ctx, &emptypb.Empty{})
+		if err != nil {
+			return nil, fmt.Errorf("fetching enabled overrides: %w", err)
+		}
+
+		overrides := make(Limits)
+		for {
+			r, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return nil, fmt.Errorf("reading overrides stream: %w", err)
+			}
+
+			overrides[r.Override.BucketKey] = &Limit{
+				Burst:  r.Override.Burst,
+				Count:  r.Override.Count,
+				Period: config.Duration{Duration: r.Override.Period.AsDuration()},
+				Name:   Name(r.Override.LimitEnum),
+				Comment: fmt.Sprintf("Last Updated: %s - %s",
+					r.UpdatedAt.AsTime().Format("2006-01-02"),
+					r.Override.Comment,
+				),
+			}
+		}
+		return overrides, nil
+	}
+	return NewTransactionBuilder(defaultsData, refresher)
+}
+
 // NewTransactionBuilderFromFiles returns a new *TransactionBuilder. The
 // provided defaults and overrides paths are expected to be paths to YAML files
 // that contain the default and override limits, respectively. Overrides is
 // optional, defaults is required.
-func NewTransactionBuilderFromFiles(defaults, overrides string) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistryFromFiles(defaults, overrides)
+func NewTransactionBuilderFromFiles(defaults string, overrides string) (*TransactionBuilder, error) {
+	defaultsData, err := loadDefaultsFromFile(defaults)
 	if err != nil {
 		return nil, err
 	}
-	return &TransactionBuilder{registry}, nil
+
+	if overrides == "" {
+		return NewTransactionBuilder(defaultsData, nil)
+	}
+
+	refresher := func(ctx context.Context) (Limits, error) {
+		overridesData, err := loadOverridesFromFile(overrides)
+		if err != nil {
+			return nil, err
+		}
+		return parseOverrideLimits(overridesData)
+	}
+	return NewTransactionBuilder(defaultsData, refresher)
 }
 
-// NewTransactionBuilder returns a new *TransactionBuilder. The provided
-// defaults map is expected to contain default limit data. Overrides are not
-// supported. Defaults is required.
-func NewTransactionBuilder(defaults LimitConfigs) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistry(defaults, nil)
+// NewTransactionBuilder returns a new *TransactionBuilder. A defaults map is
+// required.
+func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher) (*TransactionBuilder, error) {
+	registry, err := newLimitRegistry(defaults, overrides)
 	if err != nil {
 		return nil, err
 	}

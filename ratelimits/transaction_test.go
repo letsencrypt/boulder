@@ -218,7 +218,7 @@ func TestNewTransactionBuilder(t *testing.T) {
 			Burst:  expectedBurst,
 			Count:  expectedCount,
 			Period: expectedPeriod},
-	})
+	}, nil)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	newRegDefault, ok := tb.limitRegistry.defaults[NewRegistrationsPerIPAddress.EnumString()]

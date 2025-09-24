@@ -326,6 +326,7 @@ func main() {
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
 	var limiterRedis *bredis.Ring
+	overridesRefresherShutdown := func() {}
 	if c.WFE.Limiter.Defaults != "" {
 		// Setup rate limiting.
 		limiterRedis, err = bredis.NewRingFromConfig(*c.WFE.Limiter.Redis, stats, logger)
@@ -335,7 +336,10 @@ func main() {
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
 		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides)
+		// TODO(#8382):
+		// txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides)
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+		overridesRefresherShutdown = txnBuilder.NewRefresher()
 	}
 
 	var accountGetter wfe2.AccountGetter
@@ -415,6 +419,7 @@ func main() {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
+		overridesRefresherShutdown()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
 		limiterRedis.StopLookups()

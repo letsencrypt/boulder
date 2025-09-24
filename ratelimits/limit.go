@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -105,8 +107,9 @@ func ValidateLimit(l *Limit) error {
 
 type Limits map[string]*Limit
 
-// loadDefaults marshals the defaults YAML file at path into a map of limits.
-func loadDefaults(path string) (LimitConfigs, error) {
+// loadDefaultsFromFile marshals the defaults YAML file at path into a map of
+// limits.
+func loadDefaultsFromFile(path string) (LimitConfigs, error) {
 	lm := make(LimitConfigs)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -132,8 +135,8 @@ type overrideYAML struct {
 
 type overridesYAML []map[string]overrideYAML
 
-// loadOverrides marshals the YAML file at path into a map of overrides.
-func loadOverrides(path string) (overridesYAML, error) {
+// loadOverridesFromFile marshals the YAML file at path into a map of overrides.
+func loadOverridesFromFile(path string) (overridesYAML, error) {
 	ov := overridesYAML{}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -291,47 +294,42 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
 	return parsed, nil
 }
 
+type OverridesRefresher func(context.Context) (Limits, error)
+
 type limitRegistry struct {
 	// defaults stores default limits by 'name'.
 	defaults Limits
 
 	// overrides stores override limits by 'name:id'.
 	overrides Limits
+
+	// refreshOverrides is a function to refresh override limits.
+	refreshOverrides OverridesRefresher
 }
 
-func newLimitRegistryFromFiles(defaults, overrides string) (*limitRegistry, error) {
-	defaultsData, err := loadDefaults(defaults)
-	if err != nil {
-		return nil, err
-	}
-
-	if overrides == "" {
-		return newLimitRegistry(defaultsData, nil)
-	}
-
-	overridesData, err := loadOverrides(overrides)
-	if err != nil {
-		return nil, err
-	}
-
-	return newLimitRegistry(defaultsData, overridesData)
-}
-
-func newLimitRegistry(defaults LimitConfigs, overrides overridesYAML) (*limitRegistry, error) {
+func newLimitRegistry(defaults LimitConfigs, overrides OverridesRefresher) (*limitRegistry, error) {
 	regDefaults, err := parseDefaultLimits(defaults)
 	if err != nil {
 		return nil, err
 	}
 
-	regOverrides, err := parseOverrideLimits(overrides)
+	if overrides == nil {
+		overrides = func(context.Context) (Limits, error) {
+			return nil, nil
+		}
+	}
+
+	registry := &limitRegistry{
+		defaults:         regDefaults,
+		refreshOverrides: overrides,
+	}
+
+	err = registry.loadOverrides(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
-	return &limitRegistry{
-		defaults:  regDefaults,
-		overrides: regOverrides,
-	}, nil
+	return registry, nil
 }
 
 // getLimit returns the limit for the specified by name and bucketKey, name is
@@ -358,13 +356,52 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 	return nil, errLimitDisabled
 }
 
+// loadOverrides replaces this registry's overrides with a newly refreshed
+// dataset. This is separate from the goroutine in .start() for ease of testing.
+func (l *limitRegistry) loadOverrides(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	newOverrides, err := l.refreshOverrides(ctx)
+	if err != nil {
+		return err
+	}
+	l.overrides = newOverrides
+	return nil
+}
+
+// NewRefresher periodically refreshes overrides using this registry's
+// refreshOverrides function.
+func (l *limitRegistry) NewRefresher() context.CancelFunc {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	ticker := time.NewTicker(30 * time.Minute)
+
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				err := l.loadOverrides(ctx)
+				if err != nil {
+					// FIXME: Log the error and increment a metric.
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return cancel
+}
+
 // LoadOverridesByBucketKey loads the overrides YAML at the supplied path,
 // parses it with the existing helpers, and returns the resulting limits map
 // keyed by "<name>:<id>". This function is exported to support admin tooling
 // used during the migration from overrides.yaml to the overrides database
 // table.
 func LoadOverridesByBucketKey(path string) (Limits, error) {
-	ovs, err := loadOverrides(path)
+	ovs, err := loadOverridesFromFile(path)
 	if err != nil {
 		return nil, err
 	}
