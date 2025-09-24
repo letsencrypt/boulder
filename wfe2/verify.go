@@ -155,12 +155,6 @@ func (wfe *WebFrontEndImpl) enforceJWSAuthType(
 // a well-formed ACME POST request has, and to ensure there is a body to
 // process.
 func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) error {
-	// All POSTs should have an accompanying Content-Length header
-	if _, present := request.Header["Content-Length"]; !present {
-		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "ContentLengthRequired"}).Inc()
-		return berrors.MalformedError("missing Content-Length header")
-	}
-
 	// Per 6.2 ALL POSTs should have the correct JWS Content-Type for flattened
 	// JSON serialization.
 	if _, present := request.Header["Content-Type"]; !present {
