@@ -156,7 +156,8 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 
 // GetSerialMetadata returns metadata stored alongside the serial number,
 // such as the RegID whose certificate request created that serial, and when
-// the certificate with that serial will expire.
+// the certificate with that serial will expire. If the serial does not appear
+// in the serials table, it returns error NotFound.
 func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
 	if req == nil || req.Serial == "" {
 		return nil, errIncompleteRequest
@@ -256,6 +257,12 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 // GetRevocationStatus takes a hexadecimal string representing the full serial
 // number of a certificate and returns a minimal set of data about that cert's
 // current validity.
+//
+// If the certificate appears in the revokedCertificates table, it returns
+// RevocationStatusRevoked. If the certificate does not appear in the
+// revokedCertificates table but does appear in the serials table, it returns
+// RevocationStatusGood. If the certificate does not appear in the serials
+// table, it returns error NotFound.
 func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *sapb.Serial) (*sapb.RevocationStatus, error) {
 	if req.Serial == "" {
 		return nil, errIncompleteRequest
