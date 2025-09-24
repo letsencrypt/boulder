@@ -2,8 +2,8 @@ const form = document.getElementById('override-form');
 const RATE_LIMIT = form.dataset.rateLimit;
 const VALIDATE_FIELD_PATH = form.dataset.validateFieldPath;
 const SUBMIT_REQUEST_PATH = form.dataset.submitRequestPath;
-const CREATED_SUCCESS_PATH = form.dataset.createdSuccessPath;
-const ACCEPTED_SUCCESS_PATH = form.dataset.acceptedSuccessPath;
+const AUTO_APPROVED_SUCCESS_PATH = form.dataset.autoApprovedSuccessPath;
+const REQUEST_SUBMITTED_SUCCESS_PATH = form.dataset.RequestSubmittedSuccessPath;
 
 const ERR_REQUIRED = "This field is required.";
 const ERR_VALIDATE = "Unable to validate this field due to timeout, please try again.";
@@ -112,9 +112,9 @@ const submitForm = async (e) => {
         }
         
         if (r.status === 201) {
-            window.location.replace(CREATED_SUCCESS_PATH);
+            window.location.replace(AUTO_APPROVED_SUCCESS_PATH);
         } else if (r.status === 202) {
-            window.location.replace(ACCEPTED_SUCCESS_PATH);
+            window.location.replace(REQUEST_SUBMITTED_SUCCESS_PATH);
         }
     } catch {
         showBanner(ERR_TIMEOUT);

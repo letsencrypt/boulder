@@ -38,8 +38,8 @@ const (
 	overridesCertificatesPerDomainPerAccount = overridesAPIPrefix + "/overrides/certificates-per-domain-per-account"
 	overridesValidateField                   = overridesAPIPrefix + "/overrides/validate-field"
 	overridesSubmitRequest                   = overridesAPIPrefix + "/overrides/submit-override-request"
-	overridesCreatedSuccess                  = overridesAPIPrefix + "/overrides/created-success"
-	overridesAcceptedSuccess                 = overridesAPIPrefix + "/overrides/accepted-success"
+	overridesAutoApprovedSuccess             = overridesAPIPrefix + "/overrides/auto-approved-success"
+	overridesRequestSubmittedSuccess         = overridesAPIPrefix + "/overrides/request-submitted-success"
 )
 
 var (
@@ -177,8 +177,8 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 		sfe.handleGet(mux, overridesCertificatesPerDomainPerAccount, sfe.makeOverrideRequestFormHandler(
 			certificatesPerDomainPerAccountForm, rl.CertificatesPerDomainPerAccount.String(), rl.CertificatesPerDomainPerAccount.String()),
 		)
-		sfe.handleGet(mux, overridesCreatedSuccess, http.HandlerFunc(sfe.overrideCreatedSuccessHandler))
-		sfe.handleGet(mux, overridesAcceptedSuccess, http.HandlerFunc(sfe.overrideAcceptedSuccessHandler))
+		sfe.handleGet(mux, overridesAutoApprovedSuccess, http.HandlerFunc(sfe.overrideAutoApprovedSuccessHandler))
+		sfe.handleGet(mux, overridesRequestSubmittedSuccess, http.HandlerFunc(sfe.overrideRequestSubmittedSuccessHandler))
 		sfe.handlePost(mux, overridesValidateField, http.HandlerFunc(sfe.validateOverrideFieldHandler))
 		sfe.handlePost(mux, overridesSubmitRequest, http.HandlerFunc(sfe.submitOverrideRequestHandler))
 	}

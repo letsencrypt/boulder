@@ -473,13 +473,13 @@ func (sfe *SelfServiceFrontEndImpl) makeOverrideRequestFormHandler(formHTML temp
 func (sfe *SelfServiceFrontEndImpl) overrideRequestHandler(w http.ResponseWriter, formHTML template.HTML, rateLimit, displayRateLimit string) {
 	setOverrideRequestFormHeaders(w)
 	sfe.renderTemplate(w, "overrideForm.html", map[string]any{
-		"FormHTML":            formHTML,
-		"RateLimit":           rateLimit,
-		"DisplayRateLimit":    displayRateLimit,
-		"ValidateFieldPath":   overridesValidateField,
-		"SubmitRequestPath":   overridesSubmitRequest,
-		"CreatedSuccessPath":  overridesCreatedSuccess,
-		"AcceptedSuccessPath": overridesAcceptedSuccess,
+		"FormHTML":                    formHTML,
+		"RateLimit":                   rateLimit,
+		"DisplayRateLimit":            displayRateLimit,
+		"ValidateFieldPath":           overridesValidateField,
+		"SubmitRequestPath":           overridesSubmitRequest,
+		"AutoApprovedSuccessPath":     overridesAutoApprovedSuccess,
+		"RequestSubmittedSuccessPath": overridesRequestSubmittedSuccess,
 	})
 }
 
@@ -527,16 +527,17 @@ func (sfe *SelfServiceFrontEndImpl) validateOverrideFieldHandler(w http.Response
 	}
 }
 
-// overrideCreatedSuccessHandler renders the success page after a successful
-// override request submission which was automatically approved.
-func (sfe *SelfServiceFrontEndImpl) overrideCreatedSuccessHandler(w http.ResponseWriter, r *http.Request) {
-	sfe.renderTemplate(w, "overrideCreatedSuccess.html", nil)
+// overrideAutoApprovedSuccessHandler renders the success page after a
+// successful override request submission which was automatically approved.
+func (sfe *SelfServiceFrontEndImpl) overrideAutoApprovedSuccessHandler(w http.ResponseWriter, r *http.Request) {
+	sfe.renderTemplate(w, "overrideAutoApprovedSuccess.html", nil)
 }
 
-// overrideAcceptedSuccessHandler renders the success page after a successful
-// override request submission which created a Zendesk ticket for manual review.
-func (sfe *SelfServiceFrontEndImpl) overrideAcceptedSuccessHandler(w http.ResponseWriter, r *http.Request) {
-	sfe.renderTemplate(w, "overrideAcceptedSuccess.html", nil)
+// overrideRequestSubmittedSuccessHandler renders the success page after a
+// successful override request submission created a Zendesk ticket for manual
+// review.
+func (sfe *SelfServiceFrontEndImpl) overrideRequestSubmittedSuccessHandler(w http.ResponseWriter, r *http.Request) {
+	sfe.renderTemplate(w, "overrideRequestSubmittedSuccess.html", nil)
 }
 
 type overrideRequest struct {
@@ -600,10 +601,9 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			}
 		}
 	}
-	var created bool
-	var accepted bool
+	var overrideRequestHandled bool
 	defer func() {
-		if !created && !accepted && refundLimits != nil {
+		if !overrideRequestHandled && refundLimits != nil {
 			refundLimits()
 		}
 	}()
@@ -677,7 +677,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[AccountURIFieldName] = accountURI
 
 		if validFields[TierFieldName] == newOrdersPerAccountTierOptions[0] {
-			created = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomainPerAccount.String():
@@ -689,7 +689,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[AccountURIFieldName] = accountURI
 
 		if validFields[TierFieldName] == certificatesPerDomainPerAccountTierOptions[0] {
-			created = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perDNSNameSuffix:
@@ -701,7 +701,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[RegisteredDomainFieldName] = registeredDomain
 
 		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
-			created = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perIPSuffix:
@@ -713,7 +713,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[IPAddressFieldName] = ipAddress
 
 		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
-			created = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	default:
@@ -731,7 +731,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	// TODO(#8362): If FundraisingFieldName value is true, use the Salesforce
 	// API to create a new Lead record with the provided information.
 
-	if created {
+	if overrideRequestHandled {
 		sfe.log.Infof("automatically approved override request for %s", validFields[OrganizationFieldName])
 		w.WriteHeader(http.StatusCreated)
 		return
@@ -757,7 +757,9 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
-	accepted = true
+	// If we got here the request has either been auto-approved or a Zendesk
+	// ticket has been created for manual review, so a refund is not needed.
+	overrideRequestHandled = true
 	sfe.log.Infof("created override request Zendesk ticket %d", ticketID)
 	w.WriteHeader(http.StatusAccepted)
 }
