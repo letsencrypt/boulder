@@ -835,6 +835,12 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 		NotAfterHour: serial.Expires.Add(time.Hour).Truncate(time.Hour),
 	})
 	if err != nil {
+		if db.IsDuplicate(err) {
+			// An attempted duplicate insert means that this certificate was already
+			// revoked. The RA has special logic for that case, so use the specific
+			// error for it.
+			return berrors.AlreadyRevokedError("certificate with serial %s already in revokedCertificates table", req.Serial)
+		}
 		return fmt.Errorf("inserting revoked certificate row: %w", err)
 	}
 
