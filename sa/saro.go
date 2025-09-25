@@ -22,7 +22,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -271,20 +270,17 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	var model struct {
-		RevokedDate   time.Time         `db:"revokedDate"`
-		RevokedReason revocation.Reason `db:"revokedReason"`
-	}
+	var model revokedCertModel
 	err := ssa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&model,
-		"SELECT revokedDate, revokedReason FROM revokedCertificates WHERE serial = ? LIMIT 1",
+		"SELECT * FROM revokedCertificates WHERE serial = ? LIMIT 1",
 		req.Serial,
 	)
 	if db.IsNoRows(err) {
 		// The revokedCertificates table only holds revoked certificates, so serials
 		// that aren't found are considered to be not revoked. Double check that the
-		// serial exists at all before assering that it's good.
+		// serial exists at all before asserting that it's good.
 		_, err := ssa.GetSerialMetadata(ctx, req)
 		if err != nil {
 			// GetSerialMetadata handles returning NotFound if appropriate.
@@ -292,7 +288,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 		}
 		return &sapb.RevocationStatus{Status: core.RevocationStatusGood}, nil
 	} else if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("retrieving revoked certificate row: %w", err)
 	}
 
 	return &sapb.RevocationStatus{
