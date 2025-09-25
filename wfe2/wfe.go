@@ -2143,12 +2143,12 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	}
 
 	// Check if the serial is revoked.
-	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	status, err := wfe.sa.GetRevocationStatus(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		return core.RenewalInfo{}, fmt.Errorf("checking if existing certificate has been revoked: %w", err)
 	}
 
-	if status.Status == string(core.OCSPStatusRevoked) {
+	if status.Status == core.RevocationStatusRevoked {
 		// The existing certificate is revoked, renew immediately.
 		return core.RenewalInfoImmediate(wfe.clk.Now(), ""), nil
 	}
