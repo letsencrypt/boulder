@@ -135,10 +135,6 @@ func (m *mockSA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ 
 	return nil, berrors.NotFoundError("cannot find the precert")
 }
 
-func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
 var ctx = context.Background()
 
 func setup(t *testing.T) *testCtx {
