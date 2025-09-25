@@ -83,6 +83,11 @@ var OCSPStatusToInt = map[OCSPStatus]int{
 	OCSPStatusRevoked: ocsp.Revoked,
 }
 
+const (
+	RevocationStatusGood    int64 = 0
+	RevocationStatusRevoked int64 = 1
+)
+
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
 
