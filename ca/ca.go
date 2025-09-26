@@ -67,19 +67,140 @@ type issuanceEvent struct {
 	}
 }
 
-// Two maps of keys to Issuers. Lookup by PublicKeyAlgorithm is useful for
-// determining the set of issuers which can sign a given (pre)cert, based on its
-// PublicKeyAlgorithm. Lookup by NameID is useful for looking up a specific
-// issuer based on the issuer of a given (pre)certificate.
+// issuerMaps provides easy lookup of valid issuers for precertificates and
+// certificates. Users should not access its internal data directly, and should
+// use the forPrecert and forFinalCert methods instead.
 type issuerMaps struct {
-	byAlg    map[x509.PublicKeyAlgorithm][]*issuance.Issuer
+	// Lookup by issuer unique ID is useful for finding the specific issuer to use
+	// for a final cert, based on extracting that same unique ID from the precert.
 	byNameID map[issuance.NameID]*issuance.Issuer
+	// Lookup by profile and algorithm is useful for determining the set of
+	// issuers which can sign a potential precert, based on the requested profile
+	// and the CSR's pubkey.
+	byProfileAndAlg map[string]map[x509.PublicKeyAlgorithm][]*issuance.Issuer
 }
 
+// forPrecert returns a random issuer from among the pool of issuers that are
+// configured to issue for the given profile and csr's public key algorithm.
+func (im *issuerMaps) forPrecert(prof *certProfileWithID, csr *x509.CertificateRequest) (*issuance.Issuer, error) {
+	byAlg, ok := im.byProfileAndAlg[prof.name]
+	if !ok {
+		return nil, berrors.InternalServerError("no issuers found for profile %q", prof.name)
+	}
+
+	pool, ok := byAlg[csr.PublicKeyAlgorithm]
+	if !ok {
+		return nil, berrors.InternalServerError("no issuers found for profile %q and public key algorithm %q", csr.PublicKeyAlgorithm)
+	}
+
+	return pool[mrand.IntN(len(pool))], nil
+}
+
+// forFinalCert returns the exact issuer which was used to issue the given precert.
+func (im *issuerMaps) forFinalCert(precert *x509.Certificate) (*issuance.Issuer, error) {
+	issuer, ok := im.byNameID[issuance.IssuerNameID(precert)]
+	if !ok {
+		return nil, berrors.InternalServerError("no issuer found for Issuer Name %q", precert.Issuer)
+	}
+
+	return issuer, nil
+}
+
+func (im *issuerMaps) forCRL(id issuance.NameID) (*issuance.Issuer, error) {
+	issuer, ok := im.byNameID[id]
+	if !ok {
+		return nil, berrors.InternalServerError("no issuer found for nameID %d", id)
+	}
+
+	return issuer, nil
+}
+
+// certProfileWithID is a simple wrapper around issuance.Profile which adds
+// the profile's unique human-readable name, so that the name can be retrieved
+// from a profile object instead of only associated with it via a map.
 type certProfileWithID struct {
 	// name is a human readable name used to refer to the certificate profile.
 	name    string
 	profile *issuance.Profile
+}
+
+// LoadIssuersAndProfiles takes in all of the issuer and profile configs and
+// returns fully-loaded and cross-referenced in-memory issuers and profiles. The
+// return values are intended to be arguments to the NewCertificateAuthorityImpl
+// constructor. This function is exported so that it can be used in
+// cmd/boulder-ca/main.go, so that the real constructor can continue to take
+// in-memory structs as arguments for ease of testing.
+//
+// This loader ensures that there is at least one issuer for each key type, at
+// least one issuer for each profile, and no issuers which list profiles that
+// don't actually exist.
+func LoadIssuersAndProfiles(issuers []issuance.IssuerConfig, profiles map[string]issuance.ProfileConfig, clk clock.Clock) (*issuerMaps, map[string]*certProfileWithID, error) {
+	if len(issuers) < 1 {
+		return nil, nil, fmt.Errorf("must configure at least one issuer")
+	}
+
+	if len(profiles) <= 0 {
+		return nil, nil, fmt.Errorf("must configure at least one certificate profile")
+	}
+
+	// Load all of the profiles first, so we can cross-reference them when loading
+	// the issuers.
+	profilesByName := make(map[string]*certProfileWithID, len(profiles))
+	for name, profileConfig := range profiles {
+		profile, err := issuance.NewProfile(profileConfig)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		profilesByName[name] = &certProfileWithID{name, profile}
+	}
+
+	// Because we're using a nested map, initialization is a little more complex
+	// than usual.
+	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer)
+	issuersByProfileAndAlg := make(map[string]map[x509.PublicKeyAlgorithm][]*issuance.Issuer)
+	for profile, _ := range profilesByName {
+		issuersByProfileAndAlg[profile] = make(map[x509.PublicKeyAlgorithm][]*issuance.Issuer)
+	}
+
+	// Load all of the issuers, ensuring that each one gets associated with the
+	// correct key algorithm and profile(s).
+	for _, issuerConfig := range issuers {
+		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		nameID := issuer.NameID()
+		_, duplicate := issuersByNameID[nameID]
+		if duplicate {
+			return nil, nil, fmt.Errorf("two issuers with same NameID %d (%q) configured", nameID, issuer.Name())
+		}
+		issuersByNameID[nameID] = issuer
+
+		for _, profile := range issuerConfig.Profiles {
+			_, ok := profilesByName[profile]
+			if !ok {
+				return nil, nil, fmt.Errorf("issuer %q configured with unrecognized profile %q", issuer.Name(), profile)
+			}
+
+			if issuer.IsActive() {
+				issuersByProfileAndAlg[profile][issuer.KeyType()] = append(issuersByProfileAndAlg[profile][issuer.KeyType()], issuer)
+			}
+		}
+	}
+
+	// Ensure that every profile has at least one issuer for each key type.
+	for profile, issuersByAlg := range issuersByProfileAndAlg {
+		if len(issuersByAlg[x509.ECDSA]) == 0 {
+			return nil, nil, fmt.Errorf("no ECDSA issuers configured for profile %q", profile)
+		}
+		if len(issuersByAlg[x509.RSA]) == 0 {
+			return nil, nil, fmt.Errorf("no RSA issuers configured for profile %q", profile)
+		}
+	}
+
+	return &issuerMaps{issuersByNameID, issuersByProfileAndAlg}, profilesByName, nil
 }
 
 // caMetrics holds various metrics which are shared between caImpl and crlImpl.
@@ -136,7 +257,7 @@ type certificateAuthorityImpl struct {
 	sa           sapb.StorageAuthorityCertificateClient
 	sctClient    rapb.SCTProviderClient
 	pa           core.PolicyAuthority
-	issuers      issuerMaps
+	issuers      *issuerMaps
 	certProfiles map[string]*certProfileWithID
 
 	// The prefix is prepended to the serial number.
@@ -151,63 +272,14 @@ type certificateAuthorityImpl struct {
 
 var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
 
-// makeIssuerMaps processes a list of issuers into a set of maps for easy
-// lookup either by key algorithm (useful for picking an issuer for a precert)
-// or by unique ID (useful for final certs and CRLs). If two issuers with
-// the same unique ID are encountered, an error is returned.
-func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
-	issuersByAlg := make(map[x509.PublicKeyAlgorithm][]*issuance.Issuer, 2)
-	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
-	for _, issuer := range issuers {
-		if _, found := issuersByNameID[issuer.NameID()]; found {
-			return issuerMaps{}, fmt.Errorf("two issuers with same NameID %d (%s) configured", issuer.NameID(), issuer.Name())
-		}
-		issuersByNameID[issuer.NameID()] = issuer
-		if issuer.IsActive() {
-			issuersByAlg[issuer.KeyType()] = append(issuersByAlg[issuer.KeyType()], issuer)
-		}
-	}
-	if i, ok := issuersByAlg[x509.ECDSA]; !ok || len(i) == 0 {
-		return issuerMaps{}, errors.New("no ECDSA issuers configured")
-	}
-	if i, ok := issuersByAlg[x509.RSA]; !ok || len(i) == 0 {
-		return issuerMaps{}, errors.New("no RSA issuers configured")
-	}
-	return issuerMaps{issuersByAlg, issuersByNameID}, nil
-}
-
-// makeCertificateProfilesMap processes a set of named certificate issuance
-// profile configs into a map from name to profile.
-func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfig) (map[string]*certProfileWithID, error) {
-	if len(profiles) <= 0 {
-		return nil, fmt.Errorf("must pass at least one certificate profile")
-	}
-
-	profilesByName := make(map[string]*certProfileWithID, len(profiles))
-
-	for name, profileConfig := range profiles {
-		profile, err := issuance.NewProfile(profileConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		profilesByName[name] = &certProfileWithID{
-			name:    name,
-			profile: profile,
-		}
-	}
-
-	return profilesByName, nil
-}
-
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
 // from any number of issuance.Issuers and for any number of profiles.
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	sctService rapb.SCTProviderClient,
 	pa core.PolicyAuthority,
-	boulderIssuers []*issuance.Issuer,
-	certificateProfiles map[string]*issuance.ProfileConfig,
+	issuers *issuerMaps,
+	profiles map[string]*certProfileWithID,
 	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
@@ -215,34 +287,24 @@ func NewCertificateAuthorityImpl(
 	metrics *caMetrics,
 	clk clock.Clock,
 ) (*certificateAuthorityImpl, error) {
-	var ca *certificateAuthorityImpl
-	var err error
-
 	if serialPrefix < 0x01 || serialPrefix > 0x7f {
-		err = errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
-		return nil, err
+		return nil, errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
 	}
 
-	if len(boulderIssuers) == 0 {
+	if issuers == nil || len(issuers.byNameID) == 0 {
 		return nil, errors.New("must have at least one issuer")
 	}
 
-	certProfiles, err := makeCertificateProfilesMap(certificateProfiles)
-	if err != nil {
-		return nil, err
+	if len(profiles) == 0 {
+		return nil, errors.New("must have at least one profile")
 	}
 
-	issuers, err := makeIssuerMaps(boulderIssuers)
-	if err != nil {
-		return nil, err
-	}
-
-	ca = &certificateAuthorityImpl{
+	return &certificateAuthorityImpl{
 		sa:           sa,
 		sctClient:    sctService,
 		pa:           pa,
 		issuers:      issuers,
-		certProfiles: certProfiles,
+		certProfiles: profiles,
 		prefix:       serialPrefix,
 		maxNames:     maxNames,
 		keyPolicy:    keyPolicy,
@@ -250,9 +312,7 @@ func NewCertificateAuthorityImpl(
 		metrics:      metrics,
 		tracer:       otel.GetTracerProvider().Tracer("github.com/letsencrypt/boulder/ca"),
 		clk:          clk,
-	}
-
-	return ca, nil
+	}, nil
 }
 
 // issuePrecertificate is the first step in the [issuance cycle]. It allocates and stores a serial number,
@@ -378,9 +438,9 @@ func (ca *certificateAuthorityImpl) issueCertificateForPrecertificate(ctx contex
 		scts = append(scts, sct)
 	}
 
-	issuer, ok := ca.issuers.byNameID[issuance.IssuerNameID(precert)]
-	if !ok {
-		return nil, berrors.InternalServerError("no issuer found for Issuer Name %s", precert.Issuer)
+	issuer, err := ca.issuers.forFinalCert(precert)
+	if err != nil {
+		return nil, err
 	}
 
 	issuanceReq, err := issuance.RequestFromPrecert(precert, scts)
@@ -504,16 +564,10 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	// Select which pool of issuers to use, based on the to-be-issued cert's key
-	// type.
-	alg := csr.PublicKeyAlgorithm
-
-	// Select a random issuer from among the active issuers of this key type.
-	issuerPool, ok := ca.issuers.byAlg[alg]
-	if !ok || len(issuerPool) == 0 {
-		return nil, nil, berrors.InternalServerError("no issuers found for public key algorithm %s", csr.PublicKeyAlgorithm)
+	issuer, err := ca.issuers.forPrecert(certProfile, csr)
+	if err != nil {
+		return nil, nil, err
 	}
-	issuer := issuerPool[mrand.IntN(len(issuerPool))]
 
 	if issuer.Cert.NotAfter.Before(notAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")

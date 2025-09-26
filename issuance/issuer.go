@@ -148,6 +148,12 @@ type IssuerConfig struct {
 	// The selection of which pool depends on the precertificate's key algorithm.
 	Active bool
 
+	// Profiles is the list of profiles for which this issuer is willing to issue.
+	// The names listed here must match the names of configured profiles (see
+	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's
+	// ProfileConfig).
+	Profiles []string `validate:"required,dive,alphanum,min=1,max=32"`
+
 	IssuerURL  string `validate:"required,url"`
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
 

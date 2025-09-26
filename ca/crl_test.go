@@ -92,7 +92,7 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				IssuerNameID: int64(testCtx.issuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
 				ShardIdx:     1,
 			},
@@ -101,7 +101,7 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				IssuerNameID: int64(testCtx.issuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
 				ShardIdx:     1,
 			},
@@ -170,7 +170,7 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				IssuerNameID: int64(testCtx.issuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
 				ShardIdx:     1,
 			},
@@ -184,7 +184,7 @@ func TestGenerateCRL(t *testing.T) {
 	crl, err := x509.ParseRevocationList(crlBytes)
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
 	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 0)
-	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
+	err = crl.CheckSignatureFrom(testCtx.issuers[0].Cert.Certificate)
 	test.AssertEquals(t, crl.ThisUpdate, now)
 	test.AssertEquals(t, crl.ThisUpdate, timestamppb.New(now).AsTime())
 	test.AssertNotError(t, err, "CRL signature should validate")
@@ -207,7 +207,7 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
+				IssuerNameID: int64(testCtx.issuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
 				ShardIdx:     1,
 			},
@@ -266,6 +266,6 @@ func TestGenerateCRL(t *testing.T) {
 	crl, err = x509.ParseRevocationList(crlBytes)
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
 	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 5)
-	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
+	err = crl.CheckSignatureFrom(testCtx.issuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "CRL signature should validate")
 }
