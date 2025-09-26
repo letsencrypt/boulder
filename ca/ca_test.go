@@ -98,16 +98,16 @@ func mustRead(path string) []byte {
 }
 
 type testCtx struct {
-	pa             core.PolicyAuthority
-	crl            *crlImpl
-	certProfiles   map[string]*issuance.ProfileConfig
-	serialPrefix   byte
-	maxNames       int
-	boulderIssuers []*issuance.Issuer
-	keyPolicy      goodkey.KeyPolicy
-	fc             clock.FakeClock
-	metrics        *caMetrics
-	logger         *blog.Mock
+	pa           core.PolicyAuthority
+	crl          *crlImpl
+	issuers      *issuerMaps
+	profiles     map[string]*certProfileWithID
+	serialPrefix byte
+	maxNames     int
+	keyPolicy    goodkey.KeyPolicy
+	fc           clock.FakeClock
+	metrics      *caMetrics
+	logger       *blog.Mock
 }
 
 type mockSA struct {
@@ -151,14 +151,14 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
-	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
-	certProfiles["legacy"] = &issuance.ProfileConfig{
+	certProfiles := make(map[string]issuance.ProfileConfig, 0)
+	certProfiles["legacy"] = issuance.ProfileConfig{
 		IncludeCRLDistributionPoints: true,
 		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
 		IgnoredLints:                 []string{"w_subject_common_name_included"},
 	}
-	certProfiles["modern"] = &issuance.ProfileConfig{
+	certProfiles["modern"] = issuance.ProfileConfig{
 		OmitCommonName:               true,
 		OmitKeyEncipherment:          true,
 		OmitClientAuth:               true,
@@ -168,23 +168,24 @@ func setup(t *testing.T) *testCtx {
 		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
 		IgnoredLints:                 []string{"w_ext_subject_key_identifier_missing_sub_cert"},
 	}
-	test.AssertEquals(t, len(certProfiles), 2)
 
-	boulderIssuers := make([]*issuance.Issuer, 4)
-	for i, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
-		boulderIssuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
+	issuerConfigs := make([]issuance.IssuerConfig, 0)
+	for _, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
+		issuerConfigs = append(issuerConfigs, issuance.IssuerConfig{
 			Active:     true,
+			Profiles:   []string{"legacy", "modern"},
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
-			OCSPURL:    "http://not-example.com/o",
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
 			CRLShards:  10,
 			Location: issuance.IssuerLoc{
 				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
 				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
 			},
-		}, fc)
-		test.AssertNotError(t, err, "Couldn't load test issuer")
+		})
 	}
+
+	issuers, profiles, err := LoadIssuersAndProfiles(issuerConfigs, certProfiles, fc)
+	test.AssertNotError(t, err, "Failed to load test issuers and configs")
 
 	keyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "Failed to create test keypolicy")
@@ -212,7 +213,7 @@ func setup(t *testing.T) *testCtx {
 	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificatesCount}
 
 	crl, err := NewCRLImpl(
-		boulderIssuers,
+		issuers,
 		issuance.CRLProfileConfig{
 			ValidityInterval: config.Duration{Duration: 216 * time.Hour},
 			MaxBackdate:      config.Duration{Duration: time.Hour},
@@ -224,16 +225,16 @@ func setup(t *testing.T) *testCtx {
 	test.AssertNotError(t, err, "Failed to create crl impl")
 
 	return &testCtx{
-		pa:             pa,
-		crl:            crl,
-		certProfiles:   certProfiles,
-		serialPrefix:   0x11,
-		maxNames:       2,
-		boulderIssuers: boulderIssuers,
-		keyPolicy:      keyPolicy,
-		fc:             fc,
-		metrics:        cametrics,
-		logger:         blog.NewMock(),
+		pa:           pa,
+		crl:          crl,
+		profiles:     profiles,
+		serialPrefix: 0x11,
+		maxNames:     2,
+		issuers:      issuers,
+		keyPolicy:    keyPolicy,
+		fc:           fc,
+		metrics:      cametrics,
+		logger:       blog.NewMock(),
 	}
 }
 
@@ -359,8 +360,8 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		sa,
 		mockSCTService{},
 		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.issuers,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -399,7 +400,7 @@ func TestNoIssuers(t *testing.T) {
 		mockSCTService{},
 		testCtx.pa,
 		nil, // No issuers
-		testCtx.certProfiles,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -419,8 +420,8 @@ func TestMultipleIssuers(t *testing.T) {
 		sa,
 		mockSCTService{},
 		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.issuers,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -492,7 +493,7 @@ func TestUnpredictableIssuance(t *testing.T) {
 		mockSCTService{},
 		testCtx.pa,
 		boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -534,10 +535,11 @@ func TestUnpredictableIssuance(t *testing.T) {
 	test.Assert(t, seenR3, "Expected at least one issuance from active issuer")
 }
 
+// TKTK change this to TestLoadIssuersAndProfiles
 func TestMakeCertificateProfilesMap(t *testing.T) {
 	t.Parallel()
 	testCtx := setup(t)
-	test.AssertEquals(t, len(testCtx.certProfiles), 2)
+	test.AssertEquals(t, len(testCtx.profiles), 2)
 
 	testCases := []struct {
 		name              string
@@ -571,7 +573,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		},
 		{
 			name:             "default profiles from setup func",
-			profileConfigs:   testCtx.certProfiles,
+			profileConfigs:   testCtx.profiles,
 			expectedProfiles: []string{"legacy", "modern"},
 		},
 	}
@@ -656,8 +658,8 @@ func TestInvalidCSRs(t *testing.T) {
 			sa,
 			mockSCTService{},
 			testCtx.pa,
-			testCtx.boulderIssuers,
-			testCtx.certProfiles,
+			testCtx.issuers,
+			testCtx.profiles,
 			testCtx.serialPrefix,
 			testCtx.maxNames,
 			testCtx.keyPolicy,
@@ -689,15 +691,15 @@ func TestRejectValidityTooLong(t *testing.T) {
 	testCtx := setup(t)
 
 	// Jump to a time just moments before the test issuers expire.
-	future := testCtx.boulderIssuers[0].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
+	future := testCtx.issuers[0].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
 	testCtx.fc.Set(future)
 
 	ca, err := NewCertificateAuthorityImpl(
 		&mockSA{},
 		mockSCTService{},
 		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.issuers,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -772,8 +774,8 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		sa,
 		mockSCTService{},
 		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.issuers,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -834,8 +836,8 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 		sa,
 		mockSCTService{},
 		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.issuers,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -949,8 +951,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		sa,
 		mockSCTService{},
 		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.issuers,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -992,8 +994,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		errorsa,
 		mockSCTService{},
 		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
+		testCtx.issuers,
+		testCtx.profiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
