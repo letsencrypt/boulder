@@ -363,7 +363,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	rlSource := ratelimits.NewInmemSource()
 	limiter, err := ratelimits.NewLimiter(fc, rlSource, stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", false)
 	test.AssertNotError(t, err, "making transaction composer")
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
@@ -708,7 +708,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
-	}, nil)
+	}, nil, false)
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
@@ -967,7 +967,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
-	}, nil)
+	}, nil, false)
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 

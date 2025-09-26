@@ -172,7 +172,7 @@ type GetOverridesFunc func(context.Context, *emptypb.Empty, ...grpc.CallOption) 
 // delivering a stream. It feels like that's right: it would be worse to try to
 // assemble the data in-memory in the SA and then deliver it whole to the
 // client. So, I copied this impl from cmd/admin/overrides_dump.go.
-func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFunc) (*TransactionBuilder, error) {
+func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFunc, ghostOverrides bool) (*TransactionBuilder, error) {
 	defaultsData, err := loadDefaultsFromFile(defaults)
 	if err != nil {
 		return nil, err
@@ -207,21 +207,21 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		}
 		return overrides, nil
 	}
-	return NewTransactionBuilder(defaultsData, refresher)
+	return NewTransactionBuilder(defaultsData, refresher, ghostOverrides)
 }
 
 // NewTransactionBuilderFromFiles returns a new *TransactionBuilder. The
 // provided defaults and overrides paths are expected to be paths to YAML files
 // that contain the default and override limits, respectively. Overrides is
 // optional, defaults is required.
-func NewTransactionBuilderFromFiles(defaults string, overrides string) (*TransactionBuilder, error) {
+func NewTransactionBuilderFromFiles(defaults string, overrides string, ghostOverrides bool) (*TransactionBuilder, error) {
 	defaultsData, err := loadDefaultsFromFile(defaults)
 	if err != nil {
 		return nil, err
 	}
 
 	if overrides == "" {
-		return NewTransactionBuilder(defaultsData, nil)
+		return NewTransactionBuilder(defaultsData, nil, ghostOverrides)
 	}
 
 	refresher := func(ctx context.Context) (Limits, error) {
@@ -231,16 +231,33 @@ func NewTransactionBuilderFromFiles(defaults string, overrides string) (*Transac
 		}
 		return parseOverrideLimits(overridesData)
 	}
-	return NewTransactionBuilder(defaultsData, refresher)
+	return NewTransactionBuilder(defaultsData, refresher, ghostOverrides)
 }
 
 // NewTransactionBuilder returns a new *TransactionBuilder. A defaults map is
 // required.
-func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistry(defaults, overrides)
+func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, ghostOverrides bool) (*TransactionBuilder, error) {
+	regDefaults, err := parseDefaultLimits(defaults)
 	if err != nil {
 		return nil, err
 	}
+
+	if overrides == nil {
+		overrides = func(context.Context) (Limits, error) {
+			return nil, nil
+		}
+	}
+
+	registry := &limitRegistry{
+		defaults:         regDefaults,
+		refreshOverrides: overrides,
+	}
+
+	err = registry.loadOverrides(context.Background())
+	if err != nil && !ghostOverrides {
+		return nil, fmt.Errorf("while loading overrides with GhostOverrides unset: %w", err)
+	}
+
 	return &TransactionBuilder{registry}, nil
 }
 

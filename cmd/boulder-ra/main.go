@@ -76,6 +76,15 @@ type Config struct {
 			// Note: At this time, only the Failed Authorizations overrides are
 			// necessary in the RA.
 			Overrides string
+
+			// OverridesFromDB is a bool. If true, rate limit overrides will be
+			// retrieved from the database instead of from a file.
+			OverridesFromDB bool `validate:"omitempty"`
+
+			// GhostOverrides is a bool. If true, failing to load rate limit
+			// overrides at startup is non-fatal. This is a break-glass flag in
+			// case the overrides backend is broken.
+			GhostOverrides bool `validate:"omitempty"`
 		}
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
@@ -201,8 +210,6 @@ func main() {
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
-	// TODO(#8382):
-	// saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
@@ -273,9 +280,12 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, scope)
 		limiter, err = ratelimits.NewLimiter(clk, source, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides)
-		// TODO(#8382):
-		// txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides)
+		if c.RA.Limiter.OverridesFromDB {
+			saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, c.RA.Limiter.GhostOverrides)
+		} else {
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, c.RA.Limiter.GhostOverrides)
+		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 		overrideRefresherShutdown := txnBuilder.NewRefresher()
 		defer overrideRefresherShutdown()

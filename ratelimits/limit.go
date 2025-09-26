@@ -307,31 +307,6 @@ type limitRegistry struct {
 	refreshOverrides OverridesRefresher
 }
 
-func newLimitRegistry(defaults LimitConfigs, overrides OverridesRefresher) (*limitRegistry, error) {
-	regDefaults, err := parseDefaultLimits(defaults)
-	if err != nil {
-		return nil, err
-	}
-
-	if overrides == nil {
-		overrides = func(context.Context) (Limits, error) {
-			return nil, nil
-		}
-	}
-
-	registry := &limitRegistry{
-		defaults:         regDefaults,
-		refreshOverrides: overrides,
-	}
-
-	err = registry.loadOverrides(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	return registry, nil
-}
-
 // getLimit returns the limit for the specified by name and bucketKey, name is
 // required, bucketKey is optional. If bucketkey is empty, the default for the
 // limit specified by name is returned. If no default limit exists for the
