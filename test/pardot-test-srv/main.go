@@ -19,9 +19,16 @@ import (
 var contactsCap = 20
 
 type config struct {
-	// OAuthAddr is the address (e.g. IP:port) on which the OAuth server will
-	// listen.
+	// OAuthAddr is the address (e.g. IP:port) on which the Salesforce REST API
+	// and OAuth API server will listen.
+	//
+	// Deprecated: Use SalesforceAddr instead.
+	// TODO(#8410): Remove this field.
 	OAuthAddr string
+
+	// SalesforceAddr is the address (e.g. IP:port) on which the Salesforce REST
+	// API and OAuth API server will listen.
+	SalesforceAddr string
 
 	// PardotAddr is the address (e.g. IP:port) on which the Pardot server will
 	// listen.
@@ -148,7 +155,9 @@ func (ts *testServer) queryContactsHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func main() {
-	oauthAddr := flag.String("oauth-addr", "", "OAuth server listen address override")
+	// TODO(#8410): Remove the oauthAddr flag.
+	oauthAddr := flag.String("oauth-addr", "", "Salesforce REST API and OAuth server listen address override (deprecated: use --salesforce-addr instead)")
+	salesforceAddr := flag.String("salesforce-addr", "", "Salesforce REST API and OAuth server listen address override")
 	pardotAddr := flag.String("pardot-addr", "", "Pardot server listen address override")
 	configFile := flag.String("config", "", "Path to configuration file")
 	flag.Parse()
@@ -162,9 +171,21 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	if *oauthAddr != "" {
-		c.OAuthAddr = *oauthAddr
+	// TODO(#8410): Reduce this logic down to just using salesforceAddr once
+	// oauthAddr is removed.
+	yieldFirstNonEmpty := func(vals ...string) string {
+		for _, v := range vals {
+			if v != "" {
+				return v
+			}
+		}
+		return ""
 	}
+	c.SalesforceAddr = yieldFirstNonEmpty(*salesforceAddr, c.SalesforceAddr, *oauthAddr, c.OAuthAddr)
+	if c.SalesforceAddr == "" {
+		log.Fatal("--salesforce-addr or JSON salesforceAddr must be set (or use deprecated --oauth-addr or JSON oauthAddr until removed)")
+	}
+
 	if *pardotAddr != "" {
 		c.PardotAddr = *pardotAddr
 	}
@@ -182,20 +203,20 @@ func main() {
 		contacts:             contacts{created: make([]string, 0, contactsCap)},
 	}
 
-	// OAuth Server
+	// Salesforce REST API and OAuth Server
 	oauthMux := http.NewServeMux()
 	oauthMux.HandleFunc("/services/oauth2/token", ts.getTokenHandler)
 	oauthServer := &http.Server{
-		Addr:        c.OAuthAddr,
+		Addr:        c.SalesforceAddr,
 		Handler:     oauthMux,
 		ReadTimeout: 30 * time.Second,
 	}
 
-	log.Printf("pardot-test-srv OAuth server listening at %s", c.OAuthAddr)
+	log.Printf("pardot-test-srv Salesforce REST API and OAuth server listening at %s", c.SalesforceAddr)
 	go func() {
 		err := oauthServer.ListenAndServe()
 		if err != nil {
-			log.Fatalf("Failed to start OAuth server: %s", err)
+			log.Fatalf("Failed to start Salesforce REST API and OAuth server: %s", err)
 		}
 	}()
 
@@ -209,11 +230,11 @@ func main() {
 		Handler:     pardotMux,
 		ReadTimeout: 30 * time.Second,
 	}
-	log.Printf("pardot-test-srv Pardot API server listening at %s", c.PardotAddr)
+	log.Printf("pardot-test-srv Salesforce Pardot API server listening at %s", c.PardotAddr)
 	go func() {
 		err := pardotServer.ListenAndServe()
 		if err != nil {
-			log.Fatalf("Failed to start Pardot API server: %s", err)
+			log.Fatalf("Failed to start Salesforce Pardot API server: %s", err)
 		}
 	}()
 
