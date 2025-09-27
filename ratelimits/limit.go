@@ -309,7 +309,9 @@ type limitRegistry struct {
 	// refreshOverrides is a function to refresh override limits.
 	refreshOverrides OverridesRefresher
 
-	stats  prometheus.Registerer
+	stats                   prometheus.Registerer
+	refreshOverridesCounter prometheus.Counter
+
 	logger blog.Logger
 }
 
@@ -346,6 +348,7 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 
 	newOverrides, err := l.refreshOverrides(ctx)
 	if err != nil {
+		l.logger.Errf("loading rate limit overrides: %v", err)
 		return err
 	}
 	l.overrides = newOverrides
@@ -365,8 +368,8 @@ func (l *limitRegistry) NewRefresher() context.CancelFunc {
 			select {
 			case <-ticker.C:
 				err := l.loadOverrides(ctx)
-				if err != nil {
-					// FIXME: Log the error and increment a metric.
+				if err == nil {
+					l.refreshOverridesCounter.Inc()
 				}
 			case <-ctx.Done():
 				return

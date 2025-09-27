@@ -246,11 +246,19 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		}
 	}
 
+	refreshOverridesCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ratelimits_override_refresh",
+		Help: "A counter of rate limit override refreshes",
+	})
+	stats.MustRegister(refreshOverridesCounter)
+
 	registry := &limitRegistry{
 		defaults:         regDefaults,
 		refreshOverrides: overrides,
 		stats:            stats,
 		logger:           logger,
+
+		refreshOverridesCounter: refreshOverridesCounter,
 	}
 
 	err = registry.loadOverrides(context.Background())
