@@ -345,9 +345,9 @@ func main() {
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
 		if c.WFE.Limiter.OverridesFromDB {
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, c.WFE.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, stats, logger, c.WFE.Limiter.GhostOverrides)
 		} else {
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, c.WFE.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger, c.WFE.Limiter.GhostOverrides)
 		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 		overridesRefresherShutdown = txnBuilder.NewRefresher()

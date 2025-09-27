@@ -12,9 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -305,6 +308,9 @@ type limitRegistry struct {
 
 	// refreshOverrides is a function to refresh override limits.
 	refreshOverrides OverridesRefresher
+
+	stats  prometheus.Registerer
+	logger blog.Logger
 }
 
 // getLimit returns the limit for the specified by name and bucketKey, name is
@@ -332,7 +338,8 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 }
 
 // loadOverrides replaces this registry's overrides with a newly refreshed
-// dataset. This is separate from the goroutine in .start() for ease of testing.
+// dataset. This is separate from the goroutine in NewRefresher(), for ease of
+// testing.
 func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()

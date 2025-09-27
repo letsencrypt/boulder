@@ -282,9 +282,9 @@ func main() {
 		cmd.FailOnError(err, "Failed to create rate limiter")
 		if c.RA.Limiter.OverridesFromDB {
 			saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, c.RA.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, scope, logger, c.RA.Limiter.GhostOverrides)
 		} else {
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, c.RA.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, scope, logger, c.RA.Limiter.GhostOverrides)
 		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 		overrideRefresherShutdown := txnBuilder.NewRefresher()

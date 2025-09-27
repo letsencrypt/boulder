@@ -10,15 +10,17 @@ import (
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestNewTransactionBuilderFromFiles_WithBadLimitsPath(t *testing.T) {
 	t.Parallel()
-	_, err := NewTransactionBuilderFromFiles("testdata/does-not-exist.yml", "", false)
+	_, err := NewTransactionBuilderFromFiles("testdata/does-not-exist.yml", "", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertError(t, err, "should error")
 
-	_, err = NewTransactionBuilderFromFiles("testdata/defaults.yml", "testdata/does-not-exist.yml", false)
+	_, err = NewTransactionBuilderFromFiles("testdata/defaults.yml", "testdata/does-not-exist.yml", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertError(t, err, "should error")
 }
 
@@ -32,7 +34,7 @@ func sortTransactions(txns []Transaction) []Transaction {
 func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -45,7 +47,7 @@ func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -58,7 +60,7 @@ func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 func TestNewOrdersPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -71,7 +73,7 @@ func TestNewOrdersPerAccountTransactions(t *testing.T) {
 func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-only transaction for the default per-account limit.
@@ -108,7 +110,7 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A transaction for the per-account limit override.
@@ -122,7 +124,7 @@ func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testin
 func TestCertificatesPerDomainTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// One check-only transaction for the global limit.
@@ -143,7 +145,7 @@ func TestCertificatesPerDomainTransactions(t *testing.T) {
 func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// We only expect a single check-only transaction for the per-account limit
@@ -194,7 +196,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", false)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A single check-only transaction for the global limit.
@@ -218,7 +220,7 @@ func TestNewTransactionBuilder(t *testing.T) {
 			Burst:  expectedBurst,
 			Count:  expectedCount,
 			Period: expectedPeriod},
-	}, nil, false)
+	}, nil, metrics.NoopRegisterer, blog.NewMock(), false)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	newRegDefault, ok := tb.limitRegistry.defaults[NewRegistrationsPerIPAddress.EnumString()]

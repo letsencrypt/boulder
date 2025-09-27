@@ -45,6 +45,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 	fc.Set(time.Date(2020, 10, 10, 0, 0, 0, 0, time.UTC))
 
 	stats := metrics.NoopRegisterer
+	logger := blog.NewMock()
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
@@ -54,13 +55,13 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 
 	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/sfe-ratelimit-defaults.yml", "", false)
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/sfe-ratelimit-defaults.yml", "", stats, logger, false)
 	test.AssertNotError(t, err, "making transaction composer")
 
 	sfe, err := NewSelfServiceFrontEndImpl(
 		stats,
 		fc,
-		blog.NewMock(),
+		logger,
 		10*time.Second,
 		&MockRegistrationAuthority{},
 		mockSA,
