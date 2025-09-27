@@ -18,7 +18,7 @@ import (
 //
 // TODO(#7901): Update the tests to test these functions individually.
 func loadAndParseDefaultLimits(path string) (Limits, error) {
-	fromFile, err := loadDefaults(path)
+	fromFile, err := loadDefaultsFromFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func loadAndParseDefaultLimits(path string) (Limits, error) {
 //
 // TODO(#7901): Update the tests to test these functions individually.
 func loadAndParseOverrideLimits(path string) (Limits, error) {
-	fromFile, err := loadOverrides(path)
+	fromFile, err := loadOverridesFromFile(path)
 	if err != nil {
 		return nil, err
 	}

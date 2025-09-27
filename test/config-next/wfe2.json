@@ -131,7 +131,9 @@
 				}
 			},
 			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml",
-			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
+			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml",
+			"overridesFromDB": true,
+			"ghostOverrides": false
 		},
 		"features": {
 			"PropagateCancels": true,

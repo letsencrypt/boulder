@@ -156,6 +156,15 @@ type Config struct {
 			// overrides passed in this file must be identical to those in the
 			// RA.
 			Overrides string
+
+			// OverridesFromDB is a bool. If true, rate limit overrides will be
+			// retrieved from the database instead of from a file.
+			OverridesFromDB bool `validate:"omitempty"`
+
+			// GhostOverrides is a bool. If true, failing to load rate limit
+			// overrides at startup is non-fatal. This is a break-glass flag in
+			// case the overrides backend is broken.
+			GhostOverrides bool `validate:"omitempty"`
 		}
 
 		// CertProfiles is a map of acceptable certificate profile names to
@@ -326,6 +335,7 @@ func main() {
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
 	var limiterRedis *bredis.Ring
+	overridesRefresherShutdown := func() {}
 	if c.WFE.Limiter.Defaults != "" {
 		// Setup rate limiting.
 		limiterRedis, err = bredis.NewRingFromConfig(*c.WFE.Limiter.Redis, stats, logger)
@@ -334,8 +344,13 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides)
+		if c.WFE.Limiter.OverridesFromDB {
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, stats, logger, c.WFE.Limiter.GhostOverrides)
+		} else {
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger, c.WFE.Limiter.GhostOverrides)
+		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+		overridesRefresherShutdown = txnBuilder.NewRefresher()
 	}
 
 	var accountGetter wfe2.AccountGetter
@@ -415,6 +430,7 @@ func main() {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
+		overridesRefresherShutdown()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
 		limiterRedis.StopLookups()
