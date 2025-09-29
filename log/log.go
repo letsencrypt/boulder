@@ -170,16 +170,6 @@ func LogLineChecksum(line string) string {
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
-// OldLineChecksum was previously used, and is still accepted for validation.
-func OldLineChecksum(line string) string {
-	crc := crc32.ChecksumIEEE([]byte(line))
-	// Using the hash.Hash32 doesn't make this any easier
-	// as it also returns a uint32 rather than []byte
-	buf := make([]byte, binary.MaxVarintLen32)
-	binary.PutUvarint(buf, uint64(crc))
-	return base64.RawURLEncoding.EncodeToString(buf)
-}
-
 func checkSummed(msg string) string {
 	return fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
 }
