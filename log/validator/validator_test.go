@@ -6,9 +6,14 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestLineValidAccepts(t *testing.T) {
-	err := lineValid("2020-07-06T18:07:43.109389+00:00 70877f679c72 datacenter 6 boulder-wfe[1595]: kKG6cwA Caught SIGTERM")
+func TestLineValidAcceptsNew(t *testing.T) {
+	err := lineValid("2020-07-06T18:07:43.109389+00:00 70877f679c72 datacenter 6 boulder-wfe[1595]: -bEKHQ Welcome to the world of the future!")
 	test.AssertNotError(t, err, "errored on valid checksum")
+}
+
+func TestLineValidAcceptsOld(t *testing.T) {
+	err := lineValid("2020-07-06T18:07:43.109389+00:00 70877f679c72 datacenter 6 boulder-wfe[1595]: kKG6cwA Caught SIGTERM")
+	test.AssertNotError(t, err, "errored on valid old checksum")
 }
 
 func TestLineValidRejects(t *testing.T) {

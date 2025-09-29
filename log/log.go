@@ -160,6 +160,18 @@ type stdoutWriter struct {
 	isatty    bool
 }
 
+// NewLineChecksum computes a CRC32 over the log line, which can be checked by
+// log-validator to ensure no unexpected log corruption has occurred.
+// It is currently ony accepted for Validation, and will be switched in for LogLineChecksum
+// in an upcoming release.
+func NewLineChecksum(line string) string {
+	crc := crc32.ChecksumIEEE([]byte(line))
+	buf := make([]byte, crc32.Size)
+	binary.Encode(buf, binary.LittleEndian, crc)
+	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
+// LogLineChecksum is the current checksum algorithm, emitted in every log line.
 func LogLineChecksum(line string) string {
 	crc := crc32.ChecksumIEEE([]byte(line))
 	// Using the hash.Hash32 doesn't make this any easier
