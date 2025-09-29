@@ -167,7 +167,8 @@ type stdoutWriter struct {
 func NewLineChecksum(line string) string {
 	crc := crc32.ChecksumIEEE([]byte(line))
 	buf := make([]byte, crc32.Size)
-	binary.Encode(buf, binary.LittleEndian, crc)
+	// Error is unreachable because we provide a supported type and buffer size
+	_, _ = binary.Encode(buf, binary.LittleEndian, crc)
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
