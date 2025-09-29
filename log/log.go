@@ -162,8 +162,8 @@ type stdoutWriter struct {
 
 // NewLineChecksum computes a CRC32 over the log line, which can be checked by
 // log-validator to ensure no unexpected log corruption has occurred.
-// It is currently ony accepted for Validation, and will be switched in for LogLineChecksum
-// in an upcoming release.
+// It is currently only accepted for Validation, and will be switched in for
+// LogLineChecksum in an upcoming release.
 func NewLineChecksum(line string) string {
 	crc := crc32.ChecksumIEEE([]byte(line))
 	buf := make([]byte, crc32.Size)
