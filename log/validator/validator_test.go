@@ -7,7 +7,7 @@ import (
 )
 
 func TestLineValidAcceptsNew(t *testing.T) {
-	err := lineValid("2020-07-06T18:07:43.109389+00:00 70877f679c72 datacenter 6 boulder-wfe[1595]: -bEKHQ Welcome to the world of the future!")
+	err := lineValid("2020-07-06T18:07:43.109389+00:00 70877f679c72 datacenter 6 boulder-wfe[1595]: kJBuDg Caught SIGTERM")
 	test.AssertNotError(t, err, "errored on valid checksum")
 }
 

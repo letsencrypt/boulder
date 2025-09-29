@@ -186,7 +186,7 @@ func lineValid(text string) error {
 	}
 	checksum := fields[5]
 	_, err := base64.RawURLEncoding.DecodeString(checksum)
-	// Temporarily accept length 6 or 7 checksums
+	// TODO(#8414): Temporarily accept length 6 or 7 checksums
 	if err != nil || (len(checksum) != 6 && len(checksum) != 7) {
 		return fmt.Errorf(
 			"%s expected a 6 or 7 character base64 raw URL decodable string, got %q: %w",
@@ -205,6 +205,7 @@ func lineValid(text string) error {
 		return nil
 	}
 	// Check the extracted checksum against the computed checksum
+	// TODO(#8414): Accept both the old and new checksum format, distinguished by length
 	var computedChecksum string
 	if len(checksum) == 6 {
 		computedChecksum = log.NewLineChecksum(line)
