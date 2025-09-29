@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -341,4 +342,35 @@ func TestLogAtLevelEscapesNewlines(t *testing.T) {
 	w.logAtLevel(6, "foo\nbar")
 
 	test.Assert(t, strings.Contains(buf.String(), "foo\\nbar"), "failed to escape newline")
+}
+
+func TestLogLineChecksum(t *testing.T) {
+	testCases := []struct {
+		name     string
+		function func(string) string
+		input    string
+		expected string
+	}{
+		{
+			name:     "NewLineChecksum with Hello, World!",
+			function: NewLineChecksum,
+			input:    "Hello, World!",
+			expected: "0MNK7A",
+		},
+		{
+			name:     "LogLineChecksum with Info log",
+			function: LogLineChecksum,
+			input:    "Info log",
+			expected: "pcbo7wk",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			checksum := tc.function(tc.input)
+			if checksum != tc.expected {
+				t.Fatalf("got %q, want %q", checksum, tc.expected)
+			}
+		})
+	}
 }
