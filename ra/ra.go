@@ -1683,12 +1683,12 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 // certificates that were previously revoked for a reason other than
 // keyCompromise, and which are now being updated to keyCompromise instead.
 func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serialString string, issuerID issuance.NameID) error {
-	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
+	status, err := ra.SA.GetRevocationStatus(ctx, &sapb.Serial{Serial: serialString})
 	if err != nil {
 		return berrors.NotFoundError("unable to confirm that serial %q was ever issued: %s", serialString, err)
 	}
 
-	if status.Status != string(core.OCSPStatusRevoked) {
+	if status.Status != core.RevocationStatusRevoked {
 		// Internal server error, because we shouldn't be in the function at all
 		// unless the cert was already revoked.
 		return fmt.Errorf("unable to re-revoke serial %q which is not currently revoked", serialString)
