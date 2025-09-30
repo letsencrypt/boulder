@@ -396,15 +396,19 @@ func TestAddPrecertificate(t *testing.T) {
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
-
-	// Create a throw-away self signed certificate with a random name and
-	// serial number
-	serial, testCert := test.ThrowAwayCert(t, clk)
-
-	// Add the cert as a precertificate
 	regID := reg.Id
+
+	// Add a cert to the DB to test with.
+	serial, testCert := test.ThrowAwayCert(t, clk)
+	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		RegID:   regID,
+		Serial:  serial,
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
 	issuedTime := mustTimestamp("2018-04-01 07:00")
-	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        regID,
 		Issued:       issuedTime,
@@ -413,11 +417,9 @@ func TestAddPrecertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test cert")
 
 	// It should have the expected certificate status
-	certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	certStatus, err := sa.GetRevocationStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "Couldn't get status for test cert")
-	test.AssertEquals(t, certStatus.Status, string(core.OCSPStatusGood))
-	now := clk.Now()
-	test.AssertEquals(t, now, certStatus.OcspLastUpdated.AsTime())
+	test.AssertEquals(t, certStatus.Status, core.RevocationStatusGood)
 
 	// It should show up in the issued names table
 	issuedNamesSerial, err := findIssuedName(ctx, sa.dbMap, reverseFQDN(testCert.DNSNames[0]))
@@ -1787,10 +1789,9 @@ func TestRevokeCertificate(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	reg := createWorkingRegistration(t, sa)
 	// Add a cert to the DB to test with.
+	reg := createWorkingRegistration(t, sa)
 	serial, testCert := test.ThrowAwayCert(t, fc)
-	issuedTime := sa.clk.Now()
 	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		RegID:   reg.Id,
 		Serial:  core.SerialToString(testCert.SerialNumber),
@@ -1801,14 +1802,14 @@ func TestRevokeCertificate(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        reg.Id,
-		Issued:       timestamppb.New(issuedTime),
+		Issued:       timestamppb.New(testCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
 
-	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	status, err := sa.GetRevocationStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
+	test.AssertEquals(t, status.Status, core.RevocationStatusGood)
 
 	fc.Add(1 * time.Hour)
 
@@ -1824,12 +1825,11 @@ func TestRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "RevokeCertificate with no OCSP response should succeed")
 
-	status, err = sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	status, err = sa.GetRevocationStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
+	test.AssertEquals(t, status.Status, core.RevocationStatusRevoked)
 	test.AssertEquals(t, status.RevokedReason, reason)
 	test.AssertEquals(t, status.RevokedDate.AsTime(), now)
-	test.AssertEquals(t, status.OcspLastUpdated.AsTime(), now)
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
@@ -1840,59 +1840,6 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
 }
 
-func TestRevokeCertificateWithShard(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Add a cert to the DB to test with.
-	reg := createWorkingRegistration(t, sa)
-	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
-	test.AssertNotError(t, err, "failed to load test cert")
-	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:   reg.Id,
-		Serial:  core.SerialToString(eeCert.SerialNumber),
-		Created: timestamppb.New(eeCert.NotBefore),
-		Expires: timestamppb.New(eeCert.NotAfter),
-	})
-	test.AssertNotError(t, err, "failed to add test serial")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          eeCert.Raw,
-		RegID:        reg.Id,
-		Issued:       timestamppb.New(eeCert.NotBefore),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "failed to add test cert")
-
-	serial := core.SerialToString(eeCert.SerialNumber)
-	fc.Add(1 * time.Hour)
-	now := fc.Now()
-	reason := int64(1)
-
-	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID: 1,
-		ShardIdx: 9,
-		Serial:   serial,
-		Date:     timestamppb.New(now),
-		Reason:   reason,
-	})
-	test.AssertNotError(t, err, "RevokeCertificate with no OCSP response should succeed")
-
-	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
-	test.AssertEquals(t, status.RevokedReason, reason)
-	test.AssertEquals(t, status.RevokedDate.AsTime(), now)
-	test.AssertEquals(t, status.OcspLastUpdated.AsTime(), now)
-	test.AssertEquals(t, status.NotAfter.AsTime(), eeCert.NotAfter)
-
-	var result revokedCertModel
-	err = sa.dbMap.SelectOne(
-		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, core.SerialToString(eeCert.SerialNumber))
-	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
-	test.AssertEquals(t, result.ShardIdx, int64(9))
-	test.AssertEquals(t, result.RevokedReason, revocation.KeyCompromise)
-}
-
 func TestUpdateRevokedCertificate(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
@@ -1900,7 +1847,6 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	// Add a cert to the DB to test with.
 	reg := createWorkingRegistration(t, sa)
 	serial, testCert := test.ThrowAwayCert(t, fc)
-	issuedTime := fc.Now()
 	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		RegID:   reg.Id,
 		Serial:  core.SerialToString(testCert.SerialNumber),
@@ -1911,7 +1857,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        reg.Id,
-		Issued:       timestamppb.New(issuedTime),
+		Issued:       timestamppb.New(testCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
@@ -1944,10 +1890,10 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "RevokeCertificate failed")
 
 	// Double check that setup worked.
-	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	status, err := sa.GetRevocationStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
-	test.AssertEquals(t, revocation.Reason(status.RevokedReason), revocation.CessationOfOperation)
+	test.AssertEquals(t, status.Status, core.RevocationStatusRevoked)
+	test.AssertEquals(t, status.RevokedReason, int64(revocation.CessationOfOperation))
 	fc.Add(1 * time.Hour)
 
 	// Try to update its revocation info with no backdate
@@ -3000,10 +2946,10 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertNotError(t, err, "failed to add test cert")
 
 	// Check that it worked.
-	status, err := sa.GetCertificateStatus(
+	status, err := sa.GetRevocationStatus(
 		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert.SerialNumber)})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
+	test.AssertEquals(t, status.Status, core.RevocationStatusGood)
 
 	// Here's a little helper func we'll use to call GetRevokedCertsByShard and count
 	// how many results it returned.
