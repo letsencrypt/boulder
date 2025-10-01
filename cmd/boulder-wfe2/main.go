@@ -395,8 +395,6 @@ func main() {
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
 
-	logger.Infof("WFE using key policy: %#v", kp)
-
 	if c.WFE.ListenAddress == "" {
 		cmd.Fail("HTTP listen address is not configured")
 	}
