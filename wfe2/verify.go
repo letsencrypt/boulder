@@ -240,6 +240,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		// their request with a fresh nonce.
 		resp = &noncepb.ValidMessage{Valid: false}
 		wfe.stats.nonceNoMatchingBackendCount.Inc()
+		wfe.log.Infof("no matching backend for nonce %s %s", header.Nonce[:nonce.PrefixLen], wfe.rncKey)
 	}
 
 	if !resp.Valid {
