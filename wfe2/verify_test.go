@@ -502,14 +502,6 @@ func TestValidPOSTRequest(t *testing.T) {
 		ErrorStatType      string
 		EnforceContentType bool
 	}{
-		// POST requests without a Content-Length should produce a problem
-		{
-			Name:          "POST without a Content-Length header",
-			Headers:       nil,
-			HTTPStatus:    http.StatusLengthRequired,
-			ErrorDetail:   "missing Content-Length header",
-			ErrorStatType: "ContentLengthRequired",
-		},
 		// POST requests with a Replay-Nonce header should produce a problem
 		{
 			Name: "POST with a Replay-Nonce HTTP header",
@@ -951,6 +943,9 @@ func TestParseJWSRequest(t *testing.T) {
 	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test-path", "")
 	validJWSRequest := makePostRequestWithPath("test-path", validJWSBody)
 
+	_, _, validJWSBody2 := signer.embeddedJWK(nil, "http://localhost/test-path", "")
+	validJWSChunkedRequest := makeChunkedPostRequestWithPath("test-path", validJWSBody2)
+
 	missingSigsJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ"}`
 	missingSigsJWSRequest := makePostRequestWithPath("test-path", missingSigsJWSBody)
 
@@ -988,16 +983,6 @@ func TestParseJWSRequest(t *testing.T) {
 		WantErrDetail string
 		WantStatType  string
 	}{
-		{
-			Name: "Invalid POST request",
-			// No Content-Length, something that validPOSTRequest should be flagging
-			Request: &http.Request{
-				Method: "POST",
-				URL:    mustParseURL("/"),
-			},
-			WantErrType:   berrors.Malformed,
-			WantErrDetail: "missing Content-Length header",
-		},
 		{
 			Name:          "Invalid JWS in POST body",
 			Request:       makePostRequestWithPath("test-path", `{`),
@@ -1045,8 +1030,18 @@ func TestParseJWSRequest(t *testing.T) {
 			Request: validJWSRequest,
 		},
 		{
+			Name:    "Valid JWS in chunked encoded POST request",
+			Request: validJWSChunkedRequest,
+		},
+		{
 			Name:          "POST body too large",
 			Request:       makePostRequestWithPath("test-path", fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))),
+			WantErrType:   berrors.Unauthorized,
+			WantErrDetail: "request body too large",
+		},
+		{
+			Name:          "chunked encoded POST body too large",
+			Request:       makeChunkedPostRequestWithPath("test-path", fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))),
 			WantErrType:   berrors.Unauthorized,
 			WantErrDetail: "request body too large",
 		},
