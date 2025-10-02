@@ -47,7 +47,7 @@ type Config struct {
 
 			// One of the profile names must match the value of ra.defaultProfileName
 			// or large amounts of issuance will fail.
-			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			CertProfiles map[string]issuance.ProfileConfig `validate:"required,dive,keys,alphanum,min=1,max=32,endkeys"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`
@@ -185,22 +185,36 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
+	profiles := make(map[string]*issuance.Profile)
+	for name, profileConfig := range c.CA.Issuance.CertProfiles {
+		profile, err := issuance.NewProfile(profileConfig)
+		cmd.FailOnError(err, "Loading profile")
+		profiles[name] = profile
+	}
+
 	clk := clock.New()
 	var crlShards int
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for i, issuerConfig := range c.CA.Issuance.Issuers {
-		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
-		cmd.FailOnError(err, "Loading issuer")
-		// All issuers should have the same number of CRL shards, because
-		// crl-updater assumes they all have the same number.
+		// Double check that all issuers have the same number of CRL shards, because
+		// crl-updater relies upon that invariant.
 		if issuerConfig.CRLShards != 0 && crlShards == 0 {
 			crlShards = issuerConfig.CRLShards
 		}
 		if issuerConfig.CRLShards != crlShards {
 			cmd.Fail(fmt.Sprintf("issuer %d has %d shards, want %d", i, issuerConfig.CRLShards, crlShards))
 		}
+		// Also check that all the profiles they list actually exist.
+		for _, profile := range issuerConfig.Profiles {
+			_, found := profiles[profile]
+			if !found {
+				cmd.Fail(fmt.Sprintf("issuer %d lists unrecognized profile %q", i, profile))
+			}
+		}
+
+		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
+		cmd.FailOnError(err, "Loading issuer")
 		issuers = append(issuers, issuer)
-		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}
 
 	if len(c.CA.Issuance.CertProfiles) == 0 {
@@ -245,7 +259,7 @@ func main() {
 			sctService,
 			pa,
 			issuers,
-			c.CA.Issuance.CertProfiles,
+			profiles,
 			serialPrefix,
 			c.CA.MaxNames,
 			kp,
