@@ -22,7 +22,7 @@ import (
 
 type crlImpl struct {
 	capb.UnsafeCRLGeneratorServer
-	issuers   map[issuance.NameID]*issuance.Issuer
+	issuers   *issuerMaps
 	profile   *issuance.CRLProfile
 	maxLogLen int
 	log       blog.Logger
@@ -36,24 +36,19 @@ var _ capb.CRLGeneratorServer = (*crlImpl)(nil)
 // issue CRLs from. lifetime sets the validity period (inclusive) of the
 // resulting CRLs.
 func NewCRLImpl(
-	issuers []*issuance.Issuer,
+	issuers *issuerMaps,
 	profileConfig issuance.CRLProfileConfig,
 	maxLogLen int,
 	logger blog.Logger,
 	metrics *caMetrics,
 ) (*crlImpl, error) {
-	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
-	for _, issuer := range issuers {
-		issuersByNameID[issuer.NameID()] = issuer
-	}
-
 	profile, err := issuance.NewCRLProfile(profileConfig)
 	if err != nil {
 		return nil, fmt.Errorf("loading CRL profile: %w", err)
 	}
 
 	return &crlImpl{
-		issuers:   issuersByNameID,
+		issuers:   issuers,
 		profile:   profile,
 		maxLogLen: maxLogLen,
 		log:       logger,
@@ -86,10 +81,9 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 				return err
 			}
 
-			var ok bool
-			issuer, ok = ci.issuers[issuance.NameID(payload.Metadata.IssuerNameID)]
-			if !ok {
-				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerNameID)
+			issuer, err = ci.issuers.forCRL(issuance.NameID(payload.Metadata.IssuerNameID))
+			if err != nil {
+				return err
 			}
 
 		case *capb.GenerateCRLRequest_Entry:

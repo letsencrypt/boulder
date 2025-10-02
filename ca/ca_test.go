@@ -108,17 +108,17 @@ func mustRead(path string) []byte {
 //
 // Its fields should remain identical to the NewCertificateAuthorityImpl args.
 type caArgs struct {
-	sa             sapb.StorageAuthorityCertificateClient
-	sctService     rapb.SCTProviderClient
-	pa             core.PolicyAuthority
-	boulderIssuers []*issuance.Issuer
-	certProfiles   map[string]*issuance.ProfileConfig
-	serialPrefix   byte
-	maxNames       int
-	keyPolicy      goodkey.KeyPolicy
-	logger         *blog.Mock
-	metrics        *caMetrics
-	clk            clock.FakeClock
+	sa           sapb.StorageAuthorityCertificateClient
+	sctService   rapb.SCTProviderClient
+	pa           core.PolicyAuthority
+	issuers      []*issuance.Issuer
+	profiles     map[string]*issuance.Profile
+	serialPrefix byte
+	maxNames     int
+	keyPolicy    goodkey.KeyPolicy
+	logger       *blog.Mock
+	metrics      *caMetrics
+	clk          clock.FakeClock
 }
 
 // newCAArgs returns a caArgs populated with reasonable default values for testing.
@@ -133,14 +133,14 @@ func newCAArgs(t *testing.T) *caArgs {
 	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
-	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
-	certProfiles["legacy"] = &issuance.ProfileConfig{
+	legacy, err := issuance.NewProfile(issuance.ProfileConfig{
 		IncludeCRLDistributionPoints: true,
 		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
 		IgnoredLints:                 []string{"w_subject_common_name_included"},
-	}
-	certProfiles["modern"] = &issuance.ProfileConfig{
+	})
+	test.AssertNotError(t, err, "Loading test profile")
+	modern, err := issuance.NewProfile(issuance.ProfileConfig{
 		OmitCommonName:               true,
 		OmitKeyEncipherment:          true,
 		OmitClientAuth:               true,
@@ -149,12 +149,16 @@ func newCAArgs(t *testing.T) *caArgs {
 		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 6},
 		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
 		IgnoredLints:                 []string{"w_ext_subject_key_identifier_missing_sub_cert"},
+	})
+	test.AssertNotError(t, err, "Loading test profile")
+	profiles := map[string]*issuance.Profile{
+		"legacy": legacy,
+		"modern": modern,
 	}
-	test.AssertEquals(t, len(certProfiles), 2)
 
-	boulderIssuers := make([]*issuance.Issuer, 4)
+	issuers := make([]*issuance.Issuer, 4)
 	for i, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
-		boulderIssuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
+		issuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
 			Active:     true,
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
 			OCSPURL:    "http://not-example.com/o",
@@ -194,17 +198,17 @@ func newCAArgs(t *testing.T) *caArgs {
 	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificatesCount}
 
 	return &caArgs{
-		sa:             &mockSA{},
-		sctService:     &mockSCTService{},
-		pa:             pa,
-		boulderIssuers: boulderIssuers,
-		certProfiles:   certProfiles,
-		serialPrefix:   0x11,
-		maxNames:       2,
-		keyPolicy:      keyPolicy,
-		logger:         blog.NewMock(),
-		metrics:        cametrics,
-		clk:            fc,
+		sa:           &mockSA{},
+		sctService:   &mockSCTService{},
+		pa:           pa,
+		issuers:      issuers,
+		profiles:     profiles,
+		serialPrefix: 0x11,
+		maxNames:     2,
+		keyPolicy:    keyPolicy,
+		logger:       blog.NewMock(),
+		metrics:      cametrics,
+		clk:          fc,
 	}
 }
 
@@ -212,7 +216,7 @@ func newCAArgs(t *testing.T) *caArgs {
 // constructor and returns the result.
 func (c *caArgs) make() (*certificateAuthorityImpl, error) {
 	return NewCertificateAuthorityImpl(
-		c.sa, c.sctService, c.pa, c.boulderIssuers, c.certProfiles, c.serialPrefix,
+		c.sa, c.sctService, c.pa, c.issuers, c.profiles, c.serialPrefix,
 		c.maxNames, c.keyPolicy, c.logger, c.metrics, c.clk)
 }
 
@@ -277,7 +281,7 @@ func TestNewCertificateAuthorityImpl_BadSerialPrefix(t *testing.T) {
 func TestNewCertificateAuthorityImpl_InsufficientIssuers(t *testing.T) {
 	t.Parallel()
 	cargs := newCAArgs(t)
-	origIssuers := cargs.boulderIssuers
+	origIssuers := cargs.issuers
 
 	for _, tc := range []struct {
 		name    string
@@ -301,7 +305,7 @@ func TestNewCertificateAuthorityImpl_InsufficientIssuers(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cargs.boulderIssuers = tc.issuers
+			cargs.issuers = tc.issuers
 			_, err := cargs.make()
 			if err == nil {
 				t.Fatalf("NewCertificateAuthorityImpl(%s) succeeded, but want error", tc.name)
@@ -317,7 +321,7 @@ func TestNewCertificateAuthorityImpl_InsufficientIssuers(t *testing.T) {
 func TestNewCertificateAuthorityImpl_InsufficientProfiles(t *testing.T) {
 	t.Parallel()
 	cargs := newCAArgs(t)
-	cargs.certProfiles = nil
+	cargs.profiles = nil
 
 	_, err := cargs.make()
 	if err == nil {
@@ -581,10 +585,10 @@ func TestIssueCertificate_ValidPastIssuer(t *testing.T) {
 
 	// Limit ourselves to only having one ECDSA issuer, just in case they have
 	// different notAfter dates.
-	cargs.boulderIssuers = cargs.boulderIssuers[:3]
+	cargs.issuers = cargs.issuers[:3]
 
 	// Jump to a time just moments before the test issuer expire.
-	future := cargs.boulderIssuers[2].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
+	future := cargs.issuers[2].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
 	cargs.clk.Set(future)
 
 	ca, err := cargs.make()
@@ -701,7 +705,7 @@ func TestIssueCertificate_ProfileSelection(t *testing.T) {
 func TestIssueCertificate_IssuerSelection(t *testing.T) {
 	t.Parallel()
 	cargs := newCAArgs(t)
-	origIssuers := cargs.boulderIssuers
+	origIssuers := cargs.issuers
 
 	ca, err := cargs.make()
 	if err != nil {
@@ -784,7 +788,7 @@ func TestIssueCertificate_UnpredictableIssuance(t *testing.T) {
 		}, cargs.clk)
 		test.AssertNotError(t, err, "Couldn't load test issuer")
 	}
-	cargs.boulderIssuers = boulderIssuers
+	cargs.issuers = boulderIssuers
 
 	ca, err := cargs.make()
 	if err != nil {
@@ -836,70 +840,8 @@ func TestIssueCertificate_UnpredictableIssuance(t *testing.T) {
 	}
 }
 
-func TestMakeCertificateProfilesMap(t *testing.T) {
-	t.Parallel()
-	cargs := newCAArgs(t)
-	test.AssertEquals(t, len(cargs.certProfiles), 2)
-
-	testCases := []struct {
-		name              string
-		profileConfigs    map[string]*issuance.ProfileConfig
-		expectedErrSubstr string
-		expectedProfiles  []string
-	}{
-		{
-			name:              "nil profile map",
-			profileConfigs:    nil,
-			expectedErrSubstr: "at least one certificate profile",
-		},
-		{
-			name:              "no profiles",
-			profileConfigs:    map[string]*issuance.ProfileConfig{},
-			expectedErrSubstr: "at least one certificate profile",
-		},
-		{
-			name: "empty profile config",
-			profileConfigs: map[string]*issuance.ProfileConfig{
-				"empty": {},
-			},
-			expectedErrSubstr: "at least one revocation mechanism must be included",
-		},
-		{
-			name: "minimal profile config",
-			profileConfigs: map[string]*issuance.ProfileConfig{
-				"empty": {IncludeCRLDistributionPoints: true},
-			},
-			expectedProfiles: []string{"empty"},
-		},
-		{
-			name:             "default profiles from setup func",
-			profileConfigs:   cargs.certProfiles,
-			expectedProfiles: []string{"legacy", "modern"},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			profiles, err := makeCertificateProfilesMap(tc.profileConfigs)
-
-			if tc.expectedErrSubstr != "" {
-				test.AssertError(t, err, "profile construction should have failed")
-				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
-			} else {
-				test.AssertNotError(t, err, "profile construction should have succeeded")
-			}
-
-			if tc.expectedProfiles != nil {
-				test.AssertEquals(t, len(profiles), len(tc.expectedProfiles))
-			}
-
-			for _, expected := range tc.expectedProfiles {
-				_, ok := profiles[expected]
-				test.Assert(t, ok, fmt.Sprintf("expected profile %q not found", expected))
-			}
-		})
-	}
+func TestPickIssuer(t *testing.T) {
+	t.FailNow()
 }
 
 func TestNoteSignError(t *testing.T) {
