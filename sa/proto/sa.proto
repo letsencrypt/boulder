@@ -19,13 +19,11 @@ service StorageAuthorityReadOnly {
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
-  rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
-  rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
@@ -54,13 +52,11 @@ service StorageAuthority {
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
-  rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
-  rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
@@ -367,18 +363,6 @@ message GetRevokedCertsByShardRequest {
   google.protobuf.Timestamp revokedBefore = 2;
   google.protobuf.Timestamp expiresAfter = 3;
   int64 shardIdx = 4;
-}
-
-message GetRevokedCertsRequest {
-  // Next unused field number: 9
-  int64 issuerNameID = 1;
-  reserved 2; // Previously expiresAfterNS
-  google.protobuf.Timestamp expiresAfter = 6; // inclusive
-  reserved 3; // Previously expiresBeforeNS
-  google.protobuf.Timestamp expiresBefore = 7; // exclusive
-  reserved 4; // Previously revokedBeforeNS
-  google.protobuf.Timestamp revokedBefore = 8;
-  reserved 5;
 }
 
 message RevocationStatus {
