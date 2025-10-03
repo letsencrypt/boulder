@@ -534,7 +534,7 @@ func TestIssueCertificate_ValidPastIssuer(t *testing.T) {
 	// different notAfter dates.
 	cargs.boulderIssuers = cargs.boulderIssuers[:3]
 
-	// Jump to a time just moments before the test issuer expire.
+	// Jump to a time just moments before the test issuer expires.
 	future := cargs.boulderIssuers[2].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
 	cargs.clk.Set(future)
 
@@ -550,8 +550,8 @@ func TestIssueCertificate_ValidPastIssuer(t *testing.T) {
 	if err == nil {
 		t.Fatalf("IssueCertificate(notAfter > issuer.notAfter) succeeded, but want error")
 	}
-	if !errors.Is(err, berrors.InternalServer) {
-		t.Fatalf("IssueCertificate(notAfter > issuer.notAfter) = %T, but want %T", err, berrors.InternalServer)
+	if !errors.Is(err, berrors.InternalServer) || !strings.Contains(err.Error(), "expires after the issuer") {
+		t.Fatalf("IssueCertificate(notAfter > issuer.notAfter) = %T(%s), but want %T(expires after the issuer)", err, err, berrors.InternalServer)
 	}
 }
 
@@ -668,13 +668,13 @@ func TestIssueCertificate_IssuerSelection(t *testing.T) {
 		{
 			name:        "ECDSA",
 			csr:         ECDSACSR,
-			wantIssuers: origIssuers[2:],
+			wantIssuers: origIssuers[2:4], // Assumption: newCAArgs provides exactly two ECDSA issuers, at indices 2 and 3.
 			wantKUs:     x509.KeyUsageDigitalSignature,
 		},
 		{
 			name:        "RSA",
 			csr:         CNandSANCSR,
-			wantIssuers: origIssuers[:2],
+			wantIssuers: origIssuers[0:2], // Assumption: newCAArgs provides exactly two RSA issuers, at indices 0 and 1.
 			wantKUs:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		},
 	} {
