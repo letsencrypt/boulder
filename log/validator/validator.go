@@ -208,9 +208,9 @@ func lineValid(text string) error {
 	// TODO(#8414): Accept both the old and new checksum format, distinguished by length
 	var computedChecksum string
 	if len(checksum) == 6 {
-		computedChecksum = log.NewLineChecksum(line)
-	} else {
 		computedChecksum = log.LogLineChecksum(line)
+	} else {
+		computedChecksum = log.OldLineChecksum(line)
 	}
 	if checksum != computedChecksum {
 		return fmt.Errorf("%s invalid checksum (expected %q, got %q)", errorPrefix, computedChecksum, checksum)
