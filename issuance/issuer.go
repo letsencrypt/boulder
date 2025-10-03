@@ -148,6 +148,11 @@ type IssuerConfig struct {
 	// The selection of which pool depends on the precertificate's key algorithm.
 	Active bool
 
+	// Profiles is the list of profiles for which this issuer is willing to issue.
+	// For the moment, this does nothing, and exists only for deployability.
+	// TODO(#8390): Make this field required for active issuers.
+	Profiles []string `validate:"omitempty,dive,alphanum,min=1,max=32"`
+
 	IssuerURL  string `validate:"required,url"`
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
 
