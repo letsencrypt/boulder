@@ -1,6 +1,7 @@
 package ca
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -11,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	mrand "math/rand"
 	"os"
 	"strings"
 	"testing"
@@ -97,52 +97,34 @@ func mustRead(path string) []byte {
 	return must.Do(os.ReadFile(path))
 }
 
-type testCtx struct {
+// caArgs is a container for all of the arguments to
+// NewCertificateAuthorityImpl. It exists so that tests can easily build a
+// default certificateAuthorityImpl, but can also easily customize that object
+// to exercise various behaviors. The expected usage flow is:
+//
+//	cargs := newTestCA(t)
+//	cargs.foo = someOverride
+//	ca := cargs.make()
+//
+// Its fields should remain identical to the NewCertificateAuthorityImpl args.
+type caArgs struct {
+	sa             sapb.StorageAuthorityCertificateClient
+	sctService     rapb.SCTProviderClient
 	pa             core.PolicyAuthority
-	crl            *crlImpl
+	boulderIssuers []*issuance.Issuer
 	certProfiles   map[string]*issuance.ProfileConfig
 	serialPrefix   byte
 	maxNames       int
-	boulderIssuers []*issuance.Issuer
 	keyPolicy      goodkey.KeyPolicy
-	fc             clock.FakeClock
-	metrics        *caMetrics
 	logger         *blog.Mock
+	metrics        *caMetrics
+	clk            clock.FakeClock
 }
 
-type mockSA struct {
-	certificate core.Certificate
-}
-
-func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	m.certificate.DER = req.Der
-	return nil, nil
-}
-
-func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError("cannot find the cert")
-}
-
-func (m *mockSA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError("cannot find the precert")
-}
-
-func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-var ctx = context.Background()
-
-func setup(t *testing.T) *testCtx {
+// newCAArgs returns a caArgs populated with reasonable default values for testing.
+func newCAArgs(t *testing.T) *caArgs {
 	features.Reset()
+
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
@@ -211,261 +193,577 @@ func setup(t *testing.T) *testCtx {
 		}, []string{"profile"})
 	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificatesCount}
 
-	crl, err := NewCRLImpl(
-		boulderIssuers,
-		issuance.CRLProfileConfig{
-			ValidityInterval: config.Duration{Duration: 216 * time.Hour},
-			MaxBackdate:      config.Duration{Duration: time.Hour},
-		},
-		100,
-		blog.NewMock(),
-		cametrics,
-	)
-	test.AssertNotError(t, err, "Failed to create crl impl")
-
-	return &testCtx{
+	return &caArgs{
+		sa:             &mockSA{},
+		sctService:     &mockSCTService{},
 		pa:             pa,
-		crl:            crl,
+		boulderIssuers: boulderIssuers,
 		certProfiles:   certProfiles,
 		serialPrefix:   0x11,
 		maxNames:       2,
-		boulderIssuers: boulderIssuers,
 		keyPolicy:      keyPolicy,
-		fc:             fc,
-		metrics:        cametrics,
 		logger:         blog.NewMock(),
+		metrics:        cametrics,
+		clk:            fc,
 	}
 }
 
-func TestSerialPrefix(t *testing.T) {
-	t.Parallel()
-	testCtx := setup(t)
-
-	_, err := NewCertificateAuthorityImpl(
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		0x00,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		nil,
-		testCtx.fc)
-	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
-
-	_, err = NewCertificateAuthorityImpl(
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		0x80,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		nil,
-		testCtx.fc)
-	test.AssertError(t, err, "CA should have failed with too-large SerialPrefix")
+// make passes all of the caArgs' fields to the NewCertificateAuthorityImpl
+// constructor and returns the result.
+func (c *caArgs) make() (*certificateAuthorityImpl, error) {
+	return NewCertificateAuthorityImpl(
+		c.sa, c.sctService, c.pa, c.boulderIssuers, c.certProfiles, c.serialPrefix,
+		c.maxNames, c.keyPolicy, c.logger, c.metrics, c.clk)
 }
 
-func TestNoteSignError(t *testing.T) {
-	testCtx := setup(t)
-	metrics := testCtx.metrics
+type mockSA struct{}
 
-	err := fmt.Errorf("wrapped non-signing error: %w", errors.New("oops"))
-	metrics.noteSignError(err)
-	test.AssertMetricWithLabelsEquals(t, metrics.signErrorCount, prometheus.Labels{"type": "HSM"}, 0)
-
-	err = fmt.Errorf("wrapped signing error: %w", pkcs11.Error(5))
-	metrics.noteSignError(err)
-	test.AssertMetricWithLabelsEquals(t, metrics.signErrorCount, prometheus.Labels{"type": "HSM"}, 1)
+func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
-type TestCertificateIssuance struct {
-	ca      *certificateAuthorityImpl
-	sa      *mockSA
-	req     *x509.CertificateRequest
-	certDER []byte
-	cert    *x509.Certificate
+func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
-func TestIssuePrecertificate(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		name    string
-		csr     []byte
-		subTest func(t *testing.T, i *TestCertificateIssuance)
-	}{
-		{"IssuePrecertificate", CNandSANCSR, issueCertificateSubTestIssuePrecertificate},
-		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestProfileSelectionRSA},
-		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestProfileSelectionECDSA},
-		{"UnknownExtension", UnsupportedExtensionCSR, issueCertificateSubTestUnknownExtension},
-		{"CTPoisonExtension", CTPoisonExtensionCSR, issueCertificateSubTestCTPoisonExtension},
-		{"CTPoisonExtensionEmpty", CTPoisonExtensionEmptyCSR, issueCertificateSubTestCTPoisonExtension},
-	}
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
 
-	for _, testCase := range testCases {
-		// The loop through the issuance modes must be inside the loop through
-		// |testCases| because the "certificate-for-precertificate" tests use
-		// the precertificates previously generated from the preceding
-		// "precertificate" test.
-		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
-			ca, sa := issueCertificateSubTestSetup(t)
-			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
-				t.Parallel()
-				req, err := x509.ParseCertificateRequest(testCase.csr)
-				test.AssertNotError(t, err, "Certificate request failed to parse")
-				issueReq := &capb.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: mrand.Int63(), OrderID: mrand.Int63()}
+func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the cert")
+}
 
-				profile := ca.certProfiles["legacy"]
-				certDER, err := ca.issuePrecertificate(ctx, profile, issueReq)
-				test.AssertNotError(t, err, "Failed to issue precertificate")
-
-				cert, err := x509.ParseCertificate(certDER)
-				test.AssertNotError(t, err, "Certificate failed to parse")
-				poisonExtension := findExtension(cert.Extensions, OIDExtensionCTPoison)
-				test.AssertNotNil(t, poisonExtension, "Precert doesn't contain poison extension")
-				if poisonExtension != nil {
-					test.AssertEquals(t, poisonExtension.Critical, true)
-					test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
-				}
-
-				i := TestCertificateIssuance{
-					ca:      ca,
-					sa:      sa,
-					req:     req,
-					certDER: certDER,
-					cert:    cert,
-				}
-
-				testCase.subTest(t, &i)
-			})
-		}
-	}
+func (m *mockSA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the precert")
 }
 
 type mockSCTService struct{}
 
 func (m mockSCTService) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest, _ ...grpc.CallOption) (*rapb.SCTResponse, error) {
-	return &rapb.SCTResponse{}, nil
-}
-
-func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
-	testCtx := setup(t)
-	sa := &mockSA{}
-	ca, err := NewCertificateAuthorityImpl(
-		sa,
-		mockSCTService{},
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	return ca, sa
-}
-
-func issueCertificateSubTestIssuePrecertificate(t *testing.T, i *TestCertificateIssuance) {
-	cert := i.cert
-
-	test.AssertEquals(t, cert.Subject.CommonName, "not-example.com")
-
-	if len(cert.DNSNames) == 1 {
-		if cert.DNSNames[0] != "not-example.com" {
-			t.Errorf("Improper list of domain names %v", cert.DNSNames)
-		}
-		t.Errorf("Improper list of domain names %v", cert.DNSNames)
+	sct := ct.SignedCertificateTimestamp{
+		SCTVersion: 0,
+		Timestamp:  2020,
+		Signature: ct.DigitallySigned{
+			Signature: []byte{0},
+		},
 	}
 
-	if len(cert.Subject.Country) > 0 {
-		t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
+	sctBytes, err := cttls.Marshal(sct)
+	if err != nil {
+		return nil, err
 	}
+
+	return &rapb.SCTResponse{SctDER: [][]byte{sctBytes}}, nil
 }
 
-// Test failure mode when no issuers are present.
-func TestNoIssuers(t *testing.T) {
+func TestNewCertificateAuthorityImpl_BadSerialPrefix(t *testing.T) {
 	t.Parallel()
-	testCtx := setup(t)
-	sa := &mockSA{}
-	_, err := NewCertificateAuthorityImpl(
-		sa,
-		mockSCTService{},
-		testCtx.pa,
-		nil, // No issuers
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertError(t, err, "No issuers found during CA construction.")
-	test.AssertEquals(t, err.Error(), "must have at least one issuer")
+	cargs := newCAArgs(t)
+
+	cargs.serialPrefix = 0x00
+	_, err := cargs.make()
+	if err == nil {
+		t.Errorf("NewCertificateAuthorityImpl(serialPrefix=0x00) succeeded, but want error")
+	}
+
+	cargs.serialPrefix = 0x80
+	_, err = cargs.make()
+	if err == nil {
+		t.Errorf("NewCertificateAuthorityImpl(serialPrefix=0x80) succeeded, but want error")
+	}
 }
 
-// Test issuing when multiple issuers are present.
-func TestMultipleIssuers(t *testing.T) {
+func TestNewCertificateAuthorityImpl_InsufficientIssuers(t *testing.T) {
 	t.Parallel()
-	testCtx := setup(t)
-	sa := &mockSA{}
-	ca, err := NewCertificateAuthorityImpl(
-		sa,
-		mockSCTService{},
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to remake CA")
+	cargs := newCAArgs(t)
+	origIssuers := cargs.boulderIssuers
 
-	// Test that an RSA CSR gets issuance from an RSA issuer.
-	profile := ca.certProfiles["legacy"]
-	issuedCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63()})
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err := x509.ParseCertificate(issuedCertDER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	validated := false
-	for _, issuer := range ca.issuers.byAlg[x509.RSA] {
-		err = cert.CheckSignatureFrom(issuer.Cert.Certificate)
-		if err == nil {
-			validated = true
-			break
-		}
-	}
-	test.Assert(t, validated, "Certificate failed signature validation")
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 1)
+	for _, tc := range []struct {
+		name    string
+		issuers []*issuance.Issuer
+		wantErr string
+	}{
+		{
+			name:    "no issuers",
+			issuers: nil,
+			wantErr: "at least one issuer",
+		},
+		{
+			name:    "ecdsa only",
+			issuers: origIssuers[2:],
+			wantErr: "no RSA issuers configured",
+		},
+		{
+			name:    "rsa only",
+			issuers: origIssuers[:2],
+			wantErr: "no ECDSA issuers configured",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cargs.boulderIssuers = tc.issuers
+			_, err := cargs.make()
+			if err == nil {
+				t.Fatalf("NewCertificateAuthorityImpl(%s) succeeded, but want error", tc.name)
+			}
 
-	// Test that an ECDSA CSR gets issuance from an ECDSA issuer.
-	issuedCertDER, err = ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"})
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err = x509.ParseCertificate(issuedCertDER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	validated = false
-	for _, issuer := range ca.issuers.byAlg[x509.ECDSA] {
-		err = cert.CheckSignatureFrom(issuer.Cert.Certificate)
-		if err == nil {
-			validated = true
-			break
-		}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("NewCertificateAuthorityImpl(%s) = %q, but want %q", tc.name, err, tc.wantErr)
+			}
+		})
 	}
-	test.Assert(t, validated, "Certificate failed signature validation")
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 2)
 }
 
-func TestUnpredictableIssuance(t *testing.T) {
-	testCtx := setup(t)
-	sa := &mockSA{}
+func TestNewCertificateAuthorityImpl_InsufficientProfiles(t *testing.T) {
+	t.Parallel()
+	cargs := newCAArgs(t)
+	cargs.certProfiles = nil
+
+	_, err := cargs.make()
+	if err == nil {
+		t.Fatalf("NewCertificateAuthorityImpl(certificateProfiles=nil) succeeded, but want error")
+	}
+
+	wantErr := "at least one certificate profile"
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("NewCertificateAuthorityImpl(certificateProfiles=nil) = %q, but want %q", err, wantErr)
+	}
+}
+
+// recordingSA keeps track of the serial, precertificate, and certificate which
+// are written to it. We use recordingSA only for the _HappyPath test because
+// it's a pain to mitigate the data-races inherent in writing to it from many
+// parallel subtests.
+type recordingSA struct {
+	serial         *sapb.AddSerialRequest
+	precertificate *sapb.AddCertificateRequest
+	certificate    *sapb.AddCertificateRequest
+}
+
+func (m *recordingSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	m.serial = req
+	return &emptypb.Empty{}, nil
+}
+
+func (m *recordingSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	m.precertificate = req
+	return &emptypb.Empty{}, nil
+}
+
+func (m *recordingSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	m.certificate = req
+	return &emptypb.Empty{}, nil
+}
+
+func (m *recordingSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the cert")
+}
+
+func (m *recordingSA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the precert")
+}
+
+func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.Extension {
+	for _, ext := range extensions {
+		if ext.Id.Equal(id) {
+			return &ext
+		}
+	}
+	return nil
+}
+
+// deserializeSCTList deserializes a list of SCTs.
+// Forked from github.com/cloudflare/cfssl/helpers
+func deserializeSCTList(sctListExtensionValue []byte) ([]ct.SignedCertificateTimestamp, error) {
+	var serializedSCTList []byte
+	_, err := asn1.Unmarshal(sctListExtensionValue, &serializedSCTList)
+	if err != nil {
+		return nil, err
+	}
+
+	var sctList ctx509.SignedCertificateTimestampList
+	rest, err := cttls.Unmarshal(serializedSCTList, &sctList)
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) != 0 {
+		return nil, errors.New("serialized SCT list contained trailing garbage")
+	}
+	list := make([]ct.SignedCertificateTimestamp, len(sctList.SCTList))
+	for i, serializedSCT := range sctList.SCTList {
+		var sct ct.SignedCertificateTimestamp
+		rest, err := cttls.Unmarshal(serializedSCT.Val, &sct)
+		if err != nil {
+			return nil, err
+		}
+		if len(rest) != 0 {
+			return nil, errors.New("serialized SCT contained trailing garbage")
+		}
+		list[i] = sct
+	}
+	return list, nil
+}
+
+func TestIssueCertificate_HappyPath(t *testing.T) {
+	for _, profile := range []string{"legacy", "modern"} {
+		for _, tc := range []struct {
+			name string
+			csr  []byte
+		}{
+			{
+				name: "RSA",
+				csr:  CNandSANCSR,
+			},
+			{
+				name: "ECDSA",
+				csr:  ECDSACSR,
+			},
+			{
+				name: "unrecognized extension",
+				csr:  UnsupportedExtensionCSR,
+			},
+			{
+				name: "poison extension",
+				csr:  CTPoisonExtensionCSR,
+			},
+			{
+				name: "malformed poison extension",
+				csr:  CTPoisonExtensionEmptyCSR,
+			},
+			{
+				// Rejection of CSRs that request Must-Staple happens in the RA.
+				name: "must staple extension",
+				csr:  mustRead("./testdata/must_staple.der.csr"),
+			},
+		} {
+			t.Run(tc.name+"/"+profile, func(t *testing.T) {
+				t.Parallel()
+
+				// Use our own CA for each of these parallel subtests, because we plan
+				// to inspect the serial, precert, and final cert stored in the mock SA.
+				// Also so we can assert that certain metrics have specific values.
+				cargs := newCAArgs(t)
+				sa := &recordingSA{}
+				cargs.sa = sa
+				ca, err := cargs.make()
+				if err != nil {
+					t.Fatalf("making test ca: %s", err)
+				}
+
+				res, err := ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
+					RegistrationID: 1, OrderID: 1,
+					Csr: tc.csr, CertProfileName: profile,
+				})
+				if err != nil {
+					t.Fatalf("IssueCertificate(%s) = %q, but want success", tc.name, err)
+				}
+
+				test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 1)
+				test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 1)
+
+				if sa.serial.RegID != 1 {
+					t.Errorf("want serial to be associated with acct %d, but got %d", 1, sa.serial.RegID)
+				}
+
+				storedPrecert, err := x509.ParseCertificate(sa.precertificate.Der)
+				if err != nil {
+					t.Fatalf("parsing precert: %s", err)
+				}
+
+				poisonExtension := findExtension(storedPrecert.Extensions, OIDExtensionCTPoison)
+				if poisonExtension == nil {
+					t.Fatal("failed to find ctpoison extension")
+				}
+
+				if !poisonExtension.Critical {
+					t.Error("precertificate ctpoison extension must be critical")
+				}
+
+				if !bytes.Equal(poisonExtension.Value, []byte{0x05, 0x00}) { // ASN.1 DER NULL
+					t.Errorf("precertificate poison extension has value %x, but want %x", poisonExtension.Value, []byte{0x05, 0x00})
+				}
+
+				storedCert, err := x509.ParseCertificate(sa.certificate.Der)
+				if err != nil {
+					t.Fatalf("parsing cert: %s", err)
+				}
+
+				sctExtension := findExtension(storedCert.Extensions, OIDExtensionSCTList)
+				if sctExtension == nil {
+					t.Fatal("failed to find sctList extension")
+				}
+
+				if sctExtension.Critical {
+					t.Error("sctList extension must not be critical")
+				}
+
+				sctList, err := deserializeSCTList(sctExtension.Value)
+				if err != nil {
+					t.Fatalf("parsing sctList extension: %s", err)
+				}
+
+				if len(sctList) != 1 {
+					t.Errorf("got %d SCTs, but want 1", len(sctList))
+				}
+
+				cert, err := x509.ParseCertificate(res.DER)
+				if err != nil {
+					t.Fatalf("parsing returned cert: %s", err)
+				}
+
+				if (sa.serial.Serial != core.SerialToString(storedPrecert.SerialNumber)) ||
+					(sa.serial.Serial != core.SerialToString(storedCert.SerialNumber)) ||
+					(sa.serial.Serial != core.SerialToString(cert.SerialNumber)) {
+					t.Errorf("expected all serials to match")
+				}
+
+				if !bytes.Equal(res.DER, sa.certificate.Der) {
+					t.Errorf("Expected stored and returned cert to be identical")
+				}
+			})
+		}
+	}
+}
+
+func TestIssueCertificate_BadCSR(t *testing.T) {
+	t.Parallel()
+
+	ca, err := newCAArgs(t).make()
+	if err != nil {
+		t.Fatalf("making test ca: %s", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		csrPath string
+	}{
+		{
+			name:    "no names",
+			csrPath: "./testdata/no_names.der.csr",
+		},
+		{
+			name:    "too many names",
+			csrPath: "./testdata/too_many_names.der.csr",
+		},
+		{
+			name:    "short key",
+			csrPath: "./testdata/short_key.der.csr",
+		},
+		{
+			name:    "bad key algorithm",
+			csrPath: "./testdata/bad_algorithm.der.csr",
+		},
+		{
+			name:    "invalid signature",
+			csrPath: "./testdata/invalid_signature.der.csr",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
+				RegistrationID: 1, OrderID: 1,
+				Csr: mustRead(tc.csrPath), CertProfileName: "legacy",
+			})
+			if err == nil {
+				t.Fatalf("IssueCertificate(%q) succeeded, but want error", tc.csrPath)
+			}
+			if !errors.Is(err, berrors.BadCSR) {
+				t.Fatalf("IssueCertificate(%q) = %T, but want %T", tc.csrPath, err, berrors.BadCSR)
+			}
+		})
+	}
+}
+
+func TestIssueCertificate_ValidPastIssuer(t *testing.T) {
+	t.Parallel()
+	cargs := newCAArgs(t)
+
+	// Limit ourselves to only having one ECDSA issuer, just in case they have
+	// different notAfter dates.
+	cargs.boulderIssuers = cargs.boulderIssuers[:3]
+
+	// Jump to a time just moments before the test issuer expire.
+	future := cargs.boulderIssuers[2].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
+	cargs.clk.Set(future)
+
+	ca, err := cargs.make()
+	if err != nil {
+		t.Fatalf("making test ca: %s", err)
+	}
+
+	_, err = ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
+		RegistrationID: 1, OrderID: 1,
+		Csr: ECDSACSR, CertProfileName: "legacy",
+	})
+	if err == nil {
+		t.Fatalf("IssueCertificate(notAfter > issuer.notAfter) succeeded, but want error")
+	}
+	if !errors.Is(err, berrors.InternalServer) {
+		t.Fatalf("IssueCertificate(notAfter > issuer.notAfter) = %T, but want %T", err, berrors.InternalServer)
+	}
+}
+
+func TestIssueCertificate_InvalidProfile(t *testing.T) {
+	t.Parallel()
+
+	ca, err := newCAArgs(t).make()
+	if err != nil {
+		t.Fatalf("making test ca: %s", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		profile string
+		wantErr string
+	}{
+		{
+			name:    "no profile",
+			profile: "",
+			wantErr: "Incomplete issue certificate request",
+		},
+		{
+			name:    "unrecognized profile",
+			profile: "doesnotexist",
+			wantErr: "incapable of using a profile named",
+		},
+		{
+			name:    "invalid profile name",
+			profile: "🤓",
+			wantErr: "incapable of using a profile named",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
+				RegistrationID: 1, OrderID: 1,
+				Csr: ECDSACSR, CertProfileName: tc.profile,
+			})
+			if err == nil {
+				t.Fatalf("IssueCertificate(profile=%q) succeeded, but want error", tc.profile)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("IssueCertificate(profile=%q) = %q, but want %q", tc.profile, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestIssueCertificate_ProfileSelection(t *testing.T) {
+	t.Parallel()
+
+	ca, err := newCAArgs(t).make()
+	if err != nil {
+		t.Fatalf("making test ca: %s", err)
+	}
+
+	for _, tc := range []struct {
+		profile      string
+		wantValidity time.Duration
+	}{
+		{
+			profile:      "legacy",
+			wantValidity: 90 * 24 * time.Hour,
+		},
+		{
+			profile:      "modern",
+			wantValidity: 6 * 24 * time.Hour,
+		},
+	} {
+		t.Run(tc.profile, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
+				RegistrationID: 1, OrderID: 1,
+				Csr: ECDSACSR, CertProfileName: tc.profile,
+			})
+			if err != nil {
+				t.Fatalf("IssueCertificate(profile=%q) = %q, but want success", tc.profile, err)
+			}
+
+			cert, err := x509.ParseCertificate(res.DER)
+			if err != nil {
+				t.Fatalf("parsing certificate: %s", err)
+			}
+
+			// We use the validity period as a proxy for detecting whether the correct
+			// profile was selected and used, since we know that the validity period
+			// differs between the two test profiles.
+			validity := cert.NotAfter.Add(time.Second).Sub(cert.NotBefore)
+			if validity != tc.wantValidity {
+				t.Errorf("IssueCertificate(profile=%q) = validity %d, but want %d", tc.profile, validity, tc.wantValidity)
+			}
+		})
+	}
+}
+
+func TestIssueCertificate_IssuerSelection(t *testing.T) {
+	t.Parallel()
+	cargs := newCAArgs(t)
+	origIssuers := cargs.boulderIssuers
+
+	ca, err := cargs.make()
+	if err != nil {
+		t.Fatalf("making test ca: %s", err)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		csr         []byte
+		wantIssuers []*issuance.Issuer
+		wantKUs     x509.KeyUsage
+	}{
+		{
+			name:        "ECDSA",
+			csr:         ECDSACSR,
+			wantIssuers: origIssuers[2:],
+			wantKUs:     x509.KeyUsageDigitalSignature,
+		},
+		{
+			name:        "RSA",
+			csr:         CNandSANCSR,
+			wantIssuers: origIssuers[:2],
+			wantKUs:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
+				RegistrationID: 1, OrderID: 1,
+				Csr: tc.csr, CertProfileName: "legacy",
+			})
+			if err != nil {
+				t.Fatalf("IssueCertificate(csr=%q) = %q, but want success", tc.name, err)
+			}
+
+			cert, err := x509.ParseCertificate(res.DER)
+			if err != nil {
+				t.Fatalf("parsing certificate: %s", err)
+			}
+
+			if cert.KeyUsage != tc.wantKUs {
+				t.Errorf("IssueCertificate(csr=%q) has KU %v, but want %v", tc.name, cert.KeyUsage, tc.wantKUs)
+			}
+
+			validated := false
+			for _, issuer := range tc.wantIssuers {
+				err = cert.CheckSignatureFrom(issuer.Cert.Certificate)
+				if err == nil {
+					validated = true
+					break
+				}
+			}
+			if !validated {
+				t.Errorf("IssueCertificate(csr=%q) issued from unexpected issuer %q", tc.name, cert.Issuer.CommonName)
+			}
+		})
+	}
+}
+
+func TestIssueCertificate_UnpredictableIssuance(t *testing.T) {
+	cargs := newCAArgs(t)
 
 	// Load our own set of issuer configs, specifically with:
 	// - 3 issuers,
@@ -483,23 +781,15 @@ func TestUnpredictableIssuance(t *testing.T) {
 				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
 				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
 			},
-		}, testCtx.fc)
+		}, cargs.clk)
 		test.AssertNotError(t, err, "Couldn't load test issuer")
 	}
+	cargs.boulderIssuers = boulderIssuers
 
-	ca, err := NewCertificateAuthorityImpl(
-		sa,
-		mockSCTService{},
-		testCtx.pa,
-		boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to remake CA")
+	ca, err := cargs.make()
+	if err != nil {
+		t.Fatalf("making test ca: %s", err)
+	}
 
 	// Then, modify the resulting issuer maps so that the RSA issuer appears to
 	// be an ECDSA issuer. This would be easier if we had three ECDSA issuers to
@@ -513,15 +803,22 @@ func TestUnpredictableIssuance(t *testing.T) {
 	// trials, the probability that all 20 issuances come from the same issuer is
 	// 0.5 ^ 20 = 9.5e-7 ~= 1e-6 = 1 in a million, so we do not consider this test
 	// to be flaky.
-	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63()}
 	seenE2 := false
 	seenR3 := false
-	profile := ca.certProfiles["legacy"]
 	for range 20 {
-		precertDER, err := ca.issuePrecertificate(ctx, profile, req)
-		test.AssertNotError(t, err, "Failed to issue test certificate")
-		cert, err := x509.ParseCertificate(precertDER)
-		test.AssertNotError(t, err, "Failed to parse test certificate")
+		res, err := ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
+			RegistrationID: 1, OrderID: 1,
+			Csr: ECDSACSR, CertProfileName: "legacy",
+		})
+		if err != nil {
+			t.Fatalf("issuing certificate: %s", err)
+		}
+
+		cert, err := x509.ParseCertificate(res.DER)
+		if err != nil {
+			t.Fatalf("parsing certificate: %s", err)
+		}
+
 		if strings.Contains(cert.Issuer.CommonName, "E1") {
 			t.Fatal("Issued certificate from inactive issuer")
 		} else if strings.Contains(cert.Issuer.CommonName, "E2") {
@@ -530,14 +827,19 @@ func TestUnpredictableIssuance(t *testing.T) {
 			seenR3 = true
 		}
 	}
-	test.Assert(t, seenE2, "Expected at least one issuance from active issuer")
-	test.Assert(t, seenR3, "Expected at least one issuance from active issuer")
+
+	if !seenE2 {
+		t.Error("Expected at least one issuance from active issuer E2")
+	}
+	if !seenR3 {
+		t.Error("Expected at least one issuance from active issuer R3")
+	}
 }
 
 func TestMakeCertificateProfilesMap(t *testing.T) {
 	t.Parallel()
-	testCtx := setup(t)
-	test.AssertEquals(t, len(testCtx.certProfiles), 2)
+	cargs := newCAArgs(t)
+	test.AssertEquals(t, len(cargs.certProfiles), 2)
 
 	testCases := []struct {
 		name              string
@@ -571,7 +873,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		},
 		{
 			name:             "default profiles from setup func",
-			profileConfigs:   testCtx.certProfiles,
+			profileConfigs:   cargs.certProfiles,
 			expectedProfiles: []string{"legacy", "modern"},
 		},
 	}
@@ -593,430 +895,24 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 			}
 
 			for _, expected := range tc.expectedProfiles {
-				cpwid, ok := profiles[expected]
+				_, ok := profiles[expected]
 				test.Assert(t, ok, fmt.Sprintf("expected profile %q not found", expected))
-
-				test.AssertEquals(t, cpwid.name, expected)
 			}
 		})
 	}
 }
 
-func TestInvalidCSRs(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		name         string
-		csrPath      string
-		check        func(t *testing.T, ca *certificateAuthorityImpl, sa *mockSA)
-		errorMessage string
-		errorType    berrors.ErrorType
-	}{
-		// Test that the CA rejects CSRs that have no names.
-		//
-		// CSR generated by Go:
-		// * Random RSA public key.
-		// * CN = [none]
-		// * DNSNames = [none]
-		{"RejectNoHostnames", "./testdata/no_names.der.csr", nil, "Issued certificate with no names", berrors.BadCSR},
+func TestNoteSignError(t *testing.T) {
+	testCtx := newCAArgs(t)
+	metrics := testCtx.metrics
 
-		// Test that the CA rejects CSRs that have too many names.
-		//
-		// CSR generated by Go:
-		// * Random public key
-		// * CN = [none]
-		// * DNSNames = not-example.com, www.not-example.com, mail.example.com
-		{"RejectTooManyHostnames", "./testdata/too_many_names.der.csr", nil, "Issued certificate with too many names", berrors.BadCSR},
+	err := fmt.Errorf("wrapped non-signing error: %w", errors.New("oops"))
+	metrics.noteSignError(err)
+	test.AssertMetricWithLabelsEquals(t, metrics.signErrorCount, prometheus.Labels{"type": "HSM"}, 0)
 
-		// Test that the CA rejects CSRs that have public keys that are too short.
-		//
-		// CSR generated by Go:
-		// * Random public key -- 512 bits long
-		// * CN = (none)
-		// * DNSNames = not-example.com, www.not-example.com, mail.not-example.com
-		{"RejectShortKey", "./testdata/short_key.der.csr", nil, "Issued a certificate with too short a key.", berrors.BadCSR},
-
-		// Test that the CA rejects CSRs that have bad signature algorithms.
-		//
-		// CSR generated by Go:
-		// * Random public key -- 2048 bits long
-		// * CN = (none)
-		// * DNSNames = not-example.com, www.not-example.com, mail.not-example.com
-		// * Signature Algorithm: sha1WithRSAEncryption
-		{"RejectBadAlgorithm", "./testdata/bad_algorithm.der.csr", nil, "Issued a certificate based on a CSR with a bad signature algorithm.", berrors.BadCSR},
-
-		// CSR generated by OpenSSL:
-		// Edited signature to become invalid.
-		{"RejectWrongSignature", "./testdata/invalid_signature.der.csr", nil, "Issued a certificate based on a CSR with an invalid signature.", berrors.BadCSR},
-	}
-
-	for _, testCase := range testCases {
-		testCtx := setup(t)
-		sa := &mockSA{}
-		ca, err := NewCertificateAuthorityImpl(
-			sa,
-			mockSCTService{},
-			testCtx.pa,
-			testCtx.boulderIssuers,
-			testCtx.certProfiles,
-			testCtx.serialPrefix,
-			testCtx.maxNames,
-			testCtx.keyPolicy,
-			testCtx.logger,
-			testCtx.metrics,
-			testCtx.fc)
-		test.AssertNotError(t, err, "Failed to create CA")
-
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-			serializedCSR := mustRead(testCase.csrPath)
-			profile := ca.certProfiles["legacy"]
-			issueReq := &capb.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"}
-			_, err = ca.issuePrecertificate(ctx, profile, issueReq)
-
-			test.AssertErrorIs(t, err, testCase.errorType)
-			test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "cert"}, 0)
-
-			test.AssertError(t, err, testCase.errorMessage)
-			if testCase.check != nil {
-				testCase.check(t, ca, sa)
-			}
-		})
-	}
-}
-
-func TestRejectValidityTooLong(t *testing.T) {
-	t.Parallel()
-	testCtx := setup(t)
-
-	// Jump to a time just moments before the test issuers expire.
-	future := testCtx.boulderIssuers[0].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
-	testCtx.fc.Set(future)
-
-	ca, err := NewCertificateAuthorityImpl(
-		&mockSA{},
-		mockSCTService{},
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	profile := ca.certProfiles["legacy"]
-	_, err = ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"})
-	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
-	test.AssertErrorIs(t, err, berrors.InternalServer)
-}
-
-func issueCertificateSubTestProfileSelectionRSA(t *testing.T, i *TestCertificateIssuance) {
-	// Certificates for RSA keys should be marked as usable for signatures and encryption.
-	expectedKeyUsage := x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
-	t.Logf("expected key usage %v, got %v", expectedKeyUsage, i.cert.KeyUsage)
-	test.AssertEquals(t, i.cert.KeyUsage, expectedKeyUsage)
-}
-
-func issueCertificateSubTestProfileSelectionECDSA(t *testing.T, i *TestCertificateIssuance) {
-	// Certificates for ECDSA keys should be marked as usable for only signatures.
-	expectedKeyUsage := x509.KeyUsageDigitalSignature
-	t.Logf("expected key usage %v, got %v", expectedKeyUsage, i.cert.KeyUsage)
-	test.AssertEquals(t, i.cert.KeyUsage, expectedKeyUsage)
-}
-
-func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertMetricWithLabelsEquals(t, i.ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
-
-	// NOTE: The hard-coded value here will have to change over time as Boulder
-	// adds or removes (unrequested/default) extensions in certificates.
-	expectedExtensionCount := 10
-	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
-}
-
-func issueCertificateSubTestCTPoisonExtension(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertMetricWithLabelsEquals(t, i.ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
-}
-
-func findExtension(extensions []pkix.Extension, id asn1.ObjectIdentifier) *pkix.Extension {
-	for _, ext := range extensions {
-		if ext.Id.Equal(id) {
-			return &ext
-		}
-	}
-	return nil
-}
-
-func makeSCTs() ([][]byte, error) {
-	sct := ct.SignedCertificateTimestamp{
-		SCTVersion: 0,
-		Timestamp:  2020,
-		Signature: ct.DigitallySigned{
-			Signature: []byte{0},
-		},
-	}
-	sctBytes, err := cttls.Marshal(sct)
-	if err != nil {
-		return nil, err
-	}
-	return [][]byte{sctBytes}, err
-}
-
-func TestIssueCertificateForPrecertificate(t *testing.T) {
-	t.Parallel()
-	testCtx := setup(t)
-	sa := &mockSA{}
-	ca, err := NewCertificateAuthorityImpl(
-		sa,
-		mockSCTService{},
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	profile := ca.certProfiles["legacy"]
-	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"}
-	precertDER, err := ca.issuePrecertificate(ctx, profile, &issueReq)
-	test.AssertNotError(t, err, "Failed to issue precert")
-	parsedPrecert, err := x509.ParseCertificate(precertDER)
-	test.AssertNotError(t, err, "Failed to parse precert")
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 1)
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 0)
-
-	// Check for poison extension
-	poisonExtension := findExtension(parsedPrecert.Extensions, OIDExtensionCTPoison)
-	test.AssertNotNil(t, poisonExtension, "Couldn't find CTPoison extension")
-	test.AssertEquals(t, poisonExtension.Critical, true)
-	test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
-
-	sctBytes, err := makeSCTs()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	test.AssertNotError(t, err, "Failed to marshal SCT")
-	certDER, err := ca.issueCertificateForPrecertificate(ctx,
-		profile,
-		precertDER,
-		sctBytes,
-		mrand.Int63(),
-		mrand.Int63())
-	test.AssertNotError(t, err, "Failed to issue cert from precert")
-	parsedCert, err := x509.ParseCertificate(certDER)
-	test.AssertNotError(t, err, "Failed to parse cert")
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 1)
-
-	// Check for SCT list extension
-	sctListExtension := findExtension(parsedCert.Extensions, OIDExtensionSCTList)
-	test.AssertNotNil(t, sctListExtension, "Couldn't find SCTList extension")
-	test.AssertEquals(t, sctListExtension.Critical, false)
-	var rawValue []byte
-	_, err = asn1.Unmarshal(sctListExtension.Value, &rawValue)
-	test.AssertNotError(t, err, "Failed to unmarshal extension value")
-	sctList, err := deserializeSCTList(rawValue)
-	test.AssertNotError(t, err, "Failed to deserialize SCT list")
-	test.Assert(t, len(sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(sctList)))
-}
-
-func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *testing.T) {
-	t.Parallel()
-	testCtx := setup(t)
-	sa := &mockSA{}
-	ca, err := NewCertificateAuthorityImpl(
-		sa,
-		mockSCTService{},
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	selectedProfile := "modern"
-	certProfile, ok := ca.certProfiles[selectedProfile]
-	test.Assert(t, ok, "Certificate profile was expected to exist")
-
-	issueReq := capb.IssueCertificateRequest{
-		Csr:             CNandSANCSR,
-		RegistrationID:  mrand.Int63(),
-		OrderID:         mrand.Int63(),
-		CertProfileName: selectedProfile,
-	}
-	precertDER, err := ca.issuePrecertificate(ctx, certProfile, &issueReq)
-	test.AssertNotError(t, err, "Failed to issue precert")
-	parsedPrecert, err := x509.ParseCertificate(precertDER)
-	test.AssertNotError(t, err, "Failed to parse precert")
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 1)
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 0)
-
-	// Check for poison extension
-	poisonExtension := findExtension(parsedPrecert.Extensions, OIDExtensionCTPoison)
-	test.AssertNotNil(t, poisonExtension, "Couldn't find CTPoison extension")
-	test.AssertEquals(t, poisonExtension.Critical, true)
-	test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
-
-	sctBytes, err := makeSCTs()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	test.AssertNotError(t, err, "Failed to marshal SCT")
-	certDER, err := ca.issueCertificateForPrecertificate(ctx,
-		certProfile,
-		precertDER,
-		sctBytes,
-		mrand.Int63(),
-		mrand.Int63())
-	test.AssertNotError(t, err, "Failed to issue cert from precert")
-	parsedCert, err := x509.ParseCertificate(certDER)
-	test.AssertNotError(t, err, "Failed to parse cert")
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 1)
-
-	// Check for SCT list extension
-	sctListExtension := findExtension(parsedCert.Extensions, OIDExtensionSCTList)
-	test.AssertNotNil(t, sctListExtension, "Couldn't find SCTList extension")
-	test.AssertEquals(t, sctListExtension.Critical, false)
-	var rawValue []byte
-	_, err = asn1.Unmarshal(sctListExtension.Value, &rawValue)
-	test.AssertNotError(t, err, "Failed to unmarshal extension value")
-	sctList, err := deserializeSCTList(rawValue)
-	test.AssertNotError(t, err, "Failed to deserialize SCT list")
-	test.Assert(t, len(sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(sctList)))
-}
-
-// deserializeSCTList deserializes a list of SCTs.
-// Forked from github.com/cloudflare/cfssl/helpers
-func deserializeSCTList(serializedSCTList []byte) ([]ct.SignedCertificateTimestamp, error) {
-	var sctList ctx509.SignedCertificateTimestampList
-	rest, err := cttls.Unmarshal(serializedSCTList, &sctList)
-	if err != nil {
-		return nil, err
-	}
-	if len(rest) != 0 {
-		return nil, errors.New("serialized SCT list contained trailing garbage")
-	}
-	list := make([]ct.SignedCertificateTimestamp, len(sctList.SCTList))
-	for i, serializedSCT := range sctList.SCTList {
-		var sct ct.SignedCertificateTimestamp
-		rest, err := cttls.Unmarshal(serializedSCT.Val, &sct)
-		if err != nil {
-			return nil, err
-		}
-		if len(rest) != 0 {
-			return nil, errors.New("serialized SCT contained trailing garbage")
-		}
-		list[i] = sct
-	}
-	return list, nil
-}
-
-// dupeSA returns a non-error to GetCertificate in order to simulate a request
-// to issue a final certificate with a duplicate serial.
-type dupeSA struct {
-	mockSA
-}
-
-func (m *dupeSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, nil
-}
-
-// getCertErrorSA always returns an error for GetCertificate
-type getCertErrorSA struct {
-	mockSA
-}
-
-func (m *getCertErrorSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, fmt.Errorf("i don't like it")
-}
-
-func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
-	t.Parallel()
-	testCtx := setup(t)
-	sa := &dupeSA{}
-	ca, err := NewCertificateAuthorityImpl(
-		sa,
-		mockSCTService{},
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	sctBytes, err := makeSCTs()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	profile := ca.certProfiles["legacy"]
-	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"}
-	precertDER, err := ca.issuePrecertificate(ctx, profile, &issueReq)
-	test.AssertNotError(t, err, "Failed to issue precert")
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 1)
-	_, err = ca.issueCertificateForPrecertificate(ctx,
-		profile,
-		precertDER,
-		sctBytes,
-		mrand.Int63(),
-		mrand.Int63())
-	if err == nil {
-		t.Error("Expected error issuing duplicate serial but got none.")
-	}
-	if !strings.Contains(err.Error(), "issuance of duplicate final certificate requested") {
-		t.Errorf("Wrong type of error issuing duplicate serial. Expected 'issuance of duplicate', got '%s'", err)
-	}
-	// The success metric doesn't increase when a duplicate certificate issuance
-	// is attempted.
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 0)
-
-	// Now check what happens if there is an error (e.g. timeout) while checking
-	// for the duplicate.
-	errorsa := &getCertErrorSA{}
-	errorca, err := NewCertificateAuthorityImpl(
-		errorsa,
-		mockSCTService{},
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		testCtx.certProfiles,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.metrics,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	_, err = errorca.issueCertificateForPrecertificate(ctx,
-		profile,
-		precertDER,
-		sctBytes,
-		mrand.Int63(),
-		mrand.Int63())
-	if err == nil {
-		t.Fatal("Expected error issuing duplicate serial but got none.")
-	}
-	if !strings.Contains(err.Error(), "error checking for duplicate") {
-		t.Fatalf("Wrong type of error issuing duplicate serial. Expected 'error checking for duplicate', got '%s'", err)
-	}
-	// The success metric doesn't increase when a duplicate certificate issuance
-	// is attempted.
-	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 0)
+	err = fmt.Errorf("wrapped signing error: %w", pkcs11.Error(5))
+	metrics.noteSignError(err)
+	test.AssertMetricWithLabelsEquals(t, metrics.signErrorCount, prometheus.Labels{"type": "HSM"}, 1)
 }
 
 func TestGenerateSKID(t *testing.T) {
