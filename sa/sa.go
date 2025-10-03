@@ -786,15 +786,34 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 		return errors.New("cannot add revoked certificate with shard index 0")
 	}
 
+	// If this serial already exists in the revokedCertificates table, then the
+	// certificate has already been revoked. The RA has special logic for that
+	// case, so return the specific error that the RA is looking for.
+	var row struct {
+		Count int64
+	}
+	err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM revokedCertificates WHERE serial = ?", req.Serial)
+	if err != nil {
+		return fmt.Errorf("checking if certificate is already revoked: %w", err)
+	}
+	if row.Count > 0 {
+		return berrors.AlreadyRevokedError("serial %s already in revokedCertificates table", req.Serial)
+	}
+
+	// The revokedCertificates table includes each cert's notAfter to make it easy
+	// for crl-updater to stop including entries after they've expired, so we need
+	// to look up that value.
 	var serial struct {
 		Expires time.Time
 	}
-	err := tx.SelectOne(
-		ctx, &serial, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
+	err = tx.SelectOne(ctx, &serial, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
 	if err != nil {
 		return fmt.Errorf("retrieving revoked certificate expiration: %w", err)
 	}
 
+	// We're guaranteed that this won't be a duplicate insert because we've
+	// already checked for existence of a row with the same serial above, in the
+	// same transaction.
 	err = tx.Insert(ctx, &revokedCertModel{
 		IssuerID:      req.IssuerID,
 		Serial:        req.Serial,
@@ -806,12 +825,6 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 		NotAfterHour: serial.Expires.Add(time.Hour).Truncate(time.Hour),
 	})
 	if err != nil {
-		if db.IsDuplicate(err) {
-			// An attempted duplicate insert means that this certificate was already
-			// revoked. The RA has special logic for that case, so use the specific
-			// error for it.
-			return berrors.AlreadyRevokedError("certificate with serial %s already in revokedCertificates table", req.Serial)
-		}
 		return fmt.Errorf("inserting revoked certificate row: %w", err)
 	}
 
