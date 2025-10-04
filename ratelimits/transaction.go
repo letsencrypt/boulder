@@ -232,6 +232,7 @@ func NewTransactionBuilderFromFiles(defaults string, overrides string, stats pro
 		}
 		return parseOverrideLimits(overridesData)
 	}
+
 	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
 }
 
@@ -249,11 +250,11 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		}
 	}
 
-	refreshOverridesCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	refreshOverridesGauge := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "ratelimits_override_refresh",
-		Help: "A counter of rate limit override refreshes",
+		Help: "A gauge with the current latest rate limit override refresh time",
 	})
-	stats.MustRegister(refreshOverridesCounter)
+	stats.MustRegister(refreshOverridesGauge)
 
 	registry := &limitRegistry{
 		defaults:         regDefaults,
@@ -261,7 +262,7 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		stats:            stats,
 		logger:           logger,
 
-		refreshOverridesCounter: refreshOverridesCounter,
+		refreshOverridesGauge: refreshOverridesGauge,
 	}
 
 	// Retry loading overrides, as a workaround to avoid depending on the SA

@@ -309,8 +309,8 @@ type limitRegistry struct {
 	// refreshOverrides is a function to refresh override limits.
 	refreshOverrides OverridesRefresher
 
-	stats                   prometheus.Registerer
-	refreshOverridesCounter prometheus.Counter
+	stats                 prometheus.Registerer
+	refreshOverridesGauge prometheus.Gauge
 
 	logger blog.Logger
 }
@@ -352,7 +352,7 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	return nil
 }
 
-// NewRefresher periodically refreshes overrides using this registry's
+// NewRefresher periodically loads refreshed overrides using this registry's
 // refreshOverrides function.
 func (l *limitRegistry) NewRefresher() context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -366,7 +366,7 @@ func (l *limitRegistry) NewRefresher() context.CancelFunc {
 			case <-ticker.C:
 				err := l.loadOverrides(ctx)
 				if err == nil {
-					l.refreshOverridesCounter.Inc()
+					l.refreshOverridesGauge.SetToCurrentTime()
 				}
 			case <-ctx.Done():
 				return
