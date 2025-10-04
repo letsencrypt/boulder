@@ -130,14 +130,13 @@
 					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 				}
 			},
-			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml",
-			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml",
-			"overridesFromDB": true
+			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml"
 		},
 		"features": {
 			"PropagateCancels": true,
 			"ServeRenewalInfo": true,
-			"CheckIdentifiersPaused": true
+			"CheckIdentifiersPaused": true,
+			"OverridesFromDB": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",

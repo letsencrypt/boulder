@@ -86,6 +86,10 @@ type Config struct {
 	// during certificate issuance. This flag must be set to true in the
 	// RA, VA, and WFE2 services for full functionality.
 	DNSAccount01Enabled bool
+
+	// OverridesFromDB causes the WFE and RA to retrieve rate limit overrides
+	// from the database, instead of from a file.
+	OverridesFromDB bool
 }
 
 var fMu = new(sync.RWMutex)
