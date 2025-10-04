@@ -96,23 +96,24 @@ SERVICES = (
         8020, None, None,
         ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json'), '--debug-addr', ':8020'),
         ('boulder-ra-1', 'boulder-ra-2')),
-    # Note: the nonce-service instances bind to specific ports, not "all interfaces",
-    # because they use their explicitly bound port in calculating the nonce
-    # prefix, which is used by WFEs when deciding where to redeem nonces.
-    # The `taro` and `zinc` instances simulate nonce services in two different
-    # datacenters. The WFE is configured to get nonces from one of these
-    # services, and potentially redeeem from either service (though in practice
-    # it will only redeem from the one that is configured for getting nonces).
+    # Note: the nonce-service instances bind to specific interfaces, not all
+    # interfaces, because they use their explicit host:port pair to calculate
+    # the nonce prefix, which is used by WFEs when deciding where to redeem
+    # nonces. The `taro` and `zinc` instances simulate nonce services in two
+    # different datacenters. The WFE is configured to get nonces from one of
+    # these services, and potentially redeeem from either service (though in
+    # practice it will only redeem from the one that is configured for getting
+    # nonces).
     Service('nonce-service-taro-1',
-        8111, None, None,
+        8111, '10.77.77.77:9301', 'nonce.boulder',
         ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-a.json'), '--addr', '10.77.77.77:9301', '--debug-addr', ':8111',),
         None),
     Service('nonce-service-taro-2',
-        8113, None, None,
+        8113, '10.77.77.77:9501', 'nonce.boulder',
         ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-a.json'), '--addr', '10.77.77.77:9501', '--debug-addr', ':8113',),
         None),
     Service('nonce-service-zinc-1',
-        8112, None, None,
+        8112, '10.77.77.77:9401', 'nonce.boulder',
         ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-b.json'), '--addr', '10.77.77.77:9401', '--debug-addr', ':8112',),
         None),
     Service('pardot-test-srv',

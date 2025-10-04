@@ -201,6 +201,32 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
+// SetCertificateStatusReady changes a serial's OCSP status from core.OCSPStatusNotReady to core.OCSPStatusGood.
+// Called when precertificate issuance succeeds. returns an error if the serial doesn't have status core.OCSPStatusNotReady.
+func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial) (*emptypb.Empty, error) {
+	res, err := ssa.dbMap.ExecContext(ctx,
+		`UPDATE certificateStatus
+		 SET status = ?
+		 WHERE status = ? AND
+		       serial = ?`,
+		string(core.OCSPStatusGood),
+		string(core.OCSPStatusNotReady),
+		req.Serial,
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, errors.New("failed to set certificate status to ready")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 // AddPrecertificate writes a record of a linting certificate to the database.
 //
 // Note: The name "AddPrecertificate" is a historical artifact, and this is now
@@ -246,6 +272,9 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		}
 
 		status := core.OCSPStatusGood
+		if req.OcspNotReady {
+			status = core.OCSPStatusNotReady
+		}
 		cs := &certificateStatusModel{
 			Serial:                serialHex,
 			Status:                status,
