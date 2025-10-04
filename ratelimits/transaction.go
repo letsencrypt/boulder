@@ -1,13 +1,24 @@
 package ratelimits
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"strconv"
+	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -149,26 +160,129 @@ type TransactionBuilder struct {
 	*limitRegistry
 }
 
+// GetOverridesFunc is used to pass in the sa.GetEnabledRateLimitOverrides
+// method to NewTransactionBuilderFromDatabase, rather than storing a full
+// sa.SQLStorageAuthority. This makes testing significantly simpler.
+type GetOverridesFunc func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error)
+
+// NewTransactionBuilderFromDatabase returns a new *TransactionBuilder. The
+// provided defaults path is expected to be a path to a YAML file that contains
+// the default limits. The provided overrides function is expected to be an SA's
+// GetEnabledRateLimitOverrides. Both are required.
+func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFunc, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
+	defaultsData, err := loadDefaultsFromFile(defaults)
+	if err != nil {
+		return nil, err
+	}
+
+	refresher := func(ctx context.Context) (Limits, error) {
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+
+		stream, err := overrides(ctx, &emptypb.Empty{})
+		if err != nil {
+			return nil, fmt.Errorf("fetching enabled overrides: %w", err)
+		}
+
+		overrides := make(Limits)
+		for {
+			r, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return nil, fmt.Errorf("reading overrides stream: %w", err)
+			}
+
+			overrides[r.Override.BucketKey] = &Limit{
+				Burst:  r.Override.Burst,
+				Count:  r.Override.Count,
+				Period: config.Duration{Duration: r.Override.Period.AsDuration()},
+				Name:   Name(r.Override.LimitEnum),
+				Comment: fmt.Sprintf("Last Updated: %s - %s",
+					r.UpdatedAt.AsTime().Format("2006-01-02"),
+					r.Override.Comment,
+				),
+			}
+		}
+		return overrides, nil
+	}
+
+	// FIXME: This doesn't do error checking the way parseOverrideLimits does
+	// for files. We probably need to replicate, move, or break out that logic.
+
+	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
+}
+
 // NewTransactionBuilderFromFiles returns a new *TransactionBuilder. The
 // provided defaults and overrides paths are expected to be paths to YAML files
 // that contain the default and override limits, respectively. Overrides is
 // optional, defaults is required.
-func NewTransactionBuilderFromFiles(defaults, overrides string) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistryFromFiles(defaults, overrides)
+func NewTransactionBuilderFromFiles(defaults string, overrides string, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
+	defaultsData, err := loadDefaultsFromFile(defaults)
 	if err != nil {
 		return nil, err
 	}
-	return &TransactionBuilder{registry}, nil
+
+	if overrides == "" {
+		return NewTransactionBuilder(defaultsData, nil, stats, logger)
+	}
+
+	refresher := func(ctx context.Context) (Limits, error) {
+		overridesData, err := loadOverridesFromFile(overrides)
+		if err != nil {
+			return nil, err
+		}
+		return parseOverrideLimits(overridesData)
+	}
+
+	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
 }
 
-// NewTransactionBuilder returns a new *TransactionBuilder. The provided
-// defaults map is expected to contain default limit data. Overrides are not
-// supported. Defaults is required.
-func NewTransactionBuilder(defaults LimitConfigs) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistry(defaults, nil)
+// NewTransactionBuilder returns a new *TransactionBuilder. A defaults map is
+// required.
+func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
+	regDefaults, err := parseDefaultLimits(defaults)
 	if err != nil {
 		return nil, err
 	}
+
+	if overrides == nil {
+		overrides = func(context.Context) (Limits, error) {
+			return nil, nil
+		}
+	}
+
+	refreshOverridesGauge := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "ratelimits_override_refresh",
+		Help: "A gauge with the current latest rate limit override refresh time",
+	})
+	stats.MustRegister(refreshOverridesGauge)
+
+	registry := &limitRegistry{
+		defaults:         regDefaults,
+		refreshOverrides: overrides,
+		stats:            stats,
+		logger:           logger,
+
+		refreshOverridesGauge: refreshOverridesGauge,
+	}
+
+	// Retry loading overrides, as a workaround to avoid depending on the SA
+	// being ready before other components start.
+	retries := 0
+	for retries < 5 {
+		err = registry.loadOverrides(context.Background())
+		if err == nil {
+			break
+		}
+		retries++
+		time.Sleep(core.RetryBackoff(retries, time.Millisecond*250, time.Millisecond*2500, 2))
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	return &TransactionBuilder{registry}, nil
 }
 
