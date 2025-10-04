@@ -55,7 +55,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 
 	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/sfe-ratelimit-defaults.yml", "", stats, logger, false)
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/sfe-ratelimit-defaults.yml", "", stats, logger)
 	test.AssertNotError(t, err, "making transaction composer")
 
 	sfe, err := NewSelfServiceFrontEndImpl(

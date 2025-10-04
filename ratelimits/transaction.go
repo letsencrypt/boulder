@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/netip"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -167,9 +168,8 @@ type GetOverridesFunc func(context.Context, *emptypb.Empty, ...grpc.CallOption) 
 // NewTransactionBuilderFromDatabase returns a new *TransactionBuilder. The
 // provided defaults path is expected to be a path to a YAML file that contains
 // the default limits. The provided overrides function is expected to be an SA's
-// GetEnabledRateLimitOverrides. Both are required. The ghostOverrides bool, if
-// true, makes failure to load overrides non-fatal.
-func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFunc, stats prometheus.Registerer, logger blog.Logger, ghostOverrides bool) (*TransactionBuilder, error) {
+// GetEnabledRateLimitOverrides. Both are required.
+func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFunc, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
 	defaultsData, err := loadDefaultsFromFile(defaults)
 	if err != nil {
 		return nil, err
@@ -204,22 +204,22 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		}
 		return overrides, nil
 	}
-	return NewTransactionBuilder(defaultsData, refresher, stats, logger, ghostOverrides)
+
+	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
 }
 
 // NewTransactionBuilderFromFiles returns a new *TransactionBuilder. The
 // provided defaults and overrides paths are expected to be paths to YAML files
 // that contain the default and override limits, respectively. Overrides is
-// optional, defaults is required. The ghostOverrides bool, if true, makes
-// failure to load overrides non-fatal.
-func NewTransactionBuilderFromFiles(defaults string, overrides string, stats prometheus.Registerer, logger blog.Logger, ghostOverrides bool) (*TransactionBuilder, error) {
+// optional, defaults is required.
+func NewTransactionBuilderFromFiles(defaults string, overrides string, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
 	defaultsData, err := loadDefaultsFromFile(defaults)
 	if err != nil {
 		return nil, err
 	}
 
 	if overrides == "" {
-		return NewTransactionBuilder(defaultsData, nil, stats, logger, ghostOverrides)
+		return NewTransactionBuilder(defaultsData, nil, stats, logger)
 	}
 
 	refresher := func(ctx context.Context) (Limits, error) {
@@ -229,12 +229,12 @@ func NewTransactionBuilderFromFiles(defaults string, overrides string, stats pro
 		}
 		return parseOverrideLimits(overridesData)
 	}
-	return NewTransactionBuilder(defaultsData, refresher, stats, logger, ghostOverrides)
+	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
 }
 
 // NewTransactionBuilder returns a new *TransactionBuilder. A defaults map is
 // required.
-func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, stats prometheus.Registerer, logger blog.Logger, ghostOverrides bool) (*TransactionBuilder, error) {
+func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
 	regDefaults, err := parseDefaultLimits(defaults)
 	if err != nil {
 		return nil, err
@@ -261,9 +261,19 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		refreshOverridesCounter: refreshOverridesCounter,
 	}
 
-	err = registry.loadOverrides(context.Background())
-	if err != nil && !ghostOverrides {
-		return nil, fmt.Errorf("while loading overrides with GhostOverrides unset: %w", err)
+	// Retry loading overrides, as a workaround to avoid depending on the SA
+	// being ready before other components start.
+	retries := 0
+	for retries < 5 {
+		err = registry.loadOverrides(context.Background())
+		if err == nil {
+			break
+		}
+		retries++
+		time.Sleep(core.RetryBackoff(retries, time.Millisecond*250, time.Millisecond*2500, 2))
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return &TransactionBuilder{registry}, nil

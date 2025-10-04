@@ -33,7 +33,7 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:64.112.117.1' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
-	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml", metrics.NoopRegisterer, blog.NewMock(), false)
+	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "should not error")
 	return c
 }

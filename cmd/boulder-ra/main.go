@@ -80,11 +80,6 @@ type Config struct {
 			// OverridesFromDB is a bool. If true, rate limit overrides will be
 			// retrieved from the database instead of from a file.
 			OverridesFromDB bool `validate:"omitempty"`
-
-			// GhostOverrides is a bool. If true, failing to load rate limit
-			// overrides at startup is non-fatal. This is a break-glass flag in
-			// case the overrides backend is broken.
-			GhostOverrides bool `validate:"omitempty"`
 		}
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
@@ -282,9 +277,9 @@ func main() {
 		cmd.FailOnError(err, "Failed to create rate limiter")
 		if c.RA.Limiter.OverridesFromDB {
 			saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, scope, logger, c.RA.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, scope, logger)
 		} else {
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, scope, logger, c.RA.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, scope, logger)
 		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 		overrideRefresherShutdown := txnBuilder.NewRefresher()

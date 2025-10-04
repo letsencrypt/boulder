@@ -160,11 +160,6 @@ type Config struct {
 			// OverridesFromDB is a bool. If true, rate limit overrides will be
 			// retrieved from the database instead of from a file.
 			OverridesFromDB bool `validate:"omitempty"`
-
-			// GhostOverrides is a bool. If true, failing to load rate limit
-			// overrides at startup is non-fatal. This is a break-glass flag in
-			// case the overrides backend is broken.
-			GhostOverrides bool `validate:"omitempty"`
 		}
 
 		// CertProfiles is a map of acceptable certificate profile names to
@@ -345,9 +340,9 @@ func main() {
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
 		if c.WFE.Limiter.OverridesFromDB {
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, stats, logger, c.WFE.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, stats, logger)
 		} else {
-			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger, c.WFE.Limiter.GhostOverrides)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger)
 		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 		overridesRefresherShutdown = txnBuilder.NewRefresher()
