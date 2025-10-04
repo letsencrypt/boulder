@@ -343,9 +343,6 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 // dataset. This is separate from the goroutine in NewRefresher(), for ease of
 // testing.
 func (l *limitRegistry) loadOverrides(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
 	newOverrides, err := l.refreshOverrides(ctx)
 	if err != nil {
 		l.logger.Errf("loading rate limit overrides: %v", err)

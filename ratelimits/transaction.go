@@ -176,6 +176,9 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 	}
 
 	refresher := func(ctx context.Context) (Limits, error) {
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+
 		stream, err := overrides(ctx, &emptypb.Empty{})
 		if err != nil {
 			return nil, fmt.Errorf("fetching enabled overrides: %w", err)
