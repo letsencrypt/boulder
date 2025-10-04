@@ -208,6 +208,9 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		return overrides, nil
 	}
 
+	// FIXME: This doesn't do error checking the way parseOverrideLimits does
+	// for files. We probably need to replicate, move, or break out that logic.
+
 	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
 }
 
