@@ -355,10 +355,10 @@ type limitRegistry struct {
 	// refreshOverrides is a function to refresh override limits.
 	refreshOverrides OverridesRefresher
 
-	stats                  prometheus.Registerer
-	refreshOverridesTime   prometheus.Gauge
-	refreshOverridesErrors prometheus.Gauge
-	overridesPerLimit      map[Name]prometheus.Gauge
+	stats              prometheus.Registerer
+	overridesTimestamp prometheus.Gauge
+	overridesErrors    prometheus.Gauge
+	overridesPerLimit  map[Name]prometheus.Gauge
 
 	logger blog.Logger
 }
@@ -387,11 +387,10 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 	return nil, errLimitDisabled
 }
 
-// loadOverrides replaces this registry's overrides with a newly refreshed
-// dataset. This is separate from the goroutine in NewRefresher(), for ease of
-// testing.
+// loadOverrides replaces this registry's overrides with a new dataset. This is
+// separate from the goroutine in NewRefresher(), for ease of testing.
 func (l *limitRegistry) loadOverrides(ctx context.Context) error {
-	newOverrides, err := l.refreshOverrides(ctx, l.refreshOverridesErrors, l.logger)
+	newOverrides, err := l.refreshOverrides(ctx, l.overridesErrors, l.logger)
 	if err != nil {
 		l.logger.Errf("loading overrides: %v", err)
 		return err
@@ -417,6 +416,7 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 			l.overridesPerLimit[name].Set(0)
 		}
 	}
+	l.overridesTimestamp.SetToCurrentTime()
 
 	return nil
 }
@@ -433,10 +433,7 @@ func (l *limitRegistry) NewRefresher() context.CancelFunc {
 		for {
 			select {
 			case <-ticker.C:
-				err := l.loadOverrides(ctx)
-				if err == nil {
-					l.refreshOverridesTime.SetToCurrentTime()
-				}
+				l.loadOverrides(ctx) //nolint:errcheck // Refreshing overrides is best-effort.
 			case <-ctx.Done():
 				return
 			}

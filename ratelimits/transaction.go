@@ -262,21 +262,21 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		}
 	}
 
-	refreshOverridesTime := prometheus.NewGauge(prometheus.GaugeOpts{
+	overridesTimestamp := prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "ratelimits",
 		Subsystem: "overrides",
 		Name:      "timestamp_seconds",
-		Help:      "A gauge with the timestamp when overrides were refreshed",
+		Help:      "A gauge with the last timestamp when overrides were successfully loaded",
 	})
-	stats.MustRegister(refreshOverridesTime)
+	stats.MustRegister(overridesTimestamp)
 
-	refreshOverridesErrors := prometheus.NewGauge(prometheus.GaugeOpts{
+	overridesErrors := prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "ratelimits",
 		Subsystem: "overrides",
 		Name:      "errors",
-		Help:      "A gauge with the number of errors while refreshing overrides",
+		Help:      "A gauge with the number of errors while last trying to load overrides",
 	})
-	stats.MustRegister(refreshOverridesErrors)
+	stats.MustRegister(overridesErrors)
 
 	overridesPerLimit := make(map[Name]prometheus.Gauge)
 	i := Unknown + 1
@@ -298,9 +298,9 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		stats:            stats,
 		logger:           logger,
 
-		refreshOverridesTime:   refreshOverridesTime,
-		refreshOverridesErrors: refreshOverridesErrors,
-		overridesPerLimit:      overridesPerLimit,
+		overridesTimestamp: overridesTimestamp,
+		overridesErrors:    overridesErrors,
+		overridesPerLimit:  overridesPerLimit,
 	}
 
 	// Load overrides, wrapped in a retry as a workaround to avoid depending on
