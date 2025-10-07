@@ -175,7 +175,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		return nil, err
 	}
 
-	refresher := func(ctx context.Context, stats prometheus.Registerer, logger blog.Logger) (Limits, error) {
+	refresher := func(ctx context.Context, errorGauge prometheus.Gauge, logger blog.Logger) (Limits, error) {
 		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 
@@ -185,6 +185,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		}
 
 		overrides := make(Limits)
+		errorCount := float64(0)
 		for {
 			r, err := stream.Recv()
 			if err != nil {
@@ -207,13 +208,15 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 
 			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, newLimit)
 			if err != nil {
-				// FIXME: increment error metrics
+				logger.Errf("hydrating rate limit %s override with key %q: %v", newLimit.Name.String(), r.Override.BucketKey, err)
+				errorCount++
 				continue
 			}
 
 			newLimit.precompute()
 			overrides[bucketKey] = newLimit
 		}
+		errorGauge.Set(errorCount)
 		return overrides, nil
 	}
 
@@ -234,7 +237,7 @@ func NewTransactionBuilderFromFiles(defaults string, overrides string, stats pro
 		return NewTransactionBuilder(defaultsData, nil, stats, logger)
 	}
 
-	refresher := func(ctx context.Context, _ prometheus.Registerer, _ blog.Logger) (Limits, error) {
+	refresher := func(ctx context.Context, _ prometheus.Gauge, _ blog.Logger) (Limits, error) {
 		overridesData, err := loadOverridesFromFile(overrides)
 		if err != nil {
 			return nil, err
@@ -254,16 +257,22 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 	}
 
 	if overrides == nil {
-		overrides = func(context.Context, prometheus.Registerer, blog.Logger) (Limits, error) {
+		overrides = func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error) {
 			return nil, nil
 		}
 	}
 
-	refreshOverridesGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ratelimits_override_refresh",
-		Help: "A gauge with the current latest rate limit override refresh time",
+	refreshOverridesTime := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "ratelimits_overrides_timestamp_seconds",
+		Help: "A gauge with the current timestamp when rate limit overrides were refreshed",
 	})
-	stats.MustRegister(refreshOverridesGauge)
+	stats.MustRegister(refreshOverridesTime)
+
+	refreshOverridesErrors := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "ratelimits_overrides_errors_total",
+		Help: "A gauge with the current error count when rate limit overrides were refreshed",
+	})
+	stats.MustRegister(refreshOverridesErrors)
 
 	registry := &limitRegistry{
 		defaults:         regDefaults,
@@ -271,7 +280,8 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		stats:            stats,
 		logger:           logger,
 
-		refreshOverridesGauge: refreshOverridesGauge,
+		refreshOverridesTime:   refreshOverridesTime,
+		refreshOverridesErrors: refreshOverridesErrors,
 	}
 
 	// Retry loading overrides, as a workaround to avoid depending on the SA

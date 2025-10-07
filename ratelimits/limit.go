@@ -343,7 +343,7 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
 	return parsed, nil
 }
 
-type OverridesRefresher func(context.Context, prometheus.Registerer, blog.Logger) (Limits, error)
+type OverridesRefresher func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error)
 
 type limitRegistry struct {
 	// defaults stores default limits by 'name'.
@@ -355,8 +355,9 @@ type limitRegistry struct {
 	// refreshOverrides is a function to refresh override limits.
 	refreshOverrides OverridesRefresher
 
-	stats                 prometheus.Registerer
-	refreshOverridesGauge prometheus.Gauge
+	stats                  prometheus.Registerer
+	refreshOverridesTime   prometheus.Gauge
+	refreshOverridesErrors prometheus.Gauge
 
 	logger blog.Logger
 }
@@ -389,7 +390,7 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 // dataset. This is separate from the goroutine in NewRefresher(), for ease of
 // testing.
 func (l *limitRegistry) loadOverrides(ctx context.Context) error {
-	newOverrides, err := l.refreshOverrides(ctx, l.stats, l.logger)
+	newOverrides, err := l.refreshOverrides(ctx, l.refreshOverridesErrors, l.logger)
 	if err != nil {
 		l.logger.Errf("loading rate limit overrides: %v", err)
 		return err
@@ -417,7 +418,7 @@ func (l *limitRegistry) NewRefresher() context.CancelFunc {
 			case <-ticker.C:
 				err := l.loadOverrides(ctx)
 				if err == nil {
-					l.refreshOverridesGauge.SetToCurrentTime()
+					l.refreshOverridesTime.SetToCurrentTime()
 				}
 			case <-ctx.Done():
 				return
