@@ -263,16 +263,34 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 	}
 
 	refreshOverridesTime := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ratelimits_overrides_timestamp_seconds",
-		Help: "A gauge with the timestamp when overrides were refreshed",
+		Namespace: "ratelimits",
+		Subsystem: "overrides",
+		Name:      "timestamp_seconds",
+		Help:      "A gauge with the timestamp when overrides were refreshed",
 	})
 	stats.MustRegister(refreshOverridesTime)
 
 	refreshOverridesErrors := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "ratelimits_overrides_errors_total",
-		Help: "A gauge with the error count when overrides were refreshed",
+		Namespace: "ratelimits",
+		Subsystem: "overrides",
+		Name:      "errors",
+		Help:      "A gauge with the number of errors while refreshing overrides",
 	})
 	stats.MustRegister(refreshOverridesErrors)
+
+	overridesPerLimit := make(map[Name]prometheus.Gauge)
+	i := Unknown + 1
+	for i < Name(len(nameToString)) {
+		overridesPerLimit[i] = prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace:   "ratelimits",
+			Subsystem:   "overrides",
+			Name:        "active",
+			ConstLabels: prometheus.Labels{"limit": nameToString[i]},
+			Help:        "A gauge with the number of overrides per rate limit",
+		})
+		stats.MustRegister(overridesPerLimit[i])
+		i++
+	}
 
 	registry := &limitRegistry{
 		defaults:         regDefaults,
@@ -282,6 +300,7 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 
 		refreshOverridesTime:   refreshOverridesTime,
 		refreshOverridesErrors: refreshOverridesErrors,
+		overridesPerLimit:      overridesPerLimit,
 	}
 
 	// Load overrides, wrapped in a retry as a workaround to avoid depending on
