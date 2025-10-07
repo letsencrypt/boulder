@@ -253,7 +253,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	issuerBundle, ok := pub.issuerBundles[id]
 	if !ok {
 		err := fmt.Errorf("No issuerBundle matching issuerNameID: %d", int64(id))
-		pub.log.AuditErrf("Failed to submit certificate to CT log: %s", err)
+		pub.log.Errf("Failed to submit certificate to CT log: %s", err)
 		return nil, err
 	}
 	chain = append(chain, issuerBundle...)
@@ -277,7 +277,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		if errors.As(err, &rspErr) && rspErr.StatusCode < 500 {
 			body = string(rspErr.Body)
 		}
-		pub.log.AuditErrf("Failed to submit certificate to CT log at %s: %s Body=%q",
+		pub.log.Errf("Failed to submit certificate to CT log at %s: %s Body=%q",
 			ctLog.uri, err, body)
 		return nil, err
 	}

@@ -295,7 +295,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificate(ctx context.Context, cer
 }
 
 func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssueCertificateResponse, error) {
-	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID, issueReq.OrderID) {
+	if core.IsAnyNilOrZero(issueReq, issueReq.RegistrationID, issueReq.OrderID, issueReq.CertProfileName, issueReq.Csr) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
 
