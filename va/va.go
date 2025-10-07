@@ -620,6 +620,15 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
+		// If enough perspectives have passed, start a timer for how long we'll wait for remaining perspectives
+		if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
+			// TODO: configurable
+			go func() {
+				time.Sleep(2 * time.Second)
+				cancel()
+			}()
+		}
+
 		// Once all the VAs have returned a result, break the loop.
 		if len(passed)+len(failed) >= remoteVACount {
 			break
