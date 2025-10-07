@@ -208,6 +208,9 @@ func parseOverrideNameEnumId(key string) (Name, string, error) {
 // formatted as a list of maps, where each map has a single key representing the
 // limit name and a value that is a map containing the limit fields and an
 // additional 'ids' field that is a list of ids that this override applies to.
+//
+// When the OverridesFromDB feature flag is on, hydrateOverrideLimit is used as
+// this method's equivalent.
 func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 	parsed := make(Limits)
 
@@ -269,6 +272,49 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 	return parsed, nil
 }
 
+// hydrateOverrideLimit validates the limit Name, values, and override bucket
+// key. It returns the correct bucket key to use in-memory. It should be called
+// when loading overrides from a file or the database.
+//
+// When the OverridesFromDB feature flag is off, parseOverrideLimits is used as
+// this method's equivalent.
+func hydrateOverrideLimit(bucketKey string, limit *Limit) (string, error) {
+	if !limit.Name.isValid() {
+		return "", fmt.Errorf("unrecognized limit name %d", limit.Name)
+	}
+
+	err := ValidateLimit(limit)
+	if err != nil {
+		return "", err
+	}
+
+	err = validateIdForName(limit.Name, bucketKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Interpret and compute a new in-memory bucket key for two rate limits,
+	// since their keys aren't nice to store in a config file or database entry.
+	switch limit.Name {
+	case CertificatesPerDomain:
+		// Convert IP addresses to their covering /32 (IPv4) or /64
+		// (IPv6) prefixes in CIDR notation.
+		ip, err := netip.ParseAddr(bucketKey)
+		if err == nil {
+			prefix, err := coveringIPPrefix(limit.Name, ip)
+			if err != nil {
+				return "", fmt.Errorf("computing prefix for IP address %q: %w", bucketKey, err)
+			}
+			bucketKey = prefix.String()
+		}
+	case CertificatesPerFQDNSet:
+		// Compute the hash of a comma-separated list of identifier values.
+		bucketKey = fmt.Sprintf("%x", core.HashIdentifiers(identifier.FromStringSlice(strings.Split(bucketKey, ","))))
+	}
+
+	return bucketKey, nil
+}
+
 // parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
 func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
 	parsed := make(Limits)
@@ -297,7 +343,7 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
 	return parsed, nil
 }
 
-type OverridesRefresher func(context.Context) (Limits, error)
+type OverridesRefresher func(context.Context, prometheus.Registerer, blog.Logger) (Limits, error)
 
 type limitRegistry struct {
 	// defaults stores default limits by 'name'.
@@ -343,12 +389,17 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 // dataset. This is separate from the goroutine in NewRefresher(), for ease of
 // testing.
 func (l *limitRegistry) loadOverrides(ctx context.Context) error {
-	newOverrides, err := l.refreshOverrides(ctx)
+	newOverrides, err := l.refreshOverrides(ctx, l.stats, l.logger)
 	if err != nil {
 		l.logger.Errf("loading rate limit overrides: %v", err)
 		return err
 	}
-	l.overrides = newOverrides
+	// If it's a blank set, don't replace any current overrides.
+	if len(newOverrides) >= 1 {
+		l.overrides = newOverrides
+	} else {
+		l.logger.Warning("loading rate limit overrides: no valid overrides")
+	}
 	return nil
 }
 

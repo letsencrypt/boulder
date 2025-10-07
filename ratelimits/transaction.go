@@ -175,7 +175,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		return nil, err
 	}
 
-	refresher := func(ctx context.Context) (Limits, error) {
+	refresher := func(ctx context.Context, stats prometheus.Registerer, logger blog.Logger) (Limits, error) {
 		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 
@@ -194,7 +194,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 				return nil, fmt.Errorf("reading overrides stream: %w", err)
 			}
 
-			overrides[r.Override.BucketKey] = &Limit{
+			newLimit := &Limit{
 				Burst:  r.Override.Burst,
 				Count:  r.Override.Count,
 				Period: config.Duration{Duration: r.Override.Period.AsDuration()},
@@ -204,12 +204,18 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 					r.Override.Comment,
 				),
 			}
+
+			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, newLimit)
+			if err != nil {
+				// FIXME: increment error metrics
+				continue
+			}
+
+			newLimit.precompute()
+			overrides[bucketKey] = newLimit
 		}
 		return overrides, nil
 	}
-
-	// FIXME: This doesn't do error checking the way parseOverrideLimits does
-	// for files. We probably need to replicate, move, or break out that logic.
 
 	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
 }
@@ -228,7 +234,7 @@ func NewTransactionBuilderFromFiles(defaults string, overrides string, stats pro
 		return NewTransactionBuilder(defaultsData, nil, stats, logger)
 	}
 
-	refresher := func(ctx context.Context) (Limits, error) {
+	refresher := func(ctx context.Context, _ prometheus.Registerer, _ blog.Logger) (Limits, error) {
 		overridesData, err := loadOverridesFromFile(overrides)
 		if err != nil {
 			return nil, err
@@ -248,7 +254,7 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 	}
 
 	if overrides == nil {
-		overrides = func(context.Context) (Limits, error) {
+		overrides = func(context.Context, prometheus.Registerer, blog.Logger) (Limits, error) {
 			return nil, nil
 		}
 	}
