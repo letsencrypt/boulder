@@ -185,7 +185,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		}
 
 		overrides := make(Limits)
-		errorCount := float64(0)
+		var errorCount float64
 		for {
 			r, err := stream.Recv()
 			if err != nil {
@@ -208,7 +208,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 
 			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, newLimit)
 			if err != nil {
-				logger.Errf("hydrating rate limit %s override with key %q: %v", newLimit.Name.String(), r.Override.BucketKey, err)
+				logger.Errf("hydrating %s override with key %q: %v", newLimit.Name.String(), r.Override.BucketKey, err)
 				errorCount++
 				continue
 			}
@@ -264,13 +264,13 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 
 	refreshOverridesTime := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "ratelimits_overrides_timestamp_seconds",
-		Help: "A gauge with the current timestamp when rate limit overrides were refreshed",
+		Help: "A gauge with the timestamp when overrides were refreshed",
 	})
 	stats.MustRegister(refreshOverridesTime)
 
 	refreshOverridesErrors := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "ratelimits_overrides_errors_total",
-		Help: "A gauge with the current error count when rate limit overrides were refreshed",
+		Help: "A gauge with the error count when overrides were refreshed",
 	})
 	stats.MustRegister(refreshOverridesErrors)
 
@@ -284,8 +284,8 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 		refreshOverridesErrors: refreshOverridesErrors,
 	}
 
-	// Retry loading overrides, as a workaround to avoid depending on the SA
-	// being ready before other components start.
+	// Load overrides, wrapped in a retry as a workaround to avoid depending on
+	// the SA being ready before other components start.
 	retries := 0
 	for retries < 5 {
 		err = registry.loadOverrides(context.Background())

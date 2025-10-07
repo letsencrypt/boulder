@@ -274,7 +274,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 
 // hydrateOverrideLimit validates the limit Name, values, and override bucket
 // key. It returns the correct bucket key to use in-memory. It should be called
-// when loading overrides from a file or the database.
+// when loading overrides from the database.
 //
 // When the OverridesFromDB feature flag is off, parseOverrideLimits is used as
 // this method's equivalent.
@@ -392,14 +392,14 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	newOverrides, err := l.refreshOverrides(ctx, l.refreshOverridesErrors, l.logger)
 	if err != nil {
-		l.logger.Errf("loading rate limit overrides: %v", err)
+		l.logger.Errf("loading overrides: %v", err)
 		return err
 	}
-	// If it's a blank set, don't replace any current overrides.
+	// If it's an empty set, don't replace any current overrides.
 	if len(newOverrides) >= 1 {
 		l.overrides = newOverrides
 	} else {
-		l.logger.Warning("loading rate limit overrides: no valid overrides")
+		l.logger.Warning("loading overrides: no valid overrides")
 	}
 	return nil
 }
