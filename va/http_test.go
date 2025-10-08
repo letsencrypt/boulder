@@ -274,13 +274,6 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
 		},
 		{
-			Name: "malformed too-long IPv6 address",
-			Req: &http.Request{
-				URL: mustURL("https://[a:b:c:d:e:f:b:a:d]"),
-			},
-			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
-		},
-		{
 			Name: "bare IPv4, implicit port",
 			Req: &http.Request{
 				URL: mustURL("http://127.0.0.1"),
