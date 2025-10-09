@@ -155,8 +155,7 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 
 // GetSerialMetadata returns metadata stored alongside the serial number,
 // such as the RegID whose certificate request created that serial, and when
-// the certificate with that serial will expire. If the serial does not appear
-// in the serials table, it returns error NotFound.
+// the certificate with that serial will expire.
 func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
 	if req == nil || req.Serial == "" {
 		return nil, errIncompleteRequest
@@ -256,12 +255,6 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 // GetRevocationStatus takes a hexadecimal string representing the full serial
 // number of a certificate and returns a minimal set of data about that cert's
 // current validity.
-//
-// If the certificate appears in the revokedCertificates table, it returns
-// RevocationStatusRevoked. If the certificate does not appear in the
-// revokedCertificates table but does appear in the serials table, it returns
-// RevocationStatusGood. If the certificate does not appear in the serials
-// table, it returns error NotFound.
 func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *sapb.Serial) (*sapb.RevocationStatus, error) {
 	if req.Serial == "" {
 		return nil, errIncompleteRequest
@@ -270,32 +263,15 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	var model revokedCertModel
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&model,
-		"SELECT * FROM revokedCertificates WHERE serial = ? LIMIT 1",
-		req.Serial,
-	)
-	if db.IsNoRows(err) {
-		// The revokedCertificates table only holds revoked certificates, so serials
-		// that aren't found are considered to be not revoked. Double check that the
-		// serial exists at all before asserting that it's good.
-		_, err := ssa.GetSerialMetadata(ctx, req)
-		if err != nil {
-			// GetSerialMetadata handles returning NotFound if appropriate.
-			return nil, err
+	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
 		}
-		return &sapb.RevocationStatus{Status: core.RevocationStatusGood}, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("retrieving revoked certificate row: %w", err)
+		return nil, err
 	}
 
-	return &sapb.RevocationStatus{
-		Status:        core.RevocationStatusRevoked,
-		RevokedDate:   timestamppb.New(model.RevokedDate),
-		RevokedReason: int64(model.RevokedReason),
-	}, nil
+	return status, nil
 }
 
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each

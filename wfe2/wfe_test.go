@@ -2074,13 +2074,13 @@ func TestUpdateAccount(t *testing.T) {
 type mockSAWithCert struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert   *x509.Certificate
-	status int64
+	status core.OCSPStatus
 }
 
 func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityReadOnlyClient) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test cert")
-	return &mockSAWithCert{sa, cert, core.RevocationStatusGood}
+	return &mockSAWithCert{sa, cert, core.OCSPStatusGood}
 }
 
 // GetCertificate returns the mock SA's hard-coded certificate, issued by the
@@ -2099,15 +2099,16 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 	}, nil
 }
 
-// GetRevocationStatus returns the mock SA's status, if the given serial matches.
+// GetCertificateStatus returns the mock SA's status, if the given serial matches.
 // Otherwise, returns not found.
-func (sa *mockSAWithCert) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
+func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
 		return nil, berrors.NotFoundError("Status for certificate with serial %q not found", req.Serial)
 	}
 
-	return &sapb.RevocationStatus{
-		Status: sa.status,
+	return &corepb.CertificateStatus{
+		Serial: core.SerialToString(sa.cert.SerialNumber),
+		Status: string(sa.status),
 	}, nil
 }
 
@@ -3853,7 +3854,7 @@ func TestARI(t *testing.T) {
 
 	// Ensure that a correct draft-ietf-acme-ari03 query for a revoked cert
 	// results in a renewal window in the past.
-	msa.status = core.RevocationStatusRevoked
+	msa.status = core.OCSPStatusRevoked
 	req, event = makeGet(certID, renewalInfoPath)
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
@@ -4013,8 +4014,8 @@ func (sa *mockSAForARI) IncidentsForSerial(ctx context.Context, in *sapb.Serial,
 	return &sapb.Incidents{}, nil
 }
 
-func (sa *mockSAForARI) GetRevocationStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.RevocationStatus, error) {
-	return &sapb.RevocationStatus{Status: core.RevocationStatusGood}, nil
+func (sa *mockSAForARI) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	return &corepb.CertificateStatus{Serial: in.Serial, Status: string(core.OCSPStatusGood)}, nil
 }
 
 func TestOrderMatchesReplacement(t *testing.T) {
