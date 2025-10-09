@@ -44,7 +44,7 @@ func TestSendContactSuccess(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewSalesforceClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
 	test.AssertNotError(t, err, "failed to create client")
 
 	err = client.SendContact("test@example.com")
@@ -70,7 +70,7 @@ func TestSendContactUpdateTokenFails(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewSalesforceClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
 	test.AssertNotError(t, err, "Failed to create client")
 
 	err = client.SendContact("test@example.com")
@@ -94,7 +94,7 @@ func TestSendContact4xx(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewSalesforceClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
 	test.AssertNotError(t, err, "Failed to create client")
 
 	err = client.SendContact("test@example.com")
@@ -142,7 +142,7 @@ func TestSendContactTokenExpiry(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewSalesforceClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
 	test.AssertNotError(t, err, "Failed to create client")
 
 	// First call uses the initial token ("old_token").
@@ -172,9 +172,10 @@ func TestSendContactServerErrorsAfterMaxAttempts(t *testing.T) {
 	contactSrv := httptest.NewServer(http.HandlerFunc(contactHandler))
 	defer contactSrv.Close()
 
-	client, _ := NewPardotClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewSalesforceClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	test.AssertNotError(t, err, "Failed to create Salesforce API client")
 
-	err := client.SendContact("test@example.com")
+	err = client.SendContact("test@example.com")
 	test.AssertError(t, err, "Should fail after retrying all attempts")
 	test.AssertEquals(t, maxAttempts, gotAttempts)
 	test.AssertContains(t, err.Error(), "create contact request returned status 503")
@@ -200,11 +201,128 @@ func TestSendContactRedactsEmail(t *testing.T) {
 	defer contactSrv.Close()
 
 	clk := clock.NewFake()
-	client, err := NewPardotClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
+	client, err := NewSalesforceClientImpl(clk, "biz-unit", "cid", "csec", tokenSrv.URL, contactSrv.URL)
 	test.AssertNotError(t, err, "failed to create client")
 
 	err = client.SendContact(emailToTest)
 	test.AssertError(t, err, "SendContact should fail")
 	test.AssertNotContains(t, err.Error(), emailToTest)
 	test.AssertContains(t, err.Error(), "[REDACTED]")
+}
+
+func TestSendCaseSuccess(t *testing.T) {
+	t.Parallel()
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/services/oauth2/token":
+			defaultTokenHandler(w, r)
+		case "/services/data/v64.0/sobjects/Case":
+			if r.Header.Get("Authorization") != "Bearer dummy" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"id":"500xx000001ABCdAAH","success":true,"errors":[]}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+
+	salesforceSrv := httptest.NewServer(http.HandlerFunc(handler))
+	defer salesforceSrv.Close()
+
+	client, err := NewSalesforceClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", salesforceSrv.URL, "")
+	test.AssertNotError(t, err, "failed to create client")
+
+	err = client.SendCase(Case{
+		Subject: "Unit Test Case",
+		Origin:  "Web",
+	})
+	test.AssertNotError(t, err, "SendCase should succeed")
+}
+
+func TestSendCaseUpdateTokenFails(t *testing.T) {
+	t.Parallel()
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/services/oauth2/token":
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, "token error")
+		case "/services/data/v64.0/sobjects/Case":
+			w.WriteHeader(http.StatusOK) // should never reach here
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+
+	salesforceSrv := httptest.NewServer(http.HandlerFunc(handler))
+	defer salesforceSrv.Close()
+
+	client, err := NewSalesforceClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", salesforceSrv.URL, "")
+	test.AssertNotError(t, err, "Failed to create client")
+
+	err = client.SendCase(Case{Subject: "fail", Origin: "Web"})
+	test.AssertError(t, err, "Expected token update to fail")
+	test.AssertContains(t, err.Error(), "failed to update token")
+}
+
+func TestSendCase4xx(t *testing.T) {
+	t.Parallel()
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/services/oauth2/token":
+			defaultTokenHandler(w, r)
+		case "/services/data/v64.0/sobjects/Case":
+			w.WriteHeader(http.StatusBadRequest)
+			_, err := io.WriteString(w, "bad request")
+			test.AssertNotError(t, err, "failed to write response")
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+
+	salesforceSrv := httptest.NewServer(http.HandlerFunc(handler))
+	defer salesforceSrv.Close()
+
+	client, err := NewSalesforceClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", salesforceSrv.URL, "")
+	test.AssertNotError(t, err, "Failed to create client")
+
+	err = client.SendCase(Case{Subject: "bad", Origin: "Web"})
+	test.AssertError(t, err, "Should fail on 400")
+	test.AssertContains(t, err.Error(), "create case request returned status 400")
+}
+
+func TestSendCaseServerErrorsAfterMaxAttempts(t *testing.T) {
+	t.Parallel()
+
+	gotAttempts := 0
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/services/oauth2/token":
+			defaultTokenHandler(w, r)
+		case "/services/data/v64.0/sobjects/Case":
+			gotAttempts++
+			w.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+
+	salesforceSrv := httptest.NewServer(http.HandlerFunc(handler))
+	defer salesforceSrv.Close()
+
+	client, err := NewSalesforceClientImpl(clock.NewFake(), "biz-unit", "cid", "csec", salesforceSrv.URL, "")
+	test.AssertNotError(t, err, "Failed to create client")
+
+	err = client.SendCase(Case{Subject: "retry", Origin: "Web"})
+	test.AssertError(t, err, "Should fail after retrying all attempts")
+	test.AssertEquals(t, maxAttempts, gotAttempts)
+	test.AssertContains(t, err.Error(), "create case request returned status 503")
 }
