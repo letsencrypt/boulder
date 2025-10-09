@@ -545,9 +545,12 @@ func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration
 }
 
 func TestRetry(t *testing.T) {
-	isTempErr := &url.Error{Op: "read", Err: tempError(true)}
-	nonTempErr := &url.Error{Op: "read", Err: tempError(false)}
+	// Retryable error: timeout error wrapped in url.Error
+	isRetryableErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
+	// Non-retryable error: non-timeout error wrapped in url.Error
+	nonRetryableErr := &url.Error{Op: "read", Err: testTimeoutError(false)}
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
+	timeoutError := errors.New("DNS problem: query timed out looking up TXT for example.com")
 	type testCase struct {
 		name              string
 		maxTries          int
@@ -577,28 +580,28 @@ func TestRetry(t *testing.T) {
 			expected:      servFailError,
 			expectedCount: 1,
 		},
-		// Temporary err, then non-OpError stops at two tries
+		// Retryable err, then non-OpError stops at two tries
 		{
 			name:     "err-then-non-operror",
 			maxTries: 3,
 			te: &testExchanger{
-				errs: []error{isTempErr, errors.New("nope")},
+				errs: []error{isRetryableErr, errors.New("nope")},
 			},
 			expected:      servFailError,
 			expectedCount: 2,
 		},
-		// Temporary error given always
+		// Retryable error given always
 		{
-			name:     "persistent-temp-error",
+			name:     "persistent-retryable-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					isTempErr,
-					isTempErr,
+					isRetryableErr,
+					isRetryableErr,
+					isRetryableErr,
 				},
 			},
-			expected:          servFailError,
+			expected:          timeoutError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
@@ -613,56 +616,56 @@ func TestRetry(t *testing.T) {
 			expected:      nil,
 			expectedCount: 1,
 		},
-		// Temporary error given just once causes two tries
+		// Retryable error given just once causes two tries
 		{
-			name:     "single-temp-error",
+			name:     "single-retryable-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
+					isRetryableErr,
 					nil,
 				},
 			},
 			expected:      nil,
 			expectedCount: 2,
 		},
-		// Temporary error given twice causes three tries
+		// Retryable error given twice causes three tries
 		{
-			name:     "double-temp-error",
+			name:     "double-retryable-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					isTempErr,
+					isRetryableErr,
+					isRetryableErr,
 					nil,
 				},
 			},
 			expected:      nil,
 			expectedCount: 3,
 		},
-		// Temporary error given thrice causes three tries and fails
+		// Retryable error given thrice causes three tries and fails
 		{
-			name:     "triple-temp-error",
+			name:     "triple-retryable-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					isTempErr,
-					isTempErr,
+					isRetryableErr,
+					isRetryableErr,
+					isRetryableErr,
 				},
 			},
-			expected:          servFailError,
+			expected:          timeoutError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
-		// temporary then non-Temporary error causes two retries
+		// Retryable then non-retryable error causes two tries
 		{
-			name:     "temp-nontemp-error",
+			name:     "retryable-nonretryable-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					nonTempErr,
+					isRetryableErr,
+					nonRetryableErr,
 				},
 			},
 			expected:      servFailError,
@@ -708,7 +711,7 @@ func TestRetry(t *testing.T) {
 
 	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
-	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isRetryableErr, isRetryableErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -717,7 +720,7 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
 
-	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isRetryableErr, isRetryableErr, nil}}
 	ctx, cancel = context.WithTimeout(context.Background(), -10*time.Hour)
 	defer cancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -726,7 +729,7 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
 
-	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isRetryableErr, isRetryableErr, nil}}
 	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
 	deadlineCancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -759,10 +762,12 @@ func TestIsTLD(t *testing.T) {
 	}
 }
 
-type tempError bool
+// testTimeoutError is a mock error type that implements the Timeout() method.
+// This is used to simulate retryable timeout errors in tests.
+type testTimeoutError bool
 
-func (t tempError) Temporary() bool { return bool(t) }
-func (t tempError) Error() string   { return fmt.Sprintf("Temporary: %t", t) }
+func (t testTimeoutError) Timeout() bool { return bool(t) }
+func (t testTimeoutError) Error() string { return fmt.Sprintf("Timeout: %t", t) }
 
 // rotateFailureExchanger is a dns.Exchange implementation that tracks a count
 // of the number of calls to `Exchange` for a given address in the `lookups`
@@ -775,7 +780,7 @@ type rotateFailureExchanger struct {
 }
 
 // Exchange for rotateFailureExchanger tracks the `a` argument in `lookups` and
-// if present in `brokenAddresses`, returns a temporary error.
+// if present in `brokenAddresses`, returns a retryable timeout error.
 func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	e.Lock()
 	defer e.Unlock()
@@ -785,8 +790,8 @@ func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.
 
 	// If its a broken server, return a retryable error
 	if e.brokenAddresses[a] {
-		isTempErr := &url.Error{Op: "read", Err: tempError(true)}
-		return nil, 2 * time.Millisecond, isTempErr
+		retryableErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
+		return nil, 2 * time.Millisecond, retryableErr
 	}
 
 	return m, 2 * time.Millisecond, nil
@@ -848,11 +853,12 @@ func TestRotateServerOnErr(t *testing.T) {
 
 }
 
-type mockTempURLError struct{}
+// mockTimeoutError is a mock error type that simulates a timeout condition.
+// This is used to test retry behavior with timeout errors.
+type mockTimeoutError struct{}
 
-func (m *mockTempURLError) Error() string   { return "whoops, oh gosh" }
-func (m *mockTempURLError) Timeout() bool   { return false }
-func (m *mockTempURLError) Temporary() bool { return true }
+func (m *mockTimeoutError) Error() string { return "whoops, oh gosh" }
+func (m *mockTimeoutError) Timeout() bool { return true }
 
 type dohAlwaysRetryExchanger struct {
 	sync.Mutex
@@ -863,13 +869,13 @@ func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, t
 	dohE.Lock()
 	defer dohE.Unlock()
 
-	tempURLerror := &url.Error{
+	timeoutURLError := &url.Error{
 		Op:  "GET",
 		URL: "https://example.com",
-		Err: &mockTempURLError{},
+		Err: &mockTimeoutError{},
 	}
 
-	return nil, time.Second, tempURLerror
+	return nil, time.Second, timeoutURLError
 }
 
 func TestDOHMetric(t *testing.T) {
@@ -878,7 +884,7 @@ func TestDOHMetric(t *testing.T) {
 
 	testClient := New(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, "", blog.UseMock(), tlsConfig)
 	resolver := testClient.(*impl)
-	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: tempError(true)}}
+	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: testTimeoutError(true)}}
 
 	// Starting out, we should count 0 "out of retries" errors.
 	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 0)

@@ -272,11 +272,10 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		case r := <-ch:
 			if r.err != nil {
-				var isRetryable bool
-				// According to the http package documentation, retryable
-				// errors emitted by the http package are of type *url.Error.
-				var urlErr *url.Error
-				isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
+				// Check if the error is retryable. We retry on specific transient
+				// network errors rather than using the deprecated Temporary() method.
+				// See golang/go#45729 for context on Temporary() deprecation.
+				isRetryable := isRetryableError(r.err)
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
@@ -301,6 +300,55 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		}
 	}
+}
+
+// isRetryableError determines if a DNS query error should be retried.
+// Instead of using the deprecated Temporary() method, we check for specific
+// error types that indicate transient network issues:
+//   - Timeout errors (via Timeout() method)
+//   - Context deadline exceeded
+//   - EOF errors (common in interrupted network operations)
+//   - Connection refused/reset errors (via net.OpError)
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for timeout errors (errors implementing net.Error with Timeout() == true)
+	type timeoutError interface {
+		Timeout() bool
+	}
+	var te timeoutError
+	if errors.As(err, &te) && te.Timeout() {
+		return true
+	}
+
+	// Check for context deadline exceeded
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	// Check for EOF errors which often indicate interrupted connections
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	// Check for connection refused/reset errors via net.OpError
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		// Connection refused and connection reset are retryable
+		if opErr.Op == "read" || opErr.Op == "write" || opErr.Op == "dial" {
+			return true
+		}
+	}
+
+	// For url.Error (common in HTTP-based DNS like DoH), unwrap and check the underlying error
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return isRetryableError(urlErr.Err)
+	}
+
+	return false
 }
 
 // isTLD returns a simplified view of whether something is a TLD: does it have
