@@ -228,4 +228,10 @@ func TestNewTransactionBuilder(t *testing.T) {
 	test.AssertEquals(t, newRegDefault.Burst, expectedBurst)
 	test.AssertEquals(t, newRegDefault.Count, expectedCount)
 	test.AssertEquals(t, newRegDefault.Period, expectedPeriod)
+
+	// FIXME: Test that metrics were set properly.
 }
+
+// FIXME: TestNewTransactionBuilderFromDatabase
+
+// FIXME: TestNewTransactionBuilderFromFiles

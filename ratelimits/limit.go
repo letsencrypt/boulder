@@ -358,7 +358,7 @@ type limitRegistry struct {
 	stats              prometheus.Registerer
 	overridesTimestamp prometheus.Gauge
 	overridesErrors    prometheus.Gauge
-	overridesPerLimit  map[Name]prometheus.Gauge
+	overridesPerLimit  prometheus.GaugeVec
 
 	logger blog.Logger
 }
@@ -396,27 +396,22 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 		return err
 	}
 
-	// If it's an empty set, don't replace any current overrides.
 	if len(newOverrides) < 1 {
 		l.logger.Warning("loading overrides: no valid overrides")
+		// If it's an empty set, don't replace any current overrides.
 		return nil
 	}
 
+	l.overrides = newOverrides
+
+	l.overridesTimestamp.SetToCurrentTime()
 	newOverridesPerLimit := make(map[Name]float64)
 	for _, override := range newOverrides {
 		newOverridesPerLimit[override.Name]++
 	}
-
-	l.overrides = newOverrides
-	for name := range l.overridesPerLimit {
-		count, ok := newOverridesPerLimit[name]
-		if ok {
-			l.overridesPerLimit[name].Set(count)
-		} else {
-			l.overridesPerLimit[name].Set(0)
-		}
+	for rlName, rlString := range nameToString {
+		l.overridesPerLimit.WithLabelValues(rlString).Set(newOverridesPerLimit[rlName])
 	}
-	l.overridesTimestamp.SetToCurrentTime()
 
 	return nil
 }
