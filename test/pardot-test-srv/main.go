@@ -19,9 +19,16 @@ import (
 var contactsCap = 20
 
 type config struct {
-	// OAuthAddr is the address (e.g. IP:port) on which the OAuth server will
-	// listen.
+	// OAuthAddr is the address (e.g. IP:port) on which the Salesforce REST API
+	// and OAuth API server will listen.
+	//
+	// Deprecated: Use SalesforceAddr instead.
+	// TODO(#8410): Remove this field.
 	OAuthAddr string
+
+	// SalesforceAddr is the address (e.g. IP:port) on which the Salesforce REST
+	// API and OAuth API server will listen.
+	SalesforceAddr string
 
 	// PardotAddr is the address (e.g. IP:port) on which the Pardot server will
 	// listen.
@@ -41,11 +48,17 @@ type contacts struct {
 	created []string
 }
 
+type cases struct {
+	sync.Mutex
+	created []map[string]any
+}
+
 type testServer struct {
 	expectedClientID     string
 	expectedClientSecret string
 	token                string
 	contacts             contacts
+	cases                cases
 }
 
 func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -147,8 +160,58 @@ func (ts *testServer) queryContactsHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+func (ts *testServer) createCaseHandler(w http.ResponseWriter, r *http.Request) {
+	ts.checkToken(w, r)
+
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	_, ok := payload["Origin"]
+	if !ok {
+		http.Error(w, "Missing required field: Origin", http.StatusBadRequest)
+		return
+	}
+
+	ts.cases.Lock()
+	ts.cases.created = append(ts.cases.created, payload)
+	ts.cases.Unlock()
+
+	resp := map[string]any{
+		"id":      fmt.Sprintf("500xx00000%06dAAA", len(ts.cases.created)+1),
+		"success": true,
+		"errors":  []string{},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	err := json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		log.Printf("Failed to encode case creation response: %s", err)
+		http.Error(w, "Failed to encode case creation response", http.StatusInternalServerError)
+	}
+}
+
+func (ts *testServer) queryCasesHandler(w http.ResponseWriter, r *http.Request) {
+	ts.checkToken(w, r)
+
+	ts.cases.Lock()
+	respCases := slices.Clone(ts.cases.created)
+	ts.cases.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(map[string]any{"cases": respCases})
+	if err != nil {
+		log.Printf("Failed to encode cases query response: %v", err)
+		http.Error(w, "Failed to encode cases query response", http.StatusInternalServerError)
+	}
+}
+
 func main() {
-	oauthAddr := flag.String("oauth-addr", "", "OAuth server listen address override")
+	// TODO(#8410): Remove the oauthAddr flag.
+	oauthAddr := flag.String("oauth-addr", "", "Salesforce REST API and OAuth server listen address override (deprecated: use --salesforce-addr instead)")
+	salesforceAddr := flag.String("salesforce-addr", "", "Salesforce REST API and OAuth server listen address override")
 	pardotAddr := flag.String("pardot-addr", "", "Pardot server listen address override")
 	configFile := flag.String("config", "", "Path to configuration file")
 	flag.Parse()
@@ -162,9 +225,21 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	if *oauthAddr != "" {
-		c.OAuthAddr = *oauthAddr
+	// TODO(#8410): Reduce this logic down to just using salesforceAddr once
+	// oauthAddr is removed.
+	firstNonEmpty := func(vals ...string) string {
+		for _, v := range vals {
+			if v != "" {
+				return v
+			}
+		}
+		return ""
 	}
+	c.SalesforceAddr = firstNonEmpty(*salesforceAddr, c.SalesforceAddr, *oauthAddr, c.OAuthAddr)
+	if c.SalesforceAddr == "" {
+		log.Fatal("--salesforce-addr or JSON salesforceAddr must be set (or use deprecated --oauth-addr or JSON oauthAddr until removed)")
+	}
+
 	if *pardotAddr != "" {
 		c.PardotAddr = *pardotAddr
 	}
@@ -180,22 +255,25 @@ func main() {
 		expectedClientSecret: c.ExpectedClientSecret,
 		token:                fmt.Sprintf("%x", tokenBytes),
 		contacts:             contacts{created: make([]string, 0, contactsCap)},
+		cases:                cases{created: make([]map[string]any, 0)},
 	}
 
-	// OAuth Server
+	// Salesforce REST API and OAuth Server
 	oauthMux := http.NewServeMux()
 	oauthMux.HandleFunc("/services/oauth2/token", ts.getTokenHandler)
+	oauthMux.HandleFunc("/services/data/v65.0/sobjects/Case", ts.createCaseHandler)
+	oauthMux.HandleFunc("/cases", ts.queryCasesHandler)
 	oauthServer := &http.Server{
-		Addr:        c.OAuthAddr,
+		Addr:        c.SalesforceAddr,
 		Handler:     oauthMux,
 		ReadTimeout: 30 * time.Second,
 	}
 
-	log.Printf("pardot-test-srv OAuth server listening at %s", c.OAuthAddr)
+	log.Printf("pardot-test-srv Salesforce REST API and OAuth server listening at %s", c.SalesforceAddr)
 	go func() {
 		err := oauthServer.ListenAndServe()
 		if err != nil {
-			log.Fatalf("Failed to start OAuth server: %s", err)
+			log.Fatalf("Failed to start Salesforce REST API and OAuth server: %s", err)
 		}
 	}()
 
@@ -209,11 +287,11 @@ func main() {
 		Handler:     pardotMux,
 		ReadTimeout: 30 * time.Second,
 	}
-	log.Printf("pardot-test-srv Pardot API server listening at %s", c.PardotAddr)
+	log.Printf("pardot-test-srv Salesforce Pardot API server listening at %s", c.PardotAddr)
 	go func() {
 		err := pardotServer.ListenAndServe()
 		if err != nil {
-			log.Fatalf("Failed to start Pardot API server: %s", err)
+			log.Fatalf("Failed to start Salesforce Pardot API server: %s", err)
 		}
 	}()
 

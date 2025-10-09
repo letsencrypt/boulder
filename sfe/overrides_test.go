@@ -145,8 +145,8 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 	sfe.templatePages = minimalTemplates(t)
 	_, client := createFakeZendeskClientServer(t)
 	sfe.zendeskClient = client
-	mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
-	sfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+	mockSalesforceClient, mockImpl := mocks.NewMockSalesforceClientImpl()
+	sfe.ee = mocks.NewMockExporterImpl(mockSalesforceClient)
 
 	// Submit valid JSON with no rateLimit field.
 	rec := httptest.NewRecorder()
@@ -276,8 +276,8 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
-			sfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+			mockSalesforceClient, mockImpl := mocks.NewMockSalesforceClientImpl()
+			sfe.ee = mocks.NewMockExporterImpl(mockSalesforceClient)
 
 			iterationBase := map[string]string{}
 			maps.Copy(iterationBase, testBase)
