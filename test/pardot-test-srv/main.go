@@ -261,7 +261,7 @@ func main() {
 	// Salesforce REST API and OAuth Server
 	oauthMux := http.NewServeMux()
 	oauthMux.HandleFunc("/services/oauth2/token", ts.getTokenHandler)
-	oauthMux.HandleFunc("/services/data/v65.0/sobjects/Case", ts.createCaseHandler)
+	oauthMux.HandleFunc("/services/data/v64.0/sobjects/Case", ts.createCaseHandler)
 	oauthMux.HandleFunc("/cases", ts.queryCasesHandler)
 	oauthServer := &http.Server{
 		Addr:        c.SalesforceAddr,

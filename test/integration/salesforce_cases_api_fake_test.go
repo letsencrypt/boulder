@@ -43,7 +43,7 @@ func createCase(t *testing.T, token string, payload map[string]any) (int, []byte
 
 	req, err := http.NewRequest(
 		"POST",
-		"http://localhost:9601/services/data/v65.0/sobjects/Case",
+		"http://localhost:9601/services/data/v64.0/sobjects/Case",
 		bytes.NewReader(b),
 	)
 	test.AssertNotError(t, err, "Failed to create case POST request")

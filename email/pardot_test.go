@@ -217,7 +217,7 @@ func TestSendCaseSuccess(t *testing.T) {
 		switch r.URL.Path {
 		case "/services/oauth2/token":
 			defaultTokenHandler(w, r)
-		case "/services/data/v65.0/sobjects/Case":
+		case "/services/data/v64.0/sobjects/Case":
 			if r.Header.Get("Authorization") != "Bearer dummy" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
@@ -251,7 +251,7 @@ func TestSendCaseUpdateTokenFails(t *testing.T) {
 		case "/services/oauth2/token":
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintln(w, "token error")
-		case "/services/data/v65.0/sobjects/Case":
+		case "/services/data/v64.0/sobjects/Case":
 			w.WriteHeader(http.StatusOK) // should never reach here
 		default:
 			t.Errorf("unexpected path: %s", r.URL.Path)
@@ -277,7 +277,7 @@ func TestSendCase4xx(t *testing.T) {
 		switch r.URL.Path {
 		case "/services/oauth2/token":
 			defaultTokenHandler(w, r)
-		case "/services/data/v65.0/sobjects/Case":
+		case "/services/data/v64.0/sobjects/Case":
 			w.WriteHeader(http.StatusBadRequest)
 			_, err := io.WriteString(w, "bad request")
 			test.AssertNotError(t, err, "failed to write response")
@@ -306,7 +306,7 @@ func TestSendCaseServerErrorsAfterMaxAttempts(t *testing.T) {
 		switch r.URL.Path {
 		case "/services/oauth2/token":
 			defaultTokenHandler(w, r)
-		case "/services/data/v65.0/sobjects/Case":
+		case "/services/data/v64.0/sobjects/Case":
 			gotAttempts++
 			w.WriteHeader(http.StatusServiceUnavailable)
 		default:

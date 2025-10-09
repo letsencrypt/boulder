@@ -26,14 +26,14 @@ const (
 	contactsPath = "/api/v5/objects/prospects/do/upsertLatestByEmail"
 
 	// casesPath is the path to create a new Case object in Salesforce. This
-	// path includes the API version (v65.0). Normally, Salesforce maintains
+	// path includes the API version (v64.0). Normally, Salesforce maintains
 	// backward compatibility across versions. Update only if Salesforce retires
 	// this API version (rare) or we want to make use of new Case fields
 	// (unlikely).
 	//
 	// To check the current version for our org, see “Identify your current API
 	// version”: https://help.salesforce.com/s/articleView?id=000386929&type=1
-	casesPath = "/services/data/v65.0/sobjects/Case"
+	casesPath = "/services/data/v64.0/sobjects/Case"
 
 	// maxAttempts is the maximum number of attempts to retry a request.
 	maxAttempts = 3
