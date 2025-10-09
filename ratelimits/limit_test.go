@@ -262,6 +262,9 @@ func TestLoadOverrides(t *testing.T) {
 	test.AssertNotError(t, err, "loading overrides from file")
 	testOverrides, err := parseOverrideLimits(overridesData)
 	test.AssertNotError(t, err, "parsing overrides")
+	for _, override := range testOverrides {
+		override.precompute()
+	}
 
 	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
 

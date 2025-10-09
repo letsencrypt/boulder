@@ -258,7 +258,6 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 					Comment:    entry.Comment,
 					isOverride: true,
 				}
-				lim.precompute()
 
 				err = ValidateLimit(lim)
 				if err != nil {
@@ -402,13 +401,14 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 		return nil
 	}
 
-	l.overrides = newOverrides
-
-	l.overridesTimestamp.SetToCurrentTime()
 	newOverridesPerLimit := make(map[Name]float64)
 	for _, override := range newOverrides {
+		override.precompute()
 		newOverridesPerLimit[override.Name]++
 	}
+
+	l.overrides = newOverrides
+	l.overridesTimestamp.SetToCurrentTime()
 	for rlName, rlString := range nameToString {
 		l.overridesPerLimit.WithLabelValues(rlString).Set(newOverridesPerLimit[rlName])
 	}

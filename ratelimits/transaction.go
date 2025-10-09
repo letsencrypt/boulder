@@ -213,7 +213,6 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 				continue
 			}
 
-			newLimit.precompute()
 			overrides[bucketKey] = newLimit
 		}
 		errorGauge.Set(errorCount)
