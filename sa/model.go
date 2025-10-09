@@ -161,41 +161,6 @@ func SelectCertificateStatus(ctx context.Context, s db.OneSelector, serial strin
 	return model.toPb(), err
 }
 
-// RevocationStatusModel represents a small subset of the columns in the
-// certificateStatus table, used to determine the authoritative revocation
-// status of a certificate.
-type RevocationStatusModel struct {
-	Status        core.OCSPStatus   `db:"status"`
-	RevokedDate   time.Time         `db:"revokedDate"`
-	RevokedReason revocation.Reason `db:"revokedReason"`
-}
-
-// SelectRevocationStatus returns the authoritative revocation information for
-// the certificate with the given serial.
-func SelectRevocationStatus(ctx context.Context, s db.OneSelector, serial string) (*sapb.RevocationStatus, error) {
-	var model RevocationStatusModel
-	err := s.SelectOne(
-		ctx,
-		&model,
-		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ? LIMIT 1",
-		serial,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	statusInt, ok := core.OCSPStatusToInt[model.Status]
-	if !ok {
-		return nil, fmt.Errorf("got unrecognized status %q", model.Status)
-	}
-
-	return &sapb.RevocationStatus{
-		Status:        int64(statusInt),
-		RevokedDate:   timestamppb.New(model.RevokedDate),
-		RevokedReason: int64(model.RevokedReason),
-	}, nil
-}
-
 var mediumBlobSize = int(math.Pow(2, 24))
 
 type issuedNameModel struct {
