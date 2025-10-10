@@ -4,13 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -272,18 +270,12 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		case r := <-ch:
 			if r.err != nil {
-				var isRetryable bool
-				// According to the http package documentation, retryable
-				// errors emitted by the http package are of type *url.Error.
-				var urlErr *url.Error
-				isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
+				// Retry all errors up to maxTries limit for maximum resilience.
+				isRetryable := true
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
-					// Chose a new server to retry the query with by incrementing the
-					// chosen server index modulo the number of servers. This ensures that
-					// if one dns server isn't available we retry with the next in the
-					// list.
+					// Rotate to next server on retry.
 					chosenServerIndex = (chosenServerIndex + 1) % len(servers)
 					chosenServer = servers[chosenServerIndex]
 					resolver = chosenServer

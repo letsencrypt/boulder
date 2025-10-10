@@ -655,7 +655,7 @@ func TestRetry(t *testing.T) {
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
-		// temporary then non-Temporary error causes two retries
+		// all errors are now retried up to maxTries
 		{
 			name:     "temp-nontemp-error",
 			maxTries: 3,
@@ -663,10 +663,11 @@ func TestRetry(t *testing.T) {
 				errs: []error{
 					isTempErr,
 					nonTempErr,
+					nonTempErr,
 				},
 			},
 			expected:      servFailError,
-			expectedCount: 2,
+			expectedCount: 3,
 		},
 	}
 
