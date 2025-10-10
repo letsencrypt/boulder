@@ -272,13 +272,8 @@ type Case struct {
 	RateLimitTier string `json:"Rate_Limit_Tier__c,omitempty"`
 
 	// UseCase indicates the intended to use case supplied by the requester. Max
-	// length: 32,768 characters.
+	// length: 131,072 characters.
 	UseCase string `json:"Use_Case__c,omitempty"`
-
-	// FinancialSupport should be removed once Advancement gives us the go
-	// ahead. For now this should always be set to "Yes". Max length: 255
-	// characters.
-	FinancialSupport string `json:"Interested_in_Financial_Support__c,omitempty"`
 }
 
 // SendCase submits a new Case object to Salesforce. For more information, see:
