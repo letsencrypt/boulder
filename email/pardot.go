@@ -327,7 +327,7 @@ func (pc *SalesforceClientImpl) SendCase(payload Case) error {
 			continue
 		}
 
-		finalErr = fmt.Errorf("create case request returned status %d: %s", resp.StatusCode, respBody)
+		finalErr = fmt.Errorf("create case request returned status %d: %s", resp.StatusCode, redactEmail(respBody, payload.ContactEmail))
 		continue
 	}
 

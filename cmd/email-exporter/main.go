@@ -45,7 +45,7 @@ type Config struct {
 		ClientSecret cmd.PasswordConfig
 
 		// SalesforceBaseURL is the base URL for the Salesforce API. (e.g.,
-		// "https://login.salesforce.com")
+		// "https://company.salesforce.com")
 		SalesforceBaseURL string `validate:"required"`
 
 		// PardotBaseURL is the base URL for the Pardot API. (e.g.,

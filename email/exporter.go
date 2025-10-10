@@ -43,6 +43,7 @@ type ExporterImpl struct {
 	emailCache            *EmailCache
 	emailsHandledCounter  prometheus.Counter
 	pardotErrorCounter    prometheus.Counter
+	caseErrorCounter      prometheus.Counter
 	log                   blog.Logger
 }
 
@@ -70,6 +71,12 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 	})
 	scope.MustRegister(pardotErrorCounter)
 
+	caseErrorCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "email_exporter_case_errors",
+		Help: "Total number of errors encountered when sending Cases to the Salesforce REST API",
+	})
+	scope.MustRegister(caseErrorCounter)
+
 	impl := &ExporterImpl{
 		maxConcurrentRequests: maxConcurrentRequests,
 		limiter:               limiter,
@@ -78,6 +85,7 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 		emailCache:            cache,
 		emailsHandledCounter:  emailsHandledCounter,
 		pardotErrorCounter:    pardotErrorCounter,
+		caseErrorCounter:      caseErrorCounter,
 		log:                   logger,
 	}
 	impl.wake = sync.NewCond(&impl.Mutex)
@@ -112,6 +120,32 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 	impl.toSend = append(impl.toSend, req.Emails...)
 	// Wake waiting workers to process the new emails.
 	impl.wake.Broadcast()
+
+	return &emptypb.Empty{}, nil
+}
+
+// SendCase immediately submits a new Case to the Salesforce REST API using the
+// provided details. Any retries are handled internally by the SalesforceClient.
+func (impl *ExporterImpl) SendCase(ctx context.Context, req *emailpb.SendCaseRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req, req.Origin) {
+		return nil, berrors.InternalServerError("Incomplete gRPC request message")
+	}
+
+	err := impl.client.SendCase(Case{
+		Origin:        req.Origin,
+		Subject:       req.Subject,
+		Description:   req.Description,
+		ContactEmail:  req.ContactEmail,
+		Organization:  req.Organization,
+		AccountId:     req.AccountId,
+		RateLimitName: req.RateLimitName,
+		RateLimitTier: req.RateLimitTier,
+		UseCase:       req.UseCase,
+	})
+	if err != nil {
+		impl.caseErrorCounter.Inc()
+		return nil, berrors.InternalServerError("Sending Case to the Salesforce REST API: %s", err)
+	}
 
 	return &emptypb.Empty{}, nil
 }

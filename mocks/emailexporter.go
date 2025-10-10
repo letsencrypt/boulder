@@ -26,9 +26,7 @@ type MockSalesforceClientImpl struct {
 // interface for mock interaction and the struct for state inspection and
 // modification.
 func NewMockSalesforceClientImpl() (email.SalesforceClient, *MockSalesforceClientImpl) {
-	mockImpl := &MockSalesforceClientImpl{
-		CreatedContacts: []string{},
-	}
+	mockImpl := &MockSalesforceClientImpl{}
 	return mockImpl, mockImpl
 }
 
@@ -94,4 +92,19 @@ func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *emailpb.
 		}
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// SendCase submits a Case using the inner email.SalesforceClient.
+func (m *MockExporterClientImpl) SendCase(ctx context.Context, req *emailpb.SendCaseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, m.SalesforceClient.SendCase(email.Case{
+		Origin:        req.Origin,
+		Subject:       req.Subject,
+		Description:   req.Description,
+		ContactEmail:  req.ContactEmail,
+		Organization:  req.Organization,
+		AccountId:     req.AccountId,
+		RateLimitName: req.RateLimitName,
+		RateLimitTier: req.RateLimitTier,
+		UseCase:       req.UseCase,
+	})
 }

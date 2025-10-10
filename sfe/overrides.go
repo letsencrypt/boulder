@@ -760,10 +760,25 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
-	if sfe.ee != nil && baseFields[fundraisingFieldName] == fundraisingYesOption {
+	if sfe.ee != nil && baseFields[mailingListFieldName] == "true" {
 		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{baseFields[emailAddressFieldName]}})
 		if err != nil {
-			sfe.log.Errf("failed to send contact to email service: %s", err)
+			sfe.log.Errf("failed to send contact to email-exporter: %s", err)
+		}
+	}
+
+	if sfe.ee != nil && baseFields[fundraisingFieldName] == fundraisingYesOption {
+		_, err := sfe.ee.SendCase(r.Context(), &emailpb.SendCaseRequest{
+			Origin:        "Web",
+			Subject:       fmt.Sprintf("%s rate limit override request for %s", req.RateLimit, baseFields[OrganizationFieldName]),
+			ContactEmail:  baseFields[emailAddressFieldName],
+			Organization:  baseFields[OrganizationFieldName],
+			RateLimitName: req.RateLimit,
+			RateLimitTier: baseFields[TierFieldName],
+			UseCase:       baseFields[useCaseFieldName],
+		})
+		if err != nil {
+			sfe.log.Errf("failed to send case to email-exporter: %s", err)
 		}
 	}
 
