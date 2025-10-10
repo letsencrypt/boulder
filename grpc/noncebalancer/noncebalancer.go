@@ -31,49 +31,44 @@ const (
 // balancer.
 //
 // In any case, when the WFE receives this error it will return a badNonce error
-// to the ACME client.
+// to the ACME client. Note that the WFE uses exact pointer comparison to
+// detect that the status it receives is this exact status object, so don't
+// wrap this with fmt.Errorf when returning it.
 var ErrNoBackendsMatchPrefix = status.New(codes.Unavailable, "no backends match the nonce prefix")
 var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
 var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
 var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
 var errInvalidHMACKeyCtxKeyType = errors.New("nonce.HMACKeyCtxKey value in RPC context must be a byte slice")
 
-// Balancer implements the base.PickerBuilder interface. It's used to create new
-// balancer.Picker instances. It should only be used by nonce-service clients.
-type Balancer struct{}
-
-// Compile-time assertion that *Balancer implements the base.PickerBuilder
-// interface.
-var _ base.PickerBuilder = (*Balancer)(nil)
+// pickerBuilder implements the base.PickerBuilder interface. It's used to
+// create new Picker instances. It should only be used by nonce-service clients.
+type pickerBuilder struct{}
 
 // Build implements the base.PickerBuilder interface. It is called by the gRPC
 // runtime when the balancer is first initialized and when the set of backend
 // (SubConn) addresses changes.
-func (b *Balancer) Build(buildInfo base.PickerBuildInfo) balancer.Picker {
+func (b *pickerBuilder) Build(buildInfo base.PickerBuildInfo) balancer.Picker {
 	if len(buildInfo.ReadySCs) == 0 {
 		// The Picker must be rebuilt if there are no backends available.
 		return base.NewErrPicker(balancer.ErrNoSubConnAvailable)
 	}
-	return &Picker{
+	return &picker{
 		backends: buildInfo.ReadySCs,
 	}
 }
 
-// Picker implements the balancer.Picker interface. It picks a backend (SubConn)
+// picker implements the balancer.Picker interface. It picks a backend (SubConn)
 // based on the nonce prefix contained in each request's Context.
-type Picker struct {
+type picker struct {
 	backends            map[balancer.SubConn]base.SubConnInfo
 	prefixToBackend     map[string]balancer.SubConn
 	prefixToBackendOnce sync.Once
 }
 
-// Compile-time assertion that *Picker implements the balancer.Picker interface.
-var _ balancer.Picker = (*Picker)(nil)
-
 // Pick implements the balancer.Picker interface. It is called by the gRPC
 // runtime for each RPC message. It is responsible for picking a backend
 // (SubConn) based on the context of each RPC message.
-func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	if len(p.backends) == 0 {
 		// This should never happen, the Picker should only be built when there
 		// are backends available.
@@ -124,6 +119,6 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 
 func init() {
 	balancer.Register(
-		base.NewBalancerBuilder(Name, &Balancer{}, base.Config{}),
+		base.NewBalancerBuilder(Name, &pickerBuilder{}, base.Config{}),
 	)
 }

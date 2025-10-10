@@ -14,7 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -26,9 +28,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
-
-	"github.com/go-jose/go-jose/v4"
-	"google.golang.org/grpc"
 )
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
@@ -204,8 +203,9 @@ func (rs requestSigner) missingNonce() *jose.JSONWebSignature {
 	return jws
 }
 
-// invalidNonce returns an otherwise well-signed request with an invalid nonce.
-func (rs requestSigner) invalidNonce() *jose.JSONWebSignature {
+// expiredNonce returns an otherwise well-signed request with a nonce that the
+// nonce service doesn't remember giving out (i.e. is expired).
+func (rs requestSigner) expiredNonce() *jose.JSONWebSignature {
 	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
@@ -710,23 +710,26 @@ func TestValidNonce(t *testing.T) {
 			Name:          "Malformed nonce in JWS",
 			JWS:           signer.malformedNonce(),
 			WantErrType:   berrors.BadNonce,
-			WantErrDetail: "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
+			WantErrDetail: "JWS has a malformed anti-replay nonce: \"im-a-nonce\"",
 			WantStatType:  "JWSMalformedNonce",
 		},
 		{
 			Name:          "Canned nonce shorter than prefixLength in JWS",
 			JWS:           signer.shortNonce(),
 			WantErrType:   berrors.BadNonce,
-			WantErrDetail: "JWS has an invalid anti-replay nonce: \"woww\"",
+			WantErrDetail: "JWS has a malformed anti-replay nonce: \"woww\"",
 			WantStatType:  "JWSMalformedNonce",
 		},
 		{
-			Name:          "Invalid nonce in JWS (test/config-next)",
-			JWS:           signer.invalidNonce(),
+			Name:          "Expired nonce in JWS",
+			JWS:           signer.expiredNonce(),
 			WantErrType:   berrors.BadNonce,
-			WantErrDetail: "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
-			WantStatType:  "JWSInvalidNonce",
+			WantErrDetail: "JWS has an expired anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
+			WantStatType:  "JWSExpiredNonce",
 		},
+		// We don't have a test case for "invalid" (i.e. no backend matching the
+		// prefix) because the unit tests don't use the noncebalancer that does
+		// that routing.
 		{
 			Name: "Valid nonce in JWS",
 			JWS:  goodJWS,
@@ -1349,12 +1352,12 @@ func TestValidJWSForKey(t *testing.T) {
 			WantStatType:  "JWSAlgorithmCheckFailed",
 		},
 		{
-			Name:          "JWS with an invalid nonce (test/config-next)",
-			JWS:           bJSONWebSignature{signer.invalidNonce()},
+			Name:          "JWS with an expired nonce",
+			JWS:           bJSONWebSignature{signer.expiredNonce()},
 			JWK:           goodJWK,
 			WantErrType:   berrors.BadNonce,
-			WantErrDetail: "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
-			WantStatType:  "JWSInvalidNonce",
+			WantErrDetail: "JWS has an expired anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
+			WantStatType:  "JWSExpiredNonce",
 		},
 		{
 			Name:          "JWS with broken signature",

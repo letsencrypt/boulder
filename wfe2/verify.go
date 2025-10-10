@@ -182,27 +182,26 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) error {
 	return nil
 }
 
-// nonceWellFormed checks a JWS' Nonce header to ensure it is well-formed,
-// otherwise a bad nonce error is returned. This avoids unnecessary RPCs to
-// the nonce redemption service.
-func nonceWellFormed(nonceHeader string, prefixLen int) error {
-	errBadNonce := berrors.BadNonceError("JWS has an invalid anti-replay nonce: %q", nonceHeader)
+// nonceWellFormed checks whether a JWS' Nonce header is well-formed, returning
+// false if it is not. This avoids unnecessary RPCs to the nonce redemption
+// service.
+func nonceWellFormed(nonceHeader string, prefixLen int) bool {
 	if len(nonceHeader) <= prefixLen {
 		// Nonce header was an unexpected length because there is either:
 		// 1) no nonce, or
 		// 2) no nonce material after the prefix.
-		return errBadNonce
+		return false
 	}
 	body, err := base64.RawURLEncoding.DecodeString(nonceHeader[prefixLen:])
 	if err != nil {
 		// Nonce was not valid base64url.
-		return errBadNonce
+		return false
 	}
 	if len(body) != nonce.NonceLen {
 		// Nonce was an unexpected length.
-		return errBadNonce
+		return false
 	}
-	return nil
+	return true
 }
 
 // validNonce checks a JWS' Nonce header to ensure it is one that the
@@ -215,10 +214,9 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		return berrors.BadNonceError("JWS has no anti-replay nonce")
 	}
 
-	err := nonceWellFormed(header.Nonce, nonce.PrefixLen)
-	if err != nil {
+	if !nonceWellFormed(header.Nonce, nonce.PrefixLen) {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
-		return err
+		return berrors.BadNonceError("JWS has a malformed anti-replay nonce: %q", header.Nonce)
 	}
 
 	// Populate the context with the nonce prefix and HMAC key. These are
@@ -230,22 +228,25 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 	resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
 	if err != nil {
 		rpcStatus, ok := status.FromError(err)
-		if !ok || rpcStatus != nb.ErrNoBackendsMatchPrefix {
-			return fmt.Errorf("failed to redeem nonce: %w", err)
+		if ok && rpcStatus == nb.ErrNoBackendsMatchPrefix {
+			// Getting our sentinel ErrNoBackendsMatchPrefix status.Status means that
+			// the nonce backend which issued this nonce is presently unreachable or
+			// unrecognized by this WFE. As this is a transient failure, the client
+			// should retry their request with a fresh nonce.
+			wfe.stats.nonceNoMatchingBackendCount.Inc()
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSNoBackendNonce"}).Inc()
+			return berrors.BadNonceError("JWS has an invalid anti-replay nonce: %q", header.Nonce)
 		}
 
-		// ErrNoBackendsMatchPrefix suggests that the nonce backend, which
-		// issued this nonce, is presently unreachable or unrecognized by
-		// this WFE. As this is a transient failure, the client should retry
-		// their request with a fresh nonce.
-		resp = &noncepb.ValidMessage{Valid: false}
-		wfe.stats.nonceNoMatchingBackendCount.Inc()
+		// We don't recognize this error, so just pass it upwards.
+		return fmt.Errorf("failed to redeem nonce: %w", err)
 	}
 
 	if !resp.Valid {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
-		return berrors.BadNonceError("JWS has an invalid anti-replay nonce: %q", header.Nonce)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSExpiredNonce"}).Inc()
+		return berrors.BadNonceError("JWS has an expired anti-replay nonce: %q", header.Nonce)
 	}
+
 	return nil
 }
 

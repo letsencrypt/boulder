@@ -95,7 +95,7 @@ func TestPickerNoSubConnsAvailable(t *testing.T) {
 	test.AssertNil(t, gotPick.SubConn, "subConn should be nil")
 }
 
-func setupTest(noSubConns bool) (*Balancer, balancer.Picker, []*subConn) {
+func setupTest(noSubConns bool) (*pickerBuilder, balancer.Picker, []*subConn) {
 	var subConns []*subConn
 	bi := base.PickerBuildInfo{
 		ReadySCs: make(map[balancer.SubConn]base.SubConnInfo),
@@ -110,7 +110,7 @@ func setupTest(noSubConns bool) (*Balancer, balancer.Picker, []*subConn) {
 		subConns = append(subConns, sc)
 	}
 
-	b := &Balancer{}
+	b := &pickerBuilder{}
 	p := b.Build(bi)
 	return b, p, subConns
 }
