@@ -39,7 +39,7 @@ type ExporterImpl struct {
 
 	maxConcurrentRequests int
 	limiter               *rate.Limiter
-	client                PardotClient
+	client                SalesforceClient
 	emailCache            *EmailCache
 	emailsHandledCounter  prometheus.Counter
 	pardotErrorCounter    prometheus.Counter
@@ -55,7 +55,7 @@ var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 // is assigned 40% (20,000 requests), it should also receive 40% of the max
 // concurrent requests (e.g., 2 out of 5). For more details, see:
 // https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-func NewExporterImpl(client PardotClient, cache *EmailCache, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
 	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
 
 	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{

@@ -18,31 +18,36 @@ import (
 
 var ctx = context.Background()
 
-// mockPardotClientImpl is a mock implementation of PardotClient.
-type mockPardotClientImpl struct {
+var _ SalesforceClient = (*mockSalesforceClientImpl)(nil)
+
+// mockSalesforceClientImpl is a mock implementation of PardotClient.
+type mockSalesforceClientImpl struct {
+	SalesforceClient
+
 	sync.Mutex
 	CreatedContacts []string
+	CreatedCases    []Case
 }
 
-// newMockPardotClientImpl returns a MockPardotClientImpl, implementing the
+// newMockSalesforceClientImpl returns a mockSalesforceClientImpl, implementing the
 // PardotClient interface. Both refer to the same instance, with the interface
 // for mock interaction and the struct for state inspection and modification.
-func newMockPardotClientImpl() (PardotClient, *mockPardotClientImpl) {
-	mockImpl := &mockPardotClientImpl{
+func newMockSalesforceClientImpl() (SalesforceClient, *mockSalesforceClientImpl) {
+	mockImpl := &mockSalesforceClientImpl{
 		CreatedContacts: []string{},
 	}
 	return mockImpl, mockImpl
 }
 
 // SendContact adds an email to CreatedContacts.
-func (m *mockPardotClientImpl) SendContact(email string) error {
+func (m *mockSalesforceClientImpl) SendContact(email string) error {
 	m.Lock()
+	defer m.Unlock()
 	m.CreatedContacts = append(m.CreatedContacts, email)
-	m.Unlock()
 	return nil
 }
 
-func (m *mockPardotClientImpl) getCreatedContacts() []string {
+func (m *mockSalesforceClientImpl) getCreatedContacts() []string {
 	m.Lock()
 	defer m.Unlock()
 
@@ -50,12 +55,12 @@ func (m *mockPardotClientImpl) getCreatedContacts() []string {
 	return slices.Clone(m.CreatedContacts)
 }
 
-// setup creates a new ExporterImpl, a MockPardotClientImpl, and the start and
+// setup creates a new ExporterImpl, a mockSalesForceClientImpl, and the start and
 // cleanup functions for the ExporterImpl. Call start() to begin processing the
 // ExporterImpl queue and cleanup() to drain and shutdown. If start() is called,
 // cleanup() must be called.
-func setup() (*ExporterImpl, *mockPardotClientImpl, func(), func()) {
-	mockClient, clientImpl := newMockPardotClientImpl()
+func setup() (*ExporterImpl, *mockSalesforceClientImpl, func(), func()) {
+	mockClient, clientImpl := newMockSalesforceClientImpl()
 	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	return exporter, clientImpl,
@@ -135,7 +140,9 @@ func TestSendContactsQueueDrains(t *testing.T) {
 	test.AssertEquals(t, 100, len(clientImpl.getCreatedContacts()))
 }
 
-type mockAlwaysFailClient struct{}
+type mockAlwaysFailClient struct {
+	mockSalesforceClientImpl
+}
 
 func (m *mockAlwaysFailClient) SendContact(email string) error {
 	return fmt.Errorf("simulated failure")
@@ -167,7 +174,7 @@ func TestSendContactDeduplication(t *testing.T) {
 	t.Parallel()
 
 	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
-	mockClient, clientImpl := newMockPardotClientImpl()
+	mockClient, clientImpl := newMockSalesforceClientImpl()
 	exporter := NewExporterImpl(mockClient, cache, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
 	daemonCtx, cancel := context.WithCancel(context.Background())
