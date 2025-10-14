@@ -59,8 +59,14 @@ type issuanceEvent struct {
 	Issuer          string
 	IssuanceRequest *issuance.IssuanceRequest
 	CSR             string `json:",omitempty"`
-	Precertificate  string `json:",omitempty"`
-	Certificate     string `json:",omitempty"`
+	Result          issuanceEventResult
+}
+
+// issuanceEventResult exists just to lend some extra structure to the
+// issuanceEvent struct above.
+type issuanceEventResult struct {
+	Precertificate string `json:",omitempty"`
+	Certificate    string `json:",omitempty"`
 }
 
 // Two maps of keys to Issuers. Lookup by PublicKeyAlgorithm is useful for
@@ -390,7 +396,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		Profile:         req.CertProfileName,
 		Issuer:          issuer.Name(),
 		IssuanceRequest: precertReq,
-		Precertificate:  hex.EncodeToString(precertDER),
+		Result:          issuanceEventResult{Precertificate: hex.EncodeToString(precertDER)},
 	})
 
 	err = tbsCertIsDeterministic(lintPrecertDER, precertDER)
@@ -468,7 +474,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		Profile:         req.CertProfileName,
 		Issuer:          issuer.Name(),
 		IssuanceRequest: certReq,
-		Certificate:     hex.EncodeToString(certDER),
+		Result:          issuanceEventResult{Certificate: hex.EncodeToString(certDER)},
 	})
 
 	err = tbsCertIsDeterministic(lintCertDER, certDER)
