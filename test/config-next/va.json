@@ -64,7 +64,20 @@
 			"http://boulder.service.consul:4000/acme/reg/"
 		],
 		"features": {
-			"DNSAccount01Enabled": true
+			"DNSAccount01Enabled": true,
+			"ConfigurableDNSRetry": true
+		},
+		"dnsRetryableErrors": {
+			"timeout": true,
+			"interrupted": true,
+			"wouldBlock": true,
+			"tooManyFiles": true,
+			"eof": true,
+			"connReset": true,
+			"connRefused": true,
+			"tlsHandshake": true,
+			"http429": true,
+			"http5xx": true
 		}
 	},
 	"syslog": {

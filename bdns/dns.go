@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -62,6 +64,9 @@ var _ Client = &impl{}
 // retryPolicy determines which DoH transport errors are retryable.
 type retryPolicy struct {
 	timeout      bool
+	interrupted  bool
+	wouldBlock   bool
+	tooManyFiles bool
 	eof          bool
 	connReset    bool
 	connRefused  bool
@@ -72,11 +77,16 @@ type retryPolicy struct {
 }
 
 // newRetryPolicy creates a retryPolicy from configuration.
-// If cfg is nil, returns default policy (timeout enabled).
+// If cfg is nil, returns default policy that replicates the behavior of the
+// deprecated url.Error.Temporary() method: timeout, interrupted, wouldBlock,
+// and tooManyFiles are enabled by default.
 func newRetryPolicy(cfg *vacfg.RetryableErrors, log blog.Logger) retryPolicy {
 	p := retryPolicy{
-		timeout: true,
-		log:     log,
+		timeout:      true,
+		interrupted:  true,
+		wouldBlock:   true,
+		tooManyFiles: true,
+		log:          log,
 	}
 
 	if cfg == nil {
@@ -85,6 +95,15 @@ func newRetryPolicy(cfg *vacfg.RetryableErrors, log blog.Logger) retryPolicy {
 
 	if cfg.Timeout != nil {
 		p.timeout = *cfg.Timeout
+	}
+	if cfg.Interrupted != nil {
+		p.interrupted = *cfg.Interrupted
+	}
+	if cfg.WouldBlock != nil {
+		p.wouldBlock = *cfg.WouldBlock
+	}
+	if cfg.TooManyFiles != nil {
+		p.tooManyFiles = *cfg.TooManyFiles
 	}
 	if cfg.EOF != nil {
 		p.eof = *cfg.EOF
@@ -109,6 +128,8 @@ func newRetryPolicy(cfg *vacfg.RetryableErrors, log blog.Logger) retryPolicy {
 }
 
 // IsRetryable returns true if the error should be retried based on policy configuration.
+// HTTP status codes are only evaluated when resp is non-nil. Transport-layer errors
+// (connection failures, TLS errors) will have nil responses.
 func (p retryPolicy) IsRetryable(err error, resp *http.Response) bool {
 	if err == nil {
 		return false
@@ -120,6 +141,18 @@ func (p retryPolicy) IsRetryable(err error, resp *http.Response) bool {
 
 	var ne net.Error
 	if p.timeout && errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+
+	if p.interrupted && errors.Is(err, syscall.EINTR) {
+		return true
+	}
+
+	if p.wouldBlock && (errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EWOULDBLOCK)) {
+		return true
+	}
+
+	if p.tooManyFiles && (errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE)) {
 		return true
 	}
 
@@ -378,7 +411,17 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		case r := <-ch:
 			if r.err != nil {
-				isRetryable := dnsClient.retryPolicy.IsRetryable(r.err, r.httpResp)
+				var isRetryable bool
+
+				if features.Get().ConfigurableDNSRetry {
+					// New behavior: use configurable retry policy
+					isRetryable = dnsClient.retryPolicy.IsRetryable(r.err, r.httpResp)
+				} else {
+					// Old behavior: use deprecated Temporary() method
+					var urlErr *url.Error
+					isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
+				}
+
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++

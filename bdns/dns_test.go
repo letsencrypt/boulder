@@ -25,6 +25,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -857,6 +858,74 @@ func TestRotateServerOnErr(t *testing.T) {
 
 }
 
+// TestRotateServerOnErrWithNewPolicy tests server rotation with the ConfigurableDNSRetry
+// feature flag enabled, using the new configurable retry policy instead of Temporary().
+func TestRotateServerOnErrWithNewPolicy(t *testing.T) {
+	// Enable the feature flag
+	features.Set(features.Config{ConfigurableDNSRetry: true})
+	defer features.Reset()
+
+	// Configure three DNS servers
+	dnsServers := []string{
+		"a:53", "b:53", "[2606:4700:4700::1111]:53",
+	}
+
+	staticProvider, err := NewStaticProvider(dnsServers)
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	maxTries := 5
+	client := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, "", blog.UseMock(), tlsConfig, nil)
+
+	// Configure a mock exchanger that will return EINTR (a retryable error with
+	// the new policy) for servers A and B.
+	mock := &configurableRetryExchanger{
+		brokenAddresses: map[string]bool{
+			"a:53": true,
+			"b:53": true,
+		},
+		lookups: make(map[string]int),
+	}
+	client.(*impl).dnsClient = mock
+
+	// Perform a bunch of lookups. With the new policy, EINTR should be retried.
+	for range maxTries * 2 {
+		_, resolvers, err := client.LookupTXT(context.Background(), "example.com")
+		test.AssertEquals(t, len(resolvers), 1)
+		test.AssertEquals(t, resolvers[0], "[2606:4700:4700::1111]:53")
+		test.AssertNotError(t, err, "Expected no error from eventual retry with functional server")
+	}
+
+	// Verify that broken servers were attempted
+	test.Assert(t, mock.lookups["a:53"] > 0, "Expected A server to have non-zero lookup attempts")
+	test.Assert(t, mock.lookups["b:53"] > 0, "Expected B server to have non-zero lookup attempts")
+
+	// Verify that the working server served all requests
+	test.AssertEquals(t, mock.lookups["[2606:4700:4700::1111]:53"], maxTries*2)
+}
+
+// configurableRetryExchanger is like rotateFailureExchanger but returns EINTR
+// (retryable with new policy) instead of a Temporary() error.
+type configurableRetryExchanger struct {
+	sync.Mutex
+	lookups         map[string]int
+	brokenAddresses map[string]bool
+}
+
+func (e *configurableRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, *http.Response, time.Duration, error) {
+	e.Lock()
+	defer e.Unlock()
+
+	e.lookups[a]++
+
+	if e.brokenAddresses[a] {
+		// Return EINTR wrapped in url.Error - retryable with new policy
+		eintrErr := &url.Error{Op: "read", Err: syscall.EINTR}
+		return nil, nil, 2 * time.Millisecond, eintrErr
+	}
+
+	return m, nil, 2 * time.Millisecond, nil
+}
+
 type mockTempURLError struct{}
 
 func (m *mockTempURLError) Error() string   { return "whoops, oh gosh" }
@@ -996,6 +1065,62 @@ func TestRetryPolicyIsRetryable(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "EINTR with default config",
+			cfg:      nil,
+			err:      syscall.EINTR,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "EINTR when Interrupted disabled",
+			cfg:      &vacfg.RetryableErrors{Interrupted: &falseVal},
+			err:      syscall.EINTR,
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "EAGAIN with default config",
+			cfg:      nil,
+			err:      syscall.EAGAIN,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "EAGAIN when WouldBlock disabled but timeout enabled",
+			cfg:      &vacfg.RetryableErrors{WouldBlock: &falseVal, Timeout: &trueVal},
+			err:      syscall.EAGAIN,
+			resp:     nil,
+			expected: true, // EAGAIN also matches timeout via net.Error.Timeout()
+		},
+		{
+			name:     "EWOULDBLOCK when WouldBlock enabled",
+			cfg:      &vacfg.RetryableErrors{WouldBlock: &trueVal},
+			err:      syscall.EWOULDBLOCK,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "EMFILE with default config",
+			cfg:      nil,
+			err:      syscall.EMFILE,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "EMFILE when TooManyFiles disabled",
+			cfg:      &vacfg.RetryableErrors{TooManyFiles: &falseVal},
+			err:      syscall.EMFILE,
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "ENFILE when TooManyFiles enabled",
+			cfg:      &vacfg.RetryableErrors{TooManyFiles: &trueVal},
+			err:      syscall.ENFILE,
+			resp:     nil,
+			expected: true,
+		},
+		{
 			name:     "TLS RecordHeaderError with default config",
 			cfg:      nil,
 			err:      tls.RecordHeaderError{Msg: "bad record"},
@@ -1083,6 +1208,43 @@ func TestRetryPolicyIsRetryable(t *testing.T) {
 			resp:     nil,
 			expected: true,
 		},
+		// Wrapped error tests
+		{
+			name:     "wrapped context.DeadlineExceeded with default config",
+			cfg:      nil,
+			err:      fmt.Errorf("connection failed: %w", context.DeadlineExceeded),
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "wrapped syscall.EINTR with default config",
+			cfg:      nil,
+			err:      fmt.Errorf("read error: %w", syscall.EINTR),
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "wrapped ECONNRESET when ConnReset enabled",
+			cfg:      &vacfg.RetryableErrors{ConnReset: &trueVal},
+			err:      fmt.Errorf("network error: %w", syscall.ECONNRESET),
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "wrapped EOF when EOF disabled",
+			cfg:      nil,
+			err:      fmt.Errorf("unexpected end: %w", io.EOF),
+			resp:     nil,
+			expected: false,
+		},
+		// HTTP 499 boundary test
+		{
+			name:     "HTTP 499 when HTTP5xx enabled",
+			cfg:      &vacfg.RetryableErrors{HTTP5xx: &trueVal},
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 499},
+			expected: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -1101,3 +1263,120 @@ type mockTimeoutError struct{}
 func (m *mockTimeoutError) Error() string   { return "timeout" }
 func (m *mockTimeoutError) Timeout() bool   { return true }
 func (m *mockTimeoutError) Temporary() bool { return false }
+
+// tempErrType is a test error type that implements Temporary() = true
+type tempErrType struct{}
+
+func (tempErrType) Error() string   { return "temporary error" }
+func (tempErrType) Temporary() bool { return true }
+
+// TestFeatureFlagRetryBehavior tests that the ConfigurableDNSRetry feature flag
+// correctly switches between old (Temporary()) and new (configurable) retry behavior.
+func TestFeatureFlagRetryBehavior(t *testing.T) {
+	mockLog := blog.UseMock()
+
+	// Create an error that Temporary() would NOT retry, but our new policy WOULD retry
+	// if ConnReset is enabled in the config. Per SPEC line 120, Temporary() returns
+	// true for EINTR, EMFILE, ENFILE, and timeout errors, but NOT for ECONNRESET.
+	connResetErr := &url.Error{Op: "read", URL: "https://example.com", Err: syscall.ECONNRESET}
+
+	// Create an error that Temporary() WOULD retry (implements Temporary() = true)
+	tmpErr := &url.Error{Op: "read", URL: "https://example.com", Err: tempErrType{}}
+
+	// ECONNRESET should NOT be retried by default (disabled)
+	defaultCfg := &vacfg.RetryableErrors{}
+
+	// ECONNRESET explicitly enabled
+	connResetEnabledCfg := &vacfg.RetryableErrors{}
+	trueVal := true
+	connResetEnabledCfg.ConnReset = &trueVal
+
+	tests := []struct {
+		name             string
+		featureFlagValue bool
+		cfg              *vacfg.RetryableErrors
+		err              error
+		expectedRetry    bool
+		description      string
+	}{
+		{
+			name:             "flag disabled, Temporary() = false, no retry",
+			featureFlagValue: false,
+			cfg:              nil,
+			err:              connResetErr,
+			expectedRetry:    false,
+			description:      "When flag is off, ECONNRESET is not retried (Temporary() returns false)",
+		},
+		{
+			name:             "flag enabled, default config, ECONNRESET not retried",
+			featureFlagValue: true,
+			cfg:              defaultCfg,
+			err:              connResetErr,
+			expectedRetry:    false,
+			description:      "When flag is on with default config, ECONNRESET is not retried (disabled by default)",
+		},
+		{
+			name:             "flag enabled, ConnReset enabled, retry happens",
+			featureFlagValue: true,
+			cfg:              connResetEnabledCfg,
+			err:              connResetErr,
+			expectedRetry:    true,
+			description:      "When flag is on and ConnReset enabled in config, ECONNRESET is retried",
+		},
+		{
+			name:             "flag disabled, tempError retried via Temporary()",
+			featureFlagValue: false,
+			cfg:              nil,
+			err:              tmpErr,
+			expectedRetry:    true,
+			description:      "When flag is off, errors with Temporary() = true are retried",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set feature flag
+			features.Set(features.Config{
+				ConfigurableDNSRetry: tc.featureFlagValue,
+			})
+			defer features.Reset()
+
+			// Create test client using pattern from TestRetry
+			staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+			test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+			testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", mockLog, nil, tc.cfg)
+			dr := testClient.(*impl)
+
+			// Create mock exchanger
+			mockExchanger := &testExchanger{
+				errs: []error{tc.err, nil}, // First call fails, second succeeds
+			}
+			dr.dnsClient = mockExchanger
+
+			// Attempt DNS lookup
+			_, _, err = dr.LookupTXT(context.Background(), "example.com")
+
+			// Check if retry happened by examining call count
+			callCount := mockExchanger.count
+
+			if tc.expectedRetry {
+				// Should have retried, so 2 calls (first failed, second succeeded)
+				if callCount != 2 {
+					t.Errorf("%s: expected 2 calls (with retry), got %d", tc.description, callCount)
+				}
+				if err != nil {
+					t.Errorf("%s: expected success after retry, got error: %v", tc.description, err)
+				}
+			} else {
+				// Should not have retried, so 1 call only
+				if callCount != 1 {
+					t.Errorf("%s: expected 1 call (no retry), got %d", tc.description, callCount)
+				}
+				if err == nil {
+					t.Errorf("%s: expected error (no retry), got success", tc.description)
+				}
+			}
+		})
+	}
+}

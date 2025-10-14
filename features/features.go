@@ -86,6 +86,13 @@ type Config struct {
 	// during certificate issuance. This flag must be set to true in the
 	// RA, VA, and WFE2 services for full functionality.
 	DNSAccount01Enabled bool
+
+	// ConfigurableDNSRetry enables the new configurable retry policy for DoH
+	// transport errors. When false (default), uses the deprecated
+	// url.Error.Temporary() method. When true, uses DNSRetryableErrors
+	// configuration from VA/RVA config. This allows gradual rollout and
+	// operator tuning of retry behavior for DNS validation.
+	ConfigurableDNSRetry bool
 }
 
 var fMu = new(sync.RWMutex)

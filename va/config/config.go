@@ -11,8 +11,16 @@ import (
 // Each field is a boolean switch; if true, that error category is retryable.
 type RetryableErrors struct {
 	// Timeout enables retry for context deadline exceeded and net.Error.Timeout().
-	// This covers most transient network errors including ETIMEDOUT, EAGAIN, etc.
+	// This covers ETIMEDOUT and similar timeout-related errors.
 	Timeout *bool
+	// Interrupted enables retry for syscall.EINTR (interrupted system call).
+	Interrupted *bool
+	// WouldBlock enables retry for syscall.EAGAIN and syscall.EWOULDBLOCK
+	// (resource temporarily unavailable).
+	WouldBlock *bool
+	// TooManyFiles enables retry for syscall.EMFILE and syscall.ENFILE
+	// (too many open files, file descriptor exhaustion).
+	TooManyFiles *bool
 	// EOF enables retry for io.EOF and io.ErrUnexpectedEOF.
 	EOF *bool
 	// ConnReset enables retry for syscall.ECONNRESET.
@@ -48,7 +56,7 @@ type Common struct {
 	DNSTimeout                config.Duration `validate:"required"`
 	DNSAllowLoopbackAddresses bool
 	// DNSRetryableErrors configures which DoH transport errors should be retried.
-	// If nil or unspecified, defaults are applied (timeout and temporary enabled).
+	// If nil or unspecified, defaults are applied matching Temporary() behavior.
 	DNSRetryableErrors *RetryableErrors
 
 	// AccountURIPrefixes is a list of prefixes used to construct account URIs.
