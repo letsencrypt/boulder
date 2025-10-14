@@ -102,6 +102,7 @@ func TestDNS01ValidationNoServer(t *testing.T) {
 		1,
 		"",
 		log,
+		nil,
 		nil)
 
 	_, err = va.validateDNS01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization)

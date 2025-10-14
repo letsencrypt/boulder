@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+	vacfg "github.com/letsencrypt/boulder/va/config"
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"
@@ -285,7 +287,7 @@ func TestDNSNoServers(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 
 	_, resolvers, err := obj.LookupHost(context.Background(), "letsencrypt.org")
 	test.AssertEquals(t, len(resolvers), 0)
@@ -302,7 +304,7 @@ func TestDNSOneServer(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 
 	_, resolvers, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	test.AssertEquals(t, len(resolvers), 2)
@@ -315,7 +317,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr, dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 
 	_, resolvers, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	test.AssertEquals(t, len(resolvers), 2)
@@ -328,7 +330,7 @@ func TestDNSServFail(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 	bad := "servfail.com"
 
 	_, _, err = obj.LookupTXT(context.Background(), bad)
@@ -346,7 +348,7 @@ func TestDNSLookupTXT(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 
 	a, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
@@ -364,7 +366,7 @@ func TestDNSLookupHost(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 
 	ip, resolvers, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -450,7 +452,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, _, err = obj.LookupHost(context.Background(), hostname)
@@ -466,7 +468,7 @@ func TestDNSLookupCAA(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig, nil)
 	removeIDExp := regexp.MustCompile(" id: [[:digit:]]+")
 
 	caas, resp, resolvers, err := obj.LookupCAA(context.Background(), "bracewel.net")
@@ -523,30 +525,36 @@ caa.example.com.	0	IN	CAA	1 issue "letsencrypt.org"
 
 type testExchanger struct {
 	sync.Mutex
-	count int
-	errs  []error
+	count     int
+	errs      []error
+	httpResps []*http.Response
 }
 
 var errTooManyRequests = errors.New("too many requests")
 
-func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, *http.Response, time.Duration, error) {
 	te.Lock()
 	defer te.Unlock()
 	msg := &dns.Msg{
 		MsgHdr: dns.MsgHdr{Rcode: dns.RcodeSuccess},
 	}
 	if len(te.errs) <= te.count {
-		return nil, 0, errTooManyRequests
+		return nil, nil, 0, errTooManyRequests
 	}
 	err := te.errs[te.count]
+	var httpResp *http.Response
+	if te.httpResps != nil && len(te.httpResps) > te.count {
+		httpResp = te.httpResps[te.count]
+	}
 	te.count++
 
-	return msg, 2 * time.Millisecond, err
+	return msg, httpResp, 2 * time.Millisecond, err
 }
 
 func TestRetry(t *testing.T) {
 	isTempErr := &url.Error{Op: "read", Err: tempError(true)}
 	nonTempErr := &url.Error{Op: "read", Err: tempError(false)}
+	timeoutError := errors.New("DNS problem: query timed out looking up TXT for example.com")
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
 	type testCase struct {
 		name              string
@@ -598,7 +606,7 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:          servFailError,
+			expected:          timeoutError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
@@ -651,11 +659,11 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected:          servFailError,
+			expected:          timeoutError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
-		// temporary then non-Temporary error causes two retries
+		// With configurable retries: temp error retried, non-temp error not retried
 		{
 			name:     "temp-nontemp-error",
 			maxTries: 3,
@@ -675,7 +683,7 @@ func TestRetry(t *testing.T) {
 			staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 			test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-			testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, "", blog.UseMock(), tlsConfig)
+			testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, "", blog.UseMock(), tlsConfig, nil)
 			dr := testClient.(*impl)
 			dr.dnsClient = tc.te
 			_, _, err = dr.LookupTXT(context.Background(), "example.com")
@@ -706,7 +714,7 @@ func TestRetry(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
+	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig, nil)
 	dr := testClient.(*impl)
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -762,6 +770,7 @@ func TestIsTLD(t *testing.T) {
 type tempError bool
 
 func (t tempError) Temporary() bool { return bool(t) }
+func (t tempError) Timeout() bool   { return bool(t) }
 func (t tempError) Error() string   { return fmt.Sprintf("Temporary: %t", t) }
 
 // rotateFailureExchanger is a dns.Exchange implementation that tracks a count
@@ -776,7 +785,7 @@ type rotateFailureExchanger struct {
 
 // Exchange for rotateFailureExchanger tracks the `a` argument in `lookups` and
 // if present in `brokenAddresses`, returns a temporary error.
-func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, *http.Response, time.Duration, error) {
 	e.Lock()
 	defer e.Unlock()
 
@@ -786,10 +795,10 @@ func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.
 	// If its a broken server, return a retryable error
 	if e.brokenAddresses[a] {
 		isTempErr := &url.Error{Op: "read", Err: tempError(true)}
-		return nil, 2 * time.Millisecond, isTempErr
+		return nil, nil, 2 * time.Millisecond, isTempErr
 	}
 
-	return m, 2 * time.Millisecond, nil
+	return m, nil, 2 * time.Millisecond, nil
 }
 
 // TestRotateServerOnErr ensures that a retryable error returned from a DNS
@@ -809,7 +818,7 @@ func TestRotateServerOnErr(t *testing.T) {
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
 	maxTries := 5
-	client := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, "", blog.UseMock(), tlsConfig)
+	client := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, "", blog.UseMock(), tlsConfig, nil)
 
 	// Configure a mock exchanger that will always return a retryable error for
 	// servers A and B. This will force server "[2606:4700:4700::1111]:53" to do
@@ -851,7 +860,7 @@ func TestRotateServerOnErr(t *testing.T) {
 type mockTempURLError struct{}
 
 func (m *mockTempURLError) Error() string   { return "whoops, oh gosh" }
-func (m *mockTempURLError) Timeout() bool   { return false }
+func (m *mockTempURLError) Timeout() bool   { return true }
 func (m *mockTempURLError) Temporary() bool { return true }
 
 type dohAlwaysRetryExchanger struct {
@@ -859,7 +868,7 @@ type dohAlwaysRetryExchanger struct {
 	err error
 }
 
-func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, *http.Response, time.Duration, error) {
 	dohE.Lock()
 	defer dohE.Unlock()
 
@@ -869,14 +878,14 @@ func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, t
 		Err: &mockTempURLError{},
 	}
 
-	return nil, time.Second, tempURLerror
+	return nil, nil, time.Second, tempURLerror
 }
 
 func TestDOHMetric(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	testClient := New(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, "", blog.UseMock(), tlsConfig)
+	testClient := New(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, "", blog.UseMock(), tlsConfig, nil)
 	resolver := testClient.(*impl)
 	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: tempError(true)}}
 
@@ -889,3 +898,206 @@ func TestDOHMetric(t *testing.T) {
 	// Now, we should count 1 "out of retries" errors.
 	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 1)
 }
+
+func TestRetryPolicyIsRetryable(t *testing.T) {
+	trueVal := true
+	falseVal := false
+	mockLog := blog.UseMock()
+
+	tests := []struct {
+		name     string
+		cfg      *vacfg.RetryableErrors
+		err      error
+		resp     *http.Response
+		expected bool
+	}{
+		{
+			name:     "nil error returns false",
+			cfg:      nil,
+			err:      nil,
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "context deadline exceeded with default config",
+			cfg:      nil,
+			err:      context.DeadlineExceeded,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "context deadline exceeded when timeout disabled",
+			cfg:      &vacfg.RetryableErrors{Timeout: &falseVal},
+			err:      context.DeadlineExceeded,
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "net.Error timeout with default config",
+			cfg:      nil,
+			err:      &url.Error{Op: "read", Err: &mockTimeoutError{}},
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "net.Error timeout when timeout disabled",
+			cfg:      &vacfg.RetryableErrors{Timeout: &falseVal},
+			err:      &url.Error{Op: "read", Err: &mockTimeoutError{}},
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "EOF with default config",
+			cfg:      nil,
+			err:      io.EOF,
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "EOF when EOF enabled",
+			cfg:      &vacfg.RetryableErrors{EOF: &trueVal},
+			err:      io.EOF,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "UnexpectedEOF when EOF enabled",
+			cfg:      &vacfg.RetryableErrors{EOF: &trueVal},
+			err:      io.ErrUnexpectedEOF,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "ECONNRESET with default config",
+			cfg:      nil,
+			err:      syscall.ECONNRESET,
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "ECONNRESET when ConnReset enabled",
+			cfg:      &vacfg.RetryableErrors{ConnReset: &trueVal},
+			err:      syscall.ECONNRESET,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "ECONNREFUSED with default config",
+			cfg:      nil,
+			err:      syscall.ECONNREFUSED,
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "ECONNREFUSED when ConnRefused enabled",
+			cfg:      &vacfg.RetryableErrors{ConnRefused: &trueVal},
+			err:      syscall.ECONNREFUSED,
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "TLS RecordHeaderError with default config",
+			cfg:      nil,
+			err:      tls.RecordHeaderError{Msg: "bad record"},
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name:     "TLS RecordHeaderError when TLSHandshake enabled",
+			cfg:      &vacfg.RetryableErrors{TLSHandshake: &trueVal},
+			err:      tls.RecordHeaderError{Msg: "bad record"},
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "x509 UnknownAuthorityError when TLSHandshake enabled",
+			cfg:      &vacfg.RetryableErrors{TLSHandshake: &trueVal},
+			err:      x509.UnknownAuthorityError{},
+			resp:     nil,
+			expected: true,
+		},
+		{
+			name:     "HTTP 429 with default config",
+			cfg:      nil,
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 429},
+			expected: false,
+		},
+		{
+			name:     "HTTP 429 when HTTP429 enabled",
+			cfg:      &vacfg.RetryableErrors{HTTP429: &trueVal},
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 429},
+			expected: true,
+		},
+		{
+			name:     "HTTP 500 with default config",
+			cfg:      nil,
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 500},
+			expected: false,
+		},
+		{
+			name:     "HTTP 500 when HTTP5xx enabled",
+			cfg:      &vacfg.RetryableErrors{HTTP5xx: &trueVal},
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 500},
+			expected: true,
+		},
+		{
+			name:     "HTTP 503 when HTTP5xx enabled",
+			cfg:      &vacfg.RetryableErrors{HTTP5xx: &trueVal},
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 503},
+			expected: true,
+		},
+		{
+			name:     "HTTP 599 when HTTP5xx enabled",
+			cfg:      &vacfg.RetryableErrors{HTTP5xx: &trueVal},
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 599},
+			expected: true,
+		},
+		{
+			name:     "HTTP 600 when HTTP5xx enabled",
+			cfg:      &vacfg.RetryableErrors{HTTP5xx: &trueVal},
+			err:      errors.New("some error"),
+			resp:     &http.Response{StatusCode: 600},
+			expected: false,
+		},
+		{
+			name:     "non-retryable error with default config",
+			cfg:      nil,
+			err:      errors.New("random error"),
+			resp:     nil,
+			expected: false,
+		},
+		{
+			name: "multiple categories enabled",
+			cfg: &vacfg.RetryableErrors{
+				Timeout:   &trueVal,
+				EOF:       &trueVal,
+				ConnReset: &trueVal,
+			},
+			err:      io.EOF,
+			resp:     nil,
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := newRetryPolicy(tc.cfg, mockLog)
+			result := policy.IsRetryable(tc.err, tc.resp)
+			if result != tc.expected {
+				t.Errorf("expected %v, got %v for error %v and resp %v", tc.expected, result, tc.err, tc.resp)
+			}
+		})
+	}
+}
+
+type mockTimeoutError struct{}
+
+func (m *mockTimeoutError) Error() string   { return "timeout" }
+func (m *mockTimeoutError) Timeout() bool   { return true }
+func (m *mockTimeoutError) Temporary() bool { return false }

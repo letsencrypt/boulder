@@ -116,7 +116,8 @@ func main() {
 			c.RVA.DNSTries,
 			c.RVA.UserAgent,
 			logger,
-			tlsConfig)
+			tlsConfig,
+			c.RVA.DNSRetryableErrors)
 	} else {
 		resolver = bdns.NewTest(
 			c.RVA.DNSTimeout.Duration,

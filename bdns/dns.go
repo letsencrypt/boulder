@@ -3,6 +3,7 @@ package bdns
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -10,11 +11,11 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -24,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	vacfg "github.com/letsencrypt/boulder/va/config"
 )
 
 // ResolverAddrs contains DNS resolver(s) that were chosen to perform a
@@ -47,6 +49,7 @@ type impl struct {
 	maxTries                 int
 	clk                      clock.Clock
 	log                      blog.Logger
+	retryPolicy              retryPolicy
 
 	queryTime         *prometheus.HistogramVec
 	totalLookupTime   *prometheus.HistogramVec
@@ -56,8 +59,107 @@ type impl struct {
 
 var _ Client = &impl{}
 
+// retryPolicy determines which DoH transport errors are retryable.
+type retryPolicy struct {
+	timeout      bool
+	eof          bool
+	connReset    bool
+	connRefused  bool
+	tlsHandshake bool
+	http429      bool
+	http5xx      bool
+	log          blog.Logger
+}
+
+// newRetryPolicy creates a retryPolicy from configuration.
+// If cfg is nil, returns default policy (timeout enabled).
+func newRetryPolicy(cfg *vacfg.RetryableErrors, log blog.Logger) retryPolicy {
+	p := retryPolicy{
+		timeout: true,
+		log:     log,
+	}
+
+	if cfg == nil {
+		return p
+	}
+
+	if cfg.Timeout != nil {
+		p.timeout = *cfg.Timeout
+	}
+	if cfg.EOF != nil {
+		p.eof = *cfg.EOF
+	}
+	if cfg.ConnReset != nil {
+		p.connReset = *cfg.ConnReset
+	}
+	if cfg.ConnRefused != nil {
+		p.connRefused = *cfg.ConnRefused
+	}
+	if cfg.TLSHandshake != nil {
+		p.tlsHandshake = *cfg.TLSHandshake
+	}
+	if cfg.HTTP429 != nil {
+		p.http429 = *cfg.HTTP429
+	}
+	if cfg.HTTP5xx != nil {
+		p.http5xx = *cfg.HTTP5xx
+	}
+
+	return p
+}
+
+// IsRetryable returns true if the error should be retried based on policy configuration.
+func (p retryPolicy) IsRetryable(err error, resp *http.Response) bool {
+	if err == nil {
+		return false
+	}
+
+	if p.timeout && errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var ne net.Error
+	if p.timeout && errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+
+	if p.eof && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+		return true
+	}
+
+	if p.connReset && errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+
+	if p.connRefused && errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+
+	if p.tlsHandshake {
+		var recordHeaderErr tls.RecordHeaderError
+		if errors.As(err, &recordHeaderErr) {
+			return true
+		}
+		var unknownAuthorityErr x509.UnknownAuthorityError
+		if errors.As(err, &unknownAuthorityErr) {
+			return true
+		}
+	}
+
+	if resp != nil {
+		if p.http429 && resp.StatusCode == 429 {
+			return true
+		}
+		if p.http5xx && resp.StatusCode >= 500 && resp.StatusCode <= 599 {
+			return true
+		}
+	}
+
+	return false
+}
+
 type exchanger interface {
-	Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
+	Exchange(m *dns.Msg, a string) (*dns.Msg, *http.Response, time.Duration, error)
 }
 
 // New constructs a new DNS resolver object that utilizes the
@@ -65,6 +167,8 @@ type exchanger interface {
 //
 // `tlsConfig` is the configuration used for outbound DoH queries,
 // if applicable.
+// `retryableErrors` configures which DoH transport errors should be retried.
+// If nil, defaults are applied (timeout and temporary enabled).
 func New(
 	readTimeout time.Duration,
 	servers ServerProvider,
@@ -74,6 +178,7 @@ func New(
 	userAgent string,
 	log blog.Logger,
 	tlsConfig *tls.Config,
+	retryableErrors *vacfg.RetryableErrors,
 ) Client {
 	var client exchanger
 
@@ -137,6 +242,7 @@ func New(
 		timeoutCounter:           timeoutCounter,
 		idMismatchCounter:        idMismatchCounter,
 		log:                      log,
+		retryPolicy:              newRetryPolicy(retryableErrors, log),
 	}
 }
 
@@ -153,7 +259,7 @@ func NewTest(
 	log blog.Logger,
 	tlsConfig *tls.Config,
 ) Client {
-	resolver := New(readTimeout, servers, stats, clk, maxTries, userAgent, log, tlsConfig)
+	resolver := New(readTimeout, servers, stats, clk, maxTries, userAgent, log, tlsConfig, nil)
 	resolver.(*impl).allowRestrictedAddresses = true
 	return resolver
 }
@@ -224,7 +330,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 		}
 
 		go func() {
-			rsp, rtt, err := client.Exchange(m, chosenServer)
+			rsp, httpResp, rtt, err := client.Exchange(m, chosenServer)
 			result := "failed"
 			if rsp != nil {
 				result = dns.RcodeToString[rsp.Rcode]
@@ -243,7 +349,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 				"result":   result,
 				"resolver": chosenServerIP,
 			}).Observe(rtt.Seconds())
-			ch <- dnsResp{m: rsp, err: err}
+			ch <- dnsResp{m: rsp, httpResp: httpResp, err: err}
 		}()
 		select {
 		case <-ctx.Done():
@@ -272,18 +378,11 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		case r := <-ch:
 			if r.err != nil {
-				var isRetryable bool
-				// According to the http package documentation, retryable
-				// errors emitted by the http package are of type *url.Error.
-				var urlErr *url.Error
-				isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
+				isRetryable := dnsClient.retryPolicy.IsRetryable(r.err, r.httpResp)
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
-					// Chose a new server to retry the query with by incrementing the
-					// chosen server index modulo the number of servers. This ensures that
-					// if one dns server isn't available we retry with the next in the
-					// list.
+					// Rotate to next server on retry.
 					chosenServerIndex = (chosenServerIndex + 1) % len(servers)
 					chosenServer = servers[chosenServerIndex]
 					resolver = chosenServer
@@ -315,8 +414,9 @@ func isTLD(hostname string) string {
 }
 
 type dnsResp struct {
-	m   *dns.Msg
-	err error
+	m        *dns.Msg
+	httpResp *http.Response
+	err      error
 }
 
 // LookupTXT sends a DNS query to find all TXT records associated with
@@ -538,17 +638,17 @@ type dohExchanger struct {
 }
 
 // Exchange sends a DoH query to the provided DoH server and returns the response.
-func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
+func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, *http.Response, time.Duration, error) {
 	q, err := query.Pack()
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 
 	// The default Unbound URL template
 	url := fmt.Sprintf("https://%s/dns-query", server)
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(q)))
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/dns-message")
 	req.Header.Set("Accept", "application/dns-message")
@@ -559,24 +659,24 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 	start := d.clk.Now()
 	resp, err := d.hc.Do(req)
 	if err != nil {
-		return nil, d.clk.Since(start), err
+		return nil, nil, d.clk.Since(start), err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, d.clk.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
+		return nil, resp, d.clk.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
 	}
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
+		return nil, resp, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
 	}
 
 	response := new(dns.Msg)
 	err = response.Unpack(b)
 	if err != nil {
-		return nil, d.clk.Since(start), fmt.Errorf("doh: unpacking response: %w", err)
+		return nil, resp, d.clk.Since(start), fmt.Errorf("doh: unpacking response: %w", err)
 	}
 
-	return response, d.clk.Since(start), nil
+	return response, resp, d.clk.Since(start), nil
 }
