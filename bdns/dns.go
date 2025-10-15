@@ -3,7 +3,6 @@ package bdns
 import (
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -48,10 +47,9 @@ type impl struct {
 	clk                      clock.Clock
 	log                      blog.Logger
 
-	queryTime         *prometheus.HistogramVec
-	totalLookupTime   *prometheus.HistogramVec
-	timeoutCounter    *prometheus.CounterVec
-	idMismatchCounter *prometheus.CounterVec
+	queryTime       *prometheus.HistogramVec
+	totalLookupTime *prometheus.HistogramVec
+	timeoutCounter  *prometheus.CounterVec
 }
 
 var _ Client = &impl{}
@@ -118,14 +116,6 @@ func New(
 		},
 		[]string{"qtype", "type", "resolver", "isTLD"},
 	)
-	idMismatchCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "dns_id_mismatch",
-			Help: "Counter of DNS ErrId errors sliced by query type and resolver",
-		},
-		[]string{"qtype", "resolver"},
-	)
-	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 	return &impl{
 		dnsClient:                client,
 		servers:                  servers,
@@ -135,7 +125,6 @@ func New(
 		queryTime:                queryTime,
 		totalLookupTime:          totalLookupTime,
 		timeoutCounter:           timeoutCounter,
-		idMismatchCounter:        idMismatchCounter,
 		log:                      log,
 	}
 }
@@ -230,13 +219,12 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 				result = dns.RcodeToString[rsp.Rcode]
 			}
 			if err != nil {
-				logDNSError(dnsClient.log, chosenServer, hostname, m, rsp, err)
-				if err == dns.ErrId {
-					dnsClient.idMismatchCounter.With(prometheus.Labels{
-						"qtype":    qtypeStr,
-						"resolver": chosenServerIP,
-					}).Inc()
-				}
+				queryType := dns.TypeToString[m.Question[0].Qtype]
+				dnsClient.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]",
+					chosenServer,
+					hostname,
+					queryType,
+					err)
 			}
 			dnsClient.queryTime.With(prometheus.Labels{
 				"qtype":    qtypeStr,
@@ -467,68 +455,6 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 		response = r.String()
 	}
 	return CAAs, response, ResolverAddrs{resolver}, nil
-}
-
-// logDNSError logs the provided err result from making a query for hostname to
-// the chosenServer. If the err is a `dns.ErrId` instance then the Base64
-// encoded bytes of the query (and if not-nil, the response) in wire format
-// is logged as well. This function is called from exchangeOne only for the case
-// where an error occurs querying a hostname that indicates a problem between
-// the VA and the chosenServer.
-func logDNSError(
-	logger blog.Logger,
-	chosenServer string,
-	hostname string,
-	msg, resp *dns.Msg,
-	underlying error) {
-	// We don't expect logDNSError to be called with a nil msg or err but
-	// if it happens return early. We allow resp to be nil.
-	if msg == nil || len(msg.Question) == 0 || underlying == nil {
-		return
-	}
-	queryType := dns.TypeToString[msg.Question[0].Qtype]
-
-	// If the error indicates there was a query/response ID mismatch then we want
-	// to log more detail.
-	if underlying == dns.ErrId {
-		packedMsgBytes, err := msg.Pack()
-		if err != nil {
-			logger.Errf("logDNSError failed to pack msg: %v", err)
-			return
-		}
-		encodedMsg := base64.StdEncoding.EncodeToString(packedMsgBytes)
-
-		var encodedResp string
-		var respQname string
-		if resp != nil {
-			packedRespBytes, err := resp.Pack()
-			if err != nil {
-				logger.Errf("logDNSError failed to pack resp: %v", err)
-				return
-			}
-			encodedResp = base64.StdEncoding.EncodeToString(packedRespBytes)
-			if len(resp.Answer) > 0 && resp.Answer[0].Header() != nil {
-				respQname = resp.Answer[0].Header().Name
-			}
-		}
-
-		logger.Infof(
-			"logDNSError ID mismatch chosenServer=[%s] hostname=[%s] respHostname=[%s] queryType=[%s] msg=[%s] resp=[%s] err=[%s]",
-			chosenServer,
-			hostname,
-			respQname,
-			queryType,
-			encodedMsg,
-			encodedResp,
-			underlying)
-	} else {
-		// Otherwise log a general DNS error
-		logger.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]",
-			chosenServer,
-			hostname,
-			queryType,
-			underlying)
-	}
 }
 
 type dohExchanger struct {
