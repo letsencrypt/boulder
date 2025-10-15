@@ -7,8 +7,22 @@ import "google/protobuf/empty.proto";
 
 service Exporter {
   rpc SendContacts (SendContactsRequest) returns (google.protobuf.Empty);
+  rpc SendCase (SendCaseRequest) returns (google.protobuf.Empty);
 }
 
 message SendContactsRequest {
   repeated string emails = 1;
 }
+
+message SendCaseRequest {
+  string origin = 1;
+  string subject = 2;
+  string description = 3;
+  string contactEmail = 4;
+  string organization = 5;
+  string accountId = 6;
+  string rateLimitName = 7;
+  string rateLimitTier = 8;
+  string useCase = 9;
+}
+
