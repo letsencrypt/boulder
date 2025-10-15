@@ -252,11 +252,17 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		if err != nil {
 			return nil, err
 		}
-		cert.NotBefore = notBefore
 		notAfter, err := time.Parse(time.DateTime, profile.NotAfter)
 		if err != nil {
 			return nil, err
 		}
+		validity := notAfter.Add(time.Second).Sub(notBefore)
+		if ct == rootCert && validity >= 9132*24*time.Hour {
+			return nil, fmt.Errorf("root cert validity too large: %s >= 25 years", validity)
+		} else if (ct == intermediateCert || ct == crossCert) && validity >= 8*365*24*time.Hour {
+			return nil, fmt.Errorf("subordinate CA cert validity too large: %s >= 8 years", validity)
+		}
+		cert.NotBefore = notBefore
 		cert.NotAfter = notAfter
 	}
 
