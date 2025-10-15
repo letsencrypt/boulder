@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -101,8 +102,8 @@ func TestStdoutLogger(t *testing.T) {
 	logger.Warning("Warning log")
 	logger.Info("Info log")
 
-	test.AssertEquals(t, stdout.String(), "1970-01-01 prefix 6 log.test pcbo7wk Info log\n")
-	test.AssertEquals(t, stderr.String(), "1970-01-01 prefix 3 log.test 46_ghQg [AUDIT] Error Audit\n1970-01-01 prefix 4 log.test 97r2xAw Warning log\n")
+	test.AssertEquals(t, stdout.String(), "1970-01-01 prefix 6 log.test JSP6nQ Info log\n")
+	test.AssertEquals(t, stderr.String(), "1970-01-01 prefix 3 log.test 4xe4gA [AUDIT] Error Audit\n1970-01-01 prefix 4 log.test d52dyA Warning log\n")
 }
 
 func TestSyslogMethods(t *testing.T) {
@@ -341,4 +342,35 @@ func TestLogAtLevelEscapesNewlines(t *testing.T) {
 	w.logAtLevel(6, "foo\nbar")
 
 	test.Assert(t, strings.Contains(buf.String(), "foo\\nbar"), "failed to escape newline")
+}
+
+func TestLogLineChecksum(t *testing.T) {
+	testCases := []struct {
+		name     string
+		function func(string) string
+		input    string
+		expected string
+	}{
+		{
+			name:     "LogLineChecksum with Hello, World!",
+			function: LogLineChecksum,
+			input:    "Hello, World!",
+			expected: "0MNK7A",
+		},
+		{
+			name:     "OldLineChecksum with Info log",
+			function: OldLineChecksum,
+			input:    "Info log",
+			expected: "pcbo7wk",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			checksum := tc.function(tc.input)
+			if checksum != tc.expected {
+				t.Fatalf("got %q, want %q", checksum, tc.expected)
+			}
+		})
+	}
 }

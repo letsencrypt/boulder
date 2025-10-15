@@ -2,6 +2,7 @@ package sfe
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"html/template"
 	"maps"
@@ -11,9 +12,11 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/mocks"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/test/zendeskfake"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -244,7 +247,7 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 				RegisteredDomainFieldName: "bar.co",
 			},
 			zendeskMatch: map[string]string{
-				RateLimitFieldName:        rl.CertificatesPerDomain.String(),
+				RateLimitFieldName:        rl.CertificatesPerDomain.String() + perDNSNameSuffix,
 				RegisteredDomainFieldName: "bar.co",
 			},
 		},
@@ -256,7 +259,7 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 				IPAddressFieldName: "2606:4700:4700::1111",
 			},
 			zendeskMatch: map[string]string{
-				RateLimitFieldName: rl.CertificatesPerDomain.String(),
+				RateLimitFieldName: rl.CertificatesPerDomain.String() + perIPSuffix,
 				IPAddressFieldName: "2606:4700:4700::1111",
 			},
 		},
@@ -268,7 +271,7 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 				IPAddressFieldName: "64.112.11.11",
 			},
 			zendeskMatch: map[string]string{
-				RateLimitFieldName: rl.CertificatesPerDomain.String(),
+				RateLimitFieldName: rl.CertificatesPerDomain.String() + perIPSuffix,
 				IPAddressFieldName: "64.112.11.11",
 			},
 		},
@@ -296,8 +299,8 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 
 			sfe.submitOverrideRequestHandler(rec, req)
 
-			if rec.Code != http.StatusOK {
-				t.Errorf("Unexpected status=%d, expected status=200", rec.Code)
+			if rec.Code != http.StatusAccepted {
+				t.Errorf("Unexpected status=%d, expected status=202", rec.Code)
 			}
 
 			got, err := client.FindTickets(tt.zendeskMatch, "")
@@ -457,8 +460,8 @@ func TestSubmitOverrideRequestHandlerRateLimited(t *testing.T) {
 
 		sfe.submitOverrideRequestHandler(rec, req)
 		if attempt < 100 {
-			if rec.Code != http.StatusOK {
-				t.Errorf("Unexpected status=%d, expected status=200", rec.Code)
+			if rec.Code != http.StatusAccepted {
+				t.Errorf("Unexpected status=%d, expected status=202", rec.Code)
 			}
 		} else {
 			if rec.Code != http.StatusTooManyRequests {
@@ -468,5 +471,83 @@ func TestSubmitOverrideRequestHandlerRateLimited(t *testing.T) {
 				t.Errorf("Expected rate limit error message, got: %s", rec.Body.String())
 			}
 		}
+	}
+}
+
+type addedOverrideEnabledRA struct {
+	rapb.RegistrationAuthorityClient
+}
+
+func (f *addedOverrideEnabledRA) AddRateLimitOverride(ctx context.Context, req *rapb.AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*rapb.AddRateLimitOverrideResponse, error) {
+	return &rapb.AddRateLimitOverrideResponse{Enabled: true}, nil
+}
+
+type addedOverrideDisabledRA struct {
+	rapb.RegistrationAuthorityClient
+}
+
+func (f *addedOverrideDisabledRA) AddRateLimitOverride(ctx context.Context, req *rapb.AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*rapb.AddRateLimitOverrideResponse, error) {
+	return &rapb.AddRateLimitOverrideResponse{Enabled: false}, nil
+}
+
+func TestSubmitOverrideRequestHandlerAutoApproved(t *testing.T) {
+	t.Parallel()
+
+	sfe, _ := setupSFE(t)
+	sfe.templatePages = minimalTemplates(t)
+	_, client := createFakeZendeskClientServer(t)
+	sfe.zendeskClient = client
+	sfe.autoApproveOverrides = true
+
+	reqObj := overrideRequest{
+		RateLimit: rl.CertificatesPerDomainPerAccount.String(),
+		Fields: map[string]string{
+			subscriberAgreementFieldName: "true",
+			privacyPolicyFieldName:       "true",
+			mailingListFieldName:         "false",
+			fundraisingFieldName:         FundraisingOptions[0],
+			emailAddressFieldName:        "foo@bar.co",
+			OrganizationFieldName:        "Big Host Inc.",
+			useCaseFieldName:             strings.Repeat("x", 60),
+			TierFieldName:                certificatesPerDomainPerAccountTierOptions[0],
+			AccountURIFieldName:          "https://acme-v02.api.letsencrypt.org/acme/acct/67890",
+		},
+	}
+	reqObjBytes, err := json.Marshal(reqObj)
+	if err != nil {
+		t.Fatalf("marshal: %s", err)
+	}
+
+	type testCase struct {
+		name         string
+		ra           rapb.RegistrationAuthorityClient
+		expectedCode int
+	}
+	cases := []testCase{
+		{
+			name:         "New override enabled",
+			ra:           &addedOverrideEnabledRA{},
+			expectedCode: http.StatusCreated,
+		},
+		{
+			name:         "Existing override disabled",
+			ra:           &addedOverrideDisabledRA{},
+			expectedCode: http.StatusAccepted,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqObjBytes))
+			rec := httptest.NewRecorder()
+
+			sfe.ra = tc.ra
+			sfe.submitOverrideRequestHandler(rec, req)
+
+			if rec.Code != tc.expectedCode {
+				t.Errorf("Unexpected status=%d, expected status=%d", rec.Code, tc.expectedCode)
+			}
+		})
 	}
 }

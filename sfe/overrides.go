@@ -1,6 +1,7 @@
 package sfe
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -269,56 +270,39 @@ func makeInitialComment(organization, useCase, tier string) string {
 	)
 }
 
-// createNewOrdersPerAccountOverrideTicket creates a new Zendesk ticket for a
-// NewOrdersPerAccount override request. All fields are required.
-func createNewOrdersPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, organization, tier, accountID string) (int64, error) {
-	return client.CreateTicket(
-		requesterEmail,
-		makeSubject(rl.NewOrdersPerAccount, organization),
-		makeInitialComment(organization, useCase, tier),
-		map[string]string{
-			RateLimitFieldName:    rl.NewOrdersPerAccount.String(),
-			ReviewStatusFieldName: reviewStatusDefault,
-			OrganizationFieldName: organization,
-			TierFieldName:         tier,
-			AccountURIFieldName:   accountID,
-		},
-	)
-}
+// createOverrideRequestZendeskTicket creates a new Zendesk ticket for manual
+// review of a rate limit override request. It returns the ID of the created
+// ticket or an error.
+func createOverrideRequestZendeskTicket(client *zendesk.Client, rateLimit, requesterEmail, useCase, organization, tier, accountURI, registeredDomain, ipAddress string) (int64, error) {
+	// Some rateLimitField values include suffixes to indicate whether an
+	// accountURI, registeredDomain, or ipAddress is expected.
+	limitStr := strings.TrimSuffix(strings.TrimSuffix(rateLimit, perDNSNameSuffix), perIPSuffix)
+	limit, ok := rl.StringToName[limitStr]
+	if !ok {
+		// This should never happen, it indicates a bug in our validation.
+		return 0, errors.New("invalid rate limit prevented ticket creation")
+	}
 
-// createCertificatesPerDomainOverrideTicket creates a new Zendesk ticket for a
-// CertificatesPerDomain override request. Only registeredDomain or ipAddress
-// should be provided, not both. All other fields are required.
-func createCertificatesPerDomainOverrideTicket(client *zendesk.Client, requesterEmail, useCase, organization, tier, registeredDomain, ipAddress string) (int64, error) {
+	if registeredDomain == "" && ipAddress == "" && accountURI == "" {
+		// This should never happen, it indicates a bug in our validation.
+		return 0, errors.New("one of accountURI, registeredDomain, or ipAddress must be provided")
+	}
+
 	return client.CreateTicket(
 		requesterEmail,
-		makeSubject(rl.CertificatesPerDomain, organization),
+		// The stripped form of the rateLimitField value must be used here.
+		makeSubject(limit, organization),
 		makeInitialComment(organization, useCase, tier),
 		map[string]string{
-			RateLimitFieldName:        rl.CertificatesPerDomain.String(),
+			// The original rateLimitField value must be used here, the
+			// overridesimporter depends on the suffixes for validation.
+			RateLimitFieldName:        rateLimit,
+			TierFieldName:             tier,
 			ReviewStatusFieldName:     reviewStatusDefault,
 			OrganizationFieldName:     organization,
-			TierFieldName:             tier,
 			RegisteredDomainFieldName: registeredDomain,
 			IPAddressFieldName:        ipAddress,
-		},
-	)
-}
-
-// createCertificatesPerDomainPerAccountOverrideTicket creates a new Zendesk
-// ticket for a CertificatesPerDomainPerAccount override request. All fields are
-// required.
-func createCertificatesPerDomainPerAccountOverrideTicket(client *zendesk.Client, requesterEmail, useCase, organization, tier, accountID string) (int64, error) {
-	return client.CreateTicket(
-		requesterEmail,
-		makeSubject(rl.CertificatesPerDomainPerAccount, organization),
-		makeInitialComment(organization, useCase, tier),
-		map[string]string{
-			RateLimitFieldName:    rl.CertificatesPerDomainPerAccount.String(),
-			ReviewStatusFieldName: reviewStatusDefault,
-			OrganizationFieldName: organization,
-			TierFieldName:         tier,
-			AccountURIFieldName:   accountID,
+			AccountURIFieldName:       accountURI,
 		},
 	)
 }
@@ -489,12 +473,13 @@ func (sfe *SelfServiceFrontEndImpl) makeOverrideRequestFormHandler(formHTML temp
 func (sfe *SelfServiceFrontEndImpl) overrideRequestHandler(w http.ResponseWriter, formHTML template.HTML, rateLimit, displayRateLimit string) {
 	setOverrideRequestFormHeaders(w)
 	sfe.renderTemplate(w, "overrideForm.html", map[string]any{
-		"FormHTML":          formHTML,
-		"RateLimit":         rateLimit,
-		"DisplayRateLimit":  displayRateLimit,
-		"ValidateFieldPath": overridesValidateField,
-		"SubmitRequestPath": overridesSubmitRequest,
-		"SubmitSuccessPath": overridesSubmitSuccess,
+		"FormHTML":                    formHTML,
+		"RateLimit":                   rateLimit,
+		"DisplayRateLimit":            displayRateLimit,
+		"ValidateFieldPath":           overridesValidateField,
+		"SubmitRequestPath":           overridesSubmitRequest,
+		"AutoApprovedSuccessPath":     overridesAutoApprovedSuccess,
+		"RequestSubmittedSuccessPath": overridesRequestSubmittedSuccess,
 	})
 }
 
@@ -542,10 +527,17 @@ func (sfe *SelfServiceFrontEndImpl) validateOverrideFieldHandler(w http.Response
 	}
 }
 
-// overrideSuccessHandler renders the success page after a successful override
-// request submission.
-func (sfe *SelfServiceFrontEndImpl) overrideSuccessHandler(w http.ResponseWriter, r *http.Request) {
-	sfe.renderTemplate(w, "overrideSuccess.html", nil)
+// overrideAutoApprovedSuccessHandler renders the success page after a
+// successful override request submission which was automatically approved.
+func (sfe *SelfServiceFrontEndImpl) overrideAutoApprovedSuccessHandler(w http.ResponseWriter, r *http.Request) {
+	sfe.renderTemplate(w, "overrideAutoApprovedSuccess.html", nil)
+}
+
+// overrideRequestSubmittedSuccessHandler renders the success page after a
+// successful override request submission created a Zendesk ticket for manual
+// review.
+func (sfe *SelfServiceFrontEndImpl) overrideRequestSubmittedSuccessHandler(w http.ResponseWriter, r *http.Request) {
+	sfe.renderTemplate(w, "overrideRequestSubmittedSuccess.html", nil)
 }
 
 type overrideRequest struct {
@@ -555,9 +547,11 @@ type overrideRequest struct {
 
 // submitOverrideRequestHandler handles the submission of override requests. It
 // expects a POST request with a JSON payload (overrideRequest). It validates
-// each of the form fields and creates a Zendesk ticket based on the specified
-// rate limit. It returns a 200 OK response on success, or an error response if
-// the request is invalid or if ticket creation fails.
+// each of the form fields and either:
+//
+//	a. auto-approves the override request and returns 201 Created, or
+//	b. creates a Zendesk ticket for manual review, and returns 202 Accepted, or
+//	c. encounters an error and returns an appropriate 4xx or 5xx status code.
 //
 // The JavaScript frontend is configured to validate the form fields twice: once
 // when the requester inputs data, and once more just before submitting the
@@ -566,7 +560,6 @@ type overrideRequest struct {
 // submitting (malformed) requests directly to this endpoint.
 func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.ResponseWriter, r *http.Request) {
 	var refundLimits func()
-	var submissionSuccess bool
 	if sfe.limiter != nil && sfe.txnBuilder != nil {
 		requesterIP, err := web.ExtractRequesterIP(r)
 		if err != nil {
@@ -608,8 +601,9 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			}
 		}
 	}
+	var overrideRequestHandled bool
 	defer func() {
-		if !submissionSuccess && refundLimits != nil {
+		if !overrideRequestHandled && refundLimits != nil {
 			refundLimits()
 		}
 	}()
@@ -635,7 +629,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return val, nil
 	}
 
-	var baseFields = make(map[string]string)
+	var validFields = make(map[string]string)
 	for _, name := range []string{
 		// Note: not all of these fields will be included in the Zendesk ticket,
 		// but they are all required for the submission to be considered valid.
@@ -653,7 +647,24 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		baseFields[name] = val
+		validFields[name] = val
+	}
+
+	autoApproveOverride := func(ctx context.Context, rateLimitFieldValue string, fields map[string]string) bool {
+		if !sfe.autoApproveOverrides {
+			return false
+		}
+		req, _, err := makeAddOverrideRequest(rateLimitFieldValue, fields)
+		if err != nil {
+			sfe.log.Errf("failed to create automatically approved override request: %s", err)
+			return false
+		}
+		resp, err := sfe.ra.AddRateLimitOverride(ctx, req)
+		if err != nil {
+			sfe.log.Errf("failed to create automatically approved override request: %s", err)
+			return false
+		}
+		return resp.Enabled
 	}
 
 	switch req.RateLimit {
@@ -663,22 +674,10 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		validFields[AccountURIFieldName] = accountURI
 
-		// TODO(#8360): Skip ticket creation and insert an override for
-		// overrides matching the first N tiers of this limit.
-
-		_, err = createNewOrdersPerAccountOverrideTicket(
-			sfe.zendeskClient,
-			baseFields[emailAddressFieldName],
-			baseFields[useCaseFieldName],
-			baseFields[OrganizationFieldName],
-			baseFields[TierFieldName],
-			accountURI,
-		)
-		if err != nil {
-			sfe.log.Errf("failed to create override request ticket: %s", err)
-			http.Error(w, "failed to create override request ticket", http.StatusInternalServerError)
-			return
+		if validFields[TierFieldName] == newOrdersPerAccountTierOptions[0] {
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomainPerAccount.String():
@@ -687,22 +686,10 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		validFields[AccountURIFieldName] = accountURI
 
-		// TODO(#8360): Skip ticket creation and insert an override for
-		// overrides matching the first N tiers of this limit.
-
-		_, err = createCertificatesPerDomainPerAccountOverrideTicket(
-			sfe.zendeskClient,
-			baseFields[emailAddressFieldName],
-			baseFields[useCaseFieldName],
-			baseFields[OrganizationFieldName],
-			baseFields[TierFieldName],
-			accountURI,
-		)
-		if err != nil {
-			sfe.log.Errf("failed to create override request ticket: %s", err)
-			http.Error(w, "failed to create override request ticket", http.StatusInternalServerError)
-			return
+		if validFields[TierFieldName] == certificatesPerDomainPerAccountTierOptions[0] {
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perDNSNameSuffix:
@@ -711,23 +698,10 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		validFields[RegisteredDomainFieldName] = registeredDomain
 
-		// TODO(#8360): Skip ticket creation and insert an override for
-		// overrides matching the first N tiers of this limit.
-
-		_, err = createCertificatesPerDomainOverrideTicket(
-			sfe.zendeskClient,
-			baseFields[emailAddressFieldName],
-			baseFields[useCaseFieldName],
-			baseFields[OrganizationFieldName],
-			baseFields[TierFieldName],
-			registeredDomain,
-			"",
-		)
-		if err != nil {
-			sfe.log.Errf("failed to create override request ticket: %s", err)
-			http.Error(w, "failed to create override request ticket", http.StatusInternalServerError)
-			return
+		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perIPSuffix:
@@ -736,23 +710,10 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		validFields[IPAddressFieldName] = ipAddress
 
-		// TODO(#8360): Skip ticket creation and insert an override for
-		// overrides matching the first N tiers of this limit.
-
-		_, err = createCertificatesPerDomainOverrideTicket(
-			sfe.zendeskClient,
-			baseFields[emailAddressFieldName],
-			baseFields[useCaseFieldName],
-			baseFields[OrganizationFieldName],
-			baseFields[TierFieldName],
-			"",
-			ipAddress,
-		)
-		if err != nil {
-			sfe.log.Errf("failed to create override request ticket: %s", err)
-			http.Error(w, "failed to create override request ticket", http.StatusInternalServerError)
-			return
+		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
+			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	default:
@@ -760,8 +721,8 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
-	if sfe.ee != nil && baseFields[fundraisingFieldName] == fundraisingYesOption {
-		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{baseFields[emailAddressFieldName]}})
+	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
+		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
 			sfe.log.Errf("failed to send contact to email service: %s", err)
 		}
@@ -770,6 +731,35 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	// TODO(#8362): If FundraisingFieldName value is true, use the Salesforce
 	// API to create a new Lead record with the provided information.
 
-	submissionSuccess = true
-	w.WriteHeader(http.StatusOK)
+	if overrideRequestHandled {
+		sfe.log.Infof("automatically approved override request for %s", validFields[OrganizationFieldName])
+		w.WriteHeader(http.StatusCreated)
+		return
+	}
+
+	ticketID, err := createOverrideRequestZendeskTicket(
+		sfe.zendeskClient,
+		req.RateLimit,
+		validFields[emailAddressFieldName],
+		validFields[useCaseFieldName],
+		validFields[OrganizationFieldName],
+		validFields[TierFieldName],
+
+		// Only one of these will be non-empty, depending on the
+		// rateLimitField value.
+		validFields[AccountURIFieldName],
+		validFields[RegisteredDomainFieldName],
+		validFields[IPAddressFieldName],
+	)
+	if err != nil {
+		sfe.log.Errf("failed to create override request Zendesk ticket: %s", err)
+		http.Error(w, "failed to create support ticket", http.StatusInternalServerError)
+		return
+	}
+
+	// If we got here the request has either been auto-approved or a Zendesk
+	// ticket has been created for manual review, so a refund is not needed.
+	overrideRequestHandled = true
+	sfe.log.Infof("created override request Zendesk ticket %d", ticketID)
+	w.WriteHeader(http.StatusAccepted)
 }
