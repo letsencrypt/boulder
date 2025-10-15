@@ -721,10 +721,10 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
-	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
+	if sfe.ee != nil && validFields[mailingListFieldName] == "true" {
 		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
-			sfe.log.Errf("failed to send contact to email service: %s", err)
+			sfe.log.Errf("sending contact to email-exporter: %s", err)
 		}
 	}
 
