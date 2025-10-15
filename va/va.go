@@ -216,6 +216,7 @@ type ValidationAuthorityImpl struct {
 	maxRemoteFailures  int
 	accountURIPrefixes []string
 	singleDialTimeout  time.Duration
+	slowRemoteTimeout  time.Duration
 	perspective        string
 	rir                string
 	isReservedIPFunc   func(netip.Addr) error
@@ -239,6 +240,7 @@ func NewValidationAuthorityImpl(
 	perspective string,
 	rir string,
 	reservedIPChecker func(netip.Addr) error,
+	slowRemoteTimeout time.Duration,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
@@ -620,13 +622,11 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
-		// If enough perspectives have passed, start a timer for how long we'll wait for remaining perspectives
-		if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
-			// TODO: configurable
-			go func() {
-				time.Sleep(2 * time.Second)
-				cancel()
-			}()
+		// If enough perspectives have passed, set a tighter deadline for the
+		// remaining perspectives.
+		if len(passed) >= required && len(passedRIRs) >= requiredRIRs && va.slowRemoteTimeout != 0 {
+			timer := time.AfterFunc(va.slowRemoteTimeout, cancel)
+			defer timer.Stop()
 		}
 
 		// Once all the VAs have returned a result, break the loop.

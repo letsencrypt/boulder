@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/iana"
@@ -50,10 +51,9 @@ type RemoteVAGRPCClientConfig struct {
 type Config struct {
 	VA struct {
 		vaConfig.Common
-		RemoteVAs []RemoteVAGRPCClientConfig `validate:"omitempty,dive"`
-		// Deprecated and ignored
-		MaxRemoteValidationFailures int `validate:"omitempty,min=0,required_with=RemoteVAs"`
-		Features                    features.Config
+		RemoteVAs         []RemoteVAGRPCClientConfig `validate:"omitempty,dive"`
+		SlowRemoteTimeout config.Duration
+		Features          features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -149,7 +149,9 @@ func main() {
 		c.VA.AccountURIPrefixes,
 		va.PrimaryPerspective,
 		"",
-		iana.IsReservedAddr)
+		iana.IsReservedAddr,
+		c.VA.SlowRemoteTimeout.Duration,
+	)
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(
