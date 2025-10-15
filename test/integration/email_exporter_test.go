@@ -256,3 +256,72 @@ func TestCasesAPIMissingOrigin(t *testing.T) {
 	test.AssertEquals(t, status, http.StatusBadRequest)
 	test.AssertContains(t, string(body), "Missing required field: Origin")
 }
+
+func TestCasesAPIUsingSFE(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires SFE to be configured to use email-exporter")
+	}
+
+	token := getOAuthToken(t)
+
+	body, err := json.Marshal(map[string]any{
+		"rateLimit": "NewOrdersPerAccount",
+		"fields": map[string]string{
+			"subscriberAgreement": "true",
+			"privacyPolicy":       "true",
+			"mailingList":         "false",
+			"fundraising":         "Yes, email me more information.",
+			"emailAddress":        "test@foo.bar",
+			"organization":        "Big Host Inc.",
+			"useCase":             strings.Repeat("x", 60),
+			"tier":                "1000",
+			"accountURI":          "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
+		},
+	})
+	test.AssertNotError(t, err, "marshal override payload")
+
+	req, err := http.NewRequest(http.MethodPost, "http://localhost:4003/sfe/v1/overrides/submit-override-request", bytes.NewReader(body))
+	test.AssertNotError(t, err, "creating override request")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	test.AssertNotError(t, err, "POSTing override request to SFE")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		var buf bytes.Buffer
+		_, err = buf.ReadFrom(resp.Body)
+		test.AssertNotError(t, err, "reading SFE response body")
+		t.Errorf("unexpected SFE status=%d with body=%s", resp.StatusCode, buf.String())
+	}
+
+	timeout := 3 * time.Second
+	interval := 10 * time.Millisecond
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			cases := getCreatedCases(t, token)
+			for _, c := range cases {
+				if c["Subject"] == "NewOrdersPerAccount rate limit override request for Big Host Inc." &&
+					c["Origin"] == "Web" &&
+					c["ContactEmail"] == "test@foo.bar" &&
+					c["Organization__c"] == "Big Host Inc." &&
+					c["Rate_Limit_Name__c"] == "NewOrdersPerAccount" &&
+					c["Rate_Limit_Tier__c"] == "1000" {
+					return
+				}
+			}
+		case <-timer.C:
+			t.Fatalf("expected Case never created within %s", timeout)
+		}
+	}
+}

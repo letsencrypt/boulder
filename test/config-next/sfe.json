@@ -28,6 +28,16 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
+		"emailExporter": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "email-exporter",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "email-exporter.boulder"
+		},
 		"unpauseHMACKey": {
 			"keyFile": "test/secrets/sfe_unpause_key"
 		},
