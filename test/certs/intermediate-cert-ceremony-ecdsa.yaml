@@ -14,8 +14,8 @@ certificate-profile:
     common-name: {{ .CommonName }}
     organization: good guys
     country: US
-    not-before: 2020-01-01 12:00:00
-    not-after: 2040-01-01 12:00:00
+    not-before: 2025-07-01 00:00:00
+    not-after: 2030-06-30 23:59:59
     crl-url:  http://ecdsa.example.com/crl
     issuer-url:  http://ecdsa.example.com/cert
     policies:
