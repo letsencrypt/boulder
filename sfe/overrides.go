@@ -728,8 +728,20 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		}
 	}
 
-	// TODO(#8362): If FundraisingFieldName value is true, use the Salesforce
-	// API to create a new Lead record with the provided information.
+	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
+		_, err := sfe.ee.SendCase(r.Context(), &emailpb.SendCaseRequest{
+			Origin:        "Web",
+			Subject:       fmt.Sprintf("%s rate limit override request for %s", req.RateLimit, validFields[OrganizationFieldName]),
+			ContactEmail:  validFields[emailAddressFieldName],
+			Organization:  validFields[OrganizationFieldName],
+			RateLimitName: req.RateLimit,
+			RateLimitTier: validFields[TierFieldName],
+			UseCase:       validFields[useCaseFieldName],
+		})
+		if err != nil {
+			sfe.log.Errf("sending case to email-exporter: %s", err)
+		}
+	}
 
 	if overrideRequestHandled {
 		sfe.log.Infof("automatically approved override request for %s", validFields[OrganizationFieldName])
