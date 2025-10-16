@@ -140,7 +140,9 @@ func main() {
 		c.RVA.AccountURIPrefixes,
 		c.RVA.Perspective,
 		c.RVA.RIR,
-		iana.IsReservedAddr)
+		iana.IsReservedAddr,
+		0,
+	)
 	cmd.FailOnError(err, "Unable to create Remote-VA server")
 
 	start, err := bgrpc.NewServer(c.RVA.GRPC, logger).Add(
