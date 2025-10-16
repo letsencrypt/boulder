@@ -622,12 +622,14 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
-		// If enough perspectives have passed, or enough perspectives have
-		// failed, set a tighter deadline for the remaining perspectives.
-		if va.slowRemoteTimeout != 0 && ((len(passed) >= required && len(passedRIRs) >= requiredRIRs) ||
-			(len(failed) > remoteVACount-required)) {
-			timer := time.AfterFunc(va.slowRemoteTimeout, cancel)
-			defer timer.Stop()
+		if va.slowRemoteTimeout != 0 {
+			// If enough perspectives have passed, or enough perspectives have
+			// failed, set a tighter deadline for the remaining perspectives.
+			if (len(passed) >= required && len(passedRIRs) >= requiredRIRs) ||
+				(len(failed) > remoteVACount-required) {
+				timer := time.AfterFunc(va.slowRemoteTimeout, cancel)
+				defer timer.Stop()
+			}
 		}
 
 		// Once all the VAs have returned a result, break the loop.
