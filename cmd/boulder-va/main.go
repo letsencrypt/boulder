@@ -51,7 +51,11 @@ type RemoteVAGRPCClientConfig struct {
 type Config struct {
 	VA struct {
 		vaConfig.Common
-		RemoteVAs         []RemoteVAGRPCClientConfig `validate:"omitempty,dive"`
+		RemoteVAs []RemoteVAGRPCClientConfig `validate:"omitempty,dive"`
+		// SlowRemoteTimeout sets how long the VA is willing to wait for slow
+		// RemoteVA instances to finish their work. It starts counting from
+		// when the VA first gets a quorum of (un)successful remote results.
+		// Leaving this value zero means the VA won't early-cancel slow remotes.
 		SlowRemoteTimeout config.Duration
 		Features          features.Config
 	}
