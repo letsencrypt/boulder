@@ -39,8 +39,7 @@ contains an entry for every certificate, explicitly recording that newly-issued
 certificates are not revoked. The latter is less explicit but more scalable,
 containing rows only for certificates which have been revoked.
 
-The SA exposes the two different types of recordkeeping in two different ways:
-`GetRevokedCerts` returns revoked certificates whose NotAfter dates fall within
-a requested range. `GetRevokedCertsByShard` returns revoked certificates whose
-`shardIdx` matches the requested shard. The crl-updater uses only the latter
-method, and the former will be removed in the future.
+The SA only exposes the latter of these two mechanisms via the
+`GetRevokedCertsByShard` method, which returns revoked certificates whose
+`shardIdx` matches the requested shard. The `certificateStatus` table will be
+removed in the near future.
