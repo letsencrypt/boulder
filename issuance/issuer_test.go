@@ -22,8 +22,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func defaultProfileConfig() *ProfileConfig {
-	return &ProfileConfig{
+func defaultProfileConfig() ProfileConfig {
+	return ProfileConfig{
 		AllowMustStaple:              true,
 		IncludeCRLDistributionPoints: true,
 		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
@@ -45,6 +45,7 @@ func defaultIssuerConfig() IssuerConfig {
 		IssuerURL:  "http://issuer-url.example.org",
 		CRLURLBase: "http://crl-url.example.org/",
 		CRLShards:  10,
+		Profiles:   []string{"modern"},
 	}
 }
 
