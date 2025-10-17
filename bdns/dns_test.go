@@ -545,9 +545,10 @@ func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration
 }
 
 func TestRetry(t *testing.T) {
-	isTempErr := &url.Error{Op: "read", Err: tempError(true)}
-	nonTempErr := &url.Error{Op: "read", Err: tempError(false)}
+	isTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
+	nonTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(false)}
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
+	timeoutFailError := errors.New("DNS problem: query timed out looking up TXT for example.com")
 	type testCase struct {
 		name              string
 		maxTries          int
@@ -577,28 +578,28 @@ func TestRetry(t *testing.T) {
 			expected:      servFailError,
 			expectedCount: 1,
 		},
-		// Temporary err, then non-OpError stops at two tries
+		// Timeout err, then non-OpError stops at two tries
 		{
 			name:     "err-then-non-operror",
 			maxTries: 3,
 			te: &testExchanger{
-				errs: []error{isTempErr, errors.New("nope")},
+				errs: []error{isTimeoutErr, errors.New("nope")},
 			},
 			expected:      servFailError,
 			expectedCount: 2,
 		},
-		// Temporary error given always
+		// Timeout error given always
 		{
-			name:     "persistent-temp-error",
+			name:     "persistent-timeout-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					isTempErr,
-					isTempErr,
+					isTimeoutErr,
+					isTimeoutErr,
+					isTimeoutErr,
 				},
 			},
-			expected:          servFailError,
+			expected:          timeoutFailError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
@@ -613,56 +614,56 @@ func TestRetry(t *testing.T) {
 			expected:      nil,
 			expectedCount: 1,
 		},
-		// Temporary error given just once causes two tries
+		// Timeout error given just once causes two tries
 		{
-			name:     "single-temp-error",
+			name:     "single-timeout-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
+					isTimeoutErr,
 					nil,
 				},
 			},
 			expected:      nil,
 			expectedCount: 2,
 		},
-		// Temporary error given twice causes three tries
+		// Timeout error given twice causes three tries
 		{
-			name:     "double-temp-error",
+			name:     "double-timeout-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					isTempErr,
+					isTimeoutErr,
+					isTimeoutErr,
 					nil,
 				},
 			},
 			expected:      nil,
 			expectedCount: 3,
 		},
-		// Temporary error given thrice causes three tries and fails
+		// Timeout error given thrice causes three tries and fails
 		{
-			name:     "triple-temp-error",
+			name:     "triple-timeout-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					isTempErr,
-					isTempErr,
+					isTimeoutErr,
+					isTimeoutErr,
+					isTimeoutErr,
 				},
 			},
-			expected:          servFailError,
+			expected:          timeoutFailError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
 		},
-		// temporary then non-Temporary error causes two retries
+		// timeout then non-timeout error causes two retries
 		{
-			name:     "temp-nontemp-error",
+			name:     "timeout-nontimeout-error",
 			maxTries: 3,
 			te: &testExchanger{
 				errs: []error{
-					isTempErr,
-					nonTempErr,
+					isTimeoutErr,
+					nonTimeoutErr,
 				},
 			},
 			expected:      servFailError,
@@ -708,7 +709,7 @@ func TestRetry(t *testing.T) {
 
 	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
-	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -717,7 +718,7 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
 
-	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
 	ctx, cancel = context.WithTimeout(context.Background(), -10*time.Hour)
 	defer cancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -726,7 +727,7 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
 
-	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
 	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
 	deadlineCancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -759,10 +760,10 @@ func TestIsTLD(t *testing.T) {
 	}
 }
 
-type tempError bool
+type testTimeoutError bool
 
-func (t tempError) Temporary() bool { return bool(t) }
-func (t tempError) Error() string   { return fmt.Sprintf("Temporary: %t", t) }
+func (t testTimeoutError) Timeout() bool { return bool(t) }
+func (t testTimeoutError) Error() string { return fmt.Sprintf("Timeout: %t", t) }
 
 // rotateFailureExchanger is a dns.Exchange implementation that tracks a count
 // of the number of calls to `Exchange` for a given address in the `lookups`
@@ -775,7 +776,7 @@ type rotateFailureExchanger struct {
 }
 
 // Exchange for rotateFailureExchanger tracks the `a` argument in `lookups` and
-// if present in `brokenAddresses`, returns a temporary error.
+// if present in `brokenAddresses`, returns a timeout error.
 func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	e.Lock()
 	defer e.Unlock()
@@ -785,8 +786,8 @@ func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.
 
 	// If its a broken server, return a retryable error
 	if e.brokenAddresses[a] {
-		isTempErr := &url.Error{Op: "read", Err: tempError(true)}
-		return nil, 2 * time.Millisecond, isTempErr
+		isTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
+		return nil, 2 * time.Millisecond, isTimeoutErr
 	}
 
 	return m, 2 * time.Millisecond, nil
@@ -848,11 +849,10 @@ func TestRotateServerOnErr(t *testing.T) {
 
 }
 
-type mockTempURLError struct{}
+type mockTimeoutURLError struct{}
 
-func (m *mockTempURLError) Error() string   { return "whoops, oh gosh" }
-func (m *mockTempURLError) Timeout() bool   { return false }
-func (m *mockTempURLError) Temporary() bool { return true }
+func (m *mockTimeoutURLError) Error() string { return "whoops, oh gosh" }
+func (m *mockTimeoutURLError) Timeout() bool { return true }
 
 type dohAlwaysRetryExchanger struct {
 	sync.Mutex
@@ -863,13 +863,13 @@ func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, t
 	dohE.Lock()
 	defer dohE.Unlock()
 
-	tempURLerror := &url.Error{
+	timeoutURLerror := &url.Error{
 		Op:  "GET",
 		URL: "https://example.com",
-		Err: &mockTempURLError{},
+		Err: &mockTimeoutURLError{},
 	}
 
-	return nil, time.Second, tempURLerror
+	return nil, time.Second, timeoutURLerror
 }
 
 func TestDOHMetric(t *testing.T) {
@@ -878,7 +878,7 @@ func TestDOHMetric(t *testing.T) {
 
 	testClient := New(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, "", blog.UseMock(), tlsConfig)
 	resolver := testClient.(*impl)
-	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: tempError(true)}}
+	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: testTimeoutError(true)}}
 
 	// Starting out, we should count 0 "out of retries" errors.
 	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 0)
