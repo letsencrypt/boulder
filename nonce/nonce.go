@@ -63,6 +63,7 @@ func DerivePrefix(grpcAddr string, key []byte) string {
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
+	noncepb.UnsafeNonceServiceServer
 	mu               sync.Mutex
 	latest           int64
 	earliest         int64
@@ -232,8 +233,8 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	return ctr.Int64(), nil
 }
 
-// Nonce provides a new Nonce.
-func (ns *NonceService) Nonce() (string, error) {
+// nonce provides a new Nonce.
+func (ns *NonceService) nonce() (string, error) {
 	ns.mu.Lock()
 	ns.latest++
 	latest := ns.latest
@@ -242,30 +243,30 @@ func (ns *NonceService) Nonce() (string, error) {
 	return ns.encrypt(latest)
 }
 
-// Valid determines whether the provided Nonce string is valid, returning
+// valid determines whether the provided Nonce string is valid, returning
 // true if so.
-func (ns *NonceService) Valid(nonce string) bool {
+func (ns *NonceService) valid(nonce string) error {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
 		ns.nonceRedeems.WithLabelValues("invalid", "decrypt").Inc()
-		return false
+		return fmt.Errorf("unable to decrypt nonce: %s", err)
 	}
 
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	if c > ns.latest {
 		ns.nonceRedeems.WithLabelValues("invalid", "too high").Inc()
-		return false
+		return fmt.Errorf("nonce greater than highest dispensed nonce: %d > %d", c, ns.latest)
 	}
 
 	if c <= ns.earliest {
 		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
-		return false
+		return fmt.Errorf("nonce less than lowest eligible nonce: %d < %d", c, ns.earliest)
 	}
 
 	if ns.used[c] {
 		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
-		return false
+		return fmt.Errorf("nonce already marked as used: %d ∈ used{%d}", c, len(ns.used))
 	}
 
 	ns.used[c] = true
@@ -279,7 +280,7 @@ func (ns *NonceService) Valid(nonce string) bool {
 	}
 
 	ns.nonceRedeems.WithLabelValues("valid", "").Inc()
-	return true
+	return nil
 }
 
 // splitNonce splits a nonce into a prefix and a body.
@@ -290,27 +291,18 @@ func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
 	return nonce[:PrefixLen], nonce[PrefixLen:], nil
 }
 
-// NewServer returns a new Server, wrapping a NonceService.
-func NewServer(inner *NonceService) *Server {
-	return &Server{inner: inner}
-}
-
-// Server implements the gRPC nonce service.
-type Server struct {
-	noncepb.UnsafeNonceServiceServer
-	inner *NonceService
-}
-
-var _ noncepb.NonceServiceServer = (*Server)(nil)
-
 // Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
-func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
+func (ns *NonceService) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
+	err := ns.valid(msg.Nonce)
+	if err != nil {
+		return nil, err
+	}
+	return &noncepb.ValidMessage{Valid: true}, nil
 }
 
 // Nonce generates a nonce and sends it to a gRPC client.
-func (ns *Server) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
-	nonce, err := ns.inner.Nonce()
+func (ns *NonceService) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
+	nonce, err := ns.nonce()
 	if err != nil {
 		return nil, err
 	}

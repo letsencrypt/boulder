@@ -404,7 +404,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
 	test.AssertNotError(t, err, "making nonceService")
 
-	inmemNonceService := &inmemnonce.Service{NonceService: nonceService}
+	inmemNonceService := &inmemnonce.NonceService{Impl: nonceService}
 	gnc := inmemNonceService
 	rnc := inmemNonceService
 
