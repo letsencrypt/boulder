@@ -11,32 +11,32 @@ import (
 func TestValidNonce(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
-	n, err := ns.Nonce()
+	n, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, ns.Valid(n), fmt.Sprintf("Did not recognize fresh nonce %s", n))
+	test.AssertNotError(t, ns.valid(n), fmt.Sprintf("Did not recognize fresh nonce %s", n))
 }
 
 func TestAlreadyUsed(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
-	n, err := ns.Nonce()
+	n, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, ns.Valid(n), "Did not recognize fresh nonce")
-	test.Assert(t, !ns.Valid(n), "Recognized the same nonce twice")
+	test.AssertNotError(t, ns.valid(n), "Did not recognize fresh nonce")
+	test.AssertError(t, ns.valid(n), "Recognized the same nonce twice")
 }
 
 func TestRejectMalformed(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
-	n, err := ns.Nonce()
+	n, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, !ns.Valid("asdf"+n), "Accepted an invalid nonce")
+	test.AssertError(t, ns.valid("asdf"+n), "Accepted an invalid nonce")
 }
 
 func TestRejectShort(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
-	test.Assert(t, !ns.Valid("aGkK"), "Accepted an invalid nonce")
+	test.AssertError(t, ns.valid("aGkK"), "Accepted an invalid nonce")
 }
 
 func TestRejectUnknown(t *testing.T) {
@@ -45,9 +45,9 @@ func TestRejectUnknown(t *testing.T) {
 	ns2, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
-	n, err := ns1.Nonce()
+	n, err := ns1.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, !ns2.Valid(n), "Accepted a foreign nonce")
+	test.AssertError(t, ns2.valid(n), "Accepted a foreign nonce")
 }
 
 func TestRejectTooLate(t *testing.T) {
@@ -55,38 +55,38 @@ func TestRejectTooLate(t *testing.T) {
 	test.AssertNotError(t, err, "Could not create nonce service")
 
 	ns.latest = 2
-	n, err := ns.Nonce()
+	n, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 	ns.latest = 1
-	test.Assert(t, !ns.Valid(n), "Accepted a nonce with a too-high counter")
+	test.AssertError(t, ns.valid(n), "Accepted a nonce with a too-high counter")
 }
 
 func TestRejectTooEarly(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
-	n0, err := ns.Nonce()
+	n0, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 
 	for range ns.maxUsed {
-		n, err := ns.Nonce()
+		n, err := ns.nonce()
 		test.AssertNotError(t, err, "Could not create nonce")
-		if !ns.Valid(n) {
+		if ns.valid(n) != nil {
 			t.Errorf("generated invalid nonce")
 		}
 	}
 
-	n1, err := ns.Nonce()
+	n1, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	n2, err := ns.Nonce()
+	n2, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	n3, err := ns.Nonce()
+	n3, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 
-	test.Assert(t, ns.Valid(n3), "Rejected a valid nonce")
-	test.Assert(t, ns.Valid(n2), "Rejected a valid nonce")
-	test.Assert(t, ns.Valid(n1), "Rejected a valid nonce")
-	test.Assert(t, !ns.Valid(n0), "Accepted a nonce that we should have forgotten")
+	test.AssertNotError(t, ns.valid(n3), "Rejected a valid nonce")
+	test.AssertNotError(t, ns.valid(n2), "Rejected a valid nonce")
+	test.AssertNotError(t, ns.valid(n1), "Rejected a valid nonce")
+	test.AssertError(t, ns.valid(n0), "Accepted a nonce that we should have forgotten")
 }
 
 func BenchmarkNonces(b *testing.B) {
@@ -96,11 +96,11 @@ func BenchmarkNonces(b *testing.B) {
 	}
 
 	for range ns.maxUsed {
-		n, err := ns.Nonce()
+		n, err := ns.nonce()
 		if err != nil {
 			b.Fatal("noncing", err)
 		}
-		if !ns.Valid(n) {
+		if ns.valid(n) != nil {
 			b.Fatal("generated invalid nonce")
 		}
 	}
@@ -108,11 +108,11 @@ func BenchmarkNonces(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			n, err := ns.Nonce()
+			n, err := ns.nonce()
 			if err != nil {
 				b.Fatal("noncing", err)
 			}
-			if !ns.Valid(n) {
+			if ns.valid(n) != nil {
 				b.Fatal("generated invalid nonce")
 			}
 		}
@@ -123,18 +123,18 @@ func TestNoncePrefixing(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "aluminum")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
-	n, err := ns.Nonce()
+	n, err := ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, ns.Valid(n), "Valid nonce rejected")
+	test.AssertNotError(t, ns.valid(n), "Valid nonce rejected")
 
-	n, err = ns.Nonce()
+	n, err = ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 	n = n[1:]
-	test.Assert(t, !ns.Valid(n), "Valid nonce with incorrect prefix accepted")
+	test.AssertError(t, ns.valid(n), "Valid nonce with incorrect prefix accepted")
 
-	n, err = ns.Nonce()
+	n, err = ns.nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, !ns.Valid(n[6:]), "Valid nonce without prefix accepted")
+	test.AssertError(t, ns.valid(n[6:]), "Valid nonce without prefix accepted")
 }
 
 func TestNoncePrefixValidation(t *testing.T) {

@@ -93,9 +93,8 @@ func main() {
 	tlsConfig, err := c.NonceService.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
-	nonceServer := nonce.NewServer(ns)
 	start, err := bgrpc.NewServer(c.NonceService.GRPC, logger).Add(
-		&noncepb.NonceService_ServiceDesc, nonceServer).Build(tlsConfig, scope, clock.New())
+		&noncepb.NonceService_ServiceDesc, ns).Build(tlsConfig, scope, clock.New())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
 
 	logger.Info(fmt.Sprintf("Nonce server listening on %s with prefix %q", c.NonceService.GRPC.Address, noncePrefix))
