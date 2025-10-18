@@ -337,7 +337,95 @@ func TestNewRefresher(t *testing.T) {
 	test.AssertSliceContains(t, mockLog.GetAll(), "INFO: refreshed")
 }
 
-// FIXME: TestHydrateOverrideLimit
+func TestHydrateOverrideLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		bucketKey       string
+		limit           Limit
+		expectBucketKey string
+		expectError     string
+	}{
+		{
+			name:            "bad limit name",
+			bucketKey:       "",
+			limit:           Limit{Name: 37},
+			expectBucketKey: "",
+			expectError:     "unrecognized limit name 37",
+		},
+		{
+			name:            "nil burst, should fail ValidateLimit",
+			bucketKey:       "",
+			limit:           Limit{Name: StringToName["CertificatesPerDomain"]},
+			expectBucketKey: "",
+			expectError:     "invalid burst '0', must be > 0",
+		},
+		{
+			name:      "CertificatesPerDomain with bad FQDN, should fail validateIdForName",
+			bucketKey: "VelociousVacherin",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerDomain"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "",
+			expectError:     "\"VelociousVacherin\" is neither a domain (Domain name needs at least one dot) nor an IP address (ParseAddr(\"VelociousVacherin\"): unable to parse IP)",
+		},
+		{
+			name:      "CertificatesPerDomain with IPv4 address",
+			bucketKey: "64.112.117.1",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerDomain"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "64.112.117.1/32",
+			expectError:     "",
+		},
+		{
+			name:      "CertificatesPerDomain with IPv6 address",
+			bucketKey: "2602:80a:6000:666::",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerDomain"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "2602:80a:6000:666::/64",
+			expectError:     "",
+		},
+		{
+			name:      "CertificatesPerFQDNSet",
+			bucketKey: "example.com,example.net,example.org",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerFQDNSet"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "394e82811f52e2da38b970afdb21c9bc9af81060939c690183c00fce37408738",
+			expectError:     "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bk, err := hydrateOverrideLimit(tc.bucketKey, &tc.limit)
+			if tc.expectError != "" {
+				if err == nil {
+					t.Errorf("expected error for test %q but got none", tc.name)
+				}
+				test.AssertContains(t, err.Error(), tc.expectError)
+			} else {
+				test.AssertNotError(t, err, tc.name)
+				test.AssertEquals(t, bk, tc.expectBucketKey)
+			}
+		})
+	}
+}
 
 func TestLoadAndParseDefaultLimits(t *testing.T) {
 	// Load a single valid default limit.
