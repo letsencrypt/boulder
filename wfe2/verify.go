@@ -238,12 +238,19 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 			return berrors.BadNonceError("JWS has an invalid anti-replay nonce: %q", header.Nonce)
 		}
 
+		if errors.Is(err, berrors.BadNonce) {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnredeemableNonce"}).Inc()
+			return err
+		}
+
 		// We don't recognize this error, so just pass it upwards.
 		return fmt.Errorf("failed to redeem nonce: %w", err)
 	}
 
+	// TODO: Remove this clause, as we're updating the NonceService to return an
+	// error rather than Valid=false when redemption fails.
 	if !resp.Valid {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSExpiredNonce"}).Inc()
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnredeemableNonce"}).Inc()
 		return berrors.BadNonceError("JWS has an expired anti-replay nonce: %q", header.Nonce)
 	}
 

@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	berrors "github.com/letsencrypt/boulder/errors"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
@@ -249,24 +250,24 @@ func (ns *NonceService) valid(nonce string) error {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
 		ns.nonceRedeems.WithLabelValues("invalid", "decrypt").Inc()
-		return fmt.Errorf("unable to decrypt nonce: %s", err)
+		return berrors.BadNonceError("unable to decrypt nonce: %s", err)
 	}
 
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	if c > ns.latest {
 		ns.nonceRedeems.WithLabelValues("invalid", "too high").Inc()
-		return fmt.Errorf("nonce greater than highest dispensed nonce: %d > %d", c, ns.latest)
+		return berrors.BadNonceError("nonce greater than highest dispensed nonce: %d > %d", c, ns.latest)
 	}
 
 	if c <= ns.earliest {
 		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
-		return fmt.Errorf("nonce less than lowest eligible nonce: %d < %d", c, ns.earliest)
+		return berrors.BadNonceError("nonce less than lowest eligible nonce: %d < %d", c, ns.earliest)
 	}
 
 	if ns.used[c] {
 		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
-		return fmt.Errorf("nonce already marked as used: %d ∈ used{%d}", c, len(ns.used))
+		return berrors.BadNonceError("nonce already marked as used: %d ∈ used{%d}", c, len(ns.used))
 	}
 
 	ns.used[c] = true

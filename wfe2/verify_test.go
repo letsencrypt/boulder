@@ -175,9 +175,7 @@ func (rs requestSigner) byKeyID(
 	return parsedJWS, jwk, body
 }
 
-// missingNonce returns an otherwise well-signed request that is missing its
-// nonce.
-func (rs requestSigner) missingNonce() *jose.JSONWebSignature {
+func (rs requestSigner) makeJWS(ns jose.NonceSource) *jose.JSONWebSignature {
 	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
@@ -190,101 +188,7 @@ func (rs requestSigner) missingNonce() *jose.JSONWebSignature {
 	}
 
 	opts := &jose.SignerOptions{
-		ExtraHeaders: map[jose.HeaderKey]any{
-			"url": "https://example.com/acme/foo",
-		},
-	}
-
-	signer, err := jose.NewSigner(signerKey, opts)
-	test.AssertNotError(rs.t, err, "Failed to make signer")
-	jws, err := signer.Sign([]byte(""))
-	test.AssertNotError(rs.t, err, "Failed to sign req")
-
-	return jws
-}
-
-// expiredNonce returns an otherwise well-signed request with a nonce that the
-// nonce service doesn't remember giving out (i.e. is expired).
-func (rs requestSigner) expiredNonce() *jose.JSONWebSignature {
-	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
-	jwk := &jose.JSONWebKey{
-		Key:       privateKey,
-		Algorithm: keyAlgForKey(rs.t, privateKey),
-		KeyID:     "http://localhost/acme/acct/1",
-	}
-	signerKey := jose.SigningKey{
-		Key:       jwk,
-		Algorithm: jose.RS256,
-	}
-
-	opts := &jose.SignerOptions{
-		NonceSource: badNonceProvider{},
-		ExtraHeaders: map[jose.HeaderKey]any{
-			"url": "https://example.com/acme/foo",
-		},
-	}
-
-	signer, err := jose.NewSigner(signerKey, opts)
-	test.AssertNotError(rs.t, err, "Failed to make signer")
-	jws, err := signer.Sign([]byte(""))
-	test.AssertNotError(rs.t, err, "Failed to sign req")
-
-	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
-	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
-
-	return parsedJWS
-}
-
-// malformedNonce returns an otherwise well-signed request with a malformed
-// nonce.
-func (rs requestSigner) malformedNonce() *jose.JSONWebSignature {
-	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
-	jwk := &jose.JSONWebKey{
-		Key:       privateKey,
-		Algorithm: keyAlgForKey(rs.t, privateKey),
-		KeyID:     "http://localhost/acme/acct/1",
-	}
-	signerKey := jose.SigningKey{
-		Key:       jwk,
-		Algorithm: jose.RS256,
-	}
-
-	opts := &jose.SignerOptions{
-		NonceSource: badNonceProvider{malformed: true},
-		ExtraHeaders: map[jose.HeaderKey]any{
-			"url": "https://example.com/acme/foo",
-		},
-	}
-
-	signer, err := jose.NewSigner(signerKey, opts)
-	test.AssertNotError(rs.t, err, "Failed to make signer")
-	jws, err := signer.Sign([]byte(""))
-	test.AssertNotError(rs.t, err, "Failed to sign req")
-
-	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
-	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
-
-	return parsedJWS
-}
-
-// shortNonce returns an otherwise well-signed request with a nonce shorter than
-// the prefix length.
-func (rs requestSigner) shortNonce() *jose.JSONWebSignature {
-	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
-	jwk := &jose.JSONWebKey{
-		Key:       privateKey,
-		Algorithm: keyAlgForKey(rs.t, privateKey),
-		KeyID:     "http://localhost/acme/acct/1",
-	}
-	signerKey := jose.SigningKey{
-		Key:       jwk,
-		Algorithm: jose.RS256,
-	}
-
-	opts := &jose.SignerOptions{
-		NonceSource: badNonceProvider{shortNonce: true},
+		NonceSource: ns,
 		ExtraHeaders: map[jose.HeaderKey]any{
 			"url": "https://example.com/acme/foo",
 		},
@@ -701,31 +605,31 @@ func TestValidNonce(t *testing.T) {
 	}{
 		{
 			Name:          "No nonce in JWS",
-			JWS:           signer.missingNonce(),
+			JWS:           signer.makeJWS(nil),
 			WantErrType:   berrors.BadNonce,
 			WantErrDetail: "JWS has no anti-replay nonce",
 			WantStatType:  "JWSMissingNonce",
 		},
 		{
 			Name:          "Malformed nonce in JWS",
-			JWS:           signer.malformedNonce(),
+			JWS:           signer.makeJWS(badNonceProvider{malformed: true}),
 			WantErrType:   berrors.BadNonce,
 			WantErrDetail: "JWS has a malformed anti-replay nonce: \"im-a-nonce\"",
 			WantStatType:  "JWSMalformedNonce",
 		},
 		{
 			Name:          "Canned nonce shorter than prefixLength in JWS",
-			JWS:           signer.shortNonce(),
+			JWS:           signer.makeJWS(badNonceProvider{shortNonce: true}),
 			WantErrType:   berrors.BadNonce,
 			WantErrDetail: "JWS has a malformed anti-replay nonce: \"woww\"",
 			WantStatType:  "JWSMalformedNonce",
 		},
 		{
-			Name:          "Expired nonce in JWS",
-			JWS:           signer.expiredNonce(),
+			Name:          "Unrecognized nonce in JWS",
+			JWS:           signer.makeJWS(badNonceProvider{}),
 			WantErrType:   berrors.BadNonce,
-			WantErrDetail: "JWS has an expired anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
-			WantStatType:  "JWSExpiredNonce",
+			WantErrDetail: "unable to decrypt nonce",
+			WantStatType:  "JWSUnredeemableNonce",
 		},
 		// We don't have a test case for "invalid" (i.e. no backend matching the
 		// prefix) because the unit tests don't use the noncebalancer that does
@@ -1352,12 +1256,12 @@ func TestValidJWSForKey(t *testing.T) {
 			WantStatType:  "JWSAlgorithmCheckFailed",
 		},
 		{
-			Name:          "JWS with an expired nonce",
-			JWS:           bJSONWebSignature{signer.expiredNonce()},
+			Name:          "JWS with an unredeemable nonce",
+			JWS:           bJSONWebSignature{signer.makeJWS(badNonceProvider{})},
 			JWK:           goodJWK,
 			WantErrType:   berrors.BadNonce,
-			WantErrDetail: "JWS has an expired anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
-			WantStatType:  "JWSExpiredNonce",
+			WantErrDetail: "unable to decrypt nonce",
+			WantStatType:  "JWSUnredeemableNonce",
 		},
 		{
 			Name:          "JWS with broken signature",
