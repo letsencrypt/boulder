@@ -75,7 +75,9 @@ type NonceService struct {
 	prefix           string
 	nonceCreates     prometheus.Counter
 	nonceEarliest    prometheus.Gauge
+	nonceDepth       prometheus.Gauge
 	nonceRedeems     *prometheus.CounterVec
+	nonceAges        *prometheus.HistogramVec
 	nonceHeapLatency prometheus.Histogram
 }
 
@@ -145,11 +147,20 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		Help: "A gauge with the current earliest valid nonce value",
 	})
 	stats.MustRegister(nonceEarliest)
+	nonceDepth := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nonce_depth",
+		Help: "A gauge with the current size of the valid nonce window",
+	})
 	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
 	}, []string{"result", "error"})
 	stats.MustRegister(nonceRedeems)
+	nonceAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "nonce_ages",
+		Help:    "A histogram of nonce ages at the time they were (attempted to be) redeemed, expressed as fractions of the valid nonce window",
+		Buckets: []float64{0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.1, 1.2, 1.5, 2, 5},
+	}, []string{"result"})
 	nonceHeapLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "nonce_heap_latency",
 		Help: "A histogram of latencies of heap pop operations",
@@ -166,7 +177,9 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		prefix:           prefix,
 		nonceCreates:     nonceCreates,
 		nonceEarliest:    nonceEarliest,
+		nonceDepth:       nonceDepth,
 		nonceRedeems:     nonceRedeems,
+		nonceAges:        nonceAges,
 		nonceHeapLatency: nonceHeapLatency,
 	}, nil
 }
@@ -240,7 +253,8 @@ func (ns *NonceService) nonce() (string, error) {
 	ns.latest++
 	latest := ns.latest
 	ns.mu.Unlock()
-	defer ns.nonceCreates.Inc()
+	ns.nonceCreates.Inc()
+	ns.nonceDepth.Set(float64(ns.latest - ns.earliest))
 	return ns.encrypt(latest)
 }
 
@@ -255,18 +269,30 @@ func (ns *NonceService) valid(nonce string) error {
 
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
-	if c > ns.latest {
+
+	// age represents how "far back" in the valid nonce window this nonce is.
+	// If it is very recent, then the numerator is very small and the age is close
+	// to zero. If it is old but still valid, the numerator is slightly smaller
+	// than the denominator, and the age is close to one. If it is too old, then
+	// the age is greater than one. If it is magically too new (i.e. greater than
+	// the largest nonce we've actually handed out), then the age is negative.
+	age := float64(ns.latest-c) / float64(ns.latest-ns.earliest)
+
+	if age < 0 {
 		ns.nonceRedeems.WithLabelValues("invalid", "too high").Inc()
+		ns.nonceAges.WithLabelValues("invalid").Observe(age)
 		return berrors.BadNonceError("nonce greater than highest dispensed nonce: %d > %d", c, ns.latest)
 	}
 
-	if c <= ns.earliest {
+	if age > 1 {
 		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
+		ns.nonceAges.WithLabelValues("invalid").Observe(age)
 		return berrors.BadNonceError("nonce less than lowest eligible nonce: %d < %d", c, ns.earliest)
 	}
 
 	if ns.used[c] {
 		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
+		ns.nonceAges.WithLabelValues("invalid").Observe(age)
 		return berrors.BadNonceError("nonce already marked as used: %d ∈ used{%d}", c, len(ns.used))
 	}
 
@@ -281,6 +307,7 @@ func (ns *NonceService) valid(nonce string) error {
 	}
 
 	ns.nonceRedeems.WithLabelValues("valid", "").Inc()
+	ns.nonceAges.WithLabelValues("valid").Observe(age)
 	return nil
 }
 

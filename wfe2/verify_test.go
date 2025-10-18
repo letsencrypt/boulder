@@ -686,7 +686,7 @@ func TestValidNonce_NoMatchingBackendFound(t *testing.T) {
 	err := wfe.validNonce(context.Background(), goodJWS.Signatures[0].Header)
 	test.AssertError(t, err, "Expected error for valid nonce with no backend")
 	test.AssertErrorIs(t, err, berrors.BadNonce)
-	test.AssertContains(t, err.Error(), "JWS has an invalid anti-replay nonce")
+	test.AssertContains(t, err.Error(), "JWS has a nonce whose prefix matches no nonce service")
 	test.AssertMetricWithLabelsEquals(t, wfe.stats.nonceNoMatchingBackendCount, prometheus.Labels{}, 1)
 }
 

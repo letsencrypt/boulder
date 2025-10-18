@@ -235,10 +235,12 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 			// should retry their request with a fresh nonce.
 			wfe.stats.nonceNoMatchingBackendCount.Inc()
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSNoBackendNonce"}).Inc()
-			return berrors.BadNonceError("JWS has an invalid anti-replay nonce: %q", header.Nonce)
+			return berrors.BadNonceError("JWS has a nonce whose prefix matches no nonce service: %q", header.Nonce)
 		}
 
 		if errors.Is(err, berrors.BadNonce) {
+			// Getting a berrors.BadNonce means that the nonce service itself had
+			// something to say about why the nonce was invalid; no need to wrap it.
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnredeemableNonce"}).Inc()
 			return err
 		}
