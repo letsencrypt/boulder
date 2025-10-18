@@ -418,10 +418,10 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 
 // NewRefresher periodically loads refreshed overrides using this registry's
 // refreshOverrides function.
-func (l *limitRegistry) NewRefresher() context.CancelFunc {
+func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ticker := time.NewTicker(30 * time.Minute)
+	ticker := time.NewTicker(interval)
 
 	go func() {
 		defer ticker.Stop()

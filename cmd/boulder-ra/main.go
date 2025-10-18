@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 
@@ -279,7 +280,7 @@ func main() {
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, scope, logger)
 		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
-		overrideRefresherShutdown := txnBuilder.NewRefresher()
+		overrideRefresherShutdown := txnBuilder.NewRefresher(30 * time.Minute)
 		defer overrideRefresherShutdown()
 	}
 

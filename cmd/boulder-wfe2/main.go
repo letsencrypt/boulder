@@ -341,7 +341,7 @@ func main() {
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger)
 		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
-		overridesRefresherShutdown = txnBuilder.NewRefresher()
+		overridesRefresherShutdown = txnBuilder.NewRefresher(30 * time.Minute)
 	}
 
 	var accountGetter wfe2.AccountGetter

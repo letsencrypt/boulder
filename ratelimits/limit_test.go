@@ -3,9 +3,11 @@ package ratelimits
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -262,15 +265,23 @@ func TestLoadOverrides(t *testing.T) {
 	test.AssertNotError(t, err, "loading overrides from file")
 	testOverrides, err := parseOverrideLimits(overridesData)
 	test.AssertNotError(t, err, "parsing overrides")
+
+	newOverridesPerLimit := make(map[Name]float64)
 	for _, override := range testOverrides {
 		override.precompute()
+		newOverridesPerLimit[override.Name]++
 	}
 
 	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
 
-	// FIXME: Test that testLimitRegistry.overridesPerLimit[name] values were set correctly, including that limits without overrides are set to 0.
-
 	var iom io_prometheus_client.Metric
+
+	for rlName, rlString := range nameToString {
+		err = tb.limitRegistry.overridesPerLimit.WithLabelValues(rlString).Write(&iom)
+		test.AssertNotError(t, err, fmt.Sprintf("encoding overridesPerLimit metric with label %q", rlString))
+		test.AssertEquals(t, iom.Gauge.GetValue(), newOverridesPerLimit[rlName])
+	}
+
 	err = tb.limitRegistry.overridesTimestamp.Write(&iom)
 	test.AssertNotError(t, err, "encoding overridesTimestamp metric")
 	test.Assert(t, int64(iom.Gauge.GetValue()) >= time.Now().Unix()-5, "overridesTimestamp too old")
@@ -298,7 +309,33 @@ func TestLoadOverrides(t *testing.T) {
 	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
 }
 
-// FIXME: TestNewRefresher
+func TestNewRefresher(t *testing.T) {
+	mockLog := blog.NewMock()
+
+	reg := &limitRegistry{
+		refreshOverrides: func(_ context.Context, _ prometheus.Gauge, logger blog.Logger) (Limits, error) {
+			logger.Info("refreshed")
+			return nil, nil
+		},
+		logger: mockLog,
+	}
+
+	// Create and simultaneously cancel a refresher.
+	reg.NewRefresher(time.Millisecond * 2)()
+	time.Sleep(time.Millisecond * 20)
+	test.Assert(t, slices.Equal(mockLog.GetAll(), nil), "refresher ran despite cancellation")
+
+	reg.NewRefresher(time.Nanosecond)
+	retries := 0
+	for retries < 5 {
+		if slices.Contains(mockLog.GetAll(), "INFO: refreshed") {
+			break
+		}
+		retries++
+		time.Sleep(core.RetryBackoff(retries, time.Millisecond*2, time.Millisecond*50, 2))
+	}
+	test.AssertSliceContains(t, mockLog.GetAll(), "INFO: refreshed")
+}
 
 // FIXME: TestHydrateOverrideLimit
 
