@@ -1,11 +1,16 @@
 package ratelimits
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -208,8 +213,11 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	test.Assert(t, !txn.limit.isOverride, "should not be an override")
 }
 
+// NewTransactionBuilder's metrics are tested in TestLoadOverrides.
 func TestNewTransactionBuilder(t *testing.T) {
 	t.Parallel()
+
+	mockLog := blog.NewMock()
 
 	expectedBurst := int64(10000)
 	expectedCount := int64(10000)
@@ -220,7 +228,7 @@ func TestNewTransactionBuilder(t *testing.T) {
 			Burst:  expectedBurst,
 			Count:  expectedCount,
 			Period: expectedPeriod},
-	}, nil, metrics.NoopRegisterer, blog.NewMock())
+	}, nil, metrics.NoopRegisterer, mockLog)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	newRegDefault, ok := tb.limitRegistry.defaults[NewRegistrationsPerIPAddress.EnumString()]
@@ -229,9 +237,21 @@ func TestNewTransactionBuilder(t *testing.T) {
 	test.AssertEquals(t, newRegDefault.Count, expectedCount)
 	test.AssertEquals(t, newRegDefault.Period, expectedPeriod)
 
-	// FIXME: Test that metrics were set properly.
+	mockLog.Clear()
+	failFirstRefresh := func(_ context.Context, _ prometheus.Gauge, logger blog.Logger) (Limits, error) {
+		if !slices.Contains(mockLog.GetAll(), "INFO: deliberately failed, as a joke") {
+			logger.Info("deliberately failed, as a joke")
+			return nil, errors.New("failFirstRefresh failed")
+		}
+		return nil, nil
+	}
+	_, err = NewTransactionBuilder(LimitConfigs{
+		NewRegistrationsPerIPAddress.String(): &LimitConfig{
+			Burst:  expectedBurst,
+			Count:  expectedCount,
+			Period: expectedPeriod},
+	}, failFirstRefresh, metrics.NoopRegisterer, mockLog)
+	test.AssertNotError(t, err, "creating TransactionBuilder with flaky overrides")
 }
 
 // FIXME: TestNewTransactionBuilderFromDatabase
-
-// FIXME: TestNewTransactionBuilderFromFiles
