@@ -792,7 +792,7 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 	var row struct {
 		Count int64
 	}
-	err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM revokedCertificates WHERE serial = ?", req.Serial)
+	err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM revokedCertificates WHERE serial = ? FOR UPDATE", req.Serial)
 	if err != nil {
 		return fmt.Errorf("checking if certificate is already revoked: %w", err)
 	}
@@ -812,8 +812,8 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 	}
 
 	// We're guaranteed that this won't be a duplicate insert because we've
-	// already checked for existence of a row with the same serial above, in the
-	// same transaction.
+	// already checked for existence of a row with the same serial above, using
+	// a FOR UPDATE select in this same transaction.
 	err = tx.Insert(ctx, &revokedCertModel{
 		IssuerID:      req.IssuerID,
 		Serial:        req.Serial,
