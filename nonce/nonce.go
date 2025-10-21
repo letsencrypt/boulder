@@ -293,7 +293,7 @@ func (ns *NonceService) valid(nonce string) error {
 	if ns.used[c] {
 		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
 		ns.nonceAges.WithLabelValues("invalid").Observe(age)
-		return berrors.BadNonceError("nonce already marked as used: %d ∈ used{%d}", c, len(ns.used))
+		return berrors.BadNonceError("nonce already marked as used: %d in [%d]used", c, len(ns.used))
 	}
 
 	ns.used[c] = true
