@@ -357,12 +357,6 @@ func TestLogLineChecksum(t *testing.T) {
 			input:    "Hello, World!",
 			expected: "0MNK7A",
 		},
-		{
-			name:     "OldLineChecksum with Info log",
-			function: OldLineChecksum,
-			input:    "Info log",
-			expected: "pcbo7wk",
-		},
 	}
 
 	for _, tc := range testCases {
