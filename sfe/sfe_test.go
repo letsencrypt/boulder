@@ -69,6 +69,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 		nil,
 		limiter,
 		txnBuilder,
+		false,
 	)
 	test.AssertNotError(t, err, "Unable to create SFE")
 

@@ -12,8 +12,6 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -213,10 +211,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 	return nil, errors.New("no cert status")
 }
 
-func (sa *StorageAuthorityReadOnly) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return nil, status.Error(codes.Unimplemented, "unimplemented mock")
-}
-
 // GetRevocationStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	return nil, nil
@@ -252,24 +246,9 @@ func (sa *StorageAuthority) GetPausedIdentifiers(_ context.Context, _ *sapb.Regi
 	return nil, nil
 }
 
-// GetRevokedCerts is a mock
-func (sa *StorageAuthorityReadOnly) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
-	return &ServerStreamClient[corepb.CRLEntry]{}, nil
-}
-
-// GetRevokedCerts is a mock
-func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
-	return &ServerStreamClient[corepb.CRLEntry]{}, nil
-}
-
 // GetRevokedCertsByShard is a mock
 func (sa *StorageAuthorityReadOnly) GetRevokedCertsByShard(ctx context.Context, _ *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
 	return &ServerStreamClient[corepb.CRLEntry]{}, nil
-}
-
-// GetMaxExpiration is a mock
-func (sa *StorageAuthorityReadOnly) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
-	return nil, nil
 }
 
 // AddRateLimitOverride is a mock
