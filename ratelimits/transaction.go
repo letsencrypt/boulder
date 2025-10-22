@@ -204,6 +204,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 					r.UpdatedAt.AsTime().Format("2006-01-02"),
 					r.Override.Comment,
 				),
+				isOverride: true,
 			}
 
 			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, newLimit)

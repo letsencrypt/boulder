@@ -11,12 +11,18 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/mocks"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -254,4 +260,97 @@ func TestNewTransactionBuilder(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder with flaky overrides")
 }
 
-// FIXME: TestNewTransactionBuilderFromDatabase
+func TestNewTransactionBuilderFromDatabase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                 string
+		overrides            GetOverridesFunc
+		expectOverrides      map[string]Limit
+		expectError          string
+		expectLog            string
+		expectOverrideErrors float64
+	}{
+		{
+			name: "error fetching enabled overrides",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return nil, errors.New("lol no")
+			},
+			expectError: "fetching enabled overrides: lol no",
+		},
+		{
+			name: "empty results",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{}}, nil
+			},
+		},
+		{
+			name: "gRPC error",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Err: errors.New("i ate ur toast m8")}, nil
+			},
+			expectError: "reading overrides stream: i ate ur toast m8",
+		},
+		{
+			name: "2 valid overrides",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.com", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.net", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+				}}, nil
+			},
+			expectOverrides: map[string]Limit{
+				"example.com": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				"example.net": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+			},
+		},
+		{
+			name: "2 valid & 4 incomplete overrides",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.com", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.net", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.com"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.net"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "worse-example.com"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "worser-example.xyz"}},
+				}}, nil
+			},
+			expectOverrides: map[string]Limit{
+				"example.com": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				"example.net": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+			},
+			expectLog:            "ERR: [AUDIT] hydrating CertificatesPerDomain override with key \"bad-example.com\": invalid burst '0', must be > 0",
+			expectOverrideErrors: 4,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockLog := blog.NewMock()
+			tb, err := NewTransactionBuilderFromDatabase("../test/config-next/wfe2-ratelimit-defaults.yml", tc.overrides, metrics.NoopRegisterer, mockLog)
+			if tc.expectError != "" {
+				if err == nil {
+					t.Errorf("expected error for test %q but got none", tc.name)
+				}
+				test.AssertContains(t, err.Error(), tc.expectError)
+			} else {
+				test.AssertNotError(t, err, tc.name)
+
+				if tc.expectLog != "" {
+					test.AssertSliceContains(t, mockLog.GetAll(), tc.expectLog)
+				}
+
+				for bucketKey, limit := range tc.expectOverrides {
+					test.AssertDeepEquals(t, tb.overrides[bucketKey], &limit)
+				}
+				test.AssertEquals(t, len(tb.overrides), len(tc.expectOverrides))
+
+				var iom io_prometheus_client.Metric
+				err = tb.limitRegistry.overridesErrors.Write(&iom)
+				test.AssertNotError(t, err, "encoding overridesErrors metric")
+				test.AssertEquals(t, iom.Gauge.GetValue(), tc.expectOverrideErrors)
+			}
+		})
+	}
+}
