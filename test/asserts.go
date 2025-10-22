@@ -250,3 +250,53 @@ loop:
 		t.Errorf("metric with labels %+v: got %g, want %g", l, total, expected)
 	}
 }
+
+// AssertHistogramBucketCount is similar to AssertMetricWithLabelsEquals, in
+// that it determines whether the number of samples within a given histogram
+// bucket matches the expectation. The bucket to check is indicated by a single
+// exemplar value; whichever bucket that value falls into is the bucket whose
+// sample count will be compared to the expected value.
+func AssertHistogramBucketCount(t *testing.T, c prometheus.Collector, l prometheus.Labels, b float64, expected uint64) {
+	t.Helper()
+	ch := make(chan prometheus.Metric)
+	done := make(chan struct{})
+	go func() {
+		c.Collect(ch)
+		close(done)
+	}()
+	var total uint64
+	timeout := time.After(time.Second)
+loop:
+	for {
+	metric:
+		select {
+		case <-timeout:
+			t.Fatal("timed out collecting metrics")
+		case <-done:
+			break loop
+		case m := <-ch:
+			var iom io_prometheus_client.Metric
+			_ = m.Write(&iom)
+			for _, lp := range iom.Label {
+				// If any of the labels on this metric have the same name as but
+				// different value than a label in `l`, skip this metric.
+				val, ok := l[lp.GetName()]
+				if ok && lp.GetValue() != val {
+					break metric
+				}
+			}
+			lowerBucketsCount := uint64(0)
+			for _, bucket := range iom.Histogram.Bucket {
+				if b <= bucket.GetUpperBound() {
+					total += bucket.GetCumulativeCount() - lowerBucketsCount
+					break
+				} else {
+					lowerBucketsCount += bucket.GetCumulativeCount()
+				}
+			}
+		}
+	}
+	if total != expected {
+		t.Errorf("histogram with labels %+v at bucket %g: got %d, want %d", l, b, total, expected)
+	}
+}

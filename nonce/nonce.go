@@ -75,7 +75,7 @@ type NonceService struct {
 	prefix           string
 	nonceCreates     prometheus.Counter
 	nonceEarliest    prometheus.Gauge
-	nonceDepth       prometheus.Gauge
+	nonceLatest      prometheus.Gauge
 	nonceRedeems     *prometheus.CounterVec
 	nonceAges        *prometheus.HistogramVec
 	nonceHeapLatency prometheus.Histogram
@@ -147,10 +147,11 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		Help: "A gauge with the current earliest valid nonce value",
 	})
 	stats.MustRegister(nonceEarliest)
-	nonceDepth := prometheus.NewGauge(prometheus.GaugeOpts{
+	nonceLatest := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "nonce_depth",
 		Help: "A gauge with the current size of the valid nonce window",
 	})
+	stats.MustRegister(nonceLatest)
 	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
@@ -159,8 +160,9 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	nonceAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "nonce_ages",
 		Help:    "A histogram of nonce ages at the time they were (attempted to be) redeemed, expressed as fractions of the valid nonce window",
-		Buckets: []float64{0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.1, 1.2, 1.5, 2, 5},
+		Buckets: []float64{-0.01, 0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.1, 1.2, 1.5, 2, 5},
 	}, []string{"result"})
+	stats.MustRegister(nonceAges)
 	nonceHeapLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "nonce_heap_latency",
 		Help: "A histogram of latencies of heap pop operations",
@@ -177,7 +179,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		prefix:           prefix,
 		nonceCreates:     nonceCreates,
 		nonceEarliest:    nonceEarliest,
-		nonceDepth:       nonceDepth,
+		nonceLatest:      nonceLatest,
 		nonceRedeems:     nonceRedeems,
 		nonceAges:        nonceAges,
 		nonceHeapLatency: nonceHeapLatency,
@@ -254,7 +256,7 @@ func (ns *NonceService) nonce() (string, error) {
 	latest := ns.latest
 	ns.mu.Unlock()
 	ns.nonceCreates.Inc()
-	ns.nonceDepth.Set(float64(ns.latest - ns.earliest))
+	ns.nonceLatest.Set(float64(latest))
 	return ns.encrypt(latest)
 }
 
@@ -278,13 +280,13 @@ func (ns *NonceService) valid(nonce string) error {
 	// the largest nonce we've actually handed out), then the age is negative.
 	age := float64(ns.latest-c) / float64(ns.latest-ns.earliest)
 
-	if age < 0 {
+	if c > ns.latest { // i.e. age < 0
 		ns.nonceRedeems.WithLabelValues("invalid", "too high").Inc()
 		ns.nonceAges.WithLabelValues("invalid").Observe(age)
 		return berrors.BadNonceError("nonce greater than highest dispensed nonce: %d > %d", c, ns.latest)
 	}
 
-	if age > 1 {
+	if c <= ns.earliest { // i.e. age >= 1
 		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
 		ns.nonceAges.WithLabelValues("invalid").Observe(age)
 		return berrors.BadNonceError("nonce less than lowest eligible nonce: %d < %d", c, ns.earliest)
