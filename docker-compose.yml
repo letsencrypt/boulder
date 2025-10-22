@@ -92,7 +92,7 @@ services:
       driver: none
 
   bproxysql:
-    image: proxysql/proxysql:2.5.4
+    image: proxysql/proxysql:2.7.2
     # The --initial flag force resets the ProxySQL database on startup. By
     # default, ProxySQL ignores new configuration if the database already
     # exists. Without this flag, new configuration wouldn't be applied until you
