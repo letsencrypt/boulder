@@ -108,7 +108,7 @@ services:
           - boulder-proxysql
 
   bredis_1:
-    image: redis:6.2.7
+    image: redis:7.0.15
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
@@ -117,7 +117,7 @@ services:
         ipv4_address: 10.77.77.4
 
   bredis_2:
-    image: redis:6.2.7
+    image: redis:7.0.15
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
@@ -126,7 +126,7 @@ services:
         ipv4_address: 10.77.77.5
 
   bconsul:
-    image: hashicorp/consul:1.15.4
+    image: hashicorp/consul:1.19.1
     volumes:
      - ./test/:/test/:cached
     networks:
