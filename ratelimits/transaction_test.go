@@ -313,7 +313,7 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.com"}},
 					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.net"}},
 					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "worse-example.com"}},
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "worser-example.xyz"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "even-worse-example.xyz"}},
 				}}, nil
 			},
 			expectOverrides: map[string]Limit{
