@@ -148,8 +148,8 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	})
 	stats.MustRegister(nonceEarliest)
 	nonceLatest := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "nonce_depth",
-		Help: "A gauge with the current size of the valid nonce window",
+		Name: "nonce_latest",
+		Help: "A gauge with the current latest valid nonce value",
 	})
 	stats.MustRegister(nonceLatest)
 	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
