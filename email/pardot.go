@@ -31,8 +31,8 @@ const (
 	// this API version (rare) or we want to make use of new Case fields
 	// (unlikely).
 	//
-	// To check the current version for our org, see “Identify your current API
-	// version”: https://help.salesforce.com/s/articleView?id=000386929&type=1
+	// To check the current version for our org, see "Identify your current API
+	// version": https://help.salesforce.com/s/articleView?id=000386929&type=1
 	casesPath = "/services/data/v64.0/sobjects/Case"
 
 	// maxAttempts is the maximum number of attempts to retry a request.
@@ -80,7 +80,7 @@ type SalesforceClientImpl struct {
 	clk          clock.Clock
 }
 
-var _ SalesforceClient = &SalesforceClientImpl{}
+var _ SalesforceClient = (*SalesforceClientImpl)(nil)
 
 // NewSalesforceClientImpl creates a new SalesforceClientImpl.
 func NewSalesforceClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, salesforceBaseURL, pardotBaseURL string) (*SalesforceClientImpl, error) {
@@ -215,7 +215,6 @@ func (pc *SalesforceClientImpl) SendContact(email string) error {
 			continue
 		}
 
-		defer resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			resp.Body.Close()
 			return nil

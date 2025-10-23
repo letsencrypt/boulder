@@ -29,14 +29,11 @@ type mockSalesforceClientImpl struct {
 	CreatedCases    []Case
 }
 
-// newMockSalesforceClientImpl returns a mockSalesforceClientImpl, implementing the
-// PardotClient interface. Both refer to the same instance, with the interface
-// for mock interaction and the struct for state inspection and modification.
-func newMockSalesforceClientImpl() (SalesforceClient, *mockSalesforceClientImpl) {
-	mockImpl := &mockSalesforceClientImpl{
-		CreatedContacts: []string{},
-	}
-	return mockImpl, mockImpl
+// newMockSalesforceClientImpl returns a mockSalesforceClientImpl, which implements
+// the PardotClient interface. It returns the underlying concrete type, so callers
+// have access to its struct members and helper methods.
+func newMockSalesforceClientImpl() *mockSalesforceClientImpl {
+	return &mockSalesforceClientImpl{}
 }
 
 // SendContact adds an email to CreatedContacts.
@@ -75,8 +72,8 @@ func (m *mockSalesforceClientImpl) getCreatedCases() []Case {
 // ExporterImpl queue and cleanup() to drain and shutdown. If start() is called,
 // cleanup() must be called.
 func setup() (*ExporterImpl, *mockSalesforceClientImpl, func(), func()) {
-	mockClient, clientImpl := newMockSalesforceClientImpl()
-	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+	clientImpl := newMockSalesforceClientImpl()
+	exporter := NewExporterImpl(clientImpl, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	return exporter, clientImpl,
 		func() { exporter.Start(daemonCtx) },
@@ -189,8 +186,8 @@ func TestSendContactDeduplication(t *testing.T) {
 	t.Parallel()
 
 	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
-	mockClient, clientImpl := newMockSalesforceClientImpl()
-	exporter := NewExporterImpl(mockClient, cache, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+	clientImpl := newMockSalesforceClientImpl()
+	exporter := NewExporterImpl(clientImpl, cache, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
@@ -249,8 +246,8 @@ func TestSendContactErrorRemovesFromCache(t *testing.T) {
 func TestSendCase(t *testing.T) {
 	t.Parallel()
 
-	mockClient, clientImpl := newMockSalesforceClientImpl()
-	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+	clientImpl := newMockSalesforceClientImpl()
+	exporter := NewExporterImpl(clientImpl, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
 	_, err := exporter.SendCase(ctx, &emailpb.SendCaseRequest{
 		Origin:       "Web",
@@ -285,7 +282,12 @@ func TestSendCaseClientErrorIncrementsMetric(t *testing.T) {
 	mockClient := &mockAlwaysFailCaseClient{}
 	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
-	_, err := exporter.SendCase(ctx, &emailpb.SendCaseRequest{Origin: "Web"})
+	_, err := exporter.SendCase(ctx, &emailpb.SendCaseRequest{
+		Origin:       "Web",
+		Subject:      "Some Override",
+		Description:  "Please review",
+		ContactEmail: "foo@bar.baz",
+	})
 	test.AssertError(t, err, "SendCase should return error on client failure")
 	test.AssertMetricWithLabelsEquals(t, exporter.caseErrorCounter, prometheus.Labels{}, 1)
 }
@@ -293,8 +295,8 @@ func TestSendCaseClientErrorIncrementsMetric(t *testing.T) {
 func TestSendCaseMissingOriginValidation(t *testing.T) {
 	t.Parallel()
 
-	mockClient, clientImpl := newMockSalesforceClientImpl()
-	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+	clientImpl := newMockSalesforceClientImpl()
+	exporter := NewExporterImpl(clientImpl, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
 	_, err := exporter.SendCase(ctx, &emailpb.SendCaseRequest{Subject: "No origin in this one, d00d"})
 	test.AssertError(t, err, "SendCase should fail validation when Origin is missing")

@@ -21,13 +21,11 @@ type MockSalesforceClientImpl struct {
 	CreatedCases    []email.Case
 }
 
-// NewMockSalesforceClientImpl returns a email.SalesforceClient and a
-// *MockSalesforceClientImpl. Both refer to the same instance, with the
-// interface for mock interaction and the struct for state inspection and
-// modification.
-func NewMockSalesforceClientImpl() (email.SalesforceClient, *MockSalesforceClientImpl) {
-	mockImpl := &MockSalesforceClientImpl{}
-	return mockImpl, mockImpl
+// NewMockSalesforceClientImpl returns a MockSalesforceClientImpl, which implements
+// the PardotClient interface. It returns the underlying concrete type, so callers
+// have access to its struct members and helper methods.
+func NewMockSalesforceClientImpl() *MockSalesforceClientImpl {
+	return &MockSalesforceClientImpl{}
 }
 
 // SendContact adds an email to CreatedContacts.

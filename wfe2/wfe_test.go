@@ -4372,8 +4372,8 @@ ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
 
 			wfe, _, signer := setupWFE(t)
 
-			mockSFClient, mockImpl := mocks.NewMockSalesforceClientImpl()
-			wfe.ee = mocks.NewMockExporterImpl(mockSFClient)
+			mockImpl := mocks.NewMockSalesforceClientImpl()
+			wfe.ee = mocks.NewMockExporterImpl(mockImpl)
 
 			contactsJSON, err := json.Marshal(tc.contacts)
 			test.AssertNotError(t, err, "Failed to marshal contacts")

@@ -126,9 +126,10 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 
 // SendCase immediately submits a new Case to the Salesforce REST API using the
 // provided details. Any retries are handled internally by the SalesforceClient.
+// The following fields are required: Origin, Subject, ContactEmail.
 func (impl *ExporterImpl) SendCase(ctx context.Context, req *emailpb.SendCaseRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.Origin) {
-		return nil, berrors.InternalServerError("Incomplete gRPC request message")
+	if core.IsAnyNilOrZero(req, req.Origin, req.Subject, req.ContactEmail) {
+		return nil, berrors.InternalServerError("incomplete gRPC request message")
 	}
 
 	err := impl.client.SendCase(Case{
@@ -144,7 +145,7 @@ func (impl *ExporterImpl) SendCase(ctx context.Context, req *emailpb.SendCaseReq
 	})
 	if err != nil {
 		impl.caseErrorCounter.Inc()
-		return nil, berrors.InternalServerError("Sending Case to the Salesforce REST API: %s", err)
+		return nil, berrors.InternalServerError("sending Case to the Salesforce REST API: %s", err)
 	}
 
 	return &emptypb.Empty{}, nil
