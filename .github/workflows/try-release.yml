@@ -1,7 +1,8 @@
-# Try building the Boulder Debian package on every PR and push to main.
-# This is to make sure the actual release job will succeed when we tag a
-# release.
-# Keep in sync with release.yml
+# Try building the Boulder Debian package on every PR and push to main. This is
+# to make sure the actual release job will succeed when we tag a release.
+#
+# Keep the GO_VERSION matrix and the container-building steps in sync with
+# release.yml.
 name: Try release
 on:
   push:
@@ -20,6 +21,7 @@ jobs:
       matrix:
         GO_VERSION:
           - "1.25.2"
+          - "1.25.3"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
