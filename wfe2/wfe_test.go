@@ -404,7 +404,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
 	test.AssertNotError(t, err, "making nonceService")
 
-	inmemNonceService := &inmemnonce.Service{NonceService: nonceService}
+	inmemNonceService := &inmemnonce.NonceService{Impl: nonceService}
 	gnc := inmemNonceService
 	rnc := inmemNonceService
 
@@ -1358,7 +1358,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"Unable to validate JWS :: JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"JWS has an invalid anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSAAccount(t *testing.T) {
