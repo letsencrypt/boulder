@@ -768,7 +768,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 			return
 		}
-		prepAccountForDisplay(&acct)
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 		if err != nil {
@@ -894,8 +893,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
-
-	prepAccountForDisplay(&acct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
 	if err != nil {
@@ -1197,24 +1194,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 }
 
-// prepAccountForDisplay takes a core.Registration and mutates it to be ready
-// for display in a JSON response. Primarily it papers over legacy ACME v1
-// features or non-standard details internal to Boulder we don't want clients to
-// rely on.
-func prepAccountForDisplay(acct *core.Registration) {
-	// Zero out the account ID so that it isn't marshalled. RFC 8555 specifies
-	// using the Location header for learning the account ID.
-	acct.ID = 0
-
-	// We populate the account Agreement field when creating a new response to
-	// track which terms-of-service URL was in effect when an account with
-	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
-	// this value back to a V2 client. The "Agreement" field of an
-	// account/registration is a V1 notion so we strip it here in the WFE2 before
-	// returning the account.
-	acct.Agreement = ""
-}
-
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
 // the client by filling in its URL field and clearing several unnecessary
 // fields.
@@ -1431,8 +1410,6 @@ func (wfe *WebFrontEndImpl) Account(
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
-
-	prepAccountForDisplay(acct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 	if err != nil {
@@ -1994,7 +1971,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling proto to registration"), err)
 		return
 	}
-	prepAccountForDisplay(&updatedAcct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
