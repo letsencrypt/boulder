@@ -54,26 +54,7 @@ func init() {
 		panic(err)
 	}
 
-	// Add multicast addresses, which aren't in the IANA registries.
-	//
-	// TODO(#8237): Move these entries to IP address blocklists once they're
-	// implemented.
-	additionalPrefixes := []reservedPrefix{
-		{
-			addressFamily: "IPv4",
-			addressBlock:  netip.MustParsePrefix("224.0.0.0/4"),
-			name:          "Multicast Addresses",
-			rfc:           "[RFC3171]",
-		},
-		{
-			addressFamily: "IPv6",
-			addressBlock:  netip.MustParsePrefix("ff00::/8"),
-			name:          "Multicast Addresses",
-			rfc:           "[RFC4291]",
-		},
-	}
-
-	reservedPrefixes = slices.Concat(ipv4Prefixes, ipv6Prefixes, additionalPrefixes)
+	reservedPrefixes = slices.Concat(ipv4Prefixes, ipv6Prefixes)
 
 	// Sort the list of reserved prefixes in descending order of prefix size, so
 	// that checks will match the most-specific reserved prefix first.
