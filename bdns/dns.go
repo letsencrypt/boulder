@@ -219,11 +219,10 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 				result = dns.RcodeToString[rsp.Rcode]
 			}
 			if err != nil {
-				queryType := dns.TypeToString[m.Question[0].Qtype]
 				dnsClient.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]",
 					chosenServer,
 					hostname,
-					queryType,
+					qtypeStr,
 					err)
 			}
 			dnsClient.queryTime.With(prometheus.Labels{
