@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -477,24 +479,48 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			newAuthzIDs = append(newAuthzIDs, am.ID)
 		}
 
+		// Combine the already-associated and newly-created authzs.
+		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
+
 		// Second, insert the new order.
 		created := ssa.clk.Now()
-		om := orderModel{
-			RegistrationID:         req.NewOrder.RegistrationID,
-			Expires:                req.NewOrder.Expires.AsTime(),
-			Created:                created,
-			CertificateProfileName: &req.NewOrder.CertificateProfileName,
-			Replaces:               &req.NewOrder.Replaces,
+		var orderID int64
+		if features.Get().StoreAuthzsInTheOrder {
+			encodedAuthzs, err := proto.Marshal(&sapb.Authzs{
+				AuthzIDs: allAuthzIds,
+			})
+			if err != nil {
+				return nil, err
+			}
+			om := orderModelWithAuthzs{
+				RegistrationID:         req.NewOrder.RegistrationID,
+				Expires:                req.NewOrder.Expires.AsTime(),
+				Created:                created,
+				CertificateProfileName: &req.NewOrder.CertificateProfileName,
+				Replaces:               &req.NewOrder.Replaces,
+				Authzs:                 encodedAuthzs,
+			}
+			err = tx.Insert(ctx, &om)
+			if err != nil {
+				return nil, err
+			}
+			orderID = om.ID
+		} else {
+			om := orderModel{
+				RegistrationID:         req.NewOrder.RegistrationID,
+				Expires:                req.NewOrder.Expires.AsTime(),
+				Created:                created,
+				CertificateProfileName: &req.NewOrder.CertificateProfileName,
+				Replaces:               &req.NewOrder.Replaces,
+			}
+			err := tx.Insert(ctx, &om)
+			if err != nil {
+				return nil, err
+			}
+			orderID = om.ID
 		}
-		err := tx.Insert(ctx, &om)
-		if err != nil {
-			return nil, err
-		}
-		orderID := om.ID
 
 		// Third, insert all of the orderToAuthz relations.
-		// Have to combine the already-associated and newly-created authzs.
-		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
 		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"})
 		if err != nil {
 			return nil, err

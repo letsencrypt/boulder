@@ -86,6 +86,19 @@ type Config struct {
 	// during certificate issuance. This flag must be set to true in the
 	// RA, VA, and WFE2 services for full functionality.
 	DNSAccount01Enabled bool
+
+	// StoreAuthzsInTheOrder causes the SA to write to the `authzs`
+	// column in NewOrder and read from it in GetOrder. It should be enabled
+	// after the migration to add that column has been run.
+	StoreAuthzsInTheOrder bool
+
+	// QueryOrderAuthzsByID causes RA.FinalizeOrder to call SA.GetAuthorizationsByID,
+	// which queries the `authz2` table, instead of SA.GetValidOrderAuthorizations2,
+	// which queries the `orderToAuthz2` table JOINed with the `authz2` table.
+	// It also causes RA.FinalizeOrder to call SA.GetOrder itself, rather than relying
+	// on the Order object passed by the WFE.
+	// It can be enabled independently of StoreAuthzsInTheOrder.
+	QueryOrderAuthzsByID bool
 }
 
 var fMu = new(sync.RWMutex)

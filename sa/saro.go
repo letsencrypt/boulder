@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/letsencrypt/boulder/features"
 	"math"
 	"regexp"
 	"strings"
@@ -355,7 +356,13 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	}
 
 	txn := func(tx db.Executor) (any, error) {
-		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
+		var typeObj any = orderModel{}
+		if features.Get().StoreAuthzsInTheOrder {
+			// Even though this is a read-only path, we observe the feature flag so we don't
+			// try to query for a column (Authzs) that doesn't exist.
+			typeObj = orderModelWithAuthzs{}
+		}
+		omObj, err := tx.Get(ctx, typeObj, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
@@ -366,7 +373,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		order, err := modelToOrder(omObj.(*orderModel))
+		order, err := modelToOrder(omObj)
 		if err != nil {
 			return nil, err
 		}
@@ -376,11 +383,15 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		v2AuthzIDs, err := authzForOrder(ctx, tx, order.Id)
-		if err != nil {
-			return nil, err
+		// For orders created before feature flag StoreAuthzsInTheOrder, fetch the list of authz IDs
+		// from the orderToAuthz2 table.
+		if len(order.V2Authorizations) == 0 {
+			v2AuthzIDs, err := authzForOrder(ctx, tx, order.Id)
+			if err != nil {
+				return nil, err
+			}
+			order.V2Authorizations = v2AuthzIDs
 		}
-		order.V2Authorizations = v2AuthzIDs
 
 		// Get the partial Authorization objects for the order
 		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, order.V2Authorizations)
@@ -495,6 +506,38 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 		return nil, berrors.NotFoundError("no order matching request found")
 	}
 	return order, nil
+}
+
+func (ssa *SQLStorageAuthorityRO) GetAuthorizationsByID(ctx context.Context, req *sapb.GetAuthorizationsByIDRequest) (*sapb.Authorizations, error) {
+	selector, err := db.NewMappedSelector[authzModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return nil, fmt.Errorf("initializing db map: %w", err)
+	}
+
+	clauses := fmt.Sprintf(`WHERE id IN (%s)`, db.QuestionMarks(len(req.AuthorizationIDs)))
+
+	var sliceOfAny []any
+	for _, id := range req.AuthorizationIDs {
+		sliceOfAny = append(sliceOfAny, id)
+	}
+	rows, err := selector.QueryContext(ctx, clauses, sliceOfAny...)
+	if err != nil {
+		return nil, fmt.Errorf("reading db: %w", err)
+	}
+
+	var ret []*corepb.Authorization
+	err = rows.ForEach(func(row *authzModel) error {
+		authz, err := modelToAuthzPB(*row)
+		if err != nil {
+			return err
+		}
+		ret = append(ret, authz)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading db: %w", err)
+	}
+	return &sapb.Authorizations{Authzs: ret}, nil
 }
 
 // GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.

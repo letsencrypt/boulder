@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"math"
 	"net/netip"
 	"net/url"
@@ -348,6 +349,19 @@ type orderModel struct {
 	Replaces               *string
 }
 
+type orderModelWithAuthzs struct {
+	ID                     int64
+	RegistrationID         int64
+	Expires                time.Time
+	Created                time.Time
+	Error                  []byte
+	CertificateSerial      string
+	BeganProcessing        bool
+	CertificateProfileName *string
+	Replaces               *string
+	Authzs                 []byte
+}
+
 type orderToAuthzModel struct {
 	OrderID int64
 	AuthzID int64
@@ -382,7 +396,27 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 	return om, nil
 }
 
-func modelToOrder(om *orderModel) (*corepb.Order, error) {
+func modelToOrder(model any) (*corepb.Order, error) {
+	om, ok := model.(*orderModelWithAuthzs)
+	if !ok {
+		omv1, ok := model.(*orderModel)
+		if !ok {
+			return nil, fmt.Errorf("modelToOrder: unexpected type %T", om)
+		}
+		om = &orderModelWithAuthzs{
+			ID:                     omv1.ID,
+			RegistrationID:         omv1.RegistrationID,
+			Expires:                omv1.Expires,
+			Created:                omv1.Created,
+			Error:                  omv1.Error,
+			CertificateSerial:      omv1.CertificateSerial,
+			BeganProcessing:        omv1.BeganProcessing,
+			CertificateProfileName: omv1.CertificateProfileName,
+			Replaces:               omv1.Replaces,
+			Authzs:                 nil,
+		}
+	}
+
 	profile := ""
 	if om.CertificateProfileName != nil {
 		profile = *om.CertificateProfileName
@@ -391,6 +425,8 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	if om.Replaces != nil {
 		replaces = *om.Replaces
 	}
+	var decodedAuthzs sapb.Authzs
+	proto.Unmarshal(om.Authzs, &decodedAuthzs)
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -400,6 +436,7 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		BeganProcessing:        om.BeganProcessing,
 		CertificateProfileName: profile,
 		Replaces:               replaces,
+		V2Authorizations:       decodedAuthzs.AuthzIDs,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails

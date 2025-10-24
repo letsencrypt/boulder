@@ -428,6 +428,10 @@ func (sa *StorageAuthorityReadOnly) CountPendingAuthorizations2(ctx context.Cont
 	return &sapb.Count{}, nil
 }
 
+func (sa *StorageAuthorityReadOnly) GetAuthorizationsByID(ctx context.Context, req *sapb.GetAuthorizationsByIDRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
 func (sa *StorageAuthorityReadOnly) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return nil, nil
 }
