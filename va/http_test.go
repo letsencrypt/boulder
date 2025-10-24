@@ -3,7 +3,6 @@ package va
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	mrand "math/rand/v2"
@@ -12,13 +11,10 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -411,64 +407,6 @@ func TestExtractRequestTarget(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestHTTPValidationDNSError attempts validation for a domain name that always
-// generates a DNS error, and checks that a log line with the detailed error is
-// generated.
-func TestHTTPValidationDNSError(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
-
-	_, _, prob := va.processHTTPValidation(ctx, identifier.NewDNS("always.error"), "/.well-known/acme-challenge/whatever")
-	test.AssertError(t, prob, "Expected validation fetch to fail")
-	matchingLines := mockLog.GetAllMatching(`read udp: some net error`)
-	if len(matchingLines) != 1 {
-		t.Errorf("Didn't see expected DNS error logged. Instead, got:\n%s",
-			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
-	}
-}
-
-// TestHTTPValidationDNSIdMismatchError tests that performing an HTTP-01
-// challenge with a domain name that always returns a DNS ID mismatch error from
-// the mock resolver results in valid query/response data being logged in
-// a format we can decode successfully.
-func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
-
-	_, _, prob := va.processHTTPValidation(ctx, identifier.NewDNS("id.mismatch"), "/.well-known/acme-challenge/whatever")
-	test.AssertError(t, prob, "Expected validation fetch to fail")
-	matchingLines := mockLog.GetAllMatching(`logDNSError ID mismatch`)
-	if len(matchingLines) != 1 {
-		t.Errorf("Didn't see expected DNS error logged. Instead, got:\n%s",
-			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
-	}
-	expectedRegex := regexp.MustCompile(
-		`INFO: logDNSError ID mismatch ` +
-			`chosenServer=\[mock.server\] ` +
-			`hostname=\[id\.mismatch\] ` +
-			`respHostname=\[id\.mismatch\.\] ` +
-			`queryType=\[A\] ` +
-			`msg=\[([A-Za-z0-9+=/\=]+)\] ` +
-			`resp=\[([A-Za-z0-9+=/\=]+)\] ` +
-			`err\=\[dns: id mismatch\]`,
-	)
-
-	matches := expectedRegex.FindAllStringSubmatch(matchingLines[0], -1)
-	test.AssertEquals(t, len(matches), 1)
-	submatches := matches[0]
-	test.AssertEquals(t, len(submatches), 3)
-
-	msgBytes, err := base64.StdEncoding.DecodeString(submatches[1])
-	test.AssertNotError(t, err, "bad base64 encoded query msg")
-	msg := new(dns.Msg)
-	err = msg.Unpack(msgBytes)
-	test.AssertNotError(t, err, "bad packed query msg")
-
-	respBytes, err := base64.StdEncoding.DecodeString(submatches[2])
-	test.AssertNotError(t, err, "bad base64 encoded resp msg")
-	resp := new(dns.Msg)
-	err = resp.Unpack(respBytes)
-	test.AssertNotError(t, err, "bad packed response msg")
 }
 
 func TestSetupHTTPValidation(t *testing.T) {

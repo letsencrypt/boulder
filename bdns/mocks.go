@@ -125,7 +125,6 @@ func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]netip.
 		m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
 		m.AuthenticatedData = true
 		m.SetEdns0(4096, false)
-		logDNSError(mock.Log, "mock.server", hostname, m, nil, err)
 		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
 	}
 	if hostname == "id.mismatch" {
@@ -139,7 +138,6 @@ func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]netip.
 		record.Hdr = dns.RR_Header{Name: dns.Fqdn(hostname), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
 		record.A = net.ParseIP("127.0.0.1")
 		r.Answer = append(r.Answer, record)
-		logDNSError(mock.Log, "mock.server", hostname, m, r, err)
 		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
 	}
 	// dual-homed host with an IPv6 and an IPv4 address
