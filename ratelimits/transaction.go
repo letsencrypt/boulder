@@ -250,14 +250,14 @@ func NewTransactionBuilderFromFiles(defaults string, overrides string, stats pro
 
 // NewTransactionBuilder returns a new *TransactionBuilder. A defaults map is
 // required.
-func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
-	regDefaults, err := parseDefaultLimits(defaults)
+func NewTransactionBuilder(defaultConfigs LimitConfigs, refresher OverridesRefresher, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
+	defaults, err := parseDefaultLimits(defaultConfigs)
 	if err != nil {
 		return nil, err
 	}
 
-	if overrides == nil {
-		overrides = func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error) {
+	if refresher == nil {
+		refresher = func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error) {
 			return nil, nil
 		}
 	}
@@ -290,9 +290,8 @@ func NewTransactionBuilder(defaults LimitConfigs, overrides OverridesRefresher, 
 	stats.MustRegister(overridesPerLimit)
 
 	registry := &limitRegistry{
-		defaults:         regDefaults,
-		refreshOverrides: overrides,
-		stats:            stats,
+		defaults:         defaults,
+		refreshOverrides: refresher,
 		logger:           logger,
 
 		overridesTimestamp: overridesTimestamp,

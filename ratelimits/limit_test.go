@@ -293,7 +293,6 @@ func TestLoadOverrides(t *testing.T) {
 		return nil, errors.New("mock failure")
 	}
 	err = tb.limitRegistry.loadOverrides(context.Background())
-	test.AssertEquals(t, mockLog.GetAll()[0], "ERR: [AUDIT] loading overrides: mock failure")
 	test.AssertError(t, err, "fail to load overrides")
 	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
 

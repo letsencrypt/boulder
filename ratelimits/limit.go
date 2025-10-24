@@ -110,7 +110,7 @@ func ValidateLimit(l *Limit) error {
 
 type Limits map[string]*Limit
 
-// loadDefaultsFromFile marshals the defaults YAML file at path into a map of
+// loadDefaultsFromFile unmarshals the defaults YAML file at path into a map of
 // limits.
 func loadDefaultsFromFile(path string) (LimitConfigs, error) {
 	lm := make(LimitConfigs)
@@ -138,7 +138,8 @@ type overrideYAML struct {
 
 type overridesYAML []map[string]overrideYAML
 
-// loadOverridesFromFile marshals the YAML file at path into a map of overrides.
+// loadOverridesFromFile unmarshals the YAML file at path into a map of
+// overrides.
 func loadOverridesFromFile(path string) (overridesYAML, error) {
 	ov := overridesYAML{}
 	data, err := os.ReadFile(path)
@@ -354,7 +355,6 @@ type limitRegistry struct {
 	// refreshOverrides is a function to refresh override limits.
 	refreshOverrides OverridesRefresher
 
-	stats              prometheus.Registerer
 	overridesTimestamp prometheus.Gauge
 	overridesErrors    prometheus.Gauge
 	overridesPerLimit  prometheus.GaugeVec
@@ -386,12 +386,10 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 	return nil, errLimitDisabled
 }
 
-// loadOverrides replaces this registry's overrides with a new dataset. This is
-// separate from the goroutine in NewRefresher(), for ease of testing.
+// loadOverrides replaces this registry's overrides with a new dataset.
 func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	newOverrides, err := l.refreshOverrides(ctx, l.overridesErrors, l.logger)
 	if err != nil {
-		l.logger.Errf("loading overrides: %v", err)
 		return err
 	}
 
@@ -428,7 +426,10 @@ func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc 
 		for {
 			select {
 			case <-ticker.C:
-				l.loadOverrides(ctx) //nolint:errcheck // Refreshing overrides is best-effort.
+				err := l.loadOverrides(ctx)
+				if err != nil {
+					l.logger.Errf("loading overrides: %v", err)
+				}
 			case <-ctx.Done():
 				return
 			}
