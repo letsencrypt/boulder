@@ -1365,55 +1365,6 @@ func TestGetAuthorization2NoRows(t *testing.T) {
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
-func TestGetAuthorizations2(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	reg := createWorkingRegistration(t, sa)
-	exp := fc.Now().AddDate(0, 0, 10).UTC()
-	attemptedAt := fc.Now()
-
-	identA := identifier.NewDNS("aaa")
-	identB := identifier.NewDNS("bbb")
-	identC := identifier.NewDNS("ccc")
-	identD := identifier.NewIP(netip.MustParseAddr("10.10.10.10"))
-	idents := identifier.ACMEIdentifiers{identA, identB, identC, identD}
-	identE := identifier.NewDNS("ddd")
-
-	createFinalizedAuthorization(t, sa, identA, exp, "valid", attemptedAt)
-	createPendingAuthorization(t, sa, identB, exp)
-	nearbyExpires := fc.Now().UTC().Add(time.Hour)
-	createPendingAuthorization(t, sa, identC, nearbyExpires)
-	createFinalizedAuthorization(t, sa, identD, exp, "valid", attemptedAt)
-
-	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrderAndAuthzs`. This
-	// should exclude pending authorization C based on its nearbyExpires expiry
-	// value.
-	expiryCutoff := fc.Now().AddDate(0, 0, 1)
-	// Get authorizations for the identifiers used above.
-	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		Identifiers:    idents.ToProtoSlice(),
-		ValidUntil:     timestamppb.New(expiryCutoff),
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// We should get back three authorizations since one of the four
-	// authorizations created above expires too soon.
-	test.AssertEquals(t, len(authz.Authzs), 3)
-
-	// Get authorizations for the identifiers used above, and one that doesn't exist
-	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		Identifiers:    append(idents.ToProtoSlice(), identE.ToProto()),
-		ValidUntil:     timestamppb.New(expiryCutoff),
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// It should still return only three authorizations
-	test.AssertEquals(t, len(authz.Authzs), 3)
-}
-
 func TestFasterGetOrderForNames(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

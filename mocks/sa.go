@@ -466,10 +466,6 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 	return auths, nil
 }
 
-func (sa *StorageAuthorityReadOnly) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return &sapb.Authorizations{}, nil
-}
-
 // GetAuthorization2 is a mock
 func (sa *StorageAuthorityReadOnly) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	return &corepb.Authorization{}, nil
