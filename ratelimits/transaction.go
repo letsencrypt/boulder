@@ -195,11 +195,20 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 				return nil, fmt.Errorf("reading overrides stream: %w", err)
 			}
 
+			limitName := Name(r.Override.LimitEnum)
+
+			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, limitName)
+			if err != nil {
+				logger.Errf("hydrating %s override with key %q: %v", limitName.String(), r.Override.BucketKey, err)
+				errorCount++
+				continue
+			}
+
 			newLimit := &Limit{
 				Burst:  r.Override.Burst,
 				Count:  r.Override.Count,
 				Period: config.Duration{Duration: r.Override.Period.AsDuration()},
-				Name:   Name(r.Override.LimitEnum),
+				Name:   limitName,
 				Comment: fmt.Sprintf("Last Updated: %s - %s",
 					r.UpdatedAt.AsTime().Format("2006-01-02"),
 					r.Override.Comment,
@@ -207,7 +216,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 				isOverride: true,
 			}
 
-			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, newLimit)
+			err = ValidateLimit(newLimit)
 			if err != nil {
 				logger.Errf("hydrating %s override with key %q: %v", newLimit.Name.String(), r.Override.BucketKey, err)
 				errorCount++

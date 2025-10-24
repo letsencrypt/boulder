@@ -209,9 +209,6 @@ func parseOverrideNameEnumId(key string) (Name, string, error) {
 // formatted as a list of maps, where each map has a single key representing the
 // limit name and a value that is a map containing the limit fields and an
 // additional 'ids' field that is a list of ids that this override applies to.
-//
-// When the OverridesFromDB feature flag is on, hydrateOverrideLimit is used as
-// this method's equivalent.
 func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 	parsed := make(Limits)
 
@@ -223,32 +220,10 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 			}
 
 			for _, entry := range v.Ids {
-				id := entry.Id
-				err := validateIdForName(name, id)
+				id, err := hydrateOverrideLimit(entry.Id, name)
 				if err != nil {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
-				}
-
-				// We interpret and compute the override values for two rate
-				// limits, since they're not nice to ask for in a config file.
-				switch name {
-				case CertificatesPerDomain:
-					// Convert IP addresses to their covering /32 (IPv4) or /64
-					// (IPv6) prefixes in CIDR notation.
-					ip, err := netip.ParseAddr(id)
-					if err == nil {
-						prefix, err := coveringIPPrefix(name, ip)
-						if err != nil {
-							return nil, fmt.Errorf(
-								"computing prefix for IP address %q: %w", id, err)
-						}
-						id = prefix.String()
-					}
-				case CertificatesPerFQDNSet:
-					// Compute the hash of a comma-separated list of identifier
-					// values.
-					id = fmt.Sprintf("%x", core.HashIdentifiers(identifier.FromStringSlice(strings.Split(id, ","))))
 				}
 
 				lim := &Limit{
@@ -262,7 +237,8 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 
 				err = ValidateLimit(lim)
 				if err != nil {
-					return nil, fmt.Errorf("validating override limit %q: %w", k, err)
+					return nil, fmt.Errorf(
+						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 				}
 
 				parsed[joinWithColon(name.EnumString(), id)] = lim
@@ -272,36 +248,27 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 	return parsed, nil
 }
 
-// hydrateOverrideLimit validates the limit Name, values, and override bucket
-// key. It returns the correct bucket key to use in-memory. It should be called
-// when loading overrides from the database.
-//
-// When the OverridesFromDB feature flag is off, parseOverrideLimits is used as
-// this method's equivalent.
-func hydrateOverrideLimit(bucketKey string, limit *Limit) (string, error) {
-	if !limit.Name.isValid() {
-		return "", fmt.Errorf("unrecognized limit name %d", limit.Name)
+// hydrateOverrideLimit validates the limit Name and override bucket key. It
+// returns the correct bucket key to use in-memory.
+func hydrateOverrideLimit(bucketKey string, limitName Name) (string, error) {
+	if !limitName.isValid() {
+		return "", fmt.Errorf("unrecognized limit name %d", limitName)
 	}
 
-	err := ValidateLimit(limit)
-	if err != nil {
-		return "", err
-	}
-
-	err = validateIdForName(limit.Name, bucketKey)
+	err := validateIdForName(limitName, bucketKey)
 	if err != nil {
 		return "", err
 	}
 
 	// Interpret and compute a new in-memory bucket key for two rate limits,
 	// since their keys aren't nice to store in a config file or database entry.
-	switch limit.Name {
+	switch limitName {
 	case CertificatesPerDomain:
 		// Convert IP addresses to their covering /32 (IPv4) or /64
 		// (IPv6) prefixes in CIDR notation.
 		ip, err := netip.ParseAddr(bucketKey)
 		if err == nil {
-			prefix, err := coveringIPPrefix(limit.Name, ip)
+			prefix, err := coveringIPPrefix(limitName, ip)
 			if err != nil {
 				return "", fmt.Errorf("computing prefix for IP address %q: %w", bucketKey, err)
 			}

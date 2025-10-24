@@ -354,13 +354,6 @@ func TestHydrateOverrideLimit(t *testing.T) {
 			expectError:     "unrecognized limit name 37",
 		},
 		{
-			name:            "nil burst, should fail ValidateLimit",
-			bucketKey:       "",
-			limit:           Limit{Name: StringToName["CertificatesPerDomain"]},
-			expectBucketKey: "",
-			expectError:     "invalid burst '0', must be > 0",
-		},
-		{
 			name:      "CertificatesPerDomain with bad FQDN, should fail validateIdForName",
 			bucketKey: "VelociousVacherin",
 			limit: Limit{
@@ -412,7 +405,7 @@ func TestHydrateOverrideLimit(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			bk, err := hydrateOverrideLimit(tc.bucketKey, &tc.limit)
+			bk, err := hydrateOverrideLimit(tc.bucketKey, tc.limit.Name)
 			if tc.expectError != "" {
 				if err == nil {
 					t.Errorf("expected error for test %q but got none", tc.name)
