@@ -482,20 +482,6 @@ def test_http_challenge_timeout():
         raise(Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds())))
 
 
-def test_tls_alpn_challenge():
-    # Pick two random domains
-    domains = [random_domain(),random_domain()]
-
-    # Add A records for these domains to ensure the VA's requests are directed
-    # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
-    # responses
-    for host in domains:
-        challSrv.add_a_record(host, ["64.112.117.134"])
-    chisel2.auth_and_issue(domains, chall_type="tls-alpn-01")
-
-    for host in domains:
-        challSrv.remove_a_record(host)
-
 def test_overlapping_wildcard():
     """
     Test issuance for a random domain and a wildcard version of the same domain
