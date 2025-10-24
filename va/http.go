@@ -178,8 +178,10 @@ type httpValidationTarget struct {
 	next []netip.Addr
 	// the current IP address being used for validation (if any)
 	cur netip.Addr
-	// the DNS resolver(s) that will attempt to fulfill the validation request
+	// the DNS resolver(s) that were used to locate the IPs listed above
 	resolvers bdns.ResolverAddrs
+	// whether the DNS query giving the IPs above was DNSSEC-validated
+	ad bool
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -210,14 +212,15 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	query string) (*httpValidationTarget, error) {
 	var addrs []netip.Addr
 	var resolvers bdns.ResolverAddrs
+	var ad bool
 	switch ident.Type {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier
-		dnsAddrs, dnsResolvers, err := va.getAddrs(ctx, ident.Value)
+		dnsAddrs, dnsResolvers, dnsAD, err := va.getAddrs(ctx, ident.Value)
 		if err != nil {
 			return nil, err
 		}
-		addrs, resolvers = dnsAddrs, dnsResolvers
+		addrs, resolvers, ad = dnsAddrs, dnsResolvers, dnsAD
 	case identifier.TypeIP:
 		netIP, err := netip.ParseAddr(ident.Value)
 		if err != nil {
@@ -235,6 +238,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		query:     query,
 		available: addrs,
 		resolvers: resolvers,
+		ad:        ad,
 	}
 
 	// Separate the addresses into the available v4 and v6 addresses
@@ -384,6 +388,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		AddressesResolved: target.available,
 		URL:               reqURL,
 		ResolverAddrs:     target.resolvers,
+		AD:                target.ad,
 	}
 
 	// Get the target IP to build a preresolved dialer with

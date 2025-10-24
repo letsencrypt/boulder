@@ -436,7 +436,7 @@ func TestTLSALPN01ObsoleteFailure(t *testing.T) {
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertNotNil(t, err, "expected validation to fail")
-	test.AssertContains(t, err.Error(), "Required extension OID 1.3.6.1.5.5.7.1.31 is not present")
+	test.AssertContains(t, err.Error(), "required extension OID 1.3.6.1.5.5.7.1.31 is not present")
 }
 
 func TestValidateTLSALPN01BadChallenge(t *testing.T) {
@@ -846,7 +846,7 @@ func TestAcceptableExtensions(t *testing.T) {
 	onlyUnexpectedExt := []pkix.Extension{weirdExt}
 	err = checkAcceptableExtensions(onlyUnexpectedExt, requireAcmeAndSAN)
 	test.AssertError(t, err, "Missing required extensions")
-	test.AssertContains(t, err.Error(), "Required extension OID 1.3.6.1.5.5.7.1.31 is not present")
+	test.AssertContains(t, err.Error(), "required extension OID 1.3.6.1.5.5.7.1.31 is not present")
 
 	okayExts := []pkix.Extension{acmeExtension, subjectAltName}
 	err = checkAcceptableExtensions(okayExts, requireAcmeAndSAN)

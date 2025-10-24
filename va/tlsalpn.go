@@ -72,12 +72,13 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	switch ident.Type {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier
-		dnsAddrs, dnsResolvers, err := va.getAddrs(ctx, ident.Value)
+		dnsAddrs, dnsResolvers, ad, err := va.getAddrs(ctx, ident.Value)
 		if err != nil {
 			return nil, nil, validationRecord, err
 		}
 		addrs, validationRecord.ResolverAddrs = dnsAddrs, dnsResolvers
 		validationRecord.AddressesResolved = addrs
+		validationRecord.AD = ad
 	case identifier.TypeIP:
 		netIP, err := netip.ParseAddr(ident.Value)
 		if err != nil {
@@ -280,14 +281,14 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 
 	for _, ext := range exts {
 		if oidSeen[ext.Id.String()] {
-			return fmt.Errorf("Extension OID %s seen twice", ext.Id)
+			return fmt.Errorf("extension OID %s seen twice", ext.Id)
 		}
 		oidSeen[ext.Id.String()] = true
 	}
 
 	for _, required := range requiredOIDs {
 		if !oidSeen[required.String()] {
-			return fmt.Errorf("Required extension OID %s is not present", required)
+			return fmt.Errorf("required extension OID %s is not present", required)
 		}
 	}
 
