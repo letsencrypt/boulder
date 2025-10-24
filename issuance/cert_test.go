@@ -952,7 +952,7 @@ func TestNewProfile(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gotProfile, gotErr := NewProfile(&tc.config)
+			gotProfile, gotErr := NewProfile(tc.config)
 			if tc.wantErr != "" {
 				if gotErr == nil {
 					t.Errorf("NewProfile(%#v) = %#v, but want err %q", tc.config, gotProfile, tc.wantErr)
