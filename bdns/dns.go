@@ -34,9 +34,9 @@ type ResolverAddrs []string
 
 // Client queries for DNS records
 type Client interface {
-	LookupTXT(context.Context, string) (txts []string, resolver ResolverAddrs, err error)
-	LookupHost(context.Context, string) ([]netip.Addr, ResolverAddrs, error)
-	LookupCAA(context.Context, string) ([]*dns.CAA, string, ResolverAddrs, error)
+	LookupTXT(context.Context, string) (txts []string, resolver ResolverAddrs, ad bool, err error)
+	LookupHost(context.Context, string) ([]netip.Addr, ResolverAddrs, bool, error)
+	LookupCAA(context.Context, string) ([]*dns.CAA, string, ResolverAddrs, bool, error)
 }
 
 // impl represents a client that talks to an external resolver
@@ -322,13 +322,13 @@ type dnsResp struct {
 // LookupTXT sends a DNS query to find all TXT records associated with
 // the provided hostname which it returns along with the returned
 // DNS authority section.
-func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string, ResolverAddrs, error) {
+func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string, ResolverAddrs, bool, error) {
 	var txt []string
 	dnsType := dns.TypeTXT
 	r, resolver, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	errWrap := wrapErr(dnsType, hostname, r, err)
 	if errWrap != nil {
-		return nil, ResolverAddrs{resolver}, errWrap
+		return nil, ResolverAddrs{resolver}, false, errWrap
 	}
 
 	for _, answer := range r.Answer {
@@ -339,10 +339,10 @@ func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string
 		}
 	}
 
-	return txt, ResolverAddrs{resolver}, err
+	return txt, ResolverAddrs{resolver}, r.AuthenticatedData, err
 }
 
-func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, string, error) {
+func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, string, bool, error) {
 	resp, resolver, err := dnsClient.exchangeOne(ctx, hostname, ipType)
 	switch ipType {
 	case dns.TypeA:
@@ -356,9 +356,9 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 	}
 	errWrap := wrapErr(ipType, hostname, resp, err)
 	if errWrap != nil {
-		return nil, resolver, errWrap
+		return nil, resolver, false, errWrap
 	}
-	return resp.Answer, resolver, nil
+	return resp.Answer, resolver, resp.AuthenticatedData, nil
 }
 
 // LookupHost sends a DNS query to find all A and AAAA records associated with
@@ -366,17 +366,18 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 // chase CNAME/DNAME aliases and return relevant records. It will retry
 // requests in the case of temporary network errors. It returns an error if
 // both the A and AAAA lookups fail or are empty, but succeeds otherwise.
-func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip.Addr, ResolverAddrs, error) {
+func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip.Addr, ResolverAddrs, bool, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
 	var resolverA, resolverAAAA string
+	var adA, adAAAA bool
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		recordsA, resolverA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
+		recordsA, resolverA, adA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
 	})
 	wg.Go(func() {
-		recordsAAAA, resolverAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
+		recordsAAAA, resolverAAAA, adAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
 	})
 	wg.Wait()
 
@@ -427,17 +428,17 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 		// branching. We don't use ProblemDetails and SubProblemDetails here, because
 		// this error will get wrapped in a DNSError and further munged by higher
 		// layers in the stack.
-		return nil, resolvers, fmt.Errorf("%w; %s", errA, errAAAA)
+		return nil, resolvers, false, fmt.Errorf("%w; %s", errA, errAAAA)
 	}
 
-	return append(addrsA, addrsAAAA...), resolvers, nil
+	return append(addrsA, addrsAAAA...), resolvers, adA && adAAAA, nil
 }
 
 // LookupCAA sends a DNS query to find all CAA records associated with
 // the provided hostname and the complete dig-style RR `response`. This
 // response is quite verbose, however it's only populated when the CAA
 // response is non-empty.
-func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, ResolverAddrs, error) {
+func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, ResolverAddrs, bool, error) {
 	dnsType := dns.TypeCAA
 	r, resolver, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 
@@ -448,12 +449,12 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	// rechecking. But allow NXDOMAIN for TLDs to fall through to the error code
 	// below, so we don't issue for gTLDs that have been removed by ICANN.
 	if err == nil && r.Rcode == dns.RcodeNameError && strings.Contains(hostname, ".") {
-		return nil, "", ResolverAddrs{resolver}, nil
+		return nil, "", ResolverAddrs{resolver}, false, nil
 	}
 
 	errWrap := wrapErr(dnsType, hostname, r, err)
 	if errWrap != nil {
-		return nil, "", ResolverAddrs{resolver}, errWrap
+		return nil, "", ResolverAddrs{resolver}, false, errWrap
 	}
 
 	var CAAs []*dns.CAA
@@ -466,7 +467,7 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	if len(CAAs) > 0 {
 		response = r.String()
 	}
-	return CAAs, response, ResolverAddrs{resolver}, nil
+	return CAAs, response, ResolverAddrs{resolver}, r.AuthenticatedData, nil
 }
 
 // logDNSError logs the provided err result from making a query for hostname to

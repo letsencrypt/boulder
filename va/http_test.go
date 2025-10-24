@@ -61,8 +61,8 @@ type dnsMockReturnsUnroutable struct {
 	*bdns.MockClient
 }
 
-func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return []netip.Addr{netip.MustParseAddr("64.112.117.254")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, bool, error) {
+	return []netip.Addr{netip.MustParseAddr("64.112.117.254")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, true, nil
 }
 
 // TestDialerTimeout tests that the preresolvedDialer's DialContext
@@ -535,6 +535,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 				AddressUsed:       netip.MustParseAddr("::1"),
 				ResolverAddrs:     []string{"MockClient"},
+				AD:                true,
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      netip.MustParseAddr("::1"),
@@ -553,6 +554,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 				AddressUsed:       netip.MustParseAddr("::1"),
 				ResolverAddrs:     []string{"MockClient"},
+				AD:                true,
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      netip.MustParseAddr("::1"),
@@ -1045,6 +1047,7 @@ func TestFetchHTTP(t *testing.T) {
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
 					AddressUsed:       netip.MustParseAddr("::1"),
 					ResolverAddrs:     []string{"MockClient"},
+					AD:                true,
 				},
 				{
 					Hostname:          "::1",
@@ -1138,6 +1141,7 @@ func TestFetchHTTP(t *testing.T) {
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
 					AddressUsed:       netip.MustParseAddr("::1"),
 					ResolverAddrs:     []string{"MockClient"},
+					AD:                true,
 				},
 			},
 		},
@@ -1155,6 +1159,7 @@ func TestFetchHTTP(t *testing.T) {
 					// The first validation record should have used the IPv6 addr
 					AddressUsed:   netip.MustParseAddr("::1"),
 					ResolverAddrs: []string{"MockClient"},
+					AD:            true,
 				},
 				{
 					Hostname:          "ipv4.and.ipv6.localhost",
@@ -1164,6 +1169,7 @@ func TestFetchHTTP(t *testing.T) {
 					// The second validation record should have used the IPv4 addr as a fallback
 					AddressUsed:   netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs: []string{"MockClient"},
+					AD:            true,
 				},
 			},
 		},

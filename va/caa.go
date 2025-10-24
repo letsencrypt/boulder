@@ -179,6 +179,7 @@ type caaResult struct {
 	criticalUnknown bool
 	dig             string
 	resolvers       bdns.ResolverAddrs
+	ad              bool
 	err             error
 }
 
@@ -239,7 +240,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		go func(name string, r *caaResult) {
 			r.name = name
 			var records []*dns.CAA
-			records, r.dig, r.resolvers, r.err = va.dnsClient.LookupCAA(ctx, name)
+			records, r.dig, r.resolvers, r.ad, r.err = va.dnsClient.LookupCAA(ctx, name)
 			if len(records) > 0 {
 				r.present = true
 			}

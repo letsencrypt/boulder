@@ -1242,6 +1242,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	// This field is not useful for the client, only internal debugging,
 	for idx := range challenge.ValidationRecord {
 		challenge.ValidationRecord[idx].ResolverAddrs = nil
+		challenge.ValidationRecord[idx].AD = false
 	}
 }
 
