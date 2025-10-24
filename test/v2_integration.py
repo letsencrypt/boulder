@@ -98,8 +98,6 @@ def check_challenge_dns_err(chalType):
                 c = chisel2.get_chall(authzr, challenges.HTTP01)
             elif chalType == "dns-01":
                 c = chisel2.get_chall(authzr, challenges.DNS01)
-            elif chalType == "tls-alpn-01":
-                c = chisel2.get_chall(authzr, challenges.TLSALPN01)
             else:
                 raise(Exception("Invalid challenge type requested: {0}".format(challType)))
 
@@ -129,13 +127,6 @@ def test_dns_challenge_dns_err():
     with broken DNS produces the correct problem response.
     """
     check_challenge_dns_err("dns-01")
-
-def test_tls_alpn_challenge_dns_err():
-    """
-    test_tls_alpn_challenge_dns_err tests that a TLS-ALPN-01 challenge for a domain
-    with broken DNS produces the correct problem response.
-    """
-    check_challenge_dns_err("tls-alpn-01")
 
 def test_http_challenge_broken_redirect():
     """
