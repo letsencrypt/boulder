@@ -718,11 +718,16 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 			return nil, err
 		}
 
-		authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
-		if err != nil {
-			return nil, err
+		// If the order had a list of authzs, query them and return.
+		// Otherwise, fall through to doing a JOIN query using orderToAuthz2
+		// and authz2 tables.
+		if len(order.V2Authorizations) > 0 {
+			authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
+			if err != nil {
+				return nil, err
+			}
+			return authzs, nil
 		}
-		return authzs, nil
 	}
 
 	// The authz2 and orderToAuthz2 tables both have a column named "id", so we
