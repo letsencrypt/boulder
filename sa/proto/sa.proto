@@ -15,7 +15,11 @@ service StorageAuthorityReadOnly {
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
+  // Get by identifiers (deprecated)
   rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
+  // Get by identifiers (valid authorizations only)
+  rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
@@ -28,8 +32,6 @@ service StorageAuthorityReadOnly {
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
-  rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
-  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
@@ -107,6 +109,10 @@ message JSONWebKey {
 
 message AuthorizationID {
   string id = 1;
+}
+
+message GetAuthorizationsByIDRequest {
+  repeated int64 authorizationIDs = 1;
 }
 
 message GetValidAuthorizationsRequest {
@@ -446,4 +452,9 @@ message RateLimitOverrideResponse {
   RateLimitOverride override  = 1;
   bool enabled  = 2;
   google.protobuf.Timestamp updatedAt = 3;
+}
+
+// Used internally for storage in the DB, not for RPCs.
+message Authzs {
+  repeated int64 authzIDs = 1;
 }
