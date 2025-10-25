@@ -514,8 +514,7 @@ func (ssa *SQLStorageAuthorityRO) getAuthorizationsByID(ctx context.Context, ids
 		return nil, fmt.Errorf("initializing db map: %w", err)
 	}
 
-	clauses := fmt.Sprintf(`WHERE id IN (%s)`,
-		db.QuestionMarks(len(ids)))
+	clauses := fmt.Sprintf(`WHERE id IN (%s)`, db.QuestionMarks(len(ids)))
 
 	var sliceOfAny []any
 	for _, id := range ids {
