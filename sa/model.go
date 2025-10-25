@@ -426,7 +426,10 @@ func modelToOrder(model any) (*corepb.Order, error) {
 		replaces = *om.Replaces
 	}
 	var decodedAuthzs sapb.Authzs
-	proto.Unmarshal(om.Authzs, &decodedAuthzs)
+	err := proto.Unmarshal(om.Authzs, &decodedAuthzs)
+	if err != nil {
+		return nil, err
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
