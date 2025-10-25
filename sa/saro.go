@@ -701,19 +701,15 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 	}
 
 	if features.Get().StoreAuthzsInTheOrder {
-		var om orderModelWithAuthzs
-		omAny, err := ssa.dbReadOnlyMap.Get(ctx, &om, req.Id)
+		om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModelWithAuthzs{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 			}
 			return nil, err
 		}
-		if omAny == nil {
-			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
-		}
 
-		order, err := modelToOrder(omAny)
+		order, err := modelToOrder(om)
 		if err != nil {
 			return nil, err
 		}
