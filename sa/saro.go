@@ -508,16 +508,17 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 	return order, nil
 }
 
-func (ssa *SQLStorageAuthorityRO) GetAuthorizationsByID(ctx context.Context, req *sapb.GetAuthorizationsByIDRequest) (*sapb.Authorizations, error) {
+func (ssa *SQLStorageAuthorityRO) getAuthorizationsByID(ctx context.Context, ids []int64) (*sapb.Authorizations, error) {
 	selector, err := db.NewMappedSelector[authzModel](ssa.dbReadOnlyMap)
 	if err != nil {
 		return nil, fmt.Errorf("initializing db map: %w", err)
 	}
 
-	clauses := fmt.Sprintf(`WHERE id IN (%s)`, db.QuestionMarks(len(req.AuthorizationIDs)))
+	clauses := fmt.Sprintf(`WHERE id IN (%s)`,
+		db.QuestionMarks(len(ids)))
 
 	var sliceOfAny []any
-	for _, id := range req.AuthorizationIDs {
+	for _, id := range ids {
 		sliceOfAny = append(sliceOfAny, id)
 	}
 	rows, err := selector.QueryContext(ctx, clauses, sliceOfAny...)
@@ -697,6 +698,31 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteRequest
+	}
+
+	if features.Get().StoreAuthzsInTheOrder {
+		var om orderModelWithAuthzs
+		omAny, err := ssa.dbReadOnlyMap.Get(ctx, &om, req.Id)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+			}
+			return nil, err
+		}
+		if omAny == nil {
+			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		}
+
+		order, err := modelToOrder(omAny)
+		if err != nil {
+			return nil, err
+		}
+
+		authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
+		if err != nil {
+			return nil, err
+		}
+		return authzs, nil
 	}
 
 	// The authz2 and orderToAuthz2 tables both have a column named "id", so we

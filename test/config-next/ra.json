@@ -163,7 +163,6 @@
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
 			"DNSAccount01Enabled": true,
-			"QueryOrderAuthzsByID": true,
 			"NoPendingAuthzReuse": true
 		}
 	},

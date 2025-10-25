@@ -660,32 +660,20 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 // will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
-	order *corepb.Order,
+	orderID orderID,
+	acctID accountID,
 	idents identifier.ACMEIdentifiers,
 	now time.Time) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
-	var err error
-	var authzPBs *sapb.Authorizations
-	if features.Get().QueryOrderAuthzsByID {
-		// Since GetOrder always fills out order.V2Authorizations, we can do this query regardless
-		// of whether the order was created before we started storing authzIDs in the `orders` table.
-		authzPBs, err = ra.SA.GetAuthorizationsByID(ctx, &sapb.GetAuthorizationsByIDRequest{
-			AuthorizationIDs: order.V2Authorizations,
-		})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// Get all of the valid authorizations for this account/order
-		req := &sapb.GetValidOrderAuthorizationsRequest{
-			Id:     order.Id,
-			AcctID: order.RegistrationID,
-		}
-		authzPBs, err = ra.SA.GetValidOrderAuthorizations2(ctx, req)
-		if err != nil {
-			return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
-		}
+	// Get all of the valid authorizations for this account/order
+	req := &sapb.GetValidOrderAuthorizationsRequest{
+		Id:     int64(orderID),
+		AcctID: int64(acctID),
 	}
-	authzs, err := bgrpc.PBToAuthzMap(authzPBs)
+	authzMapPB, err := ra.SA.GetValidOrderAuthorizations2(ctx, req)
+	if err != nil {
+		return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
+	}
+	authzs, err := bgrpc.PBToAuthzMap(authzMapPB)
 	if err != nil {
 		return nil, err
 	}
@@ -743,7 +731,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 
 	// Check that the authzs either don't need CAA rechecking, or do the
 	// necessary CAA rechecks right now.
-	err = ra.checkAuthorizationsCAA(ctx, order.RegistrationID, authzs, now)
+	err = ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, now)
 	if err != nil {
 		return nil, err
 	}
@@ -962,19 +950,6 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, errIncompleteGRPCRequest
 	}
 
-	order := req.Order
-	if features.Get().QueryOrderAuthzsByID {
-		// Since we're relying on the order for its list of authorization IDs, let's get
-		// it straight from the DB rather than trusting the WFE.
-		ord, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{
-			Id: req.Order.Id,
-		})
-		if err != nil {
-			return nil, err
-		}
-		order = ord
-	}
-
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
 		OrderID:     req.Order.Id,
@@ -1012,7 +987,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Update the order status locally since the SA doesn't return the updated
 	// order itself after setting the status
-	order = req.Order
+	order := req.Order
 	order.Status = string(core.StatusProcessing)
 
 	// Steps 3 (issuance) and 4 (cleanup) are done inside a helper function so
@@ -1145,7 +1120,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Double-check that all authorizations on this order are valid, are also
 	// associated with the same account as the order itself, and have recent CAA.
 	authzs, err := ra.checkOrderAuthorizations(
-		ctx, req.Order, csrIdents, ra.clk.Now())
+		ctx, orderID(req.Order.Id), accountID(req.Order.RegistrationID), csrIdents, ra.clk.Now())
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.

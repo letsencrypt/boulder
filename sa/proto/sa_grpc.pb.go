@@ -27,7 +27,6 @@ const (
 	StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthorityReadOnly/FQDNSetTimestampsForWindow"
 	StorageAuthorityReadOnly_GetAuthorization2_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetAuthorization2"
 	StorageAuthorityReadOnly_GetAuthorizations2_FullMethodName           = "/sa.StorageAuthorityReadOnly/GetAuthorizations2"
-	StorageAuthorityReadOnly_GetAuthorizationsByID_FullMethodName        = "/sa.StorageAuthorityReadOnly/GetAuthorizationsByID"
 	StorageAuthorityReadOnly_GetValidAuthorizations2_FullMethodName      = "/sa.StorageAuthorityReadOnly/GetValidAuthorizations2"
 	StorageAuthorityReadOnly_GetValidOrderAuthorizations2_FullMethodName = "/sa.StorageAuthorityReadOnly/GetValidOrderAuthorizations2"
 	StorageAuthorityReadOnly_GetCertificate_FullMethodName               = "/sa.StorageAuthorityReadOnly/GetCertificate"
@@ -63,10 +62,9 @@ type StorageAuthorityReadOnlyClient interface {
 	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
-	// Get by identifiers
+	// Get by identifiers (deprecated)
 	GetAuthorizations2(ctx context.Context, in *GetAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
-	// Get by IDs
-	GetAuthorizationsByID(ctx context.Context, in *GetAuthorizationsByIDRequest, opts ...grpc.CallOption) (*Authorizations, error)
+	// Get by identifiers (valid authorizations only)
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
@@ -153,16 +151,6 @@ func (c *storageAuthorityReadOnlyClient) GetAuthorizations2(ctx context.Context,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Authorizations)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetAuthorizations2_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityReadOnlyClient) GetAuthorizationsByID(ctx context.Context, in *GetAuthorizationsByIDRequest, opts ...grpc.CallOption) (*Authorizations, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Authorizations)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetAuthorizationsByID_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -445,10 +433,9 @@ type StorageAuthorityReadOnlyServer interface {
 	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
 	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
-	// Get by identifiers
+	// Get by identifiers (deprecated)
 	GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error)
-	// Get by IDs
-	GetAuthorizationsByID(context.Context, *GetAuthorizationsByIDRequest) (*Authorizations, error)
+	// Get by identifiers (valid authorizations only)
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
 	GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
@@ -498,9 +485,6 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetAuthorization2(context.Con
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorizations2 not implemented")
-}
-func (UnimplementedStorageAuthorityReadOnlyServer) GetAuthorizationsByID(context.Context, *GetAuthorizationsByIDRequest) (*Authorizations, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorizationsByID not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetValidAuthorizations2 not implemented")
@@ -694,24 +678,6 @@ func _StorageAuthorityReadOnly_GetAuthorizations2_Handler(srv interface{}, ctx c
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityReadOnlyServer).GetAuthorizations2(ctx, req.(*GetAuthorizationsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthorityReadOnly_GetAuthorizationsByID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetAuthorizationsByIDRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).GetAuthorizationsByID(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_GetAuthorizationsByID_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).GetAuthorizationsByID(ctx, req.(*GetAuthorizationsByIDRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1109,10 +1075,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_GetAuthorizations2_Handler,
 		},
 		{
-			MethodName: "GetAuthorizationsByID",
-			Handler:    _StorageAuthorityReadOnly_GetAuthorizationsByID_Handler,
-		},
-		{
 			MethodName: "GetValidAuthorizations2",
 			Handler:    _StorageAuthorityReadOnly_GetValidAuthorizations2_Handler,
 		},
@@ -1218,7 +1180,6 @@ const (
 	StorageAuthority_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthority/FQDNSetTimestampsForWindow"
 	StorageAuthority_GetAuthorization2_FullMethodName            = "/sa.StorageAuthority/GetAuthorization2"
 	StorageAuthority_GetAuthorizations2_FullMethodName           = "/sa.StorageAuthority/GetAuthorizations2"
-	StorageAuthority_GetAuthorizationsByID_FullMethodName        = "/sa.StorageAuthority/GetAuthorizationsByID"
 	StorageAuthority_GetCertificate_FullMethodName               = "/sa.StorageAuthority/GetCertificate"
 	StorageAuthority_GetLintPrecertificate_FullMethodName        = "/sa.StorageAuthority/GetLintPrecertificate"
 	StorageAuthority_GetCertificateStatus_FullMethodName         = "/sa.StorageAuthority/GetCertificateStatus"
@@ -1278,7 +1239,6 @@ type StorageAuthorityClient interface {
 	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetAuthorizations2(ctx context.Context, in *GetAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
-	GetAuthorizationsByID(ctx context.Context, in *GetAuthorizationsByIDRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetLintPrecertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.CertificateStatus, error)
@@ -1388,16 +1348,6 @@ func (c *storageAuthorityClient) GetAuthorizations2(ctx context.Context, in *Get
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Authorizations)
 	err := c.cc.Invoke(ctx, StorageAuthority_GetAuthorizations2_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) GetAuthorizationsByID(ctx context.Context, in *GetAuthorizationsByIDRequest, opts ...grpc.CallOption) (*Authorizations, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Authorizations)
-	err := c.cc.Invoke(ctx, StorageAuthority_GetAuthorizationsByID_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1902,7 +1852,6 @@ type StorageAuthorityServer interface {
 	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
 	GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error)
-	GetAuthorizationsByID(context.Context, *GetAuthorizationsByIDRequest) (*Authorizations, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetLintPrecertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error)
@@ -1975,9 +1924,6 @@ func (UnimplementedStorageAuthorityServer) GetAuthorization2(context.Context, *A
 }
 func (UnimplementedStorageAuthorityServer) GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorizations2 not implemented")
-}
-func (UnimplementedStorageAuthorityServer) GetAuthorizationsByID(context.Context, *GetAuthorizationsByIDRequest) (*Authorizations, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorizationsByID not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetCertificate(context.Context, *Serial) (*proto.Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCertificate not implemented")
@@ -2236,24 +2182,6 @@ func _StorageAuthority_GetAuthorizations2_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).GetAuthorizations2(ctx, req.(*GetAuthorizationsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_GetAuthorizationsByID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetAuthorizationsByIDRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).GetAuthorizationsByID(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_GetAuthorizationsByID_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).GetAuthorizationsByID(ctx, req.(*GetAuthorizationsByIDRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3045,10 +2973,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAuthorizations2",
 			Handler:    _StorageAuthority_GetAuthorizations2_Handler,
-		},
-		{
-			MethodName: "GetAuthorizationsByID",
-			Handler:    _StorageAuthority_GetAuthorizationsByID_Handler,
 		},
 		{
 			MethodName: "GetCertificate",
