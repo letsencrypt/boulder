@@ -261,6 +261,8 @@ func TestLoadOverrides(t *testing.T) {
 
 	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "../test/config-next/wfe2-ratelimit-overrides.yml", metrics.NoopRegisterer, mockLog)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides in TransactionBuilder")
 	overridesData, err := loadOverridesFromFile("../test/config-next/wfe2-ratelimit-overrides.yml")
 	test.AssertNotError(t, err, "loading overrides from file")
 	testOverrides, err := parseOverrideLimits(overridesData)
@@ -322,7 +324,9 @@ func TestNewRefresher(t *testing.T) {
 	// Create and simultaneously cancel a refresher.
 	reg.NewRefresher(time.Millisecond * 2)()
 	time.Sleep(time.Millisecond * 20)
-	test.Assert(t, slices.Equal(mockLog.GetAll(), nil), "refresher ran despite cancellation")
+	// The refresher should have run once, but then been cancelled before the
+	// first tick.
+	test.AssertDeepEquals(t, mockLog.GetAll(), []string{"INFO: refreshed", "WARNING: loading overrides: no valid overrides"})
 
 	reg.NewRefresher(time.Nanosecond)
 	retries := 0
@@ -334,6 +338,7 @@ func TestNewRefresher(t *testing.T) {
 		time.Sleep(core.RetryBackoff(retries, time.Millisecond*2, time.Millisecond*50, 2))
 	}
 	test.AssertSliceContains(t, mockLog.GetAll(), "INFO: refreshed")
+	test.Assert(t, len(mockLog.GetAll()) > 1, "refresher didn't run more than once")
 }
 
 func TestHydrateOverrideLimit(t *testing.T) {

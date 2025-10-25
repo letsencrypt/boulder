@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"slices"
 	"sort"
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -86,6 +84,8 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 
 	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
 
 	// A check-only transaction for the default per-account limit.
 	txns, err := tb.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(123456789, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
@@ -123,6 +123,8 @@ func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testin
 
 	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
 
 	// A transaction for the per-account limit override.
 	txn, err := tb.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(13371338, identifier.NewDNS("so.many.labels.here.example.com"))
@@ -158,6 +160,8 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 
 	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
 
 	// We only expect a single check-only transaction for the per-account limit
 	// override. We can safely ignore the global limit when an override is
@@ -223,8 +227,6 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 func TestNewTransactionBuilder(t *testing.T) {
 	t.Parallel()
 
-	mockLog := blog.NewMock()
-
 	expectedBurst := int64(10000)
 	expectedCount := int64(10000)
 	expectedPeriod := config.Duration{Duration: time.Hour * 168}
@@ -234,7 +236,7 @@ func TestNewTransactionBuilder(t *testing.T) {
 			Burst:  expectedBurst,
 			Count:  expectedCount,
 			Period: expectedPeriod},
-	}, nil, metrics.NoopRegisterer, mockLog)
+	}, nil, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	newRegDefault, ok := tb.limitRegistry.defaults[NewRegistrationsPerIPAddress.EnumString()]
@@ -242,22 +244,6 @@ func TestNewTransactionBuilder(t *testing.T) {
 	test.AssertEquals(t, newRegDefault.Burst, expectedBurst)
 	test.AssertEquals(t, newRegDefault.Count, expectedCount)
 	test.AssertEquals(t, newRegDefault.Period, expectedPeriod)
-
-	mockLog.Clear()
-	failFirstRefresh := func(_ context.Context, _ prometheus.Gauge, logger blog.Logger) (Limits, error) {
-		if !slices.Contains(mockLog.GetAll(), "INFO: deliberately failed, as a joke") {
-			logger.Info("deliberately failed, as a joke")
-			return nil, errors.New("failFirstRefresh failed")
-		}
-		return nil, nil
-	}
-	_, err = NewTransactionBuilder(LimitConfigs{
-		NewRegistrationsPerIPAddress.String(): &LimitConfig{
-			Burst:  expectedBurst,
-			Count:  expectedCount,
-			Period: expectedPeriod},
-	}, failFirstRefresh, metrics.NoopRegisterer, mockLog)
-	test.AssertNotError(t, err, "creating TransactionBuilder with flaky overrides")
 }
 
 func TestNewTransactionBuilderFromDatabase(t *testing.T) {
@@ -329,6 +315,8 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockLog := blog.NewMock()
 			tb, err := NewTransactionBuilderFromDatabase("../test/config-next/wfe2-ratelimit-defaults.yml", tc.overrides, metrics.NoopRegisterer, mockLog)
+			test.AssertNotError(t, err, "creating TransactionBuilder")
+			err = tb.limitRegistry.loadOverrides(context.Background())
 			if tc.expectError != "" {
 				if err == nil {
 					t.Errorf("expected error for test %q but got none", tc.name)

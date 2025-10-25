@@ -35,6 +35,9 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "should not error")
+	err = c.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
+
 	return c
 }
 

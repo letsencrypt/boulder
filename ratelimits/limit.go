@@ -317,7 +317,8 @@ type limitRegistry struct {
 	defaults Limits
 
 	// overrides stores override limits by 'name:id'.
-	overrides Limits
+	overrides       Limits
+	overridesLoaded bool
 
 	// refreshOverrides is a function to refresh override limits.
 	refreshOverrides OverridesRefresher
@@ -359,6 +360,7 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	l.overridesLoaded = true
 
 	if len(newOverrides) < 1 {
 		l.logger.Warning("loading overrides: no valid overrides")
@@ -381,26 +383,46 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	return nil
 }
 
-// NewRefresher periodically loads refreshed overrides using this registry's
-// refreshOverrides function.
+// NewRefresher loads, and periodically refreshes, overrides using this
+// registry's refreshOverrides function.
 func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ticker := time.NewTicker(interval)
-
 	go func() {
-		defer ticker.Stop()
+		// Load overrides immediately. Upon failure, retry at least every 30
+		// seconds, in case the SA wasn't ready yet.
+		retries := 0
+		started := time.Now()
 		for {
-			select {
-			case <-ticker.C:
-				err := l.loadOverrides(ctx)
-				if err != nil {
-					l.logger.Errf("loading overrides: %v", err)
-				}
-			case <-ctx.Done():
-				return
+			err := l.loadOverrides(ctx)
+			if err != nil {
+				l.logger.Errf("loading overrides (initial): %v", err)
 			}
+			// If we've been retrying for an entire interval, back off; we'll
+			// try to refresh next interval.
+			if err == nil || time.Since(started) > interval {
+				break
+			}
+			retries++
+			time.Sleep(core.RetryBackoff(retries, time.Second/6, time.Second*15, 2))
 		}
+
+		// Now refresh overrides every interval.
+		ticker := time.NewTicker(interval)
+		go func() {
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					err := l.loadOverrides(ctx)
+					if err != nil {
+						l.logger.Errf("loading overrides (refresh): %v", err)
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 	}()
 
 	return cancel

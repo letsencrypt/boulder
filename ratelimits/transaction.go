@@ -160,6 +160,10 @@ type TransactionBuilder struct {
 	*limitRegistry
 }
 
+func (builder *TransactionBuilder) Ready() bool {
+	return builder.limitRegistry.overridesLoaded
+}
+
 // GetOverridesFunc is used to pass in the sa.GetEnabledRateLimitOverrides
 // method to NewTransactionBuilderFromDatabase, rather than storing a full
 // sa.SQLStorageAuthority. This makes testing significantly simpler.
@@ -306,21 +310,6 @@ func NewTransactionBuilder(defaultConfigs LimitConfigs, refresher OverridesRefre
 		overridesTimestamp: overridesTimestamp,
 		overridesErrors:    overridesErrors,
 		overridesPerLimit:  *overridesPerLimit,
-	}
-
-	// Load overrides, wrapped in a retry as a workaround to avoid depending on
-	// the SA being ready before other components start.
-	retries := 0
-	for retries < 5 {
-		err = registry.loadOverrides(context.Background())
-		if err == nil {
-			break
-		}
-		retries++
-		time.Sleep(core.RetryBackoff(retries, time.Millisecond*250, time.Millisecond*2500, 2))
-	}
-	if err != nil {
-		return nil, err
 	}
 
 	return &TransactionBuilder{registry}, nil
