@@ -479,7 +479,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			newAuthzIDs = append(newAuthzIDs, am.ID)
 		}
 
-		// Combine the already-associated and newly-created authzs.
+		// Combine the already-existing and newly-created authzs.
 		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
 
 		// Second, insert the new order.

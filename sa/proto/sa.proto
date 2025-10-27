@@ -15,11 +15,7 @@ service StorageAuthorityReadOnly {
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
-  // Get by identifiers (deprecated)
   rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
-  // Get by identifiers (valid authorizations only)
-  rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
-  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
@@ -32,6 +28,8 @@ service StorageAuthorityReadOnly {
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
+  rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
@@ -109,10 +107,6 @@ message JSONWebKey {
 
 message AuthorizationID {
   string id = 1;
-}
-
-message GetAuthorizationsByIDRequest {
-  repeated int64 authorizationIDs = 1;
 }
 
 message GetValidAuthorizationsRequest {
@@ -219,6 +213,8 @@ message NewOrderRequest {
   google.protobuf.Timestamp expires = 5;
   reserved 3; // Previously dnsNames
   repeated core.Identifier identifiers = 9;
+  // A list of already-existing authorization IDs that should be associated with
+  // the new Order object. This is for authorization reuse.
   repeated int64 v2Authorizations = 4;
   string certificateProfileName = 7;
   // Replaces is the ARI certificate Id that this order replaces.
@@ -250,6 +246,11 @@ message NewAuthzRequest {
 
 message NewOrderAndAuthzsRequest {
   NewOrderRequest newOrder = 1;
+  // Authorizations to be newly created alongside the order, and associated with it.
+  // These will be combined with any reused authorizations (newOrder.v2Authorizations)
+  // to make the overall set of authorizations for the order. This field and
+  // newOrder.v2Authorizations may both be present, or only one of the two may be
+  // present, but they may not both be absent.
   repeated NewAuthzRequest newAuthzs = 2;
 }
 

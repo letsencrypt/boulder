@@ -386,11 +386,11 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		// For orders created before feature flag StoreAuthzsInTheOrder, fetch the list of authz IDs
 		// from the orderToAuthz2 table.
 		if len(order.V2Authorizations) == 0 {
-			v2AuthzIDs, err := authzForOrder(ctx, tx, order.Id)
+			authzIDs, err := authzForOrder(ctx, tx, order.Id)
 			if err != nil {
 				return nil, err
 			}
-			order.V2Authorizations = v2AuthzIDs
+			order.V2Authorizations = authzIDs
 		}
 
 		// Get the partial Authorization objects for the order
@@ -713,8 +713,8 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 			return nil, err
 		}
 
-		// If the order had a list of authzs, query them and return.
-		// Otherwise, fall through to doing a JOIN query using orderToAuthz2
+		// If the order had a list of authz IDs (from the `Authzs` column in the DB), query
+		// them and return. Otherwise, fall through to doing a JOIN query using orderToAuthz2
 		// and authz2 tables.
 		if len(order.V2Authorizations) > 0 {
 			authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
