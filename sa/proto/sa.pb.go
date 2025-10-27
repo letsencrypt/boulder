@@ -874,13 +874,11 @@ func (x *OrderRequest) GetId() int64 {
 type NewOrderRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Next unused field number: 10
-	RegistrationID int64                  `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
-	Expires        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires,proto3" json:"expires,omitempty"`
-	Identifiers    []*proto.Identifier    `protobuf:"bytes,9,rep,name=identifiers,proto3" json:"identifiers,omitempty"`
-	// A list of already-existing authorization IDs that should be associated with
-	// the new Order object. This is for authorization reuse.
-	V2Authorizations       []int64 `protobuf:"varint,4,rep,packed,name=v2Authorizations,proto3" json:"v2Authorizations,omitempty"`
-	CertificateProfileName string  `protobuf:"bytes,7,opt,name=certificateProfileName,proto3" json:"certificateProfileName,omitempty"`
+	RegistrationID         int64                  `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	Expires                *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires,proto3" json:"expires,omitempty"`
+	Identifiers            []*proto.Identifier    `protobuf:"bytes,9,rep,name=identifiers,proto3" json:"identifiers,omitempty"`
+	V2Authorizations       []int64                `protobuf:"varint,4,rep,packed,name=v2Authorizations,proto3" json:"v2Authorizations,omitempty"`
+	CertificateProfileName string                 `protobuf:"bytes,7,opt,name=certificateProfileName,proto3" json:"certificateProfileName,omitempty"`
 	// Replaces is the ARI certificate Id that this order replaces.
 	Replaces string `protobuf:"bytes,8,opt,name=replaces,proto3" json:"replaces,omitempty"`
 	// ReplacesSerial is the serial number of the certificate that this order
@@ -1049,14 +1047,9 @@ func (x *NewAuthzRequest) GetToken() string {
 }
 
 type NewOrderAndAuthzsRequest struct {
-	state    protoimpl.MessageState `protogen:"open.v1"`
-	NewOrder *NewOrderRequest       `protobuf:"bytes,1,opt,name=newOrder,proto3" json:"newOrder,omitempty"`
-	// Authorizations to be newly created alongside the order, and associated with it.
-	// These will be combined with any reused authorizations (newOrder.v2Authorizations)
-	// to make the overall set of authorizations for the order. This field and
-	// newOrder.v2Authorizations may both be present, or only one of the two may be
-	// present, but they may not both be absent.
-	NewAuthzs     []*NewAuthzRequest `protobuf:"bytes,2,rep,name=newAuthzs,proto3" json:"newAuthzs,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NewOrder      *NewOrderRequest       `protobuf:"bytes,1,opt,name=newOrder,proto3" json:"newOrder,omitempty"`
+	NewAuthzs     []*NewAuthzRequest     `protobuf:"bytes,2,rep,name=newAuthzs,proto3" json:"newAuthzs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
