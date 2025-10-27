@@ -145,6 +145,12 @@ type ValidationRecord struct {
 	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
 	// instead look like A:host:port or AAAA:host:port
 	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
+
+	// AD is equivalent to the Authenticated Data bit in DNS responses. It is true
+	// if the DNS response (either to the TXT query for DNS-based validation, or
+	// to the A/AAAA queries to lookup IPs for HTTP- and TLS-based validation) was
+	// DNSSEC-signed and the signature validated.
+	AD bool `json:"ad,omitempty"`
 }
 
 // Challenge is an aggregate of all data needed for any challenges.

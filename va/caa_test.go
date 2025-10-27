@@ -30,20 +30,20 @@ import (
 // answers for CAA queries.
 type caaMockDNS struct{}
 
-func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaMockDNS"}, nil
+func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, bool, error) {
+	return nil, bdns.ResolverAddrs{"caaMockDNS"}, false, nil
 }
 
-func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaMockDNS"}, nil
+func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, bool, error) {
+	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaMockDNS"}, false, nil
 }
 
-func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
+func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, bool, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("error")
+		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, false, fmt.Errorf("error")
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "ca.com"
@@ -63,11 +63,11 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		results = append(results, &record)
 	case "com":
 		// com has no CAA records.
-		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, nil
+		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, true, nil
 	case "gonetld":
-		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("NXDOMAIN")
+		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, false, fmt.Errorf("NXDOMAIN")
 	case "servfail.com", "servfail.present.com":
-		return results, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("SERVFAIL")
+		return results, "", bdns.ResolverAddrs{"caaMockDNS"}, false, fmt.Errorf("SERVFAIL")
 	case "multi-crit-present.com":
 		record.Flag = 1
 		record.Tag = "issue"
@@ -189,7 +189,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 	if len(results) > 0 {
 		response = "foo"
 	}
-	return results, response, bdns.ResolverAddrs{"caaMockDNS"}, nil
+	return results, response, bdns.ResolverAddrs{"caaMockDNS"}, true, nil
 }
 
 func TestCAATimeout(t *testing.T) {
@@ -424,7 +424,7 @@ func TestCAAChecking(t *testing.T) {
 		defer mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
 			ident := identifier.NewDNS(caaTest.Domain)
-			foundAt, valid, _, err := va.checkCAARecords(ctx, ident, params)
+			foundAt, valid, _, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -452,55 +452,55 @@ func TestCAALogging(t *testing.T) {
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"reserved.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false, Found at: \"reserved.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"mixedcase.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"mixedcase.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"critical.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"critical.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "not.here.but.still.present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for not.here.but.still.present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for not.here.but.still.present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"multi-crit-present.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"multi-crit-present.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present-with-parameter.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present-with-parameter.com\", AD: true] Response=\"foo\"",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"satisfiable-wildcard-override.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"satisfiable-wildcard-override.com\", AD: true] Response=\"foo\"",
 		},
 	}
 
@@ -595,16 +595,16 @@ var errCAABrokenDNSClient = errors.New("dnsClient is broken")
 // errors.
 type caaBrokenDNS struct{}
 
-func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, bool, error) {
+	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, false, errCAABrokenDNSClient
 }
 
-func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, bool, error) {
+	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, false, errCAABrokenDNSClient
 }
 
-func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
-	return nil, "", bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, bool, error) {
+	return nil, "", bdns.ResolverAddrs{"caaBrokenDNS"}, false, errCAABrokenDNSClient
 }
 
 // caaHijackedDNS implements the `dns.DNSClient` interface with a set of useful
@@ -613,14 +613,14 @@ func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, s
 // changed while queries were inflight.
 type caaHijackedDNS struct{}
 
-func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
+func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, bool, error) {
+	return nil, bdns.ResolverAddrs{"caaHijackedDNS"}, false, nil
 }
 
-func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
+func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, bool, error) {
+	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaHijackedDNS"}, false, nil
 }
-func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
+func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, bool, error) {
 	// These records are altered from their caaMockDNS counterparts. Use this to
 	// tickle remoteValidationFailures.
 	var results []*dns.CAA
@@ -631,7 +631,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 		record.Value = "other-ca.com"
 		results = append(results, &record)
 	case "present-dns-only.com":
-		return results, "", bdns.ResolverAddrs{"caaHijackedDNS"}, fmt.Errorf("SERVFAIL")
+		return results, "", bdns.ResolverAddrs{"caaHijackedDNS"}, false, fmt.Errorf("SERVFAIL")
 	case "satisfiable-wildcard.com":
 		record.Tag = "issuewild"
 		record.Value = ";"
@@ -645,7 +645,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 	if len(results) > 0 {
 		response = "foo"
 	}
-	return results, response, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
+	return results, response, bdns.ResolverAddrs{"caaHijackedDNS"}, false, nil
 }
 
 // parseValidationLogEvent extracts ... from JSON={ ... } in a ValidateChallenge
@@ -1234,9 +1234,9 @@ func TestSelectCAA(t *testing.T) {
 
 	// A slice of empty caaResults should return nil, "", nil
 	r = []caaResult{
-		{"", false, nil, nil, false, "", nil, nil},
-		{"", false, nil, nil, false, "", nil, nil},
-		{"", false, nil, nil, false, "", nil, nil},
+		{"", false, nil, nil, false, "", nil, false, nil},
+		{"", false, nil, nil, false, "", nil, false, nil},
+		{"", false, nil, nil, false, "", nil, false, nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -1245,8 +1245,8 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{"foo.com", false, nil, nil, false, "", nil, errors.New("oops")},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
+		{"foo.com", false, nil, nil, false, "", nil, false, errors.New("oops")},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, true, nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -1256,8 +1256,8 @@ func TestSelectCAA(t *testing.T) {
 	//  A slice of caaResults containing a good record that precedes an
 	//  error, should return that good record, not the error
 	r = []caaResult{
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
-		{"com", false, nil, nil, false, "", nil, errors.New("")},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, true, nil},
+		{"com", false, nil, nil, false, "", nil, false, errors.New("")},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)
@@ -1268,9 +1268,9 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
-		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil, nil},
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil, nil},
+		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil, true, nil},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, true, nil},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil, true, nil},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)

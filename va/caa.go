@@ -154,13 +154,13 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
-	foundAt, valid, response, err := va.checkCAARecords(ctx, ident, params)
+	foundAt, valid, response, ad, err := va.checkCAARecords(ctx, ident, params)
 	if err != nil {
 		return berrors.DNSError("%s", err)
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
-		ident.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q, AD: %t] Response=%q",
+		ident.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, ad, response)
 	if !valid {
 		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}
@@ -179,6 +179,7 @@ type caaResult struct {
 	criticalUnknown bool
 	dig             string
 	resolvers       bdns.ResolverAddrs
+	ad              bool
 	err             error
 }
 
@@ -239,7 +240,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		go func(name string, r *caaResult) {
 			r.name = name
 			var records []*dns.CAA
-			records, r.dig, r.resolvers, r.err = va.dnsClient.LookupCAA(ctx, name)
+			records, r.dig, r.resolvers, r.ad, r.err = va.dnsClient.LookupCAA(ctx, name)
 			if len(records) > 0 {
 				r.present = true
 			}
@@ -305,7 +306,7 @@ func (va *ValidationAuthorityImpl) getCAA(ctx context.Context, hostname string) 
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
-	params *caaParams) (string, bool, string, error) {
+	params *caaParams) (string, bool, string, bool, error) {
 	hostname := strings.ToLower(ident.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
@@ -315,14 +316,16 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	}
 	caaSet, err := va.getCAA(ctx, hostname)
 	if err != nil {
-		return "", false, "", err
+		return "", false, "", false, err
 	}
 	raw := ""
+	ad := false
 	if caaSet != nil {
 		raw = caaSet.dig
+		ad = caaSet.ad
 	}
 	valid, foundAt := va.validateCAA(caaSet, wildcard, params)
-	return foundAt, valid, raw, nil
+	return foundAt, valid, raw, ad, nil
 }
 
 // validateCAA checks a provided *caaResult. When the wildcard argument is true

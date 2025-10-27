@@ -23,19 +23,19 @@ import (
 // resolution library used by net/http. If there is an error resolving the
 // hostname, or if no usable IP addresses are available then a berrors.DNSError
 // instance is returned with a nil netip.Addr slice.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	addrs, resolvers, err := va.dnsClient.LookupHost(ctx, hostname)
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, bool, error) {
+	addrs, resolvers, ad, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		return nil, resolvers, berrors.DNSError("%v", err)
+		return nil, resolvers, false, berrors.DNSError("%v", err)
 	}
 
 	if len(addrs) == 0 {
 		// This should be unreachable, as no valid IP addresses being found results
 		// in an error being returned from LookupHost.
-		return nil, resolvers, berrors.DNSError("No valid IP addresses found for %s", hostname)
+		return nil, resolvers, false, berrors.DNSError("No valid IP addresses found for %s", hostname)
 	}
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
-	return addrs, resolvers, nil
+	return addrs, resolvers, ad, nil
 }
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved
@@ -109,7 +109,7 @@ func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identi
 	challengeSubdomain := fmt.Sprintf("%s.%s", challengePrefix, ident.Value)
 
 	// Look for the required record in the DNS
-	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
+	txts, resolvers, ad, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, berrors.DNSError("%s", err)
 	}
@@ -124,7 +124,7 @@ func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identi
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
-			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddrs: resolvers}}, nil
+			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddrs: resolvers, AD: ad}}, nil
 		}
 	}
 
