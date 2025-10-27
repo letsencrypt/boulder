@@ -102,14 +102,6 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
-	// Although the Baseline Requirements say that revocation information may be
-	// omitted entirely *for short-lived certs*, the Microsoft root program still
-	// requires that at least one revocation mechanism be included in all certs.
-	// TODO(#7673): Remove this restriction.
-	if !profileConfig.IncludeCRLDistributionPoints {
-		return nil, fmt.Errorf("at least one revocation mechanism must be included")
-	}
-
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
 	if profileConfig.LintConfig != "" {
