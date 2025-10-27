@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -260,10 +259,10 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 		case r := <-ch:
 			if r.err != nil {
 				var isRetryable bool
-				// According to the http package documentation, retryable
-				// errors emitted by the http package are of type *url.Error.
-				var urlErr *url.Error
-				isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
+				// Check if the error is a timeout error. Network errors
+				// that can timeout implement the net.Error interface.
+				var netErr net.Error
+				isRetryable = errors.As(r.err, &netErr) && netErr.Timeout()
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
