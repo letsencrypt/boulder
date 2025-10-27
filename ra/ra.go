@@ -243,7 +243,7 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:                 keyPolicy,
 		limiter:                   limiter,
 		txnBuilder:                txnBuilder,
-		started:                   time.Now(),
+		started:                   clk.Now(),
 		publisher:                 pubc,
 		finalizeTimeout:           finalizeTimeout,
 		ctpolicy:                  ctp,
