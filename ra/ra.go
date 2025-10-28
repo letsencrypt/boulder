@@ -2211,14 +2211,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	authzExpiryCutoff := ra.clk.Now().Add(minTimeToExpiry)
 
-	var existingAuthz *sapb.Authorizations
-	getAuthReq := &sapb.GetValidAuthorizationsRequest{
+	existingAuthz, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: req.RegistrationID,
 		ValidUntil:     timestamppb.New(authzExpiryCutoff),
 		Identifiers:    idents.ToProtoSlice(),
 		Profile:        req.CertificateProfileName,
-	}
-	existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
+	})
 	if err != nil {
 		return nil, err
 	}
