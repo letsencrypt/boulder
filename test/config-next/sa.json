@@ -47,6 +47,7 @@
 		},
 		"healthCheckInterval": "4s",
 		"features": {
+			"StoreAuthzsInTheOrder": true,
 			"StoreARIReplacesInOrders": true
 		}
 	},
