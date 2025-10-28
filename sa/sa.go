@@ -810,7 +810,7 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 			// An attempted duplicate insert means that this certificate was already
 			// revoked. The RA has special logic for that case, so use the specific
 			// error for it.
-			return berrors.AlreadyRevokedError("certificate with serial %s already in revokedCertificates table", req.Serial)
+			return berrors.AlreadyRevokedError("certificate already revoked")
 		}
 		return fmt.Errorf("inserting revoked certificate row: %w", err)
 	}
