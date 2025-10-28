@@ -27,11 +27,10 @@ type mockPardotClientImpl struct {
 // newMockPardotClientImpl returns a MockPardotClientImpl, implementing the
 // PardotClient interface. Both refer to the same instance, with the interface
 // for mock interaction and the struct for state inspection and modification.
-func newMockPardotClientImpl() (PardotClient, *mockPardotClientImpl) {
-	mockImpl := &mockPardotClientImpl{
+func newMockPardotClientImpl() *mockPardotClientImpl {
+	return &mockPardotClientImpl{
 		CreatedContacts: []string{},
 	}
-	return mockImpl, mockImpl
 }
 
 // SendContact adds an email to CreatedContacts.
@@ -55,10 +54,10 @@ func (m *mockPardotClientImpl) getCreatedContacts() []string {
 // ExporterImpl queue and cleanup() to drain and shutdown. If start() is called,
 // cleanup() must be called.
 func setup() (*ExporterImpl, *mockPardotClientImpl, func(), func()) {
-	mockClient, clientImpl := newMockPardotClientImpl()
+	mockClient := newMockPardotClientImpl()
 	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
-	return exporter, clientImpl,
+	return exporter, mockClient,
 		func() { exporter.Start(daemonCtx) },
 		func() {
 			cancel()
@@ -167,7 +166,7 @@ func TestSendContactDeduplication(t *testing.T) {
 	t.Parallel()
 
 	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
-	mockClient, clientImpl := newMockPardotClientImpl()
+	mockClient := newMockPardotClientImpl()
 	exporter := NewExporterImpl(mockClient, cache, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
 	daemonCtx, cancel := context.WithCancel(context.Background())
@@ -182,7 +181,7 @@ func TestSendContactDeduplication(t *testing.T) {
 	cancel()
 	exporter.Drain()
 
-	contacts := clientImpl.getCreatedContacts()
+	contacts := mockClient.getCreatedContacts()
 	test.AssertEquals(t, 1, len(contacts))
 	test.AssertEquals(t, "duplicate@example.com", contacts[0])
 
