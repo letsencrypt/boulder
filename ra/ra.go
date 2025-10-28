@@ -104,9 +104,6 @@ type RegistrationAuthorityImpl struct {
 	inflightFinalizes       prometheus.Gauge
 	certCSRMismatch         prometheus.Counter
 	pauseCounter            *prometheus.CounterVec
-	// TODO(#8177): Remove once the rate of requests failing to finalize due to
-	// requesting Must-Staple has diminished.
-	mustStapleRequestsCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -225,42 +222,35 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"paused", "repaused", "grace"})
 	stats.MustRegister(pauseCounter)
 
-	mustStapleRequestsCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "must_staple_requests",
-		Help: "Number of times a must-staple request is made, labeled by allowlist=[allowed|denied]",
-	}, []string{"allowlist"})
-	stats.MustRegister(mustStapleRequestsCounter)
-
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
 
 	ra := &RegistrationAuthorityImpl{
-		clk:                       clk,
-		log:                       logger,
-		profiles:                  profiles,
-		maxContactsPerReg:         maxContactsPerReg,
-		keyPolicy:                 keyPolicy,
-		limiter:                   limiter,
-		txnBuilder:                txnBuilder,
-		started:                   clk.Now(),
-		publisher:                 pubc,
-		finalizeTimeout:           finalizeTimeout,
-		ctpolicy:                  ctp,
-		ctpolicyResults:           ctpolicyResults,
-		issuersByNameID:           issuersByNameID,
-		namesPerCert:              namesPerCert,
-		newRegCounter:             newRegCounter,
-		recheckCAACounter:         recheckCAACounter,
-		newCertCounter:            newCertCounter,
-		revocationReasonCounter:   revocationReasonCounter,
-		authzAges:                 authzAges,
-		orderAges:                 orderAges,
-		inflightFinalizes:         inflightFinalizes,
-		certCSRMismatch:           certCSRMismatch,
-		pauseCounter:              pauseCounter,
-		mustStapleRequestsCounter: mustStapleRequestsCounter,
+		clk:                     clk,
+		log:                     logger,
+		profiles:                profiles,
+		maxContactsPerReg:       maxContactsPerReg,
+		keyPolicy:               keyPolicy,
+		limiter:                 limiter,
+		txnBuilder:              txnBuilder,
+		started:                 clk.Now(),
+		publisher:               pubc,
+		finalizeTimeout:         finalizeTimeout,
+		ctpolicy:                ctp,
+		ctpolicyResults:         ctpolicyResults,
+		issuersByNameID:         issuersByNameID,
+		namesPerCert:            namesPerCert,
+		newRegCounter:           newRegCounter,
+		recheckCAACounter:       recheckCAACounter,
+		newCertCounter:          newCertCounter,
+		revocationReasonCounter: revocationReasonCounter,
+		authzAges:               authzAges,
+		orderAges:               orderAges,
+		inflightFinalizes:       inflightFinalizes,
+		certCSRMismatch:         certCSRMismatch,
+		pauseCounter:            pauseCounter,
 	}
 	return ra
 }
@@ -1091,7 +1081,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	}
 
 	if containsMustStaple(csr.Extensions) {
-		ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
 		return nil, berrors.UnauthorizedError(
 			"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
 		)
@@ -1504,7 +1493,6 @@ func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq 
 func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ctx context.Context,
 	req *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
-
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 

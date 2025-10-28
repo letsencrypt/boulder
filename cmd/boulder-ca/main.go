@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -75,12 +74,6 @@ type Config struct {
 		// configurations.
 		MaxNames int `validate:"required,min=1,max=100"`
 
-		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
-		// Section 4.9.10, it MUST NOT be more than 10 days. Default 96h.
-		//
-		// Deprecated: TODO(#8345): Remove this.
-		LifespanOCSP config.Duration
-
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
@@ -88,17 +81,6 @@ type Config struct {
 		// The name is a carryover from when this config was shared between both
 		// OCSP and CRL audit log emission. Recommended to be around 4000.
 		OCSPLogMaxLength int
-
-		// Maximum period (in Go duration format) to wait to accumulate a max-length
-		// OCSP audit log line. We will emit a log line at least once per period,
-		// if there is anything to be logged. Keeping this low minimizes the risk
-		// of losing logs during a catastrophic failure. Making it too high
-		// means logging more often than necessary, which is inefficient in terms
-		// of bytes and log system resources.
-		// Recommended to be around 500ms.
-		//
-		// Deprecated: TODO(#8345): Remove this.
-		OCSPLogPeriod config.Duration
 
 		// CTLogListFile is the path to a JSON file on disk containing the set of
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
@@ -108,11 +90,7 @@ type Config struct {
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
 		DisableCertService bool
-		// DisableOCSPService causes the OCSPGenerator gRPC service to not start,
-		// preventing any OCSP responses from being issued.
-		//
-		// Deprecated: TODO(#8345): Remove this.
-		DisableOCSPService bool
+
 		// DisableCRLService causes the CRLGenerator gRPC service to not start,
 		// preventing any CRLs from being issued.
 		DisableCRLService bool
