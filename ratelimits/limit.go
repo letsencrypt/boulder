@@ -384,20 +384,21 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 }
 
 // loadOverridesWithRetry tries to loadOverrides, retrying at least every 30
-// seconds upon failure, up to a maximum elapsed time interval.
-func (l *limitRegistry) loadOverridesWithRetry(ctx context.Context, interval time.Duration) error {
+// seconds upon failure.
+func (l *limitRegistry) loadOverridesWithRetry(ctx context.Context) error {
 	retries := 0
-	started := time.Now()
 	for {
 		err := l.loadOverrides(ctx)
-		if err != nil {
-			l.logger.Errf("loading overrides: %v", err)
+		if err == nil {
+			return nil
 		}
-		if err == nil || time.Since(started) > interval {
+		l.logger.Errf("loading overrides: %v", err)
+		retries++
+		select {
+		case <-time.After(core.RetryBackoff(retries, time.Second/6, time.Second*15, 2)):
+		case <-ctx.Done():
 			return err
 		}
-		retries++
-		time.Sleep(core.RetryBackoff(retries, time.Second/6, time.Second*15, 2))
 	}
 }
 
@@ -407,7 +408,7 @@ func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		err := l.loadOverridesWithRetry(ctx, interval)
+		err := l.loadOverridesWithRetry(ctx)
 		if err != nil {
 			l.logger.Errf("loading overrides (initial): %v", err)
 		}
@@ -417,7 +418,7 @@ func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc 
 		for {
 			select {
 			case <-ticker.C:
-				err := l.loadOverridesWithRetry(ctx, interval)
+				err := l.loadOverridesWithRetry(ctx)
 				if err != nil {
 					l.logger.Errf("loading overrides (refresh): %v", err)
 				}
