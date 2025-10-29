@@ -111,7 +111,8 @@ type RegistrationAuthorityImpl struct {
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
 
-// Health implements the grpc.checker interface.
+// Health implements our grpc.checker interface. This method will be called
+// periodically to set the gRPC service's healthpb.Health.Check() status.
 func (ra *RegistrationAuthorityImpl) Health(ctx context.Context) error {
 	if ra.txnBuilder.Ready() || time.Since(ra.started) > time.Second*10 {
 		return nil

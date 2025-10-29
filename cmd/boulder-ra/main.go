@@ -273,7 +273,7 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, scope)
 		limiter, err = ratelimits.NewLimiter(clk, source, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		if c.RA.Features.OverridesFromDB {
+		if features.Get().OverridesFromDB {
 			saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, scope, logger)
 		} else {

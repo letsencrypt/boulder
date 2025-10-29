@@ -335,7 +335,7 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		if c.WFE.Features.OverridesFromDB {
+		if features.Get().OverridesFromDB {
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, stats, logger)
 		} else {
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger)
