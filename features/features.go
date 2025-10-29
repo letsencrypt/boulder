@@ -28,6 +28,7 @@ type Config struct {
 	ExpirationMailerUsesJoin    bool
 	DOH                         bool
 	IgnoreAccountContacts       bool
+	NoPendingAuthzReuse         bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -70,12 +71,6 @@ type Config struct {
 	// and pause issuance for each (account, hostname) pair that repeatedly
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
-
-	// NoPendingAuthzReuse causes the RA to only select already-validated authzs
-	// to attach to a newly created order. This preserves important client-facing
-	// functionality (valid authz reuse) while letting us simplify our code by
-	// removing pending authz reuse.
-	NoPendingAuthzReuse bool
 
 	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
 	// ARI replaces field in the orders table.
