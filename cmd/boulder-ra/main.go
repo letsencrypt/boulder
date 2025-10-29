@@ -70,14 +70,17 @@ type Config struct {
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
-			// neither this field nor the OverridesFromDB feature flag is set,
-			// all requesters will be subject to the default rate limits.
-			// Overrides passed in this file must be identical to those in the
-			// WFE.
+			// neither this field nor OverridesFromDB is set, all requesters
+			// will be subject to the default rate limits. Overrides passed in
+			// this file must be identical to those in the WFE.
 			//
 			// Note: At this time, only the Failed Authorizations overrides are
 			// necessary in the RA.
 			Overrides string
+
+			// OverridesFromDB causes the WFE and RA to retrieve rate limit overrides
+			// from the database, instead of from a file.
+			OverridesFromDB bool
 		}
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
@@ -273,7 +276,10 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, scope)
 		limiter, err = ratelimits.NewLimiter(clk, source, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		if features.Get().OverridesFromDB {
+		if c.RA.Limiter.OverridesFromDB {
+			if c.RA.Limiter.Overrides != "" {
+				cmd.Fail("OverridesFromDB and an overrides file were both defined, but are mutually exclusive")
+			}
 			saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, scope, logger)
 		} else {

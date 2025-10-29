@@ -151,11 +151,15 @@ type Config struct {
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
-			// neither this field nor the OverridesFromDB feature flag is set,
-			// all requesters will be subject to the default rate limits.
-			// Overrides for the Failed Authorizations overrides passed in this
-			// file must be identical to those in the RA.
+			// neither this field nor OverridesFromDB is set, all requesters
+			// will be subject to the default rate limits. Overrides for the
+			// Failed Authorizations overrides passed in this file must be
+			// identical to those in the RA.
 			Overrides string
+
+			// OverridesFromDB causes the WFE and RA to retrieve rate limit
+			// overrides from the database, instead of from a file.
+			OverridesFromDB bool
 		}
 
 		// CertProfiles is a map of acceptable certificate profile names to
@@ -335,7 +339,10 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		if features.Get().OverridesFromDB {
+		if c.WFE.Limiter.OverridesFromDB {
+			if c.WFE.Limiter.Overrides != "" {
+				cmd.Fail("OverridesFromDB and an overrides file were both defined, but are mutually exclusive")
+			}
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, stats, logger)
 		} else {
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger)

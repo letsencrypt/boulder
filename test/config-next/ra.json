@@ -21,7 +21,8 @@
 					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 				}
 			},
-			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml"
+			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml",
+			"OverridesFromDB": true
 		},
 		"maxContactsPerRegistration": 3,
 		"hostnamePolicyFile": "test/ident-policy.yaml",
@@ -162,8 +163,7 @@
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
 			"DNSAccount01Enabled": true,
-			"NoPendingAuthzReuse": true,
-			"OverridesFromDB": true
+			"NoPendingAuthzReuse": true
 		}
 	},
 	"pa": {
