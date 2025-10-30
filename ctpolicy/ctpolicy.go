@@ -82,19 +82,7 @@ type result struct {
 }
 
 // getOne sleeps for stagger based on index, obtains an SCT (or error), and returns it in resChan
-func (ctp *CTPolicy) getOne(ctx context.Context, cert core.CertDER, index int, l loglist.Log, resChan chan result) {
-	// Sleep a little bit to stagger our requests to the later logs. Use `index-1`
-	// to compute the stagger duration so that the first two logs (indices 0
-	// and 1) get negative or zero (i.e. instant) sleep durations. If the
-	// context gets cancelled (most likely because we got enough SCTs from other
-	// logs already) before the sleep is complete, quit instead.
-	select {
-	case <-ctx.Done():
-		resChan <- result{log: l, err: ctx.Err()}
-		return
-	case <-time.After(time.Duration(index-1) * ctp.stagger):
-	}
-
+func (ctp *CTPolicy) getOne(ctx context.Context, cert core.CertDER, l loglist.Log, resChan chan result) {
 	sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
 		LogURL:       l.Url,
 		LogPublicKey: base64.StdEncoding.EncodeToString(l.Key),
@@ -125,36 +113,68 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// cert's expiry. Randomize the order of the logs so that we're not always
 	// trying to submit to the same two.
 	logs := ctp.sctLogs.ForTime(expiration).Permute()
+	candidateLogs := len(logs)
 
-	// Kick off a collection of goroutines to try to submit the precert to each
-	// log. Ensure that the results channel has a buffer equal to the number of
+	// Ensure that the results channel has a buffer equal to the number of
 	// goroutines we're kicking off, so that they're all guaranteed to be able to
 	// write to it and exit without blocking and leaking.
-	resChan := make(chan result, len(logs))
-	for i, log := range logs {
-		go ctp.getOne(subCtx, cert, i, log, resChan)
+	resChan := make(chan result, candidateLogs)
+
+	if candidateLogs < 2 {
+		return nil, berrors.MissingSCTsError("Insufficient CT logs available (%d)", candidateLogs)
+	}
+
+	// Kick off first two submissions
+	for range 2 {
+		go ctp.getOne(subCtx, cert, logs.Pop(), resChan)
 	}
 
 	go ctp.submitPrecertInformational(cert, expiration)
+
+	// staggerTicker will be used to start a new submission each stagger interval
+	stagger := ctp.stagger
+	if stagger == 0 {
+		// TODO: I think we can remove this by making sure all call-sites and config have a nonzero value
+		stagger = 200 * time.Millisecond
+	}
+	staggerTicker := time.NewTicker(stagger)
+	defer staggerTicker.Stop()
 
 	// Finally, collect SCTs and/or errors from our results channel. We know that
 	// we can collect len(logs) results from the channel because every goroutine
 	// is guaranteed to write one result (either sct or error) to the channel.
 	results := make([]result, 0)
 	errs := make([]string, 0)
-	for range len(logs) {
-		res := <-resChan
-		if res.err != nil {
-			errs = append(errs, res.err.Error())
-			ctp.winnerCounter.WithLabelValues(res.log.Url, failed).Inc()
-			continue
-		}
-		results = append(results, res)
-		ctp.winnerCounter.WithLabelValues(res.log.Url, succeeded).Inc()
 
-		scts := compliantSet(results)
-		if scts != nil {
-			return scts, nil
+loop:
+	for {
+		select {
+		case <-staggerTicker.C:
+			// Each tick from the staggerTicker, we start submitting to another log
+			if len(logs) == 0 {
+				// Unless we have run out of logs to submit to, so don't need to tick anymore
+				staggerTicker.Stop()
+				continue
+			}
+			go ctp.getOne(subCtx, cert, logs.Pop(), resChan)
+		case res := <-resChan:
+			if res.err != nil {
+				errs = append(errs, res.err.Error())
+				ctp.winnerCounter.WithLabelValues(res.log.Url, failed).Inc()
+			} else {
+				results = append(results, res)
+				ctp.winnerCounter.WithLabelValues(res.log.Url, succeeded).Inc()
+
+				scts := compliantSet(results)
+				if scts != nil {
+					return scts, nil
+				}
+			}
+
+			if len(results)+len(errs) >= candidateLogs {
+				// We have an error or result from every log, but didn't find a compliant set
+				break loop
+			}
 		}
 	}
 

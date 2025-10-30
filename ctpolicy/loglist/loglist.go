@@ -237,3 +237,13 @@ func (ll List) GetByID(logID string) (Log, error) {
 	}
 	return Log{}, fmt.Errorf("no log with ID %q found", logID)
 }
+
+// Pop an item off the back of the list
+func (ll *List) Pop() Log {
+	if ll == nil || len(*ll) == 0 {
+		return Log{}
+	}
+	popped := (*ll)[len(*ll)-1]
+	*ll = (*ll)[:len(*ll)-1]
+	return popped
+}

@@ -138,6 +138,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	// Ensure the proper metrics are incremented when GetSCTs fails.
 	ctp := New(&mockFailOnePub{badURL: "UrlA1"}, loglist.List{
 		{Name: "LogA1", Operator: "OperA", Url: "UrlA1", Key: []byte("KeyA1")},
+		{Name: "LogA2", Operator: "OperA", Url: "UrlA2", Key: []byte("KeyA2")},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertError(t, err, "GetSCTs should have failed")
@@ -150,6 +151,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 
 	ctp = New(&mockSlowPub{}, loglist.List{
 		{Name: "LogA1", Operator: "OperA", Url: "UrlA1", Key: []byte("KeyA1")},
+		{Name: "LogA2", Operator: "OperA", Url: "UrlA2", Key: []byte("KeyA2")},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	_, err = ctp.GetSCTs(ctx, []byte{0}, time.Time{})
 	test.AssertError(t, err, "GetSCTs should have timed out")
