@@ -81,6 +81,34 @@ type result struct {
 	err error
 }
 
+// getOne sleeps for stagger based on index, obtains an SCT (or error), and returns it in resChan
+func (ctp *CTPolicy) getOne(ctx context.Context, cert core.CertDER, index int, l loglist.Log, resChan chan result) {
+	// Sleep a little bit to stagger our requests to the later logs. Use `index-1`
+	// to compute the stagger duration so that the first two logs (indices 0
+	// and 1) get negative or zero (i.e. instant) sleep durations. If the
+	// context gets cancelled (most likely because we got enough SCTs from other
+	// logs already) before the sleep is complete, quit instead.
+	select {
+	case <-ctx.Done():
+		resChan <- result{log: l, err: ctx.Err()}
+		return
+	case <-time.After(time.Duration(index-1) * ctp.stagger):
+	}
+
+	sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
+		LogURL:       l.Url,
+		LogPublicKey: base64.StdEncoding.EncodeToString(l.Key),
+		Der:          cert,
+		Kind:         pubpb.SubmissionType_sct,
+	})
+	if err != nil {
+		resChan <- result{log: l, err: fmt.Errorf("ct submission to %q (%q) failed: %w", l.Name, l.Url, err)}
+		return
+	}
+
+	resChan <- result{log: l, sct: sct.Sct}
+}
+
 // GetSCTs retrieves exactly two SCTs from the total collection of configured
 // log groups, with at most one SCT coming from each group. It expects that all
 // logs run by a single operator (e.g. Google) are in the same group, to
@@ -93,32 +121,6 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// This closure will be called in parallel once for each log.
-	getOne := func(i int, l loglist.Log) ([]byte, error) {
-		// Sleep a little bit to stagger our requests to the later logs. Use `i-1`
-		// to compute the stagger duration so that the first two logs (indices 0
-		// and 1) get negative or zero (i.e. instant) sleep durations. If the
-		// context gets cancelled (most likely because we got enough SCTs from other
-		// logs already) before the sleep is complete, quit instead.
-		select {
-		case <-subCtx.Done():
-			return nil, subCtx.Err()
-		case <-time.After(time.Duration(i-1) * ctp.stagger):
-		}
-
-		sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
-			LogURL:       l.Url,
-			LogPublicKey: base64.StdEncoding.EncodeToString(l.Key),
-			Der:          cert,
-			Kind:         pubpb.SubmissionType_sct,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("ct submission to %q (%q) failed: %w", l.Name, l.Url, err)
-		}
-
-		return sct.Sct, nil
-	}
-
 	// Identify the set of candidate logs whose temporal interval includes this
 	// cert's expiry. Randomize the order of the logs so that we're not always
 	// trying to submit to the same two.
@@ -130,10 +132,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// write to it and exit without blocking and leaking.
 	resChan := make(chan result, len(logs))
 	for i, log := range logs {
-		go func(i int, l loglist.Log) {
-			sctDER, err := getOne(i, l)
-			resChan <- result{log: l, sct: sctDER, err: err}
-		}(i, log)
+		go ctp.getOne(subCtx, cert, i, log, resChan)
 	}
 
 	go ctp.submitPrecertInformational(cert, expiration)
