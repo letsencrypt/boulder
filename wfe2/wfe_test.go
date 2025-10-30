@@ -404,7 +404,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
 	test.AssertNotError(t, err, "making nonceService")
 
-	inmemNonceService := &inmemnonce.Service{NonceService: nonceService}
+	inmemNonceService := &inmemnonce.NonceService{Impl: nonceService}
 	gnc := inmemNonceService
 	rnc := inmemNonceService
 
@@ -1358,7 +1358,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"Unable to validate JWS :: JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"JWS has an invalid anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSAAccount(t *testing.T) {
@@ -3779,19 +3779,30 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	})
 }
 
-func TestPrepAccountForDisplay(t *testing.T) {
+func TestAccountMarshaling(t *testing.T) {
 	acct := &core.Registration{
 		ID:        1987,
 		Agreement: "disagreement",
+		Status:    core.StatusValid,
 	}
 
-	// Prep the account for display.
-	prepAccountForDisplay(acct)
+	marshaled, err := json.Marshal(acct)
+	if err != nil {
+		t.Fatalf("marshalling account object: %s", err)
+	}
+
+	var got core.Registration
+	err = json.Unmarshal(marshaled, &got)
+	if err != nil {
+		t.Fatalf("unmarshaling account object: %s", err)
+	}
 
 	// The Agreement should always be cleared.
-	test.AssertEquals(t, acct.Agreement, "")
+	test.AssertEquals(t, got.Agreement, "")
 	// The ID field should be zeroed.
-	test.AssertEquals(t, acct.ID, int64(0))
+	test.AssertEquals(t, got.ID, int64(0))
+	// The Status field should be preserved.
+	test.AssertEquals(t, got.Status, core.StatusValid)
 }
 
 // TestGet404 tests that a 404 is served and that the expected endpoint of

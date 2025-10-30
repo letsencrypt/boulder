@@ -15,7 +15,6 @@ service StorageAuthorityReadOnly {
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
-  rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
@@ -48,7 +47,6 @@ service StorageAuthority {
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
-  rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
@@ -213,6 +211,8 @@ message NewOrderRequest {
   google.protobuf.Timestamp expires = 5;
   reserved 3; // Previously dnsNames
   repeated core.Identifier identifiers = 9;
+  // A list of already-existing authorization IDs that should be associated with
+  // the new Order object. This is for authorization reuse.
   repeated int64 v2Authorizations = 4;
   string certificateProfileName = 7;
   // Replaces is the ARI certificate Id that this order replaces.
@@ -223,9 +223,7 @@ message NewOrderRequest {
 
 }
 
-// NewAuthzRequest starts with all the same fields as corepb.Authorization,
-// because it is replacing that type in NewOrderAndAuthzsRequest, and then
-// improves from there.
+// NewAuthzRequest represents a request to create an authorization.
 message NewAuthzRequest {
   // Next unused field number: 13
   reserved 1; // previously id
@@ -244,6 +242,11 @@ message NewAuthzRequest {
 
 message NewOrderAndAuthzsRequest {
   NewOrderRequest newOrder = 1;
+  // Authorizations to be newly created alongside the order, and associated with it.
+  // These will be combined with any reused authorizations (newOrder.v2Authorizations)
+  // to make the overall set of authorizations for the order. This field and
+  // newOrder.v2Authorizations may both be present, or only one of the two may be
+  // present, but they may not both be absent.
   repeated NewAuthzRequest newAuthzs = 2;
 }
 
