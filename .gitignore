@@ -43,3 +43,7 @@ test/proxysql/*.log*
 
 # Coverage files
 test/coverage
+
+# Database config symlinks
+sa/db/dbconfig.yml
+test/secrets/*_dburl
