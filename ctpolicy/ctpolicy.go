@@ -114,15 +114,14 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// trying to submit to the same two.
 	logs := ctp.sctLogs.ForTime(expiration).Permute()
 	candidateLogs := len(logs)
+	if candidateLogs < 2 {
+		return nil, berrors.MissingSCTsError("Insufficient CT logs available (%d)", candidateLogs)
+	}
 
 	// Ensure that the results channel has a buffer equal to the number of
 	// goroutines we're kicking off, so that they're all guaranteed to be able to
 	// write to it and exit without blocking and leaking.
 	resChan := make(chan result, candidateLogs)
-
-	if candidateLogs < 2 {
-		return nil, berrors.MissingSCTsError("Insufficient CT logs available (%d)", candidateLogs)
-	}
 
 	// Kick off first two submissions
 	for range 2 {
