@@ -1,0 +1,1 @@
+ocsp_resp@tcp(boulder-vitess:33577)/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms&timeout=100ms&max_execution_time=760&long_query_time=0.64

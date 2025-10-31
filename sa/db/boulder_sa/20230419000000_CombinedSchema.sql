@@ -18,9 +18,7 @@ CREATE TABLE `authz2` (
   KEY `regID_expires_idx` (`registrationID`,`status`,`expires`),
   KEY `regID_identifier_status_expires_idx` (`registrationID`,`identifierType`,`identifierValue`,`status`,`expires`),
   KEY `expires_idx` (`expires`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `blockedKeys` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -53,9 +51,7 @@ CREATE TABLE `certificateStatus` (
   KEY `serial` (`serial`),
   KEY `isExpired_ocspLastUpdated_idx` (`isExpired`,`ocspLastUpdated`),
   KEY `notAfter_idx` (`notAfter`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `certificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -69,9 +65,7 @@ CREATE TABLE `certificates` (
   KEY `serial` (`serial`),
   KEY `regId_certificates_idx` (`registrationID`) COMMENT 'Common lookup',
   KEY `issued_idx` (`issued`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `certificatesPerName` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -93,9 +87,7 @@ CREATE TABLE `fqdnSets` (
   PRIMARY KEY (`id`),
   KEY `serial` (`serial`),
   KEY `setHash_issued_idx` (`setHash`,`issued`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `incidents` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -104,7 +96,7 @@ CREATE TABLE `incidents` (
   `renewBy` datetime NOT NULL,
   `enabled` boolean DEFAULT false,
   PRIMARY KEY (`id`)
-) CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `issuedNames` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -114,9 +106,7 @@ CREATE TABLE `issuedNames` (
   `renewal` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `reversedName_notBefore_Idx` (`reversedName`,`notBefore`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `keyHashToSerial` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -147,18 +137,14 @@ CREATE TABLE `orderFqdnSets` (
   KEY `setHash_expires_idx` (`setHash`,`expires`),
   KEY `orderID_idx` (`orderID`),
   KEY `orderFqdnSets_registrationID_registrations` (`registrationID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `orderToAuthz2` (
   `orderID` bigint(20) NOT NULL,
   `authzID` bigint(20) NOT NULL,
   PRIMARY KEY (`orderID`,`authzID`),
   KEY `authzID` (`authzID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE COLUMNS(orderID, authzID)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE, MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `orders` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -171,9 +157,7 @@ CREATE TABLE `orders` (
   PRIMARY KEY (`id`),
   KEY `reg_status_expires` (`registrationID`,`expires`),
   KEY `regID_created_idx` (`registrationID`,`created`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Note: This table's name is a historical artifact and it is now
 -- used to store linting certificates, not precertificates.
@@ -189,9 +173,7 @@ CREATE TABLE `precertificates` (
   KEY `serial` (`serial`),
   KEY `regId_precertificates_idx` (`registrationID`),
   KEY `issued_precertificates_idx` (`issued`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `registrations` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -215,9 +197,7 @@ CREATE TABLE `requestedNames` (
   PRIMARY KEY (`id`),
   KEY `orderID_idx` (`orderID`),
   KEY `reversedName_idx` (`reversedName`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tables below have foreign key constraints, so are created after all other tables.
 
@@ -245,6 +225,7 @@ DROP TABLE `certificateStatus`;
 DROP TABLE `certificatesPerName`;
 DROP TABLE `certificates`;
 DROP TABLE `fqdnSets`;
+DROP TABLE `incidents`;
 DROP TABLE `issuedNames`;
 DROP TABLE `keyHashToSerial`;
 DROP TABLE `newOrdersRL`;
