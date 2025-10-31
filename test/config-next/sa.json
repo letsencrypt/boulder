@@ -34,7 +34,8 @@
 					"clientNames": [
 						"admin.boulder",
 						"wfe.boulder",
-						"sfe.boulder"
+						"sfe.boulder",
+						"ra.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {

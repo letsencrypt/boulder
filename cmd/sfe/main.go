@@ -223,7 +223,7 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.SFE.Limiter.Defaults, "")
+		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.SFE.Limiter.Defaults, "", stats, logger)
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 	}
 

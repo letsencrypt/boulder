@@ -358,6 +358,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
+	logger := blog.NewMock()
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "creating test keypolicy")
@@ -411,7 +412,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	// Setup rate limiting.
 	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", stats, logger)
 	test.AssertNotError(t, err, "making transaction composer")
 
 	unpauseSigner, err := unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
@@ -424,7 +425,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		testKeyPolicy,
 		certChains,
 		issuerCertificates,
-		blog.NewMock(),
+		logger,
 		10*time.Second,
 		10*time.Second,
 		2,
@@ -4251,7 +4252,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
-	})
+	}, nil, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "making transaction composer")
 	wfe.txnBuilder = txnBuilder
 
