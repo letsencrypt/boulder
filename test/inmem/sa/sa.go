@@ -37,10 +37,6 @@ func (sa SA) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, 
 	return sa.Impl.GetAuthorization2(ctx, req)
 }
 
-func (sa SA) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return sa.Impl.GetAuthorizations2(ctx, req)
-}
-
 func (sa SA) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return sa.Impl.GetValidAuthorizations2(ctx, req)
 }

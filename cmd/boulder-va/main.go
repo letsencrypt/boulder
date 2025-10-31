@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/iana"
@@ -51,9 +52,12 @@ type Config struct {
 	VA struct {
 		vaConfig.Common
 		RemoteVAs []RemoteVAGRPCClientConfig `validate:"omitempty,dive"`
-		// Deprecated and ignored
-		MaxRemoteValidationFailures int `validate:"omitempty,min=0,required_with=RemoteVAs"`
-		Features                    features.Config
+		// SlowRemoteTimeout sets how long the VA is willing to wait for slow
+		// RemoteVA instances to finish their work. It starts counting from
+		// when the VA first gets a quorum of (un)successful remote results.
+		// Leaving this value zero means the VA won't early-cancel slow remotes.
+		SlowRemoteTimeout config.Duration
+		Features          features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -149,7 +153,9 @@ func main() {
 		c.VA.AccountURIPrefixes,
 		va.PrimaryPerspective,
 		"",
-		iana.IsReservedAddr)
+		iana.IsReservedAddr,
+		c.VA.SlowRemoteTimeout.Duration,
+	)
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(

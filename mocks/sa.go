@@ -246,24 +246,9 @@ func (sa *StorageAuthority) GetPausedIdentifiers(_ context.Context, _ *sapb.Regi
 	return nil, nil
 }
 
-// GetRevokedCerts is a mock
-func (sa *StorageAuthorityReadOnly) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
-	return &ServerStreamClient[corepb.CRLEntry]{}, nil
-}
-
-// GetRevokedCerts is a mock
-func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
-	return &ServerStreamClient[corepb.CRLEntry]{}, nil
-}
-
 // GetRevokedCertsByShard is a mock
 func (sa *StorageAuthorityReadOnly) GetRevokedCertsByShard(ctx context.Context, _ *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
 	return &ServerStreamClient[corepb.CRLEntry]{}, nil
-}
-
-// GetMaxExpiration is a mock
-func (sa *StorageAuthorityReadOnly) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
-	return nil, nil
 }
 
 // AddRateLimitOverride is a mock
@@ -479,10 +464,6 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 		auths.Authzs = append(auths.Authzs, authzPB)
 	}
 	return auths, nil
-}
-
-func (sa *StorageAuthorityReadOnly) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return &sapb.Authorizations{}, nil
 }
 
 // GetAuthorization2 is a mock

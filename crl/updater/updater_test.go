@@ -64,10 +64,6 @@ func (f *fakeSAC) GetRevokedCertsByShard(ctx context.Context, req *sapb.GetRevok
 	return &f.revokedCerts, nil
 }
 
-func (f *fakeSAC) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
-	return timestamppb.New(f.maxNotAfter), nil
-}
-
 func (f *fakeSAC) LeaseCRLShard(_ context.Context, req *sapb.LeaseCRLShardRequest, _ ...grpc.CallOption) (*sapb.LeaseCRLShardResponse, error) {
 	if f.leaseError != nil {
 		return nil, f.leaseError

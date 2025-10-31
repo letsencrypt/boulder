@@ -85,6 +85,7 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg int
 	limiter           *ratelimits.Limiter
 	txnBuilder        *ratelimits.TransactionBuilder
+	started           time.Time
 	finalizeTimeout   time.Duration
 	drainWG           sync.WaitGroup
 
@@ -109,6 +110,15 @@ type RegistrationAuthorityImpl struct {
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
+
+// Health implements our grpc.checker interface. This method will be called
+// periodically to set the gRPC service's healthpb.Health.Check() status.
+func (ra *RegistrationAuthorityImpl) Health(ctx context.Context) error {
+	if ra.txnBuilder.Ready() || time.Since(ra.started) > time.Second*10 {
+		return nil
+	}
+	return errors.New("waiting for overrides")
+}
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(
@@ -234,6 +244,7 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:                 keyPolicy,
 		limiter:                   limiter,
 		txnBuilder:                txnBuilder,
+		started:                   clk.Now(),
 		publisher:                 pubc,
 		finalizeTimeout:           finalizeTimeout,
 		ctpolicy:                  ctp,
@@ -2211,24 +2222,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	authzExpiryCutoff := ra.clk.Now().Add(minTimeToExpiry)
 
-	var existingAuthz *sapb.Authorizations
-	if features.Get().NoPendingAuthzReuse {
-		getAuthReq := &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: req.RegistrationID,
-			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			Identifiers:    idents.ToProtoSlice(),
-			Profile:        req.CertificateProfileName,
-		}
-		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
-	} else {
-		getAuthReq := &sapb.GetAuthorizationsRequest{
-			RegistrationID: req.RegistrationID,
-			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			Identifiers:    idents.ToProtoSlice(),
-			Profile:        req.CertificateProfileName,
-		}
-		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
-	}
+	existingAuthz, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		RegistrationID: req.RegistrationID,
+		ValidUntil:     timestamppb.New(authzExpiryCutoff),
+		Identifiers:    idents.ToProtoSlice(),
+		Profile:        req.CertificateProfileName,
+	})
 	if err != nil {
 		return nil, err
 	}

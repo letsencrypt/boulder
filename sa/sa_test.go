@@ -1007,6 +1007,110 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
 }
 
+func TestNewOrderAndAuthzs_ReuseOnly(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(2 * time.Hour)
+
+	// Insert two pre-existing authorizations to reference
+	idA := createPendingAuthorization(t, sa, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	idB := createPendingAuthorization(t, sa, identifier.NewDNS("b.com"), sa.clk.Now().Add(time.Hour))
+	test.AssertEquals(t, idA, int64(1))
+	test.AssertEquals(t, idB, int64(2))
+	req := &sapb.NewOrderAndAuthzsRequest{
+		// Insert an order for four names, two of which already have authzs
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(expires),
+			Identifiers: []*corepb.Identifier{
+				identifier.NewDNS("a.com").ToProto(),
+				identifier.NewDNS("b.com").ToProto(),
+			},
+			V2Authorizations: []int64{1, 2},
+		},
+	}
+	order, err := sa.NewOrderAndAuthzs(context.Background(), req)
+	if err != nil {
+		t.Fatal("sa.NewOrderAndAuthzs:", err)
+	}
+	if !reflect.DeepEqual(order.V2Authorizations, []int64{1, 2}) {
+		t.Errorf("sa.NewOrderAndAuthzs().V2Authorizations: want [1, 2], got %v", order.V2Authorizations)
+	}
+}
+
+func TestNewOrderAndAuthzs_CreateOnly(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(2 * time.Hour)
+
+	// Insert two pre-existing authorizations to reference
+	idA := createPendingAuthorization(t, sa, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	idB := createPendingAuthorization(t, sa, identifier.NewDNS("b.com"), sa.clk.Now().Add(time.Hour))
+	test.AssertEquals(t, idA, int64(1))
+	test.AssertEquals(t, idB, int64(2))
+	req := &sapb.NewOrderAndAuthzsRequest{
+		// Insert an order for four names, two of which already have authzs
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(expires),
+			Identifiers: []*corepb.Identifier{
+				identifier.NewDNS("a.com").ToProto(),
+				identifier.NewDNS("b.com").ToProto(),
+			},
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "a.com"},
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(expires),
+				ChallengeTypes: []string{string(core.ChallengeTypeDNS01)},
+				Token:          core.NewToken(),
+			},
+		},
+	}
+	order, err := sa.NewOrderAndAuthzs(context.Background(), req)
+	if err != nil {
+		t.Fatal("sa.NewOrderAndAuthzs:", err)
+	}
+	if len(order.V2Authorizations) != 1 {
+		t.Fatalf("len(sa.NewOrderAndAuthzs().V2Authorizations): want 1, got %v", len(order.V2Authorizations))
+	}
+	gotAuthz, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: order.V2Authorizations[0]})
+	if err != nil {
+		t.Fatalf("retrieving inserted authz: %s", err)
+	}
+	if gotAuthz.Identifier.Value != "a.com" {
+		t.Errorf("New order authz identifier = %v, want %v", gotAuthz.Identifier.Value, "a.com")
+	}
+}
+
+func TestNewOrderAndAuthzs_NoAuthzsError(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(2 * time.Hour)
+
+	// Insert two pre-existing authorizations to reference
+	req := &sapb.NewOrderAndAuthzsRequest{
+		// Insert an order for four names, two of which already have authzs
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(expires),
+			Identifiers:    nil,
+		},
+		NewAuthzs: nil,
+	}
+	_, err := sa.NewOrderAndAuthzs(context.Background(), req)
+	if err != errIncompleteRequest {
+		t.Errorf("sa.NewOrderAndAuthzs with no authzs: want %v, got %v", errIncompleteRequest, err)
+	}
+}
+
 // TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
 // sapb.NewOrderAndAuthzsRequest NewOrder object returns an error.
 func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
@@ -1363,55 +1467,6 @@ func TestGetAuthorization2NoRows(t *testing.T) {
 	_, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: id})
 	test.AssertError(t, err, "Didn't get an error looking up non-existent authz ID")
 	test.AssertErrorIs(t, err, berrors.NotFound)
-}
-
-func TestGetAuthorizations2(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	reg := createWorkingRegistration(t, sa)
-	exp := fc.Now().AddDate(0, 0, 10).UTC()
-	attemptedAt := fc.Now()
-
-	identA := identifier.NewDNS("aaa")
-	identB := identifier.NewDNS("bbb")
-	identC := identifier.NewDNS("ccc")
-	identD := identifier.NewIP(netip.MustParseAddr("10.10.10.10"))
-	idents := identifier.ACMEIdentifiers{identA, identB, identC, identD}
-	identE := identifier.NewDNS("ddd")
-
-	createFinalizedAuthorization(t, sa, identA, exp, "valid", attemptedAt)
-	createPendingAuthorization(t, sa, identB, exp)
-	nearbyExpires := fc.Now().UTC().Add(time.Hour)
-	createPendingAuthorization(t, sa, identC, nearbyExpires)
-	createFinalizedAuthorization(t, sa, identD, exp, "valid", attemptedAt)
-
-	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrderAndAuthzs`. This
-	// should exclude pending authorization C based on its nearbyExpires expiry
-	// value.
-	expiryCutoff := fc.Now().AddDate(0, 0, 1)
-	// Get authorizations for the identifiers used above.
-	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		Identifiers:    idents.ToProtoSlice(),
-		ValidUntil:     timestamppb.New(expiryCutoff),
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// We should get back three authorizations since one of the four
-	// authorizations created above expires too soon.
-	test.AssertEquals(t, len(authz.Authzs), 3)
-
-	// Get authorizations for the identifiers used above, and one that doesn't exist
-	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		Identifiers:    append(idents.ToProtoSlice(), identE.ToProto()),
-		ValidUntil:     timestamppb.New(expiryCutoff),
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// It should still return only three authorizations
-	test.AssertEquals(t, len(authz.Authzs), 3)
 }
 
 func TestFasterGetOrderForNames(t *testing.T) {
@@ -2974,113 +3029,6 @@ func TestSerialsForIncident(t *testing.T) {
 	test.AssertNotError(t, err, "Error getting serials for incident")
 }
 
-func TestGetRevokedCerts(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
-	// up the certificateStatus row we need. This particular cert has a notAfter
-	// date of Mar 6 2023, and we lie about its IssuerNameID to make things easy.
-	reg := createWorkingRegistration(t, sa)
-	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
-	test.AssertNotError(t, err, "failed to load test cert")
-	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:   reg.Id,
-		Serial:  core.SerialToString(eeCert.SerialNumber),
-		Created: timestamppb.New(eeCert.NotBefore),
-		Expires: timestamppb.New(eeCert.NotAfter),
-	})
-	test.AssertNotError(t, err, "failed to add test serial")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          eeCert.Raw,
-		RegID:        reg.Id,
-		Issued:       timestamppb.New(eeCert.NotBefore),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "failed to add test cert")
-
-	// Check that it worked.
-	status, err := sa.GetCertificateStatus(
-		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert.SerialNumber)})
-	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
-
-	// Here's a little helper func we'll use to call GetRevokedCerts and count
-	// how many results it returned.
-	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
-		stream := make(chan *corepb.CRLEntry)
-		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
-		var err error
-		go func() {
-			err = sa.GetRevokedCerts(req, mockServerStream)
-			close(stream)
-		}()
-		entriesReceived := 0
-		for range stream {
-			entriesReceived++
-		}
-		return entriesReceived, err
-	}
-
-	// The basic request covers a time range that should include this certificate.
-	basicRequest := &sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
-		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
-		ExpiresBefore: mustTimestamp("2023-04-01 00:00"),
-		RevokedBefore: mustTimestamp("2023-04-01 00:00"),
-	}
-	count, err := countRevokedCerts(basicRequest)
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
-	test.AssertEquals(t, count, 0)
-
-	// Revoke the certificate.
-	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID: 1,
-		Serial:   core.SerialToString(eeCert.SerialNumber),
-		Date:     mustTimestamp("2023-01-01 00:00"),
-		Reason:   1,
-		Response: []byte{1, 2, 3},
-		ShardIdx: 1,
-	})
-	test.AssertNotError(t, err, "failed to revoke test cert")
-
-	// Asking for revoked certs now should return one result.
-	count, err = countRevokedCerts(basicRequest)
-	test.AssertNotError(t, err, "normal usage shouldn't result in error")
-	test.AssertEquals(t, count, 1)
-
-	// Asking for revoked certs with an old RevokedBefore should return no results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
-		ExpiresAfter:  basicRequest.ExpiresAfter,
-		ExpiresBefore: basicRequest.ExpiresBefore,
-		RevokedBefore: mustTimestamp("2020-03-01 00:00"),
-	})
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
-	test.AssertEquals(t, count, 0)
-
-	// Asking for revoked certs in a time period that does not cover this cert's
-	// notAfter timestamp should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
-		ExpiresAfter:  mustTimestamp("2022-03-01 00:00"),
-		ExpiresBefore: mustTimestamp("2022-04-01 00:00"),
-		RevokedBefore: mustTimestamp("2023-04-01 00:00"),
-	})
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
-	test.AssertEquals(t, count, 0)
-
-	// Asking for revoked certs from a different issuer should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  5678,
-		ExpiresAfter:  basicRequest.ExpiresAfter,
-		ExpiresBefore: basicRequest.ExpiresBefore,
-		RevokedBefore: basicRequest.RevokedBefore,
-	})
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
-	test.AssertEquals(t, count, 0)
-}
-
 func TestGetRevokedCertsByShard(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
@@ -3195,30 +3143,6 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
-}
-
-func TestGetMaxExpiration(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
-	// up the certificateStatus row we need. This particular cert has a notAfter
-	// date of Mar 6 2023, and we lie about its IssuerNameID to make things easy.
-	reg := createWorkingRegistration(t, sa)
-	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
-	test.AssertNotError(t, err, "failed to load test cert")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          eeCert.Raw,
-		RegID:        reg.Id,
-		Issued:       timestamppb.New(eeCert.NotBefore),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "failed to add test cert")
-
-	lastExpiry, err := sa.GetMaxExpiration(context.Background(), &emptypb.Empty{})
-	test.AssertNotError(t, err, "getting last expriy should succeed")
-	test.Assert(t, lastExpiry.AsTime().Equal(eeCert.NotAfter), "times should be equal")
-	test.AssertEquals(t, timestamppb.New(eeCert.NotBefore).AsTime(), eeCert.NotBefore)
 }
 
 func TestLeaseOldestCRLShard(t *testing.T) {

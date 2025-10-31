@@ -75,12 +75,7 @@ type ProfileConfig struct {
 	IgnoredLints []string
 }
 
-// PolicyConfig describes a policy
-type PolicyConfig struct {
-	OID string `validate:"required"`
-}
-
-// Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
+// Profile is the validated structure created by reading in a ProfileConfig
 type Profile struct {
 	omitCommonName      bool
 	omitKeyEncipherment bool
@@ -94,7 +89,7 @@ type Profile struct {
 }
 
 // NewProfile converts the profile config into a usable profile.
-func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
+func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
 	// must be "within 48 hours of the time of signing". We can be even stricter.
 	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
@@ -105,14 +100,6 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	// validity period of "up to 100 days".
 	if profileConfig.MaxValidityPeriod.Duration >= 100*24*time.Hour {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
-	}
-
-	// Although the Baseline Requirements say that revocation information may be
-	// omitted entirely *for short-lived certs*, the Microsoft root program still
-	// requires that at least one revocation mechanism be included in all certs.
-	// TODO(#7673): Remove this restriction.
-	if !profileConfig.IncludeCRLDistributionPoints {
-		return nil, fmt.Errorf("at least one revocation mechanism must be included")
 	}
 
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)

@@ -42,9 +42,14 @@ func NewCRLImpl(
 	logger blog.Logger,
 	metrics *caMetrics,
 ) (*crlImpl, error) {
-	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
+	issuerMap := make(map[issuance.NameID]*issuance.Issuer)
 	for _, issuer := range issuers {
-		issuersByNameID[issuer.NameID()] = issuer
+		nameID := issuer.NameID()
+		_, found := issuerMap[nameID]
+		if found {
+			return nil, fmt.Errorf("got two issuers with same NameID (%q)", issuer.Name())
+		}
+		issuerMap[nameID] = issuer
 	}
 
 	profile, err := issuance.NewCRLProfile(profileConfig)
@@ -53,7 +58,7 @@ func NewCRLImpl(
 	}
 
 	return &crlImpl{
-		issuers:   issuersByNameID,
+		issuers:   issuerMap,
 		profile:   profile,
 		maxLogLen: maxLogLen,
 		log:       logger,
