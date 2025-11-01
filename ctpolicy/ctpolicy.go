@@ -124,8 +124,9 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	resChan := make(chan result, candidateLogs)
 
 	// Kick off first two submissions
-	for range 2 {
-		go ctp.getOne(subCtx, cert, logs.Pop(), resChan)
+	nextLog := 0
+	for ; nextLog < 2; nextLog++ {
+		go ctp.getOne(subCtx, cert, logs[nextLog], resChan)
 	}
 
 	go ctp.submitPrecertInformational(cert, expiration)
@@ -155,7 +156,8 @@ loop:
 				staggerTicker.Stop()
 				continue
 			}
-			go ctp.getOne(subCtx, cert, logs.Pop(), resChan)
+			go ctp.getOne(subCtx, cert, logs[nextLog], resChan)
+			nextLog++
 		case res := <-resChan:
 			if res.err != nil {
 				errs = append(errs, res.err.Error())
