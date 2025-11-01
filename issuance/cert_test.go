@@ -920,9 +920,8 @@ func TestNewProfile(t *testing.T) {
 		{
 			name: "happy path",
 			config: ProfileConfig{
-				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
-				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
-				IncludeCRLDistributionPoints: true,
+				MaxValidityBackdate: config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 90 * 24 * time.Hour},
 			},
 		},
 		{

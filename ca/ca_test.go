@@ -134,21 +134,19 @@ func newCAArgs(t *testing.T) *caArgs {
 	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
 	legacy, err := issuance.NewProfile(issuance.ProfileConfig{
-		IncludeCRLDistributionPoints: true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 90},
-		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
-		IgnoredLints:                 []string{"w_subject_common_name_included"},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		IgnoredLints:        []string{"w_subject_common_name_included"},
 	})
 	test.AssertNotError(t, err, "Loading test profile")
 	modern, err := issuance.NewProfile(issuance.ProfileConfig{
-		OmitCommonName:               true,
-		OmitKeyEncipherment:          true,
-		OmitClientAuth:               true,
-		OmitSKID:                     true,
-		IncludeCRLDistributionPoints: true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 6},
-		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
-		IgnoredLints:                 []string{"w_ext_subject_key_identifier_missing_sub_cert"},
+		OmitCommonName:      true,
+		OmitKeyEncipherment: true,
+		OmitClientAuth:      true,
+		OmitSKID:            true,
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 6},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		IgnoredLints:        []string{"w_ext_subject_key_identifier_missing_sub_cert"},
 	})
 	test.AssertNotError(t, err, "Loading test profile")
 	profiles := map[string]*issuance.Profile{
@@ -161,7 +159,6 @@ func newCAArgs(t *testing.T) *caArgs {
 		issuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
 			Active:     true,
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
-			OCSPURL:    "http://not-example.com/o",
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
 			CRLShards:  10,
 			Location: issuance.IssuerLoc{
@@ -886,7 +883,6 @@ func TestPickIssuer_Inactive(t *testing.T) {
 		issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
 			Active:     i%2 == 0,
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
-			OCSPURL:    "http://not-example.com/o",
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
 			CRLShards:  10,
 			Location: issuance.IssuerLoc{

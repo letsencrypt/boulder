@@ -31,13 +31,6 @@ import (
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
-	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
-	// OCSP Must Staple extension to be rejected.
-	//
-	// Deprecated: This has no effect, Must Staple is always omitted.
-	// TODO(#8177): Remove this.
-	AllowMustStaple bool
-
 	// OmitCommonName causes the CN field to be excluded from the resulting
 	// certificate, regardless of its inclusion in the IssuanceRequest.
 	OmitCommonName bool
@@ -49,20 +42,6 @@ type ProfileConfig struct {
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
-	// OmitOCSP causes the OCSP URI field to be omitted from the Authority
-	// Information Access extension. This cannot be true unless
-	// IncludeCRLDistributionPoints is also true, to ensure that every
-	// certificate has at least one revocation mechanism included.
-	//
-	// Deprecated: This has no effect; OCSP is always omitted.
-	// TODO(#8177): Remove this.
-	OmitOCSP bool
-	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
-	// be added to all certificates issued by this profile.
-	//
-	// Deprecated: This has no effect; CRLDP is always included.
-	// TODO(#8177): Remove this.
-	IncludeCRLDistributionPoints bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration

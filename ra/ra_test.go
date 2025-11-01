@@ -2940,7 +2940,6 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 	})
 	test.AssertError(t, err, "finalization should fail")
 	test.AssertContains(t, err.Error(), "no longer available")
-	test.AssertMetricWithLabelsEquals(t, ra.mustStapleRequestsCounter, prometheus.Labels{"allowlist": "denied"}, 1)
 }
 
 func TestIssueCertificateAuditLog(t *testing.T) {
