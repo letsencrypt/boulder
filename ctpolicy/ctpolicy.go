@@ -151,7 +151,7 @@ loop:
 		select {
 		case <-staggerTicker.C:
 			// Each tick from the staggerTicker, we start submitting to another log
-			if len(logs) == 0 {
+			if nextLog >= candidateLogs {
 				// Unless we have run out of logs to submit to, so don't need to tick anymore
 				staggerTicker.Stop()
 				continue
