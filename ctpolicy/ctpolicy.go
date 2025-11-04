@@ -63,6 +63,12 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		}
 	}
 
+	// Stagger must be positive for time.Ticker.
+	// Default to the relatively safe value of 1 second.
+	if stagger <= 0 {
+		stagger = time.Second
+	}
+
 	return &CTPolicy{
 		pub:              pub,
 		sctLogs:          sctLogs,
@@ -131,12 +137,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	go ctp.submitPrecertInformational(cert, expiration)
 
 	// staggerTicker will be used to start a new submission each stagger interval
-	stagger := ctp.stagger
-	if stagger == 0 {
-		// TODO: I think we can remove this by making sure all call-sites and config have a nonzero value
-		stagger = 200 * time.Millisecond
-	}
-	staggerTicker := time.NewTicker(stagger)
+	staggerTicker := time.NewTicker(ctp.stagger)
 	defer staggerTicker.Stop()
 
 	// Finally, collect SCTs and/or errors from our results channel. We know that
