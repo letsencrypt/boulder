@@ -81,7 +81,7 @@ type result struct {
 	err error
 }
 
-// getOne sleeps for stagger based on index, obtains an SCT (or error), and returns it in resChan
+// getOne obtains an SCT (or error), and returns it in resChan
 func (ctp *CTPolicy) getOne(ctx context.Context, cert core.CertDER, l loglist.Log, resChan chan result) {
 	sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
 		LogURL:       l.Url,
