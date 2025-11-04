@@ -363,7 +363,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	rlSource := ratelimits.NewInmemSource()
 	limiter, err := ratelimits.NewLimiter(fc, rlSource, stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, log)
 	test.AssertNotError(t, err, "making transaction composer")
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
@@ -708,7 +708,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
-	})
+	}, nil, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
@@ -967,7 +967,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
-	})
+	}, nil, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
@@ -1718,7 +1718,7 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 			Name:           "Reuse pending authz",
 			RegistrationID: Registration.Id,
 			Identifier:     identifier.NewDNS(pending),
-			ExpectReuse:    true, // TODO(#7715): Invert this.
+			ExpectReuse:    false,
 		},
 		{
 			Name:           "Reuse valid authz",
@@ -1764,40 +1764,6 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestNewOrder_AuthzReuse_NoPending tests that authz reuse doesn't reuse
-// pending authzs when a feature flag is set.
-// This is not simply a test case in TestNewOrder_OrderReuse because it relies
-// on feature-flag gated behavior. It should be unified with that function when
-// the feature flag is removed.
-func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
-	// TODO(#7715): Integrate these cases into TestNewOrder_AuthzReuse.
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	features.Set(features.Config{NoPendingAuthzReuse: true})
-	defer features.Reset()
-
-	// Create an initial order and two pending authzs.
-	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		Identifiers: []*corepb.Identifier{
-			identifier.NewDNS("a.com").ToProto(),
-			identifier.NewDNS("b.com").ToProto(),
-		},
-	})
-	test.AssertNotError(t, err, "creating test order")
-
-	// With the feature flag enabled, creating a new order for one of these names
-	// should not reuse the existing pending authz.
-	new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
-	})
-	test.AssertNotError(t, err, "creating test order")
-	test.AssertNotEquals(t, new.Id, extant.Id)
-	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
 }
 
 func TestNewOrder_ValidationProfiles(t *testing.T) {
@@ -2012,7 +1978,7 @@ func TestNewOrder_ProfileIdentifierTypes(t *testing.T) {
 	}
 }
 
-// mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
+// mockSAWithAuthzs has a GetValidAuthorizations2 method that returns the protobuf
 // version of its authzs struct member. It also has a fake GetOrderForNames
 // which always fails, and a fake NewOrderAndAuthzs which always succeeds, to
 // facilitate the full execution of RA.NewOrder.
@@ -2041,14 +2007,6 @@ func (msa *mockSAWithAuthzs) GetValidAuthorizations2(ctx context.Context, req *s
 		resp.Authzs = append(resp.Authzs, authzPB)
 	}
 	return resp, nil
-}
-
-func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return msa.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-		RegistrationID: req.RegistrationID,
-		Identifiers:    req.Identifiers,
-		ValidUntil:     req.ValidUntil,
-	})
 }
 
 func (msa *mockSAWithAuthzs) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
@@ -2982,7 +2940,6 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 	})
 	test.AssertError(t, err, "finalization should fail")
 	test.AssertContains(t, err.Error(), "no longer available")
-	test.AssertMetricWithLabelsEquals(t, ra.mustStapleRequestsCounter, prometheus.Labels{"allowlist": "denied"}, 1)
 }
 
 func TestIssueCertificateAuditLog(t *testing.T) {

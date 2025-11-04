@@ -452,6 +452,9 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 	if req.NewOrder == nil {
 		return nil, errIncompleteRequest
 	}
+	if len(req.NewAuthzs) == 0 && len(req.NewOrder.V2Authorizations) == 0 {
+		return nil, errIncompleteRequest
+	}
 
 	for _, authz := range req.NewAuthzs {
 		if authz.RegistrationID != req.NewOrder.RegistrationID {

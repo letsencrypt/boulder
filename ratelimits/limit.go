@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -9,10 +10,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -105,8 +110,9 @@ func ValidateLimit(l *Limit) error {
 
 type Limits map[string]*Limit
 
-// loadDefaults marshals the defaults YAML file at path into a map of limits.
-func loadDefaults(path string) (LimitConfigs, error) {
+// loadDefaultsFromFile unmarshals the defaults YAML file at path into a map of
+// limits.
+func loadDefaultsFromFile(path string) (LimitConfigs, error) {
 	lm := make(LimitConfigs)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -132,8 +138,9 @@ type overrideYAML struct {
 
 type overridesYAML []map[string]overrideYAML
 
-// loadOverrides marshals the YAML file at path into a map of overrides.
-func loadOverrides(path string) (overridesYAML, error) {
+// loadOverridesFromFile unmarshals the YAML file at path into a map of
+// overrides.
+func loadOverridesFromFile(path string) (overridesYAML, error) {
 	ov := overridesYAML{}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -213,32 +220,10 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 			}
 
 			for _, entry := range v.Ids {
-				id := entry.Id
-				err := validateIdForName(name, id)
+				id, err := hydrateOverrideLimit(entry.Id, name)
 				if err != nil {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
-				}
-
-				// We interpret and compute the override values for two rate
-				// limits, since they're not nice to ask for in a config file.
-				switch name {
-				case CertificatesPerDomain:
-					// Convert IP addresses to their covering /32 (IPv4) or /64
-					// (IPv6) prefixes in CIDR notation.
-					ip, err := netip.ParseAddr(id)
-					if err == nil {
-						prefix, err := coveringIPPrefix(name, ip)
-						if err != nil {
-							return nil, fmt.Errorf(
-								"computing prefix for IP address %q: %w", id, err)
-						}
-						id = prefix.String()
-					}
-				case CertificatesPerFQDNSet:
-					// Compute the hash of a comma-separated list of identifier
-					// values.
-					id = fmt.Sprintf("%x", core.HashIdentifiers(identifier.FromStringSlice(strings.Split(id, ","))))
 				}
 
 				lim := &Limit{
@@ -249,11 +234,11 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 					Comment:    entry.Comment,
 					isOverride: true,
 				}
-				lim.precompute()
 
 				err = ValidateLimit(lim)
 				if err != nil {
-					return nil, fmt.Errorf("validating override limit %q: %w", k, err)
+					return nil, fmt.Errorf(
+						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 				}
 
 				parsed[joinWithColon(name.EnumString(), id)] = lim
@@ -261,6 +246,40 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
 		}
 	}
 	return parsed, nil
+}
+
+// hydrateOverrideLimit validates the limit Name and override bucket key. It
+// returns the correct bucket key to use in-memory.
+func hydrateOverrideLimit(bucketKey string, limitName Name) (string, error) {
+	if !limitName.isValid() {
+		return "", fmt.Errorf("unrecognized limit name %d", limitName)
+	}
+
+	err := validateIdForName(limitName, bucketKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Interpret and compute a new in-memory bucket key for two rate limits,
+	// since their keys aren't nice to store in a config file or database entry.
+	switch limitName {
+	case CertificatesPerDomain:
+		// Convert IP addresses to their covering /32 (IPv4) or /64
+		// (IPv6) prefixes in CIDR notation.
+		ip, err := netip.ParseAddr(bucketKey)
+		if err == nil {
+			prefix, err := coveringIPPrefix(limitName, ip)
+			if err != nil {
+				return "", fmt.Errorf("computing prefix for IP address %q: %w", bucketKey, err)
+			}
+			bucketKey = prefix.String()
+		}
+	case CertificatesPerFQDNSet:
+		// Compute the hash of a comma-separated list of identifier values.
+		bucketKey = fmt.Sprintf("%x", core.HashIdentifiers(identifier.FromStringSlice(strings.Split(bucketKey, ","))))
+	}
+
+	return bucketKey, nil
 }
 
 // parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
@@ -291,47 +310,24 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
 	return parsed, nil
 }
 
+type OverridesRefresher func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error)
+
 type limitRegistry struct {
 	// defaults stores default limits by 'name'.
 	defaults Limits
 
 	// overrides stores override limits by 'name:id'.
-	overrides Limits
-}
+	overrides       Limits
+	overridesLoaded bool
 
-func newLimitRegistryFromFiles(defaults, overrides string) (*limitRegistry, error) {
-	defaultsData, err := loadDefaults(defaults)
-	if err != nil {
-		return nil, err
-	}
+	// refreshOverrides is a function to refresh override limits.
+	refreshOverrides OverridesRefresher
 
-	if overrides == "" {
-		return newLimitRegistry(defaultsData, nil)
-	}
+	overridesTimestamp prometheus.Gauge
+	overridesErrors    prometheus.Gauge
+	overridesPerLimit  prometheus.GaugeVec
 
-	overridesData, err := loadOverrides(overrides)
-	if err != nil {
-		return nil, err
-	}
-
-	return newLimitRegistry(defaultsData, overridesData)
-}
-
-func newLimitRegistry(defaults LimitConfigs, overrides overridesYAML) (*limitRegistry, error) {
-	regDefaults, err := parseDefaultLimits(defaults)
-	if err != nil {
-		return nil, err
-	}
-
-	regOverrides, err := parseOverrideLimits(overrides)
-	if err != nil {
-		return nil, err
-	}
-
-	return &limitRegistry{
-		defaults:  regDefaults,
-		overrides: regOverrides,
-	}, nil
+	logger blog.Logger
 }
 
 // getLimit returns the limit for the specified by name and bucketKey, name is
@@ -358,13 +354,90 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 	return nil, errLimitDisabled
 }
 
+// loadOverrides replaces this registry's overrides with a new dataset.
+func (l *limitRegistry) loadOverrides(ctx context.Context) error {
+	newOverrides, err := l.refreshOverrides(ctx, l.overridesErrors, l.logger)
+	if err != nil {
+		return err
+	}
+	l.overridesLoaded = true
+
+	if len(newOverrides) < 1 {
+		l.logger.Warning("loading overrides: no valid overrides")
+		// If it's an empty set, don't replace any current overrides.
+		return nil
+	}
+
+	newOverridesPerLimit := make(map[Name]float64)
+	for _, override := range newOverrides {
+		override.precompute()
+		newOverridesPerLimit[override.Name]++
+	}
+
+	l.overrides = newOverrides
+	l.overridesTimestamp.SetToCurrentTime()
+	for rlName, rlString := range nameToString {
+		l.overridesPerLimit.WithLabelValues(rlString).Set(newOverridesPerLimit[rlName])
+	}
+
+	return nil
+}
+
+// loadOverridesWithRetry tries to loadOverrides, retrying at least every 30
+// seconds upon failure.
+func (l *limitRegistry) loadOverridesWithRetry(ctx context.Context) error {
+	retries := 0
+	for {
+		err := l.loadOverrides(ctx)
+		if err == nil {
+			return nil
+		}
+		l.logger.Errf("loading overrides: %v", err)
+		retries++
+		select {
+		case <-time.After(core.RetryBackoff(retries, time.Second/6, time.Second*15, 2)):
+		case <-ctx.Done():
+			return err
+		}
+	}
+}
+
+// NewRefresher loads, and periodically refreshes, overrides using this
+// registry's refreshOverrides function.
+func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		err := l.loadOverridesWithRetry(ctx)
+		if err != nil {
+			l.logger.Errf("loading overrides (initial): %v", err)
+		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				err := l.loadOverridesWithRetry(ctx)
+				if err != nil {
+					l.logger.Errf("loading overrides (refresh): %v", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return cancel
+}
+
 // LoadOverridesByBucketKey loads the overrides YAML at the supplied path,
 // parses it with the existing helpers, and returns the resulting limits map
 // keyed by "<name>:<id>". This function is exported to support admin tooling
 // used during the migration from overrides.yaml to the overrides database
 // table.
 func LoadOverridesByBucketKey(path string) (Limits, error) {
-	ovs, err := loadOverrides(path)
+	ovs, err := loadOverridesFromFile(path)
 	if err != nil {
 		return nil, err
 	}

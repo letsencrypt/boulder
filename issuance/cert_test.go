@@ -920,9 +920,8 @@ func TestNewProfile(t *testing.T) {
 		{
 			name: "happy path",
 			config: ProfileConfig{
-				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
-				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
-				IncludeCRLDistributionPoints: true,
+				MaxValidityBackdate: config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 90 * 24 * time.Hour},
 			},
 		},
 		{
@@ -941,18 +940,9 @@ func TestNewProfile(t *testing.T) {
 			},
 			wantErr: "validity period \"9528h0m0s\" is too large",
 		},
-		{
-			name: "no revocation info",
-			config: ProfileConfig{
-				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
-				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
-				IncludeCRLDistributionPoints: false,
-			},
-			wantErr: "revocation mechanism must be included",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gotProfile, gotErr := NewProfile(&tc.config)
+			gotProfile, gotErr := NewProfile(tc.config)
 			if tc.wantErr != "" {
 				if gotErr == nil {
 					t.Errorf("NewProfile(%#v) = %#v, but want err %q", tc.config, gotProfile, tc.wantErr)

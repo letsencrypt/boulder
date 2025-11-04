@@ -31,13 +31,6 @@ import (
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
-	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
-	// OCSP Must Staple extension to be rejected.
-	//
-	// Deprecated: This has no effect, Must Staple is always omitted.
-	// TODO(#8177): Remove this.
-	AllowMustStaple bool
-
 	// OmitCommonName causes the CN field to be excluded from the resulting
 	// certificate, regardless of its inclusion in the IssuanceRequest.
 	OmitCommonName bool
@@ -49,20 +42,6 @@ type ProfileConfig struct {
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
-	// OmitOCSP causes the OCSP URI field to be omitted from the Authority
-	// Information Access extension. This cannot be true unless
-	// IncludeCRLDistributionPoints is also true, to ensure that every
-	// certificate has at least one revocation mechanism included.
-	//
-	// Deprecated: This has no effect; OCSP is always omitted.
-	// TODO(#8177): Remove this.
-	OmitOCSP bool
-	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
-	// be added to all certificates issued by this profile.
-	//
-	// Deprecated: This has no effect; CRLDP is always included.
-	// TODO(#8177): Remove this.
-	IncludeCRLDistributionPoints bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -75,12 +54,7 @@ type ProfileConfig struct {
 	IgnoredLints []string
 }
 
-// PolicyConfig describes a policy
-type PolicyConfig struct {
-	OID string `validate:"required"`
-}
-
-// Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
+// Profile is the validated structure created by reading in a ProfileConfig
 type Profile struct {
 	omitCommonName      bool
 	omitKeyEncipherment bool
@@ -94,7 +68,7 @@ type Profile struct {
 }
 
 // NewProfile converts the profile config into a usable profile.
-func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
+func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
 	// must be "within 48 hours of the time of signing". We can be even stricter.
 	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
@@ -105,14 +79,6 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	// validity period of "up to 100 days".
 	if profileConfig.MaxValidityPeriod.Duration >= 100*24*time.Hour {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
-	}
-
-	// Although the Baseline Requirements say that revocation information may be
-	// omitted entirely *for short-lived certs*, the Microsoft root program still
-	// requires that at least one revocation mechanism be included in all certs.
-	// TODO(#7673): Remove this restriction.
-	if !profileConfig.IncludeCRLDistributionPoints {
-		return nil, fmt.Errorf("at least one revocation mechanism must be included")
 	}
 
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)

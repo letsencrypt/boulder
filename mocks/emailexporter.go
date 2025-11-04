@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -11,24 +12,24 @@ import (
 	emailpb "github.com/letsencrypt/boulder/email/proto"
 )
 
-// MockPardotClientImpl is a mock implementation of PardotClient.
-type MockPardotClientImpl struct {
+var _ email.SalesforceClient = (*MockSalesforceClientImpl)(nil)
+
+// MockSalesforceClientImpl is a mock implementation of email.SalesforceClient.
+type MockSalesforceClientImpl struct {
 	sync.Mutex
 	CreatedContacts []string
+	CreatedCases    []email.Case
 }
 
-// NewMockPardotClientImpl returns a emailPardotClient and a
-// MockPardotClientImpl. Both refer to the same instance, with the interface for
-// mock interaction and the struct for state inspection and modification.
-func NewMockPardotClientImpl() (email.PardotClient, *MockPardotClientImpl) {
-	mockImpl := &MockPardotClientImpl{
-		CreatedContacts: []string{},
-	}
-	return mockImpl, mockImpl
+// NewMockSalesforceClientImpl returns a MockSalesforceClientImpl, which implements
+// the PardotClient interface. It returns the underlying concrete type, so callers
+// have access to its struct members and helper methods.
+func NewMockSalesforceClientImpl() *MockSalesforceClientImpl {
+	return &MockSalesforceClientImpl{}
 }
 
 // SendContact adds an email to CreatedContacts.
-func (m *MockPardotClientImpl) SendContact(email string) error {
+func (m *MockSalesforceClientImpl) SendContact(email string) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -38,33 +39,70 @@ func (m *MockPardotClientImpl) SendContact(email string) error {
 
 // GetCreatedContacts is used for testing to retrieve the list of created
 // contacts in a thread-safe manner.
-func (m *MockPardotClientImpl) GetCreatedContacts() []string {
+func (m *MockSalesforceClientImpl) GetCreatedContacts() []string {
 	m.Lock()
 	defer m.Unlock()
+
 	// Return a copy to avoid race conditions.
-	return append([]string{}, m.CreatedContacts...)
+	return slices.Clone(m.CreatedContacts)
 }
+
+// SendCase adds a case payload to CreatedCases.
+func (m *MockSalesforceClientImpl) SendCase(payload email.Case) error {
+	m.Lock()
+	defer m.Unlock()
+
+	m.CreatedCases = append(m.CreatedCases, payload)
+	return nil
+}
+
+// GetCreatedCases is used for testing to retrieve the list of created cases in
+// a thread-safe manner.
+func (m *MockSalesforceClientImpl) GetCreatedCases() []email.Case {
+	m.Lock()
+	defer m.Unlock()
+
+	// Return a copy to avoid race conditions.
+	return slices.Clone(m.CreatedCases)
+}
+
+var _ emailpb.ExporterClient = (*MockExporterClientImpl)(nil)
 
 // MockExporterClientImpl is a mock implementation of ExporterClient.
 type MockExporterClientImpl struct {
-	PardotClient email.PardotClient
+	SalesforceClient email.SalesforceClient
 }
 
 // NewMockExporterImpl returns a MockExporterClientImpl as an ExporterClient.
-func NewMockExporterImpl(pardotClient email.PardotClient) emailpb.ExporterClient {
+func NewMockExporterImpl(salesforceClient email.SalesforceClient) emailpb.ExporterClient {
 	return &MockExporterClientImpl{
-		PardotClient: pardotClient,
+		SalesforceClient: salesforceClient,
 	}
 }
 
-// SendContacts submits emails to the inner PardotClient, returning an error if
-// any fail.
+// SendContacts submits emails to the inner email.SalesforceClient, returning an
+// error if any fail.
 func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	for _, e := range req.Emails {
-		err := m.PardotClient.SendContact(e)
+		err := m.SalesforceClient.SendContact(e)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// SendCase submits a Case using the inner email.SalesforceClient.
+func (m *MockExporterClientImpl) SendCase(ctx context.Context, req *emailpb.SendCaseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, m.SalesforceClient.SendCase(email.Case{
+		Origin:        req.Origin,
+		Subject:       req.Subject,
+		Description:   req.Description,
+		ContactEmail:  req.ContactEmail,
+		Organization:  req.Organization,
+		AccountId:     req.AccountId,
+		RateLimitName: req.RateLimitName,
+		RateLimitTier: req.RateLimitTier,
+		UseCase:       req.UseCase,
+	})
 }
