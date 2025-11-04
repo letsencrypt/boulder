@@ -140,9 +140,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	staggerTicker := time.NewTicker(ctp.stagger)
 	defer staggerTicker.Stop()
 
-	// Finally, collect SCTs and/or errors from our results channel. We know that
-	// we can collect len(logs) results from the channel because every goroutine
-	// is guaranteed to write one result (either sct or error) to the channel.
+	// Collect SCTs and errors out of the results channels into these slices.
 	results := make([]result, 0)
 	errs := make([]string, 0)
 
@@ -172,6 +170,8 @@ loop:
 				}
 			}
 
+			// We can collect len(logs) results from the channel as every goroutine is
+			// guaranteed to write one result (either sct or error) to the channel.
 			if len(results)+len(errs) >= len(logs) {
 				// We have an error or result from every log, but didn't find a compliant set
 				break loop
