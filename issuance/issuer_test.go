@@ -24,10 +24,8 @@ import (
 
 func defaultProfileConfig() ProfileConfig {
 	return ProfileConfig{
-		AllowMustStaple:              true,
-		IncludeCRLDistributionPoints: true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
-		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
 			// Ignore the two SCT lints because these tests don't get SCTs.
 			"w_ct_sct_policy_count_unsatisfied",

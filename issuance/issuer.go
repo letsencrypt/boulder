@@ -158,9 +158,6 @@ type IssuerConfig struct {
 	IssuerURL  string `validate:"required,url"`
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
 
-	// TODO(#8177): Remove this.
-	OCSPURL string `validate:"omitempty,url"`
-
 	// Number of CRL shards. Must be positive, but can be 1 for no sharding.
 	CRLShards int `validate:"required,min=1"`
 
