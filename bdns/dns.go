@@ -115,6 +115,7 @@ func New(
 		},
 		[]string{"qtype", "type", "resolver", "isTLD"},
 	)
+	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter)
 	return &impl{
 		dnsClient:                client,
 		servers:                  servers,
