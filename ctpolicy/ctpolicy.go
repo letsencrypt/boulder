@@ -113,15 +113,14 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// cert's expiry. Randomize the order of the logs so that we're not always
 	// trying to submit to the same two.
 	logs := ctp.sctLogs.ForTime(expiration).Permute()
-	candidateLogs := len(logs)
-	if candidateLogs < 2 {
-		return nil, berrors.MissingSCTsError("Insufficient CT logs available (%d)", candidateLogs)
+	if len(logs) < 2 {
+		return nil, berrors.MissingSCTsError("Insufficient CT logs available (%d)", len(logs))
 	}
 
 	// Ensure that the results channel has a buffer equal to the number of
 	// goroutines we're kicking off, so that they're all guaranteed to be able to
 	// write to it and exit without blocking and leaking.
-	resChan := make(chan result, candidateLogs)
+	resChan := make(chan result, len(logs))
 
 	// Kick off first two submissions
 	nextLog := 0
@@ -151,7 +150,7 @@ loop:
 		select {
 		case <-staggerTicker.C:
 			// Each tick from the staggerTicker, we start submitting to another log
-			if nextLog >= candidateLogs {
+			if nextLog >= len(logs) {
 				// Unless we have run out of logs to submit to, so don't need to tick anymore
 				staggerTicker.Stop()
 				continue
@@ -172,7 +171,7 @@ loop:
 				}
 			}
 
-			if len(results)+len(errs) >= candidateLogs {
+			if len(results)+len(errs) >= len(logs) {
 				// We have an error or result from every log, but didn't find a compliant set
 				break loop
 			}
