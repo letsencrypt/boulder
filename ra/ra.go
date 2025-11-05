@@ -85,7 +85,6 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg int
 	limiter           *ratelimits.Limiter
 	txnBuilder        *ratelimits.TransactionBuilder
-	started           time.Time
 	finalizeTimeout   time.Duration
 	drainWG           sync.WaitGroup
 
@@ -111,7 +110,7 @@ var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
 // Health implements our grpc.checker interface. This method will be called
 // periodically to set the gRPC service's healthpb.Health.Check() status.
 func (ra *RegistrationAuthorityImpl) Health(ctx context.Context) error {
-	if ra.txnBuilder.Ready() || time.Since(ra.started) > time.Second*10 {
+	if ra.txnBuilder.Ready() {
 		return nil
 	}
 	return errors.New("waiting for overrides")
@@ -235,7 +234,6 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:               keyPolicy,
 		limiter:                 limiter,
 		txnBuilder:              txnBuilder,
-		started:                 clk.Now(),
 		publisher:               pubc,
 		finalizeTimeout:         finalizeTimeout,
 		ctpolicy:                ctp,
