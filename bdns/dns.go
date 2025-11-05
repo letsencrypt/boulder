@@ -18,6 +18,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
@@ -92,7 +93,7 @@ func New(
 		userAgent: userAgent,
 	}
 
-	queryTime := prometheus.NewHistogramVec(
+	queryTime := promauto.With(stats).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "dns_query_time",
 			Help:    "Time taken to perform a DNS query",
@@ -100,7 +101,7 @@ func New(
 		},
 		[]string{"qtype", "result", "resolver"},
 	)
-	totalLookupTime := prometheus.NewHistogramVec(
+	totalLookupTime := promauto.With(stats).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "dns_total_lookup_time",
 			Help:    "Time taken to perform a DNS lookup, including all retried queries",
@@ -108,7 +109,7 @@ func New(
 		},
 		[]string{"qtype", "result", "retries", "resolver"},
 	)
-	timeoutCounter := prometheus.NewCounterVec(
+	timeoutCounter := promauto.With(stats).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "dns_timeout",
 			Help: "Counter of various types of DNS query timeouts",
