@@ -85,7 +85,6 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg int
 	limiter           *ratelimits.Limiter
 	txnBuilder        *ratelimits.TransactionBuilder
-	started           time.Time
 	finalizeTimeout   time.Duration
 	drainWG           sync.WaitGroup
 
@@ -235,7 +234,6 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:               keyPolicy,
 		limiter:                 limiter,
 		txnBuilder:              txnBuilder,
-		started:                 clk.Now(),
 		publisher:               pubc,
 		finalizeTimeout:         finalizeTimeout,
 		ctpolicy:                ctp,
