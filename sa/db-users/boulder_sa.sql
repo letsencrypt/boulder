@@ -32,8 +32,8 @@ GRANT SELECT,INSERT,UPDATE ON crlShards TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON revokedCertificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON replacementOrders TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON overrides TO 'sa'@'localhost';
--- Tests need to be able to TRUNCATE this table, so DROP is necessary.
-GRANT SELECT,INSERT,UPDATE,DROP ON paused TO 'sa'@'localhost';
+-- Tests need to be able to remove rows from this table, so DELETE,DROP is necessary.
+GRANT SELECT,INSERT,UPDATE,DELETE,DROP ON paused TO 'sa'@'localhost';
 
 GRANT SELECT ON certificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON certificateStatus TO 'sa_ro'@'localhost';
