@@ -12,6 +12,7 @@ fi
 # Defaults
 #
 export RACE="false"
+export USE_VITESS="false"
 STAGE="starting"
 STATUS="FAILURE"
 RUN=()
@@ -21,6 +22,18 @@ INTEGRATION_FLAGS=()
 FILTER=()
 COVERAGE="false"
 COVERAGE_DIR="test/coverage/$(date +%Y-%m-%d_%H-%M-%S)"
+DB_URL_FILES=(
+  backfiller_dburl
+  badkeyrevoker_dburl
+  cert_checker_dburl
+  expiration_mailer_dburl
+  incidents_dburl
+  mailer_dburl
+  ocsp_responder_dburl
+  revoker_dburl
+  sa_dburl
+  sa_ro_dburl
+)
 
 #
 # Cleanup Functions
@@ -78,6 +91,30 @@ function run_and_expect_silence() {
   rm "${result_file}"
 }
 
+configure_database_endpoints() {
+  target_dir="mariadb"
+  dbconfig_target="dbconfig.mariadb.yml"
+  export MYSQL_ADDR="boulder-proxysql:6033"
+  MYSQL_HOST="boulder-mariadb"
+  MYSQL_PORT="3306"
+
+  if [[ "${USE_VITESS}" == "true" ]]
+  then
+    target_dir="mysql8"
+    dbconfig_target="dbconfig.mysql8.yml"
+    export MYSQL_ADDR="boulder-vitess:33577"
+    MYSQL_HOST="boulder-vitess"
+    MYSQL_PORT="33577"
+  fi
+
+  rm -f "sa/db/dbconfig.yml" test/secrets/*.dburl || true
+  ( cd sa/db && ln -sf "${dbconfig_target}" "dbconfig.yml" )
+
+  for file in ${DB_URL_FILES:+${DB_URL_FILES[@]+"${DB_URL_FILES[@]}"}}
+  do
+    ( cd test/secrets && ln -sf "../dburls/${target_dir}/${file}" "${file}" )
+  done
+}
 #
 # Testing Helpers
 #
@@ -121,11 +158,12 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
                                           Example:
                                            TestGenerateValidity/TestWFECORS
     -h, --help                            Shows this help message
+    -b  --use-vitess                      Run tests against Vitess + MySQL 8.0 database
 
 EOM
 )"
 
-while getopts luvwecisgnhd:p:f:-: OPT; do
+while getopts luvwecisgnhbd:p:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -145,12 +183,16 @@ while getopts luvwecisgnhd:p:f:-: OPT; do
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     c | coverage )                   COVERAGE="true" ;;
     d | coverage-dir )               check_arg; COVERAGE_DIR="${OPTARG}" ;;
+    b | use-vitess )                 USE_VITESS="true" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
     ? )                              exit 2 ;;  # bad short option (error reported via getopts)
   esac
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
+
+# Defaults to MariaDB unless USE_VITESS is true.
+configure_database_endpoints
 
 # The list of segments to run. Order doesn't matter.
 if [ -z "${RUN[@]+x}" ]
@@ -206,6 +248,7 @@ settings="$(cat -- <<-EOM
     FILTER:             ${FILTER[@]}
     COVERAGE:           $COVERAGE
     COVERAGE_DIR:       $COVERAGE_DIR
+    USE_VITESS:         $USE_VITESS
 EOM
 )"
 
