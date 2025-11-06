@@ -247,7 +247,7 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertNotError(t, err, "findUnrevoked failed")
 	test.AssertEquals(t, len(rows), 1)
 	test.AssertEquals(t, rows[0].Serial, "ff")
-	test.AssertEquals(t, rows[0].RegistrationID, int64(1))
+	test.AssertEquals(t, rows[0].RegistrationID, regID)
 	test.AssertByteEquals(t, rows[0].DER, []byte{1, 2, 3})
 
 	bkr.maxRevocations = 0
