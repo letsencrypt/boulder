@@ -13,6 +13,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -63,11 +64,10 @@ func NewSQLStorageAuthorityWrapping(
 	dbMap *db.WrappedMap,
 	stats prometheus.Registerer,
 ) (*SQLStorageAuthority, error) {
-	rateLimitWriteErrors := prometheus.NewCounter(prometheus.CounterOpts{
+	rateLimitWriteErrors := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "rate_limit_write_errors",
 		Help: "number of failed ratelimit update transactions during AddCertificate",
 	})
-	stats.MustRegister(rateLimitWriteErrors)
 
 	ssa := &SQLStorageAuthority{
 		SQLStorageAuthorityRO: ssaro,

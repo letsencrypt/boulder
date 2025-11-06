@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -275,32 +276,26 @@ func NewTransactionBuilder(defaultConfigs LimitConfigs, refresher OverridesRefre
 		}
 	}
 
-	overridesTimestamp := prometheus.NewGauge(prometheus.GaugeOpts{
+	overridesTimestamp := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
 		Namespace: "ratelimits",
 		Subsystem: "overrides",
 		Name:      "timestamp_seconds",
 		Help:      "A gauge with the last timestamp when overrides were successfully loaded",
 	})
-	stats.MustRegister(overridesTimestamp)
 
-	overridesErrors := prometheus.NewGauge(prometheus.GaugeOpts{
+	overridesErrors := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
 		Namespace: "ratelimits",
 		Subsystem: "overrides",
 		Name:      "errors",
 		Help:      "A gauge with the number of errors while last trying to load overrides",
 	})
-	stats.MustRegister(overridesErrors)
 
-	overridesPerLimit := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: "ratelimits",
-			Subsystem: "overrides",
-			Name:      "active",
-			Help:      "A gauge with the number of overrides, partitioned by rate limit",
-		},
-		[]string{"limit"},
-	)
-	stats.MustRegister(overridesPerLimit)
+	overridesPerLimit := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "ratelimits",
+		Subsystem: "overrides",
+		Name:      "active",
+		Help:      "A gauge with the number of overrides, partitioned by rate limit",
+	}, []string{"limit"})
 
 	registry := &limitRegistry{
 		defaults:         defaults,

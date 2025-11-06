@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -56,26 +57,23 @@ var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 // is assigned 40% (20,000 requests), it should also receive 40% of the max
 // concurrent requests (e.g., 2 out of 5). For more details, see:
 // https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit float64, maxConcurrentRequests int, stats prometheus.Registerer, logger blog.Logger) *ExporterImpl {
 	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
 
-	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	emailsHandledCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_emails_handled",
 		Help: "Total number of emails handled by the email exporter",
 	})
-	scope.MustRegister(emailsHandledCounter)
 
-	pardotErrorCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	pardotErrorCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_errors",
 		Help: "Total number of Pardot API errors encountered by the email exporter",
 	})
-	scope.MustRegister(pardotErrorCounter)
 
-	caseErrorCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	caseErrorCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_case_errors",
 		Help: "Total number of errors encountered when sending Cases to the Salesforce REST API",
 	})
-	scope.MustRegister(caseErrorCounter)
 
 	impl := &ExporterImpl{
 		maxConcurrentRequests: maxConcurrentRequests,
@@ -90,7 +88,9 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 	}
 	impl.wake = sync.NewCond(&impl.Mutex)
 
-	queueGauge := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+	// This metric doesn't need to be part of impl, since it computes itself
+	// each time it is scraped.
+	promauto.With(stats).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "email_exporter_queue_length",
 		Help: "Current length of the email export queue",
 	}, func() float64 {
@@ -98,7 +98,6 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 		defer impl.Unlock()
 		return float64(len(impl.toSend))
 	})
-	scope.MustRegister(queueGauge)
 
 	return impl
 }
