@@ -24,6 +24,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
@@ -271,6 +272,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry.MustRegister(collectors.NewProcessCollector(
 		collectors.ProcessCollectorOpts{}))
 	registry.MustRegister(newVersionCollector())
+	registry.MustRegister(version.NewCollector("boulder"))
 
 	mux := http.NewServeMux()
 	// Register the available pprof handlers. These are all registered on
