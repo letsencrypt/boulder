@@ -71,6 +71,7 @@ const (
 	getCertPath     = "/get/cert/"
 	getCertInfoPath = "/get/certinfo/"
 	buildIDPath     = "/build"
+	healthPath      = "/health"
 )
 
 const (
@@ -425,6 +426,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, getCertInfoPath, wfe.CertificateInfo, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
+	wfe.HandleFunc(m, healthPath, wfe.HttpHealth, "GET")
 
 	// Endpoint for draft-ietf-acme-ari
 	if features.Get().ServeRenewalInfo {
@@ -1797,6 +1799,23 @@ func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEv
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
+		wfe.log.Warningf("Could not write response: %s", err)
+	}
+}
+
+// HttpHealth tells the requester whether we're ready to serve requests.
+func (wfe *WebFrontEndImpl) HttpHealth(ctx context.Context, _ *web.RequestEvent, response http.ResponseWriter, _ *http.Request) {
+	status := http.StatusOK
+	details := "OK"
+
+	if !wfe.txnBuilder.Ready() {
+		status = http.StatusServiceUnavailable
+		details = "waiting for overrides"
+	}
+
+	response.Header().Set("Content-Type", "text/plain")
+	response.WriteHeader(status)
+	if _, err := fmt.Println(response, details); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }

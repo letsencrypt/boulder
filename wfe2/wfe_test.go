@@ -1096,6 +1096,11 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: getOnly,
 		},
 		{
+			Name:    "Health path should be GET only",
+			Path:    healthPath,
+			Allowed: getOnly,
+		},
+		{
 			Name:    "Rollover path should be POST only",
 			Path:    rolloverPath,
 			Allowed: postOnly,
