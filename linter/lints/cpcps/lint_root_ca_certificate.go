@@ -10,30 +10,30 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-type rootCACertValidityTooLong struct{}
+type rootCACertificateMatchesCPSProfile struct{}
 
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_root_ca_cert_validity_period_greater_than_25_years",
-			Description:   "Let's Encrypt Root CA Certificates have Validity Periods of up to 25 years",
+			Name:          "e_root_ca_certificate_matches_cps_profile",
+			Description:   "Let's Encrypt Root CA Certificates are issued in accordance with the CP/CPS Profile",
 			Citation:      "CPS: 7.1",
 			Source:        lints.LetsEncryptCPS,
-			EffectiveDate: lints.CPSV33Date,
+			EffectiveDate: lints.GenYHierarchyDate,
 		},
-		Lint: NewRootCACertValidityTooLong,
+		Lint: NewRootCACertificateMatchesCPSProfile,
 	})
 }
 
-func NewRootCACertValidityTooLong() lint.CertificateLintInterface {
-	return &rootCACertValidityTooLong{}
+func NewRootCACertificateMatchesCPSProfile() lint.CertificateLintInterface {
+	return &rootCACertificateMatchesCPSProfile{}
 }
 
-func (l *rootCACertValidityTooLong) CheckApplies(c *x509.Certificate) bool {
+func (l *rootCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool {
 	return util.IsRootCA(c)
 }
 
-func (l *rootCACertValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
+func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
 	// CPS 7.1: "Root CA Certificate Validity Period: Up to 25 years."
 	maxValidity := 25 * 365 * lints.BRDay
 
