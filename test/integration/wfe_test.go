@@ -53,15 +53,15 @@ func TestWFEHTTPMetrics(t *testing.T) {
 	resp.Body.Close()
 }
 
-// TestWFEHealth checks to make sure that the /health endpoint returns 200 OK,
+// TestWFEHealthz checks to make sure that the /health endpoint returns 200 OK,
 // retrying in case overrides take a moment to load.
-func TestWFEHealth(t *testing.T) {
+func TestWFEHealthz(t *testing.T) {
 	retries := 0
 	var status int
 	for retries < 5 {
 		time.Sleep(core.RetryBackoff(retries, time.Millisecond*2, time.Millisecond*50, 2))
-		resp, err := http.Get("http://boulder.service.consul:4001/health")
-		test.AssertNotError(t, err, "GET boulder-wfe2 health")
+		resp, err := http.Get("http://boulder.service.consul:4001/healthz")
+		test.AssertNotError(t, err, "GET boulder-wfe2 healthz")
 		status = resp.StatusCode
 		resp.Body.Close()
 		if status == http.StatusOK {

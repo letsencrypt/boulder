@@ -1097,7 +1097,7 @@ func TestHTTPMethods(t *testing.T) {
 		},
 		{
 			Name:    "Health path should be GET only",
-			Path:    healthPath,
+			Path:    healthzPath,
 			Allowed: getOnly,
 		},
 		{
