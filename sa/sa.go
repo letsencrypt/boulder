@@ -1222,6 +1222,14 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 		nextUpdate = &nut
 	}
 
+	// MariaDB and MySQL 8 handle fractional seconds differently in DATETIME(0)
+	// columns: MariaDB truncates while MySQL rounds to the nearest second. To
+	// ensure both databases store identical values, we explicitly truncate to
+	// whole seconds here. Without this, MySQL could round a timestamp up to the
+	// next second, causing a subsequent update within the same second to appear
+	// "older" and be rejected.
+	thisUpdate := req.ThisUpdate.AsTime().Truncate(time.Second)
+
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
@@ -1230,12 +1238,12 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 				AND idx = ?
 				AND (thisUpdate is NULL OR thisUpdate <= ?)
 				LIMIT 1`,
-			req.ThisUpdate.AsTime(),
+			thisUpdate,
 			nextUpdate,
-			req.ThisUpdate.AsTime(),
+			thisUpdate,
 			req.IssuerNameID,
 			req.ShardIdx,
-			req.ThisUpdate.AsTime(),
+			thisUpdate,
 		)
 		if err != nil {
 			return nil, err
