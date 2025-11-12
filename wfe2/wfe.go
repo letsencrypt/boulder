@@ -9,9 +9,9 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"math/rand/v2"
-	"io/ioutil"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -72,10 +72,11 @@ const (
 	getCertPath     = "/get/cert/"
 	getCertInfoPath = "/get/certinfo/"
 	buildIDPath     = "/build"
+	healthzPath     = "/healthz"
 
-    // Plesk
-    caRootPath    = "/ca-root"
-    caEcdsaRootPath    = "/ca-ecdsa-root"
+	// Plesk
+	caRootPath      = "/ca-root"
+	caEcdsaRootPath = "/ca-ecdsa-root"
 )
 
 const (
@@ -432,9 +433,9 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, healthzPath, wfe.Healthz, "GET")
 
-    // Plesk
-    wfe.HandleFunc(m, caRootPath, wfe.CARoot, "GET")
-    wfe.HandleFunc(m, caEcdsaRootPath, wfe.CAEcdsaRoot, "GET")
+	// Plesk
+	wfe.HandleFunc(m, caRootPath, wfe.CARoot, "GET")
+	wfe.HandleFunc(m, caEcdsaRootPath, wfe.CAEcdsaRoot, "GET")
 
 	// Endpoint for draft-ietf-acme-ari
 	if features.Get().ServeRenewalInfo {

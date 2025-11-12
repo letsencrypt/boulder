@@ -5,6 +5,8 @@
     ids:
       - id: 64.112.117.1
         comment: test
+      - id: 127.0.0.1
+        comment: Plesk test
 - CertificatesPerDomain:
     burst: 1
     count: 1
@@ -13,8 +15,8 @@
       - id: ratelimit.me
         comment: Rate Limit Test Domain
 - CertificatesPerDomain:
-    burst: 10000
-    count: 10000
+    burst: 99999
+    count: 99999
     period: 2160h
     ids:
       - id: le.wtf
@@ -33,9 +35,13 @@
         comment: ECDSA Let's Encrypt Test Domain
       - id: must-staple.le.wtf
         comment: Must-Staple Let's Encrypt Test Domain
+      - id: plesk.tech
+        comment: Plesk tests
+      - id: atf.plesk.tech
+        comment: Plesk tests
 - CertificatesPerFQDNSet:
-    burst: 10000
-    count: 10000
+    burst: 99999
+    count: 99999
     period: 168h
     ids:
       - id: le.wtf
@@ -54,3 +60,7 @@
         comment: ECDSA Let's Encrypt Test Domain
       - id: must-staple.le.wtf
         comment: Must-Staple Let's Encrypt Test Domain
+      - id: plesk.tech
+        comment: Plesk tests
+      - id: atf.plesk.tech
+        comment: Plesk tests
