@@ -95,16 +95,12 @@ configure_database_endpoints() {
   target_dir="mariadb"
   dbconfig_target="dbconfig.mariadb.yml"
   export MYSQL_ADDR="boulder-proxysql:6033"
-  MYSQL_HOST="boulder-mariadb"
-  MYSQL_PORT="3306"
 
   if [[ "${USE_VITESS}" == "true" ]]
   then
     target_dir="mysql8"
     dbconfig_target="dbconfig.mysql8.yml"
     export MYSQL_ADDR="boulder-vitess:33577"
-    MYSQL_HOST="boulder-vitess"
-    MYSQL_PORT="33577"
   fi
 
   rm -f "sa/db/dbconfig.yml" test/secrets/*.dburl || true
