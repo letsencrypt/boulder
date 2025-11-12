@@ -21,6 +21,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -79,34 +80,25 @@ type caMetrics struct {
 }
 
 func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
-	signatureCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "signatures",
-			Help: "Number of signatures",
-		},
-		[]string{"purpose", "issuer"})
-	stats.MustRegister(signatureCount)
+	signatureCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "signatures",
+		Help: "Number of signatures",
+	}, []string{"purpose", "issuer"})
 
-	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+	signErrorCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "signature_errors",
 		Help: "A counter of signature errors labelled by error type",
 	}, []string{"type"})
-	stats.MustRegister(signErrorCount)
 
-	lintErrorCount := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "lint_errors",
-			Help: "Number of issuances that were halted by linting errors",
-		})
-	stats.MustRegister(lintErrorCount)
+	lintErrorCount := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "lint_errors",
+		Help: "Number of issuances that were halted by linting errors",
+	})
 
-	certificates := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "certificates",
-			Help: "Number of certificates issued",
-		},
-		[]string{"profile"})
-	stats.MustRegister(certificates)
+	certificates := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "certificates",
+		Help: "Number of certificates issued",
+	}, []string{"profile"})
 
 	return &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificates}
 }

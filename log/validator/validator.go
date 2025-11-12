@@ -13,6 +13,7 @@ import (
 
 	"github.com/nxadm/tail"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/letsencrypt/boulder/log"
 )
@@ -38,11 +39,10 @@ type Validator struct {
 
 // New Validator monitoring paths, which is a list of file globs.
 func New(patterns []string, logger log.Logger, stats prometheus.Registerer) *Validator {
-	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	lineCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",
 	}, []string{"filename", "status"})
-	stats.MustRegister(lineCounter)
 
 	monitorContext, monitorCancel := context.WithCancel(context.Background())
 

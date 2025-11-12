@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -24,19 +25,6 @@ import (
 )
 
 const blockedKeysGaugeLimit = 1000
-
-var keysToProcess = prometheus.NewGauge(prometheus.GaugeOpts{
-	Name: "bad_keys_to_process",
-	Help: fmt.Sprintf("A gauge of blockedKeys rows to process (max: %d)", blockedKeysGaugeLimit),
-})
-var keysProcessed = prometheus.NewCounterVec(prometheus.CounterOpts{
-	Name: "bad_keys_processed",
-	Help: "A counter of blockedKeys rows processed labelled by processing state",
-}, []string{"state"})
-var certsRevoked = prometheus.NewCounter(prometheus.CounterOpts{
-	Name: "bad_keys_certs_revoked",
-	Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
-})
 
 // revoker is an interface used to reduce the scope of a RA gRPC client
 // to only the single method we need to use, this makes testing significantly
@@ -57,6 +45,9 @@ type badKeyRevoker struct {
 	backoffFactor             float64
 	backoffTicker             int
 	maxExpectedReplicationLag time.Duration
+	keysToProcess             prometheus.Gauge
+	keysProcessed             *prometheus.CounterVec
+	certsRevoked              prometheus.Counter
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -196,7 +187,7 @@ func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
 		if err != nil {
 			return err
 		}
-		certsRevoked.Inc()
+		bkr.certsRevoked.Inc()
 	}
 	return nil
 }
@@ -212,7 +203,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 
 	// Set the gauge to the number of rows to be processed (max:
 	// blockedKeysGaugeLimit).
-	keysToProcess.Set(float64(uncheckedCount))
+	bkr.keysToProcess.Set(float64(uncheckedCount))
 
 	if uncheckedCount >= blockedKeysGaugeLimit {
 		bkr.logger.AuditInfof("found >= %d unchecked blocked keys left to process", uncheckedCount)
@@ -324,21 +315,31 @@ func main() {
 		config.BadKeyRevoker.DebugAddr = *debugAddr
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 	clk := clock.New()
 
-	scope.MustRegister(keysProcessed)
-	scope.MustRegister(certsRevoked)
+	keysToProcess := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "bad_keys_to_process",
+		Help: fmt.Sprintf("A gauge of blockedKeys rows to process (max: %d)", blockedKeysGaugeLimit),
+	})
+	keysProcessed := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "bad_keys_processed",
+		Help: "A counter of blockedKeys rows processed labelled by processing state",
+	}, []string{"state"})
+	certsRevoked := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "bad_keys_certs_revoked",
+		Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
+	})
 
-	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, scope, logger)
+	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, stats, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	tlsConfig, err := config.BadKeyRevoker.TLS.Load(scope)
+	tlsConfig, err := config.BadKeyRevoker.TLS.Load(stats)
 	cmd.FailOnError(err, "TLS config")
 
-	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, scope, clk)
+	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, stats, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(conn)
 
@@ -353,6 +354,9 @@ func main() {
 		backoffIntervalBase:       config.BadKeyRevoker.Interval.Duration,
 		backoffFactor:             1.3,
 		maxExpectedReplicationLag: config.BadKeyRevoker.MaxExpectedReplicationLag.Duration,
+		keysToProcess:             keysToProcess,
+		keysProcessed:             keysProcessed,
+		certsRevoked:              certsRevoked,
 	}
 
 	// If `BackoffIntervalMax` was not set via the config, set it to 60

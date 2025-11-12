@@ -12,6 +12,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -74,11 +75,10 @@ func NewSQLStorageAuthorityRO(
 	clk clock.Clock,
 	logger blog.Logger,
 ) (*SQLStorageAuthorityRO, error) {
-	lagFactorCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	lagFactorCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "sa_lag_factor",
 		Help: "A counter of SA lagFactor checks labelled by method and pass/fail",
 	}, []string{"method", "result"})
-	stats.MustRegister(lagFactorCounter)
 
 	ssaro := &SQLStorageAuthorityRO{
 		dbReadOnlyMap:     dbReadOnlyMap,

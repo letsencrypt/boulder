@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -137,37 +138,31 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		maxUsed = defaultMaxUsed
 	}
 
-	nonceCreates := prometheus.NewCounter(prometheus.CounterOpts{
+	nonceCreates := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "nonce_creates",
 		Help: "A counter of nonces generated",
 	})
-	stats.MustRegister(nonceCreates)
-	nonceEarliest := prometheus.NewGauge(prometheus.GaugeOpts{
+	nonceEarliest := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
 		Name: "nonce_earliest",
 		Help: "A gauge with the current earliest valid nonce value",
 	})
-	stats.MustRegister(nonceEarliest)
-	nonceLatest := prometheus.NewGauge(prometheus.GaugeOpts{
+	nonceLatest := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
 		Name: "nonce_latest",
 		Help: "A gauge with the current latest valid nonce value",
 	})
-	stats.MustRegister(nonceLatest)
-	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
+	nonceRedeems := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
 	}, []string{"result", "error"})
-	stats.MustRegister(nonceRedeems)
-	nonceAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	nonceAges := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "nonce_ages",
 		Help:    "A histogram of nonce ages at the time they were (attempted to be) redeemed, expressed as fractions of the valid nonce window",
 		Buckets: []float64{-0.01, 0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.1, 1.2, 1.5, 2, 5},
 	}, []string{"result"})
-	stats.MustRegister(nonceAges)
-	nonceHeapLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+	nonceHeapLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
 		Name: "nonce_heap_latency",
 		Help: "A histogram of latencies of heap pop operations",
 	})
-	stats.MustRegister(nonceHeapLatency)
 
 	return &NonceService{
 		earliest:         0,

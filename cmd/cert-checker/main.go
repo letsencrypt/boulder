@@ -18,6 +18,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	zX509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
@@ -603,11 +604,10 @@ func main() {
 	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+	checkerLatency := promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
 	})
-	prometheus.DefaultRegisterer.MustRegister(checkerLatency)
 
 	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")

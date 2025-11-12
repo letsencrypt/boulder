@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -36,23 +37,15 @@ type CTPolicy struct {
 
 // New creates a new CTPolicy struct
 func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List, finalLogs loglist.List, stagger time.Duration, log blog.Logger, stats prometheus.Registerer) *CTPolicy {
-	winnerCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "sct_winner",
-			Help: "Counter of logs which are selected for sct submission, by log URL and result (succeeded or failed).",
-		},
-		[]string{"url", "result"},
-	)
-	stats.MustRegister(winnerCounter)
+	winnerCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "sct_winner",
+		Help: "Counter of logs which are selected for sct submission, by log URL and result (succeeded or failed).",
+	}, []string{"url", "result"})
 
-	shardExpiryGauge := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ct_shard_expiration_seconds",
-			Help: "CT shard end_exclusive field expressed as Unix epoch time, by operator and logID.",
-		},
-		[]string{"operator", "logID"},
-	)
-	stats.MustRegister(shardExpiryGauge)
+	shardExpiryGauge := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ct_shard_expiration_seconds",
+		Help: "CT shard end_exclusive field expressed as Unix epoch time, by operator and logID.",
+	}, []string{"operator", "logID"})
 
 	for _, log := range sctLogs {
 		if log.EndExclusive.IsZero() {

@@ -24,6 +24,7 @@ import (
 	"github.com/google/certificate-transparency-go/jsonclient"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
@@ -171,34 +172,22 @@ type pubMetrics struct {
 }
 
 func initMetrics(stats prometheus.Registerer) *pubMetrics {
-	submissionLatency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "ct_submission_time_seconds",
-			Help:    "Time taken to submit a certificate to a CT log",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"log", "type", "status", "http_status"},
-	)
-	stats.MustRegister(submissionLatency)
+	submissionLatency := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "ct_submission_time_seconds",
+		Help:    "Time taken to submit a certificate to a CT log",
+		Buckets: metrics.InternetFacingBuckets,
+	}, []string{"log", "type", "status", "http_status"})
 
-	probeLatency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "ct_probe_time_seconds",
-			Help:    "Time taken to probe a CT log",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"log", "status"},
-	)
-	stats.MustRegister(probeLatency)
+	probeLatency := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "ct_probe_time_seconds",
+		Help:    "Time taken to probe a CT log",
+		Buckets: metrics.InternetFacingBuckets,
+	}, []string{"log", "status"})
 
-	errorCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ct_errors_count",
-			Help: "Count of errors by type",
-		},
-		[]string{"log", "type"},
-	)
-	stats.MustRegister(errorCount)
+	errorCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "ct_errors_count",
+		Help: "Count of errors by type",
+	}, []string{"log", "type"})
 
 	return &pubMetrics{submissionLatency, probeLatency, errorCount}
 }
