@@ -357,7 +357,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 
 	txn := func(tx db.Executor) (any, error) {
 		var typeObj any = orderModel{}
-		if features.Get().StoreAuthzsInTheOrder {
+		if features.Get().StoreAuthzsInOrders {
 			// Even though this is a read-only path, we observe the feature flag so we don't
 			// try to query for a column (Authzs) that doesn't exist.
 			typeObj = orderModelWithAuthzs{}
@@ -383,7 +383,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		// For orders created before feature flag StoreAuthzsInTheOrder, fetch the list of authz IDs
+		// For orders created before feature flag StoreAuthzsInOrders, fetch the list of authz IDs
 		// from the orderToAuthz2 table.
 		if len(order.V2Authorizations) == 0 {
 			authzIDs, err := authzForOrder(ctx, tx, order.Id)
@@ -699,7 +699,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, errIncompleteRequest
 	}
 
-	if features.Get().StoreAuthzsInTheOrder {
+	if features.Get().StoreAuthzsInOrders {
 		om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModelWithAuthzs{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {

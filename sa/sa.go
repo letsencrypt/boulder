@@ -485,7 +485,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Second, insert the new order.
 		created := ssa.clk.Now()
 		var orderID int64
-		if features.Get().StoreAuthzsInTheOrder {
+		if features.Get().StoreAuthzsInOrders {
 			encodedAuthzs, err := proto.Marshal(&sapb.Authzs{
 				AuthzIDs: allAuthzIds,
 			})

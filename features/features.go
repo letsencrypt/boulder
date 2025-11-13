@@ -87,10 +87,10 @@ type Config struct {
 	// RA, VA, and WFE2 services for full functionality.
 	DNSAccount01Enabled bool
 
-	// StoreAuthzsInTheOrder causes the SA to write to the `authzs`
+	// StoreAuthzsInOrders causes the SA to write to the `authzs`
 	// column in NewOrder and read from it in GetOrder. It should be enabled
 	// after the migration to add that column has been run.
-	StoreAuthzsInTheOrder bool
+	StoreAuthzsInOrders bool
 }
 
 var fMu = new(sync.RWMutex)
