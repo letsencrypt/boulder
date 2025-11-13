@@ -127,26 +127,27 @@ Would your organization consider financially supporting Let's Encrypt as a Spons
 			"Subscriber Agreement",
 			subscriberAgreementFieldName,
 			`I acknowledge that I have read and agree to the latest version of the
-<a href="https://letsencrypt.org/repository">Let's Encrypt Subscriber Agreement</a>
-and understand that my use of Let's Encrypt services is subject to its terms.`,
+<a href="https://letsencrypt.org/repository" target="_blank" rel="noopener noreferrer">
+Let's Encrypt Subscriber Agreement</a> and understand that my use of Let's Encrypt
+services is subject to its terms.`,
 			true,
 		),
 		forms.NewCheckboxField(
 			"Privacy Policy",
 			privacyPolicyFieldName,
-			`By submitting this form, I acknowledge that the information provided will be
-processed in accordance with <a href="https://letsencrypt.org/privacy">Let's
-Encrypt's Privacy Policy</a>. I understand that ISRG collects and will process
-this information to evaluate your rate limit override request and to provide
-certificate issuance and management services. In addition, depending on your
-responses to questions below, ISRG may use this information to send email
-updates and sponsorship information to you.`,
+			`By submitting this form, I acknowledge that the information provided
+will be processed in accordance with <a href="https://letsencrypt.org/privacy" 
+target="_blank" rel="noopener noreferrer">Let's Encrypt's Privacy Policy</a>.
+I understand that ISRG collects and will process this information to evaluate
+my rate limit override request and to provide certificate issuance and 
+management services. In addition, depending on my responses to questions below,
+ISRG may use this information to send me email updates and sponsorship information.`,
 			true,
 		),
 		forms.NewCheckboxField(
 			"Mailing List",
 			mailingListFieldName,
-			"Subscribe to email updates about Let's Encrypt and other ISRG Projects.",
+			"I’d like to receive email updates about Let's Encrypt and other ISRG projects.",
 			false,
 		),
 		forms.NewTextareaField(
