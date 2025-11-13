@@ -12,6 +12,7 @@ fi
 # Defaults
 #
 export RACE="false"
+export DB_ADDR="boulder-proxysql:6033"
 STAGE="starting"
 STATUS="FAILURE"
 RUN=()
