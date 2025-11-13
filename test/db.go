@@ -5,11 +5,24 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"net"
+	"os"
 	"testing"
 )
 
 var (
-	_ CleanUpDB = &sql.DB{}
+	_      CleanUpDB = &sql.DB{}
+	dbAddr           = func() string {
+		addr := os.Getenv("DB_ADDR")
+		if addr == "" {
+			panic("environment variable DB_ADDR  must be set")
+		}
+		_, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			panic(fmt.Sprintf("environment variable DB_ADDR (%s) is not a valid address with host and port: %s", addr, err))
+		}
+		return addr
+	}()
 )
 
 // CleanUpDB is an interface with only what is needed to delete all
@@ -40,7 +53,7 @@ func ResetIncidentsTestDatabase(t testing.TB) func() {
 }
 
 func resetTestDatabase(t testing.TB, ctx context.Context, dbPrefix string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-proxysql:6033)/%s_sa_test", dbPrefix))
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(%s)/%s_sa_test", dbAddr, dbPrefix))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
