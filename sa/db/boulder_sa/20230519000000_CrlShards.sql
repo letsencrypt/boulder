@@ -5,8 +5,8 @@ CREATE TABLE `crlShards` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `issuerID` bigint(20) NOT NULL,
   `idx` int UNSIGNED NOT NULL,
-  `thisUpdate` datetime,
-  `nextUpdate` datetime,
+  `thisUpdate` datetime DEFAULT NULL,
+  `nextUpdate` datetime DEFAULT NULL,
   `leasedUntil` datetime NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `shardID` (`issuerID`, `idx`)

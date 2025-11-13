@@ -9,9 +9,7 @@ CREATE TABLE `orderToAuthz2` (
   PRIMARY KEY (`id`),
   KEY `orderID_idx` (`orderID`),
   KEY `authzID_idx` (`authzID`)
-) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE (`id`)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4;
 
 -- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back
@@ -22,6 +20,4 @@ CREATE TABLE `orderToAuthz2` (
   `authzID` bigint(20) NOT NULL,
   PRIMARY KEY (`orderID`,`authzID`),
   KEY `authzID` (`authzID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE COLUMNS(orderID, authzID)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE, MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
