@@ -11,9 +11,7 @@ CREATE TABLE `revokedCertificates` (
   `revokedReason` int(11) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `issuerID_shardIdx_notAfterHour_idx` (`issuerID`, `shardIdx`, `notAfterHour`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back

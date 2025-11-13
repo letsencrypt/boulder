@@ -13,6 +13,4 @@ CREATE TABLE `requestedNames` (
   PRIMARY KEY (`id`),
   KEY `orderID_idx` (`orderID`),
   KEY `reversedName_idx` (`reversedName`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
