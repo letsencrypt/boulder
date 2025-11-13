@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 )
 
@@ -40,7 +41,7 @@ func ResetIncidentsTestDatabase(t testing.TB) func() {
 }
 
 func resetTestDatabase(t testing.TB, ctx context.Context, dbPrefix string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-proxysql:6033)/%s_sa_test", dbPrefix))
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(%s)/%s_sa_test", os.Getenv("MYSQL_ADDR"), dbPrefix))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}

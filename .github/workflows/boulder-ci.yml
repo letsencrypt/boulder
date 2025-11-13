@@ -54,12 +54,19 @@ jobs:
           - "./t.sh --unit --enable-race-detection"
           - "./tn.sh --unit --enable-race-detection"
           - "./t.sh --start-py"
+          # Same cases but backed by Vitess + MySQL 8 instead of ProxySQL + MariaDB
+          - "./t.sh --use-vitess --integration"
+          - "./tn.sh --use-vitess --integration"
+          - "./t.sh --use-vitess --unit --enable-race-detection"
+          - "./tn.sh --use-vitess --unit --enable-race-detection"
+          - "./t.sh --use-vitess --start-py"
 
     env:
       # This sets the docker image tag for the boulder-tools repository to
       # use in tests. It will be set appropriately for each tag in the list
       # defined in the matrix.
       BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
+      BOULDER_VTCOMBOSERVER_TAG: vitessv22.0.0_2025-11-03
 
     # Sequence of tasks that will be executed as part of the job.
     steps:
