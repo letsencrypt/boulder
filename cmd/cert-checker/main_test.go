@@ -353,6 +353,8 @@ func TestGetAndProcessCerts(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "not-blacklisted.com",
 		},
+		NotBefore:             fc.Now(),
+		NotAfter:              fc.Now().Add(999999 * time.Hour),
 		BasicConstraintsValid: true,
 		DNSNames:              []string{"not-blacklisted.com"},
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},

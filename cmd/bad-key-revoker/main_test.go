@@ -151,9 +151,9 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 		status,
 		expiredStatus,
 		fc.Now(),
-		time.Time{},
+		time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 		0,
-		time.Time{},
+		time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
