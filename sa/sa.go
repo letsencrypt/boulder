@@ -484,7 +484,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 		// Second, insert the new order.
 		created := ssa.clk.Now()
-		var orderID int64
 		var encodedAuthzs []byte
 		var err error
 		if features.Get().StoreAuthzsInOrders {
@@ -508,7 +507,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		if err != nil {
 			return nil, err
 		}
-		orderID = om.ID
+		orderID := om.ID
 
 		// Third, insert all of the orderToAuthz relations.
 		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"})
