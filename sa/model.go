@@ -347,18 +347,6 @@ type orderModel struct {
 	BeganProcessing        bool
 	CertificateProfileName *string
 	Replaces               *string
-}
-
-type orderModelWithAuthzs struct {
-	ID                     int64
-	RegistrationID         int64
-	Expires                time.Time
-	Created                time.Time
-	Error                  []byte
-	CertificateSerial      string
-	BeganProcessing        bool
-	CertificateProfileName *string
-	Replaces               *string
 	Authzs                 []byte
 }
 
@@ -367,56 +355,7 @@ type orderToAuthzModel struct {
 	AuthzID int64
 }
 
-func orderToModel(order *corepb.Order) (*orderModel, error) {
-	// Make a local copy so we can take a reference to it below.
-	profile := order.CertificateProfileName
-	replaces := order.Replaces
-
-	om := &orderModel{
-		ID:                     order.Id,
-		RegistrationID:         order.RegistrationID,
-		Expires:                order.Expires.AsTime(),
-		Created:                order.Created.AsTime(),
-		BeganProcessing:        order.BeganProcessing,
-		CertificateSerial:      order.CertificateSerial,
-		CertificateProfileName: &profile,
-		Replaces:               &replaces,
-	}
-
-	if order.Error != nil {
-		errJSON, err := json.Marshal(order.Error)
-		if err != nil {
-			return nil, err
-		}
-		if len(errJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Error object is too large to store in the database")
-		}
-		om.Error = errJSON
-	}
-	return om, nil
-}
-
-func modelToOrder(model any) (*corepb.Order, error) {
-	om, ok := model.(*orderModelWithAuthzs)
-	if !ok {
-		omv1, ok := model.(*orderModel)
-		if !ok {
-			return nil, fmt.Errorf("modelToOrder: unexpected type %T", om)
-		}
-		om = &orderModelWithAuthzs{
-			ID:                     omv1.ID,
-			RegistrationID:         omv1.RegistrationID,
-			Expires:                omv1.Expires,
-			Created:                omv1.Created,
-			Error:                  omv1.Error,
-			CertificateSerial:      omv1.CertificateSerial,
-			BeganProcessing:        omv1.BeganProcessing,
-			CertificateProfileName: omv1.CertificateProfileName,
-			Replaces:               omv1.Replaces,
-			Authzs:                 nil,
-		}
-	}
-
+func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	profile := ""
 	if om.CertificateProfileName != nil {
 		profile = *om.CertificateProfileName
@@ -425,10 +364,12 @@ func modelToOrder(model any) (*corepb.Order, error) {
 	if om.Replaces != nil {
 		replaces = *om.Replaces
 	}
-	var decodedAuthzs sapb.Authzs
-	err := proto.Unmarshal(om.Authzs, &decodedAuthzs)
-	if err != nil {
-		return nil, err
+	if len(om.Authzs) > 0 {
+		var decodedAuthzs sapb.Authzs
+		err := proto.Unmarshal(om.Authzs, &decodedAuthzs)
+		if err != nil {
+			return nil, err
+		}
 	}
 	order := &corepb.Order{
 		Id:                     om.ID,
@@ -439,7 +380,6 @@ func modelToOrder(model any) (*corepb.Order, error) {
 		BeganProcessing:        om.BeganProcessing,
 		CertificateProfileName: profile,
 		Replaces:               replaces,
-		V2Authorizations:       decodedAuthzs.AuthzIDs,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails

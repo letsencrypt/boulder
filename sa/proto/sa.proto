@@ -447,8 +447,3 @@ message RateLimitOverrideResponse {
   bool enabled  = 2;
   google.protobuf.Timestamp updatedAt = 3;
 }
-
-// Used internally for storage in the DB, not for RPCs.
-message Authzs {
-  repeated int64 authzIDs = 1;
-}

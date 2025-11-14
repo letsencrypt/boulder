@@ -485,40 +485,30 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Second, insert the new order.
 		created := ssa.clk.Now()
 		var orderID int64
+		var encodedAuthzs []byte
+		var err error
 		if features.Get().StoreAuthzsInOrders {
-			encodedAuthzs, err := proto.Marshal(&sapb.Authzs{
+			encodedAuthzs, err = proto.Marshal(&sapb.Authzs{
 				AuthzIDs: allAuthzIds,
 			})
 			if err != nil {
 				return nil, err
 			}
-			om := orderModelWithAuthzs{
-				RegistrationID:         req.NewOrder.RegistrationID,
-				Expires:                req.NewOrder.Expires.AsTime(),
-				Created:                created,
-				CertificateProfileName: &req.NewOrder.CertificateProfileName,
-				Replaces:               &req.NewOrder.Replaces,
-				Authzs:                 encodedAuthzs,
-			}
-			err = tx.Insert(ctx, &om)
-			if err != nil {
-				return nil, err
-			}
-			orderID = om.ID
-		} else {
-			om := orderModel{
-				RegistrationID:         req.NewOrder.RegistrationID,
-				Expires:                req.NewOrder.Expires.AsTime(),
-				Created:                created,
-				CertificateProfileName: &req.NewOrder.CertificateProfileName,
-				Replaces:               &req.NewOrder.Replaces,
-			}
-			err := tx.Insert(ctx, &om)
-			if err != nil {
-				return nil, err
-			}
-			orderID = om.ID
 		}
+
+		om := orderModel{
+			RegistrationID:         req.NewOrder.RegistrationID,
+			Expires:                req.NewOrder.Expires.AsTime(),
+			Created:                created,
+			CertificateProfileName: &req.NewOrder.CertificateProfileName,
+			Replaces:               &req.NewOrder.Replaces,
+			Authzs:                 encodedAuthzs,
+		}
+		err = tx.Insert(ctx, &om)
+		if err != nil {
+			return nil, err
+		}
+		orderID = om.ID
 
 		// Third, insert all of the orderToAuthz relations.
 		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"})
@@ -638,21 +628,22 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 	if req.Id == 0 || req.Error == nil {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
-		om, err := orderToModel(&corepb.Order{
-			Id:    req.Id,
-			Error: req.Error,
-		})
-		if err != nil {
-			return nil, err
-		}
 
+	errJSON, err := json.Marshal(req.Error)
+	if err != nil {
+		return nil, err
+	}
+	if len(errJSON) > mediumBlobSize {
+		return nil, fmt.Errorf("error object is too large to store in the database")
+	}
+
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET error = ?
 		WHERE id = ?`,
-			om.Error,
-			om.ID)
+			errJSON,
+			req.Id)
 		if err != nil {
 			return nil, berrors.InternalServerError("error updating order error field")
 		}

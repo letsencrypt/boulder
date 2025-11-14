@@ -223,26 +223,6 @@ func TestModelToOrderBadJSON(t *testing.T) {
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
-func TestOrderModelThereAndBackAgain(t *testing.T) {
-	clk := clock.New()
-	now := clk.Now()
-	order := &corepb.Order{
-		Id:                     1,
-		RegistrationID:         2024,
-		Expires:                timestamppb.New(now.Add(24 * time.Hour)),
-		Created:                timestamppb.New(now),
-		Error:                  nil,
-		CertificateSerial:      "2",
-		BeganProcessing:        true,
-		CertificateProfileName: "phljny",
-	}
-	model, err := orderToModel(order)
-	test.AssertNotError(t, err, "orderToModelv2 should not have errored")
-	returnOrder, err := modelToOrder(model)
-	test.AssertNotError(t, err, "modelToOrderv2 should not have errored")
-	test.AssertDeepEquals(t, order, returnOrder)
-}
-
 // TestPopulateAttemptedFieldsBadJSON tests that populating a challenge from an
 // authz2 model with an invalid validation error or an invalid validation record
 // produces the expected bad JSON error.
