@@ -245,14 +245,20 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
+		// An arbitrary, but valid date for fields revokedDate and lastExpirationNagSent.
+		// These fields in the database are NOT NULL so we can't omit them; and we don't
+		// want to pass `time.Time{}` because that results in inserts of `0000-00-00`, which
+		// is forbidden in strict mode (when NO_ZERO_DATE is on).
+		dummyDate := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
 		status := core.OCSPStatusGood
 		cs := &certificateStatusModel{
 			Serial:                serialHex,
 			Status:                status,
 			OCSPLastUpdated:       ssa.clk.Now(),
-			RevokedDate:           time.Time{},
+			RevokedDate:           dummyDate,
 			RevokedReason:         0,
-			LastExpirationNagSent: time.Time{},
+			LastExpirationNagSent: dummyDate,
 			NotAfter:              parsed.NotAfter,
 			IsExpired:             false,
 			IssuerID:              req.IssuerNameID,
