@@ -227,6 +227,18 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 	return recordAry, prob, nil
 }
 
+func CAAResultToPB(prob *probs.ProblemDetails, perspective, rir string) (*vapb.IsCAAValidResponse, error) {
+	marshalledProb, err := ProblemDetailsToPB(prob)
+	if err != nil {
+		return nil, err
+	}
+	return &vapb.IsCAAValidResponse{
+		Problem:     marshalledProb,
+		Perspective: perspective,
+		Rir:         rir,
+	}, nil
+}
+
 func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	keyBytes, err := reg.Key.MarshalJSON()
 	if err != nil {

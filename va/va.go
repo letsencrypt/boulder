@@ -700,6 +700,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 			logEvent.Challenge.Status = core.StatusValid
 			outcome = pass
 		}
+
 		// Observe local validation latency (primary|remote).
 		va.observeLatency(opDCV, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
@@ -762,5 +763,6 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		}
 		summary, prob = va.doRemoteOperation(ctx, op, req)
 	}
+
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }
