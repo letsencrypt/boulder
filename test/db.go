@@ -5,25 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"net"
-	"os"
 	"testing"
+
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var (
-	_      CleanUpDB = &sql.DB{}
-	dbAddr           = func() string {
-		addr := os.Getenv("DB_ADDR")
-		if addr == "" {
-			panic("environment variable DB_ADDR  must be set")
-		}
-		_, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			panic(fmt.Sprintf("environment variable DB_ADDR (%s) is not a valid address with host and port: %s", addr, err))
-		}
-		return addr
-	}()
-)
+var _ CleanUpDB = &sql.DB{}
 
 // CleanUpDB is an interface with only what is needed to delete all
 // rows in all tables in a database plus close the database
@@ -40,7 +27,7 @@ type CleanUpDB interface {
 // table as this is used by sql-migrate (https://github.com/rubenv/sql-migrate)
 // to track migrations. If it encounters an error it fails the tests.
 func ResetBoulderTestDatabase(t testing.TB) func() {
-	return resetTestDatabase(t, context.Background(), "boulder")
+	return resetTestDatabase(t, context.Background(), vars.DBConnSAFullPerms)
 }
 
 // ResetIncidentsTestDatabase returns a cleanup function which deletes all rows
@@ -49,11 +36,11 @@ func ResetBoulderTestDatabase(t testing.TB) func() {
 // (https://github.com/rubenv/sql-migrate) to track migrations. If it encounters
 // an error it fails the tests.
 func ResetIncidentsTestDatabase(t testing.TB) func() {
-	return resetTestDatabase(t, context.Background(), "incidents")
+	return resetTestDatabase(t, context.Background(), vars.DBConnIncidentsFullPerms)
 }
 
-func resetTestDatabase(t testing.TB, ctx context.Context, dbPrefix string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(%s)/%s_sa_test", dbAddr, dbPrefix))
+func resetTestDatabase(t testing.TB, ctx context.Context, dsn string) func() {
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
