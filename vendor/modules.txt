@@ -205,7 +205,7 @@ github.com/grpc-ecosystem/grpc-gateway/v2/utilities
 # github.com/jmhodges/clock v1.2.0
 ## explicit; go 1.17
 github.com/jmhodges/clock
-# github.com/letsencrypt/borp v0.0.0-20240620175310-a78493c6e2bd
+# github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae
 ## explicit; go 1.20
 github.com/letsencrypt/borp
 # github.com/letsencrypt/challtestsrv v1.3.3

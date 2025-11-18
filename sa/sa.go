@@ -1308,7 +1308,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Not currently or previously paused, insert a new pause record.
 				err = tx.Insert(ctx, &pausedModel{
 					RegistrationID: req.RegistrationID,
-					PausedAt:       ssa.clk.Now().Truncate(time.Second),
+					PausedAt:       ssa.clk.Now(),
 					identifierModel: identifierModel{
 						Type:  ident.Type,
 						Value: ident.Value,
@@ -1341,7 +1341,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					identifierType = ? AND
 					identifierValue = ? AND
 					unpausedAt IS NOT NULL`,
-					ssa.clk.Now().Truncate(time.Second),
+					ssa.clk.Now(),
 					req.RegistrationID,
 					ident.Type,
 					ident.Value,
