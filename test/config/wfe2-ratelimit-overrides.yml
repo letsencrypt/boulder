@@ -5,8 +5,8 @@
     ids:
       - id: 64.112.117.1
         comment: test
-      - id: 127.0.0.1
-        comment: Plesk test
+#      - id: 127.0.0.1
+#        comment: Plesk test
 - CertificatesPerDomain:
     burst: 1
     count: 1
