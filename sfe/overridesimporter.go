@@ -261,9 +261,14 @@ func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, 
 		return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is administratively disabled", rateLimit, accountDomainOrIP)
 	}
 
+	// The "30 minutes" promised in the comment below must be kept in sync with
+	// the override reloading interval values (overrideRefresherShutdown) in:
+	//   - cmd/boulder-ra/main.go and
+	//   - cmd/boulder-wfe/main.go
 	successCommentBody := fmt.Sprintf(
 		"Your override request for rate limit %s and account/domain/IP: %s "+
-			"has been approved. Your new limit is %d per week. Please allow up to 30 minutes for this change to take effect.",
+			"has been approved. Your new limit is %d per period (see: https://letsencrypt.org/docs/rate-limits for the period). "+
+			"Please allow up to 30 minutes for this change to take effect.",
 		rateLimit, accountDomainOrIP, req.Count,
 	)
 

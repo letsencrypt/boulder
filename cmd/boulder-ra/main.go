@@ -274,6 +274,9 @@ func main() {
 			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, scope, logger)
 		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+
+		// The 30 minute period here must be kept in sync with the promise
+		// (successCommentBody) made to requesters in sfe/overridesimporter.go
 		overrideRefresherShutdown := txnBuilder.NewRefresher(30 * time.Minute)
 		defer overrideRefresherShutdown()
 	}
