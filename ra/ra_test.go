@@ -715,7 +715,8 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, registration.Id, ident, fc.Now().Add(12*time.Hour))
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident.Value)
+	bucketKey, err := ratelimits.BuildBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident, nil, netip.Addr{})
+	test.AssertNotError(t, err, "building bucket key")
 
 	// Set the stored TAT to indicate that this bucket has exhausted its quota.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
@@ -758,15 +759,17 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 // mockRLSourceWithSyncDelete is a mock ratelimits.Source that forwards all
 // method calls to an inner Source, but also performs a blocking write to a
-// channel when Delete is called to allow the tests to synchronize.
+// channel when BatchDelete is called to allow the tests to synchronize.
 type mockRLSourceWithSyncDelete struct {
 	ratelimits.Source
 	out chan<- string
 }
 
-func (rl mockRLSourceWithSyncDelete) Delete(ctx context.Context, bucketKey string) error {
-	err := rl.Source.Delete(ctx, bucketKey)
-	rl.out <- bucketKey
+func (rl mockRLSourceWithSyncDelete) BatchDelete(ctx context.Context, bucketKeys []string) error {
+	err := rl.Source.BatchDelete(ctx, bucketKeys)
+	for _, bucketKey := range bucketKeys {
+		rl.out <- bucketKey
+	}
 	return err
 }
 
@@ -791,7 +794,8 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	domain := randomDomain()
 	ident := identifier.NewDNS(domain)
 	authzPB := createPendingAuthorization(t, sa, registration.Id, ident, fc.Now().Add(12*time.Hour))
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident.Value)
+	bucketKey, err := ratelimits.BuildBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident, nil, netip.Addr{})
+	test.AssertNotError(t, err, "building bucket key")
 
 	// Set a stored TAT so that we can tell when it's been reset.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{

@@ -434,11 +434,29 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 	return batchDecision, nil
 }
 
-// Reset resets the specified bucket to its maximum capacity. The new bucket
-// state is persisted to the underlying datastore before returning.
-func (l *Limiter) Reset(ctx context.Context, bucketKey string) error {
+// BatchReset resets the specified buckets to their maximum capacity using the
+// provided reset Transactions. The new bucket state is persisted to the
+// underlying datastore before returning.
+func (l *Limiter) BatchReset(ctx context.Context, txns []Transaction) error {
+	var bucketKeys []string
+	for _, txn := range txns {
+		if txn.allowOnly() {
+			// Ignore allow-only transactions.
+			continue
+		}
+		if !txn.resetOnly() {
+			return fmt.Errorf("found reset-only transaction, received check=%t spend=%t reset=%t", txn.check, txn.spend, txn.reset)
+		}
+		if slices.Contains(bucketKeys, txn.bucketKey) {
+			return fmt.Errorf("found duplicate bucket %q in batch", txn.bucketKey)
+		}
+		bucketKeys = append(bucketKeys, txn.bucketKey)
+	}
+	if len(bucketKeys) == 0 {
+		return nil
+	}
 	// Remove cancellation from the request context so that transactions are not
 	// interrupted by a client disconnect.
 	ctx = context.WithoutCancel(ctx)
-	return l.source.Delete(ctx, bucketKey)
+	return l.source.BatchDelete(ctx, bucketKeys)
 }

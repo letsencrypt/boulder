@@ -227,12 +227,12 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 	return tats, nil
 }
 
-// Delete deletes the TAT at the specified bucketKey ('name:id'). A nil return
-// value does not indicate that the bucketKey existed.
-func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
+// BatchDelete deletes the TATs at the specified bucketKeys ('name:id'). A nil
+// return value does not indicate that the bucketKeys existed.
+func (r *RedisSource) BatchDelete(ctx context.Context, bucketKeys []string) error {
 	start := r.clk.Now()
 
-	err := r.client.Del(ctx, bucketKey).Err()
+	err := r.client.Del(ctx, bucketKeys...).Err()
 	if err != nil {
 		r.observeLatency("delete", r.clk.Since(start), err)
 		return err
@@ -240,6 +240,12 @@ func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 
 	r.observeLatency("delete", r.clk.Since(start), nil)
 	return nil
+}
+
+// Delete deletes the TAT at the specified bucketKey ('name:id'). A nil return
+// value does not indicate that the bucketKey existed.
+func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
+	return r.BatchDelete(ctx, []string{bucketKey})
 }
 
 // Ping checks that each shard of the *redis.Ring is reachable using the PING

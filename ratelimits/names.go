@@ -409,7 +409,7 @@ func BuildBucketKey(name Name, regId int64, singleIdent identifier.ACMEIdentifie
 			if err != nil {
 				return "", err
 			}
-			return NewRegIdIdentValueBucketKey(name, regId, coveringIdent), nil
+			return newRegIdIdentValueBucketKey(name, regId, coveringIdent), nil
 		}
 		if regId == 0 {
 			return "", makeMissingErr("regId")
@@ -429,7 +429,7 @@ func BuildBucketKey(name Name, regId int64, singleIdent identifier.ACMEIdentifie
 				return "", makeMissingErr("regId")
 			}
 			// Default: use 'enum:regId:identValue' bucket key format.
-			return NewRegIdIdentValueBucketKey(name, regId, singleIdent.Value), nil
+			return newRegIdIdentValueBucketKey(name, regId, singleIdent.Value), nil
 		}
 		if regId == 0 {
 			return "", makeMissingErr("regId")
