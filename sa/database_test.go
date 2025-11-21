@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
-	"net"
 	"os"
 	"path"
 	"strings"
@@ -19,35 +17,23 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var dbAddr = func() string {
-	addr := os.Getenv("DB_ADDR")
-	if addr == "" {
-		panic("environment variable DB_ADDR  must be set")
-	}
-	_, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		panic(fmt.Sprintf("environment variable DB_ADDR (%s) is not a valid address with host and port: %s", addr, err))
-	}
-	return addr
-}()
-
 func TestInvalidDSN(t *testing.T) {
 	_, err := DBMapForTest("invalid")
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 
-	DSN := "policy:password@tcp(" + dbAddr + ")/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
+	DSN := "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
 
-	DSN = "policy:password@tcp(" + dbAddr + ")/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable is unable to be set in the SESSION scope, but was declared")
 
-	DSN = "policy:password@tcp(" + dbAddr + ")/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable declared with incorrect quoting")
 
-	DSN = "policy:password@tcp(" + dbAddr + ")/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
 }
@@ -89,9 +75,8 @@ func TestDbSettings(t *testing.T) {
 		oldSetConnMaxIdleTime(db, connMaxIdleTime)
 	}
 	dsnFile := path.Join(t.TempDir(), "dbconnect")
-	err := os.WriteFile(dsnFile,
-		[]byte("sa@tcp("+dbAddr+")/boulder_sa_integration"),
-		os.ModeAppend)
+
+	err := os.WriteFile(dsnFile, []byte(vars.DBConnSA), os.ModeAppend)
 	test.AssertNotError(t, err, "writing dbconnect file")
 
 	config := cmd.DBConfig{

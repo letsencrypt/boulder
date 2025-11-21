@@ -201,13 +201,6 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 		}
 	}
 
-	omit := func(name string) {
-		_, ok := conf.Params[name]
-		if ok {
-			delete(conf.Params, name)
-		}
-	}
-
 	// Ensures that MySQL/MariaDB warnings are treated as errors. This
 	// avoids a number of nasty edge conditions we could wander into.
 	// Common things this discovers includes places where data being sent
@@ -218,8 +211,8 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 
 	// Omit max_statement_time and max_execution_time from the DSN. Query
 	// timeouts are managed exclusively by ProxySQL and/or Vitess.
-	omit("max_statement_time")
-	omit("max_execution_time")
+	delete(conf.Params, "max_statement_time")
+	delete(conf.Params, "max_execution_time")
 
 	// Finally, perform validation over all variables set by the DSN and via Boulder.
 	for k, v := range conf.Params {
