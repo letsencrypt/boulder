@@ -1,23 +1,47 @@
 version: 2
 
 updates:
+  # We want to be updating most of our dependencies on a regular cadence.
   - package-ecosystem: "gomod"
     directory: "/"
-    groups:
-      aws:
-        patterns:
-          - "github.com/aws/*"
-      otel:
-        patterns:
-          - "go.opentelemetry.io/*"
-    open-pull-requests-limit: 1
+    ignore:
+      - dependency-name: "github.com/aws/*"
+      - dependency-name: "go.opentelemetry.io/*"
+    open-pull-requests-limit: 2
     schedule:
       interval: "weekly"
       day: "wednesday"
     cooldown:
-      default-days: 30
+      default-days: 7
+  # However, the AWS and OTEL dependencies have so many packages and release
+  # updates so frequently that they drown out everything else. Put them in a
+  # separate bucket with less frequent updates so everything else has a chance.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    allow:
+      - dependency-name: "github.com/aws/*"
+      - dependency-name: "go.opentelemetry.io/*"
+    groups:
+      aws:
+        patterns:
+          - "github.com/aws/*"
+        update-types:
+          - "minor"
+      otel:
+        patterns:
+          - "go.opentelemetry.io/*"
+        update-types:
+          - "minor"
+    open-pull-requests-limit: 1
+    schedule:
+      interval: "quarterly"
+      day: "wednesday"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule: 
       interval: monthly
     open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
