@@ -105,6 +105,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 		"max_sort_length":                      {},
 		"max_sp_recursion_depth":               {},
 		"max_statement_time":                   {},
+		"max_execution_time":                   {},
 		"max_user_connections":                 {},
 		"min_examined_row_limit":               {},
 		"mrr_buffer_size":                      {},
