@@ -15,8 +15,8 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -45,12 +45,6 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		return nil, berrors.MalformedError("Identifier type for CAA check was not DNS")
 	}
 
-	logEvent := validationLogEvent{
-		AuthzID:    req.AuthzID,
-		Requester:  req.AccountURIID,
-		Identifier: ident,
-	}
-
 	challType := core.AcmeChallenge(req.ValidationMethod)
 	if !challType.IsValid() {
 		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
@@ -66,10 +60,13 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	// redeclare `prob`, `localLatency`, or `summary` below this point.
 	var prob *probs.ProblemDetails
 	var summary *mpicSummary
-	var internalErr error
 	var localLatency time.Duration
 	start := va.clk.Now()
-
+	logEvent := validationLogEvent{
+		AuthzID:    req.AuthzID,
+		Requester:  req.AccountURIID,
+		Identifier: ident,
+	}
 	defer func() {
 		probType := ""
 		outcome := fail
@@ -81,6 +78,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			// CAA check passed.
 			outcome = pass
 		}
+
 		// Observe local check latency (primary|remote).
 		va.observeLatency(opCAA, va.perspective, string(challType), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
@@ -88,21 +86,24 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
 			logEvent.Summary = summary
 		}
+
 		// Log the total check latency.
 		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
-
 		va.log.AuditObject("CAA check result", logEvent)
 	}()
 
-	internalErr = va.checkCAA(ctx, ident, params)
+	// Do the local checks. We do these before kicking off the remote checks to
+	// ensure that we don't waste effort on remote checks if the local ones fail.
+	err := va.checkCAA(ctx, ident, params)
 
 	// Stop the clock for local check latency.
 	localLatency = va.clk.Since(start)
 
-	if internalErr != nil {
-		logEvent.InternalError = internalErr.Error()
-		prob = detailedError(internalErr)
+	if err != nil {
+		logEvent.InternalError = err.Error()
+		prob = detailedError(err)
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", ident.Value, prob.Detail)
+		return bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
 	}
 
 	if va.isPrimaryVA() {
@@ -113,35 +114,10 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			}
 			return remoteva.DoCAA(ctx, checkRequest)
 		}
-		var remoteProb *probs.ProblemDetails
-		summary, remoteProb = va.doRemoteOperation(ctx, op, req)
-		// If the remote result was a non-nil problem then fail the CAA check
-		if remoteProb != nil {
-			prob = remoteProb
-			va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
-				ident.Value, remoteProb)
-		}
+		summary, prob = va.doRemoteOperation(ctx, op, req)
 	}
 
-	if prob != nil {
-		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
-		// It will also later be serialized in JSON, which defaults to UTF-8. Make
-		// sure it is UTF-8 clean now.
-		prob = filterProblemDetails(prob)
-		return &vapb.IsCAAValidResponse{
-			Problem: &corepb.ProblemDetails{
-				ProblemType: string(prob.Type),
-				Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
-			},
-			Perspective: va.perspective,
-			Rir:         va.rir,
-		}, nil
-	} else {
-		return &vapb.IsCAAValidResponse{
-			Perspective: va.perspective,
-			Rir:         va.rir,
-		}, nil
-	}
+	return bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
 }
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
