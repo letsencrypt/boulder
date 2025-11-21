@@ -412,7 +412,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	// Setup rate limiting.
 	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", stats, logger)
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", stats, logger)
 	test.AssertNotError(t, err, "making transaction composer")
 
 	unpauseSigner, err := unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})

@@ -103,8 +103,8 @@
 		"staleTimeout": "5m",
 		"limiter": {
 			"redis": {
-				"username": "boulder-wfe",
-				"passwordFile": "test/secrets/wfe_ratelimits_redis_password",
+				"username": "boulder",
+				"passwordFile": "test/secrets/redis_password",
 				"lookups": [
 					{
 						"Service": "redisratelimits",
@@ -122,8 +122,8 @@
 					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 				}
 			},
-			"Defaults": "test/config/wfe2-ratelimit-defaults.yml",
-			"Overrides": "test/config/wfe2-ratelimit-overrides.yml"
+			"Defaults": "test/config/ratelimit-defaults.yml",
+			"Overrides": "test/config/ratelimit-overrides.yml"
 		},
 		"features": {
 			"ServeRenewalInfo": true,
