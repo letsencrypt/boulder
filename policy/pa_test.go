@@ -121,7 +121,7 @@ func TestWellFormedIdentifiers(t *testing.T) {
 		// Three hyphens starting at second char of first label.
 		{identifier.NewDNS(`h---test.hk2yz.org`), errInvalidRLDH},
 		{identifier.NewDNS(`co.uk`), errICANNTLD},
-		{identifier.NewDNS(`foo.bd`), errICANNTLD},
+		{identifier.NewDNS(`foo.er`), errICANNTLD},
 
 		// IP oopsies
 
