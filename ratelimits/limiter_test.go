@@ -59,6 +59,14 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 	}, newTestTransactionBuilder(t), clk, randIP.String()
 }
 
+func mustReset(t *testing.T, l *Limiter, ctx context.Context, limit *Limit, bucketKey string) {
+	t.Helper()
+	txn, err := newResetTransaction(limit, bucketKey)
+	test.AssertNotError(t, err, "txn should be valid")
+	err = l.BatchReset(ctx, []Transaction{txn})
+	test.AssertNotError(t, err, "should not error")
+}
+
 func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	t.Parallel()
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
@@ -153,10 +161,8 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, overriddenBucketKey)
-			test.AssertNotError(t, err, "should not error")
-			err = l.Reset(testCtx, normalBucketKey)
-			test.AssertNotError(t, err, "should not error")
+			mustReset(t, l, testCtx, overriddenLimit, overriddenBucketKey)
+			mustReset(t, l, testCtx, normalLimit, normalBucketKey)
 
 			// Spend the same bucket but in a batch with a Transaction that is
 			// check-only. This should succeed, but the decision should reflect
@@ -238,8 +244,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, overriddenBucketKey)
-			test.AssertNotError(t, err, "should not error")
+			mustReset(t, l, testCtx, overriddenLimit, overriddenBucketKey)
 		})
 	}
 }
@@ -278,8 +283,7 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.retryIn, time.Duration(0))
 
 			// Reset our bucket.
-			err = l.Reset(testCtx, bucketKey)
-			test.AssertNotError(t, err, "should not error")
+			mustReset(t, l, testCtx, limit, bucketKey)
 
 			// Similar to above, but we'll use Spend() to actually initialize
 			// the bucket. Spend should return the same result as Check.
@@ -400,8 +404,7 @@ func TestLimiter_RefundAndReset(t *testing.T) {
 			test.AssertEquals(t, d.remaining, int64(0))
 			test.AssertEquals(t, d.resetIn, time.Second)
 
-			err = l.Reset(testCtx, bucketKey)
-			test.AssertNotError(t, err, "should not error")
+			mustReset(t, l, testCtx, limit, bucketKey)
 
 			// Attempt to spend 20 more requests, this should succeed.
 			d, err = l.Spend(testCtx, txn20)

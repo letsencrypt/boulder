@@ -1438,8 +1438,13 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
 // There is no reason to surface errors from this function to the Subscriber.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
-	err := ra.limiter.Reset(ctx, bucketKey)
+	txns, err := ra.txnBuilder.NewPausingResetTransactions(regId, ident)
+	if err != nil {
+		ra.log.Warningf("building reset transaction for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
+		return
+	}
+
+	err = ra.limiter.BatchReset(ctx, txns)
 	if err != nil {
 		ra.log.Warningf("resetting bucket for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}
