@@ -1,1 +1,0 @@
-cert_checker@tcp(boulder-proxysql:6033)/boulder_sa_integration?readTimeout=14s&writeTimeout=14s&timeout=1s&max_statement_time=13&long_query_time=11

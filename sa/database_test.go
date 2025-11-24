@@ -17,8 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var dbHost = os.Getenv("MYSQL_ADDR")
-
 func TestInvalidDSN(t *testing.T) {
 	_, err := DBMapForTest("invalid")
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")

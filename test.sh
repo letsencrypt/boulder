@@ -23,13 +23,9 @@ FILTER=()
 COVERAGE="false"
 COVERAGE_DIR="test/coverage/$(date +%Y-%m-%d_%H-%M-%S)"
 DB_URL_FILES=(
-  backfiller_dburl
   badkeyrevoker_dburl
   cert_checker_dburl
-  expiration_mailer_dburl
   incidents_dburl
-  mailer_dburl
-  ocsp_responder_dburl
   revoker_dburl
   sa_dburl
   sa_ro_dburl
@@ -92,23 +88,20 @@ function run_and_expect_silence() {
 }
 
 configure_database_endpoints() {
-  target_dir="mariadb"
-  dbconfig_target="dbconfig.mariadb.yml"
+  dburl_target_dir="proxysql"
   export DB_ADDR="boulder-proxysql:6033"
 
   if [[ "${USE_VITESS}" == "true" ]]
   then
-    target_dir="mysql8"
-    dbconfig_target="dbconfig.mysql8.yml"
+    dburl_target_dir="vitess"
     export DB_ADDR="boulder-vitess:33577"
   fi
 
-  rm -f "sa/db/dbconfig.yml" test/secrets/*.dburl || true
-  ( cd sa/db && ln -sf "${dbconfig_target}" "dbconfig.yml" )
-
+  # Configure DBURL symlinks
+  rm -f test/secrets/*_dburl || true
   for file in ${DB_URL_FILES:+${DB_URL_FILES[@]+"${DB_URL_FILES[@]}"}}
   do
-    ( cd test/secrets && ln -sf "../dburls/${target_dir}/${file}" "${file}" )
+    ln -sf "dburls/${dburl_target_dir}/${file}" "test/secrets/${file}"
   done
 }
 #

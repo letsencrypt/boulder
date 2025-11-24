@@ -71,6 +71,10 @@ func getPrecertByName(db *sql.DB, reversedName string) (*x509.Certificate, error
 // assume exists (note that this different from the root program assumption
 // that a final certificate exists for any precertificate, though it is
 // similar in spirit).
+//
+// Note: For this test to support Vitess, it depends on a trigger being
+// installed via test/vtcomboserver/install_trigger.sh, since Vitess does not
+// support creating triggers via normal SQL commands.
 func TestIssuanceCertStorageFailed(t *testing.T) {
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 

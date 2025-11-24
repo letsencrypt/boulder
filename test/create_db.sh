@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -o errexit
-cd "$(dirname "$0")/.."
+cd $(dirname $0)/..
 
 
 # If you modify DBS or ENVS, you must also modify the corresponding keys in
@@ -40,24 +40,18 @@ function create_empty_db() {
   mysql ${dbconn} -e "${create_script}" || exit_err "unable to create ${db}"
 }
 
-backend_label="${BACKEND_LABEL}"
-mysql_host="${MYSQL_HOST}"
-mysql_port="${MYSQL_PORT}"
-skip_create="${SKIP_CREATE}"
-skip_users="${SKIP_USERS}"
-
 # set db connection for if running in a separate container or not
 dbconn="-u root"
 if [[ $MYSQL_CONTAINER ]]
 then
-  dbconn="-u root -h ${mysql_host} --port ${mysql_port}"
+  dbconn="-u root -h ${DB_HOST} --port ${DB_PORT}"
 fi
 
 if ! mysql ${dbconn} -e "select 1" >/dev/null 2>&1; then
-  exit_err "unable to connect to ${mysql_host}:${mysql_port}"
+  exit_err "unable to connect to ${DB_HOST}:${DB_PORT}"
 fi
 
-if [[ ${skip_create} -eq 0 ]]
+if [[ ${SKIP_CREATE} -eq 0 ]]
 then
   # MariaDB sets the default binlog_format to STATEMENT,
   # which causes warnings that fail tests. Instead set it
@@ -74,7 +68,7 @@ for db in $DBS; do
   for env in $ENVS; do
     dbname="${db}_${env}"
     print_heading "${dbname}"
-    if [[ ${skip_create} -eq 0 ]]
+    if [[ ${SKIP_CREATE} -eq 0 ]]
     then
       if mysql ${dbconn} -e 'show databases;' | grep -q "${dbname}"
       then
@@ -97,22 +91,22 @@ for db in $DBS; do
     # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
     # as relative.
     cd "${dbpath}"
-    result=$(sql-migrate up -env="${dbname}" | xargs -0 echo)
-    if [[ "${result}" == "Migration failed"* ]]
+    r=`sql-migrate up -config="${DB_CONFIG_FILE}" -env="${dbname}" | xargs -0 echo`
+    if [[ "${r}" == "Migration failed"* ]]
     then
       echo "Migration failed - dropping and recreating"
       create_empty_db "${dbname}" "${dbconn}"
-      sql-migrate up -env="${dbname}" || exit_err "Migration failed after dropping and recreating"
+      sql-migrate up -config="${DB_CONFIG_FILE}" -env="${dbname}" || exit_err "Migration failed after dropping and recreating"
     else
-      echo "${result}"
+      echo "${r}"
     fi
 
     USERS_SQL="../db-users/${db}.sql"
-    if [[ ${skip_users} -eq 1 ]]
+    if [[ ${SKIP_USERS} -eq 1 ]]
     then
       echo "Skipping user grants for ${dbname}"
     else
-      if [[ ${MYSQL_CONTAINER:-} ]]
+      if [[ $MYSQL_CONTAINER ]]
       then
         sed -e "s/'localhost'/'%'/g" < "${USERS_SQL}" | \
           mysql ${dbconn} -D "${dbname}" -f || exit_err "Unable to add users from ${USERS_SQL}"

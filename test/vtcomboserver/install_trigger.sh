@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+#
+# Note: This script exists to support the integration test at
+# test/integration/cert_storage_failed_test.go. Because Vitess doesn’t support
+# creating triggers through normal SQL, this script waits for the Vitess
+# database to come up and then installs a trigger that simulates an error when
+# inserting into the certificates table under a specific condition.
+#
+
 set -eu
 
 VT_DB="vt_${MYSQL_DATABASE:-boulder_sa_integration}_0"

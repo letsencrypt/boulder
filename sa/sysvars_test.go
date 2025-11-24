@@ -15,6 +15,7 @@ func TestCheckMariaDBSystemVariables(t *testing.T) {
 
 	for _, tc := range []testCase{
 		{"sql_select_limit", "'0.1", "requires a numeric value"},
+		{"max_statement_time", "0", ""},
 		{"myBabies", "kids_I_tell_ya", "was unexpected"},
 		{"sql_mode", "'STRICT_ALL_TABLES", "string is not properly quoted"},
 		{"sql_mode", "%27STRICT_ALL_TABLES%27", "string is not properly quoted"},

@@ -1,1 +1,0 @@
-incidents_sa@tcp(boulder-vitess:33577)/incidents_sa_integration?readTimeout=60s&writeTimeout=60s&timeout=5s&max_execution_time=13000&long_query_time=11

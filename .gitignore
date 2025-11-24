@@ -44,15 +44,10 @@ test/proxysql/*.log*
 # Coverage files
 test/coverage
 
-# Database config symlinks
-sa/db/dbconfig.yml
-test/secrets/backfiller_dburl
+# DSN symlinks
 test/secrets/badkeyrevoker_dburl
 test/secrets/cert_checker_dburl
-test/secrets/expiration_mailer_dburl
 test/secrets/incidents_dburl
-test/secrets/mailer_dburl
-test/secrets/ocsp_responder_dburl
 test/secrets/revoker_dburl
 test/secrets/sa_dburl
 test/secrets/sa_ro_dburl

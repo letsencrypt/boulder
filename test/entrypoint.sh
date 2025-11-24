@@ -21,25 +21,21 @@ rsyslogd
 ./test/wait-for-it.sh bpkimetal 8080
 
 # create the databases
-( cd sa/db && ln -sf dbconfig.mariadb.yml dbconfig.yml )
 MYSQL_CONTAINER=1 \
-BACKEND_LABEL="MariaDB (via ProxySQL)" \
-MYSQL_HOST="boulder-mariadb" \
-MYSQL_PORT=3306 \
+DB_HOST="boulder-mariadb" \
+DB_PORT=3306 \
+DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mariadb.yml" \
 SKIP_CREATE=0 \
 SKIP_USERS=0 \
 "$DIR/create_db.sh"
 
-( cd sa/db && ln -sf dbconfig.mysql8.yml dbconfig.yml )
 MYSQL_CONTAINER=1 \
-BACKEND_LABEL="Vitess" \
-MYSQL_HOST="boulder-vitess" \
-MYSQL_PORT=33577 \
+DB_HOST="boulder-vitess" \
+DB_PORT=33577 \
+DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mysql8.yml" \
 SKIP_CREATE=1 \
 SKIP_USERS=1 \
 "$DIR/create_db.sh"
-
-( cd sa/db && ln -sf dbconfig.mariadb.yml dbconfig.yml )
 
 if [[ $# -eq 0 ]]; then
     exec python3 ./start.py
