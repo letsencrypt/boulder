@@ -76,10 +76,10 @@ func newFQDNSetBucketKey(name Name, orderIdents identifier.ACMEIdentifiers) stri
 //     bucket's capacity, but will never be spent/refunded.
 //   - spend-only: when only spend is true, spending is best-effort. Regardless
 //     of the bucket's capacity, the transaction will be considered "allowed".
+//   - reset-only: when reset is true, the bucket will be reset to full capacity.
 //   - allow-only: when neither check nor spend are true, the transaction will
 //     be considered "allowed" regardless of the bucket's capacity. This is
 //     useful for limits that are disabled.
-//   - reset: when reset is true, the bucket will be reset to full capacity.
 //
 // The zero value of Transaction is an allow-only transaction and is valid even if
 // it would fail validateTransaction (for instance because cost and burst are zero).
