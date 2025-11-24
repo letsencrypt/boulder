@@ -43,7 +43,7 @@ func sortTransactions(txns []Transaction) []Transaction {
 func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -56,7 +56,7 @@ func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -69,7 +69,7 @@ func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 func TestNewOrdersPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -82,7 +82,7 @@ func TestNewOrdersPerAccountTransactions(t *testing.T) {
 func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 	err = tb.loadOverrides(context.Background())
 	test.AssertNotError(t, err, "loading overrides")
@@ -121,7 +121,7 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 	err = tb.loadOverrides(context.Background())
 	test.AssertNotError(t, err, "loading overrides")
@@ -137,7 +137,7 @@ func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testin
 func TestCertificatesPerDomainTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// One check-only transaction for the global limit.
@@ -158,7 +158,7 @@ func TestCertificatesPerDomainTransactions(t *testing.T) {
 func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 	err = tb.loadOverrides(context.Background())
 	test.AssertNotError(t, err, "loading overrides")
@@ -211,7 +211,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A single check-only transaction for the global limit.
@@ -314,7 +314,7 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockLog := blog.NewMock()
-			tb, err := NewTransactionBuilderFromDatabase("../test/config-next/wfe2-ratelimit-defaults.yml", tc.overrides, metrics.NoopRegisterer, mockLog)
+			tb, err := NewTransactionBuilderFromDatabase("../test/config-next/ratelimit-defaults.yml", tc.overrides, metrics.NoopRegisterer, mockLog)
 			test.AssertNotError(t, err, "creating TransactionBuilder")
 			err = tb.limitRegistry.loadOverrides(context.Background())
 			if tc.expectError != "" {

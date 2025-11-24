@@ -209,6 +209,11 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 	// <https://dev.mysql.com/doc/refman/5.0/en/sql-mode.html#sql-mode-strict>.
 	setDefault("sql_mode", "'STRICT_ALL_TABLES'")
 
+	// Omit max_statement_time and max_execution_time from the DSN. Query
+	// timeouts are managed exclusively by ProxySQL and/or Vitess.
+	delete(conf.Params, "max_statement_time")
+	delete(conf.Params, "max_execution_time")
+
 	// Finally, perform validation over all variables set by the DSN and via Boulder.
 	for k, v := range conf.Params {
 		err := checkMariaDBSystemVariables(k, v)

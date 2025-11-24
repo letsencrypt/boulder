@@ -2,6 +2,7 @@ package wfe2
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type wfe2Stats struct {
@@ -28,55 +29,35 @@ type wfe2Stats struct {
 }
 
 func initStats(stats prometheus.Registerer) wfe2Stats {
-	httpErrorCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "http_errors",
-			Help: "client request errors at the HTTP level",
-		},
-		[]string{"type"})
-	stats.MustRegister(httpErrorCount)
+	httpErrorCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "http_errors",
+		Help: "client request errors at the HTTP level",
+	}, []string{"type"})
 
-	joseErrorCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "jose_errors",
-			Help: "client request errors at the JOSE level",
-		},
-		[]string{"type"})
-	stats.MustRegister(joseErrorCount)
+	joseErrorCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "jose_errors",
+		Help: "client request errors at the JOSE level",
+	}, []string{"type"})
 
-	csrSignatureAlgs := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "csr_signature_algs",
-			Help: "Number of CSR signatures by algorithm",
-		},
-		[]string{"type"},
-	)
-	stats.MustRegister(csrSignatureAlgs)
+	csrSignatureAlgs := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "csr_signature_algs",
+		Help: "Number of CSR signatures by algorithm",
+	}, []string{"type"})
 
-	improperECFieldLengths := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "improper_ec_field_lengths",
-			Help: "Number of account EC keys with improper X and Y lengths",
-		},
-	)
-	stats.MustRegister(improperECFieldLengths)
+	improperECFieldLengths := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "improper_ec_field_lengths",
+		Help: "Number of account EC keys with improper X and Y lengths",
+	})
 
-	nonceNoBackendCount := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "nonce_no_backend_found",
-			Help: "Number of times we've received a nonce with a prefix that doesn't match a known backend",
-		},
-	)
-	stats.MustRegister(nonceNoBackendCount)
+	nonceNoBackendCount := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "nonce_no_backend_found",
+		Help: "Number of times we've received a nonce with a prefix that doesn't match a known backend",
+	})
 
-	ariReplacementOrders := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ari_replacements",
-			Help: "Number of new order requests that replace an existing order, labeled isReplacement=[true|false], limitsExempt=[true|false]",
-		},
-		[]string{"isReplacement", "limitsExempt"},
-	)
-	stats.MustRegister(ariReplacementOrders)
+	ariReplacementOrders := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "ari_replacements",
+		Help: "Number of new order requests that replace an existing order, labeled isReplacement=[true|false], limitsExempt=[true|false]",
+	}, []string{"isReplacement", "limitsExempt"})
 
 	return wfe2Stats{
 		httpErrorCount:              httpErrorCount,

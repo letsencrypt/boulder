@@ -20,6 +20,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -116,51 +117,35 @@ type vaMetrics struct {
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
-	validationLatency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "validation_latency",
-			Help:    "Histogram of the latency to perform validations from the primary and remote VA perspectives",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"operation", "perspective", "challenge_type", "problem_type", "result"},
-	)
-	stats.MustRegister(validationLatency)
-	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "prospective_remote_caa_check_failures",
-			Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
-		})
-	stats.MustRegister(prospectiveRemoteCAACheckFailures)
-	tlsALPNOIDCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "tls_alpn_oid_usage",
-			Help: "Number of TLS ALPN validations using either of the two OIDs",
-		},
-		[]string{"oid"},
-	)
-	stats.MustRegister(tlsALPNOIDCounter)
-	http01Fallbacks := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "http01_fallbacks",
-			Help: "Number of IPv6 to IPv4 HTTP-01 fallback requests made",
-		})
-	stats.MustRegister(http01Fallbacks)
-	http01Redirects := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "http01_redirects",
-			Help: "Number of HTTP-01 redirects followed",
-		})
-	stats.MustRegister(http01Redirects)
-	caaCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	validationLatency := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "validation_latency",
+		Help:    "Histogram of the latency to perform validations from the primary and remote VA perspectives",
+		Buckets: metrics.InternetFacingBuckets,
+	}, []string{"operation", "perspective", "challenge_type", "problem_type", "result"})
+	prospectiveRemoteCAACheckFailures := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "prospective_remote_caa_check_failures",
+		Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
+	})
+	tlsALPNOIDCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "tls_alpn_oid_usage",
+		Help: "Number of TLS ALPN validations using either of the two OIDs",
+	}, []string{"oid"})
+	http01Fallbacks := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "http01_fallbacks",
+		Help: "Number of IPv6 to IPv4 HTTP-01 fallback requests made",
+	})
+	http01Redirects := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "http01_redirects",
+		Help: "Number of HTTP-01 redirects followed",
+	})
+	caaCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "caa_sets_processed",
 		Help: "A counter of CAA sets processed labelled by result",
 	}, []string{"result"})
-	stats.MustRegister(caaCounter)
-	ipv4FallbackCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	ipv4FallbackCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "tls_alpn_ipv4_fallback",
 		Help: "A counter of IPv4 fallbacks during TLS ALPN validation",
 	})
-	stats.MustRegister(ipv4FallbackCounter)
 
 	return &vaMetrics{
 		validationLatency:                 validationLatency,
@@ -715,6 +700,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 			logEvent.Challenge.Status = core.StatusValid
 			outcome = pass
 		}
+
 		// Observe local validation latency (primary|remote).
 		va.observeLatency(opDCV, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
@@ -777,5 +763,6 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		}
 		summary, prob = va.doRemoteOperation(ctx, op, req)
 	}
+
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }

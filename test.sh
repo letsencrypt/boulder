@@ -94,13 +94,13 @@ function run_and_expect_silence() {
 configure_database_endpoints() {
   target_dir="mariadb"
   dbconfig_target="dbconfig.mariadb.yml"
-  export MYSQL_ADDR="boulder-proxysql:6033"
+  export DB_ADDR="boulder-proxysql:6033"
 
   if [[ "${USE_VITESS}" == "true" ]]
   then
     target_dir="mysql8"
     dbconfig_target="dbconfig.mysql8.yml"
-    export MYSQL_ADDR="boulder-vitess:33577"
+    export DB_ADDR="boulder-vitess:33577"
   fi
 
   rm -f "sa/db/dbconfig.yml" test/secrets/*.dburl || true

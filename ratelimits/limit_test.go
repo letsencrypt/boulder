@@ -259,11 +259,11 @@ func TestLoadAndParseOverrideLimitsFromFile(t *testing.T) {
 func TestLoadOverrides(t *testing.T) {
 	mockLog := blog.NewMock()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "../test/config-next/wfe2-ratelimit-overrides.yml", metrics.NoopRegisterer, mockLog)
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "../test/config-next/ratelimit-overrides.yml", metrics.NoopRegisterer, mockLog)
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 	err = tb.loadOverrides(context.Background())
 	test.AssertNotError(t, err, "loading overrides in TransactionBuilder")
-	overridesData, err := loadOverridesFromFile("../test/config-next/wfe2-ratelimit-overrides.yml")
+	overridesData, err := loadOverridesFromFile("../test/config-next/ratelimit-overrides.yml")
 	test.AssertNotError(t, err, "loading overrides from file")
 	testOverrides, err := parseOverrideLimits(overridesData)
 	test.AssertNotError(t, err, "parsing overrides")

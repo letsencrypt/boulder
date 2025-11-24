@@ -18,6 +18,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -62,25 +63,22 @@ func New(
 		issuersByNameID[issuer.NameID()] = issuer
 	}
 
-	uploadCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+	uploadCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "crl_storer_uploads",
 		Help: "A counter of the number of CRLs uploaded by crl-storer",
 	}, []string{"issuer", "result"})
-	stats.MustRegister(uploadCount)
 
-	sizeHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	sizeHistogram := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_storer_sizes",
 		Help:    "A histogram of the sizes (in bytes) of CRLs uploaded by crl-storer",
 		Buckets: []float64{0, 256, 1024, 4096, 16384, 65536},
 	}, []string{"issuer"})
-	stats.MustRegister(sizeHistogram)
 
-	latencyHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	latencyHistogram := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_storer_upload_times",
 		Help:    "A histogram of the time (in seconds) it took crl-storer to upload CRLs",
 		Buckets: []float64{0.01, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000},
 	}, []string{"issuer"})
-	stats.MustRegister(latencyHistogram)
 
 	return &crlStorer{
 		issuers:          issuersByNameID,

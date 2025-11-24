@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"os"
 	"path"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/test"
@@ -23,19 +23,19 @@ func TestInvalidDSN(t *testing.T) {
 	_, err := DBMapForTest("invalid")
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 
-	DSN := fmt.Sprintf("policy:password@tcp(%s)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%%27whoopsidaisies", dbHost)
+	DSN := "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
 
-	DSN = fmt.Sprintf("policy:password@tcp(%s)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2", dbHost)
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable is unable to be set in the SESSION scope, but was declared")
 
-	DSN = fmt.Sprintf("policy:password@tcp(%s)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string", dbHost)
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable declared with incorrect quoting")
 
-	DSN = fmt.Sprintf("policy:password@tcp(%s)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%%272%%27", dbHost)
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
 }
@@ -77,9 +77,8 @@ func TestDbSettings(t *testing.T) {
 		oldSetConnMaxIdleTime(db, connMaxIdleTime)
 	}
 	dsnFile := path.Join(t.TempDir(), "dbconnect")
-	err := os.WriteFile(dsnFile,
-		[]byte(fmt.Sprintf("sa@tcp(%s)/boulder_sa_integration", dbHost)),
-		os.ModeAppend)
+
+	err := os.WriteFile(dsnFile, []byte(vars.DBConnSA), os.ModeAppend)
 	test.AssertNotError(t, err, "writing dbconnect file")
 
 	config := cmd.DBConfig{
@@ -109,8 +108,8 @@ func TestDbSettings(t *testing.T) {
 
 // TODO: Change this to test `newDbMapFromMySQLConfig` instead?
 func TestNewDbMap(t *testing.T) {
-	mysqlConnectURL := fmt.Sprintf("policy:password@tcp(%s)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms", dbHost)
-	expected := fmt.Sprintf("policy:password@tcp(%s)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&sql_mode=%%27STRICT_ALL_TABLES%%27", dbHost)
+	const mysqlConnectURL = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&sql_mode=%27STRICT_ALL_TABLES%27"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen
@@ -165,4 +164,13 @@ func TestAutoIncrementSchema(t *testing.T) {
 			data_type != "bigint"`)
 	test.AssertNotError(t, err, "unexpected err querying columns")
 	test.AssertEquals(t, count, int64(0))
+}
+
+func TestAdjustMySQLConfig(t *testing.T) {
+	conf := &mysql.Config{}
+	err := adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
+	test.Assert(t, conf.ParseTime, "ParseTime should be enabled")
+	test.Assert(t, conf.ClientFoundRows, "ClientFoundRows should be enabled")
+	test.AssertDeepEquals(t, conf.Params, map[string]string{"sql_mode": "'STRICT_ALL_TABLES'"})
 }

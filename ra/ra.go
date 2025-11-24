@@ -21,6 +21,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -132,7 +133,7 @@ func NewRegistrationAuthorityImpl(
 	ctp *ctpolicy.CTPolicy,
 	issuers []*issuance.Certificate,
 ) *RegistrationAuthorityImpl {
-	ctpolicyResults := prometheus.NewHistogramVec(
+	ctpolicyResults := promauto.With(stats).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ctpolicy_results",
 			Help:    "Histogram of latencies of ctpolicy.GetSCTs calls with success/failure/deadlineExceeded labels",
@@ -140,46 +141,36 @@ func NewRegistrationAuthorityImpl(
 		},
 		[]string{"result"},
 	)
-	stats.MustRegister(ctpolicyResults)
 
-	namesPerCert := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "names_per_cert",
-			Help: "Histogram of the number of SANs in requested and issued certificates",
-			// The namesPerCert buckets are chosen based on the current Let's Encrypt
-			// limit of 100 SANs per certificate.
-			Buckets: []float64{1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
-		},
-		// Type label value is either "requested" or "issued".
-		[]string{"type"},
-	)
-	stats.MustRegister(namesPerCert)
+	namesPerCert := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "names_per_cert",
+		Help: "Histogram of the number of SANs in requested and issued certificates",
+		// The namesPerCert buckets are chosen based on the current Let's Encrypt
+		// limit of 100 SANs per certificate.
+		Buckets: []float64{1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
+	}, []string{"type"})
 
-	newRegCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	newRegCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "new_registrations",
 		Help: "A counter of new registrations",
 	})
-	stats.MustRegister(newRegCounter)
 
-	recheckCAACounter := prometheus.NewCounter(prometheus.CounterOpts{
+	recheckCAACounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "recheck_caa",
 		Help: "A counter of CAA rechecks",
 	})
-	stats.MustRegister(recheckCAACounter)
 
-	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	newCertCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "new_certificates",
 		Help: "A counter of issued certificates",
 	})
-	stats.MustRegister(newCertCounter)
 
-	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	revocationReasonCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "revocation_reason",
 		Help: "A counter of certificate revocation reasons",
 	}, []string{"reason"})
-	stats.MustRegister(revocationReasonCounter)
 
-	authzAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	authzAges := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "authz_ages",
 		Help: "Histogram of ages, in seconds, of Authorization objects, labelled by method and type",
 		// authzAges keeps track of how old, in seconds, authorizations are when
@@ -191,9 +182,8 @@ func NewRegistrationAuthorityImpl(
 		// days, 30 days, +inf (should be empty).
 		Buckets: []float64{0.000000001, 1, 60, 3600, 25200, 86400, 172800, 604800, 2592000, 7776000},
 	}, []string{"method", "type"})
-	stats.MustRegister(authzAges)
 
-	orderAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	orderAges := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "order_ages",
 		Help: "Histogram of ages, in seconds, of Order objects when they're reused and finalized, labelled by method",
 		// Orders currently have a max age of 7 days (168hrs), so our buckets
@@ -201,25 +191,21 @@ func NewRegistrationAuthorityImpl(
 		// minutes, 1 hour, 7 hours (our CAA reuse time), 1 day, 2 days, 7 days, +inf.
 		Buckets: []float64{0.000000001, 1, 10, 60, 600, 3600, 25200, 86400, 172800, 604800},
 	}, []string{"method"})
-	stats.MustRegister(orderAges)
 
-	inflightFinalizes := prometheus.NewGauge(prometheus.GaugeOpts{
+	inflightFinalizes := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
 		Name: "inflight_finalizes",
 		Help: "Gauge of the number of current asynchronous finalize goroutines",
 	})
-	stats.MustRegister(inflightFinalizes)
 
-	certCSRMismatch := prometheus.NewCounter(prometheus.CounterOpts{
+	certCSRMismatch := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "cert_csr_mismatch",
 		Help: "Number of issued certificates that have failed ra.matchesCSR for any reason. This is _real bad_ and should be alerted upon.",
 	})
-	stats.MustRegister(certCSRMismatch)
 
-	pauseCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	pauseCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "paused_pairs",
 		Help: "Number of times a pause operation is performed, labeled by paused=[bool], repaused=[bool], grace=[bool]",
 	}, []string{"paused", "repaused", "grace"})
-	stats.MustRegister(pauseCounter)
 
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {

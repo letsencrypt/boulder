@@ -10,9 +10,7 @@ CREATE TABLE `replacementOrders` (
   PRIMARY KEY (`id`),
   KEY `serial_idx` (`serial`),
   KEY `orderID_idx` (`orderID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back

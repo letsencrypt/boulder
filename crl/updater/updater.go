@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -92,18 +93,16 @@ func NewUpdater(
 		maxAttempts = 1
 	}
 
-	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	tickHistogram := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_updater_ticks",
 		Help:    "A histogram of crl-updater tick latencies labeled by issuer and result",
 		Buckets: []float64{0.01, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000},
 	}, []string{"issuer", "result"})
-	stats.MustRegister(tickHistogram)
 
-	updatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	updatedCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "crl_updater_generated",
 		Help: "A counter of CRL generation calls labeled by result",
 	}, []string{"issuer", "result"})
-	stats.MustRegister(updatedCounter)
 
 	return &crlUpdater{
 		issuersByNameID,

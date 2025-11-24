@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	berrors "github.com/letsencrypt/boulder/errors"
 )
@@ -43,13 +44,12 @@ type Limiter struct {
 // NewLimiter returns a new *Limiter. The provided source must be safe for
 // concurrent use.
 func NewLimiter(clk clock.Clock, source Source, stats prometheus.Registerer) (*Limiter, error) {
-	spendLatency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	spendLatency := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "ratelimits_spend_latency",
 		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
 		// Exponential buckets ranging from 0.0005s to 3s.
 		Buckets: prometheus.ExponentialBuckets(0.0005, 3, 8),
 	}, []string{"limit", "decision"})
-	stats.MustRegister(spendLatency)
 
 	return &Limiter{
 		source:       source,
