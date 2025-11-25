@@ -2126,6 +2126,9 @@ func TestNewOrderAuthzReuseDNSAccount01(t *testing.T) {
 	_, _, ra, _, _, registration, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
+	features.Set(features.Config{DNSAccount01Enabled: true})
+	defer features.Reset()
+
 	ctx := context.Background()
 	idents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
 
@@ -2164,6 +2167,49 @@ func TestNewOrderAuthzReuseDNSAccount01(t *testing.T) {
 	test.AssertEquals(t, len(order.V2Authorizations), 1)
 	// The authorization ID should match the mock authz we provided (ID "1")
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
+}
+
+// TestNewOrderAuthzReuseDNSAccount01Disabled checks that the RA rejects
+// wildcard authorization reuse with DNS-Account-01 when the feature is disabled.
+func TestNewOrderAuthzReuseDNSAccount01Disabled(t *testing.T) {
+	_, _, ra, _, _, registration, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Feature flag is NOT set - DNSAccount01Enabled defaults to false
+
+	ctx := context.Background()
+	idents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
+
+	// Use a mock SA that returns a DNS-Account-01 authz for wildcard
+	expires := time.Now().Add(24 * time.Hour)
+	ra.SA = &mockSAWithAuthzs{
+		authzs: []*core.Authorization{
+			{
+				ID:             "1",
+				Identifier:     identifier.NewDNS("*.zombo.com"),
+				RegistrationID: registration.Id,
+				Status:         "valid",
+				Expires:        &expires,
+				Challenges: []core.Challenge{
+					{
+						Type:   core.ChallengeTypeDNSAccount01,
+						Status: core.StatusValid,
+						Token:  core.NewToken(),
+					},
+				},
+			},
+		},
+	}
+
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID: registration.Id,
+		Identifiers:    idents.ToProtoSlice(),
+	}
+
+	// NewOrder should reject the DNS-Account-01 authz when feature is disabled
+	_, err := ra.NewOrder(ctx, orderReq)
+	test.AssertError(t, err, "NewOrder should reject DNS-Account-01 when feature disabled")
+	test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with invalid challenge(s)")
 }
 
 func TestNewOrderWildcard(t *testing.T) {
