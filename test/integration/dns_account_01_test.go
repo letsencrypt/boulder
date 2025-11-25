@@ -361,3 +361,93 @@ func TestDNSAccount01WildcardDomain(t *testing.T) {
 		}
 	}
 }
+
+func TestDNSAccount01WildcardAuthorizationReuse(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-account-01 to be enabled")
+	}
+
+	// Use same domain for both orders to trigger authorization reuse
+	domain := random_domain()
+	wildcardDomain := fmt.Sprintf("*.%s", domain)
+
+	c, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating client: %s", err)
+	}
+
+	idents := []acme.Identifier{{Type: "dns", Value: wildcardDomain}}
+
+	// First order: Create and complete DNS-Account-01 challenge
+	order1, err := c.Client.NewOrder(c.Account, idents)
+	if err != nil {
+		t.Fatalf("creating first order: %s", err)
+	}
+
+	authzURL := order1.Authorizations[0]
+	auth1, err := c.Client.FetchAuthorization(c.Account, authzURL)
+	if err != nil {
+		t.Fatalf("fetching first authorization: %s", err)
+	}
+
+	chal, ok := auth1.ChallengeMap[acme.ChallengeTypeDNSAccount01]
+	if !ok {
+		t.Fatal("dns-account-01 challenge not offered by server")
+	}
+
+	_, err = testSrvClient.AddDNSAccount01Response(c.Account.URL, domain, chal.KeyAuthorization)
+	if err != nil {
+		t.Fatalf("adding DNS response: %s", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+	})
+
+	chal, err = c.Client.UpdateChallenge(c.Account, chal)
+	if err != nil {
+		t.Fatalf("updating challenge: %s", err)
+	}
+
+	// Wait for authorization to become valid
+	auth1, err = c.Client.FetchAuthorization(c.Account, authzURL)
+	if err != nil {
+		t.Fatalf("fetching first authorization after challenge update: %s", err)
+	}
+
+	if auth1.Status != "valid" {
+		t.Fatalf("expected first authorization status to be 'valid', got '%s'", auth1.Status)
+	}
+
+	// Second order: Should reuse the existing authorization
+	order2, err := c.Client.NewOrder(c.Account, idents)
+	if err != nil {
+		t.Fatalf("creating second order: %s", err)
+	}
+
+	if len(order2.Authorizations) != 1 {
+		t.Fatalf("expected 1 authorization in second order, got %d", len(order2.Authorizations))
+	}
+
+	authzURL2 := order2.Authorizations[0]
+	auth2, err := c.Client.FetchAuthorization(c.Account, authzURL2)
+	if err != nil {
+		t.Fatalf("fetching second authorization: %s", err)
+	}
+
+	// Verify reuse occurred: same authorization URL
+	if authzURL != authzURL2 {
+		t.Fatalf("expected same authorization URL, got different: %s != %s", authzURL, authzURL2)
+	}
+
+	// Verify authorization is already valid (no re-validation needed)
+	if auth2.Status != "valid" {
+		t.Fatalf("expected reused authorization status to be 'valid', got '%s'", auth2.Status)
+	}
+
+	// Verify authorization still has DNS-Account-01 challenge
+	if _, ok := auth2.ChallengeMap[acme.ChallengeTypeDNSAccount01]; !ok {
+		t.Fatal("expected reused authorization to have dns-account-01 challenge")
+	}
+}
