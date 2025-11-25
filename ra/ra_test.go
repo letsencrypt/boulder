@@ -2155,9 +2155,15 @@ func TestNewOrderAuthzReuseDNSAccount01(t *testing.T) {
 		Identifiers:    idents.ToProtoSlice(),
 	}
 
-	// Create an order - it should succeed with DNS-Account-01 wildcard reuse
-	_, err := ra.NewOrder(ctx, orderReq)
+	// Create an order for the wildcard domain. NewOrder should recognize that
+	// the existing valid authorization with DNS-Account-01 challenge can be
+	// reused for this wildcard domain request.
+	order, err := ra.NewOrder(ctx, orderReq)
 	test.AssertNotError(t, err, "NewOrder failed to reuse wildcard authz with DNS-Account-01")
+	// The order should contain exactly one authorization (the reused one)
+	test.AssertEquals(t, len(order.V2Authorizations), 1)
+	// The authorization ID should match the mock authz we provided (ID "1")
+	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 }
 
 func TestNewOrderWildcard(t *testing.T) {
