@@ -2241,18 +2241,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// If the identifier is a wildcard DNS name, it must have exactly one
 		// DNS-01 or DNS-Account-01 type challenge. The PA guarantees this at
 		// order creation time, but we verify again to be safe.
-		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") {
-			if len(authz.Challenges) != 1 {
-				return nil, berrors.InternalServerError(
-					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with %d challenges, expected 1",
-					authz.ID, len(authz.Challenges))
-			}
-			challengeType := authz.Challenges[0].Type
-			if challengeType != core.ChallengeTypeDNS01 && challengeType != core.ChallengeTypeDNSAccount01 {
-				return nil, berrors.InternalServerError(
-					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge type %s",
-					authz.ID, challengeType)
-			}
+		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") &&
+			(len(authz.Challenges) != 1 ||
+				(authz.Challenges[0].Type != core.ChallengeTypeDNS01 &&
+					authz.Challenges[0].Type != core.ChallengeTypeDNSAccount01)) {
+			return nil, berrors.InternalServerError(
+				"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+				authz.ID)
 		}
 
 		// If we reached this point then the existing authz was acceptable for
