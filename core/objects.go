@@ -33,9 +33,6 @@ const (
 	StatusDeactivated = AcmeStatus("deactivated") // Object has been deactivated
 )
 
-// AcmeResource values identify different types of ACME resources
-type AcmeResource string
-
 // AcmeChallenge values identify different types of ACME challenges
 type AcmeChallenge string
 
