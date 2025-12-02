@@ -52,10 +52,9 @@ func newDomainOrCIDRBucketKey(name Name, domainOrCIDR string) string {
 	return joinWithColon(name.EnumString(), domainOrCIDR)
 }
 
-// NewRegIdIdentValueBucketKey returns a bucketKey for limits that use the
-// 'enum:regId:identValue' bucket key format. This function is exported for use
-// by the RA when resetting the account pausing limit.
-func NewRegIdIdentValueBucketKey(name Name, regId int64, orderIdent string) string {
+// newRegIdIdentValueBucketKey returns a bucketKey for limits that use the
+// 'enum:regId:identValue' bucket key format.
+func newRegIdIdentValueBucketKey(name Name, regId int64, orderIdent string) string {
 	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), orderIdent)
 }
 
@@ -77,6 +76,7 @@ func newFQDNSetBucketKey(name Name, orderIdents identifier.ACMEIdentifiers) stri
 //     bucket's capacity, but will never be spent/refunded.
 //   - spend-only: when only spend is true, spending is best-effort. Regardless
 //     of the bucket's capacity, the transaction will be considered "allowed".
+//   - reset-only: when reset is true, the bucket will be reset to full capacity.
 //   - allow-only: when neither check nor spend are true, the transaction will
 //     be considered "allowed" regardless of the bucket's capacity. This is
 //     useful for limits that are disabled.
@@ -89,21 +89,38 @@ type Transaction struct {
 	cost      int64
 	check     bool
 	spend     bool
+	reset     bool
 }
 
 func (txn Transaction) checkOnly() bool {
-	return txn.check && !txn.spend
+	return txn.check && !txn.spend && !txn.reset
 }
 
 func (txn Transaction) spendOnly() bool {
-	return txn.spend && !txn.check
+	return txn.spend && !txn.check && !txn.reset
 }
 
 func (txn Transaction) allowOnly() bool {
-	return !txn.check && !txn.spend
+	return !txn.check && !txn.spend && !txn.reset
+}
+
+func (txn Transaction) resetOnly() bool {
+	return txn.reset && !txn.check && !txn.spend
 }
 
 func validateTransaction(txn Transaction) (Transaction, error) {
+	if txn.limit == nil {
+		return Transaction{}, fmt.Errorf("invalid limit, must not be nil")
+	}
+	if txn.reset {
+		if txn.check || txn.spend {
+			return Transaction{}, fmt.Errorf("invalid reset transaction, check and spend must be false")
+		}
+		if txn.limit.Burst == 0 {
+			return Transaction{}, fmt.Errorf("invalid limit, burst must be > 0")
+		}
+		return txn, nil
+	}
 	if txn.cost < 0 {
 		return Transaction{}, ErrInvalidCost
 	}
@@ -146,6 +163,14 @@ func newSpendOnlyTransaction(limit *Limit, bucketKey string, cost int64) (Transa
 		limit:     limit,
 		cost:      cost,
 		spend:     true,
+	})
+}
+
+func newResetTransaction(limit *Limit, bucketKey string) (Transaction, error) {
+	return validateTransaction(Transaction{
+		bucketKey: bucketKey,
+		limit:     limit,
+		reset:     true,
 	})
 }
 
@@ -380,7 +405,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 	for _, ident := range orderIdents {
 		// FailedAuthorizationsPerDomainPerAccount limit uses the
 		// 'enum:regId:identValue' bucket key format for transactions.
-		perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident.Value)
+		perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident.Value)
 
 		// Add a check-only transaction for each per identValue per account
 		// bucket.
@@ -411,7 +436,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 
 	// FailedAuthorizationsPerDomainPerAccount limit uses the
 	// 'enum:regId:identValue' bucket key format for transactions.
-	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderIdent.Value)
+	perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderIdent.Value)
 	txn, err := newSpendOnlyTransaction(limit, perIdentValuePerAccountBucketKey, 1)
 	if err != nil {
 		return Transaction{}, err
@@ -438,7 +463,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 
 	// FailedAuthorizationsForPausingPerDomainPerAccount limit uses the
 	// 'enum:regId:identValue' bucket key format for transactions.
-	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
+	perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
 	txn, err := newTransaction(limit, perIdentValuePerAccountBucketKey, 1)
 	if err != nil {
 		return Transaction{}, err
@@ -490,7 +515,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerDomainOrCIDRBucketKey := NewRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
+			perAccountPerDomainOrCIDRBucketKey := newRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
 			// Add a check-only transaction for each per account per identValue
 			// bucket.
 			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRBucketKey, 1)
@@ -569,7 +594,7 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerDomainOrCIDRBucketKey := NewRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
+			perAccountPerDomainOrCIDRBucketKey := newRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
 			// Add a spend-only transaction for each per account per
 			// domainOrCIDR bucket.
 			txn, err := newSpendOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRBucketKey, 1)
@@ -709,6 +734,25 @@ func (builder *TransactionBuilder) NewAccountLimitTransactions(ip netip.Addr) ([
 		return nil, makeTxnError(err, NewRegistrationsPerIPv6Range)
 	}
 	return append(transactions, txn), nil
+}
+
+func (builder *TransactionBuilder) NewPausingResetTransactions(regId int64, orderIdent identifier.ACMEIdentifier) ([]Transaction, error) {
+	perAccountBucketKey := newRegIdBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId)
+	limit, err := builder.getLimit(FailedAuthorizationsForPausingPerDomainPerAccount, perAccountBucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return []Transaction{newAllowOnlyTransaction()}, nil
+		}
+		return nil, err
+	}
+
+	perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
+	txn, err := newResetTransaction(limit, perIdentValuePerAccountBucketKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return []Transaction{txn}, nil
 }
 
 // LimitOverrideRequestsPerIPAddressTransaction returns a Transaction for the
