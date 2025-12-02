@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
-ARG VITESS_TAG=v22.0.0
-ARG MYSQL_BASE_IMAGE=mysql/mysql-server:8.0
+ARG VITESS_TAG=v23.0.0
+ARG MYSQL_BASE_IMAGE=mysql:8.4
 
 FROM golang:1.25.2-bookworm AS build
 ARG VITESS_TAG
