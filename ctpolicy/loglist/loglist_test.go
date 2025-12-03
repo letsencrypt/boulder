@@ -95,6 +95,7 @@ func TestForPurpose(t *testing.T) {
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
 		Log{Name: "Log B1", Operator: "B", State: loglist3.UsableLogStatus},
 		Log{Name: "Log T1", Operator: "T", Type: "test", State: loglist3.UndefinedLogStatus},
+		Log{Name: "Log M1", Operator: "M", Type: "monitoring_only", State: loglist3.UndefinedLogStatus},
 	}
 	expected = List{
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
@@ -108,6 +109,7 @@ func TestForPurpose(t *testing.T) {
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
 		Log{Name: "Log B1", Operator: "B", State: loglist3.UsableLogStatus},
 		Log{Name: "Log T1", Operator: "T", Type: "test", State: loglist3.UndefinedLogStatus},
+		Log{Name: "Log M1", Operator: "M", Type: "monitoring_only", State: loglist3.UndefinedLogStatus},
 	}
 	actual, err = input.forPurpose(Issuance, true)
 	test.AssertNotError(t, err, "should have two acceptable logs with submitToTestLogs=[true]")
