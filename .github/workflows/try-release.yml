@@ -20,8 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.25.2"
-          - "1.25.3"
+          - "1.25.5"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
