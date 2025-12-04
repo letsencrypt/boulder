@@ -28,7 +28,7 @@ func newTestRedisRing() *redis.Ring {
 	}
 
 	client := redis.NewRing(&redis.RingOptions{
-		Username:  "unittest-rw",
+		Username:  "boulder",
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
 		TLSConfig: tlsConfig2,
 	})

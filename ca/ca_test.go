@@ -108,17 +108,17 @@ func mustRead(path string) []byte {
 //
 // Its fields should remain identical to the NewCertificateAuthorityImpl args.
 type caArgs struct {
-	sa             sapb.StorageAuthorityCertificateClient
-	sctService     rapb.SCTProviderClient
-	pa             core.PolicyAuthority
-	boulderIssuers []*issuance.Issuer
-	certProfiles   map[string]*issuance.ProfileConfig
-	serialPrefix   byte
-	maxNames       int
-	keyPolicy      goodkey.KeyPolicy
-	logger         *blog.Mock
-	metrics        *caMetrics
-	clk            clock.FakeClock
+	sa           sapb.StorageAuthorityCertificateClient
+	sctService   rapb.SCTProviderClient
+	pa           core.PolicyAuthority
+	issuers      []*issuance.Issuer
+	profiles     map[string]*issuance.Profile
+	serialPrefix byte
+	maxNames     int
+	keyPolicy    goodkey.KeyPolicy
+	logger       *blog.Mock
+	metrics      *caMetrics
+	clk          clock.FakeClock
 }
 
 // newCAArgs returns a caArgs populated with reasonable default values for testing.
@@ -133,37 +133,39 @@ func newCAArgs(t *testing.T) *caArgs {
 	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set identifier policy")
 
-	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
-	certProfiles["legacy"] = &issuance.ProfileConfig{
-		IncludeCRLDistributionPoints: true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 90},
-		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
-		IgnoredLints:                 []string{"w_subject_common_name_included"},
+	legacy, err := issuance.NewProfile(issuance.ProfileConfig{
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		IgnoredLints:        []string{"w_subject_common_name_included"},
+	})
+	test.AssertNotError(t, err, "Loading test profile")
+	modern, err := issuance.NewProfile(issuance.ProfileConfig{
+		OmitCommonName:      true,
+		OmitKeyEncipherment: true,
+		OmitClientAuth:      true,
+		OmitSKID:            true,
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 6},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		IgnoredLints:        []string{"w_ext_subject_key_identifier_missing_sub_cert"},
+	})
+	test.AssertNotError(t, err, "Loading test profile")
+	profiles := map[string]*issuance.Profile{
+		"legacy": legacy,
+		"modern": modern,
 	}
-	certProfiles["modern"] = &issuance.ProfileConfig{
-		OmitCommonName:               true,
-		OmitKeyEncipherment:          true,
-		OmitClientAuth:               true,
-		OmitSKID:                     true,
-		IncludeCRLDistributionPoints: true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 6},
-		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
-		IgnoredLints:                 []string{"w_ext_subject_key_identifier_missing_sub_cert"},
-	}
-	test.AssertEquals(t, len(certProfiles), 2)
 
-	boulderIssuers := make([]*issuance.Issuer, 4)
+	issuers := make([]*issuance.Issuer, 4)
 	for i, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
-		boulderIssuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
+		issuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
 			Active:     true,
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
-			OCSPURL:    "http://not-example.com/o",
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
 			CRLShards:  10,
 			Location: issuance.IssuerLoc{
 				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
 				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
 			},
+			Profiles: []string{"legacy", "modern"},
 		}, fc)
 		test.AssertNotError(t, err, "Couldn't load test issuer")
 	}
@@ -194,17 +196,17 @@ func newCAArgs(t *testing.T) *caArgs {
 	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificatesCount}
 
 	return &caArgs{
-		sa:             &mockSA{},
-		sctService:     &mockSCTService{},
-		pa:             pa,
-		boulderIssuers: boulderIssuers,
-		certProfiles:   certProfiles,
-		serialPrefix:   0x11,
-		maxNames:       2,
-		keyPolicy:      keyPolicy,
-		logger:         blog.NewMock(),
-		metrics:        cametrics,
-		clk:            fc,
+		sa:           &mockSA{},
+		sctService:   &mockSCTService{},
+		pa:           pa,
+		issuers:      issuers,
+		profiles:     profiles,
+		serialPrefix: 0x11,
+		maxNames:     2,
+		keyPolicy:    keyPolicy,
+		logger:       blog.NewMock(),
+		metrics:      cametrics,
+		clk:          fc,
 	}
 }
 
@@ -212,7 +214,7 @@ func newCAArgs(t *testing.T) *caArgs {
 // constructor and returns the result.
 func (c *caArgs) make() (*certificateAuthorityImpl, error) {
 	return NewCertificateAuthorityImpl(
-		c.sa, c.sctService, c.pa, c.boulderIssuers, c.certProfiles, c.serialPrefix,
+		c.sa, c.sctService, c.pa, c.issuers, c.profiles, c.serialPrefix,
 		c.maxNames, c.keyPolicy, c.logger, c.metrics, c.clk)
 }
 
@@ -277,7 +279,7 @@ func TestNewCertificateAuthorityImpl_BadSerialPrefix(t *testing.T) {
 func TestNewCertificateAuthorityImpl_InsufficientIssuers(t *testing.T) {
 	t.Parallel()
 	cargs := newCAArgs(t)
-	origIssuers := cargs.boulderIssuers
+	origIssuers := cargs.issuers
 
 	for _, tc := range []struct {
 		name    string
@@ -301,7 +303,7 @@ func TestNewCertificateAuthorityImpl_InsufficientIssuers(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cargs.boulderIssuers = tc.issuers
+			cargs.issuers = tc.issuers
 			_, err := cargs.make()
 			if err == nil {
 				t.Fatalf("NewCertificateAuthorityImpl(%s) succeeded, but want error", tc.name)
@@ -317,16 +319,16 @@ func TestNewCertificateAuthorityImpl_InsufficientIssuers(t *testing.T) {
 func TestNewCertificateAuthorityImpl_InsufficientProfiles(t *testing.T) {
 	t.Parallel()
 	cargs := newCAArgs(t)
-	cargs.certProfiles = nil
+	cargs.profiles = nil
 
 	_, err := cargs.make()
 	if err == nil {
-		t.Fatalf("NewCertificateAuthorityImpl(certificateProfiles=nil) succeeded, but want error")
+		t.Fatalf("NewCertificateAuthorityImpl(profiles=nil) succeeded, but want error")
 	}
 
 	wantErr := "at least one certificate profile"
 	if !strings.Contains(err.Error(), wantErr) {
-		t.Fatalf("NewCertificateAuthorityImpl(certificateProfiles=nil) = %q, but want %q", err, wantErr)
+		t.Fatalf("NewCertificateAuthorityImpl(profiles=nil) = %q, but want %q", err, wantErr)
 	}
 }
 
@@ -581,10 +583,10 @@ func TestIssueCertificate_ValidPastIssuer(t *testing.T) {
 
 	// Limit ourselves to only having one ECDSA issuer, just in case they have
 	// different notAfter dates.
-	cargs.boulderIssuers = cargs.boulderIssuers[:3]
+	cargs.issuers = cargs.issuers[:3]
 
 	// Jump to a time just moments before the test issuer expire.
-	future := cargs.boulderIssuers[2].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
+	future := cargs.issuers[2].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
 	cargs.clk.Set(future)
 
 	ca, err := cargs.make()
@@ -701,7 +703,7 @@ func TestIssueCertificate_ProfileSelection(t *testing.T) {
 func TestIssueCertificate_IssuerSelection(t *testing.T) {
 	t.Parallel()
 	cargs := newCAArgs(t)
-	origIssuers := cargs.boulderIssuers
+	origIssuers := cargs.issuers
 
 	ca, err := cargs.make()
 	if err != nil {
@@ -763,48 +765,18 @@ func TestIssueCertificate_IssuerSelection(t *testing.T) {
 }
 
 func TestIssueCertificate_UnpredictableIssuance(t *testing.T) {
-	cargs := newCAArgs(t)
-
-	// Load our own set of issuer configs, specifically with:
-	// - 3 issuers,
-	// - 2 of which are active
-	boulderIssuers := make([]*issuance.Issuer, 3)
-	var err error
-	for i, name := range []string{"int-e1", "int-e2", "int-r3"} {
-		boulderIssuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
-			Active:     i != 0, // Make one of the ECDSA issuers inactive.
-			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
-			OCSPURL:    "http://not-example.com/o",
-			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
-			CRLShards:  10,
-			Location: issuance.IssuerLoc{
-				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
-				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
-			},
-		}, cargs.clk)
-		test.AssertNotError(t, err, "Couldn't load test issuer")
-	}
-	cargs.boulderIssuers = boulderIssuers
-
-	ca, err := cargs.make()
+	ca, err := newCAArgs(t).make()
 	if err != nil {
-		t.Fatalf("making test ca: %s", err)
+		t.Fatalf("creating test ca: %s", err)
 	}
 
-	// Then, modify the resulting issuer maps so that the RSA issuer appears to
-	// be an ECDSA issuer. This would be easier if we had three ECDSA issuers to
-	// use here, but that doesn't exist in //test/hierarchy (yet).
-	ca.issuers.byAlg[x509.ECDSA] = append(ca.issuers.byAlg[x509.ECDSA], ca.issuers.byAlg[x509.RSA]...)
-	ca.issuers.byAlg[x509.RSA] = []*issuance.Issuer{}
-
-	// Issue the same (ECDSA-keyed) certificate 20 times. None of the issuances
-	// should come from the inactive issuer (int-e1). At least one issuance should
-	// come from each of the two active issuers (int-e2 and int-r3). With 20
-	// trials, the probability that all 20 issuances come from the same issuer is
-	// 0.5 ^ 20 = 9.5e-7 ~= 1e-6 = 1 in a million, so we do not consider this test
-	// to be flaky.
+	// Issue the same (ECDSA-keyed) certificate 20 times. At least one issuance
+	// should come from each of the two active ECDSA issuers (int-e1 and int-e2).
+	// With 20 trials, the probability that all 20 issuances come from the same
+	// issuer is 0.5 ^ 20 = 9.5e-7 ~= 1e-6 = 1 in a million, so we do not consider
+	// this test to be flaky.
+	seenE1 := false
 	seenE2 := false
-	seenR3 := false
 	for range 20 {
 		res, err := ca.IssueCertificate(t.Context(), &capb.IssueCertificateRequest{
 			RegistrationID: 1, OrderID: 1,
@@ -820,85 +792,135 @@ func TestIssueCertificate_UnpredictableIssuance(t *testing.T) {
 		}
 
 		if strings.Contains(cert.Issuer.CommonName, "E1") {
-			t.Fatal("Issued certificate from inactive issuer")
+			seenE1 = true
 		} else if strings.Contains(cert.Issuer.CommonName, "E2") {
 			seenE2 = true
-		} else if strings.Contains(cert.Issuer.CommonName, "R3") {
-			seenR3 = true
+		} else {
+			t.Fatalf("Issued certificate from unexpected issuer")
 		}
 	}
 
+	if !seenE1 {
+		t.Error("Expected at least one issuance from active issuer E1")
+	}
 	if !seenE2 {
 		t.Error("Expected at least one issuance from active issuer E2")
 	}
-	if !seenR3 {
-		t.Error("Expected at least one issuance from active issuer R3")
+}
+
+// TestPickIssuer tests the various deterministic cases, ensuring that the
+// function properly respects the issuers' key algorithms and profiles. The test
+// cases here are somewhat tightly coupled to the profiles populated by
+// newCAArgs; this full coverage is to ensure that pickIssuer doesn't have an
+// off-by-one error or similar bug lurking in it.
+//
+// The non-deterministic case is covered by TestIssueCertificate_UnpredictableIssuance.
+func TestPickIssuer(t *testing.T) {
+	t.Parallel()
+
+	ca, err := newCAArgs(t).make()
+	if err != nil {
+		t.Fatalf("creating test ca: %s", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		profile string
+		keyAlg  x509.PublicKeyAlgorithm
+		wantErr bool
+	}{
+		{
+			name:    "unrecognized profile",
+			profile: "doesnotexist",
+			keyAlg:  x509.ECDSA,
+			wantErr: true,
+		},
+		{
+			name:    "unrecognized key algorithm",
+			profile: "modern",
+			keyAlg:  x509.Ed25519,
+			wantErr: true,
+		},
+		{
+			name:    "recognized/legacy+ecdsa",
+			profile: "legacy",
+			keyAlg:  x509.ECDSA,
+		},
+		{
+			name:    "recognized/legacy+rsa",
+			profile: "legacy",
+			keyAlg:  x509.RSA,
+		},
+		{
+			name:    "recognized/modern+ecdsa",
+			profile: "modern",
+			keyAlg:  x509.ECDSA,
+		},
+		{
+			name:    "recognized/modern+rsa",
+			profile: "modern",
+			keyAlg:  x509.RSA,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ca.pickIssuer(tc.profile, tc.keyAlg)
+			if err == nil && tc.wantErr {
+				t.Errorf("pickIssuer(%s, %s) = success, but want error", tc.profile, tc.keyAlg)
+			} else if err != nil && !tc.wantErr {
+				t.Errorf("pickIssuer(%s, %s) = %s, but want success", tc.profile, tc.keyAlg, err)
+			}
+		})
 	}
 }
 
-func TestMakeCertificateProfilesMap(t *testing.T) {
+func TestPickIssuer_Inactive(t *testing.T) {
 	t.Parallel()
 	cargs := newCAArgs(t)
-	test.AssertEquals(t, len(cargs.certProfiles), 2)
 
-	testCases := []struct {
-		name              string
-		profileConfigs    map[string]*issuance.ProfileConfig
-		expectedErrSubstr string
-		expectedProfiles  []string
-	}{
-		{
-			name:              "nil profile map",
-			profileConfigs:    nil,
-			expectedErrSubstr: "at least one certificate profile",
-		},
-		{
-			name:              "no profiles",
-			profileConfigs:    map[string]*issuance.ProfileConfig{},
-			expectedErrSubstr: "at least one certificate profile",
-		},
-		{
-			name: "empty profile config",
-			profileConfigs: map[string]*issuance.ProfileConfig{
-				"empty": {},
+	// Load our own set of issuers, but with half of them inactive.
+	var issuers []*issuance.Issuer
+	for i, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
+		issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
+			Active:     i%2 == 0,
+			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
+			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
+			CRLShards:  10,
+			Location: issuance.IssuerLoc{
+				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
+				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
 			},
-			expectedErrSubstr: "at least one revocation mechanism must be included",
-		},
-		{
-			name: "minimal profile config",
-			profileConfigs: map[string]*issuance.ProfileConfig{
-				"empty": {IncludeCRLDistributionPoints: true},
-			},
-			expectedProfiles: []string{"empty"},
-		},
-		{
-			name:             "default profiles from setup func",
-			profileConfigs:   cargs.certProfiles,
-			expectedProfiles: []string{"legacy", "modern"},
-		},
+			Profiles: []string{"legacy", "modern"},
+		}, cargs.clk)
+		if err != nil {
+			t.Fatalf("loading test issuer: %s", err)
+		}
+		issuers = append(issuers, issuer)
+	}
+	cargs.issuers = issuers
+
+	ca, err := cargs.make()
+	if err != nil {
+		t.Fatalf("creating test ca: %s", err)
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			profiles, err := makeCertificateProfilesMap(tc.profileConfigs)
-
-			if tc.expectedErrSubstr != "" {
-				test.AssertError(t, err, "profile construction should have failed")
-				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
-			} else {
-				test.AssertNotError(t, err, "profile construction should have succeeded")
-			}
-
-			if tc.expectedProfiles != nil {
-				test.AssertEquals(t, len(profiles), len(tc.expectedProfiles))
-			}
-
-			for _, expected := range tc.expectedProfiles {
-				_, ok := profiles[expected]
-				test.Assert(t, ok, fmt.Sprintf("expected profile %q not found", expected))
-			}
-		})
+	// Calling pickIssuer should never return one of the inactive issuers.
+	for range 20 {
+		issuer, err := ca.pickIssuer("modern", x509.ECDSA)
+		if err != nil {
+			t.Fatalf("pickIssuer(modern, ECDSA) = %s, but want success", err)
+		}
+		if strings.Contains(issuer.Name(), "E2") {
+			t.Errorf("pickIssuer(modern, ECDSA) = E2, but only want E1")
+		}
+	}
+	for range 20 {
+		issuer, err := ca.pickIssuer("modern", x509.RSA)
+		if err != nil {
+			t.Fatalf("pickIssuer(modern, RSA) = %s, but want success", err)
+		}
+		if strings.Contains(issuer.Name(), "R4") {
+			t.Errorf("pickIssuer(modern, RSA) = R4, but only want R3")
+		}
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -47,7 +46,7 @@ type Config struct {
 
 			// One of the profile names must match the value of ra.defaultProfileName
 			// or large amounts of issuance will fail.
-			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			CertProfiles map[string]issuance.ProfileConfig `validate:"required,dive,keys,alphanum,min=1,max=32,endkeys"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`
@@ -75,12 +74,6 @@ type Config struct {
 		// configurations.
 		MaxNames int `validate:"required,min=1,max=100"`
 
-		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
-		// Section 4.9.10, it MUST NOT be more than 10 days. Default 96h.
-		//
-		// Deprecated: TODO(#8345): Remove this.
-		LifespanOCSP config.Duration
-
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
@@ -88,17 +81,6 @@ type Config struct {
 		// The name is a carryover from when this config was shared between both
 		// OCSP and CRL audit log emission. Recommended to be around 4000.
 		OCSPLogMaxLength int
-
-		// Maximum period (in Go duration format) to wait to accumulate a max-length
-		// OCSP audit log line. We will emit a log line at least once per period,
-		// if there is anything to be logged. Keeping this low minimizes the risk
-		// of losing logs during a catastrophic failure. Making it too high
-		// means logging more often than necessary, which is inefficient in terms
-		// of bytes and log system resources.
-		// Recommended to be around 500ms.
-		//
-		// Deprecated: TODO(#8345): Remove this.
-		OCSPLogPeriod config.Duration
 
 		// CTLogListFile is the path to a JSON file on disk containing the set of
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
@@ -108,11 +90,7 @@ type Config struct {
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
 		DisableCertService bool
-		// DisableOCSPService causes the OCSPGenerator gRPC service to not start,
-		// preventing any OCSP responses from being issued.
-		//
-		// Deprecated: TODO(#8345): Remove this.
-		DisableOCSPService bool
+
 		// DisableCRLService causes the CRLGenerator gRPC service to not start,
 		// preventing any CRLs from being issued.
 		DisableCRLService bool
@@ -185,22 +163,36 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
+	profiles := make(map[string]*issuance.Profile)
+	for name, profileConfig := range c.CA.Issuance.CertProfiles {
+		profile, err := issuance.NewProfile(profileConfig)
+		cmd.FailOnError(err, "Loading profile")
+		profiles[name] = profile
+	}
+
 	clk := clock.New()
 	var crlShards int
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for i, issuerConfig := range c.CA.Issuance.Issuers {
-		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
-		cmd.FailOnError(err, "Loading issuer")
-		// All issuers should have the same number of CRL shards, because
-		// crl-updater assumes they all have the same number.
+		// Double check that all issuers have the same number of CRL shards, because
+		// crl-updater relies upon that invariant.
 		if issuerConfig.CRLShards != 0 && crlShards == 0 {
 			crlShards = issuerConfig.CRLShards
 		}
 		if issuerConfig.CRLShards != crlShards {
 			cmd.Fail(fmt.Sprintf("issuer %d has %d shards, want %d", i, issuerConfig.CRLShards, crlShards))
 		}
+		// Also check that all the profiles they list actually exist.
+		for _, profile := range issuerConfig.Profiles {
+			_, found := profiles[profile]
+			if !found {
+				cmd.Fail(fmt.Sprintf("issuer %d lists unrecognized profile %q", i, profile))
+			}
+		}
+
+		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
+		cmd.FailOnError(err, "Loading issuer")
 		issuers = append(issuers, issuer)
-		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}
 
 	if len(c.CA.Issuance.CertProfiles) == 0 {
@@ -245,7 +237,7 @@ func main() {
 			sctService,
 			pa,
 			issuers,
-			c.CA.Issuance.CertProfiles,
+			profiles,
 			serialPrefix,
 			c.CA.MaxNames,
 			kp,

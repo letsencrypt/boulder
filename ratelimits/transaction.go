@@ -1,13 +1,25 @@
 package ratelimits
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"strconv"
+	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -40,10 +52,9 @@ func newDomainOrCIDRBucketKey(name Name, domainOrCIDR string) string {
 	return joinWithColon(name.EnumString(), domainOrCIDR)
 }
 
-// NewRegIdIdentValueBucketKey returns a bucketKey for limits that use the
-// 'enum:regId:identValue' bucket key format. This function is exported for use
-// by the RA when resetting the account pausing limit.
-func NewRegIdIdentValueBucketKey(name Name, regId int64, orderIdent string) string {
+// newRegIdIdentValueBucketKey returns a bucketKey for limits that use the
+// 'enum:regId:identValue' bucket key format.
+func newRegIdIdentValueBucketKey(name Name, regId int64, orderIdent string) string {
 	return joinWithColon(name.EnumString(), strconv.FormatInt(regId, 10), orderIdent)
 }
 
@@ -65,6 +76,7 @@ func newFQDNSetBucketKey(name Name, orderIdents identifier.ACMEIdentifiers) stri
 //     bucket's capacity, but will never be spent/refunded.
 //   - spend-only: when only spend is true, spending is best-effort. Regardless
 //     of the bucket's capacity, the transaction will be considered "allowed".
+//   - reset-only: when reset is true, the bucket will be reset to full capacity.
 //   - allow-only: when neither check nor spend are true, the transaction will
 //     be considered "allowed" regardless of the bucket's capacity. This is
 //     useful for limits that are disabled.
@@ -77,21 +89,38 @@ type Transaction struct {
 	cost      int64
 	check     bool
 	spend     bool
+	reset     bool
 }
 
 func (txn Transaction) checkOnly() bool {
-	return txn.check && !txn.spend
+	return txn.check && !txn.spend && !txn.reset
 }
 
 func (txn Transaction) spendOnly() bool {
-	return txn.spend && !txn.check
+	return txn.spend && !txn.check && !txn.reset
 }
 
 func (txn Transaction) allowOnly() bool {
-	return !txn.check && !txn.spend
+	return !txn.check && !txn.spend && !txn.reset
+}
+
+func (txn Transaction) resetOnly() bool {
+	return txn.reset && !txn.check && !txn.spend
 }
 
 func validateTransaction(txn Transaction) (Transaction, error) {
+	if txn.limit == nil {
+		return Transaction{}, fmt.Errorf("invalid limit, must not be nil")
+	}
+	if txn.reset {
+		if txn.check || txn.spend {
+			return Transaction{}, fmt.Errorf("invalid reset transaction, check and spend must be false")
+		}
+		if txn.limit.Burst == 0 {
+			return Transaction{}, fmt.Errorf("invalid limit, burst must be > 0")
+		}
+		return txn, nil
+	}
 	if txn.cost < 0 {
 		return Transaction{}, ErrInvalidCost
 	}
@@ -137,6 +166,14 @@ func newSpendOnlyTransaction(limit *Limit, bucketKey string, cost int64) (Transa
 	})
 }
 
+func newResetTransaction(limit *Limit, bucketKey string) (Transaction, error) {
+	return validateTransaction(Transaction{
+		bucketKey: bucketKey,
+		limit:     limit,
+		reset:     true,
+	})
+}
+
 func newAllowOnlyTransaction() Transaction {
 	// Zero values are sufficient.
 	return Transaction{}
@@ -149,26 +186,152 @@ type TransactionBuilder struct {
 	*limitRegistry
 }
 
+func (builder *TransactionBuilder) Ready() bool {
+	return builder.limitRegistry.overridesLoaded
+}
+
+// GetOverridesFunc is used to pass in the sa.GetEnabledRateLimitOverrides
+// method to NewTransactionBuilderFromDatabase, rather than storing a full
+// sa.SQLStorageAuthority. This makes testing significantly simpler.
+type GetOverridesFunc func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error)
+
+// NewTransactionBuilderFromDatabase returns a new *TransactionBuilder. The
+// provided defaults path is expected to be a path to a YAML file that contains
+// the default limits. The provided overrides function is expected to be an SA's
+// GetEnabledRateLimitOverrides. Both are required.
+func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFunc, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
+	defaultsData, err := loadDefaultsFromFile(defaults)
+	if err != nil {
+		return nil, err
+	}
+
+	refresher := func(ctx context.Context, errorGauge prometheus.Gauge, logger blog.Logger) (Limits, error) {
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+
+		stream, err := overrides(ctx, &emptypb.Empty{})
+		if err != nil {
+			return nil, fmt.Errorf("fetching enabled overrides: %w", err)
+		}
+
+		overrides := make(Limits)
+		var errorCount float64
+		for {
+			r, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return nil, fmt.Errorf("reading overrides stream: %w", err)
+			}
+
+			limitName := Name(r.Override.LimitEnum)
+
+			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, limitName)
+			if err != nil {
+				logger.Errf("hydrating %s override with key %q: %v", limitName.String(), r.Override.BucketKey, err)
+				errorCount++
+				continue
+			}
+
+			newLimit := &Limit{
+				Burst:  r.Override.Burst,
+				Count:  r.Override.Count,
+				Period: config.Duration{Duration: r.Override.Period.AsDuration()},
+				Name:   limitName,
+				Comment: fmt.Sprintf("Last Updated: %s - %s",
+					r.UpdatedAt.AsTime().Format("2006-01-02"),
+					r.Override.Comment,
+				),
+				isOverride: true,
+			}
+
+			err = ValidateLimit(newLimit)
+			if err != nil {
+				logger.Errf("hydrating %s override with key %q: %v", newLimit.Name.String(), r.Override.BucketKey, err)
+				errorCount++
+				continue
+			}
+
+			overrides[bucketKey] = newLimit
+		}
+		errorGauge.Set(errorCount)
+		return overrides, nil
+	}
+
+	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
+}
+
 // NewTransactionBuilderFromFiles returns a new *TransactionBuilder. The
 // provided defaults and overrides paths are expected to be paths to YAML files
 // that contain the default and override limits, respectively. Overrides is
 // optional, defaults is required.
-func NewTransactionBuilderFromFiles(defaults, overrides string) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistryFromFiles(defaults, overrides)
+func NewTransactionBuilderFromFiles(defaults string, overrides string, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
+	defaultsData, err := loadDefaultsFromFile(defaults)
 	if err != nil {
 		return nil, err
 	}
-	return &TransactionBuilder{registry}, nil
+
+	if overrides == "" {
+		return NewTransactionBuilder(defaultsData, nil, stats, logger)
+	}
+
+	refresher := func(ctx context.Context, _ prometheus.Gauge, _ blog.Logger) (Limits, error) {
+		overridesData, err := loadOverridesFromFile(overrides)
+		if err != nil {
+			return nil, err
+		}
+		return parseOverrideLimits(overridesData)
+	}
+
+	return NewTransactionBuilder(defaultsData, refresher, stats, logger)
 }
 
-// NewTransactionBuilder returns a new *TransactionBuilder. The provided
-// defaults map is expected to contain default limit data. Overrides are not
-// supported. Defaults is required.
-func NewTransactionBuilder(defaults LimitConfigs) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistry(defaults, nil)
+// NewTransactionBuilder returns a new *TransactionBuilder. A defaults map is
+// required.
+func NewTransactionBuilder(defaultConfigs LimitConfigs, refresher OverridesRefresher, stats prometheus.Registerer, logger blog.Logger) (*TransactionBuilder, error) {
+	defaults, err := parseDefaultLimits(defaultConfigs)
 	if err != nil {
 		return nil, err
 	}
+
+	if refresher == nil {
+		refresher = func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error) {
+			return nil, nil
+		}
+	}
+
+	overridesTimestamp := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Namespace: "ratelimits",
+		Subsystem: "overrides",
+		Name:      "timestamp_seconds",
+		Help:      "A gauge with the last timestamp when overrides were successfully loaded",
+	})
+
+	overridesErrors := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Namespace: "ratelimits",
+		Subsystem: "overrides",
+		Name:      "errors",
+		Help:      "A gauge with the number of errors while last trying to load overrides",
+	})
+
+	overridesPerLimit := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "ratelimits",
+		Subsystem: "overrides",
+		Name:      "active",
+		Help:      "A gauge with the number of overrides, partitioned by rate limit",
+	}, []string{"limit"})
+
+	registry := &limitRegistry{
+		defaults:         defaults,
+		refreshOverrides: refresher,
+		logger:           logger,
+
+		overridesTimestamp: overridesTimestamp,
+		overridesErrors:    overridesErrors,
+		overridesPerLimit:  *overridesPerLimit,
+	}
+
 	return &TransactionBuilder{registry}, nil
 }
 
@@ -242,7 +405,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 	for _, ident := range orderIdents {
 		// FailedAuthorizationsPerDomainPerAccount limit uses the
 		// 'enum:regId:identValue' bucket key format for transactions.
-		perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident.Value)
+		perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident.Value)
 
 		// Add a check-only transaction for each per identValue per account
 		// bucket.
@@ -273,7 +436,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 
 	// FailedAuthorizationsPerDomainPerAccount limit uses the
 	// 'enum:regId:identValue' bucket key format for transactions.
-	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderIdent.Value)
+	perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderIdent.Value)
 	txn, err := newSpendOnlyTransaction(limit, perIdentValuePerAccountBucketKey, 1)
 	if err != nil {
 		return Transaction{}, err
@@ -300,7 +463,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 
 	// FailedAuthorizationsForPausingPerDomainPerAccount limit uses the
 	// 'enum:regId:identValue' bucket key format for transactions.
-	perIdentValuePerAccountBucketKey := NewRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
+	perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
 	txn, err := newTransaction(limit, perIdentValuePerAccountBucketKey, 1)
 	if err != nil {
 		return Transaction{}, err
@@ -352,7 +515,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerDomainOrCIDRBucketKey := NewRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
+			perAccountPerDomainOrCIDRBucketKey := newRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
 			// Add a check-only transaction for each per account per identValue
 			// bucket.
 			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRBucketKey, 1)
@@ -431,7 +594,7 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
-			perAccountPerDomainOrCIDRBucketKey := NewRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
+			perAccountPerDomainOrCIDRBucketKey := newRegIdIdentValueBucketKey(CertificatesPerDomainPerAccount, regId, ident)
 			// Add a spend-only transaction for each per account per
 			// domainOrCIDR bucket.
 			txn, err := newSpendOnlyTransaction(perAccountLimit, perAccountPerDomainOrCIDRBucketKey, 1)
@@ -571,6 +734,25 @@ func (builder *TransactionBuilder) NewAccountLimitTransactions(ip netip.Addr) ([
 		return nil, makeTxnError(err, NewRegistrationsPerIPv6Range)
 	}
 	return append(transactions, txn), nil
+}
+
+func (builder *TransactionBuilder) NewPausingResetTransactions(regId int64, orderIdent identifier.ACMEIdentifier) ([]Transaction, error) {
+	perAccountBucketKey := newRegIdBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId)
+	limit, err := builder.getLimit(FailedAuthorizationsForPausingPerDomainPerAccount, perAccountBucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return []Transaction{newAllowOnlyTransaction()}, nil
+		}
+		return nil, err
+	}
+
+	perIdentValuePerAccountBucketKey := newRegIdIdentValueBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
+	txn, err := newResetTransaction(limit, perIdentValuePerAccountBucketKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return []Transaction{txn}, nil
 }
 
 // LimitOverrideRequestsPerIPAddressTransaction returns a Transaction for the

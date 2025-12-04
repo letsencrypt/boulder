@@ -158,7 +158,7 @@ func TestOverridesImporterProcessTicketHappyPath(t *testing.T) {
 			expectCount:                1000,
 			expectPeriod:               7 * 24 * time.Hour,
 			expectOrgComment:           "Acme Corp",
-			expectLastCommentSubstring: "has been approved. Your new limit is 1000 per week",
+			expectLastCommentSubstring: "has been approved. Your new limit is 1000 per period",
 		},
 		{
 			name: "CertificatesPerDomain with valid Registered Domain",
@@ -175,7 +175,7 @@ func TestOverridesImporterProcessTicketHappyPath(t *testing.T) {
 			expectCount:                300,
 			expectPeriod:               7 * 24 * time.Hour,
 			expectOrgComment:           "Acme Corp",
-			expectLastCommentSubstring: "has been approved. Your new limit is 300 per week",
+			expectLastCommentSubstring: "has been approved. Your new limit is 300 per period",
 		},
 		{
 			name: "CertificatesPerDomain with valid IPv4 Address",
@@ -192,7 +192,7 @@ func TestOverridesImporterProcessTicketHappyPath(t *testing.T) {
 			expectCount:                300,
 			expectPeriod:               7 * 24 * time.Hour,
 			expectOrgComment:           "Acme Corp",
-			expectLastCommentSubstring: "has been approved. Your new limit is 300 per week",
+			expectLastCommentSubstring: "has been approved. Your new limit is 300 per period",
 		},
 		{
 			name: "CertificatesPerDomain with valid IPv6",
@@ -207,7 +207,7 @@ func TestOverridesImporterProcessTicketHappyPath(t *testing.T) {
 			expectTier:      300, expectBurst: 300, expectCount: 300,
 			expectPeriod:               7 * 24 * time.Hour,
 			expectOrgComment:           "Acme Corp",
-			expectLastCommentSubstring: "has been approved. Your new limit is 300 per week",
+			expectLastCommentSubstring: "has been approved. Your new limit is 300 per period",
 		},
 		{
 			name: "CertificatesPerDomainPerAccount with valid Account URI",
@@ -224,7 +224,7 @@ func TestOverridesImporterProcessTicketHappyPath(t *testing.T) {
 			expectCount:                300,
 			expectPeriod:               7 * 24 * time.Hour,
 			expectOrgComment:           "Acme Corp",
-			expectLastCommentSubstring: "has been approved. Your new limit is 300 per week",
+			expectLastCommentSubstring: "has been approved. Your new limit is 300 per period",
 		},
 	}
 

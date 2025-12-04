@@ -1,24 +1,35 @@
 package ratelimits
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
 	"testing"
 	"time"
 
+	io_prometheus_client "github.com/prometheus/client_model/go"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/mocks"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestNewTransactionBuilderFromFiles_WithBadLimitsPath(t *testing.T) {
 	t.Parallel()
-	_, err := NewTransactionBuilderFromFiles("testdata/does-not-exist.yml", "")
+	_, err := NewTransactionBuilderFromFiles("testdata/does-not-exist.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertError(t, err, "should error")
 
-	_, err = NewTransactionBuilderFromFiles("testdata/defaults.yml", "testdata/does-not-exist.yml")
+	_, err = NewTransactionBuilderFromFiles("testdata/defaults.yml", "testdata/does-not-exist.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertError(t, err, "should error")
 }
 
@@ -32,7 +43,7 @@ func sortTransactions(txns []Transaction) []Transaction {
 func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -45,7 +56,7 @@ func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -58,7 +69,7 @@ func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 func TestNewOrdersPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
@@ -71,8 +82,10 @@ func TestNewOrdersPerAccountTransactions(t *testing.T) {
 func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
 
 	// A check-only transaction for the default per-account limit.
 	txns, err := tb.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(123456789, identifier.NewDNSSlice([]string{"so.many.labels.here.example.com"}))
@@ -108,8 +121,10 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
 
 	// A transaction for the per-account limit override.
 	txn, err := tb.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(13371338, identifier.NewDNS("so.many.labels.here.example.com"))
@@ -122,7 +137,7 @@ func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testin
 func TestCertificatesPerDomainTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// One check-only transaction for the global limit.
@@ -143,8 +158,10 @@ func TestCertificatesPerDomainTransactions(t *testing.T) {
 func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "testdata/working_override_13371338.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
 
 	// We only expect a single check-only transaction for the per-account limit
 	// override. We can safely ignore the global limit when an override is
@@ -194,7 +211,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	t.Parallel()
 
-	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A single check-only transaction for the global limit.
@@ -206,6 +223,7 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	test.Assert(t, !txn.limit.isOverride, "should not be an override")
 }
 
+// NewTransactionBuilder's metrics are tested in TestLoadOverrides.
 func TestNewTransactionBuilder(t *testing.T) {
 	t.Parallel()
 
@@ -218,7 +236,7 @@ func TestNewTransactionBuilder(t *testing.T) {
 			Burst:  expectedBurst,
 			Count:  expectedCount,
 			Period: expectedPeriod},
-	})
+	}, nil, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	newRegDefault, ok := tb.limitRegistry.defaults[NewRegistrationsPerIPAddress.EnumString()]
@@ -226,4 +244,101 @@ func TestNewTransactionBuilder(t *testing.T) {
 	test.AssertEquals(t, newRegDefault.Burst, expectedBurst)
 	test.AssertEquals(t, newRegDefault.Count, expectedCount)
 	test.AssertEquals(t, newRegDefault.Period, expectedPeriod)
+}
+
+func TestNewTransactionBuilderFromDatabase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                 string
+		overrides            GetOverridesFunc
+		expectOverrides      map[string]Limit
+		expectError          string
+		expectLog            string
+		expectOverrideErrors float64
+	}{
+		{
+			name: "error fetching enabled overrides",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return nil, errors.New("lol no")
+			},
+			expectError: "fetching enabled overrides: lol no",
+		},
+		{
+			name: "empty results",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{}}, nil
+			},
+		},
+		{
+			name: "gRPC error",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Err: errors.New("i ate ur toast m8")}, nil
+			},
+			expectError: "reading overrides stream: i ate ur toast m8",
+		},
+		{
+			name: "2 valid overrides",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.com", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.net", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+				}}, nil
+			},
+			expectOverrides: map[string]Limit{
+				"example.com": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				"example.net": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+			},
+		},
+		{
+			name: "2 valid & 4 incomplete overrides",
+			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.com", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.net", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.com"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.net"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "worse-example.com"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "even-worse-example.xyz"}},
+				}}, nil
+			},
+			expectOverrides: map[string]Limit{
+				"example.com": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				"example.net": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+			},
+			expectLog:            "ERR: [AUDIT] hydrating CertificatesPerDomain override with key \"bad-example.com\": invalid burst '0', must be > 0",
+			expectOverrideErrors: 4,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockLog := blog.NewMock()
+			tb, err := NewTransactionBuilderFromDatabase("../test/config-next/ratelimit-defaults.yml", tc.overrides, metrics.NoopRegisterer, mockLog)
+			test.AssertNotError(t, err, "creating TransactionBuilder")
+			err = tb.limitRegistry.loadOverrides(context.Background())
+			if tc.expectError != "" {
+				if err == nil {
+					t.Errorf("expected error for test %q but got none", tc.name)
+				}
+				test.AssertContains(t, err.Error(), tc.expectError)
+			} else {
+				test.AssertNotError(t, err, tc.name)
+
+				if tc.expectLog != "" {
+					test.AssertSliceContains(t, mockLog.GetAll(), tc.expectLog)
+				}
+
+				for bucketKey, limit := range tc.expectOverrides {
+					test.AssertDeepEquals(t, tb.overrides[bucketKey], &limit)
+				}
+				test.AssertEquals(t, len(tb.overrides), len(tc.expectOverrides))
+
+				var iom io_prometheus_client.Metric
+				err = tb.limitRegistry.overridesErrors.Write(&iom)
+				test.AssertNotError(t, err, "encoding overridesErrors metric")
+				test.AssertEquals(t, iom.Gauge.GetValue(), tc.expectOverrideErrors)
+			}
+		})
+	}
 }

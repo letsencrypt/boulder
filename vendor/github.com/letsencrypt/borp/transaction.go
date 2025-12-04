@@ -51,6 +51,11 @@ func (t *Transaction) Select(ctx context.Context, i interface{}, query string, a
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return nil, err
+	}
+
 	return hookedselect(ctx, t.dbmap, t, i, query, args...)
 }
 
@@ -58,6 +63,11 @@ func (t *Transaction) Select(ctx context.Context, i interface{}, query string, a
 func (t *Transaction) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if t.dbmap.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return nil, err
 	}
 
 	if t.dbmap.logger != nil {
@@ -73,6 +83,11 @@ func (t *Transaction) SelectInt(ctx context.Context, query string, args ...inter
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return 0, err
+	}
+
 	return SelectInt(ctx, t, query, args...)
 }
 
@@ -80,6 +95,11 @@ func (t *Transaction) SelectInt(ctx context.Context, query string, args ...inter
 func (t *Transaction) SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error) {
 	if t.dbmap.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return sql.NullInt64{}, err
 	}
 
 	return SelectNullInt(ctx, t, query, args...)
@@ -91,6 +111,11 @@ func (t *Transaction) SelectFloat(ctx context.Context, query string, args ...int
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return 0, err
+	}
+
 	return SelectFloat(ctx, t, query, args...)
 }
 
@@ -98,6 +123,11 @@ func (t *Transaction) SelectFloat(ctx context.Context, query string, args ...int
 func (t *Transaction) SelectNullFloat(ctx context.Context, query string, args ...interface{}) (sql.NullFloat64, error) {
 	if t.dbmap.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return sql.NullFloat64{}, err
 	}
 
 	return SelectNullFloat(ctx, t, query, args...)
@@ -109,6 +139,11 @@ func (t *Transaction) SelectStr(ctx context.Context, query string, args ...inter
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return "", err
+	}
+
 	return SelectStr(ctx, t, query, args...)
 }
 
@@ -118,6 +153,11 @@ func (t *Transaction) SelectNullStr(ctx context.Context, query string, args ...i
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return sql.NullString{}, err
+	}
+
 	return SelectNullStr(ctx, t, query, args...)
 }
 
@@ -125,6 +165,11 @@ func (t *Transaction) SelectNullStr(ctx context.Context, query string, args ...i
 func (t *Transaction) SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error {
 	if t.dbmap.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return err
 	}
 
 	return SelectOne(ctx, t.dbmap, t, holder, query, args...)
@@ -211,6 +256,11 @@ func (t *Transaction) QueryRowContext(ctx context.Context, query string, args ..
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return nil
+	}
+
 	if t.dbmap.logger != nil {
 		now := time.Now()
 		defer t.dbmap.trace(now, query, args...)
@@ -221,6 +271,11 @@ func (t *Transaction) QueryRowContext(ctx context.Context, query string, args ..
 func (t *Transaction) QueryContext(ctx context.Context, q string, args ...interface{}) (*sql.Rows, error) {
 	if t.dbmap.ExpandSliceArgs {
 		expandSliceArgs(&q, args...)
+	}
+
+	args, err := t.dbmap.convertArgs(args...)
+	if err != nil {
+		return nil, err
 	}
 
 	if t.dbmap.logger != nil {

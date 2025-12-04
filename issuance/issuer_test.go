@@ -22,12 +22,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func defaultProfileConfig() *ProfileConfig {
-	return &ProfileConfig{
-		AllowMustStaple:              true,
-		IncludeCRLDistributionPoints: true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
-		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
+func defaultProfileConfig() ProfileConfig {
+	return ProfileConfig{
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
 			// Ignore the two SCT lints because these tests don't get SCTs.
 			"w_ct_sct_policy_count_unsatisfied",
@@ -45,6 +43,7 @@ func defaultIssuerConfig() IssuerConfig {
 		IssuerURL:  "http://issuer-url.example.org",
 		CRLURLBase: "http://crl-url.example.org/",
 		CRLShards:  10,
+		Profiles:   []string{"modern"},
 	}
 }
 

@@ -126,27 +126,28 @@ Would your organization consider financially supporting Let's Encrypt as a Spons
 		forms.NewCheckboxField(
 			"Subscriber Agreement",
 			subscriberAgreementFieldName,
-			`I acknowledge that I have read and agree to the latest version of the
-<a href="https://letsencrypt.org/repository">Let's Encrypt Subscriber Agreement</a>
-and understand that my use of Let's Encrypt services is subject to its terms.`,
+			`I acknowledge that I have read and agree to the latest version of the 
+<a href="https://letsencrypt.org/repository" target="_blank">Let's Encrypt 
+Subscriber Agreement</a> and understand that my use of Let's Encrypt services is 
+subject to its terms.`,
 			true,
 		),
 		forms.NewCheckboxField(
 			"Privacy Policy",
 			privacyPolicyFieldName,
-			`By submitting this form, I acknowledge that the information provided will be
-processed in accordance with <a href="https://letsencrypt.org/privacy">Let's
-Encrypt's Privacy Policy</a>. I understand that ISRG collects and will process
-this information to evaluate your rate limit override request and to provide
-certificate issuance and management services. In addition, depending on your
-responses to questions below, ISRG may use this information to send email
-updates and sponsorship information to you.`,
+			`By submitting this form, I acknowledge that the information provided
+will be processed in accordance with <a href="https://letsencrypt.org/privacy" 
+target="_blank">Let's Encrypt's Privacy Policy</a>. I understand that ISRG collects 
+and will process this information to evaluate my rate limit override request and to 
+provide certificate issuance and management services. In addition, depending on my 
+responses to questions below, ISRG may use this information to send me email updates 
+and sponsorship information.`,
 			true,
 		),
 		forms.NewCheckboxField(
 			"Mailing List",
 			mailingListFieldName,
-			"Subscribe to email updates about Let's Encrypt and other ISRG Projects.",
+			"I’d like to receive email updates about Let's Encrypt and other ISRG projects.",
 			false,
 		),
 		forms.NewTextareaField(
@@ -721,15 +722,27 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
-	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
+	if sfe.ee != nil && validFields[mailingListFieldName] == "true" {
 		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
-			sfe.log.Errf("failed to send contact to email service: %s", err)
+			sfe.log.Errf("sending contact to email-exporter: %s", err)
 		}
 	}
 
-	// TODO(#8362): If FundraisingFieldName value is true, use the Salesforce
-	// API to create a new Lead record with the provided information.
+	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
+		_, err := sfe.ee.SendCase(r.Context(), &emailpb.SendCaseRequest{
+			Origin:        "Web",
+			Subject:       fmt.Sprintf("%s rate limit override request for %s", req.RateLimit, validFields[OrganizationFieldName]),
+			ContactEmail:  validFields[emailAddressFieldName],
+			Organization:  validFields[OrganizationFieldName],
+			RateLimitName: req.RateLimit,
+			RateLimitTier: validFields[TierFieldName],
+			UseCase:       validFields[useCaseFieldName],
+		})
+		if err != nil {
+			sfe.log.Errf("sending case to email-exporter: %s", err)
+		}
+	}
 
 	if overrideRequestHandled {
 		sfe.log.Infof("automatically approved override request for %s", validFields[OrganizationFieldName])

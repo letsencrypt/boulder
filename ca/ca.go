@@ -14,12 +14,14 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
+	"slices"
 
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -69,15 +71,6 @@ type issuanceEventResult struct {
 	Certificate    string `json:",omitempty"`
 }
 
-// Two maps of keys to Issuers. Lookup by PublicKeyAlgorithm is useful for
-// determining the set of issuers which can sign a given (pre)cert, based on its
-// PublicKeyAlgorithm. Lookup by NameID is useful for looking up a specific
-// issuer based on the issuer of a given (pre)certificate.
-type issuerMaps struct {
-	byAlg    map[x509.PublicKeyAlgorithm][]*issuance.Issuer
-	byNameID map[issuance.NameID]*issuance.Issuer
-}
-
 // caMetrics holds various metrics which are shared between caImpl and crlImpl.
 type caMetrics struct {
 	signatureCount *prometheus.CounterVec
@@ -87,34 +80,25 @@ type caMetrics struct {
 }
 
 func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
-	signatureCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "signatures",
-			Help: "Number of signatures",
-		},
-		[]string{"purpose", "issuer"})
-	stats.MustRegister(signatureCount)
+	signatureCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "signatures",
+		Help: "Number of signatures",
+	}, []string{"purpose", "issuer"})
 
-	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+	signErrorCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "signature_errors",
 		Help: "A counter of signature errors labelled by error type",
 	}, []string{"type"})
-	stats.MustRegister(signErrorCount)
 
-	lintErrorCount := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "lint_errors",
-			Help: "Number of issuances that were halted by linting errors",
-		})
-	stats.MustRegister(lintErrorCount)
+	lintErrorCount := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "lint_errors",
+		Help: "Number of issuances that were halted by linting errors",
+	})
 
-	certificates := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "certificates",
-			Help: "Number of certificates issued",
-		},
-		[]string{"profile"})
-	stats.MustRegister(certificates)
+	certificates := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "certificates",
+		Help: "Number of certificates issued",
+	}, []string{"profile"})
 
 	return &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificates}
 }
@@ -129,11 +113,11 @@ func (m *caMetrics) noteSignError(err error) {
 // certificateAuthorityImpl represents a CA that signs certificates.
 type certificateAuthorityImpl struct {
 	capb.UnsafeCertificateAuthorityServer
-	sa           sapb.StorageAuthorityCertificateClient
-	sctClient    rapb.SCTProviderClient
-	pa           core.PolicyAuthority
-	issuers      issuerMaps
-	certProfiles map[string]*issuance.Profile
+	sa        sapb.StorageAuthorityCertificateClient
+	sctClient rapb.SCTProviderClient
+	pa        core.PolicyAuthority
+	issuers   []*issuance.Issuer
+	profiles  map[string]*issuance.Profile
 
 	// The prefix is prepended to the serial number.
 	prefix    byte
@@ -147,60 +131,14 @@ type certificateAuthorityImpl struct {
 
 var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
 
-// makeIssuerMaps processes a list of issuers into a set of maps for easy
-// lookup either by key algorithm (useful for picking an issuer for a precert)
-// or by unique ID (useful for final certs and CRLs). If two issuers with
-// the same unique ID are encountered, an error is returned.
-func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
-	issuersByAlg := make(map[x509.PublicKeyAlgorithm][]*issuance.Issuer, 2)
-	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
-	for _, issuer := range issuers {
-		if _, found := issuersByNameID[issuer.NameID()]; found {
-			return issuerMaps{}, fmt.Errorf("two issuers with same NameID %d (%s) configured", issuer.NameID(), issuer.Name())
-		}
-		issuersByNameID[issuer.NameID()] = issuer
-		if issuer.IsActive() {
-			issuersByAlg[issuer.KeyType()] = append(issuersByAlg[issuer.KeyType()], issuer)
-		}
-	}
-	if i, ok := issuersByAlg[x509.ECDSA]; !ok || len(i) == 0 {
-		return issuerMaps{}, errors.New("no ECDSA issuers configured")
-	}
-	if i, ok := issuersByAlg[x509.RSA]; !ok || len(i) == 0 {
-		return issuerMaps{}, errors.New("no RSA issuers configured")
-	}
-	return issuerMaps{issuersByAlg, issuersByNameID}, nil
-}
-
-// makeCertificateProfilesMap processes a set of named certificate issuance
-// profile configs into a map from name to profile.
-func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfig) (map[string]*issuance.Profile, error) {
-	if len(profiles) <= 0 {
-		return nil, fmt.Errorf("must pass at least one certificate profile")
-	}
-
-	profilesByName := make(map[string]*issuance.Profile, len(profiles))
-
-	for name, profileConfig := range profiles {
-		profile, err := issuance.NewProfile(profileConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		profilesByName[name] = profile
-	}
-
-	return profilesByName, nil
-}
-
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
 // from any number of issuance.Issuers and for any number of profiles.
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	sctService rapb.SCTProviderClient,
 	pa core.PolicyAuthority,
-	boulderIssuers []*issuance.Issuer,
-	certificateProfiles map[string]*issuance.ProfileConfig,
+	issuers []*issuance.Issuer,
+	profiles map[string]*issuance.Profile,
 	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
@@ -212,33 +150,57 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
 	}
 
-	if len(boulderIssuers) == 0 {
+	if len(issuers) == 0 {
 		return nil, errors.New("must have at least one issuer")
 	}
 
-	certProfiles, err := makeCertificateProfilesMap(certificateProfiles)
-	if err != nil {
-		return nil, err
+	if len(profiles) == 0 {
+		return nil, errors.New("must have at least one certificate profile")
 	}
 
-	issuers, err := makeIssuerMaps(boulderIssuers)
-	if err != nil {
-		return nil, err
+	issuableKeys := make(map[x509.PublicKeyAlgorithm]bool)
+	issuableProfiles := make(map[string]bool)
+	for _, issuer := range issuers {
+		if issuer.IsActive() && len(issuer.Profiles()) == 0 {
+			return nil, fmt.Errorf("issuer %q is active but has no profiles", issuer.Name())
+		}
+
+		for _, profile := range issuer.Profiles() {
+			_, ok := profiles[profile]
+			if !ok {
+				return nil, fmt.Errorf("issuer %q lists profile %q, which is not configured", issuer.Name(), profile)
+			}
+			issuableProfiles[profile] = true
+		}
+
+		issuableKeys[issuer.KeyType()] = true
+	}
+
+	for profile := range profiles {
+		if !issuableProfiles[profile] {
+			return nil, fmt.Errorf("profile %q configured, but no issuer lists it", profile)
+		}
+	}
+
+	for _, keyAlg := range []x509.PublicKeyAlgorithm{x509.ECDSA, x509.RSA} {
+		if !issuableKeys[keyAlg] {
+			return nil, fmt.Errorf("no %s issuers configured", keyAlg)
+		}
 	}
 
 	return &certificateAuthorityImpl{
-		sa:           sa,
-		sctClient:    sctService,
-		pa:           pa,
-		issuers:      issuers,
-		certProfiles: certProfiles,
-		prefix:       serialPrefix,
-		maxNames:     maxNames,
-		keyPolicy:    keyPolicy,
-		log:          logger,
-		metrics:      metrics,
-		tracer:       otel.GetTracerProvider().Tracer("github.com/letsencrypt/boulder/ca"),
-		clk:          clk,
+		sa:        sa,
+		sctClient: sctService,
+		pa:        pa,
+		issuers:   issuers,
+		profiles:  profiles,
+		prefix:    serialPrefix,
+		maxNames:  maxNames,
+		keyPolicy: keyPolicy,
+		log:       logger,
+		metrics:   metrics,
+		tracer:    otel.GetTracerProvider().Tracer("github.com/letsencrypt/boulder/ca"),
+		clk:       clk,
 	}, nil
 }
 
@@ -265,7 +227,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, errors.New("IssueCertificate called with a nil SCT service")
 	}
 
-	profile, ok := ca.certProfiles[req.CertProfileName]
+	profile, ok := ca.profiles[req.CertProfileName]
 	if !ok {
 		return nil, fmt.Errorf("incapable of using a profile named %q", req.CertProfileName)
 	}
@@ -282,7 +244,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, err
 	}
 
-	issuer, err := ca.pickIssuer(csr.PublicKeyAlgorithm)
+	issuer, err := ca.pickIssuer(req.CertProfileName, csr.PublicKeyAlgorithm)
 	if err != nil {
 		return nil, err
 	}
@@ -496,13 +458,25 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 }
 
 // pickIssuer returns an issuer which is willing to issue certificates for the
-// given public key algorithm. If no such issuer exists, it returns
+// given profile and public key algorithm. If no such issuer exists, it returns
 // an error. If multiple such issuers exist, it selects one at random.
-func (ca *certificateAuthorityImpl) pickIssuer(keyAlg x509.PublicKeyAlgorithm) (*issuance.Issuer, error) {
-	pool, ok := ca.issuers.byAlg[keyAlg]
+func (ca *certificateAuthorityImpl) pickIssuer(profileName string, keyAlg x509.PublicKeyAlgorithm) (*issuance.Issuer, error) {
+	var pool []*issuance.Issuer
+	for _, issuer := range ca.issuers {
+		if !issuer.IsActive() {
+			continue
+		}
+		if issuer.KeyType() != keyAlg {
+			continue
+		}
+		if !slices.Contains(issuer.Profiles(), profileName) {
+			continue
+		}
+		pool = append(pool, issuer)
+	}
 
-	if !ok || len(pool) == 0 {
-		return nil, fmt.Errorf("no issuer found for key algorithm %s", keyAlg)
+	if len(pool) == 0 {
+		return nil, fmt.Errorf("no issuer found for profile %q and key algorithm %s", profileName, keyAlg)
 	}
 
 	return pool[mrand.IntN(len(pool))], nil

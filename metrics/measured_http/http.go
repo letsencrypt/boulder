@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -50,22 +51,15 @@ type MeasuredHandler struct {
 }
 
 func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelhttp.Option) http.Handler {
-	responseTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "response_time",
-			Help: "Time taken to respond to a request",
-		},
-		[]string{"endpoint", "method", "code"})
-	stats.MustRegister(responseTime)
+	responseTime := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "response_time",
+		Help: "Time taken to respond to a request",
+	}, []string{"endpoint", "method", "code"})
 
-	inFlightRequestsGauge := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "in_flight_requests",
-			Help: "Tracks the number of WFE requests currently in flight, labeled by endpoint.",
-		},
-		[]string{"endpoint"},
-	)
-	stats.MustRegister(inFlightRequestsGauge)
+	inFlightRequestsGauge := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "in_flight_requests",
+		Help: "Tracks the number of WFE requests currently in flight, labeled by endpoint.",
+	}, []string{"endpoint"})
 
 	return otelhttp.NewHandler(&MeasuredHandler{
 		serveMux:              m,

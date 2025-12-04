@@ -121,7 +121,7 @@ func TestWellFormedIdentifiers(t *testing.T) {
 		// Three hyphens starting at second char of first label.
 		{identifier.NewDNS(`h---test.hk2yz.org`), errInvalidRLDH},
 		{identifier.NewDNS(`co.uk`), errICANNTLD},
-		{identifier.NewDNS(`foo.bd`), errICANNTLD},
+		{identifier.NewDNS(`foo.er`), errICANNTLD},
 
 		// IP oopsies
 
@@ -184,6 +184,9 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewIP(netip.MustParseAddr(`64.112.117.66`)),
 		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:666::1`)),
 		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:666::1%lo`)),
+		identifier.NewIP(netip.MustParseAddr(`ff00::1`)),
+		identifier.NewIP(netip.MustParseAddr(`ff10::1`)),
+		identifier.NewIP(netip.MustParseAddr(`ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff`)),
 	}
 	blocklistContents := []string{
 		`website2.com`,
@@ -202,7 +205,9 @@ func TestWillingToIssue(t *testing.T) {
 	}
 	adminBlockedPrefixesContents := []string{
 		`64.112.117.66/32`,
+		`224.0.0.0/4`,
 		`2602:80a:6000:666::/64`,
+		`ff00::/8`,
 	}
 
 	shouldBeAccepted := identifier.ACMEIdentifiers{

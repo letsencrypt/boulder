@@ -112,43 +112,44 @@ docker compose up
 To run our standard battery of tests (lints, unit, integration):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh
+./t.sh
 ```
 
 To run all unit tests:
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --unit
+./t.sh -u
 ```
 
 To run specific unit tests (example is of the ./va directory):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --unit --filter=./va
+./t.sh -u -p ./va
 ```
 
 To run all integration tests:
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --integration
+./t.sh -i
 ```
 
 To run unit tests and integration tests with coverage:
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --unit --integration --coverage --coverage-dir=./test/coverage/mytestrun
+./t.sh -ui -c --coverage-dir=./test/coverage/mytestrun
 ```
 
 To run specific integration tests (example runs TestGenerateValidity and TestWFECORS):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --filter TestGenerateValidity/TestWFECORS
+./t.sh -i -f TestGenerateValidity/TestWFECORS
 ```
 
-To get a list of available integration tests:
+To do any of the above, but using the "config-next" configuration, which
+represents a likely future state (e.g. including new feature flags):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --list-integration-tests
+./tn.sh -your -options -here
 ```
 
 The configuration in docker-compose.yml mounts your boulder checkout at
@@ -186,7 +187,13 @@ docker compose run --use-aliases -e FAKE_DNS=172.17.0.1 --service-ports boulder 
 
 Running tests without the `./test.sh` wrapper:
 
-Run all unit tests
+Run unit tests locally, without docker (only works for some directories):
+
+```shell
+go test ./issuance/...
+```
+
+Run all unit tests:
 
 ```shell
 docker compose run --use-aliases boulder go test -p 1 ./...

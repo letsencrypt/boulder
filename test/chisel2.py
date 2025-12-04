@@ -99,13 +99,13 @@ def get_chall(authz, typ):
 def get_any_supported_chall(authz):
     """
     Return the first supported challenge from the given authorization.
-    Supports HTTP01, DNS01, and TLSALPN01 challenges.
+    Supports HTTP01 and DNS01.
 
     Note: DNS-ACCOUNT-01 challenge type is excluded from the list of supported
     challenge types until the Python ACME library adds support for it.
     """
     for chall_body in authz.body.challenges:
-        if isinstance(chall_body.chall, (challenges.HTTP01, challenges.DNS01, challenges.TLSALPN01)):
+        if isinstance(chall_body.chall, (challenges.HTTP01, challenges.DNS01)):
             return chall_body
     raise Exception("No supported challenge types found in authorization")
 
@@ -137,8 +137,6 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
         cleanup = do_http_challenges(client, authzs)
     elif chall_type == "dns-01":
         cleanup = do_dns_challenges(client, authzs)
-    elif chall_type == "tls-alpn-01":
-        cleanup = do_tlsalpn_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
@@ -197,19 +195,6 @@ def do_http_challenges(client, authzs):
         # the tokens we added.
         for token in cleanup_tokens:
             challSrv.remove_http01_response(token)
-    return cleanup
-
-def do_tlsalpn_challenges(client, authzs):
-    cleanup_hosts = []
-    for a in authzs:
-        c = get_chall(a, challenges.TLSALPN01)
-        name, value = (a.body.identifier.value, c.key_authorization(client.net.key))
-        cleanup_hosts.append(name)
-        challSrv.add_tlsalpn01_response(name, value)
-        client.answer_challenge(c, c.response(client.net.key))
-    def cleanup():
-        for host in cleanup_hosts:
-            challSrv.remove_tlsalpn01_response(host)
     return cleanup
 
 def expect_problem(problem_type, func):

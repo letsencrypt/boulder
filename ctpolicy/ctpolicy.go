@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -36,23 +37,15 @@ type CTPolicy struct {
 
 // New creates a new CTPolicy struct
 func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List, finalLogs loglist.List, stagger time.Duration, log blog.Logger, stats prometheus.Registerer) *CTPolicy {
-	winnerCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "sct_winner",
-			Help: "Counter of logs which are selected for sct submission, by log URL and result (succeeded or failed).",
-		},
-		[]string{"url", "result"},
-	)
-	stats.MustRegister(winnerCounter)
+	winnerCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "sct_winner",
+		Help: "Counter of logs which are selected for sct submission, by log URL and result (succeeded or failed).",
+	}, []string{"url", "result"})
 
-	shardExpiryGauge := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ct_shard_expiration_seconds",
-			Help: "CT shard end_exclusive field expressed as Unix epoch time, by operator and logID.",
-		},
-		[]string{"operator", "logID"},
-	)
-	stats.MustRegister(shardExpiryGauge)
+	shardExpiryGauge := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ct_shard_expiration_seconds",
+		Help: "CT shard end_exclusive field expressed as Unix epoch time, by operator and logID.",
+	}, []string{"operator", "logID"})
 
 	for _, log := range sctLogs {
 		if log.EndExclusive.IsZero() {
@@ -61,6 +54,12 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		} else {
 			shardExpiryGauge.WithLabelValues(log.Operator, log.Name).Set(float64(log.EndExclusive.Unix()))
 		}
+	}
+
+	// Stagger must be positive for time.Ticker.
+	// Default to the relatively safe value of 1 second.
+	if stagger <= 0 {
+		stagger = time.Second
 	}
 
 	return &CTPolicy{
@@ -81,6 +80,22 @@ type result struct {
 	err error
 }
 
+// getOne obtains an SCT (or error), and returns it in resChan
+func (ctp *CTPolicy) getOne(ctx context.Context, cert core.CertDER, l loglist.Log, resChan chan result) {
+	sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
+		LogURL:       l.Url,
+		LogPublicKey: base64.StdEncoding.EncodeToString(l.Key),
+		Der:          cert,
+		Kind:         pubpb.SubmissionType_sct,
+	})
+	if err != nil {
+		resChan <- result{log: l, err: fmt.Errorf("ct submission to %q (%q) failed: %w", l.Name, l.Url, err)}
+		return
+	}
+
+	resChan <- result{log: l, sct: sct.Sct}
+}
+
 // GetSCTs retrieves exactly two SCTs from the total collection of configured
 // log groups, with at most one SCT coming from each group. It expects that all
 // logs run by a single operator (e.g. Google) are in the same group, to
@@ -93,69 +108,67 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// This closure will be called in parallel once for each log.
-	getOne := func(i int, l loglist.Log) ([]byte, error) {
-		// Sleep a little bit to stagger our requests to the later logs. Use `i-1`
-		// to compute the stagger duration so that the first two logs (indices 0
-		// and 1) get negative or zero (i.e. instant) sleep durations. If the
-		// context gets cancelled (most likely because we got enough SCTs from other
-		// logs already) before the sleep is complete, quit instead.
-		select {
-		case <-subCtx.Done():
-			return nil, subCtx.Err()
-		case <-time.After(time.Duration(i-1) * ctp.stagger):
-		}
-
-		sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
-			LogURL:       l.Url,
-			LogPublicKey: base64.StdEncoding.EncodeToString(l.Key),
-			Der:          cert,
-			Kind:         pubpb.SubmissionType_sct,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("ct submission to %q (%q) failed: %w", l.Name, l.Url, err)
-		}
-
-		return sct.Sct, nil
-	}
-
 	// Identify the set of candidate logs whose temporal interval includes this
 	// cert's expiry. Randomize the order of the logs so that we're not always
 	// trying to submit to the same two.
 	logs := ctp.sctLogs.ForTime(expiration).Permute()
+	if len(logs) < 2 {
+		return nil, berrors.MissingSCTsError("Insufficient CT logs available (%d)", len(logs))
+	}
 
-	// Kick off a collection of goroutines to try to submit the precert to each
-	// log. Ensure that the results channel has a buffer equal to the number of
+	// Ensure that the results channel has a buffer equal to the number of
 	// goroutines we're kicking off, so that they're all guaranteed to be able to
 	// write to it and exit without blocking and leaking.
 	resChan := make(chan result, len(logs))
-	for i, log := range logs {
-		go func(i int, l loglist.Log) {
-			sctDER, err := getOne(i, l)
-			resChan <- result{log: l, sct: sctDER, err: err}
-		}(i, log)
+
+	// Kick off first two submissions
+	nextLog := 0
+	for ; nextLog < 2; nextLog++ {
+		go ctp.getOne(subCtx, cert, logs[nextLog], resChan)
 	}
 
 	go ctp.submitPrecertInformational(cert, expiration)
 
-	// Finally, collect SCTs and/or errors from our results channel. We know that
-	// we can collect len(logs) results from the channel because every goroutine
-	// is guaranteed to write one result (either sct or error) to the channel.
+	// staggerTicker will be used to start a new submission each stagger interval
+	staggerTicker := time.NewTicker(ctp.stagger)
+	defer staggerTicker.Stop()
+
+	// Collect SCTs and errors out of the results channels into these slices.
 	results := make([]result, 0)
 	errs := make([]string, 0)
-	for range len(logs) {
-		res := <-resChan
-		if res.err != nil {
-			errs = append(errs, res.err.Error())
-			ctp.winnerCounter.WithLabelValues(res.log.Url, failed).Inc()
-			continue
-		}
-		results = append(results, res)
-		ctp.winnerCounter.WithLabelValues(res.log.Url, succeeded).Inc()
 
-		scts := compliantSet(results)
-		if scts != nil {
-			return scts, nil
+loop:
+	for {
+		select {
+		case <-staggerTicker.C:
+			// Each tick from the staggerTicker, we start submitting to another log
+			if nextLog >= len(logs) {
+				// Unless we have run out of logs to submit to, so don't need to tick anymore
+				staggerTicker.Stop()
+				continue
+			}
+			go ctp.getOne(subCtx, cert, logs[nextLog], resChan)
+			nextLog++
+		case res := <-resChan:
+			if res.err != nil {
+				errs = append(errs, res.err.Error())
+				ctp.winnerCounter.WithLabelValues(res.log.Url, failed).Inc()
+			} else {
+				results = append(results, res)
+				ctp.winnerCounter.WithLabelValues(res.log.Url, succeeded).Inc()
+
+				scts := compliantSet(results)
+				if scts != nil {
+					return scts, nil
+				}
+			}
+
+			// We can collect len(logs) results from the channel as every goroutine is
+			// guaranteed to write one result (either sct or error) to the channel.
+			if len(results)+len(errs) >= len(logs) {
+				// We have an error or result from every log, but didn't find a compliant set
+				break loop
+			}
 		}
 	}
 

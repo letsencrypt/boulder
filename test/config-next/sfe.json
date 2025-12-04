@@ -28,6 +28,39 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
+		"limiter": {
+			"redis": {
+				"username": "boulder",
+				"passwordFile": "test/secrets/redis_password",
+				"lookups": [
+					{
+						"Service": "redisratelimits",
+						"Domain": "service.consul"
+					}
+				],
+				"lookupDNSAuthority": "consul.service.consul",
+				"readTimeout": "250ms",
+				"writeTimeout": "250ms",
+				"poolSize": 100,
+				"routeRandomly": true,
+				"tls": {
+					"caCertFile": "test/certs/ipki/minica.pem",
+					"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
+				}
+			},
+			"Defaults": "test/config-next/sfe-ratelimit-defaults.yml"
+		},
+		"emailExporter": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "email-exporter",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "email-exporter.boulder"
+		},
 		"unpauseHMACKey": {
 			"keyFile": "test/secrets/sfe_unpause_key"
 		},

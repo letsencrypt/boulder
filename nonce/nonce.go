@@ -29,9 +29,11 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	berrors "github.com/letsencrypt/boulder/errors"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
@@ -63,6 +65,7 @@ func DerivePrefix(grpcAddr string, key []byte) string {
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
+	noncepb.UnsafeNonceServiceServer
 	mu               sync.Mutex
 	latest           int64
 	earliest         int64
@@ -73,7 +76,9 @@ type NonceService struct {
 	prefix           string
 	nonceCreates     prometheus.Counter
 	nonceEarliest    prometheus.Gauge
+	nonceLatest      prometheus.Gauge
 	nonceRedeems     *prometheus.CounterVec
+	nonceAges        *prometheus.HistogramVec
 	nonceHeapLatency prometheus.Histogram
 }
 
@@ -133,26 +138,31 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		maxUsed = defaultMaxUsed
 	}
 
-	nonceCreates := prometheus.NewCounter(prometheus.CounterOpts{
+	nonceCreates := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "nonce_creates",
 		Help: "A counter of nonces generated",
 	})
-	stats.MustRegister(nonceCreates)
-	nonceEarliest := prometheus.NewGauge(prometheus.GaugeOpts{
+	nonceEarliest := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
 		Name: "nonce_earliest",
 		Help: "A gauge with the current earliest valid nonce value",
 	})
-	stats.MustRegister(nonceEarliest)
-	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
+	nonceLatest := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "nonce_latest",
+		Help: "A gauge with the current latest valid nonce value",
+	})
+	nonceRedeems := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
 	}, []string{"result", "error"})
-	stats.MustRegister(nonceRedeems)
-	nonceHeapLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
+	nonceAges := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "nonce_ages",
+		Help:    "A histogram of nonce ages at the time they were (attempted to be) redeemed, expressed as fractions of the valid nonce window",
+		Buckets: []float64{-0.01, 0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.1, 1.2, 1.5, 2, 5},
+	}, []string{"result"})
+	nonceHeapLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
 		Name: "nonce_heap_latency",
 		Help: "A histogram of latencies of heap pop operations",
 	})
-	stats.MustRegister(nonceHeapLatency)
 
 	return &NonceService{
 		earliest:         0,
@@ -164,7 +174,9 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		prefix:           prefix,
 		nonceCreates:     nonceCreates,
 		nonceEarliest:    nonceEarliest,
+		nonceLatest:      nonceLatest,
 		nonceRedeems:     nonceRedeems,
+		nonceAges:        nonceAges,
 		nonceHeapLatency: nonceHeapLatency,
 	}, nil
 }
@@ -232,40 +244,53 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	return ctr.Int64(), nil
 }
 
-// Nonce provides a new Nonce.
-func (ns *NonceService) Nonce() (string, error) {
+// nonce provides a new Nonce.
+func (ns *NonceService) nonce() (string, error) {
 	ns.mu.Lock()
 	ns.latest++
 	latest := ns.latest
 	ns.mu.Unlock()
-	defer ns.nonceCreates.Inc()
+	ns.nonceCreates.Inc()
+	ns.nonceLatest.Set(float64(latest))
 	return ns.encrypt(latest)
 }
 
-// Valid determines whether the provided Nonce string is valid, returning
+// valid determines whether the provided Nonce string is valid, returning
 // true if so.
-func (ns *NonceService) Valid(nonce string) bool {
+func (ns *NonceService) valid(nonce string) error {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
 		ns.nonceRedeems.WithLabelValues("invalid", "decrypt").Inc()
-		return false
+		return berrors.BadNonceError("unable to decrypt nonce: %s", err)
 	}
 
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
-	if c > ns.latest {
+
+	// age represents how "far back" in the valid nonce window this nonce is.
+	// If it is very recent, then the numerator is very small and the age is close
+	// to zero. If it is old but still valid, the numerator is slightly smaller
+	// than the denominator, and the age is close to one. If it is too old, then
+	// the age is greater than one. If it is magically too new (i.e. greater than
+	// the largest nonce we've actually handed out), then the age is negative.
+	age := float64(ns.latest-c) / float64(ns.latest-ns.earliest)
+
+	if c > ns.latest { // i.e. age < 0
 		ns.nonceRedeems.WithLabelValues("invalid", "too high").Inc()
-		return false
+		ns.nonceAges.WithLabelValues("invalid").Observe(age)
+		return berrors.BadNonceError("nonce greater than highest dispensed nonce: %d > %d", c, ns.latest)
 	}
 
-	if c <= ns.earliest {
+	if c <= ns.earliest { // i.e. age >= 1
 		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
-		return false
+		ns.nonceAges.WithLabelValues("invalid").Observe(age)
+		return berrors.BadNonceError("nonce less than lowest eligible nonce: %d < %d", c, ns.earliest)
 	}
 
 	if ns.used[c] {
 		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
-		return false
+		ns.nonceAges.WithLabelValues("invalid").Observe(age)
+		return berrors.BadNonceError("nonce already marked as used: %d in [%d]used", c, len(ns.used))
 	}
 
 	ns.used[c] = true
@@ -279,7 +304,8 @@ func (ns *NonceService) Valid(nonce string) bool {
 	}
 
 	ns.nonceRedeems.WithLabelValues("valid", "").Inc()
-	return true
+	ns.nonceAges.WithLabelValues("valid").Observe(age)
+	return nil
 }
 
 // splitNonce splits a nonce into a prefix and a body.
@@ -290,27 +316,18 @@ func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
 	return nonce[:PrefixLen], nonce[PrefixLen:], nil
 }
 
-// NewServer returns a new Server, wrapping a NonceService.
-func NewServer(inner *NonceService) *Server {
-	return &Server{inner: inner}
-}
-
-// Server implements the gRPC nonce service.
-type Server struct {
-	noncepb.UnsafeNonceServiceServer
-	inner *NonceService
-}
-
-var _ noncepb.NonceServiceServer = (*Server)(nil)
-
 // Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
-func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
+func (ns *NonceService) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
+	err := ns.valid(msg.Nonce)
+	if err != nil {
+		return nil, err
+	}
+	return &noncepb.ValidMessage{Valid: true}, nil
 }
 
 // Nonce generates a nonce and sends it to a gRPC client.
-func (ns *Server) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
-	nonce, err := ns.inner.Nonce()
+func (ns *NonceService) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
+	nonce, err := ns.nonce()
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/groupcache/lru"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type EmailCache struct {
@@ -16,10 +17,9 @@ type EmailCache struct {
 }
 
 func NewHashedEmailCache(maxEntries int, stats prometheus.Registerer) *EmailCache {
-	requests := prometheus.NewCounterVec(prometheus.CounterOpts{
+	requests := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "email_cache_requests",
 	}, []string{"status"})
-	stats.MustRegister(requests)
 
 	return &EmailCache{
 		cache:    lru.New(maxEntries),

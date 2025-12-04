@@ -151,9 +151,9 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 		status,
 		expiredStatus,
 		fc.Now(),
-		time.Time{},
+		time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 		0,
-		time.Time{},
+		time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
@@ -247,7 +247,7 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertNotError(t, err, "findUnrevoked failed")
 	test.AssertEquals(t, len(rows), 1)
 	test.AssertEquals(t, rows[0].Serial, "ff")
-	test.AssertEquals(t, rows[0].RegistrationID, int64(1))
+	test.AssertEquals(t, rows[0].RegistrationID, regID)
 	test.AssertByteEquals(t, rows[0].DER, []byte{1, 2, 3})
 
 	bkr.maxRevocations = 0
@@ -276,9 +276,10 @@ func TestRevokeCerts(t *testing.T) {
 	fc := clock.NewFake()
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{
-		dbMap:    dbMap,
-		raClient: mr,
-		clk:      fc,
+		dbMap:        dbMap,
+		raClient:     mr,
+		clk:          fc,
+		certsRevoked: prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
 
 	err = bkr.revokeCerts([]unrevokedCertificate{
@@ -305,6 +306,7 @@ func TestCertificateAbsent(t *testing.T) {
 		logger:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
+		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
 	}
 
 	// populate DB with all the test data
@@ -345,6 +347,8 @@ func TestInvoke(t *testing.T) {
 		logger:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
+		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
+		certsRevoked:              prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
 
 	// populate DB with all the test data
@@ -363,7 +367,7 @@ func TestInvoke(t *testing.T) {
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 	test.AssertEquals(t, mr.revoked, 4)
-	test.AssertMetricWithLabelsEquals(t, keysToProcess, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, bkr.keysToProcess, prometheus.Labels{}, 1)
 
 	var checked struct {
 		ExtantCertificatesChecked bool
@@ -411,6 +415,8 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 		logger:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
+		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
+		certsRevoked:              prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
 
 	// populate DB with all the test data

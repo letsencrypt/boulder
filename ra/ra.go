@@ -21,6 +21,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -103,12 +104,18 @@ type RegistrationAuthorityImpl struct {
 	inflightFinalizes       prometheus.Gauge
 	certCSRMismatch         prometheus.Counter
 	pauseCounter            *prometheus.CounterVec
-	// TODO(#8177): Remove once the rate of requests failing to finalize due to
-	// requesting Must-Staple has diminished.
-	mustStapleRequestsCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
+
+// Health implements our grpc.checker interface. This method will be called
+// periodically to set the gRPC service's healthpb.Health.Check() status.
+func (ra *RegistrationAuthorityImpl) Health(ctx context.Context) error {
+	if ra.txnBuilder.Ready() {
+		return nil
+	}
+	return errors.New("waiting for overrides")
+}
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(
@@ -126,7 +133,7 @@ func NewRegistrationAuthorityImpl(
 	ctp *ctpolicy.CTPolicy,
 	issuers []*issuance.Certificate,
 ) *RegistrationAuthorityImpl {
-	ctpolicyResults := prometheus.NewHistogramVec(
+	ctpolicyResults := promauto.With(stats).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ctpolicy_results",
 			Help:    "Histogram of latencies of ctpolicy.GetSCTs calls with success/failure/deadlineExceeded labels",
@@ -134,46 +141,36 @@ func NewRegistrationAuthorityImpl(
 		},
 		[]string{"result"},
 	)
-	stats.MustRegister(ctpolicyResults)
 
-	namesPerCert := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "names_per_cert",
-			Help: "Histogram of the number of SANs in requested and issued certificates",
-			// The namesPerCert buckets are chosen based on the current Let's Encrypt
-			// limit of 100 SANs per certificate.
-			Buckets: []float64{1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
-		},
-		// Type label value is either "requested" or "issued".
-		[]string{"type"},
-	)
-	stats.MustRegister(namesPerCert)
+	namesPerCert := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "names_per_cert",
+		Help: "Histogram of the number of SANs in requested and issued certificates",
+		// The namesPerCert buckets are chosen based on the current Let's Encrypt
+		// limit of 100 SANs per certificate.
+		Buckets: []float64{1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
+	}, []string{"type"})
 
-	newRegCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	newRegCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "new_registrations",
 		Help: "A counter of new registrations",
 	})
-	stats.MustRegister(newRegCounter)
 
-	recheckCAACounter := prometheus.NewCounter(prometheus.CounterOpts{
+	recheckCAACounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "recheck_caa",
 		Help: "A counter of CAA rechecks",
 	})
-	stats.MustRegister(recheckCAACounter)
 
-	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	newCertCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "new_certificates",
 		Help: "A counter of issued certificates",
 	})
-	stats.MustRegister(newCertCounter)
 
-	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	revocationReasonCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "revocation_reason",
 		Help: "A counter of certificate revocation reasons",
 	}, []string{"reason"})
-	stats.MustRegister(revocationReasonCounter)
 
-	authzAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	authzAges := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "authz_ages",
 		Help: "Histogram of ages, in seconds, of Authorization objects, labelled by method and type",
 		// authzAges keeps track of how old, in seconds, authorizations are when
@@ -185,9 +182,8 @@ func NewRegistrationAuthorityImpl(
 		// days, 30 days, +inf (should be empty).
 		Buckets: []float64{0.000000001, 1, 60, 3600, 25200, 86400, 172800, 604800, 2592000, 7776000},
 	}, []string{"method", "type"})
-	stats.MustRegister(authzAges)
 
-	orderAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	orderAges := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "order_ages",
 		Help: "Histogram of ages, in seconds, of Order objects when they're reused and finalized, labelled by method",
 		// Orders currently have a max age of 7 days (168hrs), so our buckets
@@ -195,31 +191,21 @@ func NewRegistrationAuthorityImpl(
 		// minutes, 1 hour, 7 hours (our CAA reuse time), 1 day, 2 days, 7 days, +inf.
 		Buckets: []float64{0.000000001, 1, 10, 60, 600, 3600, 25200, 86400, 172800, 604800},
 	}, []string{"method"})
-	stats.MustRegister(orderAges)
 
-	inflightFinalizes := prometheus.NewGauge(prometheus.GaugeOpts{
+	inflightFinalizes := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
 		Name: "inflight_finalizes",
 		Help: "Gauge of the number of current asynchronous finalize goroutines",
 	})
-	stats.MustRegister(inflightFinalizes)
 
-	certCSRMismatch := prometheus.NewCounter(prometheus.CounterOpts{
+	certCSRMismatch := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "cert_csr_mismatch",
 		Help: "Number of issued certificates that have failed ra.matchesCSR for any reason. This is _real bad_ and should be alerted upon.",
 	})
-	stats.MustRegister(certCSRMismatch)
 
-	pauseCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	pauseCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "paused_pairs",
 		Help: "Number of times a pause operation is performed, labeled by paused=[bool], repaused=[bool], grace=[bool]",
 	}, []string{"paused", "repaused", "grace"})
-	stats.MustRegister(pauseCounter)
-
-	mustStapleRequestsCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "must_staple_requests",
-		Help: "Number of times a must-staple request is made, labeled by allowlist=[allowed|denied]",
-	}, []string{"allowlist"})
-	stats.MustRegister(mustStapleRequestsCounter)
 
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
@@ -227,29 +213,28 @@ func NewRegistrationAuthorityImpl(
 	}
 
 	ra := &RegistrationAuthorityImpl{
-		clk:                       clk,
-		log:                       logger,
-		profiles:                  profiles,
-		maxContactsPerReg:         maxContactsPerReg,
-		keyPolicy:                 keyPolicy,
-		limiter:                   limiter,
-		txnBuilder:                txnBuilder,
-		publisher:                 pubc,
-		finalizeTimeout:           finalizeTimeout,
-		ctpolicy:                  ctp,
-		ctpolicyResults:           ctpolicyResults,
-		issuersByNameID:           issuersByNameID,
-		namesPerCert:              namesPerCert,
-		newRegCounter:             newRegCounter,
-		recheckCAACounter:         recheckCAACounter,
-		newCertCounter:            newCertCounter,
-		revocationReasonCounter:   revocationReasonCounter,
-		authzAges:                 authzAges,
-		orderAges:                 orderAges,
-		inflightFinalizes:         inflightFinalizes,
-		certCSRMismatch:           certCSRMismatch,
-		pauseCounter:              pauseCounter,
-		mustStapleRequestsCounter: mustStapleRequestsCounter,
+		clk:                     clk,
+		log:                     logger,
+		profiles:                profiles,
+		maxContactsPerReg:       maxContactsPerReg,
+		keyPolicy:               keyPolicy,
+		limiter:                 limiter,
+		txnBuilder:              txnBuilder,
+		publisher:               pubc,
+		finalizeTimeout:         finalizeTimeout,
+		ctpolicy:                ctp,
+		ctpolicyResults:         ctpolicyResults,
+		issuersByNameID:         issuersByNameID,
+		namesPerCert:            namesPerCert,
+		newRegCounter:           newRegCounter,
+		recheckCAACounter:       recheckCAACounter,
+		newCertCounter:          newCertCounter,
+		revocationReasonCounter: revocationReasonCounter,
+		authzAges:               authzAges,
+		orderAges:               orderAges,
+		inflightFinalizes:       inflightFinalizes,
+		certCSRMismatch:         certCSRMismatch,
+		pauseCounter:            pauseCounter,
 	}
 	return ra
 }
@@ -1080,7 +1065,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	}
 
 	if containsMustStaple(csr.Extensions) {
-		ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
 		return nil, berrors.UnauthorizedError(
 			"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
 		)
@@ -1454,8 +1438,13 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
 // There is no reason to surface errors from this function to the Subscriber.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
-	bucketKey := ratelimits.NewRegIdIdentValueBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
-	err := ra.limiter.Reset(ctx, bucketKey)
+	txns, err := ra.txnBuilder.NewPausingResetTransactions(regId, ident)
+	if err != nil {
+		ra.log.Warningf("building reset transaction for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
+		return
+	}
+
+	err = ra.limiter.BatchReset(ctx, txns)
 	if err != nil {
 		ra.log.Warningf("resetting bucket for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}
@@ -1493,7 +1482,6 @@ func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq 
 func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ctx context.Context,
 	req *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
-
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
@@ -2211,24 +2199,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	authzExpiryCutoff := ra.clk.Now().Add(minTimeToExpiry)
 
-	var existingAuthz *sapb.Authorizations
-	if features.Get().NoPendingAuthzReuse {
-		getAuthReq := &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: req.RegistrationID,
-			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			Identifiers:    idents.ToProtoSlice(),
-			Profile:        req.CertificateProfileName,
-		}
-		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
-	} else {
-		getAuthReq := &sapb.GetAuthorizationsRequest{
-			RegistrationID: req.RegistrationID,
-			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			Identifiers:    idents.ToProtoSlice(),
-			Profile:        req.CertificateProfileName,
-		}
-		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
-	}
+	existingAuthz, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		RegistrationID: req.RegistrationID,
+		ValidUntil:     timestamppb.New(authzExpiryCutoff),
+		Identifiers:    idents.ToProtoSlice(),
+		Profile:        req.CertificateProfileName,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -148,8 +148,8 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 	sfe.templatePages = minimalTemplates(t)
 	_, client := createFakeZendeskClientServer(t)
 	sfe.zendeskClient = client
-	mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
-	sfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+	mockImpl := mocks.NewMockSalesforceClientImpl()
+	sfe.ee = mocks.NewMockExporterImpl(mockImpl)
 
 	// Submit valid JSON with no rateLimit field.
 	rec := httptest.NewRecorder()
@@ -187,6 +187,9 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 	if len(mockImpl.GetCreatedContacts()) != 0 {
 		t.Errorf("PardotClient.SendContact called unexpectedly")
 	}
+	if len(mockImpl.GetCreatedCases()) != 0 {
+		t.Errorf("PardotClient.SendCase called unexpectedly")
+	}
 }
 
 func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
@@ -201,7 +204,7 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 	testBase := map[string]string{
 		subscriberAgreementFieldName: "true",
 		privacyPolicyFieldName:       "true",
-		mailingListFieldName:         "false",
+		mailingListFieldName:         "true",
 		fundraisingFieldName:         FundraisingOptions[0],
 		emailAddressFieldName:        "foo@bar.co",
 		OrganizationFieldName:        "Big Host Inc.",
@@ -279,8 +282,8 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
-			sfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+			mockImpl := mocks.NewMockSalesforceClientImpl()
+			sfe.ee = mocks.NewMockExporterImpl(mockImpl)
 
 			iterationBase := map[string]string{}
 			maps.Copy(iterationBase, testBase)
@@ -324,6 +327,9 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 			}
 			if len(mockImpl.GetCreatedContacts()) != 1 {
 				t.Errorf("PardotClient.SendContact not called exactly once")
+			}
+			if len(mockImpl.GetCreatedCases()) != 1 {
+				t.Errorf("PardotClient.SendCase not called exactly once")
 			}
 		})
 	}

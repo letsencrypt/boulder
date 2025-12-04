@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/jmhodges/clock"
@@ -149,15 +150,13 @@ type IssuerConfig struct {
 	Active bool
 
 	// Profiles is the list of profiles for which this issuer is willing to issue.
-	// For the moment, this does nothing, and exists only for deployability.
-	// TODO(#8390): Make this field required for active issuers.
-	Profiles []string `validate:"omitempty,dive,alphanum,min=1,max=32"`
+	// The names listed here must match the names of configured profiles (see
+	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's
+	// ProfileConfig). Can be empty if the issuer is not Active.
+	Profiles []string `validate:"required_if=Active true,dive,alphanum,min=1,max=32"`
 
 	IssuerURL  string `validate:"required,url"`
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
-
-	// TODO(#8177): Remove this.
-	OCSPURL string `validate:"omitempty,url"`
 
 	// Number of CRL shards. Must be positive, but can be 1 for no sharding.
 	CRLShards int `validate:"required,min=1"`
@@ -204,6 +203,10 @@ type Issuer struct {
 
 	crlShards int
 
+	// profiles is a list of the names of profiles that this issuer is willing to
+	// issue for.
+	profiles []string
+
 	clk clock.Clock
 }
 
@@ -231,10 +234,10 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	}
 
 	if config.IssuerURL == "" {
-		return nil, errors.New("Issuer URL is required")
+		return nil, errors.New("issuer URL is required")
 	}
 	if config.CRLURLBase == "" {
-		return nil, errors.New("CRL URL base is required")
+		return nil, errors.New("crlURLBase is required")
 	}
 	if !strings.HasPrefix(config.CRLURLBase, "http://") {
 		return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
@@ -243,7 +246,7 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
 	}
 	if config.CRLShards <= 0 {
-		return nil, errors.New("Number of CRL shards is required")
+		return nil, errors.New("number of CRL shards is required")
 	}
 
 	// We require that all of our issuers be capable of both issuing certs and
@@ -256,6 +259,11 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	}
 	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
 		return nil, errors.New("end-entity signing cert does not have keyUsage digitalSignature")
+	}
+
+	// If the issuer is active, it must have at least one profile configured.
+	if config.Active && len(config.Profiles) == 0 {
+		return nil, errors.New("active issuers must have at least one profile")
 	}
 
 	lintSigner, err := linter.New(cert.Certificate, signer)
@@ -273,6 +281,7 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		issuerURL:  config.IssuerURL,
 		crlURLBase: config.CRLURLBase,
 		crlShards:  config.CRLShards,
+		profiles:   config.Profiles,
 		clk:        clk,
 	}
 	return i, nil
@@ -299,6 +308,11 @@ func (i *Issuer) Name() string {
 // NameID provides the NameID of the issuer's certificate.
 func (i *Issuer) NameID() NameID {
 	return i.Cert.NameID()
+}
+
+// Profiles returns the set of profiles that this issuer can issue for.
+func (i *Issuer) Profiles() []string {
+	return slices.Clone(i.profiles)
 }
 
 // LoadIssuer constructs a new Issuer, loading its certificate from disk and its

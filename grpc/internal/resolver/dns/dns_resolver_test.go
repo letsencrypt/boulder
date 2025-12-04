@@ -48,7 +48,6 @@ func TestMain(m *testing.M) {
 }
 
 const (
-	txtBytesLimit           = 255
 	defaultTestTimeout      = 10 * time.Second
 	defaultTestShortTimeout = 10 * time.Millisecond
 )

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -39,10 +40,11 @@ type ExporterImpl struct {
 
 	maxConcurrentRequests int
 	limiter               *rate.Limiter
-	client                PardotClient
+	client                SalesforceClient
 	emailCache            *EmailCache
 	emailsHandledCounter  prometheus.Counter
 	pardotErrorCounter    prometheus.Counter
+	caseErrorCounter      prometheus.Counter
 	log                   blog.Logger
 }
 
@@ -55,20 +57,23 @@ var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 // is assigned 40% (20,000 requests), it should also receive 40% of the max
 // concurrent requests (e.g., 2 out of 5). For more details, see:
 // https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-func NewExporterImpl(client PardotClient, cache *EmailCache, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit float64, maxConcurrentRequests int, stats prometheus.Registerer, logger blog.Logger) *ExporterImpl {
 	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
 
-	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	emailsHandledCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_emails_handled",
 		Help: "Total number of emails handled by the email exporter",
 	})
-	scope.MustRegister(emailsHandledCounter)
 
-	pardotErrorCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	pardotErrorCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_errors",
 		Help: "Total number of Pardot API errors encountered by the email exporter",
 	})
-	scope.MustRegister(pardotErrorCounter)
+
+	caseErrorCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "email_exporter_case_errors",
+		Help: "Total number of errors encountered when sending Cases to the Salesforce REST API",
+	})
 
 	impl := &ExporterImpl{
 		maxConcurrentRequests: maxConcurrentRequests,
@@ -78,11 +83,14 @@ func NewExporterImpl(client PardotClient, cache *EmailCache, perDayLimit float64
 		emailCache:            cache,
 		emailsHandledCounter:  emailsHandledCounter,
 		pardotErrorCounter:    pardotErrorCounter,
+		caseErrorCounter:      caseErrorCounter,
 		log:                   logger,
 	}
 	impl.wake = sync.NewCond(&impl.Mutex)
 
-	queueGauge := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+	// This metric doesn't need to be part of impl, since it computes itself
+	// each time it is scraped.
+	promauto.With(stats).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "email_exporter_queue_length",
 		Help: "Current length of the email export queue",
 	}, func() float64 {
@@ -90,7 +98,6 @@ func NewExporterImpl(client PardotClient, cache *EmailCache, perDayLimit float64
 		defer impl.Unlock()
 		return float64(len(impl.toSend))
 	})
-	scope.MustRegister(queueGauge)
 
 	return impl
 }
@@ -112,6 +119,33 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 	impl.toSend = append(impl.toSend, req.Emails...)
 	// Wake waiting workers to process the new emails.
 	impl.wake.Broadcast()
+
+	return &emptypb.Empty{}, nil
+}
+
+// SendCase immediately submits a new Case to the Salesforce REST API using the
+// provided details. Any retries are handled internally by the SalesforceClient.
+// The following fields are required: Origin, Subject, ContactEmail.
+func (impl *ExporterImpl) SendCase(ctx context.Context, req *emailpb.SendCaseRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req, req.Origin, req.Subject, req.ContactEmail) {
+		return nil, berrors.InternalServerError("incomplete gRPC request message")
+	}
+
+	err := impl.client.SendCase(Case{
+		Origin:        req.Origin,
+		Subject:       req.Subject,
+		Description:   req.Description,
+		ContactEmail:  req.ContactEmail,
+		Organization:  req.Organization,
+		AccountId:     req.AccountId,
+		RateLimitName: req.RateLimitName,
+		RateLimitTier: req.RateLimitTier,
+		UseCase:       req.UseCase,
+	})
+	if err != nil {
+		impl.caseErrorCounter.Inc()
+		return nil, berrors.InternalServerError("sending Case to the Salesforce REST API: %s", err)
+	}
 
 	return &emptypb.Empty{}, nil
 }

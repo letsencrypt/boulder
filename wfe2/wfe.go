@@ -71,6 +71,7 @@ const (
 	getCertPath     = "/get/cert/"
 	getCertInfoPath = "/get/certinfo/"
 	buildIDPath     = "/build"
+	healthzPath     = "/healthz"
 )
 
 const (
@@ -425,6 +426,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, getCertInfoPath, wfe.CertificateInfo, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
+	wfe.HandleFunc(m, healthzPath, wfe.Healthz, "GET")
 
 	// Endpoint for draft-ietf-acme-ari
 	if features.Get().ServeRenewalInfo {
@@ -768,7 +770,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 			return
 		}
-		prepAccountForDisplay(&acct)
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 		if err != nil {
@@ -894,8 +895,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
-
-	prepAccountForDisplay(&acct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
 	if err != nil {
@@ -1197,24 +1196,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 }
 
-// prepAccountForDisplay takes a core.Registration and mutates it to be ready
-// for display in a JSON response. Primarily it papers over legacy ACME v1
-// features or non-standard details internal to Boulder we don't want clients to
-// rely on.
-func prepAccountForDisplay(acct *core.Registration) {
-	// Zero out the account ID so that it isn't marshalled. RFC 8555 specifies
-	// using the Location header for learning the account ID.
-	acct.ID = 0
-
-	// We populate the account Agreement field when creating a new response to
-	// track which terms-of-service URL was in effect when an account with
-	// "termsOfServiceAgreed":"true" is created. That said, we don't want to send
-	// this value back to a V2 client. The "Agreement" field of an
-	// account/registration is a V1 notion so we strip it here in the WFE2 before
-	// returning the account.
-	acct.Agreement = ""
-}
-
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
 // the client by filling in its URL field and clearing several unnecessary
 // fields.
@@ -1431,8 +1412,6 @@ func (wfe *WebFrontEndImpl) Account(
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
-
-	prepAccountForDisplay(acct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 	if err != nil {
@@ -1824,6 +1803,31 @@ func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEv
 	}
 }
 
+type WfeHealthzResponse struct {
+	Details string
+}
+
+// Healthz tells the requester whether we're ready to serve requests.
+func (wfe *WebFrontEndImpl) Healthz(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	status := http.StatusOK
+	details := "OK"
+
+	if !wfe.txnBuilder.Ready() {
+		status = http.StatusServiceUnavailable
+		details = "waiting for overrides"
+	}
+
+	jsonResponse, err := json.Marshal(WfeHealthzResponse{Details: details})
+	if err != nil {
+		wfe.log.Warningf("Could not marshal healthz response: %s", err)
+	}
+
+	err = wfe.writeJsonResponse(response, logEvent, status, jsonResponse)
+	if err != nil {
+		wfe.log.Warningf("Could not write response: %s", err)
+	}
+}
+
 // Options responds to an HTTP OPTIONS request.
 func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.Request, methodsStr string, methodsMap map[string]bool) {
 	// Every OPTIONS request gets an Allow header with a list of supported methods.
@@ -1994,7 +1998,6 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling proto to registration"), err)
 		return
 	}
-	prepAccountForDisplay(&updatedAcct)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -24,16 +25,12 @@ type RedisSource struct {
 // NewRedisSource returns a new Redis backed source using the provided
 // *redis.Ring client.
 func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Registerer) *RedisSource {
-	latency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "ratelimits_latency",
-			Help: "Histogram of Redis call latencies labeled by call=[set|get|delete|ping] and result=[success|error]",
-			// Exponential buckets ranging from 0.0005s to 3s.
-			Buckets: prometheus.ExponentialBucketsRange(0.0005, 3, 8),
-		},
-		[]string{"call", "result"},
-	)
-	stats.MustRegister(latency)
+	latency := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ratelimits_latency",
+		Help: "Histogram of Redis call latencies labeled by call=[set|get|delete|ping] and result=[success|error]",
+		// Exponential buckets ranging from 0.0005s to 3s.
+		Buckets: prometheus.ExponentialBucketsRange(0.0005, 3, 8),
+	}, []string{"call", "result"})
 
 	return &RedisSource{
 		client:  client,
@@ -230,12 +227,12 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 	return tats, nil
 }
 
-// Delete deletes the TAT at the specified bucketKey ('name:id'). A nil return
-// value does not indicate that the bucketKey existed.
-func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
+// BatchDelete deletes the TATs at the specified bucketKeys ('name:id'). A nil
+// return value does not indicate that the bucketKeys existed.
+func (r *RedisSource) BatchDelete(ctx context.Context, bucketKeys []string) error {
 	start := r.clk.Now()
 
-	err := r.client.Del(ctx, bucketKey).Err()
+	err := r.client.Del(ctx, bucketKeys...).Err()
 	if err != nil {
 		r.observeLatency("delete", r.clk.Since(start), err)
 		return err

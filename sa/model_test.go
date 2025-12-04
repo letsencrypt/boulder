@@ -309,6 +309,7 @@ func insertCertificate(ctx context.Context, dbMap *db.WrappedMap, fc clock.FakeC
 	}
 	cert := &core.Certificate{
 		RegistrationID: regID,
+		Issued:         fc.Now(),
 		Serial:         serialString,
 		Expires:        template.NotAfter,
 		DER:            certDer,

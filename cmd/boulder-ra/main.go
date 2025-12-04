@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 
@@ -44,9 +45,6 @@ type Config struct {
 		CAService        *cmd.GRPCClientConfig
 		PublisherService *cmd.GRPCClientConfig
 
-		// Deprecated: TODO(#8345): Remove this.
-		AkamaiPurgerService *cmd.GRPCClientConfig
-
 		// Deprecated: TODO(#8349): Remove this when removing the corresponding
 		// service from the CA.
 		OCSPService *cmd.GRPCClientConfig
@@ -69,13 +67,17 @@ type Config struct {
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
-			// this field is not set, all requesters will be subject to the
-			// default rate limits. Overrides passed in this file must be
-			// identical to those in the WFE.
+			// neither this field nor OverridesFromDB is set, all requesters
+			// will be subject to the default rate limits. Overrides passed in
+			// this file must be identical to those in the WFE.
 			//
 			// Note: At this time, only the Failed Authorizations overrides are
 			// necessary in the RA.
 			Overrides string
+
+			// OverridesFromDB causes the WFE and RA to retrieve rate limit overrides
+			// from the database, instead of from a file.
+			OverridesFromDB bool
 		}
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
@@ -99,15 +101,6 @@ type Config struct {
 		// configured in the CA or finalization will fail for orders using this
 		// default.
 		DefaultProfileName string `validate:"required"`
-
-		// MustStapleAllowList specified the path to a YAML file containing a
-		// list of account IDs permitted to request certificates with the OCSP
-		// Must-Staple extension.
-		//
-		// Deprecated: This field no longer has any effect, all Must-Staple requests
-		// are rejected.
-		// TODO(#8345): Remove this field.
-		MustStapleAllowList string `validate:"omitempty"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -271,8 +264,21 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, scope)
 		limiter, err = ratelimits.NewLimiter(clk, source, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides)
+		if c.RA.Limiter.OverridesFromDB {
+			if c.RA.Limiter.Overrides != "" {
+				cmd.Fail("OverridesFromDB and an overrides file were both defined, but are mutually exclusive")
+			}
+			saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, scope, logger)
+		} else {
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, scope, logger)
+		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+
+		// The 30 minute period here must be kept in sync with the promise
+		// (successCommentBody) made to requesters in sfe/overridesimporter.go
+		overrideRefresherShutdown := txnBuilder.NewRefresher(30 * time.Minute)
+		defer overrideRefresherShutdown()
 	}
 
 	rai := ra.NewRegistrationAuthorityImpl(

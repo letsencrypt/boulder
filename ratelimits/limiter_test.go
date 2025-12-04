@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -32,8 +33,11 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:64.112.117.1' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
-	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml")
+	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "should not error")
+	err = c.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
+
 	return c
 }
 
@@ -53,6 +57,14 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 		"inmem": newInmemTestLimiter(t, clk),
 		"redis": newRedisTestLimiter(t, clk),
 	}, newTestTransactionBuilder(t), clk, randIP.String()
+}
+
+func resetBucket(t *testing.T, l *Limiter, ctx context.Context, limit *Limit, bucketKey string) {
+	t.Helper()
+	txn, err := newResetTransaction(limit, bucketKey)
+	test.AssertNotError(t, err, "txn should be valid")
+	err = l.BatchReset(ctx, []Transaction{txn})
+	test.AssertNotError(t, err, "should not error")
 }
 
 func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
@@ -149,10 +161,8 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, overriddenBucketKey)
-			test.AssertNotError(t, err, "should not error")
-			err = l.Reset(testCtx, normalBucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, overriddenLimit, overriddenBucketKey)
+			resetBucket(t, l, testCtx, normalLimit, normalBucketKey)
 
 			// Spend the same bucket but in a batch with a Transaction that is
 			// check-only. This should succeed, but the decision should reflect
@@ -234,8 +244,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, overriddenBucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, overriddenLimit, overriddenBucketKey)
 		})
 	}
 }
@@ -274,8 +283,7 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.retryIn, time.Duration(0))
 
 			// Reset our bucket.
-			err = l.Reset(testCtx, bucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, limit, bucketKey)
 
 			// Similar to above, but we'll use Spend() to actually initialize
 			// the bucket. Spend should return the same result as Check.
@@ -396,8 +404,7 @@ func TestLimiter_RefundAndReset(t *testing.T) {
 			test.AssertEquals(t, d.remaining, int64(0))
 			test.AssertEquals(t, d.resetIn, time.Second)
 
-			err = l.Reset(testCtx, bucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, limit, bucketKey)
 
 			// Attempt to spend 20 more requests, this should succeed.
 			d, err = l.Spend(testCtx, txn20)

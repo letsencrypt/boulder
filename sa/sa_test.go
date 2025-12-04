@@ -134,7 +134,7 @@ func createWorkingRegistration(t testing.TB, sa *SQLStorageAuthority) *corepb.Re
 	return reg
 }
 
-func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, ident identifier.ACMEIdentifier, exp time.Time) int64 {
+func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, regID int64, ident identifier.ACMEIdentifier, exp time.Time) int64 {
 	t.Helper()
 
 	tokenStr := core.NewToken()
@@ -144,7 +144,7 @@ func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, ident ide
 	am := authzModel{
 		IdentifierType:  identifierTypeToUint[string(ident.Type)],
 		IdentifierValue: ident.Value,
-		RegistrationID:  1,
+		RegistrationID:  regID,
 		Status:          statusToUint[core.StatusPending],
 		Expires:         exp,
 		Challenges:      1 << challTypeToUint[string(core.ChallengeTypeHTTP01)],
@@ -157,10 +157,10 @@ func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, ident ide
 	return am.ID
 }
 
-func createFinalizedAuthorization(t *testing.T, sa *SQLStorageAuthority, ident identifier.ACMEIdentifier, exp time.Time,
+func createFinalizedAuthorization(t *testing.T, sa *SQLStorageAuthority, regID int64, ident identifier.ACMEIdentifier, exp time.Time,
 	status string, attemptedAt time.Time) int64 {
 	t.Helper()
-	pendingID := createPendingAuthorization(t, sa, ident, exp)
+	pendingID := createPendingAuthorization(t, sa, regID, ident, exp)
 	attempted := string(core.ChallengeTypeHTTP01)
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:          pendingID,
@@ -848,15 +848,17 @@ func TestDeactivateAuthorization2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
+	reg := createWorkingRegistration(t, sa)
+
 	// deactivate a pending authorization
 	expires := fc.Now().Add(time.Hour).UTC()
 	attemptedAt := fc.Now()
-	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), expires)
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires)
 	_, err := sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 
 	// deactivate a valid authorization
-	authzID = createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
+	authzID = createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 }
@@ -956,10 +958,8 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 
 	// Insert two pre-existing authorizations to reference
-	idA := createPendingAuthorization(t, sa, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
-	idB := createPendingAuthorization(t, sa, identifier.NewDNS("b.com"), sa.clk.Now().Add(time.Hour))
-	test.AssertEquals(t, idA, int64(1))
-	test.AssertEquals(t, idB, int64(2))
+	idA := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	idB := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("b.com"), sa.clk.Now().Add(time.Hour))
 
 	nowC := sa.clk.Now().Add(time.Hour)
 	nowD := sa.clk.Now().Add(time.Hour)
@@ -975,7 +975,7 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 				identifier.NewDNS("c.com").ToProto(),
 				identifier.NewDNS("d.com").ToProto(),
 			},
-			V2Authorizations: []int64{1, 2},
+			V2Authorizations: []int64{idA, idB},
 		},
 		// And add new authorizations for the other two names.
 		NewAuthzs: []*sapb.NewAuthzRequest{
@@ -997,14 +997,128 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	}
 	order, err := sa.NewOrderAndAuthzs(context.Background(), req)
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
-	test.AssertEquals(t, order.Id, int64(1))
-	test.AssertDeepEquals(t, order.V2Authorizations, []int64{1, 2, 3, 4})
+	test.Assert(t, order.Id != 0, "order ID should be non-zero")
+	test.AssertEquals(t, len(order.V2Authorizations), 4)
+	test.AssertSliceContains(t, order.V2Authorizations, idA)
+	test.AssertSliceContains(t, order.V2Authorizations, idB)
+	// Ensure that two new authzs were created.
+	var newAuthzIDs []int64
+	for _, id := range order.V2Authorizations {
+		if id != idA && id != idB {
+			newAuthzIDs = append(newAuthzIDs, id)
+		}
+	}
+	test.AssertEquals(t, len(newAuthzIDs), 2)
+	test.Assert(t, newAuthzIDs[0] != newAuthzIDs[1], "expected distinct new authz IDs")
 
 	var authzIDs []int64
 	_, err = sa.dbMap.Select(ctx, &authzIDs, "SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;", order.Id)
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 4)
-	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
+	slices.Sort(authzIDs)
+	expectedIDs := append([]int64{idA, idB}, newAuthzIDs...)
+	slices.Sort(expectedIDs)
+	test.AssertDeepEquals(t, authzIDs, expectedIDs)
+}
+
+func TestNewOrderAndAuthzs_ReuseOnly(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(2 * time.Hour)
+
+	// Insert two pre-existing authorizations to reference
+	idA := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	idB := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("b.com"), sa.clk.Now().Add(time.Hour))
+	req := &sapb.NewOrderAndAuthzsRequest{
+		// Insert an order for four names, two of which already have authzs
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(expires),
+			Identifiers: []*corepb.Identifier{
+				identifier.NewDNS("a.com").ToProto(),
+				identifier.NewDNS("b.com").ToProto(),
+			},
+			V2Authorizations: []int64{idA, idB},
+		},
+	}
+	order, err := sa.NewOrderAndAuthzs(context.Background(), req)
+	if err != nil {
+		t.Fatal("sa.NewOrderAndAuthzs:", err)
+	}
+	if !reflect.DeepEqual(order.V2Authorizations, []int64{idA, idB}) {
+		t.Errorf("sa.NewOrderAndAuthzs().V2Authorizations: want [%d, %d], got %v", idA, idB, order.V2Authorizations)
+	}
+}
+
+func TestNewOrderAndAuthzs_CreateOnly(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(2 * time.Hour)
+
+	// Insert two pre-existing authorizations to reference
+	_ = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	_ = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("b.com"), sa.clk.Now().Add(time.Hour))
+	req := &sapb.NewOrderAndAuthzsRequest{
+		// Insert an order for four names, two of which already have authzs
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(expires),
+			Identifiers: []*corepb.Identifier{
+				identifier.NewDNS("a.com").ToProto(),
+				identifier.NewDNS("b.com").ToProto(),
+			},
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "a.com"},
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(expires),
+				ChallengeTypes: []string{string(core.ChallengeTypeDNS01)},
+				Token:          core.NewToken(),
+			},
+		},
+	}
+	order, err := sa.NewOrderAndAuthzs(context.Background(), req)
+	if err != nil {
+		t.Fatal("sa.NewOrderAndAuthzs:", err)
+	}
+	if len(order.V2Authorizations) != 1 {
+		t.Fatalf("len(sa.NewOrderAndAuthzs().V2Authorizations): want 1, got %v", len(order.V2Authorizations))
+	}
+	gotAuthz, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: order.V2Authorizations[0]})
+	if err != nil {
+		t.Fatalf("retrieving inserted authz: %s", err)
+	}
+	if gotAuthz.Identifier.Value != "a.com" {
+		t.Errorf("New order authz identifier = %v, want %v", gotAuthz.Identifier.Value, "a.com")
+	}
+}
+
+func TestNewOrderAndAuthzs_NoAuthzsError(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(2 * time.Hour)
+
+	// Insert two pre-existing authorizations to reference
+	req := &sapb.NewOrderAndAuthzsRequest{
+		// Insert an order for four names, two of which already have authzs
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(expires),
+			Identifiers:    nil,
+		},
+		NewAuthzs: nil,
+	}
+	_, err := sa.NewOrderAndAuthzs(context.Background(), req)
+	if err != errIncompleteRequest {
+		t.Errorf("sa.NewOrderAndAuthzs with no authzs: want %v, got %v", errIncompleteRequest, err)
+	}
 }
 
 // TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
@@ -1158,7 +1272,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	// Add one valid authz
 	expires := fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
+	authzID := createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	// Add a new order in pending status with no certificate serial
 	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
@@ -1198,7 +1312,7 @@ func TestFinalizeOrder(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
+	authzID := createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	// Add a new order in pending status with no certificate serial
 	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
@@ -1240,7 +1354,7 @@ func TestGetOrder(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	ident := identifier.NewDNS("example.com")
 	authzExpires := fc.Now().Add(time.Hour)
-	authzID := createPendingAuthorization(t, sa, ident, authzExpires)
+	authzID := createPendingAuthorization(t, sa, reg.Id, ident, authzExpires)
 
 	// Set the order to expire in two hours
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1263,9 +1377,11 @@ func TestGetOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
-	// The Order from GetOrder should match the following expected order
+	// Fetch the order by its ID and make sure it matches the expected
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "sa.GetOrder failed")
 	created := sa.clk.Now()
-	expectedOrder := &corepb.Order{
+	test.AssertDeepEquals(t, storedOrder, &corepb.Order{
 		// The registration ID, authorizations, expiry, and identifiers should match the
 		// input to NewOrderAndAuthzs
 		RegistrationID:   inputOrder.RegistrationID,
@@ -1273,7 +1389,7 @@ func TestGetOrder(t *testing.T) {
 		Identifiers:      inputOrder.Identifiers,
 		Expires:          inputOrder.Expires,
 		// The ID should have been set to 1 by the SA
-		Id: 1,
+		Id: storedOrder.Id,
 		// The status should be pending
 		Status: string(core.StatusPending),
 		// The serial should be empty since this is a pending order
@@ -1282,12 +1398,7 @@ func TestGetOrder(t *testing.T) {
 		BeganProcessing: false,
 		// The created timestamp should have been set to the current time
 		Created: timestamppb.New(created),
-	}
-
-	// Fetch the order by its ID and make sure it matches the expected
-	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
-	test.AssertNotError(t, err, "sa.GetOrder failed")
-	test.AssertDeepEquals(t, storedOrder, expectedOrder)
+	})
 
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		// A migration is needed before initializing an SA with StoreAuthzsInOrders
@@ -1315,7 +1426,7 @@ func TestGetOrder(t *testing.T) {
 
 	storedOrder2, err := sa2.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "fetching order after enabling StoreAuthzsInOrders")
-	test.AssertDeepEquals(t, storedOrder2, expectedOrder)
+	test.AssertDeepEquals(t, storedOrder2, storedOrder)
 }
 
 // TestGetOrderWithProfile tests that round-tripping a simple order through
@@ -1327,7 +1438,7 @@ func TestGetOrderWithProfile(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	ident := identifier.NewDNS("example.com")
 	authzExpires := fc.Now().Add(time.Hour)
-	authzID := createPendingAuthorization(t, sa, ident, authzExpires)
+	authzID := createPendingAuthorization(t, sa, reg.Id, ident, authzExpires)
 
 	// Set the order to expire in two hours
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1352,9 +1463,11 @@ func TestGetOrderWithProfile(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
-	// The Order from GetOrder should match the following expected order
+	// Fetch the order by its ID and make sure it matches the expected
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "sa.GetOrder failed")
 	created := sa.clk.Now()
-	expectedOrder := &corepb.Order{
+	test.AssertDeepEquals(t, storedOrder, &corepb.Order{
 		// The registration ID, authorizations, expiry, and names should match the
 		// input to NewOrderAndAuthzs
 		RegistrationID:   inputOrder.RegistrationID,
@@ -1362,7 +1475,7 @@ func TestGetOrderWithProfile(t *testing.T) {
 		Identifiers:      inputOrder.Identifiers,
 		Expires:          inputOrder.Expires,
 		// The ID should have been set to 1 by the SA
-		Id: 1,
+		Id: storedOrder.Id,
 		// The status should be pending
 		Status: string(core.StatusPending),
 		// The serial should be empty since this is a pending order
@@ -1372,12 +1485,7 @@ func TestGetOrderWithProfile(t *testing.T) {
 		// The created timestamp should have been set to the current time
 		Created:                timestamppb.New(created),
 		CertificateProfileName: "tbiapb",
-	}
-
-	// Fetch the order by its ID and make sure it matches the expected
-	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
-	test.AssertNotError(t, err, "sa.GetOrder failed")
-	test.AssertDeepEquals(t, storedOrder, expectedOrder)
+	})
 }
 
 // TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
@@ -1393,55 +1501,6 @@ func TestGetAuthorization2NoRows(t *testing.T) {
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
-func TestGetAuthorizations2(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	reg := createWorkingRegistration(t, sa)
-	exp := fc.Now().AddDate(0, 0, 10).UTC()
-	attemptedAt := fc.Now()
-
-	identA := identifier.NewDNS("aaa")
-	identB := identifier.NewDNS("bbb")
-	identC := identifier.NewDNS("ccc")
-	identD := identifier.NewIP(netip.MustParseAddr("10.10.10.10"))
-	idents := identifier.ACMEIdentifiers{identA, identB, identC, identD}
-	identE := identifier.NewDNS("ddd")
-
-	createFinalizedAuthorization(t, sa, identA, exp, "valid", attemptedAt)
-	createPendingAuthorization(t, sa, identB, exp)
-	nearbyExpires := fc.Now().UTC().Add(time.Hour)
-	createPendingAuthorization(t, sa, identC, nearbyExpires)
-	createFinalizedAuthorization(t, sa, identD, exp, "valid", attemptedAt)
-
-	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrderAndAuthzs`. This
-	// should exclude pending authorization C based on its nearbyExpires expiry
-	// value.
-	expiryCutoff := fc.Now().AddDate(0, 0, 1)
-	// Get authorizations for the identifiers used above.
-	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		Identifiers:    idents.ToProtoSlice(),
-		ValidUntil:     timestamppb.New(expiryCutoff),
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// We should get back three authorizations since one of the four
-	// authorizations created above expires too soon.
-	test.AssertEquals(t, len(authz.Authzs), 3)
-
-	// Get authorizations for the identifiers used above, and one that doesn't exist
-	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		Identifiers:    append(idents.ToProtoSlice(), identE.ToProto()),
-		ValidUntil:     timestamppb.New(expiryCutoff),
-	})
-	// It should not fail
-	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// It should still return only three authorizations
-	test.AssertEquals(t, len(authz.Authzs), 3)
-}
-
 func TestFasterGetOrderForNames(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
@@ -1455,7 +1514,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	authzIDs := createPendingAuthorization(t, sa, ident, expires)
+	authzIDs := createPendingAuthorization(t, sa, reg.Id, ident, expires)
 
 	_, err = sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
@@ -1502,8 +1561,8 @@ func TestGetOrderForNames(t *testing.T) {
 	// Add one pending authz for the first name for regA and one
 	// pending authz for the second name for regA
 	authzExpires := fc.Now().Add(time.Hour)
-	authzIDA := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), authzExpires)
-	authzIDB := createPendingAuthorization(t, sa, identifier.NewDNS("just.another.example.com"), authzExpires)
+	authzIDA := createPendingAuthorization(t, sa, regA.Id, identifier.NewDNS("example.com"), authzExpires)
+	authzIDB := createPendingAuthorization(t, sa, regA.Id, identifier.NewDNS("just.another.example.com"), authzExpires)
 
 	ctx := context.Background()
 	idents := identifier.ACMEIdentifiers{
@@ -1583,8 +1642,8 @@ func TestGetOrderForNames(t *testing.T) {
 	// Create two valid authorizations
 	authzExpires = fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzIDC := createFinalizedAuthorization(t, sa, identifier.NewDNS("zombo.com"), authzExpires, "valid", attemptedAt)
-	authzIDD := createFinalizedAuthorization(t, sa, identifier.NewDNS("welcome.to.zombo.com"), authzExpires, "valid", attemptedAt)
+	authzIDC := createFinalizedAuthorization(t, sa, regA.Id, identifier.NewDNS("zombo.com"), authzExpires, "valid", attemptedAt)
+	authzIDD := createFinalizedAuthorization(t, sa, regA.Id, identifier.NewDNS("welcome.to.zombo.com"), authzExpires, "valid", attemptedAt)
 
 	// Add a fresh order that uses the authorizations created above
 	expires = fc.Now().Add(orderLifetime)
@@ -1651,11 +1710,11 @@ func TestStatusForOrder(t *testing.T) {
 
 	// Create a pending authz, an expired authz, an invalid authz, a deactivated authz,
 	// and a valid authz
-	pendingID := createPendingAuthorization(t, sa, identifier.NewDNS("pending.your.order.is.up"), expires)
-	expiredID := createPendingAuthorization(t, sa, identifier.NewDNS("expired.your.order.is.up"), alreadyExpired)
-	invalidID := createFinalizedAuthorization(t, sa, identifier.NewDNS("invalid.your.order.is.up"), expires, "invalid", attemptedAt)
-	validID := createFinalizedAuthorization(t, sa, identifier.NewDNS("valid.your.order.is.up"), expires, "valid", attemptedAt)
-	deactivatedID := createPendingAuthorization(t, sa, identifier.NewDNS("deactivated.your.order.is.up"), expires)
+	pendingID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("pending.your.order.is.up"), expires)
+	expiredID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("expired.your.order.is.up"), alreadyExpired)
+	invalidID := createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("invalid.your.order.is.up"), expires, "invalid", attemptedAt)
+	validID := createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("valid.your.order.is.up"), expires, "valid", attemptedAt)
+	deactivatedID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("deactivated.your.order.is.up"), expires)
 	_, err := sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: deactivatedID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 
@@ -1795,7 +1854,8 @@ func TestUpdateChallengesDeleteUnused(t *testing.T) {
 	attemptedAt := fc.Now()
 
 	// Create a valid authz
-	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
+	reg := createWorkingRegistration(t, sa)
+	authzID := createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	result, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
@@ -2136,7 +2196,8 @@ func TestFinalizeAuthorization2(t *testing.T) {
 
 	fc.Set(mustTime("2021-01-01 00:00"))
 
-	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+	reg := createWorkingRegistration(t, sa)
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
 	ip, _ := netip.MustParseAddr("1.1.1.1").MarshalText()
@@ -2170,7 +2231,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertEquals(t, dbVer.Challenges[0].Validated.AsTime(), attemptedAt)
 
-	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	prob, _ := bgrpc.ProblemDetailsToPB(probs.Connection("it went bad captain"))
 
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -2208,12 +2269,13 @@ func TestRehydrateHostPort(t *testing.T) {
 
 	fc.Set(mustTime("2021-01-01 00:00"))
 
+	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
 	ip, _ := netip.MustParseAddr("1.1.1.1").MarshalText()
 
 	// Implicit good port with good scheme
-	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2234,7 +2296,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertNotError(t, err, "rehydration failed in some fun and interesting way")
 
 	// Explicit good port with good scheme
-	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2255,7 +2317,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertNotError(t, err, "rehydration failed in some fun and interesting way")
 
 	// Explicit bad port with good scheme
-	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2276,7 +2338,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertError(t, err, "only ports 80/tcp and 443/tcp are allowed in URL \"http://example.com:444\"")
 
 	// Explicit bad port with bad scheme
-	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2297,7 +2359,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertError(t, err, "unknown scheme \"httpx\" in URL \"httpx://example.com\"")
 
 	// Missing URL field
-	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2321,13 +2383,14 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
+	reg := createWorkingRegistration(t, sa)
 	expiresA := fc.Now().Add(time.Hour).UTC()
 	expiresB := fc.Now().Add(time.Hour * 3).UTC()
-	_ = createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), expiresA)
-	_ = createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), expiresB)
+	_ = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expiresA)
+	_ = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expiresB)
 
 	// Registration has two new style pending authorizations
-	regID := int64(1)
+	regID := reg.Id
 	count, err := sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
 		Id: regID,
 	})
@@ -2343,7 +2406,7 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, count.Count, int64(1))
 
 	// Registration with no authorizations should be 0
-	noReg := int64(20)
+	noReg := reg.Id + 100
 	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
 		Id: noReg,
 	})
@@ -2452,9 +2515,9 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
 		attemptedAt := fc.Now()
 
-		authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
-		authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
-		authzIDC := createFinalizedAuthorization(t, sa, identC, expires, "valid", attemptedAt)
+		authzIDA := createFinalizedAuthorization(t, sa, reg.Id, identA, expires, "valid", attemptedAt)
+		authzIDB := createFinalizedAuthorization(t, sa, reg.Id, identB, expires, "valid", attemptedAt)
+		authzIDC := createFinalizedAuthorization(t, sa, reg.Id, identC, expires, "valid", attemptedAt)
 
 		orderExpr := fc.Now().Truncate(time.Second)
 		order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
@@ -2523,8 +2586,8 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 		expiresA := fc.Now().Add(time.Hour).UTC()
 		expiresB := fc.Now().Add(time.Hour * 3).UTC()
 		attemptedAt := fc.Now()
-		_ = createFinalizedAuthorization(t, sa, ident, expiresA, "invalid", attemptedAt)
-		_ = createPendingAuthorization(t, sa, ident, expiresB)
+		_ = createFinalizedAuthorization(t, sa, reg.Id, ident, expiresA, "invalid", attemptedAt)
+		_ = createPendingAuthorization(t, sa, reg.Id, ident, expiresB)
 
 		earliest := fc.Now().Add(-time.Hour).UTC()
 		latest := fc.Now().Add(time.Hour * 5).UTC()
@@ -3515,7 +3578,7 @@ func TestReplacementOrderExists(t *testing.T) {
 	// Add one valid authz.
 	expires := fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
+	authzID := createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	// Add a new order in pending status with no certificate serial.
 	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
@@ -3725,6 +3788,8 @@ func TestUnpauseAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	reg := createWorkingRegistration(t, sa)
+
 	tests := []struct {
 		name  string
 		state []pausedModel
@@ -3733,13 +3798,13 @@ func TestUnpauseAccount(t *testing.T) {
 		{
 			name:  "UnpauseAccount with no paused identifiers",
 			state: nil,
-			req:   &sapb.RegistrationID{Id: 1},
+			req:   &sapb.RegistrationID{Id: reg.Id},
 		},
 		{
 			name: "UnpauseAccount with one paused identifier",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -3747,13 +3812,13 @@ func TestUnpauseAccount(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 			},
-			req: &sapb.RegistrationID{Id: 1},
+			req: &sapb.RegistrationID{Id: reg.Id},
 		},
 		{
 			name: "UnpauseAccount with multiple paused identifiers",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -3761,7 +3826,7 @@ func TestUnpauseAccount(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
@@ -3769,7 +3834,7 @@ func TestUnpauseAccount(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.org",
@@ -3777,15 +3842,14 @@ func TestUnpauseAccount(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 			},
-			req: &sapb.RegistrationID{Id: 1},
+			req: &sapb.RegistrationID{Id: reg.Id},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer func() {
-				// Drop all rows from the paused table.
-				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
-				test.AssertNotError(t, err, "truncating paused table")
+				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
+				test.AssertNotError(t, err, "cleaning up paused table")
 			}()
 
 			// Setup table state.
@@ -3811,7 +3875,7 @@ func TestUnpauseAccount(t *testing.T) {
 	}
 }
 
-func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, count int) error {
+func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, regID int64, count int) error {
 	const batchSize = 1000
 
 	values := make([]any, 0, batchSize*4)
@@ -3831,7 +3895,7 @@ func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, c
 				query += ","
 			}
 			query += "(?, ?, ?, ?)"
-			values = append(values, 1, identifierTypeToUint[string(identifier.TypeDNS)], fmt.Sprintf("example%d.com", i), now)
+			values = append(values, regID, identifierTypeToUint[string(identifier.TypeDNS)], fmt.Sprintf("example%d.com", i), now)
 		}
 
 		_, err := sa.dbMap.ExecContext(ctx, query, values...)
@@ -3848,10 +3912,12 @@ func TestUnpauseAccountWithTwoLoops(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	err := bulkInsertPausedIdentifiers(ctx, sa, 12000)
+	reg := createWorkingRegistration(t, sa)
+
+	err := bulkInsertPausedIdentifiers(ctx, sa, reg.Id, 12000)
 	test.AssertNotError(t, err, "bulk inserting paused identifiers")
 
-	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
 	test.AssertEquals(t, result.Count, int64(12000))
 }
@@ -3860,10 +3926,11 @@ func TestUnpauseAccountWithMaxLoops(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	err := bulkInsertPausedIdentifiers(ctx, sa, 50001)
+	reg := createWorkingRegistration(t, sa)
+	err := bulkInsertPausedIdentifiers(ctx, sa, reg.Id, 50001)
 	test.AssertNotError(t, err, "bulk inserting paused identifiers")
 
-	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
 	test.AssertEquals(t, result.Count, int64(50000))
 }
@@ -3872,6 +3939,7 @@ func TestPauseIdentifiers(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	reg := createWorkingRegistration(t, sa)
 	ptrTime := func(t time.Time) *time.Time {
 		return &t
 	}
@@ -3889,7 +3957,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			name:  "An identifier which is not now or previously paused",
 			state: nil,
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -3906,7 +3974,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			name: "One unpaused entry which was previously paused",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -3916,7 +3984,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				},
 			},
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -3933,7 +4001,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			name: "One unpaused entry which was previously paused and unpaused less than 2 weeks ago",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -3943,7 +4011,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				},
 			},
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -3960,7 +4028,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			name: "An identifier which is currently paused",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -3969,7 +4037,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				},
 			},
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -3986,7 +4054,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			name: "Two previously paused entries and one new entry",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -3995,7 +4063,7 @@ func TestPauseIdentifiers(t *testing.T) {
 					UnpausedAt: ptrTime(threeWeeksAgo),
 				},
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
@@ -4005,7 +4073,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				},
 			},
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -4030,9 +4098,8 @@ func TestPauseIdentifiers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer func() {
-				// Drop all rows from the paused table.
-				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
-				test.AssertNotError(t, err, "Truncate table paused failed")
+				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
+				test.AssertNotError(t, err, "cleaning up paused table")
 			}()
 
 			// Setup table state.
@@ -4057,6 +4124,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 		return &t
 	}
 
+	reg := createWorkingRegistration(t, sa)
 	tests := []struct {
 		name  string
 		state []pausedModel
@@ -4067,7 +4135,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			name:  "No paused identifiers",
 			state: nil,
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -4083,7 +4151,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			name: "One paused identifier",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -4092,7 +4160,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				},
 			},
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -4113,7 +4181,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			name: "Two paused identifiers, one unpaused",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -4121,7 +4189,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
@@ -4129,7 +4197,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.org",
@@ -4139,7 +4207,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				},
 			},
 			req: &sapb.PauseRequest{
-				RegistrationID: 1,
+				RegistrationID: reg.Id,
 				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.TypeDNS),
@@ -4172,9 +4240,8 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer func() {
-				// Drop all rows from the paused table.
-				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
-				test.AssertNotError(t, err, "Truncate table paused failed")
+				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
+				test.AssertNotError(t, err, "cleaning up paused table")
 			}()
 
 			// Setup table state.
@@ -4198,6 +4265,8 @@ func TestGetPausedIdentifiers(t *testing.T) {
 		return &t
 	}
 
+	reg := createWorkingRegistration(t, sa)
+
 	tests := []struct {
 		name  string
 		state []pausedModel
@@ -4207,7 +4276,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 		{
 			name:  "No paused identifiers",
 			state: nil,
-			req:   &sapb.RegistrationID{Id: 1},
+			req:   &sapb.RegistrationID{Id: reg.Id},
 			want: &sapb.Identifiers{
 				Identifiers: []*corepb.Identifier{},
 			},
@@ -4216,7 +4285,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 			name: "One paused identifier",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -4224,7 +4293,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 			},
-			req: &sapb.RegistrationID{Id: 1},
+			req: &sapb.RegistrationID{Id: reg.Id},
 			want: &sapb.Identifiers{
 				Identifiers: []*corepb.Identifier{
 					{
@@ -4238,7 +4307,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 			name: "Two paused identifiers, one unpaused",
 			state: []pausedModel{
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
@@ -4246,7 +4315,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
@@ -4254,7 +4323,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 					PausedAt: sa.clk.Now().Add(-time.Hour),
 				},
 				{
-					RegistrationID: 1,
+					RegistrationID: reg.Id,
 					identifierModel: identifierModel{
 						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.org",
@@ -4263,7 +4332,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
 				},
 			},
-			req: &sapb.RegistrationID{Id: 1},
+			req: &sapb.RegistrationID{Id: reg.Id},
 			want: &sapb.Identifiers{
 				Identifiers: []*corepb.Identifier{
 					{
@@ -4281,9 +4350,8 @@ func TestGetPausedIdentifiers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer func() {
-				// Drop all rows from the paused table.
-				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
-				test.AssertNotError(t, err, "Truncate table paused failed")
+				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
+				test.AssertNotError(t, err, "cleaning up paused table")
 			}()
 
 			// Setup table state.
@@ -4303,9 +4371,17 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	reg1 := createWorkingRegistration(t, sa)
+	reg2, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       newAcctKey(t),
+		CreatedAt: mustTimestamp("2018-04-01 07:00"),
+		Status:    string(core.StatusValid),
+	})
+	test.AssertNotError(t, err, "creating second registration")
+
 	// Insert two paused identifiers for two different accounts.
-	err := sa.dbMap.Insert(ctx, &pausedModel{
-		RegistrationID: 1,
+	err = sa.dbMap.Insert(ctx, &pausedModel{
+		RegistrationID: reg1.Id,
 		identifierModel: identifierModel{
 			Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 			Value: "example.com",
@@ -4315,7 +4391,7 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 	test.AssertNotError(t, err, "inserting test identifier")
 
 	err = sa.dbMap.Insert(ctx, &pausedModel{
-		RegistrationID: 2,
+		RegistrationID: reg2.Id,
 		identifierModel: identifierModel{
 			Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 			Value: "example.net",
@@ -4325,11 +4401,11 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 	test.AssertNotError(t, err, "inserting test identifier")
 
 	// Unpause the first account.
-	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: reg1.Id})
 	test.AssertNotError(t, err, "UnpauseAccount failed")
 
 	// Check that the second account's identifier is still paused.
-	idents, err := sa.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: 2})
+	idents, err := sa.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: reg2.Id})
 	test.AssertNotError(t, err, "GetPausedIdentifiers failed")
 	test.AssertEquals(t, len(idents.Identifiers), 1)
 	test.AssertEquals(t, idents.Identifiers[0].Value, "example.net")

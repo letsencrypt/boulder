@@ -14,6 +14,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -65,11 +66,10 @@ func NewSQLStorageAuthorityWrapping(
 	dbMap *db.WrappedMap,
 	stats prometheus.Registerer,
 ) (*SQLStorageAuthority, error) {
-	rateLimitWriteErrors := prometheus.NewCounter(prometheus.CounterOpts{
+	rateLimitWriteErrors := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "rate_limit_write_errors",
 		Help: "number of failed ratelimit update transactions during AddCertificate",
 	})
-	stats.MustRegister(rateLimitWriteErrors)
 
 	ssa := &SQLStorageAuthority{
 		SQLStorageAuthorityRO: ssaro,
@@ -247,14 +247,20 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
+		// An arbitrary, but valid date for fields revokedDate and lastExpirationNagSent.
+		// These fields in the database are NOT NULL so we can't omit them; and we don't
+		// want to pass `time.Time{}` because that results in inserts of `0000-00-00`, which
+		// is forbidden in strict mode (when NO_ZERO_DATE is on).
+		dummyDate := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
 		status := core.OCSPStatusGood
 		cs := &certificateStatusModel{
 			Serial:                serialHex,
 			Status:                status,
 			OCSPLastUpdated:       ssa.clk.Now(),
-			RevokedDate:           time.Time{},
+			RevokedDate:           dummyDate,
 			RevokedReason:         0,
-			LastExpirationNagSent: time.Time{},
+			LastExpirationNagSent: dummyDate,
 			NotAfter:              parsed.NotAfter,
 			IsExpired:             false,
 			IssuerID:              req.IssuerNameID,
@@ -452,6 +458,9 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 // created, leading to "invisible" pending authorizations.
 func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
 	if req.NewOrder == nil {
+		return nil, errIncompleteRequest
+	}
+	if len(req.NewAuthzs) == 0 && len(req.NewOrder.V2Authorizations) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -1321,7 +1330,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Not currently or previously paused, insert a new pause record.
 				err = tx.Insert(ctx, &pausedModel{
 					RegistrationID: req.RegistrationID,
-					PausedAt:       ssa.clk.Now().Truncate(time.Second),
+					PausedAt:       ssa.clk.Now(),
 					identifierModel: identifierModel{
 						Type:  ident.Type,
 						Value: ident.Value,
@@ -1354,7 +1363,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					identifierType = ? AND
 					identifierValue = ? AND
 					unpausedAt IS NOT NULL`,
-					ssa.clk.Now().Truncate(time.Second),
+					ssa.clk.Now(),
 					req.RegistrationID,
 					ident.Type,
 					ident.Value,

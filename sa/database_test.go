@@ -21,19 +21,19 @@ func TestInvalidDSN(t *testing.T) {
 	_, err := DBMapForTest("invalid")
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 
-	DSN := "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
+	DSN := "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
 
-	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable is unable to be set in the SESSION scope, but was declared")
 
-	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Variable declared with incorrect quoting")
 
-	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
+	DSN = "policy:password@tcp(foo-database:1337)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
 	_, err = DBMapForTest(DSN)
 	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
 }
@@ -75,9 +75,8 @@ func TestDbSettings(t *testing.T) {
 		oldSetConnMaxIdleTime(db, connMaxIdleTime)
 	}
 	dsnFile := path.Join(t.TempDir(), "dbconnect")
-	err := os.WriteFile(dsnFile,
-		[]byte("sa@tcp(boulder-proxysql:6033)/boulder_sa_integration"),
-		os.ModeAppend)
+
+	err := os.WriteFile(dsnFile, []byte(vars.DBConnSA), os.ModeAppend)
 	test.AssertNotError(t, err, "writing dbconnect file")
 
 	config := cmd.DBConfig{
@@ -108,7 +107,7 @@ func TestDbSettings(t *testing.T) {
 // TODO: Change this to test `newDbMapFromMySQLConfig` instead?
 func TestNewDbMap(t *testing.T) {
 	const mysqlConnectURL = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.640000&max_statement_time=0.760000&sql_mode=%27STRICT_ALL_TABLES%27"
+	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&sql_mode=%27STRICT_ALL_TABLES%27"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen
@@ -146,27 +145,6 @@ func TestStrictness(t *testing.T) {
 	}
 }
 
-func TestTimeouts(t *testing.T) {
-	dbMap, err := DBMapForTest(vars.DBConnSA + "?max_statement_time=1")
-	if err != nil {
-		t.Fatal("Error setting up DB:", err)
-	}
-	// SLEEP is defined to return 1 if it was interrupted, but we want to actually
-	// get an error to simulate what would happen with a slow query. So we wrap
-	// the SLEEP in a subselect.
-	_, err = dbMap.ExecContext(ctx, `SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
-	if err == nil {
-		t.Fatal("Expected error when running slow query, got none.")
-	}
-
-	// We expect to get:
-	// Error 1969: Query execution was interrupted (max_statement_time exceeded)
-	// https://mariadb.com/kb/en/mariadb/mariadb-error-codes/
-	if !strings.Contains(err.Error(), "Error 1969") {
-		t.Fatalf("Got wrong type of error: %s", err)
-	}
-}
-
 // TestAutoIncrementSchema tests that all of the tables in the boulder_*
 // databases that have auto_increment columns use BIGINT for the data type. Our
 // data is too big for INT.
@@ -190,40 +168,7 @@ func TestAdjustMySQLConfig(t *testing.T) {
 	conf := &mysql.Config{}
 	err := adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "unexpected err setting server variables")
-	test.AssertDeepEquals(t, conf.Params, map[string]string{
-		"sql_mode": "'STRICT_ALL_TABLES'",
-	})
-
-	conf = &mysql.Config{ReadTimeout: 100 * time.Second}
-	err = adjustMySQLConfig(conf)
-	test.AssertNotError(t, err, "unexpected err setting server variables")
-	test.AssertDeepEquals(t, conf.Params, map[string]string{
-		"sql_mode":           "'STRICT_ALL_TABLES'",
-		"max_statement_time": "95.000000",
-		"long_query_time":    "80.000000",
-	})
-
-	conf = &mysql.Config{
-		ReadTimeout: 100 * time.Second,
-		Params: map[string]string{
-			"max_statement_time": "0",
-		},
-	}
-	err = adjustMySQLConfig(conf)
-	test.AssertNotError(t, err, "unexpected err setting server variables")
-	test.AssertDeepEquals(t, conf.Params, map[string]string{
-		"sql_mode":        "'STRICT_ALL_TABLES'",
-		"long_query_time": "80.000000",
-	})
-
-	conf = &mysql.Config{
-		Params: map[string]string{
-			"max_statement_time": "0",
-		},
-	}
-	err = adjustMySQLConfig(conf)
-	test.AssertNotError(t, err, "unexpected err setting server variables")
-	test.AssertDeepEquals(t, conf.Params, map[string]string{
-		"sql_mode": "'STRICT_ALL_TABLES'",
-	})
+	test.Assert(t, conf.ParseTime, "ParseTime should be enabled")
+	test.Assert(t, conf.ClientFoundRows, "ClientFoundRows should be enabled")
+	test.AssertDeepEquals(t, conf.Params, map[string]string{"sql_mode": "'STRICT_ALL_TABLES'"})
 }
