@@ -1288,6 +1288,34 @@ func TestGetOrder(t *testing.T) {
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// A migration is needed before initializing an SA with StoreAuthzsInOrders
+		return
+	}
+
+	features.Set(features.Config{
+		StoreAuthzsInOrders: false,
+	})
+
+	dbMap, err := DBMapForTest(vars.DBConnSA)
+	if err != nil {
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+
+	dbIncidentsMap, err := DBMapForTest(vars.DBConnIncidents)
+	if err != nil {
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+
+	sa2, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 1, 0, fc, log)
+	if err != nil {
+		t.Fatalf("Failed to create SA: %s", err)
+	}
+
+	storedOrder2, err := sa2.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "fetching order after enabling StoreAuthzsInOrders")
+	test.AssertDeepEquals(t, storedOrder2, expectedOrder)
 }
 
 // TestGetOrderWithProfile tests that round-tripping a simple order through
@@ -2406,70 +2434,78 @@ func TestAuthzModelMapToPB(t *testing.T) {
 }
 
 func TestGetValidOrderAuthorizations2(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	// Create three new valid authorizations
-	reg := createWorkingRegistration(t, sa)
-	identA := identifier.NewDNS("a.example.com")
-	identB := identifier.NewDNS("b.example.com")
-	identC := identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee"))
-	expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
-	attemptedAt := fc.Now()
-
-	authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
-	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
-	authzIDC := createFinalizedAuthorization(t, sa, identC, expires, "valid", attemptedAt)
-
-	orderExpr := fc.Now().Truncate(time.Second)
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID: reg.Id,
-			Expires:        timestamppb.New(orderExpr),
-			Identifiers: []*corepb.Identifier{
-				identifier.NewDNS("a.example.com").ToProto(),
-				identifier.NewDNS("b.example.com").ToProto(),
-				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")).ToProto(),
-			},
-			V2Authorizations: []int64{authzIDA, authzIDB, authzIDC},
-		},
-	})
-	test.AssertNotError(t, err, "AddOrder failed")
-
-	authzPBs, err := sa.GetValidOrderAuthorizations2(
-		context.Background(),
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     order.Id,
-			AcctID: reg.Id,
+	for _, val := range []bool{true, false} {
+		features.Set(features.Config{
+			StoreAuthzsInOrders: val,
 		})
-	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
-	test.AssertNotNil(t, authzPBs, "sa.GetValidOrderAuthorizations result was nil")
-	test.AssertEquals(t, len(authzPBs.Authzs), 3)
-
-	identsToCheck := map[identifier.ACMEIdentifier]int64{
-		identifier.NewDNS("a.example.com"):                                              authzIDA,
-		identifier.NewDNS("b.example.com"):                                              authzIDB,
-		identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")): authzIDC,
-	}
-	for _, a := range authzPBs.Authzs {
-		ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
-		if fmt.Sprintf("%d", identsToCheck[ident]) != a.Id {
-			t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
+		if features.Get().StoreAuthzsInOrders && os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+			t.Skip("need DB migration to test StoreAuthzsInOrders=true")
 		}
-		test.AssertEquals(t, a.Expires.AsTime(), expires)
-		delete(identsToCheck, ident)
-	}
+		sa, fc, cleanup := initSA(t)
+		defer cleanup()
 
-	// Getting the order authorizations for an order that doesn't exist should return nothing
-	missingID := int64(0xC0FFEEEEEEE)
-	authzPBs, err = sa.GetValidOrderAuthorizations2(
-		context.Background(),
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     missingID,
-			AcctID: reg.Id,
+		// Create three new valid authorizations
+		reg := createWorkingRegistration(t, sa)
+		identA := identifier.NewDNS("a.example.com")
+		identB := identifier.NewDNS("b.example.com")
+		identC := identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee"))
+		expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
+		attemptedAt := fc.Now()
+
+		authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
+		authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
+		authzIDC := createFinalizedAuthorization(t, sa, identC, expires, "valid", attemptedAt)
+
+		orderExpr := fc.Now().Truncate(time.Second)
+		order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+			NewOrder: &sapb.NewOrderRequest{
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(orderExpr),
+				Identifiers: []*corepb.Identifier{
+					identifier.NewDNS("a.example.com").ToProto(),
+					identifier.NewDNS("b.example.com").ToProto(),
+					identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")).ToProto(),
+				},
+				V2Authorizations: []int64{authzIDA, authzIDB, authzIDC},
+			},
 		})
-	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
-	test.AssertEquals(t, len(authzPBs.Authzs), 0)
+		test.AssertNotError(t, err, "AddOrder failed")
+
+		authzPBs, err := sa.GetValidOrderAuthorizations2(
+			context.Background(),
+			&sapb.GetValidOrderAuthorizationsRequest{
+				Id:     order.Id,
+				AcctID: reg.Id,
+			})
+		test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
+		test.AssertNotNil(t, authzPBs, "sa.GetValidOrderAuthorizations result was nil")
+		test.AssertEquals(t, len(authzPBs.Authzs), 3)
+
+		identsToCheck := map[identifier.ACMEIdentifier]int64{
+			identifier.NewDNS("a.example.com"):                                              authzIDA,
+			identifier.NewDNS("b.example.com"):                                              authzIDB,
+			identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")): authzIDC,
+		}
+		for _, a := range authzPBs.Authzs {
+			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
+			if fmt.Sprintf("%d", identsToCheck[ident]) != a.Id {
+				t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
+			}
+			test.AssertEquals(t, a.Expires.AsTime(), expires)
+			delete(identsToCheck, ident)
+		}
+
+		// Getting the order authorizations for an order that doesn't exist should return nothing
+		missingID := int64(0xC0FFEEEEEEE)
+		authzPBs, err = sa.GetValidOrderAuthorizations2(
+			context.Background(),
+			&sapb.GetValidOrderAuthorizationsRequest{
+				Id:     missingID,
+				AcctID: reg.Id,
+			})
+		test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
+		test.AssertEquals(t, len(authzPBs.Authzs), 0)
+	}
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {
@@ -2666,25 +2702,33 @@ func TestGetValidAuthorizations2(t *testing.T) {
 }
 
 func TestGetOrderExpired(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-	fc.Add(time.Hour * 5)
-	now := fc.Now()
-	reg := createWorkingRegistration(t, sa)
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   reg.Id,
-			Expires:          timestamppb.New(now.Add(-time.Hour)),
-			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
-			V2Authorizations: []int64{666},
-		},
-	})
-	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
-	_, err = sa.GetOrder(context.Background(), &sapb.OrderRequest{
-		Id: order.Id,
-	})
-	test.AssertError(t, err, "GetOrder didn't fail for an expired order")
-	test.AssertErrorIs(t, err, berrors.NotFound)
+	for _, storeAuthzsInOrders := range []bool{true, false} {
+		if storeAuthzsInOrders && os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+			t.Skip("need DB migration to test StoreAuthzsInOrders=true")
+		}
+		features.Set(features.Config{
+			StoreAuthzsInOrders: storeAuthzsInOrders,
+		})
+		sa, fc, cleanUp := initSA(t)
+		defer cleanUp()
+		fc.Add(time.Hour * 5)
+		now := fc.Now()
+		reg := createWorkingRegistration(t, sa)
+		order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+			NewOrder: &sapb.NewOrderRequest{
+				RegistrationID:   reg.Id,
+				Expires:          timestamppb.New(now.Add(-time.Hour)),
+				Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
+				V2Authorizations: []int64{666},
+			},
+		})
+		test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+		_, err = sa.GetOrder(context.Background(), &sapb.OrderRequest{
+			Id: order.Id,
+		})
+		test.AssertError(t, err, "GetOrder didn't fail for an expired order")
+		test.AssertErrorIs(t, err, berrors.NotFound)
+	}
 }
 
 func TestBlockedKey(t *testing.T) {

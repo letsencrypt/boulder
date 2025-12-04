@@ -358,9 +358,6 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	txn := func(tx db.Executor) (any, error) {
 		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
 		if err != nil {
-			if db.IsNoRows(err) {
-				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
-			}
 			return nil, err
 		}
 		if omObj == nil {
@@ -696,10 +693,11 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 	if features.Get().StoreAuthzsInOrders {
 		om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModel{}, req.Id)
 		if err != nil {
-			if db.IsNoRows(err) {
-				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
-			}
 			return nil, err
+		}
+		// Nonexistent orders return no error, with an empty list of authorizations
+		if om == nil {
+			return &sapb.Authorizations{}, nil
 		}
 
 		order, err := modelToOrder(om.(*orderModel))
