@@ -7,8 +7,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/dns"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestError(t *testing.T) {
@@ -17,9 +18,6 @@ func TestError(t *testing.T) {
 		expected string
 	}{
 		{
-			&Error{dns.TypeA, "hostname", makeTimeoutError(), -1, nil},
-			"DNS problem: query timed out looking up A for hostname",
-		}, {
 			&Error{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1, nil},
 			"DNS problem: networking error looking up MX for hostname",
 		}, {

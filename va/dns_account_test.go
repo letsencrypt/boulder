@@ -6,14 +6,9 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/jmhodges/clock"
-
-	"github.com/letsencrypt/boulder/bdns"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -85,7 +80,7 @@ func TestDNSAccount01Validation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			va, _ := setup(nil, "", nil, nil)
+			va, _ := setup(nil, "", nil, &txtFakeDNS{})
 			_, err := va.validateDNSAccount01(ctx, tc.ident, expectedKeyAuthorization, testAccountURI)
 
 			if tc.wantErrMsg != "" {
@@ -109,21 +104,9 @@ func TestDNSAccount01Validation(t *testing.T) {
 }
 
 func TestDNSAccount01ValidationNoServer(t *testing.T) {
-	va, log := setup(nil, "", nil, nil)
-	staticProvider, err := bdns.NewStaticProvider([]string{})
-	test.AssertNotError(t, err, "Couldn't make new static provider")
+	va, _ := setup(nil, "", nil, nil)
 
-	va.dnsClient = bdns.NewTest(
-		time.Second*5,
-		staticProvider,
-		metrics.NoopRegisterer,
-		clock.New(),
-		1,
-		"",
-		log,
-		nil)
-
-	_, err = va.validateDNSAccount01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization, testAccountURI)
+	_, err := va.validateDNSAccount01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization, testAccountURI)
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }

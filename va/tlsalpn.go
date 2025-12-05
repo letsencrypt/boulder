@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -367,7 +366,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident 
 				return validationRecords, badCertErr(
 					"Received certificate with malformed acmeValidationV1 extension value.")
 			}
-			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
+			if !bytes.Equal(h[:], extValue) {
 				return validationRecords, badCertErr(fmt.Sprintf(
 					"Received certificate with acmeValidationV1 extension value %s but expected %s.",
 					hex.EncodeToString(extValue),

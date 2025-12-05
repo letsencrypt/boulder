@@ -3,37 +3,87 @@ package va
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
+	"sync"
+
+	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 )
 
 // getAddr will query for all A/AAAA records associated with hostname and return
-// the preferred address, the first netip.Addr in the addrs slice, and all
-// addresses resolved. This is the same choice made by the Go internal
+// all valid addresses resolved. This is the same choice made by the Go internal
 // resolution library used by net/http. If there is an error resolving the
 // hostname, or if no usable IP addresses are available then a berrors.DNSError
 // instance is returned with a nil netip.Addr slice.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	addrs, resolvers, err := va.dnsClient.LookupHost(ctx, hostname)
-	if err != nil {
-		return nil, resolvers, berrors.DNSError("%v", err)
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, []string, error) {
+	// Kick off both the A and AAAA lookups in parallel.
+	var wg sync.WaitGroup
+
+	var resA *bdns.Result[*dns.A]
+	var resolverA string
+	var errA error
+	wg.Go(func() {
+		resA, resolverA, errA = va.dnsClient.LookupA(ctx, hostname)
+	})
+
+	var resAAAA *bdns.Result[*dns.AAAA]
+	var resolverAAAA string
+	var errAAAA error
+	wg.Go(func() {
+		resAAAA, resolverAAAA, errAAAA = va.dnsClient.LookupAAAA(ctx, hostname)
+	})
+
+	wg.Wait()
+
+	// Collect all non-empty resolvers now, so we can return them along with
+	// either a real result or an error.
+	resolvers := []string{resolverA, resolverAAAA}
+	resolvers = slices.DeleteFunc(resolvers, func(a string) bool {
+		return a == ""
+	})
+
+	var addrsA []netip.Addr
+	if errA == nil {
+		for _, rr := range resA.Final {
+			addr := netip.AddrFrom4([4]byte(rr.A.To4()))
+			if addr.IsValid() && (iana.IsReservedAddr(addr) == nil || va.allowRestrictedAddrs) {
+				addrsA = append(addrsA, addr)
+			}
+		}
+		if len(addrsA) == 0 {
+			errA = fmt.Errorf("no valid A records found for %s", hostname)
+		}
 	}
 
-	if len(addrs) == 0 {
-		// This should be unreachable, as no valid IP addresses being found results
-		// in an error being returned from LookupHost.
-		return nil, resolvers, berrors.DNSError("No valid IP addresses found for %s", hostname)
+	var addrsAAAA []netip.Addr
+	if errAAAA == nil {
+		for _, rr := range resAAAA.Final {
+			addr := netip.AddrFrom16([16]byte(rr.AAAA.To16()))
+			if addr.IsValid() && (iana.IsReservedAddr(addr) == nil || va.allowRestrictedAddrs) {
+				addrsAAAA = append(addrsAAAA, addr)
+			}
+		}
+		if len(addrsAAAA) == 0 {
+			errAAAA = fmt.Errorf("no valid AAAA records found for %s", hostname)
+		}
 	}
+
+	if errA != nil && errAAAA != nil {
+		return nil, nil, berrors.DNSError("%s; %s", errA, errAAAA)
+	}
+
+	addrs := append(addrsAAAA, addrsA...)
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
 	return addrs, resolvers, nil
 }
@@ -109,7 +159,7 @@ func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identi
 	challengeSubdomain := fmt.Sprintf("%s.%s", challengePrefix, ident.Value)
 
 	// Look for the required record in the DNS
-	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
+	txts, resolver, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, berrors.DNSError("%s", err)
 	}
@@ -117,24 +167,24 @@ func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identi
 	// If there weren't any TXT records return a distinct error message to allow
 	// troubleshooters to differentiate between no TXT records and
 	// invalid/incorrect TXT records.
-	if len(txts) == 0 {
+	if len(txts.Final) == 0 {
 		return nil, berrors.UnauthorizedError("No TXT record found at %s", challengeSubdomain)
 	}
 
-	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
+	for _, rr := range txts.Final {
+		if strings.Join(rr.Txt, "") == authorizedKeysDigest {
 			// Successful challenge validation
-			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddrs: resolvers}}, nil
+			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddrs: []string{resolver}}}, nil
 		}
 	}
 
-	invalidRecord := txts[0]
+	invalidRecord := strings.Join(txts.Final[0].Txt, "")
 	if len(invalidRecord) > 100 {
 		invalidRecord = invalidRecord[0:100] + "..."
 	}
 	var andMore string
-	if len(txts) > 1 {
-		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
+	if len(txts.Final) > 1 {
+		andMore = fmt.Sprintf(" (and %d more)", len(txts.Final)-1)
 	}
 	return nil, berrors.UnauthorizedError("Incorrect TXT record %q%s found at %s",
 		invalidRecord, andMore, challengeSubdomain)
