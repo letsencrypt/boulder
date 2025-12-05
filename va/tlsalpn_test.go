@@ -24,7 +24,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -139,7 +138,7 @@ func slowTLSSrv() *httptest.Server {
 
 func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 	hs := slowTLSSrv()
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	timeout := 50 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -176,7 +175,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 
 func TestTLSALPN01DialTimeout(t *testing.T) {
 	hs := slowTLSSrv()
-	va, _ := setup(hs, "", nil, dnsMockReturnsUnroutable{&bdns.MockClient{}})
+	va, _ := setup(hs, "", nil, &unroutableFakeDNS{})
 	started := time.Now()
 
 	timeout := 50 * time.Millisecond
@@ -225,7 +224,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 func TestTLSALPN01Refused(t *testing.T) {
 	hs := testTLSALPN01Srv(t)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	// Take down validation server and check that validation fails.
 	hs.Close()
@@ -244,7 +243,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 func TestTLSALPN01TalkingToHTTP(t *testing.T) {
 	hs := testTLSALPN01Srv(t)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	// Make the server only speak HTTP.
 	httpOnly := httpSrv(t, "", false)
@@ -273,7 +272,7 @@ func brokenTLSSrv() *httptest.Server {
 func TestTLSError(t *testing.T) {
 	hs := brokenTLSSrv()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
@@ -289,7 +288,7 @@ func TestTLSError(t *testing.T) {
 func TestDNSError(t *testing.T) {
 	hs := brokenTLSSrv()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("always.invalid"), expectedKeyAuthorization)
 	if err == nil {
@@ -366,7 +365,7 @@ func TestCertNames(t *testing.T) {
 func TestTLSALPN01SuccessDNS(t *testing.T) {
 	hs := testTLSALPN01Srv(t)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	res, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	if err != nil {
@@ -385,7 +384,7 @@ func TestTLSALPN01SuccessIPv4(t *testing.T) {
 	cert := testTLSCert(nil, []net.IP{net.ParseIP("127.0.0.1")}, []pkix.Extension{testACMEExt})
 	hs := tlsalpn01SrvWithCert(t, cert, 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	res, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	if err != nil {
@@ -404,7 +403,7 @@ func TestTLSALPN01SuccessIPv6(t *testing.T) {
 	cert := testTLSCert(nil, []net.IP{net.ParseIP("::1")}, []pkix.Extension{testACMEExt})
 	hs := tlsalpn01SrvWithCert(t, cert, 0, true)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	res, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
 	if err != nil {
@@ -432,7 +431,7 @@ func TestTLSALPN01ObsoleteFailure(t *testing.T) {
 	cert := testTLSCert([]string{"expected"}, nil, []pkix.Extension{acmeExtension(IdPeAcmeIdentifierV1Obsolete, expectedKeyAuthorization)})
 	hs := tlsalpn01SrvWithCert(t, cert, 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertNotNil(t, err, "expected validation to fail")
@@ -445,7 +444,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	cert := testTLSCert([]string{"expected"}, nil, []pkix.Extension{acmeExtension(IdPeAcmeIdentifier, badKeyAuthorization)})
 	hs := tlsalpn01SrvWithCert(t, cert, 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
@@ -466,7 +465,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
 	hs := brokenTLSSrv()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
@@ -489,7 +488,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 	}
 	hs.StartTLS()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
@@ -522,7 +521,7 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 	for _, badExt := range badExtensions {
 		acmeCert := testTLSCert([]string{"expected"}, nil, []pkix.Extension{badExt})
 		hs := tlsalpn01SrvWithCert(t, acmeCert, 0, false)
-		va, _ := setup(hs, "", nil, nil)
+		va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 		_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 		hs.Close()
@@ -562,7 +561,7 @@ func TestTLSALPN01TLSVersion(t *testing.T) {
 		// Create a server that only negotiates the given TLS version
 		hs := tlsalpn01SrvWithCert(t, cert, tc.version, false)
 
-		va, _ := setup(hs, "", nil, nil)
+		va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 		_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 		if !tc.expectError {
@@ -587,7 +586,7 @@ func TestTLSALPN01WrongName(t *testing.T) {
 	// Create a cert with a different name from what we're validating
 	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"incorrect"}), 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -599,7 +598,7 @@ func TestTLSALPN01WrongIPv4(t *testing.T) {
 	cert := testTLSCert(nil, []net.IP{net.ParseIP("10.10.10.10")}, []pkix.Extension{testACMEExt})
 	hs := tlsalpn01SrvWithCert(t, cert, 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -611,7 +610,7 @@ func TestTLSALPN01WrongIPv6(t *testing.T) {
 	cert := testTLSCert(nil, []net.IP{net.ParseIP("::2")}, []pkix.Extension{testACMEExt})
 	hs := tlsalpn01SrvWithCert(t, cert, 0, true)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -622,7 +621,7 @@ func TestTLSALPN01ExtraNames(t *testing.T) {
 	// Create a cert with two names when we only want to validate one.
 	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"expected", "extra"}), 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -633,7 +632,7 @@ func TestTLSALPN01WrongIdentType(t *testing.T) {
 	// Create a cert with an IP address encoded as a name.
 	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"127.0.0.1"}), 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -644,7 +643,7 @@ func TestTLSALPN01TooManyIdentTypes(t *testing.T) {
 	// Create a cert with both a name and an IP address when we only want to validate one.
 	hs := tlsalpn01SrvWithCert(t, testTLSCert([]string{"expected"}, []net.IP{net.ParseIP("127.0.0.1")}, []pkix.Extension{testACMEExt}), 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -702,7 +701,7 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 
 	hs := tlsalpn01SrvWithCert(t, acmeCert, 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -720,7 +719,7 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 
 	hs = tlsalpn01SrvWithCert(t, acmeCert, 0, false)
 
-	va, _ = setup(hs, "", nil, nil)
+	va, _ = setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -759,7 +758,7 @@ func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
 
 	hs := tlsalpn01SrvWithCert(t, acmeCert, tls.VersionTLS12, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -782,7 +781,7 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 	extensions := []pkix.Extension{testACMEExt, subjectAltName, subjectAltName}
 	hs := tlsalpn01SrvWithCert(t, testTLSCert([]string{"expected"}, nil, extensions), 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -797,7 +796,7 @@ func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
 	extensions := []pkix.Extension{testACMEExt, testACMEExt}
 	hs := tlsalpn01SrvWithCert(t, testTLSCert([]string{"expected"}, nil, extensions), 0, false)
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
@@ -861,7 +860,7 @@ func TestTLSALPN01BadIdentifier(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateTLSALPN01(ctx, identifier.ACMEIdentifier{Type: "smime", Value: "dobber@bad.horse"}, expectedKeyAuthorization)
 	test.AssertError(t, err, "Server accepted a hypothetical S/MIME identifier")
@@ -938,7 +937,7 @@ func TestTLSALPN01ServerName(t *testing.T) {
 			hs.StartTLS()
 			defer hs.Close()
 
-			va, _ := setup(hs, "", nil, nil)
+			va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 			// The actual test happens in the tlsConfig.GetCertificate function,
 			// which the validation will call and depend on for its success.

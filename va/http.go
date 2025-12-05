@@ -15,7 +15,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
@@ -178,8 +177,8 @@ type httpValidationTarget struct {
 	next []netip.Addr
 	// the current IP address being used for validation (if any)
 	cur netip.Addr
-	// the DNS resolver(s) that will attempt to fulfill the validation request
-	resolvers bdns.ResolverAddrs
+	// the DNS resolver(s) that were used to look up the host's IP addresses
+	resolvers []string
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -209,7 +208,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	path string,
 	query string) (*httpValidationTarget, error) {
 	var addrs []netip.Addr
-	var resolvers bdns.ResolverAddrs
+	var resolvers []string
 	switch ident.Type {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier

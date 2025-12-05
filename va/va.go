@@ -188,22 +188,23 @@ func newDefaultPortConfig() *portConfig {
 type ValidationAuthorityImpl struct {
 	vapb.UnsafeVAServer
 	vapb.UnsafeCAAServer
-	log                blog.Logger
-	dnsClient          bdns.Client
-	issuerDomain       string
-	httpPort           int
-	httpsPort          int
-	tlsPort            int
-	userAgent          string
-	clk                clock.Clock
-	remoteVAs          []RemoteVA
-	maxRemoteFailures  int
-	accountURIPrefixes []string
-	singleDialTimeout  time.Duration
-	slowRemoteTimeout  time.Duration
-	perspective        string
-	rir                string
-	isReservedIPFunc   func(netip.Addr) error
+	log                  blog.Logger
+	dnsClient            bdns.Client
+	issuerDomain         string
+	httpPort             int
+	httpsPort            int
+	tlsPort              int
+	userAgent            string
+	clk                  clock.Clock
+	remoteVAs            []RemoteVA
+	maxRemoteFailures    int
+	accountURIPrefixes   []string
+	singleDialTimeout    time.Duration
+	slowRemoteTimeout    time.Duration
+	perspective          string
+	rir                  string
+	isReservedIPFunc     func(netip.Addr) error
+	allowRestrictedAddrs bool
 
 	metrics *vaMetrics
 }
@@ -225,6 +226,7 @@ func NewValidationAuthorityImpl(
 	rir string,
 	reservedIPChecker func(netip.Addr) error,
 	slowRemoteTimeout time.Duration,
+	allowRestrictedAddrs bool,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
@@ -258,10 +260,11 @@ func NewValidationAuthorityImpl(
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
 		// HTTP-01 challenge validation.
-		singleDialTimeout: 10 * time.Second,
-		perspective:       perspective,
-		rir:               rir,
-		isReservedIPFunc:  reservedIPChecker,
+		singleDialTimeout:    10 * time.Second,
+		perspective:          perspective,
+		rir:                  rir,
+		isReservedIPFunc:     reservedIPChecker,
+		allowRestrictedAddrs: allowRestrictedAddrs,
 	}
 
 	return va, nil

@@ -26,24 +26,18 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-// caaMockDNS implements the `dns.DNSClient` interface with a set of useful test
+// caaFakeDNS implements the `dns.DNSClient` interface with a set of useful test
 // answers for CAA queries.
-type caaMockDNS struct{}
-
-func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaMockDNS"}, nil
+type caaFakeDNS struct {
+	bdns.Client
 }
 
-func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaMockDNS"}, nil
-}
-
-func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
+func (mock *caaFakeDNS) LookupCAA(_ context.Context, domain string) (*bdns.Result[*dns.CAA], string, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("error")
+		return nil, "caaFakeDNS", fmt.Errorf("error")
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "ca.com"
@@ -63,11 +57,10 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		results = append(results, &record)
 	case "com":
 		// com has no CAA records.
-		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, nil
 	case "gonetld":
-		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("NXDOMAIN")
+		return nil, "caaFakeDNS", fmt.Errorf("NXDOMAIN")
 	case "servfail.com", "servfail.present.com":
-		return results, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("SERVFAIL")
+		return nil, "caaFakeDNS", fmt.Errorf("SERVFAIL")
 	case "multi-crit-present.com":
 		record.Flag = 1
 		record.Tag = "issue"
@@ -185,15 +178,12 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
 	}
-	var response string
-	if len(results) > 0 {
-		response = "foo"
-	}
-	return results, response, bdns.ResolverAddrs{"caaMockDNS"}, nil
+
+	return &bdns.Result[*dns.CAA]{Final: results}, "caaFakeDNS", nil
 }
 
 func TestCAATimeout(t *testing.T) {
-	va, _ := setup(nil, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, &caaFakeDNS{})
 
 	params := &caaParams{
 		accountURIID:     12345,
@@ -416,7 +406,7 @@ func TestCAAChecking(t *testing.T) {
 	method := core.ChallengeTypeHTTP01
 	params := &caaParams{accountURIID: accountURIID, validationMethod: method}
 
-	va, _ := setup(nil, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, &caaFakeDNS{})
 	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
 
 	for _, caaTest := range testCases {
@@ -424,7 +414,7 @@ func TestCAAChecking(t *testing.T) {
 		defer mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
 			ident := identifier.NewDNS(caaTest.Domain)
-			foundAt, valid, _, err := va.checkCAARecords(ctx, ident, params)
+			foundAt, valid, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -439,7 +429,7 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestCAALogging(t *testing.T) {
-	va, _ := setup(nil, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, &caaFakeDNS{})
 
 	testCases := []struct {
 		Name            string
@@ -452,55 +442,55 @@ func TestCAALogging(t *testing.T) {
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"reserved.com\"]",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false, Found at: \"reserved.com\"]",
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"mixedcase.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"mixedcase.com\"]",
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"critical.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"critical.com\"]",
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"]",
 		},
 		{
 			Domain:          "not.here.but.still.present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for not.here.but.still.present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for not.here.but.still.present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"]",
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"multi-crit-present.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"multi-crit-present.com\"]",
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present-with-parameter.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present-with-parameter.com\"]",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"satisfiable-wildcard-override.com\"] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"satisfiable-wildcard-override.com\"]",
 		},
 	}
 
@@ -530,7 +520,7 @@ func TestCAALogging(t *testing.T) {
 // includes the domain name that was being checked in the failure detail.
 func TestDoCAAErrMessage(t *testing.T) {
 	t.Parallel()
-	va, _ := setup(nil, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, &caaFakeDNS{})
 
 	// Call the operation with a domain we know fails with a generic error from the
 	// caaMockDNS.
@@ -556,7 +546,7 @@ func TestDoCAAErrMessage(t *testing.T) {
 // Binding checks.
 func TestDoCAAParams(t *testing.T) {
 	t.Parallel()
-	va, _ := setup(nil, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, &caaFakeDNS{})
 
 	// Calling IsCAAValid without a ValidationMethod should fail.
 	_, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
@@ -593,35 +583,24 @@ var errCAABrokenDNSClient = errors.New("dnsClient is broken")
 
 // caaBrokenDNS implements the `dns.DNSClient` interface, but always returns
 // errors.
-type caaBrokenDNS struct{}
-
-func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
+type caaBrokenDNS struct {
+	bdns.Client
 }
 
-func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
-}
-
-func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
-	return nil, "", bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) (*bdns.Result[*dns.CAA], string, error) {
+	return nil, "caaBrokenDNS", errCAABrokenDNSClient
 }
 
 // caaHijackedDNS implements the `dns.DNSClient` interface with a set of useful
 // test answers for CAA queries. It returns alternate CAA records than what
-// caaMockDNS returns simulating either a BGP hijack or DNS records that have
+// caaFakeDNS returns simulating either a BGP hijack or DNS records that have
 // changed while queries were inflight.
-type caaHijackedDNS struct{}
-
-func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
-	return nil, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
+type caaHijackedDNS struct {
+	bdns.Client
 }
 
-func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
-}
-func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
-	// These records are altered from their caaMockDNS counterparts. Use this to
+func (b caaHijackedDNS) LookupCAA(_ context.Context, domain string) (*bdns.Result[*dns.CAA], string, error) {
+	// These records are altered from their caaFakeDNS counterparts. Use this to
 	// tickle remoteValidationFailures.
 	var results []*dns.CAA
 	var record dns.CAA
@@ -631,7 +610,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 		record.Value = "other-ca.com"
 		results = append(results, &record)
 	case "present-dns-only.com":
-		return results, "", bdns.ResolverAddrs{"caaHijackedDNS"}, fmt.Errorf("SERVFAIL")
+		return nil, "caaHijackedDNS", fmt.Errorf("SERVFAIL")
 	case "satisfiable-wildcard.com":
 		record.Tag = "issuewild"
 		record.Value = ";"
@@ -641,11 +620,8 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 		secondRecord.Value = ";"
 		results = append(results, &secondRecord)
 	}
-	var response string
-	if len(results) > 0 {
-		response = "foo"
-	}
-	return results, response, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
+
+	return &bdns.Result[*dns.CAA]{Final: results}, "caaHijackedDNS", nil
 }
 
 // parseValidationLogEvent extracts ... from JSON={ ... } in a ValidateChallenge
@@ -691,11 +667,11 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:           "all VAs functional, no CAA records",
 			ident:          identifier.NewDNS("present-dns-only.com"),
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
-				{ua: remoteUA, rir: arin},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: arin, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -712,9 +688,9 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring: "While processing CAA for present-dns-only.com: dnsClient is broken",
 			expectedProbType:      probs.DNSProblem,
 			remoteVAs: []remoteConf{
-				{ua: remoteUA, rir: arin},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: arin, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -727,7 +703,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "functional localVA, 1 broken RVA, no CAA records",
 			ident:                    identifier.NewDNS("present-dns-only.com"),
-			localDNSClient:           caaMockDNS{},
+			localDNSClient:           &caaFakeDNS{},
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			expectedSummary: &mpicSummary{
 				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
@@ -737,8 +713,8 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -760,11 +736,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{apnic},
 				QuorumResult: "1/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -786,7 +762,7 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{},
 				QuorumResult: "0/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
@@ -803,11 +779,11 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:           "all VAs functional, CAA issue type present",
 			ident:          identifier.NewDNS("present.com"),
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
-				{ua: remoteUA, rir: arin},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: arin, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -827,11 +803,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{ripe, apnic},
 				QuorumResult: "2/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -853,11 +829,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{apnic},
 				QuorumResult: "1/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -879,7 +855,7 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{},
 				QuorumResult: "0/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
@@ -900,11 +876,11 @@ func TestMultiCAARechecking(t *testing.T) {
 			ident:                 identifier.NewDNS("unsatisfiable.com"),
 			expectedProbSubstring: "CAA record for unsatisfiable.com prevents issuance",
 			expectedProbType:      probs.CAAProblem,
-			localDNSClient:        caaMockDNS{},
+			localDNSClient:        &caaFakeDNS{},
 			remoteVAs: []remoteConf{
-				{ua: remoteUA, rir: arin},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: arin, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 		},
 		{
@@ -917,11 +893,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{ripe, apnic},
 				QuorumResult: "2/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 		},
 		{
@@ -936,11 +912,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{apnic},
 				QuorumResult: "1/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 		},
 		{
@@ -955,7 +931,7 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{},
 				QuorumResult: "0/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -972,11 +948,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{ripe, apnic},
 				QuorumResult: "2/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 		},
 		{
@@ -991,11 +967,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{apnic},
 				QuorumResult: "1/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 		},
 		{
@@ -1010,7 +986,7 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{},
 				QuorumResult: "0/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -1027,11 +1003,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{ripe, apnic},
 				QuorumResult: "2/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: ripe},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 		},
 		{
@@ -1046,11 +1022,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{apnic},
 				QuorumResult: "1/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: apnic},
+				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
 			},
 		},
 		{
@@ -1065,7 +1041,7 @@ func TestMultiCAARechecking(t *testing.T) {
 				PassedRIRs:   []string{},
 				QuorumResult: "0/3",
 			},
-			localDNSClient: caaMockDNS{},
+			localDNSClient: &caaFakeDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -1095,7 +1071,7 @@ func TestMultiCAARechecking(t *testing.T) {
 				test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
 				test.AssertContains(t, isValidRes.Problem.Detail, tc.expectedProbSubstring)
 			} else if isValidRes.Problem != nil {
-				test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValidRequest returned a problem, but should not have")
+				test.AssertBoxedNil(t, isValidRes.Problem, fmt.Sprintf("IsCAAValidRequest returned problem %q, but should not have", isValidRes.Problem.Detail))
 			}
 
 			if tc.expectedProbType != "" {
@@ -1131,7 +1107,7 @@ func TestCAAFailure(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
-	va, _ := setup(hs, "", nil, caaMockDNS{})
+	va, _ := setup(hs, "", nil, &caaFakeDNS{})
 
 	err := va.checkCAA(ctx, identifier.NewDNS("reserved.com"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {
@@ -1234,9 +1210,9 @@ func TestSelectCAA(t *testing.T) {
 
 	// A slice of empty caaResults should return nil, "", nil
 	r = []caaResult{
-		{"", false, nil, nil, false, "", nil, nil},
-		{"", false, nil, nil, false, "", nil, nil},
-		{"", false, nil, nil, false, "", nil, nil},
+		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -1245,8 +1221,8 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{"foo.com", false, nil, nil, false, "", nil, errors.New("oops")},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
+		{"foo.com", false, nil, nil, false, "", errors.New("oops")},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -1256,26 +1232,24 @@ func TestSelectCAA(t *testing.T) {
 	//  A slice of caaResults containing a good record that precedes an
 	//  error, should return that good record, not the error
 	r = []caaResult{
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
-		{"com", false, nil, nil, false, "", nil, errors.New("")},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", false, nil, nil, false, "", errors.New("")},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)
 	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, s.dig, "foo")
 	test.Assert(t, err == nil, "error is not nil")
 
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
-		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil, nil},
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil, nil},
+		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)
 	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, s.dig, "foo")
 	test.AssertNotError(t, err, "expect nil error")
 }
 

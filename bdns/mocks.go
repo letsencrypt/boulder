@@ -3,159 +3,29 @@ package bdns
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net"
-	"net/netip"
-	"os"
 
 	"github.com/miekg/dns"
-
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 // MockClient is a mock
-type MockClient struct {
-	Log blog.Logger
-}
+type MockClient struct{}
 
 // LookupTXT is a mock
-func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddrs, error) {
-	// Use the example account-specific label prefix derived from
-	// "https://example.com/acme/acct/ExampleAccount"
-	const accountLabelPrefix = "_ujmmovf2vn55tgye._acme-challenge"
-
-	if hostname == accountLabelPrefix+".servfail.com" {
-		// Mirror dns-01 servfail behaviour
-		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
-	}
-	if hostname == accountLabelPrefix+".good-dns01.com" {
-		// Mirror dns-01 good record
-		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
-		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == accountLabelPrefix+".wrong-dns01.com" {
-		// Mirror dns-01 wrong record
-		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == accountLabelPrefix+".wrong-many-dns01.com" {
-		// Mirror dns-01 wrong-many record
-		return []string{"a", "b", "c", "d", "e"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == accountLabelPrefix+".long-dns01.com" {
-		// Mirror dns-01 long record
-		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == accountLabelPrefix+".no-authority-dns01.com" {
-		// Mirror dns-01 no-authority good record
-		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
-		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == accountLabelPrefix+".empty-txts.com" {
-		// Mirror dns-01 zero TXT records
-		return []string{}, ResolverAddrs{"MockClient"}, nil
-	}
-
-	if hostname == "_acme-challenge.servfail.com" {
-		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
-	}
-	if hostname == "_acme-challenge.good-dns01.com" {
-		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
-		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
-		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.wrong-dns01.com" {
-		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.wrong-many-dns01.com" {
-		return []string{"a", "b", "c", "d", "e"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.long-dns01.com" {
-		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.no-authority-dns01.com" {
-		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
-		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
-		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
-	}
-	// empty-txts.com always returns zero TXT records
-	if hostname == "_acme-challenge.empty-txts.com" {
-		return []string{}, ResolverAddrs{"MockClient"}, nil
-	}
-
-	// Default fallback
-	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
+func (mock *MockClient) LookupTXT(_ context.Context, hostname string) (*Result[*dns.TXT], string, error) {
+	return nil, "MockClient", errors.New("unexpected LookupTXT call on test fake")
 }
 
-// makeTimeoutError returns a a net.OpError for which Timeout() returns true.
-func makeTimeoutError() *net.OpError {
-	return &net.OpError{
-		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
-	}
+// LookupA is a fake
+func (mock *MockClient) LookupA(_ context.Context, hostname string) (*Result[*dns.A], string, error) {
+	return nil, "MockClient", errors.New("unexpected LookupA call on test fake")
 }
 
-type timeoutError struct{}
-
-func (t timeoutError) Error() string {
-	return "so sloooow"
-}
-func (t timeoutError) Timeout() bool {
-	return true
+// LookupAAAA is a fake
+func (mock *MockClient) LookupAAAA(_ context.Context, hostname string) (*Result[*dns.AAAA], string, error) {
+	return nil, "MockClient", errors.New("unexpected LookupAAAA call on test fake")
 }
 
-// LookupHost is a mock
-func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]netip.Addr, ResolverAddrs, error) {
-	if hostname == "always.invalid" ||
-		hostname == "invalid.invalid" {
-		return []netip.Addr{}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "always.timeout" {
-		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, "always.timeout", makeTimeoutError(), -1, nil}
-	}
-	if hostname == "always.error" {
-		err := &net.OpError{
-			Op:  "read",
-			Net: "udp",
-			Err: errors.New("some net error"),
-		}
-		m := new(dns.Msg)
-		m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
-		m.AuthenticatedData = true
-		m.SetEdns0(4096, false)
-		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
-	}
-	if hostname == "id.mismatch" {
-		err := dns.ErrId
-		m := new(dns.Msg)
-		m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
-		m.AuthenticatedData = true
-		m.SetEdns0(4096, false)
-		r := new(dns.Msg)
-		record := new(dns.A)
-		record.Hdr = dns.RR_Header{Name: dns.Fqdn(hostname), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-		record.A = net.ParseIP("127.0.0.1")
-		r.Answer = append(r.Answer, record)
-		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
-	}
-	// dual-homed host with an IPv6 and an IPv4 address
-	if hostname == "ipv4.and.ipv6.localhost" {
-		return []netip.Addr{
-			netip.MustParseAddr("::1"),
-			netip.MustParseAddr("127.0.0.1"),
-		}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "ipv6.localhost" {
-		return []netip.Addr{
-			netip.MustParseAddr("::1"),
-		}, ResolverAddrs{"MockClient"}, nil
-	}
-	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, ResolverAddrs{"MockClient"}, nil
-}
-
-// LookupCAA returns mock records for use in tests.
-func (mock *MockClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, ResolverAddrs, error) {
-	return nil, "", ResolverAddrs{"MockClient"}, nil
+// LookupCAA is a fake
+func (mock *MockClient) LookupCAA(_ context.Context, domain string) (*Result[*dns.CAA], string, error) {
+	return nil, "MockClient", errors.New("unexpected LookupCAA call on test fake")
 }
