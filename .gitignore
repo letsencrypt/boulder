@@ -43,3 +43,11 @@ test/proxysql/*.log*
 
 # Coverage files
 test/coverage
+
+# DSN symlinks
+test/secrets/badkeyrevoker_dburl
+test/secrets/cert_checker_dburl
+test/secrets/incidents_dburl
+test/secrets/revoker_dburl
+test/secrets/sa_dburl
+test/secrets/sa_ro_dburl

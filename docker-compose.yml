@@ -50,8 +50,9 @@ services:
       - 4001:4001 # ACMEv2
       - 4003:4003 # SFE
     depends_on:
-      - bmysql
+      - bmariadb
       - bproxysql
+      - bvitess
       - bredis_1
       - bredis_2
       - bconsul
@@ -74,12 +75,12 @@ services:
       # with a "docker compose up bsetup".
       - setup
 
-  bmysql:
+  bmariadb:
     image: mariadb:10.11.13
     networks:
       bouldernet:
         aliases:
-          - boulder-mysql
+          - boulder-mariadb
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     # Send slow queries to a table so we can check for them in the
@@ -101,7 +102,7 @@ services:
     volumes:
       - ./test/:/test/:cached
     depends_on:
-      - bmysql
+      - bmariadb
     networks:
       bouldernet:
         aliases:
@@ -143,6 +144,21 @@ services:
     image: ghcr.io/pkimetal/pkimetal:v1.20.0
     networks:
       - bouldernet
+
+  bvitess:
+    # The `letsencrypt/boulder-vtcomboserver:latest` tag is automatically built
+    # in local dev environments. In CI a specific BOULDER_VTCOMBOSERVER_TAG is
+    # passed, and it is pulled with `docker compose pull`.
+    image: letsencrypt/boulder-vtcomboserver:${BOULDER_VTCOMBOSERVER_TAG:-latest}
+    environment:
+      # By specifying KEYSPACES vttestserver will create the corresponding
+      # databases on startup.
+      KEYSPACES: boulder_sa_test,boulder_sa_integration,incidents_sa_test,incidents_sa_integration
+      NUM_SHARDS: 1,1,1,1
+    networks:
+      bouldernet:
+        aliases:
+          - boulder-vitess
 
 networks:
   # This network represents the data-center internal network. It is used for
