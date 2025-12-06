@@ -364,12 +364,14 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	if om.Replaces != nil {
 		replaces = *om.Replaces
 	}
+	var v2Authorizations []int64
 	if len(om.Authzs) > 0 {
 		var decodedAuthzs sapb.Authzs
 		err := proto.Unmarshal(om.Authzs, &decodedAuthzs)
 		if err != nil {
 			return nil, err
 		}
+		v2Authorizations = decodedAuthzs.AuthzIDs
 	}
 	order := &corepb.Order{
 		Id:                     om.ID,
@@ -380,6 +382,7 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		BeganProcessing:        om.BeganProcessing,
 		CertificateProfileName: profile,
 		Replaces:               replaces,
+		V2Authorizations:       v2Authorizations,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
