@@ -117,7 +117,7 @@ func TestKeyGenConfigValidate(t *testing.T) {
 				Type:       "ecdsa",
 				ECDSACurve: "bad",
 			},
-			expectedError: "key.ecdsa-curve can only be 'P-224', 'P-256', 'P-384', or 'P-521'",
+			expectedError: "key.ecdsa-curve can only be 'P-256', 'P-384', or 'P-521'",
 		},
 		{
 			name: "key.type is ecdsa but key.rsa-mod-length is present",

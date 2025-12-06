@@ -101,7 +101,6 @@ type keyGenConfig struct {
 }
 
 var allowedCurves = map[string]bool{
-	"P-224": true,
 	"P-256": true,
 	"P-384": true,
 	"P-521": true,
@@ -121,7 +120,7 @@ func (kgc keyGenConfig) validate() error {
 		return errors.New("if key.type = 'rsa' then key.ecdsa-curve is not used")
 	}
 	if kgc.Type == "ecdsa" && !allowedCurves[kgc.ECDSACurve] {
-		return errors.New("key.ecdsa-curve can only be 'P-224', 'P-256', 'P-384', or 'P-521'")
+		return errors.New("key.ecdsa-curve can only be 'P-256', 'P-384', or 'P-521'")
 	}
 	if kgc.Type == "ecdsa" && kgc.RSAModLength != 0 {
 		return errors.New("if key.type = 'ecdsa' then key.rsa-mod-length is not used")

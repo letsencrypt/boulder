@@ -40,7 +40,7 @@ This tool always generates key pairs such that the public and private key are bo
     | Field | Description |
     | --- | --- |
     | `type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
-    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
+    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-256`, `P-384`, or `P-521`. |
     | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`. |
 
 - `outputs`: object containing paths to write outputs.
@@ -267,7 +267,7 @@ This config generates a CSR signed by a key in the HSM, identified by the object
     | Field | Description |
     | --- | --- |
     | `type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
-    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
+    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-256`, `P-384`, or `P-521`. |
     | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`. |
 
 - `outputs`: object containing paths to write outputs.
