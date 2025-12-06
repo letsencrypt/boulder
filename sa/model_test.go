@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test/vars"
 
 	"github.com/letsencrypt/boulder/core"
@@ -221,6 +223,38 @@ func TestModelToOrderBadJSON(t *testing.T) {
 	var badJSONErr errBadJSON
 	test.AssertErrorWraps(t, err, &badJSONErr)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
+}
+
+// TestModelToOrderAuthzs tests that the Authzs field is properly decoded and
+// assigned to V2Authorizations.
+func TestModelToOrderAuthzs(t *testing.T) {
+	expectedAuthzIDs := []int64{1, 2, 3, 42}
+	encodedAuthzs, err := proto.Marshal(&sapb.Authzs{AuthzIDs: expectedAuthzIDs})
+	test.AssertNotError(t, err, "failed to marshal authzs")
+
+	testCases := []struct {
+		name             string
+		model            *orderModel
+		expectedAuthzIDs []int64
+	}{
+		{
+			name:             "with authzs",
+			model:            &orderModel{Authzs: encodedAuthzs},
+			expectedAuthzIDs: expectedAuthzIDs,
+		},
+		{
+			name:             "without authzs",
+			model:            &orderModel{},
+			expectedAuthzIDs: nil,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			order, err := modelToOrder(tc.model)
+			test.AssertNotError(t, err, "modelToOrder failed")
+			test.AssertDeepEquals(t, order.V2Authorizations, tc.expectedAuthzIDs)
+		})
+	}
 }
 
 // TestPopulateAttemptedFieldsBadJSON tests that populating a challenge from an
