@@ -65,6 +65,12 @@ func usableForPurpose(s loglist3.LogStatus, p purpose) bool {
 	return false
 }
 
+// isTestLog returns true if the log type is test is "test" or "monitoring_only".
+// The schema documents a third option, "prod", which does not currently appear in Google's lists.
+func isTestLog(log Log) bool {
+	return log.Type == "test" || log.Type == "monitoring_only"
+}
+
 // New returns a LogList of all operators and all logs parsed from the file at
 // the given path. The file must conform to the JSON Schema published by Google:
 // https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
@@ -186,10 +192,13 @@ func (ll List) forPurpose(p purpose, submitToTestLogs bool) (List, error) {
 	// interprets this as "UndefinedLogStatus", which causes usableForPurpose()
 	// to return false. To account for this, we skip this check for test logs.
 	for _, log := range ll {
-		if log.Type == "test" && !submitToTestLogs {
+		// Only consider test logs if we are submitting to test logs:
+		if isTestLog(log) && !submitToTestLogs {
 			continue
 		}
-		if log.Type != "test" && !usableForPurpose(log.State, p) {
+		// Check the log is usable for a purpose.
+		// But test logs aren't ever marked Usable.
+		if !isTestLog(log) && !usableForPurpose(log.State, p) {
 			continue
 		}
 		res = append(res, log)
