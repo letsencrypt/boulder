@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -251,8 +252,12 @@ func TestModelToOrderAuthzs(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			order, err := modelToOrder(tc.model)
-			test.AssertNotError(t, err, "modelToOrder failed")
-			test.AssertDeepEquals(t, order.V2Authorizations, tc.expectedAuthzIDs)
+			if err != nil {
+				t.Fatalf("modelToOrder(%v) = %s, want success", tc.model, err)
+			}
+			if !slices.Equal(order.V2Authorizations, tc.expectedAuthzIDs) {
+				t.Errorf("modelToOrder(%v) = %v, want %v", tc.model, order.V2Authorizations, tc.expectedAuthzIDs)
+			}
 		})
 	}
 }
