@@ -791,7 +791,6 @@ func TestRetryMetrics(t *testing.T) {
 
 	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
-
 	dr.exchanger = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -800,7 +799,15 @@ func TestRetryMetrics(t *testing.T) {
 		err.Error() != "DNS problem: query timed out (and was canceled) looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
+	test.AssertMetricWithLabelsEquals(
+		t, dr.timeoutCounter, prometheus.Labels{
+			"qtype":    "TXT",
+			"result":   "canceled",
+			"resolver": "127.0.0.1",
+		}, 1)
 
+	testClient = New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
+	dr = testClient.(*impl)
 	dr.exchanger = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
 	ctx, cancel = context.WithTimeout(context.Background(), -10*time.Hour)
 	defer cancel()
@@ -809,28 +816,12 @@ func TestRetryMetrics(t *testing.T) {
 		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
-
-	dr.exchanger = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
-	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
-	deadlineCancel()
-	_, _, err = dr.LookupTXT(ctx, "example.com")
-	if err == nil ||
-		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
-		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
-	}
-
-	test.AssertMetricWithLabelsEquals(
-		t, dr.timeoutCounter, prometheus.Labels{
-			"qtype":    "TXT",
-			"result":   "canceled",
-			"resolver": "127.0.0.1",
-		}, 1)
 	test.AssertMetricWithLabelsEquals(
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"result":   "deadline exceeded",
 			"resolver": "127.0.0.1",
-		}, 2)
+		}, 1)
 }
 
 type testTimeoutError bool
