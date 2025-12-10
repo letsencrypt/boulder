@@ -47,7 +47,10 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 		t.Fatalf("adding DNS response: %s", err)
 	}
 	t.Cleanup(func() {
-		_, _ = testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		if err != nil {
+			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+		}
 	})
 
 	chal, err = c.Client.UpdateChallenge(c.Account, chal)
@@ -103,7 +106,10 @@ func TestDNSAccount01WrongTXTRecord(t *testing.T) {
 		t.Fatalf("adding DNS response: %s", err)
 	}
 	t.Cleanup(func() {
-		_, _ = testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		if err != nil {
+			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+		}
 	})
 
 	_, err = c.Client.UpdateChallenge(c.Account, chal)
@@ -212,7 +218,10 @@ func TestDNSAccount01MultipleTXTRecordsNoneMatch(t *testing.T) {
 		t.Fatalf("adding DNS response: %s", err)
 	}
 	t.Cleanup(func() {
-		_, _ = testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		if err != nil {
+			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+		}
 	})
 
 	_, err = c.Client.UpdateChallenge(c.Account, chal)
@@ -276,7 +285,10 @@ func TestDNSAccount01MultipleTXTRecordsOneMatches(t *testing.T) {
 		t.Fatalf("adding DNS response: %s", err)
 	}
 	t.Cleanup(func() {
-		_, _ = testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		if err != nil {
+			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+		}
 	})
 
 	chal, err = c.Client.UpdateChallenge(c.Account, chal)
@@ -402,7 +414,10 @@ func TestDNSAccount01WildcardAuthorizationReuse(t *testing.T) {
 		t.Fatalf("adding DNS response: %s", err)
 	}
 	t.Cleanup(func() {
-		_, _ = testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+		if err != nil {
+			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+		}
 	})
 
 	chal, err = c.Client.UpdateChallenge(c.Account, chal)
@@ -438,16 +453,16 @@ func TestDNSAccount01WildcardAuthorizationReuse(t *testing.T) {
 
 	// Verify reuse occurred: same authorization URL
 	if authzURL != authzURL2 {
-		t.Fatalf("expected same authorization URL, got different: %s != %s", authzURL, authzURL2)
+		t.Errorf("expected same authorization URL, got different: %s != %s", authzURL, authzURL2)
 	}
 
 	// Verify authorization is already valid (no re-validation needed)
 	if auth2.Status != "valid" {
-		t.Fatalf("expected reused authorization status to be 'valid', got '%s'", auth2.Status)
+		t.Errorf("expected reused authorization status to be 'valid', got '%s'", auth2.Status)
 	}
 
 	// Verify authorization still has DNS-Account-01 challenge
 	if _, ok := auth2.ChallengeMap[acme.ChallengeTypeDNSAccount01]; !ok {
-		t.Fatal("expected reused authorization to have dns-account-01 challenge")
+		t.Error("expected reused authorization to have dns-account-01 challenge")
 	}
 }

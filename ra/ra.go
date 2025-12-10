@@ -2238,16 +2238,25 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		}
 
-		// If the identifier is a wildcard DNS name, it must have exactly one
-		// DNS-01 type challenge, or DNS-Account-01 if the feature is enabled.
-		// The PA guarantees this at order creation time, but we verify again to be safe.
-		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") &&
-			(len(authz.Challenges) != 1 ||
-				(authz.Challenges[0].Type != core.ChallengeTypeDNS01 &&
-					(!features.Get().DNSAccount01Enabled || authz.Challenges[0].Type != core.ChallengeTypeDNSAccount01))) {
-			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
-				authz.ID)
+		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") {
+			if len(authz.Challenges) != 1 {
+				return nil, berrors.InternalServerError(
+					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with an unexpected number of challenges",
+					authz.ID,
+				)
+			}
+
+			// If the identifier is a wildcard DNS name, it must have exactly one
+			// DNS-01 type challenge, or DNS-Account-01 if the feature is enabled.
+			// The PA guarantees this at order creation time, but we verify again to be safe.
+			chall := authz.Challenges[0]
+			dnsAccount01Enabled := features.Get().DNSAccount01Enabled
+			if chall.Type != core.ChallengeTypeDNS01 && !(dnsAccount01Enabled && chall.Type == core.ChallengeTypeDNSAccount01) {
+				return nil, berrors.InternalServerError(
+					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+					authz.ID,
+				)
+			}
 		}
 
 		// If we reached this point then the existing authz was acceptable for
