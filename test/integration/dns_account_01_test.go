@@ -49,7 +49,7 @@ func TestDNSAccount01HappyPath(t *testing.T) {
 	t.Cleanup(func() {
 		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
 		if err != nil {
-			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+			t.Fatal(err)
 		}
 	})
 
@@ -108,7 +108,7 @@ func TestDNSAccount01WrongTXTRecord(t *testing.T) {
 	t.Cleanup(func() {
 		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
 		if err != nil {
-			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+			t.Fatal(err)
 		}
 	})
 
@@ -220,7 +220,7 @@ func TestDNSAccount01MultipleTXTRecordsNoneMatch(t *testing.T) {
 	t.Cleanup(func() {
 		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
 		if err != nil {
-			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+			t.Fatal(err)
 		}
 	})
 
@@ -287,7 +287,7 @@ func TestDNSAccount01MultipleTXTRecordsOneMatches(t *testing.T) {
 	t.Cleanup(func() {
 		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
 		if err != nil {
-			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+			t.Fatal(err)
 		}
 	})
 
@@ -354,7 +354,10 @@ func TestDNSAccount01WildcardDomain(t *testing.T) {
 			t.Fatalf("adding DNS response: %s", err)
 		}
 		t.Cleanup(func() {
-			_, _ = testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+			_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
+			if err != nil {
+				t.Fatal(err)
+			}
 		})
 
 		chal, err = c.Client.UpdateChallenge(c.Account, chal)
@@ -416,7 +419,7 @@ func TestDNSAccount01WildcardAuthorizationReuse(t *testing.T) {
 	t.Cleanup(func() {
 		_, err := testSrvClient.RemoveDNSAccount01Response(c.Account.URL, domain)
 		if err != nil {
-			t.Errorf("cleaning up DNS-Account-01 response: %s", err)
+			t.Fatal(err)
 		}
 	})
 
