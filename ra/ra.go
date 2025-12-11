@@ -2239,23 +2239,30 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 
 		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") {
-			if len(authz.Challenges) != 1 {
+			// Valid authz: exactly 1 challenge (the completed one).
+			// Pending authz with DNS-Account-01 enabled: 1 or 2 challenges.
+			maxChallenges := 1
+			dnsAccount01Enabled := features.Get().DNSAccount01Enabled
+			if authz.Status == core.StatusPending && dnsAccount01Enabled {
+				maxChallenges = 2
+			}
+			if len(authz.Challenges) < 1 || len(authz.Challenges) > maxChallenges {
 				return nil, berrors.InternalServerError(
 					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with an unexpected number of challenges",
 					authz.ID,
 				)
 			}
 
-			// If the identifier is a wildcard DNS name, it must have exactly one
-			// DNS-01 type challenge, or DNS-Account-01 if the feature is enabled.
-			// The PA guarantees this at order creation time, but we verify again to be safe.
-			chall := authz.Challenges[0]
-			dnsAccount01Enabled := features.Get().DNSAccount01Enabled
-			if chall.Type != core.ChallengeTypeDNS01 && !(dnsAccount01Enabled && chall.Type == core.ChallengeTypeDNSAccount01) {
-				return nil, berrors.InternalServerError(
-					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
-					authz.ID,
-				)
+			// If the identifier is a wildcard DNS name, it must have only
+			// DNS-01 or DNS-Account-01 type challenges. The PA guarantees this
+			// at order creation time, but we verify again to be safe.
+			for _, chall := range authz.Challenges {
+				if chall.Type != core.ChallengeTypeDNS01 && !(dnsAccount01Enabled && chall.Type == core.ChallengeTypeDNSAccount01) {
+					return nil, berrors.InternalServerError(
+						"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+						authz.ID,
+					)
+				}
 			}
 		}
 

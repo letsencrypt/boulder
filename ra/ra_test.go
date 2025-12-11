@@ -2132,7 +2132,9 @@ func TestNewOrderAuthzReuseDNSAccount01(t *testing.T) {
 	ctx := context.Background()
 	idents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
 
-	// Use a mock SA that returns a valid DNS-Account-01 authz for wildcard
+	// Use a mock SA that returns a pending authz with both DNS-01 and
+	// DNS-Account-01 challenges for wildcard. This tests that pending wildcard
+	// authorizations with 2 challenges can be reused.
 	expires := time.Now().Add(24 * time.Hour)
 	ra.SA = &mockSAWithAuthzs{
 		authzs: []*core.Authorization{
@@ -2140,12 +2142,17 @@ func TestNewOrderAuthzReuseDNSAccount01(t *testing.T) {
 				ID:             "1",
 				Identifier:     identifier.NewDNS("*.zombo.com"),
 				RegistrationID: registration.Id,
-				Status:         "valid",
+				Status:         "pending",
 				Expires:        &expires,
 				Challenges: []core.Challenge{
 					{
+						Type:   core.ChallengeTypeDNS01,
+						Status: core.StatusPending,
+						Token:  core.NewToken(),
+					},
+					{
 						Type:   core.ChallengeTypeDNSAccount01,
-						Status: core.StatusValid,
+						Status: core.StatusPending,
 						Token:  core.NewToken(),
 					},
 				},
