@@ -228,10 +228,10 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		if err != nil {
 			c.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]", chosenServer, hostname, qtypeStr, err)
 
-			// Check if the error is a timeout error, which we want to retry.
-			// Network errors that can timeout implement the net.Error interface.
+			// Check if the error is a network timeout, rather than a local context
+			// timeout. If it is, retry instead of giving up.
 			var netErr net.Error
-			isRetryable := errors.As(err, &netErr) && netErr.Timeout() && !errors.Is(err, context.DeadlineExceeded)
+			isRetryable := ctx.Err() == nil && errors.As(err, &netErr) && netErr.Timeout()
 			hasRetriesLeft := tries < c.maxTries
 			if isRetryable && hasRetriesLeft {
 				continue

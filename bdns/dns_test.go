@@ -608,7 +608,11 @@ type testExchanger struct {
 
 var errTooManyRequests = errors.New("too many requests")
 
-func (te *testExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (te *testExchanger) ExchangeContext(ctx context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+	if ctx.Err() != nil {
+		return nil, 0, ctx.Err()
+	}
+
 	te.Lock()
 	defer te.Unlock()
 	msg := &dns.Msg{
@@ -788,10 +792,16 @@ func TestRetryMetrics(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
+	// This lookup should not be retried, because the error comes from the
+	// context itself being cancelled. It should never see the error in the
+	// testExchanger, because the fake exchanger (like the real http package)
+	// checks for cancellation before doing any work.
 	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{context.Canceled}}
-	_, _, err = dr.LookupTXT(t.Context(), "example.com")
+	dr.exchanger = &testExchanger{errs: []error{errors.New("oops")}}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out (and was canceled) looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
@@ -803,10 +813,14 @@ func TestRetryMetrics(t *testing.T) {
 			"resolver": "127.0.0.1",
 		}, 1)
 
+	// Same as above, except rather than cancelling the context ourselves, we
+	// let the go runtime cancel it as a result of a deadline in the past.
 	testClient = New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr = testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{context.DeadlineExceeded}}
-	_, _, err = dr.LookupTXT(t.Context(), "example.com")
+	dr.exchanger = &testExchanger{errs: []error{errors.New("oops")}}
+	ctx, cancel = context.WithTimeout(t.Context(), -10*time.Hour)
+	defer cancel()
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
