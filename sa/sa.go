@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -486,24 +488,37 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			newAuthzIDs = append(newAuthzIDs, am.ID)
 		}
 
+		// Combine the already-existing and newly-created authzs.
+		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
+
 		// Second, insert the new order.
 		created := ssa.clk.Now()
+		var encodedAuthzs []byte
+		var err error
+		if features.Get().StoreAuthzsInOrders {
+			encodedAuthzs, err = proto.Marshal(&sapb.Authzs{
+				AuthzIDs: allAuthzIds,
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		om := orderModel{
 			RegistrationID:         req.NewOrder.RegistrationID,
 			Expires:                req.NewOrder.Expires.AsTime(),
 			Created:                created,
 			CertificateProfileName: &req.NewOrder.CertificateProfileName,
 			Replaces:               &req.NewOrder.Replaces,
+			Authzs:                 encodedAuthzs,
 		}
-		err := tx.Insert(ctx, &om)
+		err = tx.Insert(ctx, &om)
 		if err != nil {
 			return nil, err
 		}
 		orderID := om.ID
 
 		// Third, insert all of the orderToAuthz relations.
-		// Have to combine the already-associated and newly-created authzs.
-		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
 		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"})
 		if err != nil {
 			return nil, err
@@ -621,21 +636,22 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 	if req.Id == 0 || req.Error == nil {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
-		om, err := orderToModel(&corepb.Order{
-			Id:    req.Id,
-			Error: req.Error,
-		})
-		if err != nil {
-			return nil, err
-		}
 
+	errJSON, err := json.Marshal(req.Error)
+	if err != nil {
+		return nil, err
+	}
+	if len(errJSON) > mediumBlobSize {
+		return nil, fmt.Errorf("error object is too large to store in the database")
+	}
+
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET error = ?
 		WHERE id = ?`,
-			om.Error,
-			om.ID)
+			errJSON,
+			req.Id)
 		if err != nil {
 			return nil, berrors.InternalServerError("error updating order error field")
 		}

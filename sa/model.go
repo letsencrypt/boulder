@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"math"
 	"net/netip"
 	"net/url"
@@ -346,40 +347,12 @@ type orderModel struct {
 	BeganProcessing        bool
 	CertificateProfileName *string
 	Replaces               *string
+	Authzs                 []byte
 }
 
 type orderToAuthzModel struct {
 	OrderID int64
 	AuthzID int64
-}
-
-func orderToModel(order *corepb.Order) (*orderModel, error) {
-	// Make a local copy so we can take a reference to it below.
-	profile := order.CertificateProfileName
-	replaces := order.Replaces
-
-	om := &orderModel{
-		ID:                     order.Id,
-		RegistrationID:         order.RegistrationID,
-		Expires:                order.Expires.AsTime(),
-		Created:                order.Created.AsTime(),
-		BeganProcessing:        order.BeganProcessing,
-		CertificateSerial:      order.CertificateSerial,
-		CertificateProfileName: &profile,
-		Replaces:               &replaces,
-	}
-
-	if order.Error != nil {
-		errJSON, err := json.Marshal(order.Error)
-		if err != nil {
-			return nil, err
-		}
-		if len(errJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Error object is too large to store in the database")
-		}
-		om.Error = errJSON
-	}
-	return om, nil
 }
 
 func modelToOrder(om *orderModel) (*corepb.Order, error) {
@@ -391,6 +364,15 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	if om.Replaces != nil {
 		replaces = *om.Replaces
 	}
+	var v2Authorizations []int64
+	if len(om.Authzs) > 0 {
+		var decodedAuthzs sapb.Authzs
+		err := proto.Unmarshal(om.Authzs, &decodedAuthzs)
+		if err != nil {
+			return nil, err
+		}
+		v2Authorizations = decodedAuthzs.AuthzIDs
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -400,6 +382,7 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		BeganProcessing:        om.BeganProcessing,
 		CertificateProfileName: profile,
 		Replaces:               replaces,
+		V2Authorizations:       v2Authorizations,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
