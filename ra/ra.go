@@ -2243,24 +2243,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		}
 
+		// If the identifier is a wildcard DNS name, all challenges must be
+		// DNS-01 or DNS-Account-01. The PA guarantees this at order creation
+		// time, but we verify again to be safe.
 		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") {
-			// Valid authz: exactly 1 challenge (the completed one).
-			// Pending authz with DNS-Account-01 enabled: 1 or 2 challenges.
-			maxChallenges := 1
 			dnsAccount01Enabled := features.Get().DNSAccount01Enabled
-			if authz.Status == core.StatusPending && dnsAccount01Enabled {
-				maxChallenges = 2
-			}
-			if len(authz.Challenges) < 1 || len(authz.Challenges) > maxChallenges {
-				return nil, berrors.InternalServerError(
-					"SA.GetAuthorizations returned a DNS wildcard authz (%s) with an unexpected number of challenges",
-					authz.ID,
-				)
-			}
-
-			// If the identifier is a wildcard DNS name, it must have only
-			// DNS-01 or DNS-Account-01 type challenges. The PA guarantees this
-			// at order creation time, but we verify again to be safe.
 			for _, chall := range authz.Challenges {
 				if chall.Type != core.ChallengeTypeDNS01 && !(dnsAccount01Enabled && chall.Type == core.ChallengeTypeDNSAccount01) {
 					return nil, berrors.InternalServerError(

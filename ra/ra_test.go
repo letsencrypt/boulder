@@ -2119,9 +2119,9 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 
 	// Create an order for that request
 	_, err := ra.NewOrder(ctx, orderReq)
-	// It should fail
+	// It should fail because HTTP-01 is not a valid challenge type for wildcards
 	test.AssertError(t, err, "Added an initial order for regA with invalid challenge(s)")
-	test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with an unexpected number of challenges")
+	test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with invalid challenge(s)")
 }
 
 // TestNewOrderAuthzReuseDNSAccount01 checks that the RA correctly allows reuse
