@@ -150,6 +150,8 @@ services:
     # in local dev environments. In CI a specific BOULDER_VTCOMBOSERVER_TAG is
     # passed, and it is pulled with `docker compose pull`.
     image: letsencrypt/boulder-vtcomboserver:${BOULDER_VTCOMBOSERVER_TAG:-latest}
+    build:
+      context: test/vtcomboserver/
     environment:
       # By specifying KEYSPACES vttestserver will create the corresponding
       # databases on startup.
