@@ -608,7 +608,7 @@ type testExchanger struct {
 
 var errTooManyRequests = errors.New("too many requests")
 
-func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (te *testExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	te.Lock()
 	defer te.Unlock()
 	msg := &dns.Msg{
@@ -785,16 +785,13 @@ func TestRetry(t *testing.T) {
 }
 
 func TestRetryMetrics(t *testing.T) {
-	isTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
 	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, _, err = dr.LookupTXT(ctx, "example.com")
+	dr.exchanger = &testExchanger{errs: []error{context.Canceled}}
+	_, _, err = dr.LookupTXT(t.Context(), "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out (and was canceled) looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
@@ -808,10 +805,8 @@ func TestRetryMetrics(t *testing.T) {
 
 	testClient = New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr = testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{isTimeoutErr, isTimeoutErr, nil}}
-	ctx, cancel = context.WithTimeout(context.Background(), -10*time.Hour)
-	defer cancel()
-	_, _, err = dr.LookupTXT(ctx, "example.com")
+	dr.exchanger = &testExchanger{errs: []error{context.DeadlineExceeded}}
+	_, _, err = dr.LookupTXT(t.Context(), "example.com")
 	if err == nil ||
 		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
@@ -839,9 +834,9 @@ type rotateFailureExchanger struct {
 	brokenAddresses map[string]bool
 }
 
-// Exchange for rotateFailureExchanger tracks the `a` argument in `lookups` and
+// ExchangeContext for rotateFailureExchanger tracks the `a` argument in `lookups` and
 // if present in `brokenAddresses`, returns a timeout error.
-func (e *rotateFailureExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	e.Lock()
 	defer e.Unlock()
 
@@ -922,7 +917,7 @@ type dohAlwaysRetryExchanger struct {
 	err error
 }
 
-func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (dohE *dohAlwaysRetryExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	dohE.Lock()
 	defer dohE.Unlock()
 

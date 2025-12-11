@@ -168,22 +168,23 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 	// present.
 	req.SetEdns0(4096, false)
 
-	var resp *dns.Msg
-
 	servers, err := c.servers.Addrs()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to list DNS servers: %w", err)
 	}
 
 	// Prepare to increment a latency metric no matter whether we succeed or fail.
-	// The deferred function closes over result, chosenServerIP, and tries, which
+	// The deferred function closes over resp, chosenServerIP, and tries, which
 	// are all modified in the loop below.
 	start := c.clk.Now()
 	qtypeStr := dns.TypeToString[qtype]
-	result := "failed"
-	chosenServerIP := ""
-	tries := 0
+	var (
+		resp           *dns.Msg
+		chosenServerIP string
+		tries          int
+	)
 	defer func() {
+		result := "failed"
 		if resp != nil {
 			result = dns.RcodeToString[resp.Rcode]
 		}
@@ -194,12 +195,6 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 			"attempts": strconv.Itoa(tries),
 		}).Observe(c.clk.Since(start).Seconds())
 	}()
-
-	type dnsRes struct {
-		resp *dns.Msg
-		err  error
-	}
-	ch := make(chan dnsRes, 1)
 
 	for i := range c.maxTries {
 		tries = i + 1
@@ -212,64 +207,61 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		// and ensures that chosenServer can't be a bare port, e.g. ":1337"
 		chosenServerIP, _, err = net.SplitHostPort(chosenServer)
 		if err != nil {
-			return nil, "", err
+			return nil, chosenServer, err
 		}
 
-		go func() {
-			resp, rtt, err := c.exchanger.Exchange(req, chosenServer)
-			result := "failed"
-			if resp != nil {
-				result = dns.RcodeToString[resp.Rcode]
-			}
-			if err != nil {
-				c.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]", chosenServer, hostname, qtypeStr, err)
-			}
-			c.queryTime.With(prometheus.Labels{
-				"qtype":    qtypeStr,
-				"result":   result,
-				"resolver": chosenServerIP,
-			}).Observe(rtt.Seconds())
-			ch <- dnsRes{resp: resp, err: err}
-		}()
-		select {
-		case <-ctx.Done():
-			switch ctx.Err() {
-			case context.DeadlineExceeded:
-				result = "deadline exceeded"
-			case context.Canceled:
-				result = "canceled"
-			default:
-				result = "unknown"
-			}
-			c.timeoutCounter.With(prometheus.Labels{
-				"qtype":    qtypeStr,
-				"result":   result,
-				"resolver": chosenServerIP,
-				"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
-			}).Inc()
-			return nil, "", ctx.Err()
-		case r := <-ch:
-			if r.err != nil {
-				// Check if the error is a timeout error, which we want to retry.
-				// Network errors that can timeout implement the net.Error interface.
-				var netErr net.Error
-				isRetryable := errors.As(r.err, &netErr) && netErr.Timeout()
-				hasRetriesLeft := tries < c.maxTries
-				if isRetryable && hasRetriesLeft {
-					continue
-				} else if isRetryable && !hasRetriesLeft {
-					c.timeoutCounter.With(prometheus.Labels{
-						"qtype":    qtypeStr,
-						"result":   "out of retries",
-						"resolver": chosenServerIP,
-						"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
-					}).Inc()
-				}
+		// Do a bare assignment (not :=) to populate the `resp` used by the defer above.
+		var rtt time.Duration
+		resp, rtt, err = c.exchanger.ExchangeContext(ctx, req, chosenServer)
+
+		// Do some metrics handling before we do error handling.
+		result := "failed"
+		if resp != nil {
+			result = dns.RcodeToString[resp.Rcode]
+		}
+		c.queryTime.With(prometheus.Labels{
+			"qtype":    qtypeStr,
+			"result":   result,
+			"resolver": chosenServerIP,
+		}).Observe(rtt.Seconds())
+
+		if err != nil {
+			c.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]", chosenServer, hostname, qtypeStr, err)
+
+			// Check if the error is a timeout error, which we want to retry.
+			// Network errors that can timeout implement the net.Error interface.
+			var netErr net.Error
+			isRetryable := errors.As(err, &netErr) && netErr.Timeout() && !errors.Is(err, context.DeadlineExceeded)
+			hasRetriesLeft := tries < c.maxTries
+			if isRetryable && hasRetriesLeft {
+				continue
+			} else if isRetryable && !hasRetriesLeft {
+				c.timeoutCounter.With(prometheus.Labels{
+					"qtype":    qtypeStr,
+					"result":   "out of retries",
+					"resolver": chosenServerIP,
+					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
+				}).Inc()
+			} else if errors.Is(err, context.DeadlineExceeded) {
+				c.timeoutCounter.With(prometheus.Labels{
+					"qtype":    qtypeStr,
+					"result":   "deadline exceeded",
+					"resolver": chosenServerIP,
+					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
+				}).Inc()
+			} else if errors.Is(err, context.Canceled) {
+				c.timeoutCounter.With(prometheus.Labels{
+					"qtype":    qtypeStr,
+					"result":   "canceled",
+					"resolver": chosenServerIP,
+					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
+				}).Inc()
 			}
 
-			// This is either a success or a non-retryable error; return either way.
-			return r.resp, chosenServer, r.err
+			return nil, chosenServer, err
 		}
+
+		return resp, chosenServer, nil
 	}
 
 	// It's impossible to get past the bottom of the loop: on the last attempt
@@ -286,7 +278,7 @@ func (c *impl) LookupA(ctx context.Context, hostname string) (*Result[*dns.A], s
 		return nil, resolver, err
 	}
 
-	return resultFromMsg[*dns.A](resp), resolver, wrapErr(dns.TypeA, hostname, resp, err)
+	return resultFromMsg[*dns.A](resp), resolver, nil
 }
 
 // LookupAAAA sends a DNS query to find all AAAA records associated with the
@@ -339,7 +331,7 @@ func (c *impl) LookupTXT(ctx context.Context, hostname string) (*Result[*dns.TXT
 // exchanger represents an underlying DNS client. This interface exists solely
 // so that its implementation can be swapped out in unit tests.
 type exchanger interface {
-	Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
+	ExchangeContext(ctx context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
 }
 
 // dohExchanger implements the exchanger interface. It routes all of its DNS
@@ -351,8 +343,8 @@ type dohExchanger struct {
 	userAgent string
 }
 
-// Exchange sends a DoH query to the provided DoH server and returns the response.
-func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
+// ExchangeContext sends a DoH query to the provided DoH server and returns the response.
+func (d *dohExchanger) ExchangeContext(ctx context.Context, query *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
 	q, err := query.Pack()
 	if err != nil {
 		return nil, 0, err
@@ -360,7 +352,7 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 
 	// The default Unbound URL template
 	url := fmt.Sprintf("https://%s/dns-query", server)
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(q)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(q)))
 	if err != nil {
 		return nil, 0, err
 	}

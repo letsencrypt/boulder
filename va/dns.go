@@ -21,11 +21,11 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 )
 
-// getAddr will query for all A/AAAA records associated with hostname and return
-// all valid addresses resolved. This is the same choice made by the Go internal
-// resolution library used by net/http. If there is an error resolving the
-// hostname, or if no usable IP addresses are available then a berrors.DNSError
-// instance is returned with a nil netip.Addr slice.
+// getAddr queries for all A/AAAA records associated with hostname, and returns
+// all valid addresses resolved and the addresses of all resolvers used. If
+// there is an error resolving the hostname, or if no usable IP addresses are
+// available then a berrors.DNSError instance is returned with a nil netip.Addr
+// slice.
 func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, []string, error) {
 	// Kick off both the A and AAAA lookups in parallel.
 	var wg sync.WaitGroup

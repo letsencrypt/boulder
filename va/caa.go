@@ -274,12 +274,10 @@ func (va *ValidationAuthorityImpl) getCAA(ctx context.Context, hostname string) 
 // validates them. If the identifier argument's value has a wildcard prefix then
 // the prefix is stripped and validation will be performed against the base
 // domain, honouring any issueWild CAA records encountered as appropriate.
-// checkCAARecords returns four values: the first is a string indicating at
+// checkCAARecords returns three values: the first is a string indicating at
 // which name (i.e. FQDN or parent thereof) CAA records were found, if any. The
-// second is a bool indicating whether issuance for the identifier is valid. The
-// unmodified *dns.CAA records that were processed/filtered are returned as the
-// third argument. Any errors encountered are returned as the fourth return
-// value (or nil).
+// second is a bool indicating whether issuance for the identifier is valid. Any
+// errors encountered are returned as the last return value (or nil).
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
