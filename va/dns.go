@@ -3,7 +3,6 @@ package va
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
 	"errors"
@@ -122,7 +121,7 @@ func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identi
 	}
 
 	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
+		if element == authorizedKeysDigest {
 			// Successful challenge validation
 			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddrs: resolvers}}, nil
 		}
