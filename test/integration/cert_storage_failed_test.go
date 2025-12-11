@@ -71,26 +71,34 @@ func getPrecertByName(db *sql.DB, reversedName string) (*x509.Certificate, error
 // assume exists (note that this different from the root program assumption
 // that a final certificate exists for any precertificate, though it is
 // similar in spirit).
+//
+// Note: For this test to support Vitess, it depends on a trigger being
+// installed via test/vtcomboserver/install_trigger.sh, since Vitess does not
+// support creating triggers via normal SQL commands.
 func TestIssuanceCertStorageFailed(t *testing.T) {
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
-
-	ctx := context.Background()
 
 	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
 	test.AssertNotError(t, err, "failed to open db connection")
 
-	_, err = db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
-	test.AssertNotError(t, err, "failed to drop trigger")
+	if os.Getenv("USE_VITESS") == "false" {
+		// This block is only necessary for ProxySQL + MariaDB and can be
+		// deleted once we're fully migrated to Vitess + MySQL 8, where the
+		// trigger is installed via test/vtcomboserver/install_trigger.sh.
 
-	// Make a specific insert into certificates fail, for this test but not others.
-	// To limit the effect to this one test, we make the trigger aware of a specific
-	// hostname used in this test. Since the INSERT to the certificates table
-	// doesn't include the hostname, we look it up in the issuedNames table, keyed
-	// off of the serial.
-	// NOTE: CREATE and DROP TRIGGER do not work in prepared statements. Go's
-	// database/sql will automatically try to use a prepared statement if you pass
-	// any arguments to Exec besides the query itself, so don't do that.
-	_, err = db.ExecContext(ctx, `
+		ctx := context.Background()
+		_, err = db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
+		test.AssertNotError(t, err, "failed to drop trigger")
+
+		// Make a specific insert into certificates fail, for this test but not others.
+		// To limit the effect to this one test, we make the trigger aware of a specific
+		// hostname used in this test. Since the INSERT to the certificates table
+		// doesn't include the hostname, we look it up in the issuedNames table, keyed
+		// off of the serial.
+		// NOTE: CREATE and DROP TRIGGER do not work in prepared statements. Go's
+		// database/sql will automatically try to use a prepared statement if you pass
+		// any arguments to Exec besides the query itself, so don't do that.
+		_, err = db.ExecContext(ctx, `
 		CREATE TRIGGER fail_ready
 		BEFORE INSERT ON certificates
 		FOR EACH ROW BEGIN
@@ -105,9 +113,10 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 		END IF;
 		END
 	`)
-	test.AssertNotError(t, err, "failed to create trigger")
+		test.AssertNotError(t, err, "failed to create trigger")
 
-	defer db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
+		defer db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
+	}
 
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")

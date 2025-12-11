@@ -40,9 +40,8 @@ const (
 	PrimaryPerspective = "Primary"
 	allPerspectives    = "all"
 
-	opDCVAndCAA = "dcv+caa"
-	opDCV       = "dcv"
-	opCAA       = "caa"
+	opDCV = "dcv"
+	opCAA = "caa"
 
 	pass = "pass"
 	fail = "fail"
