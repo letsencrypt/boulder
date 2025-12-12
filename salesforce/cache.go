@@ -1,4 +1,4 @@
-package email
+package salesforce
 
 import (
 	"crypto/sha256"
