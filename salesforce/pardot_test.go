@@ -1,4 +1,4 @@
-package email
+package salesforce
 
 import (
 	"encoding/json"

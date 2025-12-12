@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-package email;
-option go_package = "github.com/letsencrypt/boulder/email/proto";
+package salesforce;
+option go_package = "github.com/letsencrypt/boulder/salesforce/proto";
 
 import "google/protobuf/empty.proto";
 
