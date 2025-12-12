@@ -130,13 +130,13 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
-	foundAt, valid, err := va.checkCAARecords(ctx, ident, params)
+	foundAt, valid, response, err := va.checkCAARecords(ctx, ident, params)
 	if err != nil {
 		return berrors.DNSError("%s", err)
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q]",
-		ident.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
+		ident.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
 	if !valid {
 		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}
@@ -153,6 +153,7 @@ type caaResult struct {
 	issue           []*dns.CAA
 	issuewild       []*dns.CAA
 	criticalUnknown bool
+	dig             string
 	resolver        string
 	err             error
 }
@@ -219,6 +220,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 			if r.err != nil {
 				return
 			}
+			r.dig = records.String()
 			if len(records.Final) > 0 {
 				r.present = true
 			}
@@ -274,14 +276,16 @@ func (va *ValidationAuthorityImpl) getCAA(ctx context.Context, hostname string) 
 // validates them. If the identifier argument's value has a wildcard prefix then
 // the prefix is stripped and validation will be performed against the base
 // domain, honouring any issueWild CAA records encountered as appropriate.
-// checkCAARecords returns three values: the first is a string indicating at
+// checkCAARecords returns four values: the first is a string indicating at
 // which name (i.e. FQDN or parent thereof) CAA records were found, if any. The
-// second is a bool indicating whether issuance for the identifier is valid. Any
-// errors encountered are returned as the last return value (or nil).
+// second is a bool indicating whether issuance for the identifier is valid. The
+// unmodified *dns.CAA records that were processed/filtered are returned as the
+// third argument. Any  errors encountered are returned as the fourth return
+// value (or nil).
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
-	params *caaParams) (string, bool, error) {
+	params *caaParams) (string, bool, string, error) {
 	hostname := strings.ToLower(ident.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
@@ -291,10 +295,14 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	}
 	caaSet, err := va.getCAA(ctx, hostname)
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
+	}
+	raw := ""
+	if caaSet != nil {
+		raw = caaSet.dig
 	}
 	valid, foundAt := va.validateCAA(caaSet, wildcard, params)
-	return foundAt, valid, nil
+	return foundAt, valid, raw, nil
 }
 
 // validateCAA checks a provided *caaResult. When the wildcard argument is true
