@@ -103,12 +103,6 @@ We recommend having **at least 2GB of RAM** available on your Docker host. In
 practice using less RAM may result in the MariaDB container failing in
 non-obvious ways.
 
-To start Boulder in a Docker container, run:
-
-```shell
-docker compose up
-```
-
 To run our standard battery of tests (lints, unit, integration):
 
 ```shell
@@ -151,6 +145,25 @@ represents a likely future state (e.g. including new feature flags):
 ```shell
 ./tn.sh -your -options -here
 ```
+
+To start Boulder in a Docker container, first run:
+
+```shell
+docker compose run bsetup
+```
+this will write the necessary certificates into `test/certs/[.softhsm-tokens,ipki,webpki]`;
+You only need to run this once to create the certificates. If you
+need to remove all of the certificates and start over, you can remove
+the directories `./test/certs/.softhsm-tokens`, `./test/certs/ipki`,
+and `./test/certs/webpki` and re-run `docker compose run bsetup`.
+
+Then run:
+
+```shell
+docker compose up
+```
+
+
 
 The configuration in docker-compose.yml mounts your boulder checkout at
 /boulder so you can edit code on your host and it will be immediately
