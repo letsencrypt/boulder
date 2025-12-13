@@ -656,7 +656,7 @@ func TestIssueSCTList(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
+	err := loglist.InitLintList("../test/ct-test-srv/log_list.json", false)
 	test.AssertNotError(t, err, "failed to load log list")
 
 	pc := defaultProfileConfig()
@@ -807,7 +807,7 @@ func TestInvalidProfile(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
+	err := loglist.InitLintList("../test/ct-test-srv/log_list.json", false)
 	test.AssertNotError(t, err, "failed to load log list")
 
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
@@ -850,7 +850,7 @@ func TestInvalidProfile(t *testing.T) {
 func TestMismatchedProfiles(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
+	err := loglist.InitLintList("../test/ct-test-srv/log_list.json", false)
 	test.AssertNotError(t, err, "failed to load log list")
 
 	issuer1, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)

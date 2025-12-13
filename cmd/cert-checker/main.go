@@ -559,6 +559,11 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
+		// CTIncludeTestLogs allows logs marked as "test" to be included in the
+		// CT log list used for linting. This should be enabled in environments
+		// configured to submit SCTs to test logs.
+		CTIncludeTestLogs bool
+
 		Features features.Config
 	}
 	PA     cmd.PAConfig
@@ -616,7 +621,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 	if config.CertChecker.CTLogListFile != "" {
-		err = loglist.InitLintList(config.CertChecker.CTLogListFile)
+		err = loglist.InitLintList(config.CertChecker.CTLogListFile, config.CertChecker.CTIncludeTestLogs)
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 

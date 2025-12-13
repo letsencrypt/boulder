@@ -9,12 +9,13 @@ var lintlist struct {
 }
 
 // InitLintList creates and stores a loglist intended for linting (i.e. with
-// purpose Validation). We have to store this in a global because the zlint
-// framework doesn't (yet) support configuration, so the e_scts_from_same_operator
-// lint cannot load a log list on its own. Instead, we have the CA call this
-// initialization function at startup, and have the lint call the getter below
-// to get access to the cached list.
-func InitLintList(path string) error {
+// purpose Validation). Test logs are included only when submitToTestLogs is
+// true. We have to store this in a global because the zlint framework doesn't
+// (yet) support configuration, so the e_scts_from_same_operator lint cannot
+// load a log list on its own. Instead, we have the CA call this initialization
+// function at startup, and have the lint call the getter below to get access to
+// the cached list.
+func InitLintList(path string, submitToTestLogs bool) error {
 	lintlist.Do(func() {
 		l, err := New(path)
 		if err != nil {
@@ -22,7 +23,7 @@ func InitLintList(path string) error {
 			return
 		}
 
-		l, err = l.forPurpose(Validation, false)
+		l, err = l.forPurpose(Validation, submitToTestLogs)
 		if err != nil {
 			lintlist.err = err
 			return

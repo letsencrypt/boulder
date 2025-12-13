@@ -87,6 +87,11 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
+		// CTIncludeTestLogs allows logs marked as "test" to be included in the
+		// CT log list used for linting. This should be enabled in environments
+		// configured to submit SCTs to test logs.
+		CTIncludeTestLogs bool
+
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
 		DisableCertService bool
@@ -159,7 +164,7 @@ func main() {
 	// Do this before creating the issuers to ensure the log list is loaded before
 	// the linters are initialized.
 	if c.CA.CTLogListFile != "" {
-		err = loglist.InitLintList(c.CA.CTLogListFile)
+		err = loglist.InitLintList(c.CA.CTLogListFile, c.CA.CTIncludeTestLogs)
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
