@@ -154,7 +154,7 @@ type caaResult struct {
 	issuewild       []*dns.CAA
 	criticalUnknown bool
 	dig             string
-	resolvers       bdns.ResolverAddrs
+	resolver        string
 	err             error
 }
 
@@ -213,14 +213,18 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {
+			defer wg.Done()
 			r.name = name
-			var records []*dns.CAA
-			records, r.dig, r.resolvers, r.err = va.dnsClient.LookupCAA(ctx, name)
-			if len(records) > 0 {
+			var records *bdns.Result[*dns.CAA]
+			records, r.resolver, r.err = va.dnsClient.LookupCAA(ctx, name)
+			if r.err != nil {
+				return
+			}
+			r.dig = records.String()
+			if len(records.Final) > 0 {
 				r.present = true
 			}
-			r.issue, r.issuewild, r.criticalUnknown = filterCAA(records)
-			wg.Done()
+			r.issue, r.issuewild, r.criticalUnknown = filterCAA(records.Final)
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
 

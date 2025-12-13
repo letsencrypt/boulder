@@ -8,11 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -20,32 +17,57 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/letsencrypt/boulder/iana"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
-// ResolverAddrs contains DNS resolver(s) that were chosen to perform a
-// validation request or CAA recheck. A ResolverAddr will be in the form of
-// host:port, A:host:port, or AAAA:host:port depending on which type of lookup
-// was done.
-type ResolverAddrs []string
-
-// Client queries for DNS records
-type Client interface {
-	LookupTXT(context.Context, string) (txts []string, resolver ResolverAddrs, err error)
-	LookupHost(context.Context, string) ([]netip.Addr, ResolverAddrs, error)
-	LookupCAA(context.Context, string) ([]*dns.CAA, string, ResolverAddrs, error)
+// Result is a wrapper around miekg/dns.Msg, but with all Resource Records from
+// the Answer section which match the parameterized record type already pulled
+// out for convenient access.
+type Result[R dns.RR] struct {
+	*dns.Msg
+	CNames []*dns.CNAME
+	Final  []R
 }
 
-// impl represents a client that talks to an external resolver
+// resultFromMsg returns a Result whose CNames and Final fields are populated
+// from the underlying Msg's Answer field.
+func resultFromMsg[R dns.RR](m *dns.Msg) *Result[R] {
+	var cnames []*dns.CNAME
+	var final []R
+	for _, rr := range m.Answer {
+		if a, ok := rr.(R); ok {
+			final = append(final, a)
+		} else if a, ok := rr.(*dns.CNAME); ok {
+			cnames = append(cnames, a)
+		}
+	}
+
+	return &Result[R]{
+		Msg:    m,
+		CNames: cnames,
+		Final:  final,
+	}
+}
+
+// Client can make A, AAAA, CAA, and TXT queries. The second return value of
+// each method is the address of the resolver used to conduct the query, and
+// should be populated even when returning an error.
+type Client interface {
+	LookupA(context.Context, string) (*Result[*dns.A], string, error)
+	LookupAAAA(context.Context, string) (*Result[*dns.AAAA], string, error)
+	LookupCAA(context.Context, string) (*Result[*dns.CAA], string, error)
+	LookupTXT(context.Context, string) (*Result[*dns.TXT], string, error)
+}
+
+// impl implements the Client interface via an underlying DNS exchanger. It
+// rotates queries across multiple resolvers and tracks a variety of metrics.
 type impl struct {
-	dnsClient                exchanger
-	servers                  ServerProvider
-	allowRestrictedAddresses bool
-	maxTries                 int
-	clk                      clock.Clock
-	log                      blog.Logger
+	exchanger exchanger
+	servers   ServerProvider
+	maxTries  int
+	clk       clock.Clock
+	log       blog.Logger
 
 	queryTime       *prometheus.HistogramVec
 	totalLookupTime *prometheus.HistogramVec
@@ -54,15 +76,9 @@ type impl struct {
 
 var _ Client = &impl{}
 
-type exchanger interface {
-	Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
-}
-
-// New constructs a new DNS resolver object that utilizes the
-// provided list of DNS servers for resolution.
-//
-// `tlsConfig` is the configuration used for outbound DoH queries,
-// if applicable.
+// New constructs a new DNS resolver object that utilizes the provided list of
+// DNS servers for resolution, and the provided tlsConfig to speak DoH to those
+// servers.
 func New(
 	readTimeout time.Duration,
 	servers ServerProvider,
@@ -73,18 +89,15 @@ func New(
 	log blog.Logger,
 	tlsConfig *tls.Config,
 ) Client {
-	var client exchanger
-
-	// Clone the default transport because it comes with various settings
-	// that we like, which are different from the zero value of an
-	// `http.Transport`.
+	// Clone the default transport because it comes with various settings that we
+	// like, which are different from the zero value of an `http.Transport`. Then
+	// set it to force HTTP/2, because Unbound will reject non-HTTP/2 DoH
+	// requests.
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConfig
-	// The default transport already sets this field, but it isn't
-	// documented that it will always be set. Set it again to be sure,
-	// because Unbound will reject non-HTTP/2 DoH requests.
 	transport.ForceAttemptHTTP2 = true
-	client = &dohExchanger{
+
+	exchanger := &dohExchanger{
 		clk: clk,
 		hc: http.Client{
 			Timeout:   readTimeout,
@@ -107,100 +120,85 @@ func New(
 			Help:    "Time taken to perform a DNS lookup, including all retried queries",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"qtype", "result", "retries", "resolver"},
+		[]string{"qtype", "result", "resolver", "attempts"},
 	)
 	timeoutCounter := promauto.With(stats).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "dns_timeout",
 			Help: "Counter of various types of DNS query timeouts",
 		},
-		[]string{"qtype", "type", "resolver", "isTLD"},
+		[]string{"qtype", "result", "resolver", "isTLD"},
 	)
+
+	if maxTries < 1 {
+		// Allowing negative or zero total attempts makes no sense, so default to 1.
+		maxTries = 1
+	}
+
 	return &impl{
-		dnsClient:                client,
-		servers:                  servers,
-		allowRestrictedAddresses: false,
-		maxTries:                 maxTries,
-		clk:                      clk,
-		queryTime:                queryTime,
-		totalLookupTime:          totalLookupTime,
-		timeoutCounter:           timeoutCounter,
-		log:                      log,
+		exchanger:       exchanger,
+		servers:         servers,
+		maxTries:        maxTries,
+		clk:             clk,
+		queryTime:       queryTime,
+		totalLookupTime: totalLookupTime,
+		timeoutCounter:  timeoutCounter,
+		log:             log,
 	}
 }
 
-// NewTest constructs a new DNS resolver object that utilizes the
-// provided list of DNS servers for resolution and will allow loopback addresses.
-// This constructor should *only* be called from tests (unit or integration).
-func NewTest(
-	readTimeout time.Duration,
-	servers ServerProvider,
-	stats prometheus.Registerer,
-	clk clock.Clock,
-	maxTries int,
-	userAgent string,
-	log blog.Logger,
-	tlsConfig *tls.Config,
-) Client {
-	resolver := New(readTimeout, servers, stats, clk, maxTries, userAgent, log, tlsConfig)
-	resolver.(*impl).allowRestrictedAddresses = true
-	return resolver
-}
-
-// exchangeOne performs a single DNS exchange with a randomly chosen server
-// out of the server list, returning the response, time, and error (if any).
-// We assume that the upstream resolver requests and validates DNSSEC records
-// itself.
-func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (resp *dns.Msg, resolver string, err error) {
-	m := new(dns.Msg)
+// exchangeOne performs a single DNS exchange with a randomly chosen server out
+// of the server list, returning the response, resolver used, and error (if
+// any). If a response received indicates that the resolver encountered an error
+// (such as an expired DNSSEC signature), that is converted into an error and
+// returned.
+func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (*dns.Msg, string, error) {
+	req := new(dns.Msg)
 	// Set question type
-	m.SetQuestion(dns.Fqdn(hostname), qtype)
+	req.SetQuestion(dns.Fqdn(hostname), qtype)
 	// Set the AD bit in the query header so that the resolver knows that
 	// we are interested in this bit in the response header. If this isn't
 	// set the AD bit in the response is useless (RFC 6840 Section 5.7).
 	// This has no security implications, it simply allows us to gather
 	// metrics about the percentage of responses that are secured with
 	// DNSSEC.
-	m.AuthenticatedData = true
+	req.AuthenticatedData = true
 	// Tell the resolver that we're willing to receive responses up to 4096 bytes.
 	// This happens sometimes when there are a very large number of CAA records
 	// present.
-	m.SetEdns0(4096, false)
+	req.SetEdns0(4096, false)
 
-	servers, err := dnsClient.servers.Addrs()
+	servers, err := c.servers.Addrs()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to list DNS servers: %w", err)
 	}
-	chosenServerIndex := 0
-	chosenServer := servers[chosenServerIndex]
-	resolver = chosenServer
 
-	// Strip off the IP address part of the server address because
-	// we talk to the same server on multiple ports, and don't want
-	// to blow up the cardinality.
-	chosenServerIP, _, err := net.SplitHostPort(chosenServer)
-	if err != nil {
-		return
-	}
-
-	start := dnsClient.clk.Now()
-	client := dnsClient.dnsClient
+	// Prepare to increment a latency metric no matter whether we succeed or fail.
+	// The deferred function closes over resp, chosenServerIP, and tries, which
+	// are all modified in the loop below.
+	start := c.clk.Now()
 	qtypeStr := dns.TypeToString[qtype]
-	tries := 1
+	var (
+		resp           *dns.Msg
+		chosenServerIP string
+		tries          int
+	)
 	defer func() {
 		result := "failed"
 		if resp != nil {
 			result = dns.RcodeToString[resp.Rcode]
 		}
-		dnsClient.totalLookupTime.With(prometheus.Labels{
+		c.totalLookupTime.With(prometheus.Labels{
 			"qtype":    qtypeStr,
 			"result":   result,
-			"retries":  strconv.Itoa(tries),
 			"resolver": chosenServerIP,
-		}).Observe(dnsClient.clk.Since(start).Seconds())
+			"attempts": strconv.Itoa(tries),
+		}).Observe(c.clk.Since(start).Seconds())
 	}()
-	for {
-		ch := make(chan dnsResp, 1)
+
+	for i := range c.maxTries {
+		tries = i + 1
+		chosenServer := servers[i%len(servers)]
 
 		// Strip off the IP address part of the server address because
 		// we talk to the same server on multiple ports, and don't want
@@ -209,224 +207,96 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 		// and ensures that chosenServer can't be a bare port, e.g. ":1337"
 		chosenServerIP, _, err = net.SplitHostPort(chosenServer)
 		if err != nil {
-			return
+			return nil, chosenServer, err
 		}
 
-		go func() {
-			rsp, rtt, err := client.Exchange(m, chosenServer)
-			result := "failed"
-			if rsp != nil {
-				result = dns.RcodeToString[rsp.Rcode]
-			}
-			if err != nil {
-				dnsClient.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]",
-					chosenServer,
-					hostname,
-					qtypeStr,
-					err)
-			}
-			dnsClient.queryTime.With(prometheus.Labels{
-				"qtype":    qtypeStr,
-				"result":   result,
-				"resolver": chosenServerIP,
-			}).Observe(rtt.Seconds())
-			ch <- dnsResp{m: rsp, err: err}
-		}()
-		select {
-		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
-				dnsClient.timeoutCounter.With(prometheus.Labels{
+		// Do a bare assignment (not :=) to populate the `resp` used by the defer above.
+		var rtt time.Duration
+		resp, rtt, err = c.exchanger.ExchangeContext(ctx, req, chosenServer)
+
+		// Do some metrics handling before we do error handling.
+		result := "failed"
+		if resp != nil {
+			result = dns.RcodeToString[resp.Rcode]
+		}
+		c.queryTime.With(prometheus.Labels{
+			"qtype":    qtypeStr,
+			"result":   result,
+			"resolver": chosenServerIP,
+		}).Observe(rtt.Seconds())
+
+		if err != nil {
+			c.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]", chosenServer, hostname, qtypeStr, err)
+
+			// Check if the error is a network timeout, rather than a local context
+			// timeout. If it is, retry instead of giving up.
+			var netErr net.Error
+			isRetryable := ctx.Err() == nil && errors.As(err, &netErr) && netErr.Timeout()
+			hasRetriesLeft := tries < c.maxTries
+			if isRetryable && hasRetriesLeft {
+				continue
+			} else if isRetryable && !hasRetriesLeft {
+				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
-					"type":     "deadline exceeded",
+					"result":   "out of retries",
 					"resolver": chosenServerIP,
-					"isTLD":    isTLD(hostname),
+					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
-			} else if ctx.Err() == context.Canceled {
-				dnsClient.timeoutCounter.With(prometheus.Labels{
+			} else if errors.Is(err, context.DeadlineExceeded) {
+				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
-					"type":     "canceled",
+					"result":   "deadline exceeded",
 					"resolver": chosenServerIP,
-					"isTLD":    isTLD(hostname),
+					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
-			} else {
-				dnsClient.timeoutCounter.With(prometheus.Labels{
+			} else if errors.Is(err, context.Canceled) {
+				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
-					"type":     "unknown",
+					"result":   "canceled",
 					"resolver": chosenServerIP,
+					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
 			}
-			err = ctx.Err()
-			return
-		case r := <-ch:
-			if r.err != nil {
-				var isRetryable bool
-				// Check if the error is a timeout error. Network errors
-				// that can timeout implement the net.Error interface.
-				var netErr net.Error
-				isRetryable = errors.As(r.err, &netErr) && netErr.Timeout()
-				hasRetriesLeft := tries < dnsClient.maxTries
-				if isRetryable && hasRetriesLeft {
-					tries++
-					// Chose a new server to retry the query with by incrementing the
-					// chosen server index modulo the number of servers. This ensures that
-					// if one dns server isn't available we retry with the next in the
-					// list.
-					chosenServerIndex = (chosenServerIndex + 1) % len(servers)
-					chosenServer = servers[chosenServerIndex]
-					resolver = chosenServer
-					continue
-				} else if isRetryable && !hasRetriesLeft {
-					dnsClient.timeoutCounter.With(prometheus.Labels{
-						"qtype":    qtypeStr,
-						"type":     "out of retries",
-						"resolver": chosenServerIP,
-						"isTLD":    isTLD(hostname),
-					}).Inc()
-				}
-			}
-			resp, err = r.m, r.err
-			return
+
+			return nil, chosenServer, err
 		}
+
+		return resp, chosenServer, nil
 	}
+
+	// It's impossible to get past the bottom of the loop: on the last attempt
+	// (when tries == c.maxTries), all paths lead to a return from inside the loop.
+	return nil, "", errors.New("unexpected loop escape in exchangeOne")
 }
 
-// isTLD returns a simplified view of whether something is a TLD: does it have
-// any dots in it? This returns true or false as a string, and is meant solely
-// for Prometheus metrics.
-func isTLD(hostname string) string {
-	if strings.Contains(hostname, ".") {
-		return "false"
-	} else {
-		return "true"
+// LookupA sends a DNS query to find all A records associated with the provided
+// hostname.
+func (c *impl) LookupA(ctx context.Context, hostname string) (*Result[*dns.A], string, error) {
+	resp, resolver, err := c.exchangeOne(ctx, hostname, dns.TypeA)
+	err = wrapErr(dns.TypeA, hostname, resp, err)
+	if err != nil {
+		return nil, resolver, err
 	}
+
+	return resultFromMsg[*dns.A](resp), resolver, nil
 }
 
-type dnsResp struct {
-	m   *dns.Msg
-	err error
+// LookupAAAA sends a DNS query to find all AAAA records associated with the
+// provided hostname.
+func (c *impl) LookupAAAA(ctx context.Context, hostname string) (*Result[*dns.AAAA], string, error) {
+	resp, resolver, err := c.exchangeOne(ctx, hostname, dns.TypeAAAA)
+	err = wrapErr(dns.TypeAAAA, hostname, resp, err)
+	if err != nil {
+		return nil, resolver, err
+	}
+
+	return resultFromMsg[*dns.AAAA](resp), resolver, nil
 }
 
-// LookupTXT sends a DNS query to find all TXT records associated with
-// the provided hostname which it returns along with the returned
-// DNS authority section.
-func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string, ResolverAddrs, error) {
-	var txt []string
-	dnsType := dns.TypeTXT
-	r, resolver, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
-	errWrap := wrapErr(dnsType, hostname, r, err)
-	if errWrap != nil {
-		return nil, ResolverAddrs{resolver}, errWrap
-	}
-
-	for _, answer := range r.Answer {
-		if answer.Header().Rrtype == dnsType {
-			if txtRec, ok := answer.(*dns.TXT); ok {
-				txt = append(txt, strings.Join(txtRec.Txt, ""))
-			}
-		}
-	}
-
-	return txt, ResolverAddrs{resolver}, err
-}
-
-func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, string, error) {
-	resp, resolver, err := dnsClient.exchangeOne(ctx, hostname, ipType)
-	switch ipType {
-	case dns.TypeA:
-		if resolver != "" {
-			resolver = "A:" + resolver
-		}
-	case dns.TypeAAAA:
-		if resolver != "" {
-			resolver = "AAAA:" + resolver
-		}
-	}
-	errWrap := wrapErr(ipType, hostname, resp, err)
-	if errWrap != nil {
-		return nil, resolver, errWrap
-	}
-	return resp.Answer, resolver, nil
-}
-
-// LookupHost sends a DNS query to find all A and AAAA records associated with
-// the provided hostname. This method assumes that the external resolver will
-// chase CNAME/DNAME aliases and return relevant records. It will retry
-// requests in the case of temporary network errors. It returns an error if
-// both the A and AAAA lookups fail or are empty, but succeeds otherwise.
-func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip.Addr, ResolverAddrs, error) {
-	var recordsA, recordsAAAA []dns.RR
-	var errA, errAAAA error
-	var resolverA, resolverAAAA string
-	var wg sync.WaitGroup
-
-	wg.Go(func() {
-		recordsA, resolverA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
-	})
-	wg.Go(func() {
-		recordsAAAA, resolverAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
-	})
-	wg.Wait()
-
-	resolvers := ResolverAddrs{resolverA, resolverAAAA}
-	resolvers = slices.DeleteFunc(resolvers, func(a string) bool {
-		return a == ""
-	})
-
-	var addrsA []netip.Addr
-	if errA == nil {
-		for _, answer := range recordsA {
-			if answer.Header().Rrtype == dns.TypeA {
-				a, ok := answer.(*dns.A)
-				if ok && a.A.To4() != nil {
-					netIP, ok := netip.AddrFromSlice(a.A)
-					if ok && (iana.IsReservedAddr(netIP) == nil || dnsClient.allowRestrictedAddresses) {
-						addrsA = append(addrsA, netIP)
-					}
-				}
-			}
-		}
-		if len(addrsA) == 0 {
-			errA = fmt.Errorf("no valid A records found for %s", hostname)
-		}
-	}
-
-	var addrsAAAA []netip.Addr
-	if errAAAA == nil {
-		for _, answer := range recordsAAAA {
-			if answer.Header().Rrtype == dns.TypeAAAA {
-				aaaa, ok := answer.(*dns.AAAA)
-				if ok && aaaa.AAAA.To16() != nil {
-					netIP, ok := netip.AddrFromSlice(aaaa.AAAA)
-					if ok && (iana.IsReservedAddr(netIP) == nil || dnsClient.allowRestrictedAddresses) {
-						addrsAAAA = append(addrsAAAA, netIP)
-					}
-				}
-			}
-		}
-		if len(addrsAAAA) == 0 {
-			errAAAA = fmt.Errorf("no valid AAAA records found for %s", hostname)
-		}
-	}
-
-	if errA != nil && errAAAA != nil {
-		// Construct a new error from both underlying errors. We can only use %w for
-		// one of them, because the go error unwrapping protocol doesn't support
-		// branching. We don't use ProblemDetails and SubProblemDetails here, because
-		// this error will get wrapped in a DNSError and further munged by higher
-		// layers in the stack.
-		return nil, resolvers, fmt.Errorf("%w; %s", errA, errAAAA)
-	}
-
-	return append(addrsA, addrsAAAA...), resolvers, nil
-}
-
-// LookupCAA sends a DNS query to find all CAA records associated with
-// the provided hostname and the complete dig-style RR `response`. This
-// response is quite verbose, however it's only populated when the CAA
-// response is non-empty.
-func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, ResolverAddrs, error) {
-	dnsType := dns.TypeCAA
-	r, resolver, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
+// LookupCAA sends a DNS query to find all CAA records associated with the
+// provided hostname.
+func (c *impl) LookupCAA(ctx context.Context, hostname string) (*Result[*dns.CAA], string, error) {
+	resp, resolver, err := c.exchangeOne(ctx, hostname, dns.TypeCAA)
 
 	// Special case: when checking CAA for non-TLD names, treat NXDOMAIN as a
 	// successful response containing an empty set of records. This can come up in
@@ -434,36 +304,47 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	// for DNS-01 challenge) and then removed after validation but before CAA
 	// rechecking. But allow NXDOMAIN for TLDs to fall through to the error code
 	// below, so we don't issue for gTLDs that have been removed by ICANN.
-	if err == nil && r.Rcode == dns.RcodeNameError && strings.Contains(hostname, ".") {
-		return nil, "", ResolverAddrs{resolver}, nil
+	if err == nil && resp.Rcode == dns.RcodeNameError && strings.Contains(hostname, ".") {
+		return resultFromMsg[*dns.CAA](resp), resolver, nil
 	}
 
-	errWrap := wrapErr(dnsType, hostname, r, err)
-	if errWrap != nil {
-		return nil, "", ResolverAddrs{resolver}, errWrap
+	err = wrapErr(dns.TypeCAA, hostname, resp, err)
+	if err != nil {
+		return nil, resolver, err
 	}
 
-	var CAAs []*dns.CAA
-	for _, answer := range r.Answer {
-		if caaR, ok := answer.(*dns.CAA); ok {
-			CAAs = append(CAAs, caaR)
-		}
-	}
-	var response string
-	if len(CAAs) > 0 {
-		response = r.String()
-	}
-	return CAAs, response, ResolverAddrs{resolver}, nil
+	return resultFromMsg[*dns.CAA](resp), resolver, nil
 }
 
+// LookupTXT sends a DNS query to find all TXT records associated with the
+// provided hostname.
+func (c *impl) LookupTXT(ctx context.Context, hostname string) (*Result[*dns.TXT], string, error) {
+	resp, resolver, err := c.exchangeOne(ctx, hostname, dns.TypeTXT)
+	err = wrapErr(dns.TypeTXT, hostname, resp, err)
+	if err != nil {
+		return nil, resolver, err
+	}
+
+	return resultFromMsg[*dns.TXT](resp), resolver, nil
+}
+
+// exchanger represents an underlying DNS client. This interface exists solely
+// so that its implementation can be swapped out in unit tests.
+type exchanger interface {
+	ExchangeContext(ctx context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
+}
+
+// dohExchanger implements the exchanger interface. It routes all of its DNS
+// queries over DoH, wrapping the request with the appropriate headers and
+// unwrapping the response.
 type dohExchanger struct {
 	clk       clock.Clock
 	hc        http.Client
 	userAgent string
 }
 
-// Exchange sends a DoH query to the provided DoH server and returns the response.
-func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
+// ExchangeContext sends a DoH query to the provided DoH server and returns the response.
+func (d *dohExchanger) ExchangeContext(ctx context.Context, query *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
 	q, err := query.Pack()
 	if err != nil {
 		return nil, 0, err
@@ -471,7 +352,7 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 
 	// The default Unbound URL template
 	url := fmt.Sprintf("https://%s/dns-query", server)
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(q)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(q)))
 	if err != nil {
 		return nil, 0, err
 	}

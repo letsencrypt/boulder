@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/identifier"
@@ -16,8 +17,91 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+type txtFakeDNS struct {
+	bdns.Client
+}
+
+func (c *txtFakeDNS) LookupTXT(_ context.Context, hostname string) (*bdns.Result[*dns.TXT], string, error) {
+	// Use the example account-specific label prefix derived from
+	// "https://example.com/acme/acct/ExampleAccount"
+	const accountLabelPrefix = "_ujmmovf2vn55tgye._acme-challenge"
+
+	var wrapTXT = func(txts ...string) (*bdns.Result[*dns.TXT], string, error) {
+		var rrs []*dns.TXT
+		for _, txt := range txts {
+			rrs = append(rrs, &dns.TXT{Txt: []string{txt}})
+		}
+		return &bdns.Result[*dns.TXT]{Final: rrs}, "txtFakeDNS", nil
+	}
+
+	if hostname == accountLabelPrefix+".servfail.com" {
+		// Mirror dns-01 servfail behaviour
+		return nil, "txtFakeDNS", fmt.Errorf("SERVFAIL")
+	}
+	if hostname == accountLabelPrefix+".good-dns01.com" {
+		// Mirror dns-01 good record
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		return wrapTXT("LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo")
+	}
+	if hostname == accountLabelPrefix+".wrong-dns01.com" {
+		// Mirror dns-01 wrong record
+		return wrapTXT("a")
+	}
+	if hostname == accountLabelPrefix+".wrong-many-dns01.com" {
+		// Mirror dns-01 wrong-many record
+		return wrapTXT("a", "b", "c", "d", "e")
+	}
+	if hostname == accountLabelPrefix+".long-dns01.com" {
+		// Mirror dns-01 long record
+		return wrapTXT("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	}
+	if hostname == accountLabelPrefix+".no-authority-dns01.com" {
+		// Mirror dns-01 no-authority good record
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		return wrapTXT("LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo")
+	}
+	if hostname == accountLabelPrefix+".empty-txts.com" {
+		// Mirror dns-01 zero TXT records
+		return wrapTXT()
+	}
+
+	if hostname == "_acme-challenge.servfail.com" {
+		return nil, "txtFakeDNS", fmt.Errorf("SERVFAIL")
+	}
+	if hostname == "_acme-challenge.good-dns01.com" {
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		// expected token + test account jwk thumbprint
+		return wrapTXT("LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo")
+	}
+	if hostname == "_acme-challenge.wrong-dns01.com" {
+		return wrapTXT("a")
+	}
+	if hostname == "_acme-challenge.wrong-many-dns01.com" {
+		return wrapTXT("a", "b", "c", "d", "e")
+	}
+	if hostname == "_acme-challenge.long-dns01.com" {
+		return wrapTXT("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	}
+	if hostname == "_acme-challenge.no-authority-dns01.com" {
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		// expected token + test account jwk thumbprint
+		return wrapTXT("LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo")
+	}
+	// empty-txts.com always returns zero TXT records
+	if hostname == "_acme-challenge.empty-txts.com" {
+		return wrapTXT()
+	}
+
+	// Default fallback
+	return wrapTXT("hostname")
+}
+
 func TestDNS01ValidationWrong(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("wrong-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
@@ -27,7 +111,7 @@ func TestDNS01ValidationWrong(t *testing.T) {
 }
 
 func TestDNS01ValidationWrongMany(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("wrong-many-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
@@ -38,7 +122,7 @@ func TestDNS01ValidationWrongMany(t *testing.T) {
 }
 
 func TestDNS01ValidationWrongLong(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("long-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
@@ -49,7 +133,7 @@ func TestDNS01ValidationWrongLong(t *testing.T) {
 }
 
 func TestDNS01ValidationFailure(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, err := va.validateDNS01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization)
 	prob := detailedError(err)
@@ -58,7 +142,7 @@ func TestDNS01ValidationFailure(t *testing.T) {
 }
 
 func TestDNS01ValidationIP(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, err := va.validateDNS01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	prob := detailedError(err)
@@ -72,7 +156,7 @@ func TestDNS01ValidationInvalid(t *testing.T) {
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, err := va.validateDNS01(ctx, notDNS, expectedKeyAuthorization)
 	prob := detailedError(err)
@@ -81,7 +165,7 @@ func TestDNS01ValidationInvalid(t *testing.T) {
 }
 
 func TestDNS01ValidationServFail(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, err := va.validateDNS01(ctx, identifier.NewDNS("servfail.com"), expectedKeyAuthorization)
 
@@ -90,7 +174,7 @@ func TestDNS01ValidationServFail(t *testing.T) {
 }
 
 func TestDNS01ValidationNoServer(t *testing.T) {
-	va, log := setup(nil, "", nil, nil)
+	va, log := setup(nil, "", nil, &txtFakeDNS{})
 	staticProvider, err := bdns.NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Couldn't make new static provider")
 
@@ -110,7 +194,7 @@ func TestDNS01ValidationNoServer(t *testing.T) {
 }
 
 func TestDNS01ValidationOK(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, prob := va.validateDNS01(ctx, identifier.NewDNS("good-dns01.com"), expectedKeyAuthorization)
 
@@ -118,7 +202,7 @@ func TestDNS01ValidationOK(t *testing.T) {
 }
 
 func TestDNS01ValidationNoAuthorityOK(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	_, prob := va.validateDNS01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization)
 
