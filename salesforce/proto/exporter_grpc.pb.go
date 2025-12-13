@@ -20,8 +20,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Exporter_SendContacts_FullMethodName = "/email.Exporter/SendContacts"
-	Exporter_SendCase_FullMethodName     = "/email.Exporter/SendCase"
+	Exporter_SendContacts_FullMethodName = "/salesforce.Exporter/SendContacts"
+	Exporter_SendCase_FullMethodName     = "/salesforce.Exporter/SendCase"
 )
 
 // ExporterClient is the client API for Exporter service.
@@ -143,7 +143,7 @@ func _Exporter_SendCase_Handler(srv interface{}, ctx context.Context, dec func(i
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var Exporter_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "email.Exporter",
+	ServiceName: "salesforce.Exporter",
 	HandlerType: (*ExporterServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

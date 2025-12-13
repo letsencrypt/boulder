@@ -34,7 +34,7 @@ func randomDomain(t *testing.T) string {
 	return fmt.Sprintf("%x.mail.com", bytes[:])
 }
 
-// getOAuthToken queries the pardot-test-srv for the current OAuth token.
+// getOAuthToken queries the salesforce-test-srv for the current OAuth token.
 func getOAuthToken(t *testing.T) string {
 	t.Helper()
 
@@ -65,7 +65,7 @@ func getOAuthToken(t *testing.T) string {
 	return response.AccessToken
 }
 
-// getCreatedContacts queries the pardot-test-srv for the list of created
+// getCreatedContacts queries the salesforce-test-srv for the list of created
 // contacts.
 func getCreatedContacts(t *testing.T, token string) []string {
 	t.Helper()
@@ -90,7 +90,7 @@ func getCreatedContacts(t *testing.T, token string) []string {
 }
 
 // assertAllContactsReceived waits for the expected contacts to be received by
-// pardot-test-srv. Retries every 50ms for up to 2 seconds and fails if the
+// salesforce-test-srv. Retries every 50ms for up to 2 seconds and fails if the
 // expected contacts are not received.
 func assertAllContactsReceived(t *testing.T, token string, expect []string) {
 	t.Helper()
@@ -112,13 +112,13 @@ func assertAllContactsReceived(t *testing.T, token string, expect []string) {
 			break
 		}
 		if attempt >= 19 {
-			t.Fatalf("Expected contacts=%v to be received by pardot-test-srv, got contacts=%v", expect, got)
+			t.Fatalf("Expected contacts=%v to be received by salesforce-test-srv, got contacts=%v", expect, got)
 		}
 	}
 }
 
 // TestContactsSentForNewAccount tests that contacts are dispatched to
-// pardot-test-srv by the email-exporter when a new account is created.
+// salesforce-test-srv by the email-exporter when a new account is created.
 func TestContactsSentForNewAccount(t *testing.T) {
 	t.Parallel()
 
@@ -167,7 +167,7 @@ func TestContactsSentForNewAccount(t *testing.T) {
 	}
 }
 
-// getCreatedCases queries the pardot-test-srv for the list of created cases.
+// getCreatedCases queries the salesforce-test-srv for the list of created cases.
 // Fails the test on error.
 func getCreatedCases(t *testing.T, token string) []map[string]any {
 	t.Helper()
@@ -189,7 +189,7 @@ func getCreatedCases(t *testing.T, token string) []map[string]any {
 	return got.Cases
 }
 
-// createCase sends a request to create a new case via pardot-test-srv and
+// createCase sends a request to create a new case via salesforce-test-srv and
 // returns the HTTP status code and response body. Fails the test on error.
 func createCase(t *testing.T, token string, payload map[string]any) (int, []byte) {
 	t.Helper()

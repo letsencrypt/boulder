@@ -5,7 +5,7 @@
 			"maxConnectionAge": "30s",
 			"address": ":9603",
 			"services": {
-				"email.Exporter": {
+				"salesforce.Exporter": {
 					"clientNames": [
 						"wfe.boulder"
 					]

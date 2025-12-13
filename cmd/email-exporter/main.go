@@ -8,9 +8,9 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/email"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/salesforce"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 )
 
 // Config holds the configuration for the email-exporter service.
@@ -95,12 +95,12 @@ func main() {
 	clientSecret, err := c.EmailExporter.ClientSecret.Pass()
 	cmd.FailOnError(err, "Loading clientSecret")
 
-	var cache *email.EmailCache
+	var cache *salesforce.EmailCache
 	if c.EmailExporter.EmailCacheSize > 0 {
-		cache = email.NewHashedEmailCache(c.EmailExporter.EmailCacheSize, scope)
+		cache = salesforce.NewHashedEmailCache(c.EmailExporter.EmailCacheSize, scope)
 	}
 
-	sfClient, err := email.NewSalesforceClientImpl(
+	sfClient, err := salesforce.NewSalesforceClientImpl(
 		clk,
 		c.EmailExporter.PardotBusinessUnit,
 		clientId,
@@ -109,7 +109,7 @@ func main() {
 		c.EmailExporter.PardotBaseURL,
 	)
 	cmd.FailOnError(err, "Creating Pardot API client")
-	exporterServer := email.NewExporterImpl(sfClient, cache, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
+	exporterServer := salesforce.NewExporterImpl(sfClient, cache, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
 
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading email-exporter TLS config")
@@ -118,7 +118,7 @@ func main() {
 	go exporterServer.Start(daemonCtx)
 
 	start, err := bgrpc.NewServer(c.EmailExporter.GRPC, logger).Add(
-		&emailpb.Exporter_ServiceDesc, exporterServer).Build(tlsConfig, scope, clk)
+		&salesforcepb.Exporter_ServiceDesc, exporterServer).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Configuring email-exporter gRPC server")
 
 	err = start()

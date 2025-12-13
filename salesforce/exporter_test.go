@@ -1,4 +1,4 @@
-package email
+package salesforce
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/test"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -91,7 +91,7 @@ func TestSendContacts(t *testing.T) {
 	defer cleanup()
 
 	wantContacts := []string{"test@example.com", "user@example.com"}
-	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 		Emails: wantContacts,
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -120,7 +120,7 @@ func TestSendContactsQueueFull(t *testing.T) {
 
 	var err error
 	for range contactsQueueCap * 2 {
-		_, err = exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+		_, err = exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 			Emails: []string{"test@example.com"},
 		})
 		if err != nil {
@@ -141,7 +141,7 @@ func TestSendContactsQueueDrains(t *testing.T) {
 		emails = append(emails, fmt.Sprintf("test@%d.example.com", i))
 	}
 
-	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 		Emails: emails,
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -169,7 +169,7 @@ func TestSendContactsErrorMetrics(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 		Emails: []string{"test@example.com"},
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -192,7 +192,7 @@ func TestSendContactDeduplication(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 		Emails: []string{"duplicate@example.com", "duplicate@example.com"},
 	})
 	test.AssertNotError(t, err, "Error enqueuing contacts")
@@ -224,7 +224,7 @@ func TestSendContactErrorRemovesFromCache(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 		Emails: []string{"error@example.com"},
 	})
 	test.AssertNotError(t, err, "enqueue failed")
@@ -249,7 +249,7 @@ func TestSendCase(t *testing.T) {
 	clientImpl := newMockSalesforceClientImpl()
 	exporter := NewExporterImpl(clientImpl, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
-	_, err := exporter.SendCase(ctx, &emailpb.SendCaseRequest{
+	_, err := exporter.SendCase(ctx, &salesforcepb.SendCaseRequest{
 		Origin:       "Web",
 		Subject:      "Some Override",
 		Description:  "Please review",
@@ -282,7 +282,7 @@ func TestSendCaseClientErrorIncrementsMetric(t *testing.T) {
 	mockClient := &mockAlwaysFailCaseClient{}
 	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
-	_, err := exporter.SendCase(ctx, &emailpb.SendCaseRequest{
+	_, err := exporter.SendCase(ctx, &salesforcepb.SendCaseRequest{
 		Origin:       "Web",
 		Subject:      "Some Override",
 		Description:  "Please review",
@@ -298,7 +298,7 @@ func TestSendCaseMissingOriginValidation(t *testing.T) {
 	clientImpl := newMockSalesforceClientImpl()
 	exporter := NewExporterImpl(clientImpl, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
-	_, err := exporter.SendCase(ctx, &emailpb.SendCaseRequest{Subject: "No origin in this one, d00d"})
+	_, err := exporter.SendCase(ctx, &salesforcepb.SendCaseRequest{Subject: "No origin in this one, d00d"})
 	test.AssertError(t, err, "SendCase should fail validation when Origin is missing")
 
 	got := clientImpl.getCreatedCases()

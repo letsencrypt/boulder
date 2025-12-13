@@ -8,17 +8,17 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/email"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
+	"github.com/letsencrypt/boulder/salesforce"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 )
 
-var _ email.SalesforceClient = (*MockSalesforceClientImpl)(nil)
+var _ salesforce.SalesforceClient = (*MockSalesforceClientImpl)(nil)
 
-// MockSalesforceClientImpl is a mock implementation of email.SalesforceClient.
+// MockSalesforceClientImpl is a mock implementation of salesforce.SalesforceClient.
 type MockSalesforceClientImpl struct {
 	sync.Mutex
 	CreatedContacts []string
-	CreatedCases    []email.Case
+	CreatedCases    []salesforce.Case
 }
 
 // NewMockSalesforceClientImpl returns a MockSalesforceClientImpl, which implements
@@ -48,7 +48,7 @@ func (m *MockSalesforceClientImpl) GetCreatedContacts() []string {
 }
 
 // SendCase adds a case payload to CreatedCases.
-func (m *MockSalesforceClientImpl) SendCase(payload email.Case) error {
+func (m *MockSalesforceClientImpl) SendCase(payload salesforce.Case) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -58,7 +58,7 @@ func (m *MockSalesforceClientImpl) SendCase(payload email.Case) error {
 
 // GetCreatedCases is used for testing to retrieve the list of created cases in
 // a thread-safe manner.
-func (m *MockSalesforceClientImpl) GetCreatedCases() []email.Case {
+func (m *MockSalesforceClientImpl) GetCreatedCases() []salesforce.Case {
 	m.Lock()
 	defer m.Unlock()
 
@@ -66,23 +66,23 @@ func (m *MockSalesforceClientImpl) GetCreatedCases() []email.Case {
 	return slices.Clone(m.CreatedCases)
 }
 
-var _ emailpb.ExporterClient = (*MockExporterClientImpl)(nil)
+var _ salesforcepb.ExporterClient = (*MockExporterClientImpl)(nil)
 
 // MockExporterClientImpl is a mock implementation of ExporterClient.
 type MockExporterClientImpl struct {
-	SalesforceClient email.SalesforceClient
+	SalesforceClient salesforce.SalesforceClient
 }
 
 // NewMockExporterImpl returns a MockExporterClientImpl as an ExporterClient.
-func NewMockExporterImpl(salesforceClient email.SalesforceClient) emailpb.ExporterClient {
+func NewMockExporterImpl(salesforceClient salesforce.SalesforceClient) salesforcepb.ExporterClient {
 	return &MockExporterClientImpl{
 		SalesforceClient: salesforceClient,
 	}
 }
 
-// SendContacts submits emails to the inner email.SalesforceClient, returning an
+// SendContacts submits emails to the inner salesforce.SalesforceClient, returning an
 // error if any fail.
-func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *salesforcepb.SendContactsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	for _, e := range req.Emails {
 		err := m.SalesforceClient.SendContact(e)
 		if err != nil {
@@ -92,9 +92,9 @@ func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *emailpb.
 	return &emptypb.Empty{}, nil
 }
 
-// SendCase submits a Case using the inner email.SalesforceClient.
-func (m *MockExporterClientImpl) SendCase(ctx context.Context, req *emailpb.SendCaseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, m.SalesforceClient.SendCase(email.Case{
+// SendCase submits a Case using the inner salesforce.SalesforceClient.
+func (m *MockExporterClientImpl) SendCase(ctx context.Context, req *salesforcepb.SendCaseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, m.SalesforceClient.SendCase(salesforce.Case{
 		Origin:        req.Origin,
 		Subject:       req.Subject,
 		Description:   req.Description,
