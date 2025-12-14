@@ -22,11 +22,12 @@ type s3TestSrv struct {
 }
 
 func (srv *s3TestSrv) handleS3(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "PUT" {
+	switch r.Method {
+	case "PUT":
 		srv.handleUpload(w, r)
-	} else if r.Method == "GET" {
+	case "GET":
 		srv.handleDownload(w, r)
-	} else {
+	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }

@@ -75,12 +75,7 @@ linters:
         - -ST1003 # Poorly chosen identifier
         - -ST1005 # Incorrectly formatted error string
         - -QF1001 # Could apply De Morgan's law
-        - -QF1003 # Could use tagged switch
-        - -QF1004 # Could use strings.Split instead
-        - -QF1007 # Could merge conditional assignment into variable declaration
         - -QF1008 # Could remove embedded field from selector
-        - -QF1009 # Probably want to use time.Time.Equal
-        - -QF1012 # Use fmt.Fprintf(...) instead of Write(fmt.Sprintf(...))
   exclusions:
     presets:
       - std-error-handling

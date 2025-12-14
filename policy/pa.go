@@ -388,7 +388,7 @@ func ValidEmail(address string) error {
 	if err != nil {
 		return berrors.InvalidEmailError("unable to parse email address")
 	}
-	splitEmail := strings.SplitN(email.Address, "@", -1)
+	splitEmail := strings.Split(email.Address, "@")
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	err = validNonWildcardDomain(domain)
 	if err != nil {

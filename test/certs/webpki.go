@@ -107,7 +107,7 @@ func main() {
 			// template files) are meaningful and are consumed by aia-test-srv. If
 			// you change the structure of these file names, you will need to change
 			// aia-test-srv as well to recognize and consume the resulting files.
-			fileName := strings.Replace(name, " ", "-", -1)
+			fileName := strings.ReplaceAll(name, " ", "-")
 
 			// Create SoftHSM slot
 			keySlot, err := createSlot(name)

@@ -667,7 +667,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 		// Check that validated timestamp was recorded, stored, and retrieved
 		expectedValidated := fc.Now()
-		test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+		test.Assert(t, expectedValidated.Equal(*challenge.Validated), "Validated timestamp incorrect or missing")
 	}
 }
 
@@ -879,7 +879,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
-	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+	test.Assert(t, expectedValidated.Equal(*challenge.Validated), "Validated timestamp incorrect or missing")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {

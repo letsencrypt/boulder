@@ -246,9 +246,10 @@ func (sa *StorageAuthorityReadOnly) FQDNSetExists(_ context.Context, _ *sapb.FQD
 
 // GetOrder is a mock
 func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
-	if req.Id == 2 {
+	switch req.Id {
+	case 2:
 		return nil, berrors.NotFoundError("bad")
-	} else if req.Id == 3 {
+	case 3:
 		return nil, errors.New("very bad")
 	}
 
