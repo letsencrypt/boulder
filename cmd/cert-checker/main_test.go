@@ -583,7 +583,7 @@ func TestIgnoredLint(t *testing.T) {
 		saCleanup()
 	}()
 
-	err = loglist.InitLintList("../../test/ct-test-srv/log_list.json")
+	err = loglist.InitLintList("../../test/ct-test-srv/log_list.json", false)
 	test.AssertNotError(t, err, "failed to load ct log list")
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
