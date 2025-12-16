@@ -88,9 +88,9 @@ func (s *fakeServerStream[T]) Context() context.Context {
 	return context.Background()
 }
 
-// initSA constructs a SQLStorageAuthority and a clean up function that should
-// be defer'ed to the end of the test.
-func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock, func()) {
+// initSA constructs a SQLStorageAuthority and FakeClock for use in tests.
+// Database clean ups automatically at the end of the test.
+func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 	t.Helper()
 	features.Reset()
 
@@ -117,7 +117,9 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock, func()) {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 
-	return sa, fc, test.ResetBoulderTestDatabase(t)
+	t.Cleanup(test.ResetBoulderTestDatabase(t))
+
+	return sa, fc
 }
 
 // CreateWorkingTestRegistration inserts a new, correct Registration into the
@@ -183,8 +185,7 @@ func goodTestJWK() *jose.JSONWebKey {
 }
 
 func TestAddRegistration(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	jwkJSON, _ := goodTestJWK().MarshalJSON()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
@@ -223,8 +224,7 @@ func TestAddRegistration(t *testing.T) {
 }
 
 func TestNoSuchRegistrationErrors(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 100})
 	test.AssertErrorIs(t, err, berrors.NotFound)
@@ -240,8 +240,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 }
 
 func TestSelectRegistration(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 	var ctx = context.Background()
 	jwk := goodTestJWK()
 	jwkJSON, _ := jwk.MarshalJSON()
@@ -261,8 +260,7 @@ func TestSelectRegistration(t *testing.T) {
 }
 
 func TestReplicationLagRetries(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -318,8 +316,7 @@ func findIssuedName(ctx context.Context, dbMap db.OneSelector, issuedName string
 }
 
 func TestAddSerial(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	serial, testCert := test.ThrowAwayCert(t, clk)
@@ -362,8 +359,7 @@ func TestAddSerial(t *testing.T) {
 }
 
 func TestGetSerialMetadata(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	serial, _ := test.ThrowAwayCert(t, clk)
@@ -392,8 +388,7 @@ func TestGetSerialMetadata(t *testing.T) {
 
 func TestAddPrecertificate(t *testing.T) {
 	ctx := context.Background()
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -436,8 +431,7 @@ func TestAddPrecertificate(t *testing.T) {
 }
 
 func TestAddPrecertificateNoOCSP(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	_, testCert := test.ThrowAwayCert(t, clk)
@@ -454,8 +448,7 @@ func TestAddPrecertificateNoOCSP(t *testing.T) {
 }
 
 func TestAddPreCertificateDuplicate(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -480,8 +473,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 }
 
 func TestAddPrecertificateIncomplete(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -502,8 +494,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 }
 
 func TestAddPrecertificateKeyHash(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 	reg := createWorkingRegistration(t, sa)
 
 	serial, testCert := test.ThrowAwayCert(t, clk)
@@ -527,8 +518,7 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -575,8 +565,7 @@ func TestAddCertificate(t *testing.T) {
 }
 
 func TestAddCertificateDuplicate(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -600,8 +589,7 @@ func TestAddCertificateDuplicate(t *testing.T) {
 }
 
 func TestFQDNSetTimestampsForWindow(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	tx, err := sa.dbMap.BeginTx(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
@@ -691,8 +679,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 }
 
 func TestFQDNSetExists(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("a.example.com"),
@@ -845,8 +832,7 @@ func TestAddIssuedNames(t *testing.T) {
 }
 
 func TestDeactivateAuthorization2(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -864,8 +850,7 @@ func TestDeactivateAuthorization2(t *testing.T) {
 }
 
 func TestDeactivateAccount(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -952,8 +937,7 @@ func TestEncodeIssuedName(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs(t *testing.T) {
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
+	sa, _ := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -1022,8 +1006,7 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs_ReuseOnly(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1053,8 +1036,7 @@ func TestNewOrderAndAuthzs_ReuseOnly(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs_CreateOnly(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1099,8 +1081,7 @@ func TestNewOrderAndAuthzs_CreateOnly(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs_NoAuthzsError(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1124,8 +1105,7 @@ func TestNewOrderAndAuthzs_NoAuthzsError(t *testing.T) {
 // TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
 // sapb.NewOrderAndAuthzsRequest NewOrder object returns an error.
 func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -1145,8 +1125,7 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
+	sa, _ := initSA(t)
 
 	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
@@ -1163,8 +1142,7 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
@@ -1215,8 +1193,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs_Profile(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
@@ -1264,8 +1241,7 @@ func TestNewOrderAndAuthzs_Profile(t *testing.T) {
 }
 
 func TestSetOrderProcessing(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -1306,8 +1282,7 @@ func TestSetOrderProcessing(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
@@ -1348,8 +1323,7 @@ func TestFinalizeOrder(t *testing.T) {
 // TestGetOrder tests that round-tripping a simple order through
 // NewOrderAndAuthzs and GetOrder has the expected result.
 func TestGetOrder(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	ident := identifier.NewDNS("example.com")
@@ -1432,8 +1406,7 @@ func TestGetOrder(t *testing.T) {
 // TestGetOrderWithProfile tests that round-tripping a simple order through
 // NewOrderAndAuthzs and GetOrder has the expected result.
 func TestGetOrderWithProfile(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	ident := identifier.NewDNS("example.com")
@@ -1491,8 +1464,7 @@ func TestGetOrderWithProfile(t *testing.T) {
 // TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
 // the correct error when there are no results for the provided ID.
 func TestGetAuthorization2NoRows(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	// An empty authz ID should result in a not found berror.
 	id := int64(123)
@@ -1502,8 +1474,7 @@ func TestGetAuthorization2NoRows(t *testing.T) {
 }
 
 func TestFasterGetOrderForNames(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	ident := identifier.NewDNS("example.com")
 	expires := fc.Now().Add(time.Hour)
@@ -1544,8 +1515,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 }
 
 func TestGetOrderForNames(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	// Give the order we create a short lifetime
 	orderLifetime := time.Hour
@@ -1697,8 +1667,7 @@ func TestGetOrderForNames(t *testing.T) {
 }
 
 func TestStatusForOrder(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	ctx := context.Background()
 	expires := fc.Now().Add(time.Hour)
@@ -1846,8 +1815,7 @@ func TestStatusForOrder(t *testing.T) {
 }
 
 func TestUpdateChallengesDeleteUnused(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	expires := fc.Now().Add(time.Hour)
 	ctx := context.Background()
@@ -1872,8 +1840,7 @@ func TestUpdateChallengesDeleteUnused(t *testing.T) {
 }
 
 func TestRevokeCertificate(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	// Add a cert to the DB to test with.
@@ -1929,8 +1896,7 @@ func TestRevokeCertificate(t *testing.T) {
 }
 
 func TestRevokeCertificateWithShard(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	// Add a cert to the DB to test with.
 	reg := createWorkingRegistration(t, sa)
@@ -1982,8 +1948,7 @@ func TestRevokeCertificateWithShard(t *testing.T) {
 }
 
 func TestUpdateRevokedCertificate(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	// Add a cert to the DB to test with.
 	reg := createWorkingRegistration(t, sa)
@@ -2117,8 +2082,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 }
 
 func TestAddCertificateRenewalBit(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -2191,8 +2155,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 }
 
 func TestFinalizeAuthorization2(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	fc.Set(mustTime("2021-01-01 00:00"))
 
@@ -2264,8 +2227,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 }
 
 func TestRehydrateHostPort(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	fc.Set(mustTime("2021-01-01 00:00"))
 
@@ -2380,8 +2342,7 @@ func TestRehydrateHostPort(t *testing.T) {
 }
 
 func TestCountPendingAuthorizations2(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	expiresA := fc.Now().Add(time.Hour).UTC()
@@ -2504,8 +2465,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		if features.Get().StoreAuthzsInOrders && os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 			t.Skip("need DB migration to test StoreAuthzsInOrders=true")
 		}
-		sa, fc, cleanup := initSA(t)
-		defer cleanup()
+		sa, fc := initSA(t)
 
 		// Create three new valid authorizations
 		reg := createWorkingRegistration(t, sa)
@@ -2572,8 +2532,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	fc.Add(time.Hour)
 	reg := createWorkingRegistration(t, sa)
@@ -2605,8 +2564,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 }
 
 func TestGetValidAuthorizations2(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	var aaa int64
 	{
@@ -2772,8 +2730,8 @@ func TestGetOrderExpired(t *testing.T) {
 		features.Set(features.Config{
 			StoreAuthzsInOrders: storeAuthzsInOrders,
 		})
-		sa, fc, cleanUp := initSA(t)
-		defer cleanUp()
+		sa, fc := initSA(t)
+
 		fc.Add(time.Hour * 5)
 		now := fc.Now()
 		reg := createWorkingRegistration(t, sa)
@@ -2795,8 +2753,7 @@ func TestGetOrderExpired(t *testing.T) {
 }
 
 func TestBlockedKey(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	hashA := make([]byte, 32)
 	hashA[0] = 1
@@ -2848,8 +2805,7 @@ func TestBlockedKey(t *testing.T) {
 }
 
 func TestAddBlockedKeyUnknownSource(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: []byte{1, 2, 3},
@@ -2861,8 +2817,7 @@ func TestAddBlockedKeyUnknownSource(t *testing.T) {
 }
 
 func TestBlockedKeyRevokedBy(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	now := fc.Now()
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
@@ -2882,8 +2837,7 @@ func TestBlockedKeyRevokedBy(t *testing.T) {
 }
 
 func TestIncidentsForSerial(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	testSADbMap, err := DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
@@ -2967,8 +2921,7 @@ func TestIncidentsForSerial(t *testing.T) {
 }
 
 func TestSerialsForIncident(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
@@ -3082,8 +3035,7 @@ func TestSerialsForIncident(t *testing.T) {
 }
 
 func TestGetRevokedCertsByShard(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
 	// up the certificateStatus row we need. This particular cert has a notAfter
@@ -3198,8 +3150,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 }
 
 func TestLeaseOldestCRLShard(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	// Create 8 shards: 4 for each of 2 issuers. For each issuer, one shard is
 	// currently leased, three are available, and one of those failed to update.
@@ -3317,8 +3268,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 }
 
 func TestLeaseSpecificCRLShard(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	// Create 8 shards: 4 for each of 2 issuers. For each issuer, one shard is
 	// currently leased, three are available, and one of those failed to update.
@@ -3445,8 +3395,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 }
 
 func TestUpdateCRLShard(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, clk := initSA(t)
 
 	// Create 8 shards: 4 for each of 2 issuers. For each issuer, one shard is
 	// currently leased, three are available, and one of those failed to update.
@@ -3562,8 +3511,7 @@ func TestUpdateCRLShard(t *testing.T) {
 }
 
 func TestReplacementOrderExists(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	oldCertSerial := "1234567890"
 
@@ -3664,8 +3612,7 @@ func TestReplacementOrderExists(t *testing.T) {
 }
 
 func TestGetSerialsByKey(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	// Insert four rows into keyHashToSerial: two that should match the query,
 	// one that should not match due to keyHash mismatch, and one that should not
@@ -3726,8 +3673,7 @@ func TestGetSerialsByKey(t *testing.T) {
 }
 
 func TestGetSerialsByAccount(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	expectedReg := createWorkingRegistration(t, sa)
 
@@ -3785,8 +3731,7 @@ func TestGetSerialsByAccount(t *testing.T) {
 }
 
 func TestUnpauseAccount(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -3909,8 +3854,7 @@ func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, r
 }
 
 func TestUnpauseAccountWithTwoLoops(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 
@@ -3923,8 +3867,7 @@ func TestUnpauseAccountWithTwoLoops(t *testing.T) {
 }
 
 func TestUnpauseAccountWithMaxLoops(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	err := bulkInsertPausedIdentifiers(ctx, sa, reg.Id, 50001)
@@ -3936,8 +3879,7 @@ func TestUnpauseAccountWithMaxLoops(t *testing.T) {
 }
 
 func TestPauseIdentifiers(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	reg := createWorkingRegistration(t, sa)
 	ptrTime := func(t time.Time) *time.Time {
@@ -4117,8 +4059,7 @@ func TestPauseIdentifiers(t *testing.T) {
 }
 
 func TestCheckIdentifiersPaused(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	ptrTime := func(t time.Time) *time.Time {
 		return &t
@@ -4258,8 +4199,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 }
 
 func TestGetPausedIdentifiers(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	ptrTime := func(t time.Time) *time.Time {
 		return &t
@@ -4368,8 +4308,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 }
 
 func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	reg1 := createWorkingRegistration(t, sa)
 	reg2, err := sa.NewRegistration(ctx, &corepb.Registration{
@@ -4420,8 +4359,7 @@ func newAcctKey(t *testing.T) []byte {
 }
 
 func TestUpdateRegistrationKey(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	_, err := sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{})
 	test.AssertError(t, err, "should not have been able to update registration key without a registration ID")
@@ -4503,8 +4441,7 @@ func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 		t.Skip("skipping, this overrides table must exist for this test to run")
 	}
 
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
+	sa, _ := initSA(t)
 
 	expectBucketKey := core.RandomString(10)
 	ov := &sapb.RateLimitOverride{
@@ -4560,8 +4497,7 @@ func TestDisableEnableRateLimitOverride(t *testing.T) {
 		t.Skip("skipping, this overrides table must exist for this test to run")
 	}
 
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
+	sa, _ := initSA(t)
 
 	expectBucketKey := core.RandomString(10)
 	ov := &sapb.RateLimitOverride{
@@ -4601,8 +4537,7 @@ func TestGetEnabledRateLimitOverrides(t *testing.T) {
 		t.Skip("skipping, this overrides table must exist for this test to run")
 	}
 
-	sa, _, cleanup := initSA(t)
-	defer cleanup()
+	sa, _ := initSA(t)
 
 	// Enabled
 	ov1 := &sapb.RateLimitOverride{

@@ -299,8 +299,7 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 func TestCertificatesTableContainsDuplicateSerials(t *testing.T) {
 	ctx := context.Background()
 
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	serialString := core.SerialToString(big.NewInt(1337))
 
@@ -414,8 +413,7 @@ func TestIncidentSerialModel(t *testing.T) {
 }
 
 func TestAddReplacementOrder(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	oldCertSerial := "1234567890"
 	orderId := int64(1337)
@@ -459,8 +457,7 @@ func TestAddReplacementOrder(t *testing.T) {
 }
 
 func TestSetReplacementOrderFinalized(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	oldCertSerial := "1234567890"
 	orderId := int64(1337)
