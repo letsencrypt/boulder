@@ -450,7 +450,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		Issued: timestamppb.New(ca.clk.Now()),
 	})
 	if err != nil {
-		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] cert=[%v] err=[%v]", serialHex, hex.EncodeToString(certDER), err)
+		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] err=[%v]", serialHex, err)
 		return nil, fmt.Errorf("persisting cert to database: %w", err)
 	}
 
