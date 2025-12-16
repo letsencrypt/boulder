@@ -123,7 +123,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	}, []string{"operation", "perspective", "challenge_type", "problem_type", "result"})
 	prospectiveRemoteCAACheckFailures := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "prospective_remote_caa_check_failures",
-		Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
+		Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consensus were enforced",
 	})
 	tlsALPNOIDCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "tls_alpn_oid_usage",

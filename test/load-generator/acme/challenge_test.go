@@ -17,8 +17,8 @@ func TestNewChallengeStrategy(t *testing.T) {
 	}{
 		{
 			Name:          "unknown name",
-			InputName:     "hyper-quauntum-math-mesh-challenge",
-			ExpectedError: `ChallengeStrategy "HYPER-QUAUNTUM-MATH-MESH-CHALLENGE" unknown`,
+			InputName:     "hyper-quantum-math-mesh-challenge",
+			ExpectedError: `ChallengeStrategy "HYPER-QUANTUM-MATH-MESH-CHALLENGE" unknown`,
 		},
 		{
 			Name:              "known name, HTTP-01",
