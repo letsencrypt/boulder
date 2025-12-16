@@ -432,7 +432,7 @@ func TestDNSLookupA(t *testing.T) {
 					t.Fatalf("LookupA(%s) = %q, but want success", tc.hostname, err)
 				}
 				if len(res.Final) != len(tc.wantIPs) {
-					t.Fatalf("LookupA(%s) retuned %d addrs, but want %d", tc.hostname, len(res.Final), len(tc.wantIPs))
+					t.Fatalf("LookupA(%s) returned %d addrs, but want %d", tc.hostname, len(res.Final), len(tc.wantIPs))
 				}
 				for i := range len(tc.wantIPs) {
 					if !res.Final[i].A.Equal(tc.wantIPs[i]) {
@@ -517,7 +517,7 @@ func TestDNSLookupAAAA(t *testing.T) {
 					t.Fatalf("LookupA(%s) = %q, but want success", tc.hostname, err)
 				}
 				if len(res.Final) != len(tc.wantIPs) {
-					t.Fatalf("LookupA(%s) retuned %d addrs, but want %d", tc.hostname, len(res.Final), len(tc.wantIPs))
+					t.Fatalf("LookupA(%s) returned %d addrs, but want %d", tc.hostname, len(res.Final), len(tc.wantIPs))
 				}
 				for i := range len(tc.wantIPs) {
 					if !res.Final[i].AAAA.Equal(tc.wantIPs[i]) {

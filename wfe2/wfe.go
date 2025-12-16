@@ -1466,7 +1466,7 @@ func (wfe *WebFrontEndImpl) updateAccount(ctx context.Context, requestBody []byt
 // deactivate the provided authorization. If an error occurs it is written to
 // the response writer. Important: `deactivateAuthorization` does not check that
 // the requester is authorized to deactivate the given authorization. It is
-// assumed that this check is performed prior to calling deactivateAuthorzation.
+// assumed that this check is performed prior to calling deactivateAuthorization.
 func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	ctx context.Context,
 	authzPB *corepb.Authorization,

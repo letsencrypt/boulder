@@ -669,7 +669,7 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	t.Logf("Generated to-be-revoked cert with serial %x", toBeRevoked.certs[0].SerialNumber)
 
 	// Issue two more certs, one from the original account and one from an
-	// unrelated account. We don't use separatze revoker/revokee accounts here
+	// unrelated account. We don't use separate revoker/revokee accounts here
 	// because you can only revoke *your own* certs when signing the request with
 	// your account key.
 	bundles := []*issuanceResult{}
