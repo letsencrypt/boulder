@@ -67,10 +67,7 @@ func logSrv(k *ecdsa.PrivateKey) *testLogSrv {
 		if err != nil {
 			return
 		}
-		precert := false
-		if r.URL.Path == "/ct/v1/add-pre-chain" {
-			precert = true
-		}
+		precert := r.URL.Path == "/ct/v1/add-pre-chain"
 		sct := CreateTestingSignedSCT(jsonReq.Chain, k, precert, time.Now())
 		fmt.Fprint(w, string(sct))
 		atomic.AddInt64(&testLog.submissions, 1)
@@ -92,10 +89,7 @@ func lyingLogSrv(k *ecdsa.PrivateKey, timestamp time.Time) *testLogSrv {
 		if err != nil {
 			return
 		}
-		precert := false
-		if r.URL.Path == "/ct/v1/add-pre-chain" {
-			precert = true
-		}
+		precert := r.URL.Path == "/ct/v1/add-pre-chain"
 		sct := CreateTestingSignedSCT(jsonReq.Chain, k, precert, timestamp)
 		fmt.Fprint(w, string(sct))
 		atomic.AddInt64(&testLog.submissions, 1)

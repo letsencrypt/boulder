@@ -186,7 +186,7 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
 
 	// Since messages are delimited by newlines, we have to escape any internal or
 	// trailing newlines before generating the checksum or outputting the message.
-	msg = strings.Replace(msg, "\n", "\\n", -1)
+	msg = strings.ReplaceAll(msg, "\n", "\\n")
 
 	w.Lock()
 	defer w.Unlock()
@@ -232,7 +232,7 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
 			msg = fmt.Sprintf(msg, a...)
 		}
 
-		msg = strings.Replace(msg, "\n", "\\n", -1)
+		msg = strings.ReplaceAll(msg, "\n", "\\n")
 
 		var color string
 		var reset string
