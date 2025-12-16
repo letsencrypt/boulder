@@ -117,9 +117,7 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 
-	t.Cleanup(func() {
-		test.ResetBoulderTestDatabase(t)
-	})
+	t.Cleanup(test.ResetBoulderTestDatabase(t))
 
 	return sa, fc
 }
