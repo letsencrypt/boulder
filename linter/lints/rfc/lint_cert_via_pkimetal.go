@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -21,6 +22,7 @@ import (
 // both certs and CRLs using PKIMetal.
 type PKIMetalConfig struct {
 	Addr        string        `toml:"addr" comment:"The address where a pkilint REST API can be reached."`
+	Socket      string        `toml:"socket" comment:"The Unix socket path where a pkilint REST API can be reached. If set, this takes precedence over Addr."`
 	Severity    string        `toml:"severity" comment:"The minimum severity of findings to report (meta, debug, info, notice, warning, error, bug, or fatal)."`
 	Timeout     time.Duration `toml:"timeout" comment:"How long, in nanoseconds, to wait before giving up."`
 	IgnoreLints []string      `toml:"ignore_lints" comment:"The unique Validator:Code IDs of lint findings which should be ignored."`
@@ -35,9 +37,29 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	apiURL, err := url.JoinPath(pkim.Addr, endpoint)
-	if err != nil {
-		return nil, fmt.Errorf("constructing pkimetal url: %w", err)
+	// Create HTTP client based on whether we're using Unix socket or HTTP
+	var client *http.Client
+	var apiURL string
+	var err error
+
+	if pkim.Socket != "" {
+		// Use Unix socket connection
+		client = &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					return (&net.Dialer{}).DialContext(ctx, "unix", pkim.Socket)
+				},
+			},
+		}
+		// For Unix sockets, we use a dummy HTTP URL as the socket path is used for connection
+		apiURL = fmt.Sprintf("http://localhost/%s", endpoint)
+	} else {
+		// Use regular HTTP connection
+		client = http.DefaultClient
+		apiURL, err = url.JoinPath(pkim.Addr, endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("constructing pkimetal url: %w", err)
+		}
 	}
 
 	// reqForm matches PKIMetal's documented form-urlencoded request format. It
@@ -56,7 +78,7 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("making POST request to pkimetal API: %s (timeout %s)", err, timeout)
 	}
@@ -141,8 +163,8 @@ func (l *certViaPKIMetal) Configure() any {
 
 func (l *certViaPKIMetal) CheckApplies(c *x509.Certificate) bool {
 	// This lint applies to all certificates issued by Boulder, as long as it has
-	// been configured with an address to reach out to. If not, skip it.
-	return l.Addr != ""
+	// been configured with an address or socket to reach out to. If not, skip it.
+	return l.Addr != "" || l.Socket != ""
 }
 
 func (l *certViaPKIMetal) Execute(c *x509.Certificate) *lint.LintResult {
