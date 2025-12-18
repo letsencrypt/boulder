@@ -45,6 +45,7 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 	if pkim.Socket != "" {
 		// Use Unix socket connection
 		client = &http.Client{
+			Timeout: timeout,
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 					return (&net.Dialer{}).DialContext(ctx, "unix", pkim.Socket)
@@ -52,7 +53,10 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 			},
 		}
 		// For Unix sockets, we use a dummy HTTP URL as the socket path is used for connection
-		apiURL = fmt.Sprintf("http://localhost/%s", endpoint)
+		apiURL, err = url.JoinPath("http://localhost", endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("constructing pkimetal url: %w", err)
+		}
 	} else {
 		// Use regular HTTP connection
 		client = http.DefaultClient
