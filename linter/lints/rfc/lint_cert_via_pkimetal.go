@@ -52,14 +52,17 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 				},
 			},
 		}
-		// For Unix sockets, we use a dummy HTTP URL as the socket path is used for connection
+		// For Unix sockets, we use a dummy HTTP URL. The hostname is ignored since
+		// the custom DialContext overrides the connection mechanism to use the socket path.
 		apiURL, err = url.JoinPath("http://localhost", endpoint)
 		if err != nil {
 			return nil, fmt.Errorf("constructing pkimetal url: %w", err)
 		}
 	} else {
 		// Use regular HTTP connection
-		client = http.DefaultClient
+		client = &http.Client{
+			Timeout: timeout,
+		}
 		apiURL, err = url.JoinPath(pkim.Addr, endpoint)
 		if err != nil {
 			return nil, fmt.Errorf("constructing pkimetal url: %w", err)
