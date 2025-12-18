@@ -26,6 +26,8 @@ type PKIMetalConfig struct {
 	Severity    string        `toml:"severity" comment:"The minimum severity of findings to report (meta, debug, info, notice, warning, error, bug, or fatal)."`
 	Timeout     time.Duration `toml:"timeout" comment:"How long, in nanoseconds, to wait before giving up."`
 	IgnoreLints []string      `toml:"ignore_lints" comment:"The unique Validator:Code IDs of lint findings which should be ignored."`
+
+	client *http.Client
 }
 
 func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResult, error) {
@@ -34,39 +36,37 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 		timeout = 100 * time.Millisecond
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	// Create HTTP client based on whether we're using Unix socket or HTTP
-	var client *http.Client
-	var apiURL string
-	var err error
-
-	if pkim.Socket != "" {
-		// Use Unix socket connection
-		client = &http.Client{
+	// Initialize HTTP client once and reuse it for connection pooling
+	if pkim.client == nil {
+		pkim.client = &http.Client{
 			Timeout: timeout,
-			Transport: &http.Transport{
+		}
+		// If using Unix socket, set up custom transport
+		if pkim.Socket != "" {
+			pkim.client.Transport = &http.Transport{
 				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 					return (&net.Dialer{}).DialContext(ctx, "unix", pkim.Socket)
 				},
-			},
+			}
 		}
-		// For Unix sockets, we use a dummy HTTP URL. The hostname is ignored since
-		// the custom DialContext overrides the connection mechanism to use the socket path.
-		apiURL, err = url.JoinPath("http://localhost", endpoint)
-		if err != nil {
-			return nil, fmt.Errorf("constructing pkimetal url: %w", err)
-		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Determine the base URL: use localhost for Unix sockets, otherwise use configured address
+	var baseURL string
+	if pkim.Socket != "" {
+		// For Unix sockets, the hostname is ignored since the custom DialContext
+		// overrides the connection mechanism to use the socket path.
+		baseURL = "http://localhost"
 	} else {
-		// Use regular HTTP connection
-		client = &http.Client{
-			Timeout: timeout,
-		}
-		apiURL, err = url.JoinPath(pkim.Addr, endpoint)
-		if err != nil {
-			return nil, fmt.Errorf("constructing pkimetal url: %w", err)
-		}
+		baseURL = pkim.Addr
+	}
+
+	apiURL, err := url.JoinPath(baseURL, endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("constructing pkimetal url: %w", err)
 	}
 
 	// reqForm matches PKIMetal's documented form-urlencoded request format. It
@@ -85,7 +85,7 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err := pkim.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("making POST request to pkimetal API: %s (timeout %s)", err, timeout)
 	}
