@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zmap/zcrypto/x509"
@@ -27,7 +28,8 @@ type PKIMetalConfig struct {
 	Timeout     time.Duration `toml:"timeout" comment:"How long, in nanoseconds, to wait before giving up."`
 	IgnoreLints []string      `toml:"ignore_lints" comment:"The unique Validator:Code IDs of lint findings which should be ignored."`
 
-	client *http.Client
+	client     *http.Client
+	clientOnce sync.Once
 }
 
 func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResult, error) {
@@ -36,11 +38,9 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 		timeout = 100 * time.Millisecond
 	}
 
-	// Initialize HTTP client once and reuse it for connection pooling
-	if pkim.client == nil {
-		pkim.client = &http.Client{
-			Timeout: timeout,
-		}
+	// Initialize HTTP client once with thread-safe sync.Once for connection pooling
+	pkim.clientOnce.Do(func() {
+		pkim.client = &http.Client{}
 		// If using Unix socket, set up custom transport
 		if pkim.Socket != "" {
 			pkim.client.Transport = &http.Transport{
@@ -49,7 +49,7 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 				},
 			}
 		}
-	}
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
