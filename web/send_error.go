@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -63,10 +64,19 @@ func SendError(
 		prob.SubProblems[i].Type = probs.ProblemType(probs.ErrorNS) + prob.SubProblems[i].Type
 	}
 
-	problemDoc, err := json.MarshalIndent(prob, "", "  ")
+	var problemDoc []byte
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	// Avoid escaping characters: <, >, &, some of our log messages contain
+	// these characters and we want them to be human readable.
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(prob)
 	if err != nil {
 		log.AuditErrf("Could not marshal error message: %s - %+v", err, prob)
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
+	} else {
+		problemDoc = bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
 	}
 
 	response.Write(problemDoc)
