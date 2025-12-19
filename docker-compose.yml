@@ -143,9 +143,10 @@ services:
 
   bpkimetal:
     image: ghcr.io/pkimetal/pkimetal:v1.32.0
+    user: root
     volumes:
       - pkimetal-socket:/var/run/pkimetal
-      - ./test/config/pkimetal.yaml:/config.yaml:ro
+      - ./test/config/pkimetal.yaml:/app/config.yaml:ro
     networks:
       - bouldernet
 
