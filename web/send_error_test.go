@@ -103,3 +103,14 @@ func TestSendErrorPausedProblemLoggingSuppression(t *testing.T) {
 
 	test.AssertEquals(t, logEvent.Error, "429 :: rateLimited :: account/ident pair is paused")
 }
+
+func TestSendErrorDoesNotEscapeHTML(t *testing.T) {
+	rw := httptest.NewRecorder()
+	logEvent := RequestEvent{}
+	SendError(log.NewMock(), rw, &logEvent, probs.Malformed("nonce less than lowest eligible nonce: 1 < 2"), nil)
+
+	test.AssertEquals(t, logEvent.Error, "400 :: malformed :: nonce less than lowest eligible nonce: 1 < 2")
+	body := rw.Body.String()
+	test.AssertNotContains(t, body, "\\u003c")
+	test.AssertContains(t, body, "nonce less than lowest eligible nonce: 1 < 2")
+}
