@@ -27,7 +27,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -44,6 +43,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 )
@@ -91,7 +91,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 type WebFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
-	ee emailpb.ExporterClient
+	ee salesforcepb.ExporterClient
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
@@ -182,7 +182,7 @@ func NewWebFrontEndImpl(
 	maxContactsPerReg int,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	eec emailpb.ExporterClient,
+	eec salesforcepb.ExporterClient,
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
 	rncKey []byte,
@@ -906,7 +906,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	newRegistrationSuccessful = true
 
 	if wfe.ee != nil && len(emails) > 0 {
-		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
+		_, err := wfe.ee.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 			// Note: We are explicitly using the contacts provided by the
 			// subscriber here. The RA will eventually stop accepting contacts.
 			Emails: emails,

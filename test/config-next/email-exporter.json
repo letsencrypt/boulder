@@ -11,6 +11,12 @@
 						"sfe.boulder"
 					]
 				},
+				"salesforce.Exporter": {
+					"clientNames": [
+						"wfe.boulder",
+						"sfe.boulder"
+					]
+				},
 				"grpc.health.v1.Health": {
 					"clientNames": [
 						"health-checker.boulder"

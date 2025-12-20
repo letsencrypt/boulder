@@ -1,4 +1,4 @@
-package email
+package salesforce
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 )
 
 // contactsQueueCap limits the queue size to prevent unbounded growth. This
@@ -25,7 +25,7 @@ var ErrQueueFull = errors.New("email-exporter queue is full")
 
 // ExporterImpl implements the gRPC server and processes email exports.
 type ExporterImpl struct {
-	emailpb.UnsafeExporterServer
+	salesforcepb.UnsafeExporterServer
 
 	sync.Mutex
 	drainWG sync.WaitGroup
@@ -48,7 +48,7 @@ type ExporterImpl struct {
 	log                   blog.Logger
 }
 
-var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
+var _ salesforcepb.ExporterServer = (*ExporterImpl)(nil)
 
 // NewExporterImpl initializes an ExporterImpl with the given client and
 // configuration. Both perDayLimit and maxConcurrentRequests should be
@@ -104,7 +104,7 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 
 // SendContacts enqueues the provided email addresses. If the queue cannot
 // accommodate the new emails, an ErrQueueFull is returned.
-func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
+func (impl *ExporterImpl) SendContacts(ctx context.Context, req *salesforcepb.SendContactsRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req, req.Emails) {
 		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}
@@ -125,8 +125,8 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 
 // SendCase immediately submits a new Case to the Salesforce REST API using the
 // provided details. Any retries are handled internally by the SalesforceClient.
-// The following fields are required: Origin, Subject, ContactEmail.
-func (impl *ExporterImpl) SendCase(ctx context.Context, req *emailpb.SendCaseRequest) (*emptypb.Empty, error) {
+// The following fields are required: Origin, Subject, Contactsalesforce.
+func (impl *ExporterImpl) SendCase(ctx context.Context, req *salesforcepb.SendCaseRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req, req.Origin, req.Subject, req.ContactEmail) {
 		return nil, berrors.InternalServerError("incomplete gRPC request message")
 	}
