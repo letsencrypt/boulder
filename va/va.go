@@ -574,6 +574,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 	var failed []string
 	var passedRIRs = map[string]struct{}{}
 	var firstProb *probs.ProblemDetails
+	var slowTimerSet bool
 
 	for resp := range responses {
 		var currProb *probs.ProblemDetails
@@ -609,13 +610,14 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
-		if va.slowRemoteTimeout != 0 {
+		if va.slowRemoteTimeout != 0 && !slowTimerSet {
 			// If enough perspectives have passed, or enough perspectives have
 			// failed, set a tighter deadline for the remaining perspectives.
 			if (len(passed) >= required && len(passedRIRs) >= requiredRIRs) ||
 				(len(failed) > remoteVACount-required) {
 				timer := time.AfterFunc(va.slowRemoteTimeout, cancel)
 				defer timer.Stop()
+				slowTimerSet = true
 			}
 		}
 
