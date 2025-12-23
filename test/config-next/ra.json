@@ -183,7 +183,7 @@
 		"sysloglevel": 6
 	},
 	"openTelemetry": {
-		"endpoint": "bjaeger:4317",
+		"endpoint": "otel-collector:4317",
 		"sampleratio": 1
 	}
 }

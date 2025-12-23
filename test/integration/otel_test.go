@@ -261,7 +261,7 @@ func TestTraces(t *testing.T) {
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
 	// Configure this integration test to trace to jaeger:4317 like Boulder will
 	shutdown := cmd.NewOpenTelemetry(cmd.OpenTelemetryConfig{
-		Endpoint:    "bjaeger:4317",
+		Endpoint:    "otel-collector:4317",
 		SampleRatio: 1,
 	}, blog.Get())
 	defer shutdown(context.Background())
