@@ -13,6 +13,9 @@ datasources:
         defaultTable: otel_logs
         otelEnabled: true
         otelVersion: latest
+        selectContextColumns: true
+        contextColumns:
+          - ServiceName
       traces:
         defaultDatabase: otel
         defaultTable: otel_traces
