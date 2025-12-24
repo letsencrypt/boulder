@@ -1,3 +1,28 @@
+# v1.19.1 (2025-11-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.0 (2025-11-19.2)
+
+* **Feature**: Add support for AWS Login credentials (package credentials/logincreds) to the default credential chain.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.25 (2025-11-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.24 (2025-11-12)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.23 (2025-11-11)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.22 (2025-11-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.18.21 (2025-11-04)
 
 * **Dependency Update**: Updated to the latest SDK module versions
