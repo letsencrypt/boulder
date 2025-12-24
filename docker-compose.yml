@@ -20,6 +20,7 @@ services:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
       - ./test/certs/.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
+      - logs:/var/log/
     networks:
       bouldernet:
         ipv4_address: 10.77.77.77
@@ -56,7 +57,7 @@ services:
       - bredis_1
       - bredis_2
       - bconsul
-      - bjaeger
+      - otel-collector
       - bpkimetal
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
@@ -135,8 +136,58 @@ services:
         ipv4_address: 10.77.77.10
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
-  bjaeger:
-    image: jaegertracing/all-in-one:1.50
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native interface
+    environment:
+      CLICKHOUSE_DB: otel
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./test/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    restart: unless-stopped
+    networks:
+      - bouldernet
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml", "--feature-gates=clickhouse.json"]
+    volumes:
+      - logs:/var/log/boulder/
+      - ./test/otelcol/config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Prometheus metrics
+      - "8889:8889"   # Prometheus exporter metrics
+      - "5514:5514/udp" # Syslog receiver
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
+    networks:
+      - bouldernet
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin_very_bad_password
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./test/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
     networks:
       - bouldernet
 
@@ -161,6 +212,11 @@ services:
       bouldernet:
         aliases:
           - boulder-vitess
+
+volumes:
+  clickhouse_data:
+  grafana_data:
+  logs:
 
 networks:
   # This network represents the data-center internal network. It is used for
