@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout iana/data from main branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: iana/data
 
