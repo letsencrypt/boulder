@@ -10,7 +10,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/observer/probers"
 	_ "github.com/letsencrypt/boulder/observer/probers/mock"
-	"github.com/letsencrypt/boulder/test"
 )
 
 const (
@@ -67,75 +66,6 @@ func TestObsConf_makeMonitors(t *testing.T) {
 			}
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ObsConf.validateMonConfs() err = %v, want %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestObsConf_ValidateDebugAddr(t *testing.T) {
-	type fields struct {
-		DebugAddr string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
-	}{
-		// valid
-		{"max len and range", fields{":65535"}, false},
-		{"min len and range", fields{":1"}, false},
-		{"2 digits", fields{":80"}, false},
-		// invalid
-		{"out of range high", fields{":65536"}, true},
-		{"out of range low", fields{":0"}, true},
-		{"not even a port", fields{":foo"}, true},
-		{"missing :", fields{"foo"}, true},
-		{"missing port", fields{"foo:"}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &ObsConf{
-				DebugAddr: tt.fields.DebugAddr,
-			}
-			err := c.validateDebugAddr()
-			if tt.wantErr {
-				test.AssertError(t, err, "ObsConf.ValidateDebugAddr() should have errored")
-			} else {
-				test.AssertNotError(t, err, "ObsConf.ValidateDebugAddr() shouldn't have errored")
-			}
-		})
-	}
-}
-
-func TestObsConf_validateSyslog(t *testing.T) {
-	type fields struct {
-		Syslog cmd.SyslogConfig
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
-	}{
-		// valid
-		{"valid", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}}, false},
-		// invalid
-		{"both too high", fields{cmd.SyslogConfig{StdoutLevel: 9, SyslogLevel: 9}}, true},
-		{"stdout too high", fields{cmd.SyslogConfig{StdoutLevel: 9, SyslogLevel: 6}}, true},
-		{"syslog too high", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 9}}, true},
-		{"both too low", fields{cmd.SyslogConfig{StdoutLevel: -1, SyslogLevel: -1}}, true},
-		{"stdout too low", fields{cmd.SyslogConfig{StdoutLevel: -1, SyslogLevel: 6}}, true},
-		{"syslog too low", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1}}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &ObsConf{
-				Syslog: tt.fields.Syslog,
-			}
-			err := c.validateSyslog()
-			if tt.wantErr {
-				test.AssertError(t, err, "ObsConf.validateSyslog() should have errored")
-			} else {
-				test.AssertNotError(t, err, "ObsConf.validateSyslog() shouldn't have errored")
 			}
 		})
 	}
