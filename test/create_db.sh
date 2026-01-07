@@ -101,14 +101,8 @@ for db in $DBS; do
     then
       echo "Skipping user grants for ${dbname}"
     else
-      if [[ $MYSQL_CONTAINER ]]
-      then
-        sed -e "s/'localhost'/'%'/g" < "${USERS_SQL}" | \
-          mysql ${dbconn} -D "${dbname}" -f || exit_err "Unable to add users from ${USERS_SQL}"
-      else
-        sed -e "s/'localhost'/'127.%'/g" < "${USERS_SQL}" | \
-          mysql ${dbconn} -D "${dbname}" -f || exit_err "Unable to add users from ${USERS_SQL}"
-      fi
+      sed -e "s/'localhost'/'%'/g" < "${USERS_SQL}" | \
+        mysql ${dbconn} -D "${dbname}" -f || exit_err "Unable to add users from ${USERS_SQL}"
       echo "Added users from ${USERS_SQL}"
     fi
 
