@@ -21,7 +21,6 @@ rsyslogd
 ./test/wait-for-it.sh bpkimetal 8080
 
 # create the databases
-MYSQL_CONTAINER=1 \
 DB_HOST="boulder-mariadb" \
 DB_PORT=3306 \
 DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mariadb.yml" \
@@ -29,7 +28,6 @@ SKIP_CREATE=0 \
 SKIP_USERS=0 \
 "$DIR/create_db.sh"
 
-MYSQL_CONTAINER=1 \
 DB_HOST="boulder-vitess" \
 DB_PORT=33577 \
 DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mysql8.yml" \

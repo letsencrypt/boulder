@@ -37,15 +37,10 @@ function create_empty_db() {
   local db="${1}"
   local dbconn="${2}"
   create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
-  mysql ${dbconn} -e "${create_script}" || exit_err "unable to create ${db}"
+  mysql ${dbconn} -e "${create_script}" || exit_err "unable to create ${db} on ${cbconn}"
 }
 
-# set db connection for if running in a separate container or not
-dbconn="-u root"
-if [[ $MYSQL_CONTAINER ]]
-then
-  dbconn="-u root -h ${DB_HOST} --port ${DB_PORT}"
-fi
+dbconn="-u root -h ${DB_HOST} --port ${DB_PORT}"
 
 if ! mysql ${dbconn} -e "select 1" >/dev/null 2>&1; then
   exit_err "unable to connect to ${DB_HOST}:${DB_PORT}"
@@ -94,11 +89,11 @@ for db in $DBS; do
     r=`sql-migrate up -config="${DB_CONFIG_FILE}" -env="${dbname}" | xargs -0 echo`
     if [[ "${r}" == "Migration failed"* ]]
     then
-      echo "Migration failed - dropping and recreating"
-      create_empty_db "${dbname}" "${dbconn}"
-      sql-migrate up -config="${DB_CONFIG_FILE}" -env="${dbname}" || exit_err "Migration failed after dropping and recreating"
+      echo "sql-migrate: ${r}"
+      echo "Try \`docker compose down --volumes\` and running again"
+      exit 1
     else
-      echo "${r}"
+      echo "sql-migrate: ${r}"
     fi
 
     USERS_SQL="../db-users/${db}.sql"
