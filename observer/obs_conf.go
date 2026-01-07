@@ -89,14 +89,6 @@ func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []err
 // bound `ObsConf`. If the `ObsConf` cannot be validated, an error
 // appropriate for end-user consumption is returned instead.
 func (c *ObsConf) MakeObserver() (*Observer, error) {
-	if len(c.MonConfs) == 0 {
-		return nil, errors.New("no monitors provided")
-	}
-
-	if len(c.Buckets) == 0 {
-		return nil, errors.New("no histogram buckets provided")
-	}
-
 	// Start monitoring and logging.
 	metrics, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.DebugAddr)
 	histObservations = prometheus.NewHistogramVec(
