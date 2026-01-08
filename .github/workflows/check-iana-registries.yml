@@ -15,8 +15,9 @@ jobs:
 
     steps:
       - name: Checkout iana/data from main branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
+          persist-credentials: false
           sparse-checkout: iana/data
 
       # If the branch already exists, this will fail, which will remind us about

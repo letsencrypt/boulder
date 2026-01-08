@@ -18,14 +18,17 @@ jobs:
           go-version: "stable"
 
       - name: Checkout Upstream
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.base.ref }}
       - name: Get Current Flags
         run: go run ./test/list-features/list-features.go | sort >| /tmp/currflags.txt
 
       - name: Checkout PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Get PR Flags
         run: go run ./test/list-features/list-features.go | sort >| /tmp/prflags.txt
 
