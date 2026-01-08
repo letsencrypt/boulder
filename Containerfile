@@ -4,10 +4,12 @@
 FROM docker.io/ubuntu:24.04 AS builder
 
 ARG COMMIT_ID
+ARG COMMIT_TIMESTAMP
 ARG GO_VERSION
 ARG VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV SOURCE_DATE_EPOCH=${COMMIT_TIMESTAMP}
 RUN apt-get --assume-yes --no-install-recommends --update install \
     ca-certificates curl gcc git gnupg2 libc6-dev
 
@@ -22,16 +24,18 @@ WORKDIR /opt/boulder
 ENV GOBIN=/opt/boulder/bin/
 RUN go install \
     -buildvcs=false \
-    -ldflags="-X \"github.com/letsencrypt/boulder/core.BuildID=${COMMIT_ID}\" -X \"github.com/letsencrypt/boulder/core.BuildTime=$(date -u)\"" \
+    -trimpath \
+    -ldflags="-X \"github.com/letsencrypt/boulder/core.BuildID=${COMMIT_ID}\" -X \"github.com/letsencrypt/boulder/core.BuildTime=$(date -u -d @${COMMIT_TIMESTAMP})\"" \
     -mod=vendor \
     ./...
 
 FROM docker.io/ubuntu:24.04
 
+ARG COMMIT_DATE_ISO8601
 ARG VERSION
 
 LABEL org.opencontainers.image.authors="Internet Security Research Group, https://letsencrypt.org/"
-LABEL org.opencontainers.image.created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+LABEL org.opencontainers.image.created="${COMMIT_DATE_ISO8601}"
 LABEL org.opencontainers.image.description="Boulder is an ACME-compatible X.509 Certificate Authority"
 LABEL org.opencontainers.image.documentation="https://github.com/letsencrypt/boulder"
 LABEL org.opencontainers.image.licenses="MPL-2.0"

@@ -29,4 +29,8 @@ Homepage: https://github.com/letsencrypt/boulder
 Description: Boulder is an ACME-compatible X.509 Certificate Authority
 EOF
 
+# Normalize timestamps for reproducible builds (after all files created)
+find "${BUILD}" ! -type l -exec touch -d "@${SOURCE_DATE_EPOCH}" {} \;
+find "${BUILD}" -type l -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} \;
+
 dpkg-deb -Zgzip -b "${BUILD}" "boulder-${VERSION}-${COMMIT_ID}.x86_64.deb"
