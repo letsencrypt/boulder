@@ -106,8 +106,8 @@ func (a *admin) spkiHashesFromPrivateKey(keyFile string) ([][]byte, error) {
 		return nil, fmt.Errorf("reading private key file %q: %w", keyFile, err)
 	}
 
-	var keyDER *pem.Block
 	for {
+		var keyDER *pem.Block
 		keyDER, keyBytes = pem.Decode(keyBytes)
 		if keyDER == nil {
 			return spkiHashes, nil
