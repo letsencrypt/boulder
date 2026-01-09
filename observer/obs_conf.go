@@ -3,7 +3,6 @@ package observer
 import (
 	"errors"
 	"fmt"
-	"net"
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,33 +29,6 @@ type ObsConf struct {
 	Syslog        cmd.SyslogConfig `yaml:"syslog"`
 	OpenTelemetry cmd.OpenTelemetryConfig
 	MonConfs      []*MonConf `yaml:"monitors" validate:"min=1,dive"`
-}
-
-// validateSyslog ensures the `Syslog` field received by `ObsConf`
-// contains valid log levels.
-func (c *ObsConf) validateSyslog() error {
-	syslog, stdout := c.Syslog.SyslogLevel, c.Syslog.StdoutLevel
-	if stdout < 0 || stdout > 7 || syslog < 0 || syslog > 7 {
-		return fmt.Errorf(
-			"invalid 'syslog', '%+v', valid log levels are 0-7", c.Syslog)
-	}
-	return nil
-}
-
-// validateDebugAddr ensures the `debugAddr` received by `ObsConf` is
-// properly formatted and a valid port.
-func (c *ObsConf) validateDebugAddr() error {
-	_, p, err := net.SplitHostPort(c.DebugAddr)
-	if err != nil {
-		return fmt.Errorf(
-			"invalid 'debugaddr', %q, not expected format", c.DebugAddr)
-	}
-	port, _ := strconv.Atoi(p)
-	if port <= 0 || port > 65535 {
-		return fmt.Errorf(
-			"invalid 'debugaddr','%d' is not a valid port", port)
-	}
-	return nil
 }
 
 func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []error, error) {
@@ -117,24 +89,6 @@ func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []err
 // bound `ObsConf`. If the `ObsConf` cannot be validated, an error
 // appropriate for end-user consumption is returned instead.
 func (c *ObsConf) MakeObserver() (*Observer, error) {
-	err := c.validateSyslog()
-	if err != nil {
-		return nil, err
-	}
-
-	err = c.validateDebugAddr()
-	if err != nil {
-		return nil, err
-	}
-
-	if len(c.MonConfs) == 0 {
-		return nil, errors.New("no monitors provided")
-	}
-
-	if len(c.Buckets) == 0 {
-		return nil, errors.New("no histogram buckets provided")
-	}
-
 	// Start monitoring and logging.
 	metrics, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.DebugAddr)
 	histObservations = prometheus.NewHistogramVec(
