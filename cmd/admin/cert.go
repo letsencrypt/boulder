@@ -116,7 +116,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	case "-serials-file":
 		serials, err = a.serialsFromFile(ctx, s.serialsFile)
 	case "-private-key":
-		serials, err = a.serialsFromPrivateKey(ctx, s.privKey)
+		serials, err = a.serialsFromPrivateKeys(ctx, s.privKey)
 	case "-reg-id":
 		serials, err = a.serialsFromRegID(ctx, s.regID)
 	case "-cert-file":
@@ -216,8 +216,8 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 	return serials, nil
 }
 
-func (a *admin) serialsFromPrivateKey(ctx context.Context, privkeyFile string) ([]string, error) {
-	spkiHashes, err := a.spkiHashesFromPrivateKey(privkeyFile)
+func (a *admin) serialsFromPrivateKeys(ctx context.Context, privkeyFile string) ([]string, error) {
+	spkiHashes, err := a.spkiHashesFromPrivateKeys(privkeyFile)
 	if err != nil {
 		return nil, err
 	}

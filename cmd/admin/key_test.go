@@ -30,7 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestSPKIHashFromPrivateKey(t *testing.T) {
+func TestSPKIHashesFromPrivateKeys(t *testing.T) {
 
 	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Generating ECDSA key")
@@ -53,7 +53,7 @@ func TestSPKIHashFromPrivateKey(t *testing.T) {
 
 	a := admin{}
 
-	res, err := a.spkiHashesFromPrivateKey(keyFile)
+	res, err := a.spkiHashesFromPrivateKeys(keyFile)
 	test.AssertNotError(t, err, "getting hashes from private key")
 
 	for i, pubkey := range []crypto.PublicKey{&ecdsaKey.PublicKey, &rsaKey.PublicKey, &rsaKey.PublicKey} {

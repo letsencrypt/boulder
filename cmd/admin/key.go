@@ -76,7 +76,7 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 	var spkiHashes [][]byte
 	switch activeFlag {
 	case "-private-key":
-		spkiHashes, err = a.spkiHashesFromPrivateKey(s.privKey)
+		spkiHashes, err = a.spkiHashesFromPrivateKeys(s.privKey)
 	case "-spki-file":
 		spkiHashes, err = a.spkiHashesFromFile(s.spkiFile)
 	case "-cert-file":
@@ -98,29 +98,29 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 	return nil
 }
 
-func (a *admin) spkiHashesFromPrivateKey(keyFile string) ([][]byte, error) {
+func (a *admin) spkiHashesFromPrivateKeys(keyFile string) ([][]byte, error) {
 	var spkiHashes [][]byte
 
-	keyBytes, err := os.ReadFile(keyFile)
+	keyPEMs, err := os.ReadFile(keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("reading private key file %q: %w", keyFile, err)
 	}
 
 	for {
 		var keyDER *pem.Block
-		keyDER, keyBytes = pem.Decode(keyBytes)
+		keyDER, keyPEMs = pem.Decode(keyPEMs)
 		if keyDER == nil {
 			return spkiHashes, nil
 		}
 
 		_, publicKey, err := privatekey.LoadDER(keyDER)
 		if err != nil {
-			return nil, fmt.Errorf("loading private key file %q: %w", keyFile, err)
+			return nil, fmt.Errorf("loading private key file %q key %d: %w", keyFile, len(spkiHashes), err)
 		}
 
 		spkiHash, err := core.KeyDigest(publicKey)
 		if err != nil {
-			return nil, fmt.Errorf("computing SPKI hash: %w", err)
+			return nil, fmt.Errorf("computing SPKI hash %d: %w", len(spkiHashes), err)
 		}
 
 		spkiHashes = append(spkiHashes, spkiHash[:])
