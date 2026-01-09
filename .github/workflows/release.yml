@@ -53,7 +53,7 @@ jobs:
         run: ./tools/container-build.sh
 
       - name: Tag Boulder container
-        run: docker tag boulder "ghcr.io/${{ github.repository_owner }}/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        run: docker tag boulder "ghcr.io/${GITHUB_REPOSITORY_OWNER}/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
 
       - name: Compute checksums
         id: checksums
