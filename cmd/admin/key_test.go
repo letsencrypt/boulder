@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
@@ -29,23 +31,36 @@ import (
 )
 
 func TestSPKIHashFromPrivateKey(t *testing.T) {
-	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "creating test private key")
-	keyHash, err := core.KeyDigest(privKey.Public())
-	test.AssertNotError(t, err, "computing test SPKI hash")
 
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(privKey)
-	test.AssertNotError(t, err, "marshalling test private key bytes")
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Generating ECDSA key")
+	pkcs8ecdsa, err := x509.MarshalPKCS8PrivateKey(ecdsaKey)
+	test.AssertNotError(t, err, "Marshalling PKCS8 private key")
+
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Generating RSA key")
+	pkcs8rsa, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+	test.AssertNotError(t, err, "Marshalling PKCS8 private key")
+	pkcs1rsa := x509.MarshalPKCS1PrivateKey(rsaKey)
+
 	keyFile := path.Join(t.TempDir(), "key.pem")
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
-	err = os.WriteFile(keyFile, keyPEM, os.ModeAppend)
-	test.AssertNotError(t, err, "writing test private key file")
+	file, err := os.Create(keyFile)
+	test.AssertNotError(t, err, "Creating key file")
+	test.AssertNotError(t, pem.Encode(file, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8ecdsa}), "encoding PEM")
+	test.AssertNotError(t, pem.Encode(file, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8rsa}), "encoding PEM")
+	test.AssertNotError(t, pem.Encode(file, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: pkcs1rsa}), "encoding PEM")
+	test.AssertNotError(t, file.Close(), "writing test private key file")
 
 	a := admin{}
 
-	res, err := a.spkiHashFromPrivateKey(keyFile)
-	test.AssertNotError(t, err, "")
-	test.AssertByteEquals(t, res, keyHash[:])
+	res, err := a.spkiHashesFromPrivateKey(keyFile)
+	test.AssertNotError(t, err, "getting hashes from private key")
+
+	for i, pubkey := range []crypto.PublicKey{&ecdsaKey.PublicKey, &rsaKey.PublicKey, &rsaKey.PublicKey} {
+		expectedHash, err := core.KeyDigest(pubkey)
+		test.AssertNotError(t, err, "hashing public key")
+		test.AssertByteEquals(t, res[i], expectedHash[:])
+	}
 }
 
 func TestSPKIHashesFromFile(t *testing.T) {

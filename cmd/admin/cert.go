@@ -217,26 +217,29 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 }
 
 func (a *admin) serialsFromPrivateKey(ctx context.Context, privkeyFile string) ([]string, error) {
-	spkiHash, err := a.spkiHashFromPrivateKey(privkeyFile)
+	spkiHashes, err := a.spkiHashesFromPrivateKey(privkeyFile)
 	if err != nil {
 		return nil, err
 	}
 
-	stream, err := a.saroc.GetSerialsByKey(ctx, &sapb.SPKIHash{KeyHash: spkiHash})
-	if err != nil {
-		return nil, fmt.Errorf("setting up stream of serials from SA: %s", err)
-	}
-
 	var serials []string
-	for {
-		serial, err := stream.Recv()
+
+	for _, spkiHash := range spkiHashes {
+		stream, err := a.saroc.GetSerialsByKey(ctx, &sapb.SPKIHash{KeyHash: spkiHash})
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, fmt.Errorf("streaming serials from SA: %s", err)
+			return nil, fmt.Errorf("setting up stream of serials from SA: %s", err)
 		}
-		serials = append(serials, serial.Serial)
+
+		for {
+			serial, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return nil, fmt.Errorf("streaming serials from SA: %s", err)
+			}
+			serials = append(serials, serial.Serial)
+		}
 	}
 
 	return serials, nil
