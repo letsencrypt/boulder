@@ -1,9 +1,5 @@
 {
 	"admin": {
-		"db": {
-			"dbConnectFile": "test/secrets/revoker_dburl",
-			"maxOpenConns": 1
-		},
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/admin.boulder/cert.pem",
