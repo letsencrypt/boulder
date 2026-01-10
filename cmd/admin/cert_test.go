@@ -120,7 +120,7 @@ func TestSerialsFromPrivateKey(t *testing.T) {
 
 	a := admin{saroc: &mockSAWithKey{keyHash: keyHash[:], serials: serials}}
 
-	res, err := a.serialsFromPrivateKey(context.Background(), keyFile)
+	res, err := a.serialsFromPrivateKeys(context.Background(), keyFile)
 	test.AssertNotError(t, err, "getting serials from keyHashToSerial table")
 	test.AssertDeepEquals(t, res, serials)
 }
