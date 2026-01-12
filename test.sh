@@ -255,7 +255,7 @@ STAGE="lints"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Lints"
   golangci-lint run --timeout 9m ./...
-  python3 test/grafana/lint.py
+  python3 test/grafana/dashboards/lint.py
   # Check for common spelling errors using typos.
   # Update .typos.toml if you find false positives
   run_and_expect_silence typos

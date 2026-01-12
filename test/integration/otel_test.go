@@ -9,8 +9,8 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -27,82 +27,45 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// TraceResponse is the list of traces returned from Jaeger's trace search API
-// We always search for a single trace by ID, so this should be length 1.
-// This is a specialization of Jaeger's structuredResponse type which
-// uses []interface{} upstream.
-type TraceResponse struct {
-	Data []Trace
-}
-
-// Trace represents a single trace in Jaeger's API
-// See https://pkg.go.dev/github.com/jaegertracing/jaeger/model/json#Trace
+// Trace is the list of traces returned from ClickHouse for this trace
 type Trace struct {
-	TraceID   string
-	Spans     []Span
-	Processes map[string]struct {
-		ServiceName string
-	}
-	Warnings []string
+	Data []Span
 }
 
-// Span represents a single span in Jaeger's API
-// See https://pkg.go.dev/github.com/jaegertracing/jaeger/model/json#Span
+// Span in clickhouse results
 type Span struct {
-	SpanID        string
-	OperationName string
-	Warnings      []string
-	ProcessID     string
-	References    []struct {
-		RefType string
-		TraceID string
-		SpanID  string
-	}
+	TraceId      string
+	SpanId       string
+	ParentSpanId string
+	SpanName     string
+	ServiceName  string
 }
 
-func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) Trace {
+func getTraceFromClickHouse(t *testing.T, traceID trace.TraceID) Trace {
 	t.Helper()
-	traceURL := "http://bjaeger:16686/api/traces/" + traceID.String()
-	resp, err := http.Get(traceURL)
-	test.AssertNotError(t, err, "failed to trace from jaeger: "+traceID.String())
-	if resp.StatusCode == http.StatusNotFound {
-		t.Fatalf("jaeger returned 404 for trace %s", traceID)
-	}
+
+	query := fmt.Sprintf("SELECT TraceId, SpanId, ParentSpanId, SpanName, ServiceName FROM otel.otel_traces WHERE TraceId = '%s'", traceID.String())
+	clickhouseURL := fmt.Sprintf("http://clickhouse:8123/?default_format=JSON&query=%s", url.QueryEscape(query))
+
+	req, err := http.NewRequest("GET", clickhouseURL, nil)
+	test.AssertNotError(t, err, "failed to create request")
+	req.SetBasicAuth("default", "default_user_very_bad_password")
+
+	resp, err := http.DefaultClient.Do(req)
+	test.AssertNotError(t, err, "failed to query clickhouse")
+	defer resp.Body.Close()
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
-	body, err := io.ReadAll(resp.Body)
-	test.AssertNotError(t, err, "failed to read trace body")
+	var response Trace
+	test.AssertNotError(t, json.NewDecoder(resp.Body).Decode(&response), "failed to decode clickhouse response")
 
-	var parsed TraceResponse
-	err = json.Unmarshal(body, &parsed)
-	test.AssertNotError(t, err, "failed to decode traces body")
-
-	if len(parsed.Data) != 1 {
-		t.Fatalf("expected to get exactly one trace from jaeger for %s: %v", traceID, parsed)
-	}
-
-	return parsed.Data[0]
+	return response
 }
 
 type expectedSpans struct {
-	Operation string
-	Service   string
-	Children  []expectedSpans
-}
-
-// isParent returns true if the given span has a parent of ParentID
-// The empty string means no ParentID
-func isParent(parentID string, span Span) bool {
-	if len(span.References) == 0 {
-		return parentID == ""
-	}
-	for _, ref := range span.References {
-		// In OpenTelemetry, CHILD_OF is the only reference, but Jaeger supports other systems.
-		if ref.RefType == "CHILD_OF" {
-			return ref.SpanID == parentID
-		}
-	}
-	return false
+	SpanName string
+	Service  string
+	Children []expectedSpans
 }
 
 func missingChildren(trace Trace, spanID string, children []expectedSpans) bool {
@@ -117,24 +80,24 @@ func missingChildren(trace Trace, spanID string, children []expectedSpans) bool 
 
 // findSpans checks if the expectedSpan and its expected children are found in trace
 func findSpans(trace Trace, parentSpan string, expectedSpan expectedSpans) bool {
-	for _, span := range trace.Spans {
-		if !isParent(parentSpan, span) {
+	for _, span := range trace.Data {
+		if span.ParentSpanId != parentSpan {
 			continue
 		}
-		if trace.Processes[span.ProcessID].ServiceName != expectedSpan.Service {
+		if span.ServiceName != expectedSpan.Service {
 			continue
 		}
-		if span.OperationName != expectedSpan.Operation {
+		if span.SpanName != expectedSpan.SpanName {
 			continue
 		}
-		if missingChildren(trace, span.SpanID, expectedSpan.Children) {
+		if missingChildren(trace, span.SpanId, expectedSpan.Children) {
 			continue
 		}
 
 		// This span has the correct parent, service, operation, and children
 		return true
 	}
-	fmt.Printf("did not find span %s::%s with parent '%s'\n", expectedSpan.Service, expectedSpan.Operation, parentSpan)
+	fmt.Printf("did not find span %s::%s with parent '%s'\n", expectedSpan.Service, expectedSpan.SpanName, parentSpan)
 	return false
 }
 
@@ -165,13 +128,13 @@ func (c *ContextInjectingRoundTripper) RoundTrip(request *http.Request) (*http.R
 // rpcSpan is a helper for constructing an RPC span where we have both a client and server rpc operation
 func rpcSpan(op, client, server string, children ...expectedSpans) expectedSpans {
 	return expectedSpans{
-		Operation: op,
-		Service:   client,
+		SpanName: op,
+		Service:  client,
 		Children: []expectedSpans{
 			{
-				Operation: op,
-				Service:   server,
-				Children:  children,
+				SpanName: op,
+				Service:  server,
+				Children: children,
 			},
 		},
 	}
@@ -179,8 +142,8 @@ func rpcSpan(op, client, server string, children ...expectedSpans) expectedSpans
 
 func httpSpan(endpoint string, children ...expectedSpans) expectedSpans {
 	return expectedSpans{
-		Operation: endpoint,
-		Service:   "boulder-wfe2",
+		SpanName: endpoint,
+		Service:  "boulder-wfe2",
 		Children: append(children,
 			rpcSpan("nonce.NonceService/Nonce", "boulder-wfe2", "nonce-service"),
 			rpcSpan("nonce.NonceService/Redeem", "boulder-wfe2", "nonce-service"),
@@ -190,9 +153,9 @@ func httpSpan(endpoint string, children ...expectedSpans) expectedSpans {
 
 func redisPipelineSpan(op, service string, children ...expectedSpans) expectedSpans {
 	return expectedSpans{
-		Operation: "redis.pipeline " + op,
-		Service:   service,
-		Children:  children,
+		SpanName: "redis.pipeline " + op,
+		Service:  service,
+		Children: children,
 	}
 }
 
@@ -213,11 +176,11 @@ func TestTraces(t *testing.T) {
 	// flow: just enough to ensure that our otel tracing is working without
 	// asserting too much about the exact set of RPCs we use under the hood.
 	expectedSpans := expectedSpans{
-		Operation: "TraceTest",
-		Service:   "integration.test",
+		SpanName: "TraceTest",
+		Service:  "integration.test",
 		Children: []expectedSpans{
-			{Operation: "/directory", Service: wfe},
-			{Operation: "/acme/new-nonce", Service: wfe, Children: []expectedSpans{
+			{SpanName: "/directory", Service: wfe},
+			{SpanName: "/acme/new-nonce", Service: wfe, Children: []expectedSpans{
 				rpcSpan("nonce.NonceService/Nonce", wfe, "nonce-service")}},
 			httpSpan("/acme/new-acct",
 				redisPipelineSpan("get", wfe)),
@@ -238,30 +201,20 @@ func TestTraces(t *testing.T) {
 	found := false
 	const retries = 10
 	for range retries {
-		trace := getTraceFromJaeger(t, traceID)
+		trace = getTraceFromClickHouse(t, traceID)
 		if findSpans(trace, "", expectedSpans) {
 			found = true
 			break
 		}
 		time.Sleep(sdktrace.DefaultScheduleDelay / 5 * time.Millisecond)
 	}
-	test.Assert(t, found, fmt.Sprintf("Failed to find expected spans in Jaeger for trace %s", traceID))
-
-	test.AssertEquals(t, len(trace.Warnings), 0)
-	for _, span := range trace.Spans {
-		for _, warning := range span.Warnings {
-			if strings.Contains(warning, "clock skew adjustment disabled; not applying calculated delta") {
-				continue
-			}
-			t.Errorf("Span %s (%s) warning: %v", span.SpanID, span.OperationName, warning)
-		}
-	}
+	test.Assert(t, found, fmt.Sprintf("Failed to find expected spans in ClickHouse for trace %s", traceID))
 }
 
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
-	// Configure this integration test to trace to jaeger:4317 like Boulder will
+	// Configure this integration test to trace to otel-collector:4317 like Boulder will
 	shutdown := cmd.NewOpenTelemetry(cmd.OpenTelemetryConfig{
-		Endpoint:    "bjaeger:4317",
+		Endpoint:    "otel-collector:4317",
 		SampleRatio: 1,
 	}, blog.Get())
 	defer shutdown(context.Background())
