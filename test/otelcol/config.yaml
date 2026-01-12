@@ -34,14 +34,16 @@ receivers:
             info2:  5 # syslog: notice
             info:   6 # syslog: info
             debug:  7 # syslog: debug
+      - type: move
+        from: attributes.msg
+        to: body
       - type: remove
         field: attributes.timestamp
       - type: remove
         field: attributes.syslogseverity
       - type: regex_parser
-        parse_from: attributes.msg
         regex: ' JSON=(?P<json_payload>\{.*\})$'
-        if: 'attributes.msg matches " JSON=\\{.*\\}$"'
+        if: 'body matches " JSON=\\{.*\\}$"'
         on_error: send
       - type: json_parser
         parse_from: attributes.json_payload
@@ -51,14 +53,15 @@ receivers:
         field: attributes.json_payload
         if: 'attributes.json_payload != nil'
       - type: move
-        from: attributes.msg
-        to: body
-      - type: move
         from: attributes.service
         to: resource["service.name"]
       - type: move
         from: attributes.pid
         to: resource["process.pid"]
+      - type: regex_parser
+        regex: '^(?P<Method>\S+) (?P<Endpoint>\S+) (?P<Requester>\d+) (?P<Code>\d+) (?P<Latency>\d+) (?P<ClientIP>\S+) JSON=\{.*\}$'
+        if: 'resource["service.name"] == "boulder-wfe2"'
+        on_error: send
 
 processors:
   batch:
