@@ -41,6 +41,10 @@ receivers:
         field: attributes.timestamp
       - type: remove
         field: attributes.syslogseverity
+      - type: add
+        field: attributes.audit
+        value: true
+        if: 'body startsWith "[AUDIT] "'
       - type: regex_parser
         regex: ' JSON=(?P<json_payload>\{.*\})$'
         if: 'body matches " JSON=\\{.*\\}$"'
