@@ -185,6 +185,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./test/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./test/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - clickhouse
     restart: unless-stopped
