@@ -243,13 +243,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	issuerBundle, ok := pub.issuerBundles[id]
 	if !ok {
 		err := fmt.Errorf("No issuerBundle matching issuerNameID: %d", int64(id))
-		pub.log.InfoObject("No configured issuer matches cert", struct {
-			IssuerNameID int64
-			Issuer       string
-		}{
-			IssuerNameID: int64(id),
-			Issuer:       cert.Issuer.CommonName,
-		})
+		pub.log.Errf("Failed to submit certificate to CT log: %s", err)
 		return nil, err
 	}
 	chain = append(chain, issuerBundle...)
