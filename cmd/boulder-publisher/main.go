@@ -67,7 +67,7 @@ func main() {
 	}
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Publisher.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	if c.Publisher.Chains == nil {
 		logger.AuditErr("No chain files provided")

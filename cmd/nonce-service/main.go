@@ -85,7 +85,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, noncePrefix)
 	cmd.FailOnError(err, "Failed to initialize nonce service")

@@ -585,7 +585,7 @@ func main() {
 	features.Set(config.CertChecker.Features)
 
 	logger := cmd.NewLogger(config.Syslog)
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {

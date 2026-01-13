@@ -317,7 +317,7 @@ func main() {
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 	clk := clock.New()
 
 	keysToProcess := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
