@@ -363,6 +363,7 @@ func AuditPanic() {
 	// No panic, no problem
 	if err == nil {
 		blog.Get().AuditObject("Process exiting normally", info())
+		os.Exit(0)
 	}
 	// Get the global logger if it's initialized, or create a default one if not.
 	// We could wind up creating a default logger if we panic so early in a process'
