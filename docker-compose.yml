@@ -127,7 +127,7 @@ services:
         ipv4_address: 10.77.77.5
 
   bconsul:
-    image: hashicorp/consul:1.19.1
+    image: hashicorp/consul:1.19.2
     volumes:
      - ./test/:/test/:cached
     networks:
