@@ -94,7 +94,8 @@ type logAdaptor struct {
 }
 
 func (la logAdaptor) Printf(s string, args ...any) {
-	la.Logger.Infof(s, args...)
+	// Do nothing. `jsonclient`'s logs are all variations of "backing off", and add lots of noise
+	// when a CT log is unavailable.
 }
 
 // NewLog returns an initialized Log struct
@@ -242,7 +243,13 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	issuerBundle, ok := pub.issuerBundles[id]
 	if !ok {
 		err := fmt.Errorf("No issuerBundle matching issuerNameID: %d", int64(id))
-		pub.log.Errf("Failed to submit certificate to CT log: %s", err)
+		pub.log.InfoObject("No configured issuer matches cert", struct {
+			IssuerNameID int64
+			Issuer       string
+		}{
+			IssuerNameID: int64(id),
+			Issuer:       cert.Issuer.CommonName,
+		})
 		return nil, err
 	}
 	chain = append(chain, issuerBundle...)
@@ -252,7 +259,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	// and returned.
 	ctLog, err := pub.ctLogsCache.AddLog(req.LogURL, req.LogPublicKey, pub.userAgent, pub.log)
 	if err != nil {
-		pub.log.AuditErrf("Making Log: %s", err)
+		pub.log.AuditErrf("Adding CT log structure to internal cache: %s", err)
 		return nil, err
 	}
 
@@ -266,8 +273,15 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		if errors.As(err, &rspErr) && rspErr.StatusCode < 500 {
 			body = string(rspErr.Body)
 		}
-		pub.log.Errf("Failed to submit certificate to CT log at %s: %s Body=%q",
-			ctLog.uri, err, body)
+		pub.log.InfoObject("Failed to submit certificate to CT log", struct {
+			LogURL string
+			Error  string
+			Body   string
+		}{
+			LogURL: ctLog.uri,
+			Error:  err.Error(),
+			Body:   body,
+		})
 		return nil, err
 	}
 
