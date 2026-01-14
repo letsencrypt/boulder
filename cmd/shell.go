@@ -305,7 +305,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {
-			logger.Errf("unable to boot debug server on %s: %v", addr, err)
+			logger.AuditErrf("Unable to boot debug server on %s: %v", addr, err)
 			os.Exit(1)
 		}
 	}()

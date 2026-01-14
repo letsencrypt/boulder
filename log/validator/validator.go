@@ -66,7 +66,7 @@ func (v *Validator) pollPaths() {
 	for _, pattern := range v.patterns {
 		paths, err := filepath.Glob(pattern)
 		if err != nil {
-			v.log.Err(err.Error())
+			v.log.Errf("expanding file glob: %s", err)
 		}
 
 		for _, path := range paths {

@@ -306,7 +306,7 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 				"example.com": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
 				"example.net": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
 			},
-			expectLog:            "ERR: [AUDIT] hydrating CertificatesPerDomain override with key \"bad-example.com\": invalid burst '0', must be > 0",
+			expectLog:            "ERR: hydrating CertificatesPerDomain override with key \"bad-example.com\": invalid burst '0', must be > 0",
 			expectOverrideErrors: 4,
 		},
 	}

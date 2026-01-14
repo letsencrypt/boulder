@@ -329,7 +329,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 				if err != nil {
 					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
-						a.log.Errf("not revoking %q: already revoked", serial)
+						a.log.Warningf("not revoking %q: already revoked", serial)
 					} else {
 						a.log.Errf("failed to revoke %q: %s", serial, err)
 					}

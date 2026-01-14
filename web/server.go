@@ -2,7 +2,6 @@ package web
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -22,7 +21,7 @@ func (ew errorWriter) Write(p []byte) (n int, err error) {
 	// logged from inside net/http.Server we strip the newline before
 	// we get to the checksum generator.
 	p = bytes.TrimRight(p, "\n")
-	ew.Logger.Err(fmt.Sprintf("net/http.Server: %s", string(p)))
+	ew.Logger.Errf("net/http.Server: %s", p)
 	return
 }
 
