@@ -145,7 +145,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	metrics := ca.NewCAMetrics(scope)
 

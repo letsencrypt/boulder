@@ -48,7 +48,7 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(VersionString())
+			fmt.Printf("%+v", info())
 			os.Exit(0)
 		}
 	}
@@ -362,6 +362,7 @@ func AuditPanic() {
 	err := recover()
 	// No panic, no problem
 	if err == nil {
+		blog.Get().AuditObject("Process exiting normally", info())
 		return
 	}
 	// Get the global logger if it's initialized, or create a default one if not.
@@ -529,9 +530,27 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	return nil
 }
 
-// VersionString produces a friendly Application version string.
-func VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", core.Command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+type buildInfo struct {
+	Command   string
+	BuildID   string
+	BuildTime string
+	GoVersion string
+	BuildHost string
+}
+
+// info produces build information about this binary
+func info() buildInfo {
+	return buildInfo{
+		Command:   core.Command(),
+		BuildID:   core.GetBuildID(),
+		BuildTime: core.GetBuildTime(),
+		GoVersion: runtime.Version(),
+		BuildHost: core.GetBuildHost(),
+	}
+}
+
+func LogStartup(logger blog.Logger) {
+	logger.AuditObject("Process starting", info())
 }
 
 // CatchSignals blocks until a SIGTERM, SIGINT, or SIGHUP is received, then

@@ -50,7 +50,7 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, "")
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	clk := clock.New()
 	features.Set(c.Admin.Features)
