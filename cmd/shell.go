@@ -60,7 +60,7 @@ type mysqlLogger struct {
 }
 
 func (m mysqlLogger) Print(v ...any) {
-	m.AuditErrf("[mysql] %s", fmt.Sprint(v...))
+	m.Errf("[mysql] %s", fmt.Sprint(v...))
 }
 
 // grpcLogger implements the grpclog.LoggerV2 interface.
@@ -83,15 +83,15 @@ func (log grpcLogger) Fatalln(args ...any) {
 	os.Exit(1)
 }
 
-// Treat all gRPC error logs as potential audit events.
+// Pass through all Error level logs.
 func (log grpcLogger) Error(args ...any) {
-	log.Logger.AuditErr(fmt.Sprint(args...))
+	log.Logger.Errf("%s", fmt.Sprint(args...))
 }
 func (log grpcLogger) Errorf(format string, args ...any) {
-	log.Logger.AuditErrf(format, args...)
+	log.Logger.Errf(format, args...)
 }
 func (log grpcLogger) Errorln(args ...any) {
-	log.Logger.AuditErr(fmt.Sprintln(args...))
+	log.Logger.Errf("%s", fmt.Sprintln(args...))
 }
 
 // Pass through most Warnings, but filter out a few noisy ones.
@@ -137,7 +137,7 @@ type promLogger struct {
 }
 
 func (log promLogger) Println(args ...any) {
-	log.AuditErr(fmt.Sprint(args...))
+	log.Errf("%s", fmt.Sprint(args...))
 }
 
 type redisLogger struct {
