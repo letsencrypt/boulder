@@ -2,24 +2,15 @@ package vars
 
 import (
 	"fmt"
-	"net"
 	"os"
 )
 
-var dbAddr = func() string {
+func dsn(user, database string) string {
 	addr := os.Getenv("DB_ADDR")
 	if addr == "" {
-		panic("environment variable DB_ADDR  must be set")
+		addr = "unset DB_ADDR"
 	}
-	_, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		panic(fmt.Sprintf("environment variable DB_ADDR (%s) is not a valid address with host and port: %s", addr, err))
-	}
-	return addr
-}()
-
-func dsn(user, database string) string {
-	return fmt.Sprintf("%s@tcp(%s)/%s", user, dbAddr, database)
+	return fmt.Sprintf("%s@tcp(%s)/%s", user, addr, database)
 }
 
 var (
