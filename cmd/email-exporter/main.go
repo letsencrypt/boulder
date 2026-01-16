@@ -151,12 +151,12 @@ func main() {
 	daemonCtx, shutdown := context.WithCancel(context.Background())
 	go server.Start(daemonCtx)
 
-	srv := bgrpc.NewServer(c.EmailExporter.GRPC, logger)
-	srv = srv.Add(&salesforcepb.Exporter_ServiceDesc, server)
-	// TODO(#8410): Remove emailpb.Exporter once fully migrated to
-	// salesforcepb.Exporter.
-	srv = srv.Add(&emailpb.Exporter_ServiceDesc, legacyEmailExporterServer{inner: server})
-	start, err := srv.Build(tlsConfig, scope, clk)
+	start, err := bgrpc.NewServer(c.EmailExporter.GRPC, logger).Add(
+		&salesforcepb.Exporter_ServiceDesc, server).Add(
+		// TODO(#8410): Remove emailpb.Exporter once fully migrated to
+		// salesforcepb.Exporter.
+		&emailpb.Exporter_ServiceDesc, legacyEmailExporterServer{inner: server}).Build(
+		tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Configuring email-exporter gRPC server")
 
 	err = start()
