@@ -121,7 +121,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
                                           Example:
                                            TestGenerateValidity/TestWFECORS
     -h, --help                            Shows this help message
-    -b  --use-vitess                      Run tests against Vitess + MySQL 8.0 database
 
 EOM
 )"
