@@ -219,17 +219,16 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 		}
 		return false, err
 	}
-	bkr.logger.AuditInfo(fmt.Sprintf("found unchecked block key to work on: %s", unchecked))
+	bkr.logger.AuditInfof("found unchecked block key to work on: %s", unchecked)
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash
 	unrevokedCerts, err := bkr.findUnrevoked(ctx, unchecked)
 	if err != nil {
-		bkr.logger.AuditInfo(fmt.Sprintf("finding unrevoked certificates related to %s: %s",
-			unchecked, err))
+		bkr.logger.AuditInfof("finding unrevoked certificates related to %s: %s", unchecked, err)
 		return false, err
 	}
 	if len(unrevokedCerts) == 0 {
-		bkr.logger.AuditInfo(fmt.Sprintf("found no certificates that need revoking related to %s, marking row as checked", unchecked))
+		bkr.logger.AuditInfof("found no certificates that need revoking related to %s, marking row as checked", unchecked)
 		// mark row as checked
 		err = bkr.markRowChecked(ctx, unchecked)
 		if err != nil {
@@ -242,7 +241,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 	for _, cert := range unrevokedCerts {
 		serials = append(serials, cert.Serial)
 	}
-	bkr.logger.AuditInfo(fmt.Sprintf("revoking serials %v for key with hash %x", serials, unchecked.KeyHash))
+	bkr.logger.AuditInfof("revoking serials %v for key with hash %x", serials, unchecked.KeyHash)
 
 	// revoke each certificate
 	err = bkr.revokeCerts(unrevokedCerts)

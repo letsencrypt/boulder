@@ -70,8 +70,7 @@ func main() {
 	cmd.LogStartup(logger)
 
 	if c.Publisher.Chains == nil {
-		logger.AuditErr("No chain files provided")
-		os.Exit(1)
+		cmd.Fail("No chain files provided")
 	}
 
 	bundles := make(map[issuance.NameID][]ct.ASN1Cert)
