@@ -80,15 +80,15 @@ func TestMysqlLogger(t *testing.T) {
 	}{
 		{
 			[]any{nil},
-			`ERR: [AUDIT] [mysql] <nil>`,
+			`ERR: [mysql] <nil>`,
 		},
 		{
 			[]any{""},
-			`ERR: [AUDIT] [mysql] `,
+			`ERR: [mysql] `,
 		},
 		{
 			[]any{"Sup ", 12345, " Sup sup"},
-			`ERR: [AUDIT] [mysql] Sup 12345 Sup sup`,
+			`ERR: [mysql] Sup 12345 Sup sup`,
 		},
 	}
 

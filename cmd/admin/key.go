@@ -209,7 +209,7 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 				if err != nil {
 					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
-						a.log.Errf("not blocking %x: already blocked", spkiHash)
+						a.log.Warningf("not blocking %x: already blocked", spkiHash)
 					} else {
 						a.log.Errf("failed to block %x: %s", spkiHash, err)
 					}
