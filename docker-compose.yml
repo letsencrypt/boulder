@@ -15,6 +15,7 @@ services:
       # pointing at the boulder service's "public" IP, where challtestsrv is.
       FAKE_DNS: 64.112.117.122
       BOULDER_CONFIG_DIR: test/config
+      USE_VITESS: false
       GOCACHE: /boulder/.gocache/go-build
     volumes:
       - .:/boulder:cached
@@ -128,7 +129,7 @@ services:
         ipv4_address: 10.77.77.5
 
   bconsul:
-    image: hashicorp/consul:1.19.1
+    image: hashicorp/consul:1.19.2
     volumes:
      - ./test/:/test/:cached
     networks:

@@ -519,7 +519,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 				for _, ident := range idents {
 					identValues = append(identValues, ident.Value)
 				}
-				c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
+				c.logger.AuditErrf("Certificate %s %s: %s", cert.Serial, identValues, err)
 			}
 		}
 	}
@@ -585,7 +585,7 @@ func main() {
 	features.Set(config.CertChecker.Features)
 
 	logger := cmd.NewLogger(config.Syslog)
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {

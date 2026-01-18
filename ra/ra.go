@@ -450,10 +450,10 @@ type certificateRevocationEvent struct {
 	// Method is the way in which revocation was requested.
 	// It will be one of the strings: "applicant", "subscriber", "control", "key", or "admin".
 	Method string `json:",omitempty"`
-	// RequesterID is the account ID of the requester.
+	// Requester is the account ID of the requester.
 	// Will be zero for admin revocations.
-	RequesterID int64 `json:",omitempty"`
-	CRLShard    int64
+	Requester int64 `json:",omitempty"`
+	CRLShard  int64
 	// AdminName is the name of the admin requester.
 	// Will be zero for subscriber revocations.
 	AdminName string `json:",omitempty"`
@@ -1718,8 +1718,8 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 // RevokeCertByApplicant revokes the certificate in question. It allows any
 // revocation reason from (0, 1, 3, 4, 5, 9), because Subscribers are allowed to
 // request any revocation reason for their own certificates. However, if the
-// requesting RegID is an account which has authorizations for all names in the
-// cert but is *not* the original subscriber, it overrides the revocation reason
+// requesting account has authorizations for all names in the cert but
+// is *not* the original subscriber, it overrides the revocation reason
 // to be 5 (cessationOfOperation), because that code is used to cover instances
 // where "the certificate subscriber no longer owns the domain names in the
 // certificate". It does not add the key to the blocked keys list, even if
@@ -1747,7 +1747,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		SerialNumber: serialString,
 		Reason:       reasonCode,
 		Method:       "applicant",
-		RequesterID:  req.RegID,
+		Requester:    req.RegID,
 	}
 
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
@@ -1891,7 +1891,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		SerialNumber: core.SerialToString(cert.SerialNumber),
 		Reason:       revocation.KeyCompromise,
 		Method:       "key",
-		RequesterID:  0,
+		Requester:    0,
 	}
 
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a

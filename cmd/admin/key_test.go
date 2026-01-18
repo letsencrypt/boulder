@@ -162,7 +162,6 @@ func TestBlockSPKIHash(t *testing.T) {
 	// A full run should result in one request with the right fields.
 	msa.reset()
 	log.Clear()
-	a.dryRun = false
 	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "hello world")
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
@@ -173,7 +172,6 @@ func TestBlockSPKIHash(t *testing.T) {
 	// A dry-run should result in zero requests and two log lines.
 	msa.reset()
 	log.Clear()
-	a.dryRun = true
 	a.sac = dryRunSAC{log: log}
 	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "")
 	test.AssertNotError(t, err, "")

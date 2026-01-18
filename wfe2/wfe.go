@@ -977,10 +977,10 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 }
 
 type revocationEvidence struct {
-	Serial string
-	Reason revocation.Reason
-	RegID  int64
-	Method string
+	Serial    string
+	Reason    revocation.Reason
+	Requester int64
+	Method    string
 }
 
 // revokeCertBySubscriberKey processes an outer JWS as a revocation request that
@@ -1003,10 +1003,10 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 	}
 
 	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
-		Serial: core.SerialToString(cert.SerialNumber),
-		Reason: reason,
-		RegID:  acct.ID,
-		Method: "applicant",
+		Serial:    core.SerialToString(cert.SerialNumber),
+		Reason:    reason,
+		Requester: acct.ID,
+		Method:    "applicant",
 	})
 
 	// The RA will confirm that the authenticated account either originally
@@ -1056,10 +1056,10 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	}
 
 	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
-		Serial: core.SerialToString(cert.SerialNumber),
-		Reason: reason,
-		RegID:  0,
-		Method: "privkey",
+		Serial:    core.SerialToString(cert.SerialNumber),
+		Reason:    reason,
+		Requester: 0,
+		Method:    "privkey",
 	})
 
 	// The RA assumes here that the WFE2 has validated the JWS as proving

@@ -87,7 +87,7 @@ func main() {
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.EmailExporter.ServiceConfig.DebugAddr)
 	defer oTelShutdown(context.Background())
 
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	clk := clock.New()
 	clientId, err := c.EmailExporter.ClientId.Pass()

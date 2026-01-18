@@ -113,7 +113,6 @@ func TestSyslogMethods(t *testing.T) {
 	impl.AuditInfo("audit-logger_test.go: audit-info")
 	impl.AuditErr("audit-logger_test.go: audit-err")
 	impl.Debug("audit-logger_test.go: debug")
-	impl.Err("audit-logger_test.go: err")
 	impl.Info("audit-logger_test.go: info")
 	impl.Warning("audit-logger_test.go: warning")
 	impl.AuditInfof("audit-logger_test.go: %s", "audit-info")
@@ -195,10 +194,6 @@ func TestTransmission(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to find packet")
 
 	impl.Debug("audit-logger_test.go: debug")
-	_, _, err = l.ReadFrom(data)
-	test.AssertNotError(t, err, "Failed to find packet")
-
-	impl.Err("audit-logger_test.go: err")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
