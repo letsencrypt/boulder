@@ -80,6 +80,7 @@ exporters:
     traces_table_name: otel_traces
     metrics_table_name: otel_metrics
     timeout: 5s
+    ttl: 240h
     retry_on_failure:
       enabled: true
       initial_interval: 5s
