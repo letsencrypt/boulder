@@ -1,0 +1,29 @@
+users:
+  default:
+      password: default_user_very_bad_password
+      networks:
+        ip:
+          - '::/0'
+      profile: default
+      quota: default
+  grafana_reader:
+    password: grafana_reader_very_bad_password
+    grants:
+      query:
+        - GRANT SELECT ON otel.*
+    networks:
+      ip:
+        - '::/0'
+    quota: default
+  otel_writer:
+    password: otel_writer_very_bad_password
+    grants:
+      query:
+        - GRANT CREATE DATABASE ON otel.*
+        - GRANT CREATE TABLE ON otel.*
+        - GRANT SELECT ON otel.*
+        - GRANT INSERT ON otel.*
+    networks:
+      ip:
+       - '::/0'
+    quota: default

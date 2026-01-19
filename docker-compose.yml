@@ -147,7 +147,7 @@ services:
       CLICKHOUSE_DB: otel
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./test/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - ./test/clickhouse/users.yaml:/etc/clickhouse-server/users.d/users.yaml:ro
     ulimits:
       nofile:
         soft: 262144
