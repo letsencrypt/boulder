@@ -35,8 +35,8 @@
 		"features": {}
 	},
 	"syslog": {
-		"stdoutlevel": 6,
-		"sysloglevel": -1
+		"stdoutlevel": 7,
+		"sysloglevel": 7
 	},
 	"openTelemetry": {
 		"endpoint": "otel-collector:4317",
