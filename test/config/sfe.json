@@ -36,7 +36,7 @@
 	},
 	"syslog": {
 		"stdoutlevel": 6,
-		"sysloglevel": -1
+		"sysloglevel": 6
 	},
 	"openTelemetry": {
 		"endpoint": "bjaeger:4317",
