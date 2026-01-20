@@ -2726,7 +2726,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	retryAfter := createJitter(int(6 * time.Hour / time.Second))
+	response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", retryAfter))
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, renewalInfo)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
@@ -2736,4 +2737,18 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
 	return web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s", authzPath, authz.RegistrationID, authz.ID))
+}
+
+// createJitter will return a random integer within a 20% window of the base that is provided.
+// If the jittered amount is a negative number, the jitter is retried until a positive
+// number is generated
+func createJitter(base int) int {
+	factor := 0.2 * (2*rand.Float64() - 1)
+	jittered := int(float64(base) * (1 + factor))
+
+	if jittered < 0 {
+		return createJitter(base)
+	}
+
+	return jittered
 }
