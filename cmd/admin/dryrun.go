@@ -35,3 +35,23 @@ func (d dryRunSAC) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyReque
 	d.log.Infof("dry-run: Block SPKI hash %x by %s %s", req.KeyHash, req.Comment, req.Source)
 	return &emptypb.Empty{}, nil
 }
+
+func (d dryRunSAC) AddRateLimitOverride(_ context.Context, req *sapb.AddRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error) {
+	d.log.Infof("dry-run: Add override for %q (%s)", req.Override.BucketKey, req.Override.Comment)
+	return &sapb.AddRateLimitOverrideResponse{}, nil
+}
+
+func (d dryRunSAC) DisableRateLimitOverride(_ context.Context, req *sapb.DisableRateLimitOverrideRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	d.log.Infof("dry-run: Disable override for %q", req.BucketKey)
+	return &emptypb.Empty{}, nil
+}
+
+func (d dryRunSAC) EnableRateLimitOverride(_ context.Context, req *sapb.EnableRateLimitOverrideRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	d.log.Infof("dry-run: Enable override for %q", req.BucketKey)
+	return &emptypb.Empty{}, nil
+}
+
+func (d dryRunSAC) UnpauseAccount(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
+	d.log.Infof("dry-run: Unpause account %d", req.Id)
+	return &sapb.Count{}, nil
+}
