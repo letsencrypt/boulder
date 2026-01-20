@@ -48,6 +48,7 @@
 			}
 		},
 		"features": {
+			"StoreAuthzsInOrders": true,
 			"MultipleCertificateProfiles": true,
 			"InsertAuthzsIndividually": true,
 			"IgnoreAccountContacts": true
