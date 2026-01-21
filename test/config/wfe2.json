@@ -126,6 +126,7 @@
 			"Overrides": "test/config/ratelimit-overrides.yml"
 		},
 		"features": {
+			"ServeRenewalInfo": true,
 			"CheckIdentifiersPaused": true
 		},
 		"certProfiles": {

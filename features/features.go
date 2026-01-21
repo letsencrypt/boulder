@@ -29,6 +29,7 @@ type Config struct {
 	DOH                         bool
 	IgnoreAccountContacts       bool
 	NoPendingAuthzReuse         bool
+	ServeRenewalInfo            bool
 
 	// CertCheckerChecksValidations enables an extra query for each certificate
 	// checked, to find the relevant authzs. Since this query might be

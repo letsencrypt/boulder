@@ -135,6 +135,7 @@
 		},
 		"features": {
 			"PropagateCancels": true,
+			"ServeRenewalInfo": true,
 			"CheckIdentifiersPaused": true
 		},
 		"certProfiles": {
