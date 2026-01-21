@@ -1,7 +1,6 @@
 package observer
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -80,7 +79,7 @@ func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []err
 		}
 	}
 	if len(c.MonConfs) == len(errs) {
-		return nil, errs, errors.New("no valid monitors, cannot continue")
+		return nil, errs, fmt.Errorf("no valid monitors, cannot continue")
 	}
 	return monitors, errs, nil
 }

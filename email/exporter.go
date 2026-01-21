@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,7 +22,7 @@ import (
 // is at most 320 bytes. Storing 100,000 emails requires ~34.4 MB of memory.
 const contactsQueueCap = 100000
 
-var ErrQueueFull = errors.New("email-exporter queue is full")
+var ErrQueueFull = fmt.Errorf("email-exporter queue is full")
 
 // ExporterImpl implements the gRPC server and processes email exports.
 type ExporterImpl struct {

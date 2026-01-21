@@ -1,7 +1,6 @@
 package acme
 
 import (
-	"errors"
 	"fmt"
 	mrand "math/rand/v2"
 	"strings"
@@ -49,8 +48,8 @@ func NewChallengeStrategy(rawName string) (ChallengeStrategy, error) {
 }
 
 var (
-	ErrPickChallengeNilAuthz               = errors.New("PickChallenge: provided authorization can not be nil")
-	ErrPickChallengeAuthzMissingChallenges = errors.New("PickChallenge: provided authorization had no challenges")
+	ErrPickChallengeNilAuthz               = fmt.Errorf("PickChallenge: provided authorization can not be nil")
+	ErrPickChallengeAuthzMissingChallenges = fmt.Errorf("PickChallenge: provided authorization had no challenges")
 )
 
 // randomChallengeStrategy is a ChallengeStrategy implementation that always

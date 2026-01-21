@@ -281,12 +281,12 @@ func createOverrideRequestZendeskTicket(client *zendesk.Client, rateLimit, reque
 	limit, ok := rl.StringToName[limitStr]
 	if !ok {
 		// This should never happen, it indicates a bug in our validation.
-		return 0, errors.New("invalid rate limit prevented ticket creation")
+		return 0, fmt.Errorf("invalid rate limit prevented ticket creation")
 	}
 
 	if registeredDomain == "" && ipAddress == "" && accountURI == "" {
 		// This should never happen, it indicates a bug in our validation.
-		return 0, errors.New("one of accountURI, registeredDomain, or ipAddress must be provided")
+		return 0, fmt.Errorf("one of accountURI, registeredDomain, or ipAddress must be provided")
 	}
 
 	return client.CreateTicket(

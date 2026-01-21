@@ -7,7 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"net/url"
@@ -31,7 +31,7 @@ func (pa *mockPA) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.Acm
 func (pa *mockPA) WillingToIssue(idents identifier.ACMEIdentifiers) error {
 	for _, ident := range idents {
 		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
-			return errors.New("policy forbids issuing for identifier")
+			return fmt.Errorf("policy forbids issuing for identifier")
 		}
 	}
 	return nil
@@ -130,7 +130,7 @@ func TestVerifyCSR(t *testing.T) {
 			signedReqWithBadNames,
 			100,
 			&mockPA{},
-			errors.New("policy forbids issuing for identifier"),
+			fmt.Errorf("policy forbids issuing for identifier"),
 		},
 		{
 			signedReqWithEmailAddress,

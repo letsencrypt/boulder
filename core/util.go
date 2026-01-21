@@ -104,7 +104,7 @@ func KeyDigest(key crypto.PublicKey) (Sha256Digest, error) {
 	switch t := key.(type) {
 	case *jose.JSONWebKey:
 		if t == nil {
-			return Sha256Digest{}, errors.New("cannot compute digest of nil key")
+			return Sha256Digest{}, fmt.Errorf("cannot compute digest of nil key")
 		}
 		return KeyDigest(t.Key)
 	case jose.JSONWebKey:

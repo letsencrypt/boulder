@@ -82,13 +82,13 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	if s.skipBlock && reasonCode == revocation.KeyCompromise {
 		// We would only add the SPKI hash of the pubkey to the blockedKeys table if
 		// the revocation reason is keyCompromise.
-		return errors.New("-skip-block-key only makes sense with -reason=1")
+		return fmt.Errorf("-skip-block-key only makes sense with -reason=1")
 	}
 
 	if s.malformed && reasonCode == revocation.KeyCompromise {
 		// This is because we can't extract and block the pubkey if we can't
 		// parse the certificate.
-		return errors.New("cannot revoke malformed certs for reason keyCompromise")
+		return fmt.Errorf("cannot revoke malformed certs for reason keyCompromise")
 	}
 
 	// This is a map of all input-selection flags to whether or not they were set
@@ -122,7 +122,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	case "-cert-file":
 		serials, err = a.serialsFromCertPEM(ctx, s.certFile)
 	default:
-		return errors.New("no recognized input method flag set (this shouldn't happen)")
+		return fmt.Errorf("no recognized input method flag set (this shouldn't happen)")
 	}
 	if err != nil {
 		return fmt.Errorf("collecting serials to revoke: %w", err)
@@ -134,7 +134,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	}
 
 	if len(serials) == 0 {
-		return errors.New("no serials to revoke found")
+		return fmt.Errorf("no serials to revoke found")
 	}
 
 	a.log.Infof("Found %d certificates to revoke", len(serials))
@@ -157,10 +157,10 @@ func (s *subcommandRevokeCert) revokeMalformed(ctx context.Context, a *admin, se
 		return fmt.Errorf("getting admin username: %w", err)
 	}
 	if s.crlShard == 0 {
-		return errors.New("when revoking malformed certificates, a nonzero CRL shard must be specified")
+		return fmt.Errorf("when revoking malformed certificates, a nonzero CRL shard must be specified")
 	}
 	if len(serials) > 1 {
-		return errors.New("when revoking malformed certificates, only one cert at a time is allowed")
+		return fmt.Errorf("when revoking malformed certificates, only one cert at a time is allowed")
 	}
 	_, err = a.rac.AdministrativelyRevokeCertificate(
 		ctx,

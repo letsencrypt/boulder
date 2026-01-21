@@ -3,7 +3,6 @@ package ratelimits
 import (
 	"context"
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -23,7 +22,7 @@ import (
 
 // errLimitDisabled indicates that the limit name specified is valid but is not
 // currently configured.
-var errLimitDisabled = errors.New("limit disabled")
+var errLimitDisabled = fmt.Errorf("limit disabled")
 
 // LimitConfig defines the exportable configuration for a rate limit or a rate
 // limit override, without a `limit`'s internal fields.

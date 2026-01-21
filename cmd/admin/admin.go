@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/jmhodges/clock"
@@ -91,7 +90,7 @@ func findActiveInputMethodFlag(setInputs map[string]bool) (string, error) {
 	}
 
 	if len(activeFlags) == 0 {
-		return "", errors.New("at least one input method flag must be specified")
+		return "", fmt.Errorf("at least one input method flag must be specified")
 	} else if len(activeFlags) > 1 {
 		return "", fmt.Errorf("more than one input method flag specified: %v", activeFlags)
 	}

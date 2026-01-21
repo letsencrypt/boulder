@@ -20,7 +20,6 @@ package dns
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -582,7 +581,7 @@ func TestCustomAuthority(t *testing.T) {
 				errChan <- nil
 			}
 			return func(ctx context.Context, network, address string) (net.Conn, error) {
-				return nil, errors.New("no need to dial")
+				return nil, fmt.Errorf("no need to dial")
 			}
 		}
 

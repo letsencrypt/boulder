@@ -3,7 +3,6 @@ package va
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/netip"
 	"regexp"
@@ -579,7 +578,7 @@ func TestDoCAAParams(t *testing.T) {
 	test.AssertError(t, err, "calling IsCAAValid with a non-DNS identifier type")
 }
 
-var errCAABrokenDNSClient = errors.New("dnsClient is broken")
+var errCAABrokenDNSClient = fmt.Errorf("dnsClient is broken")
 
 // caaBrokenDNS implements the `dns.DNSClient` interface, but always returns
 // errors.
@@ -1221,7 +1220,7 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{"foo.com", false, nil, nil, false, "", "", errors.New("oops")},
+		{"foo.com", false, nil, nil, false, "", "", fmt.Errorf("oops")},
 		{"com", true, []*dns.CAA{&expected}, nil, false, "dig", "res", nil},
 	}
 	s, err = selectCAA(r)
@@ -1233,7 +1232,7 @@ func TestSelectCAA(t *testing.T) {
 	//  error, should return that good record, not the error
 	r = []caaResult{
 		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "dig", "res", nil},
-		{"com", false, nil, nil, false, "", "", errors.New("")},
+		{"com", false, nil, nil, false, "", "", fmt.Errorf("")},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)

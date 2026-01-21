@@ -2,7 +2,7 @@ package issuance
 
 import (
 	"crypto/x509"
-	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -201,13 +201,13 @@ func revokedCertificatesFieldExists(der []byte) (bool, error) {
 
 	// Extract the CertificateList
 	if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
-		return false, errors.New("malformed crl")
+		return false, fmt.Errorf("malformed crl")
 	}
 
 	var tbs cryptobyte.String
 	// Extract the TBSCertList from the CertificateList
 	if !input.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return false, errors.New("malformed tbs crl")
+		return false, fmt.Errorf("malformed tbs crl")
 	}
 
 	// Skip optional version

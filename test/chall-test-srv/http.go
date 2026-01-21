@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -17,7 +17,7 @@ func mustParsePOST(ob any, request *http.Request) error {
 	}
 
 	if string(jsonBody) == "" {
-		return errors.New("Expected JSON POST body, was empty")
+		return fmt.Errorf("Expected JSON POST body, was empty")
 	}
 
 	return json.Unmarshal(jsonBody, ob)

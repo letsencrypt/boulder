@@ -12,7 +12,7 @@ import (
 	"database/sql"
 	"encoding/asn1"
 	"encoding/pem"
-	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	mrand "math/rand/v2"
@@ -407,7 +407,7 @@ func (db mismatchedCountDB) Select(_ context.Context, output any, _ string, _ ..
 }
 
 func (db mismatchedCountDB) SelectOne(_ context.Context, _ any, _ string, _ ...any) error {
-	return errors.New("unimplemented")
+	return fmt.Errorf("unimplemented")
 }
 
 /*

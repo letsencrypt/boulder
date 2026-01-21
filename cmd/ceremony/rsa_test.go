@@ -4,7 +4,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -49,7 +49,7 @@ func TestRSAGenerate(t *testing.T) {
 
 	// Test rsaGenerate fails when GenerateKeyPair fails
 	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
-		return 0, 0, errors.New("bad")
+		return 0, 0, fmt.Errorf("bad")
 	}
 	_, _, err = rsaGenerate(s, "", 1024)
 	test.AssertError(t, err, "rsaGenerate didn't fail on GenerateKeyPair error")
@@ -59,7 +59,7 @@ func TestRSAGenerate(t *testing.T) {
 		return 0, 0, nil
 	}
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("bad")
+		return nil, fmt.Errorf("bad")
 	}
 	_, _, err = rsaGenerate(s, "", 1024)
 	test.AssertError(t, err, "rsaGenerate didn't fail on rsaPub error")
@@ -72,7 +72,7 @@ func TestRSAGenerate(t *testing.T) {
 		}, nil
 	}
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return nil, errors.New("yup")
+		return nil, fmt.Errorf("yup")
 	}
 	_, _, err = rsaGenerate(s, "", 1024)
 	test.AssertError(t, err, "rsaGenerate didn't fail on rsaVerify error")

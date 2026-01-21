@@ -3,7 +3,6 @@ package ca
 import (
 	"crypto/sha256"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -83,7 +82,7 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 		switch payload := in.Payload.(type) {
 		case *capb.GenerateCRLRequest_Metadata:
 			if req != nil {
-				return errors.New("got more than one metadata message")
+				return fmt.Errorf("got more than one metadata message")
 			}
 
 			req, err = ci.metadataToRequest(payload.Metadata)
@@ -106,12 +105,12 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 			rcs = append(rcs, *rc)
 
 		default:
-			return errors.New("got empty or malformed message in input stream")
+			return fmt.Errorf("got empty or malformed message in input stream")
 		}
 	}
 
 	if req == nil {
-		return errors.New("no crl metadata received")
+		return fmt.Errorf("no crl metadata received")
 	}
 
 	// Compute a unique ID for this issuer-number-shard combo, to tie together all
@@ -174,7 +173,7 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 
 func (ci *crlImpl) metadataToRequest(meta *capb.CRLMetadata) (*issuance.CRLRequest, error) {
 	if core.IsAnyNilOrZero(meta.IssuerNameID, meta.ThisUpdate, meta.ShardIdx) {
-		return nil, errors.New("got incomplete metadata message")
+		return nil, fmt.Errorf("got incomplete metadata message")
 	}
 	thisUpdate := meta.ThisUpdate.AsTime()
 	number := bcrl.Number(thisUpdate)
@@ -193,7 +192,7 @@ func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*x509.Revo
 	}
 
 	if core.IsAnyNilOrZero(entry.RevokedAt) {
-		return nil, errors.New("got empty or zero revocation timestamp")
+		return nil, fmt.Errorf("got empty or zero revocation timestamp")
 	}
 	revokedAt := entry.RevokedAt.AsTime()
 

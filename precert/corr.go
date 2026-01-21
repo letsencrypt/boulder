@@ -3,7 +3,6 @@ package precert
 import (
 	"bytes"
 	encoding_asn1 "encoding/asn1"
-	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/cryptobyte"
@@ -161,12 +160,12 @@ func (e *extensionParser) Next() (cryptobyte.String, error) {
 func unwrapExtensions(field cryptobyte.String) (cryptobyte.String, error) {
 	var extensions cryptobyte.String
 	if !field.ReadASN1(&extensions, asn1.Tag(3).Constructed().ContextSpecific()) {
-		return nil, errors.New("error reading extensions")
+		return nil, fmt.Errorf("error reading extensions")
 	}
 
 	var extensionsInner cryptobyte.String
 	if !extensions.ReadASN1(&extensionsInner, asn1.SEQUENCE) {
-		return nil, errors.New("error reading extensions inner")
+		return nil, fmt.Errorf("error reading extensions inner")
 	}
 
 	return extensionsInner, nil

@@ -7,7 +7,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -76,7 +75,7 @@ func (ic *Certificate) NameID() NameID {
 // attributes expected of an issuer certificate.
 func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 	if !ic.IsCA {
-		return nil, errors.New("certificate is not a CA certificate")
+		return nil, fmt.Errorf("certificate is not a CA certificate")
 	}
 
 	res := Certificate{ic, 0}
@@ -99,7 +98,7 @@ func LoadCertificate(path string) (*Certificate, error) {
 // not be included in the resulting chain.
 func LoadChain(certFiles []string) ([]*Certificate, error) {
 	if len(certFiles) < 2 {
-		return nil, errors.New(
+		return nil, fmt.Errorf(
 			"each chain must have at least two certificates: an intermediate and a root")
 	}
 
@@ -230,14 +229,14 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 			return nil, fmt.Errorf("unsupported ECDSA curve: %q", k.Curve.Params().Name)
 		}
 	default:
-		return nil, errors.New("unsupported issuer key type")
+		return nil, fmt.Errorf("unsupported issuer key type")
 	}
 
 	if config.IssuerURL == "" {
-		return nil, errors.New("issuer URL is required")
+		return nil, fmt.Errorf("issuer URL is required")
 	}
 	if config.CRLURLBase == "" {
-		return nil, errors.New("crlURLBase is required")
+		return nil, fmt.Errorf("crlURLBase is required")
 	}
 	if !strings.HasPrefix(config.CRLURLBase, "http://") {
 		return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
@@ -246,24 +245,24 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
 	}
 	if config.CRLShards <= 0 {
-		return nil, errors.New("number of CRL shards is required")
+		return nil, fmt.Errorf("number of CRL shards is required")
 	}
 
 	// We require that all of our issuers be capable of both issuing certs and
 	// providing revocation information.
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
-		return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
+		return nil, fmt.Errorf("end-entity signing cert does not have keyUsage certSign")
 	}
 	if cert.KeyUsage&x509.KeyUsageCRLSign == 0 {
-		return nil, errors.New("end-entity signing cert does not have keyUsage crlSign")
+		return nil, fmt.Errorf("end-entity signing cert does not have keyUsage crlSign")
 	}
 	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
-		return nil, errors.New("end-entity signing cert does not have keyUsage digitalSignature")
+		return nil, fmt.Errorf("end-entity signing cert does not have keyUsage digitalSignature")
 	}
 
 	// If the issuer is active, it must have at least one profile configured.
 	if config.Active && len(config.Profiles) == 0 {
-		return nil, errors.New("active issuers must have at least one profile")
+		return nil, fmt.Errorf("active issuers must have at least one profile")
 	}
 
 	lintSigner, err := linter.New(cert.Certificate, signer)
@@ -338,7 +337,7 @@ func LoadIssuer(config IssuerConfig, clk clock.Clock) (*Issuer, error) {
 
 func loadSigner(location IssuerLoc, pubkey crypto.PublicKey) (crypto.Signer, error) {
 	if location.File == "" && location.ConfigFile == "" && location.PKCS11 == nil {
-		return nil, errors.New("must supply File, ConfigFile, or PKCS11")
+		return nil, fmt.Errorf("must supply File, ConfigFile, or PKCS11")
 	}
 
 	if location.File != "" {

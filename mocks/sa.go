@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -48,7 +48,7 @@ const (
 func (sa *StorageAuthorityReadOnly) GetRegistration(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	if req.Id == 100 {
 		// Tag meaning "Missing"
-		return nil, errors.New("missing")
+		return nil, fmt.Errorf("missing")
 	}
 	if req.Id == 101 {
 		// Tag meaning "Malformed"
@@ -183,7 +183,7 @@ func (sa *StorageAuthorityReadOnly) GetSerialMetadata(ctx context.Context, req *
 // GetCertificate is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if req.Serial == "000000000000000000000000000000626164" {
-		return nil, errors.New("bad")
+		return nil, fmt.Errorf("bad")
 	} else {
 		return nil, berrors.NotFoundError("No cert")
 	}
@@ -196,7 +196,7 @@ func (sa *StorageAuthorityReadOnly) GetLintPrecertificate(_ context.Context, req
 
 // GetCertificateStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	return nil, errors.New("no cert status")
+	return nil, fmt.Errorf("no cert status")
 }
 
 // GetRevocationStatus is a mock
@@ -250,7 +250,7 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 	case 2:
 		return nil, berrors.NotFoundError("bad")
 	case 3:
-		return nil, errors.New("very bad")
+		return nil, fmt.Errorf("very bad")
 	}
 
 	now := sa.clk.Now()

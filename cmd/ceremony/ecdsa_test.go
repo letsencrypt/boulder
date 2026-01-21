@@ -4,7 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -17,7 +17,7 @@ func TestECPub(t *testing.T) {
 
 	// test we fail when pkcs11helpers.GetECDSAPublicKey fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("bad!")
+		return nil, fmt.Errorf("bad!")
 	}
 	_, err := ecPub(s, 0, elliptic.P256())
 	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
@@ -49,7 +49,7 @@ func TestECGenerate(t *testing.T) {
 
 	// Test ecGenerate fails when GenerateKeyPair fails
 	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
-		return 0, 0, errors.New("bad")
+		return 0, 0, fmt.Errorf("bad")
 	}
 	_, _, err = ecGenerate(s, "", "P-256")
 	test.AssertError(t, err, "ecGenerate didn't fail on GenerateKeyPair error")
@@ -59,7 +59,7 @@ func TestECGenerate(t *testing.T) {
 		return 0, 0, nil
 	}
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("bad")
+		return nil, fmt.Errorf("bad")
 	}
 	_, _, err = ecGenerate(s, "", "P-256")
 	test.AssertError(t, err, "ecGenerate didn't fail on ecPub error")
@@ -72,7 +72,7 @@ func TestECGenerate(t *testing.T) {
 		}, nil
 	}
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return nil, errors.New("yup")
+		return nil, fmt.Errorf("yup")
 	}
 	_, _, err = ecGenerate(s, "", "P-256")
 	test.AssertError(t, err, "ecGenerate didn't fail on ecVerify error")

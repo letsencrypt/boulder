@@ -7,7 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
+	"fmt"
 	"os"
 	"path"
 	"reflect"
@@ -136,7 +136,7 @@ type mockSAWithAccount struct {
 
 func (msa *mockSAWithAccount) GetRegistration(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	if req.Id != msa.regID {
-		return nil, errors.New("no such reg")
+		return nil, fmt.Errorf("no such reg")
 	}
 	return &corepb.Registration{}, nil
 }
@@ -182,7 +182,7 @@ func (mra *mockRARecordingRevocations) AdministrativelyRevokeCertificate(_ conte
 	defer mra.Unlock()
 	mra.revocationRequests = append(mra.revocationRequests, req)
 	if slices.Contains(mra.doomedToFail, req.Serial) {
-		return nil, errors.New("oops")
+		return nil, fmt.Errorf("oops")
 	}
 	if slices.Contains(mra.alreadyRevoked, req.Serial) {
 		return nil, berrors.AlreadyRevokedError("too slow")

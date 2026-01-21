@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -17,7 +16,7 @@ import (
 )
 
 func TestErrDatabaseOpError(t *testing.T) {
-	testErr := errors.New("computers are cancelled")
+	testErr := fmt.Errorf("computers are cancelled")
 	testCases := []struct {
 		name     string
 		err      error
@@ -69,7 +68,7 @@ func TestIsNoRows(t *testing.T) {
 			err: ErrDatabaseOp{
 				Op:    "test",
 				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", errors.New("lots of rows. too many rows.")),
+				Err:   fmt.Errorf("some wrapper around %w", fmt.Errorf("lots of rows. too many rows.")),
 			},
 			expectedNoRows: false,
 		},

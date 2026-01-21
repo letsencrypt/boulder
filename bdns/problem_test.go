@@ -2,7 +2,7 @@ package bdns
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"testing"
@@ -18,7 +18,7 @@ func TestError(t *testing.T) {
 		expected string
 	}{
 		{
-			&Error{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1, nil},
+			&Error{dns.TypeMX, "hostname", &net.OpError{Err: fmt.Errorf("some net error")}, -1, nil},
 			"DNS problem: networking error looking up MX for hostname",
 		}, {
 			&Error{dns.TypeTXT, "hostname", nil, dns.RcodeNameError, nil},
@@ -85,6 +85,6 @@ func TestWrapErr(t *testing.T) {
 
 	err = wrapErr(dns.TypeA, "hostname", &dns.Msg{
 		MsgHdr: dns.MsgHdr{Rcode: dns.RcodeSuccess},
-	}, errors.New("oh no"))
+	}, fmt.Errorf("oh no"))
 	test.AssertError(t, err, "expected error")
 }

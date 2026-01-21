@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -26,7 +25,7 @@ func (c *subcommandDumpEnabledOverrides) Flags(f *flag.FlagSet) {
 
 func (c *subcommandDumpEnabledOverrides) Run(ctx context.Context, a *admin) error {
 	if c.file == "" {
-		return errors.New("--file is required")
+		return fmt.Errorf("--file is required")
 	}
 
 	stream, err := a.sac.GetEnabledRateLimitOverrides(ctx, &emptypb.Empty{})

@@ -2,7 +2,7 @@ package updater
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/letsencrypt/boulder/crl"
@@ -67,7 +67,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 
 	wg.Wait()
 	if anyErr {
-		return errors.New("one or more errors encountered, see logs")
+		return fmt.Errorf("one or more errors encountered, see logs")
 	}
 	return ctx.Err()
 }

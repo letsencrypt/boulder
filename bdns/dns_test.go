@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -606,7 +605,7 @@ type testExchanger struct {
 	errs  []error
 }
 
-var errTooManyRequests = errors.New("too many requests")
+var errTooManyRequests = fmt.Errorf("too many requests")
 
 func (te *testExchanger) ExchangeContext(ctx context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	if ctx.Err() != nil {
@@ -630,8 +629,8 @@ func (te *testExchanger) ExchangeContext(ctx context.Context, m *dns.Msg, a stri
 func TestRetry(t *testing.T) {
 	isTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
 	nonTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(false)}
-	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
-	timeoutFailError := errors.New("DNS problem: query timed out looking up TXT for example.com")
+	servFailError := fmt.Errorf("DNS problem: server failure at resolver looking up TXT for example.com")
+	timeoutFailError := fmt.Errorf("DNS problem: query timed out looking up TXT for example.com")
 	type testCase struct {
 		name              string
 		maxTries          int
@@ -656,7 +655,7 @@ func TestRetry(t *testing.T) {
 			name:     "non-operror",
 			maxTries: 3,
 			te: &testExchanger{
-				errs: []error{errors.New("nope")},
+				errs: []error{fmt.Errorf("nope")},
 			},
 			expected:      servFailError,
 			expectedCount: 1,
@@ -666,7 +665,7 @@ func TestRetry(t *testing.T) {
 			name:     "err-then-non-operror",
 			maxTries: 3,
 			te: &testExchanger{
-				errs: []error{isTimeoutErr, errors.New("nope")},
+				errs: []error{isTimeoutErr, fmt.Errorf("nope")},
 			},
 			expected:      servFailError,
 			expectedCount: 2,
@@ -798,7 +797,7 @@ func TestRetryMetrics(t *testing.T) {
 	// checks for cancellation before doing any work.
 	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{errors.New("oops")}}
+	dr.exchanger = &testExchanger{errs: []error{fmt.Errorf("oops")}}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -817,7 +816,7 @@ func TestRetryMetrics(t *testing.T) {
 	// let the go runtime cancel it as a result of a deadline in the past.
 	testClient = New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr = testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{errors.New("oops")}}
+	dr.exchanger = &testExchanger{errs: []error{fmt.Errorf("oops")}}
 	ctx, cancel = context.WithTimeout(t.Context(), -10*time.Hour)
 	defer cancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")

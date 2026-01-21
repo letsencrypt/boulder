@@ -13,7 +13,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -1293,7 +1292,7 @@ type MockRAPerformValidationError struct {
 }
 
 func (ra *MockRAPerformValidationError) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
-	return nil, errors.New("broken on purpose")
+	return nil, fmt.Errorf("broken on purpose")
 }
 
 // TestUpdateChallengeHandlerFinalizedAuthz tests that POSTing a challenge associated
@@ -2571,7 +2570,7 @@ type mockSAWithError struct {
 }
 
 func (sa *mockSAWithError) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, errors.New("Oops")
+	return nil, fmt.Errorf("Oops")
 }
 
 func TestGetCertificateServerError(t *testing.T) {
@@ -4086,7 +4085,7 @@ type mockRA struct {
 // NewOrder returns an error if the ""
 func (sa *mockRA) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, opts ...grpc.CallOption) (*corepb.Order, error) {
 	if in.CertificateProfileName != sa.expectProfileName {
-		return nil, errors.New("not expected profile name")
+		return nil, fmt.Errorf("not expected profile name")
 	}
 	now := time.Now().UTC()
 	created := now.AddDate(-30, 0, 0)
@@ -4164,7 +4163,7 @@ func TestNewOrderWithProfile(t *testing.T) {
 
 func makeARICertID(leaf *x509.Certificate) (string, error) {
 	if leaf == nil {
-		return "", errors.New("leaf certificate is nil")
+		return "", fmt.Errorf("leaf certificate is nil")
 	}
 
 	// Marshal the Serial Number into DER.
@@ -4176,7 +4175,7 @@ func makeARICertID(leaf *x509.Certificate) (string, error) {
 	// Check if the DER encoded bytes are sufficient (at least 3 bytes: tag,
 	// length, and value).
 	if len(der) < 3 {
-		return "", errors.New("invalid DER encoding of serial number")
+		return "", fmt.Errorf("invalid DER encoding of serial number")
 	}
 
 	// Extract only the integer bytes from the DER encoded Serial Number

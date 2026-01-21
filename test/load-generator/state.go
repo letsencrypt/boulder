@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -294,7 +293,7 @@ func New(
 		return nil, err
 	}
 	if revokeChance > 1 {
-		return nil, errors.New("revokeChance must be between 0.0 and 1.0")
+		return nil, fmt.Errorf("revokeChance must be between 0.0 and 1.0")
 	}
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -545,7 +544,7 @@ func (ns *nonceSource) getNonce() (string, error) {
 		state = "good"
 		return nonce, nil
 	}
-	return "", errors.New("'Replay-Nonce' header not supplied")
+	return "", fmt.Errorf("'Replay-Nonce' header not supplied")
 }
 
 // Nonce satisfies the interface jose.NonceSource, should probably actually be per context but ¯\_(ツ)_/¯ for now

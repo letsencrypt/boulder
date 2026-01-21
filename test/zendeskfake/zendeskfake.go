@@ -3,7 +3,6 @@ package zendeskfake
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -117,7 +116,7 @@ func (s *Store) setStatus(id int64, status string) error {
 
 	t, ok := s.byID[id]
 	if !ok {
-		return errors.New("ticket not found")
+		return fmt.Errorf("ticket not found")
 	}
 	t.Status = status
 	return nil
@@ -129,7 +128,7 @@ func (s *Store) addComment(id int64, c comment) error {
 
 	current, ok := s.byID[id]
 	if !ok {
-		return errors.New("ticket not found")
+		return fmt.Errorf("ticket not found")
 	}
 
 	current.Comments = append(current.Comments, c)

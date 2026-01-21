@@ -5,7 +5,6 @@ package acme
 import (
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -29,22 +28,22 @@ const (
 
 var (
 	// ErrEmptyDirectory is returned if NewDirectory is provided and empty directory URL.
-	ErrEmptyDirectory = errors.New("directoryURL must not be empty")
+	ErrEmptyDirectory = fmt.Errorf("directoryURL must not be empty")
 	// ErrInvalidDirectoryURL is returned if NewDirectory is provided an invalid directory URL.
-	ErrInvalidDirectoryURL = errors.New("directoryURL is not a valid URL")
+	ErrInvalidDirectoryURL = fmt.Errorf("directoryURL is not a valid URL")
 	// ErrInvalidDirectoryHTTPCode is returned if NewDirectory is provided a directory URL
 	// that returns something other than HTTP Status OK to a GET request.
-	ErrInvalidDirectoryHTTPCode = errors.New("GET request to directoryURL did not result in HTTP Status 200")
+	ErrInvalidDirectoryHTTPCode = fmt.Errorf("GET request to directoryURL did not result in HTTP Status 200")
 	// ErrInvalidDirectoryJSON is returned if NewDirectory is provided a directory URL
 	// that returns invalid JSON.
-	ErrInvalidDirectoryJSON = errors.New("GET request to directoryURL returned invalid JSON")
+	ErrInvalidDirectoryJSON = fmt.Errorf("GET request to directoryURL returned invalid JSON")
 	// ErrInvalidDirectoryMeta is returned if NewDirectory is provided a directory
 	// URL that returns a directory resource with an invalid or  missing "meta" key.
-	ErrInvalidDirectoryMeta = errors.New(`server's directory resource had invalid or missing "meta" key`)
+	ErrInvalidDirectoryMeta = fmt.Errorf(`server's directory resource had invalid or missing "meta" key`)
 	// ErrInvalidTermsOfService is returned if NewDirectory is provided
 	// a directory URL that returns a directory resource with an invalid or
 	// missing "termsOfService" key in the "meta" map.
-	ErrInvalidTermsOfService = errors.New(`server's directory resource had invalid or missing "meta.termsOfService" key`)
+	ErrInvalidTermsOfService = fmt.Errorf(`server's directory resource had invalid or missing "meta.termsOfService" key`)
 
 	// RequiredEndpoints is a slice of Endpoint keys that must be present in the
 	// ACME server's directory. The load-generator uses each of these endpoints

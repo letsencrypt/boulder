@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/netip"
@@ -67,10 +66,10 @@ func validateIdentifiers(idents ...identifier.ACMEIdentifier) error {
 
 func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 	if c.limit == "" {
-		return errors.New("--limit is required")
+		return fmt.Errorf("--limit is required")
 	}
 	if c.count == 0 || c.burst == 0 || c.period == "" || c.comment == "" {
-		return errors.New("all of --count, --burst, --period, and --comment are required")
+		return fmt.Errorf("all of --count, --burst, --period, and --comment are required")
 	}
 
 	name, ok := rl.StringToName[c.limit]

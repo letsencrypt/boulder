@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -3673,10 +3672,10 @@ func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.Rev
 func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	status, present := msar.revoked[req.Serial]
 	if !present {
-		return nil, errors.New("not already revoked")
+		return nil, fmt.Errorf("not already revoked")
 	}
 	if revocation.Reason(req.Reason) != revocation.KeyCompromise {
-		return nil, errors.New("cannot re-revoke except for keyCompromise")
+		return nil, fmt.Errorf("cannot re-revoke except for keyCompromise")
 	}
 	if present && revocation.Reason(status.RevokedReason) == revocation.KeyCompromise {
 		return nil, berrors.AlreadyRevokedError("already revoked for keyCompromise")

@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -89,65 +88,65 @@ func (profile *certProfile) Subject() pkix.Name {
 func (profile *certProfile) verifyProfile(ct certType) error {
 	if ct == requestCert {
 		if profile.NotBefore != "" {
-			return errors.New("not-before cannot be set for a CSR")
+			return fmt.Errorf("not-before cannot be set for a CSR")
 		}
 		if profile.NotAfter != "" {
-			return errors.New("not-after cannot be set for a CSR")
+			return fmt.Errorf("not-after cannot be set for a CSR")
 		}
 		if profile.SignatureAlgorithm != "" {
-			return errors.New("signature-algorithm cannot be set for a CSR")
+			return fmt.Errorf("signature-algorithm cannot be set for a CSR")
 		}
 		if profile.CRLURL != "" {
-			return errors.New("crl-url cannot be set for a CSR")
+			return fmt.Errorf("crl-url cannot be set for a CSR")
 		}
 		if profile.IssuerURL != "" {
-			return errors.New("issuer-url cannot be set for a CSR")
+			return fmt.Errorf("issuer-url cannot be set for a CSR")
 		}
 		if profile.Policies != nil {
-			return errors.New("policies cannot be set for a CSR")
+			return fmt.Errorf("policies cannot be set for a CSR")
 		}
 		if profile.KeyUsages != nil {
-			return errors.New("key-usages cannot be set for a CSR")
+			return fmt.Errorf("key-usages cannot be set for a CSR")
 		}
 	} else {
 		if profile.NotBefore == "" {
-			return errors.New("not-before is required")
+			return fmt.Errorf("not-before is required")
 		}
 		if profile.NotAfter == "" {
-			return errors.New("not-after is required")
+			return fmt.Errorf("not-after is required")
 		}
 		if profile.SignatureAlgorithm == "" {
-			return errors.New("signature-algorithm is required")
+			return fmt.Errorf("signature-algorithm is required")
 		}
 	}
 	if profile.CommonName == "" {
-		return errors.New("common-name is required")
+		return fmt.Errorf("common-name is required")
 	}
 	if profile.Organization == "" {
-		return errors.New("organization is required")
+		return fmt.Errorf("organization is required")
 	}
 	if profile.Country == "" {
-		return errors.New("country is required")
+		return fmt.Errorf("country is required")
 	}
 
 	if ct == rootCert {
 		if len(profile.Policies) != 0 {
-			return errors.New("policies should not be set on root certs")
+			return fmt.Errorf("policies should not be set on root certs")
 		}
 	}
 
 	if ct == intermediateCert || ct == crossCert {
 		if profile.CRLURL == "" {
-			return errors.New("crl-url is required for subordinate CAs")
+			return fmt.Errorf("crl-url is required for subordinate CAs")
 		}
 		if profile.IssuerURL == "" {
-			return errors.New("issuer-url is required for subordinate CAs")
+			return fmt.Errorf("issuer-url is required for subordinate CAs")
 		}
 
 		// BR 7.1.2.10.5 CA Certificate Certificate Policies
 		// OID 2.23.140.1.2.1 is CABF BRs Domain Validated
 		if len(profile.Policies) != 1 || profile.Policies[0].OID != "2.23.140.1.2.1" {
-			return errors.New("policy should be exactly BRs domain-validated for subordinate CAs")
+			return fmt.Errorf("policy should be exactly BRs domain-validated for subordinate CAs")
 		}
 	}
 
@@ -162,7 +161,7 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 			return nil, err
 		}
 		if i <= 0 {
-			return nil, errors.New("OID components must be >= 1")
+			return nil, fmt.Errorf("OID components must be >= 1")
 		}
 		oid = append(oid, i)
 	}
@@ -228,7 +227,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		ku |= kuBit
 	}
 	if ku == 0 {
-		return nil, errors.New("at least one key usage must be set")
+		return nil, fmt.Errorf("at least one key usage must be set")
 	}
 
 	cert := &x509.Certificate{
@@ -311,7 +310,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 type failReader struct{}
 
 func (fr *failReader) Read([]byte) (int, error) {
-	return 0, errors.New("empty reader used by x509.CreateCertificate")
+	return 0, fmt.Errorf("empty reader used by x509.CreateCertificate")
 }
 
 func generateCSR(profile *certProfile, signer crypto.Signer) ([]byte, error) {

@@ -2,7 +2,6 @@ package ratelimits
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -292,7 +291,7 @@ func TestLoadOverrides(t *testing.T) {
 	// overwrite existing overrides.
 	mockLog.Clear()
 	tb.limitRegistry.refreshOverrides = func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error) {
-		return nil, errors.New("mock failure")
+		return nil, fmt.Errorf("mock failure")
 	}
 	err = tb.limitRegistry.loadOverrides(context.Background())
 	test.AssertError(t, err, "fail to load overrides")

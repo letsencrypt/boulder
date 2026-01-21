@@ -417,7 +417,7 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*bJSONWebSig
 			return nil, berrors.UnauthorizedError("request body too large")
 		}
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "UnableToReadReqBody"}).Inc()
-		return nil, errors.New("unable to read request body")
+		return nil, fmt.Errorf("unable to read request body")
 	}
 
 	jws, err := wfe.parseJWS(bodyBytes)

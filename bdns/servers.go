@@ -2,7 +2,6 @@ package bdns
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net"
@@ -49,7 +48,7 @@ func validateServerAddress(address string) error {
 
 	// Ensure `address` contains both a `host` and `port` portion.
 	if host == "" || port == "" {
-		return errors.New("port cannot be missing")
+		return fmt.Errorf("port cannot be missing")
 	}
 
 	// Ensure the `port` portion of `address` is a valid port.
@@ -58,14 +57,14 @@ func validateServerAddress(address string) error {
 		return fmt.Errorf("parsing port number: %s", err)
 	}
 	if portNum <= 0 || portNum > 65535 {
-		return errors.New("port must be an integer between 0 - 65535")
+		return fmt.Errorf("port must be an integer between 0 - 65535")
 	}
 
 	// Ensure the `host` portion of `address` is a valid FQDN or IP address.
 	_, err = netip.ParseAddr(host)
 	FQDN := dns.IsFqdn(dns.Fqdn(host))
 	if err != nil && !FQDN {
-		return errors.New("host is not an FQDN or IP address")
+		return fmt.Errorf("host is not an FQDN or IP address")
 	}
 	return nil
 }
@@ -140,7 +139,7 @@ type dynamicProvider struct {
 // It has been minimally modified to fit our code style.
 func ParseTarget(target, defaultPort string) (host, port string, err error) {
 	if target == "" {
-		return "", "", errors.New("missing address")
+		return "", "", fmt.Errorf("missing address")
 	}
 	ip := net.ParseIP(target)
 	if ip != nil {
@@ -152,7 +151,7 @@ func ParseTarget(target, defaultPort string) (host, port string, err error) {
 		if port == "" {
 			// If the port field is empty (target ends with colon), e.g.
 			// "[::1]:", this is an error.
-			return "", "", errors.New("missing port after port-separator colon")
+			return "", "", fmt.Errorf("missing port after port-separator colon")
 		}
 		// target has port, i.e ipv4-host:port, [ipv6-host]:port, host-name:port
 		if host == "" {

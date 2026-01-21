@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -99,7 +98,7 @@ func checkOCSP(ctx context.Context, cert, issuer *x509.Certificate, want int) (b
 
 func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bool, error) {
 	if len(cert.CRLDistributionPoints) != 1 {
-		return false, errors.New("cert does not contain CRLDP URI")
+		return false, fmt.Errorf("cert does not contain CRLDP URI")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", cert.CRLDistributionPoints[0], nil)

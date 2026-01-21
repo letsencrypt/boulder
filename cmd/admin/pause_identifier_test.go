@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -96,7 +96,7 @@ type mockSAPausedBroken struct {
 }
 
 func (msa *mockSAPausedBroken) PauseIdentifiers(ctx context.Context, in *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
-	return nil, errors.New("its all jacked up")
+	return nil, fmt.Errorf("its all jacked up")
 }
 
 func TestPauseIdentifiers(t *testing.T) {

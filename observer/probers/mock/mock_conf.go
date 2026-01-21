@@ -1,7 +1,7 @@
 package probers
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -35,7 +35,7 @@ func (c MockConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, 
 
 func (c MockConfigurer) MakeProber(_ map[string]prometheus.Collector) (probers.Prober, error) {
 	if !c.Valid {
-		return nil, errors.New("could not be validated")
+		return nil, fmt.Errorf("could not be validated")
 	}
 	return MockProber{c.PName, c.PKind, c.PTook, c.PSuccess}, nil
 }

@@ -86,7 +86,7 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 	case "-csr-file":
 		spkiHashes, err = a.spkiHashFromCSRPEM(s.csrFile, s.checkSignature, s.csrFileExpectedCN)
 	default:
-		return errors.New("no recognized input method flag set (this shouldn't happen)")
+		return fmt.Errorf("no recognized input method flag set (this shouldn't happen)")
 	}
 	if err != nil {
 		return fmt.Errorf("collecting spki hashes to block: %w", err)

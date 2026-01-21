@@ -2,7 +2,7 @@ package wfe2
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -133,7 +133,7 @@ func (eb errorBackend) GetRegistration(ctx context.Context,
 	regID *sapb.RegistrationID,
 	opts ...grpc.CallOption,
 ) (*corepb.Registration, error) {
-	return nil, errors.New("some error")
+	return nil, fmt.Errorf("some error")
 }
 
 func TestErrorPassthrough(t *testing.T) {

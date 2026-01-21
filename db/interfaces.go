@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/letsencrypt/borp"
@@ -106,46 +106,46 @@ type Rows[T any] interface {
 type MockSqlExecutor struct{}
 
 func (mse MockSqlExecutor) Get(ctx context.Context, i any, keys ...any) (any, error) {
-	return nil, errors.New("unimplemented")
+	return nil, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) Insert(ctx context.Context, list ...any) error {
-	return errors.New("unimplemented")
+	return fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) Update(ctx context.Context, list ...any) (int64, error) {
-	return 0, errors.New("unimplemented")
+	return 0, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) Delete(ctx context.Context, list ...any) (int64, error) {
-	return 0, errors.New("unimplemented")
+	return 0, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return nil, errors.New("unimplemented")
+	return nil, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) Select(ctx context.Context, i any, query string, args ...any) ([]any, error) {
-	return nil, errors.New("unimplemented")
+	return nil, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) SelectInt(ctx context.Context, query string, args ...any) (int64, error) {
-	return 0, errors.New("unimplemented")
+	return 0, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) SelectNullInt(ctx context.Context, query string, args ...any) (sql.NullInt64, error) {
-	return sql.NullInt64{}, errors.New("unimplemented")
+	return sql.NullInt64{}, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) SelectFloat(ctx context.Context, query string, args ...any) (float64, error) {
-	return 0, errors.New("unimplemented")
+	return 0, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) SelectNullFloat(ctx context.Context, query string, args ...any) (sql.NullFloat64, error) {
-	return sql.NullFloat64{}, errors.New("unimplemented")
+	return sql.NullFloat64{}, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) SelectStr(ctx context.Context, query string, args ...any) (string, error) {
-	return "", errors.New("unimplemented")
+	return "", fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) SelectNullStr(ctx context.Context, query string, args ...any) (sql.NullString, error) {
-	return sql.NullString{}, errors.New("unimplemented")
+	return sql.NullString{}, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) SelectOne(ctx context.Context, holder any, query string, args ...any) error {
-	return errors.New("unimplemented")
+	return fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return nil, errors.New("unimplemented")
+	return nil, fmt.Errorf("unimplemented")
 }
 func (mse MockSqlExecutor) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return nil

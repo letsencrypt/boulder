@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -55,7 +54,7 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 	case "-batch-file":
 		regIDs, err = a.readUnpauseAccountFile(u.batchFile)
 	default:
-		return errors.New("no recognized input method flag set (this shouldn't happen)")
+		return fmt.Errorf("no recognized input method flag set (this shouldn't happen)")
 	}
 	if err != nil {
 		return fmt.Errorf("collecting serials to revoke: %w", err)
@@ -79,7 +78,7 @@ type unpauseCount struct {
 // unpaused for each account and any accumulated errors.
 func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, parallelism uint) ([]unpauseCount, error) {
 	if len(accountIDs) <= 0 {
-		return nil, errors.New("no account IDs provided for unpausing")
+		return nil, fmt.Errorf("no account IDs provided for unpausing")
 	}
 	slices.Sort(accountIDs)
 	accountIDs = slices.Compact(accountIDs)

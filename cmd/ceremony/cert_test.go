@@ -8,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/fs"
 	"math/big"
@@ -86,7 +85,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 
 	profile.SignatureAlgorithm = "SHA256WithRSA"
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
-		return nil, errors.New("bad")
+		return nil, fmt.Errorf("bad")
 	}
 	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")

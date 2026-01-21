@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -74,7 +74,7 @@ type mockSAUnpauseBroken struct {
 }
 
 func (msa *mockSAUnpauseBroken) UnpauseAccount(ctx context.Context, in *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return nil, errors.New("oh dear")
+	return nil, fmt.Errorf("oh dear")
 }
 
 func TestUnpauseAccounts(t *testing.T) {

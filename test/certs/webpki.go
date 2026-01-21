@@ -2,7 +2,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -26,7 +25,7 @@ func createSlot(label string) (string, error) {
 	re := regexp.MustCompile(`to slot (\d+)`)
 	matches := re.FindSubmatch(output)
 	if len(matches) != 2 {
-		return "", errors.New("unexpected number of slot matches")
+		return "", fmt.Errorf("unexpected number of slot matches")
 	}
 	return string(matches[1]), nil
 }

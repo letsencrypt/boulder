@@ -2,7 +2,6 @@ package ratelimits
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -260,7 +259,7 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 		{
 			name: "error fetching enabled overrides",
 			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
-				return nil, errors.New("lol no")
+				return nil, fmt.Errorf("lol no")
 			},
 			expectError: "fetching enabled overrides: lol no",
 		},
@@ -273,7 +272,7 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 		{
 			name: "gRPC error",
 			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
-				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Err: errors.New("i ate ur toast m8")}, nil
+				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Err: fmt.Errorf("i ate ur toast m8")}, nil
 			},
 			expectError: "reading overrides stream: i ate ur toast m8",
 		},

@@ -660,7 +660,7 @@ func (pa *AuthorityImpl) CheckAuthzChallenges(authz *core.Authorization) error {
 	}
 
 	if !pa.ChallengeTypeEnabled(chall) {
-		return errors.New("authorization fulfilled by disabled challenge type")
+		return fmt.Errorf("authorization fulfilled by disabled challenge type")
 	}
 
 	challTypes, err := pa.ChallengeTypesFor(authz.Identifier)
@@ -669,7 +669,7 @@ func (pa *AuthorityImpl) CheckAuthzChallenges(authz *core.Authorization) error {
 	}
 
 	if !slices.Contains(challTypes, chall) {
-		return errors.New("authorization fulfilled by inapplicable challenge type")
+		return fmt.Errorf("authorization fulfilled by inapplicable challenge type")
 	}
 
 	return nil

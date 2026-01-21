@@ -82,7 +82,7 @@ const (
 	orderRetryAfter = 3
 )
 
-var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+var errIncompleteGRPCResponse = fmt.Errorf("incomplete gRPC response message")
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
@@ -195,19 +195,19 @@ func NewWebFrontEndImpl(
 	unpauseURL string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
-		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
+		return WebFrontEndImpl{}, fmt.Errorf("must provide at least one issuer certificate")
 	}
 
 	if len(certificateChains) == 0 {
-		return WebFrontEndImpl{}, errors.New("must provide at least one certificate chain")
+		return WebFrontEndImpl{}, fmt.Errorf("must provide at least one certificate chain")
 	}
 
 	if gnc == nil {
-		return WebFrontEndImpl{}, errors.New("must provide a service for nonce issuance")
+		return WebFrontEndImpl{}, fmt.Errorf("must provide a service for nonce issuance")
 	}
 
 	if rnc == nil {
-		return WebFrontEndImpl{}, errors.New("must provide a service for nonce redemption")
+		return WebFrontEndImpl{}, fmt.Errorf("must provide a service for nonce redemption")
 	}
 
 	wfe := WebFrontEndImpl{
@@ -463,7 +463,7 @@ func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *web.RequestEven
 
 	if request.Method != "GET" {
 		response.Header().Set("Allow", "GET")
-		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), errors.New("Bad method"))
+		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), fmt.Errorf("Bad method"))
 		return
 	}
 
@@ -2100,7 +2100,7 @@ func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *c
 		if errors.Is(err, berrors.NotFound) {
 			return berrors.NotFoundError("request included `replaces` field, but no current certificate with serial %q exists", serial)
 		}
-		return errors.New("failed to retrieve existing certificate")
+		return fmt.Errorf("failed to retrieve existing certificate")
 	}
 
 	if oldCert.RegistrationID != acct.ID {

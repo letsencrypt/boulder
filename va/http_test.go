@@ -3,7 +3,6 @@ package va
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	mrand "math/rand/v2"
 	"net"
@@ -110,7 +109,7 @@ func (c *unroutableFakeDNS) LookupA(_ context.Context, hostname string) (*bdns.R
 }
 
 func (c *unroutableFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result[*dns.AAAA], string, error) {
-	return nil, "dnsFakeUnroutable", errors.New("SERVFAIL")
+	return nil, "dnsFakeUnroutable", fmt.Errorf("SERVFAIL")
 }
 
 // TestDialerTimeout tests that the preresolvedDialer's DialContext
@@ -295,28 +294,28 @@ func TestExtractRequestTarget(t *testing.T) {
 			Req: &http.Request{
 				URL: mustURL("https:///who/needs/a/hostname?not=me"),
 			},
-			ExpectedError: errors.New("Invalid empty host in redirect target"),
+			ExpectedError: fmt.Errorf("Invalid empty host in redirect target"),
 		},
 		{
 			Name: "invalid .well-known hostname",
 			Req: &http.Request{
 				URL: mustURL("https://my.webserver.is.misconfigured.well-known/acme-challenge/xxx"),
 			},
-			ExpectedError: errors.New(`Invalid host in redirect target "my.webserver.is.misconfigured.well-known". Check webserver config for missing '/' in redirect target.`),
+			ExpectedError: fmt.Errorf(`Invalid host in redirect target "my.webserver.is.misconfigured.well-known". Check webserver config for missing '/' in redirect target.`),
 		},
 		{
 			Name: "invalid non-iana hostname",
 			Req: &http.Request{
 				URL: mustURL("https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo"),
 			},
-			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
+			ExpectedError: fmt.Errorf("Invalid host in redirect target, must end in IANA registered TLD"),
 		},
 		{
 			Name: "malformed wildcard-ish IPv4 address",
 			Req: &http.Request{
 				URL: mustURL("https://10.10.10.*"),
 			},
-			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
+			ExpectedError: fmt.Errorf("Invalid host in redirect target, must end in IANA registered TLD"),
 		},
 		{
 			Name: "bare IPv4, implicit port",
@@ -745,7 +744,7 @@ func (e *testNetErr) Timeout() bool {
 }
 
 func TestFallbackErr(t *testing.T) {
-	untypedErr := errors.New("the least interesting kind of error")
+	untypedErr := fmt.Errorf("the least interesting kind of error")
 	berr := berrors.InternalServerError("code violet: class neptune")
 	netOpErr := &net.OpError{
 		Op:  "siphon",
@@ -792,7 +791,7 @@ func TestFallbackErr(t *testing.T) {
 			Err: &url.Error{
 				Op:  "ivy",
 				URL: "https://en.wikipedia.org/wiki/Operation_Ivy_(band)",
-				Err: errors.New("take warning"),
+				Err: fmt.Errorf("take warning"),
 			},
 		},
 		{

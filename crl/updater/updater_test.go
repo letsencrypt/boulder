@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -202,7 +202,7 @@ func TestUpdateShard(t *testing.T) {
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 
-	sentinelErr := errors.New("oops")
+	sentinelErr := fmt.Errorf("oops")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
@@ -373,7 +373,7 @@ func TestUpdateShardWithRetry(t *testing.T) {
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 
-	sentinelErr := errors.New("oops")
+	sentinelErr := fmt.Errorf("oops")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 

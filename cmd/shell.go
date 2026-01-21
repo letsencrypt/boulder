@@ -4,7 +4,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -444,7 +443,7 @@ func ReadConfigFile(filename string, out any) error {
 // use in SRE CI tooling.
 func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 	if cv == nil {
-		return errors.New("config validator cannot be nil")
+		return fmt.Errorf("config validator cannot be nil")
 	}
 
 	// Initialize the validator and load any custom tags.
@@ -475,7 +474,7 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 			for _, e := range errs {
 				allErrs = append(allErrs, e.Error())
 			}
-			return errors.New(strings.Join(allErrs, ", "))
+			return fmt.Errorf("%s", strings.Join(allErrs, ", "))
 		}
 	}
 	return nil
@@ -489,7 +488,7 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 // use in SRE CI tooling.
 func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	if cv == nil {
-		return errors.New("config validator cannot be nil")
+		return fmt.Errorf("config validator cannot be nil")
 	}
 
 	// Initialize the validator and load any custom tags.
@@ -524,7 +523,7 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 			for _, e := range errs {
 				allErrs = append(allErrs, e.Error())
 			}
-			return errors.New(strings.Join(allErrs, ", "))
+			return fmt.Errorf("%s", strings.Join(allErrs, ", "))
 		}
 	}
 	return nil

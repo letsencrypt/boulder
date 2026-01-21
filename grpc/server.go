@@ -29,7 +29,7 @@ import (
 // CodedError is a alias required to appease go vet
 var CodedError = status.Errorf
 
-var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
+var errNilTLS = fmt.Errorf("boulder/grpc: received nil tls.Config")
 
 // checker is an interface for checking the health of a grpc service
 // implementation.
@@ -192,7 +192,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	}
 
 	if sb.cfg.Address == "" {
-		return nil, errors.New("GRPC listen address not configured")
+		return nil, fmt.Errorf("GRPC listen address not configured")
 	}
 	sb.logger.Infof("grpc listening on %s", sb.cfg.Address)
 

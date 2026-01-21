@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/rsa"
-	"errors"
+	"fmt"
 	"log"
 	"math/big"
 
@@ -62,10 +62,10 @@ func rsaPub(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, modulusL
 		return nil, err
 	}
 	if pubKey.E != rsaExp {
-		return nil, errors.New("returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
+		return nil, fmt.Errorf("returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
 	}
 	if pubKey.N.BitLen() != modulusLen {
-		return nil, errors.New("returned CKA_MODULUS isn't of the expected bit length")
+		return nil, fmt.Errorf("returned CKA_MODULUS isn't of the expected bit length")
 	}
 	log.Printf("\tPublic exponent: %d\n", pubKey.E)
 	log.Printf("\tModulus: (%d bits) %X\n", pubKey.N.BitLen(), pubKey.N.Bytes())
