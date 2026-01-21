@@ -12,4 +12,4 @@ fi
 # Generate the test keys and certs necessary for the integration tests.
 docker compose run --rm bsetup
 
-exec docker compose run --rm --name boulder_tests boulder ./test.sh "$@"
+exec docker compose run -e USE_VITESS --rm --name boulder_tests boulder ./test.sh "$@"

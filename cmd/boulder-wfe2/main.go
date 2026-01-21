@@ -265,7 +265,7 @@ func main() {
 	}
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	clk := clock.New()
 
