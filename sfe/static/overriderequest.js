@@ -58,7 +58,7 @@ const updateSubmitButtonState = () => {
 const validateFieldContents = async (field) => {
     const val = field.type === "checkbox" ? String(field.checked) : field.value.trim();
 
-    if (field.type === "checkbox" && !field.required && !field.checked) {
+    if (field.type === "checkbox" && !field.required) {  
         markFieldValid(field);
         return;
     }
