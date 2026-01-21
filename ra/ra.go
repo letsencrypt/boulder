@@ -1546,6 +1546,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if err != nil {
 			// ProblemDetailsToPB never returns an error.
 			prob, _ = bgrpc.ProblemDetailsToPB(probs.ServerInternal("Could not communicate with VA"))
+			ra.log.Errf("Failed to communicate with VA: %s", err)
 		}
 
 		var status core.AcmeStatus
