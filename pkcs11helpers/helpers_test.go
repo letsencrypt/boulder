@@ -9,7 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/asn1"
-	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -24,7 +24,7 @@ func TestGetECDSAPublicKey(t *testing.T) {
 
 	// test attribute retrieval failing
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("yup")
+		return nil, fmt.Errorf("yup")
 	}
 	_, err := s.GetECDSAPublicKey(0)
 	test.AssertError(t, err, "ecPub didn't fail on GetAttributeValue error")
@@ -102,7 +102,7 @@ func TestRSAPublicKey(t *testing.T) {
 
 	// test attribute retrieval failing
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("yup")
+		return nil, fmt.Errorf("yup")
 	}
 	_, err := s.GetRSAPublicKey(0)
 	test.AssertError(t, err, "rsaPub didn't fail on GetAttributeValue error")
@@ -159,7 +159,7 @@ func TestFindObjectFailsOnFailedInit(t *testing.T) {
 
 	// test FindObject fails when FindObjectsInit fails
 	ctx.FindObjectsInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Attribute) error {
-		return errors.New("broken")
+		return fmt.Errorf("broken")
 	}
 	s := &Session{ctx, 0}
 	_, err := s.FindObject(nil)
@@ -173,7 +173,7 @@ func TestFindObjectFailsOnFailedFindObjects(t *testing.T) {
 
 	// test FindObject fails when FindObjects fails
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
-		return nil, false, errors.New("broken")
+		return nil, false, fmt.Errorf("broken")
 	}
 	s := &Session{ctx, 0}
 	_, err := s.FindObject(nil)
@@ -218,7 +218,7 @@ func TestFindObjectFailsOnFinalizeFailure(t *testing.T) {
 		return []pkcs11.ObjectHandle{1}, false, nil
 	}
 	ctx.FindObjectsFinalFunc = func(pkcs11.SessionHandle) error {
-		return errors.New("broken")
+		return fmt.Errorf("broken")
 	}
 	s := &Session{ctx, 0}
 	_, err := s.FindObject(nil)
@@ -325,7 +325,7 @@ func TestGetKeyWhenGetAttributeValueFails(t *testing.T) {
 
 	// test newSigner fails when GetAttributeValue fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("broken")
+		return nil, fmt.Errorf("broken")
 	}
 	_, err := s.NewSigner("label", pubKey)
 	test.AssertError(t, err, "newSigner didn't fail when GetAttributeValue for private key type failed")
@@ -336,7 +336,7 @@ func TestGetKeyWhenGetAttributeValueReturnsNone(t *testing.T) {
 	pubKey := &rsa.PublicKey{N: big.NewInt(1), E: 1}
 
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
-		return nil, errors.New("broken")
+		return nil, fmt.Errorf("broken")
 	}
 	// test newSigner fails when GetAttributeValue returns no attributes
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
@@ -356,7 +356,7 @@ func TestGetKeyWhenFindObjectForPublicKeyFails(t *testing.T) {
 	}
 	ctx.FindObjectsInitFunc = func(_ pkcs11.SessionHandle, tmpl []*pkcs11.Attribute) error {
 		if bytes.Equal(tmpl[0].Value, []byte{2, 0, 0, 0, 0, 0, 0, 0}) {
-			return errors.New("broken")
+			return fmt.Errorf("broken")
 		}
 		return nil
 	}
@@ -410,7 +410,7 @@ func TestGetKeySucceeds(t *testing.T) {
 			case pkcs11.CKA_ID:
 				returns = append(returns, pkcs11.NewAttribute(pkcs11.CKA_ID, []byte{99}))
 			default:
-				return nil, errors.New("GetAttributeValue got unexpected attribute type")
+				return nil, fmt.Errorf("GetAttributeValue got unexpected attribute type")
 			}
 		}
 		return returns, nil

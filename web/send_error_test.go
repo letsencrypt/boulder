@@ -1,7 +1,7 @@
 package web
 
 import (
-	"errors"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 
@@ -36,7 +36,7 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 		}),
 		"dfoop",
 	)
-	SendError(log.NewMock(), rw, &RequestEvent{}, prob, errors.New("it bad"))
+	SendError(log.NewMock(), rw, &RequestEvent{}, prob, fmt.Errorf("it bad"))
 
 	body := rw.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
@@ -91,7 +91,7 @@ func TestSendErrorSubProbLogging(t *testing.T) {
 		"dfoop",
 	)
 	logEvent := RequestEvent{}
-	SendError(log.NewMock(), rw, &logEvent, prob, errors.New("it bad"))
+	SendError(log.NewMock(), rw, &logEvent, prob, fmt.Errorf("it bad"))
 
 	test.AssertEquals(t, logEvent.Error, `400 :: malformed :: dfoop :: bad ["example.com :: malformed :: dfoop :: nop", "what about example.com :: malformed :: dfoop :: nah"]`)
 }

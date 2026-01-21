@@ -10,7 +10,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -108,22 +107,22 @@ var allowedCurves = map[string]bool{
 
 func (kgc keyGenConfig) validate() error {
 	if kgc.Type == "" {
-		return errors.New("key.type is required")
+		return fmt.Errorf("key.type is required")
 	}
 	if kgc.Type != "rsa" && kgc.Type != "ecdsa" {
-		return errors.New("key.type can only be 'rsa' or 'ecdsa'")
+		return fmt.Errorf("key.type can only be 'rsa' or 'ecdsa'")
 	}
 	if kgc.Type == "rsa" && (kgc.RSAModLength != 2048 && kgc.RSAModLength != 4096) {
-		return errors.New("key.rsa-mod-length can only be 2048 or 4096")
+		return fmt.Errorf("key.rsa-mod-length can only be 2048 or 4096")
 	}
 	if kgc.Type == "rsa" && kgc.ECDSACurve != "" {
-		return errors.New("if key.type = 'rsa' then key.ecdsa-curve is not used")
+		return fmt.Errorf("if key.type = 'rsa' then key.ecdsa-curve is not used")
 	}
 	if kgc.Type == "ecdsa" && !allowedCurves[kgc.ECDSACurve] {
-		return errors.New("key.ecdsa-curve can only be 'P-256', 'P-384', or 'P-521'")
+		return fmt.Errorf("key.ecdsa-curve can only be 'P-256', 'P-384', or 'P-521'")
 	}
 	if kgc.Type == "ecdsa" && kgc.RSAModLength != 0 {
-		return errors.New("if key.type = 'ecdsa' then key.rsa-mod-length is not used")
+		return fmt.Errorf("if key.type = 'ecdsa' then key.rsa-mod-length is not used")
 	}
 
 	return nil
@@ -138,10 +137,10 @@ type PKCS11KeyGenConfig struct {
 
 func (pkgc PKCS11KeyGenConfig) validate() error {
 	if pkgc.Module == "" {
-		return errors.New("pkcs11.module is required")
+		return fmt.Errorf("pkcs11.module is required")
 	}
 	if pkgc.StoreLabel == "" {
-		return errors.New("pkcs11.store-key-with-label is required")
+		return fmt.Errorf("pkcs11.store-key-with-label is required")
 	}
 	// key-slot is allowed to be 0 (which is a valid slot).
 	// PIN is allowed to be "", which will commonly happen when
@@ -215,10 +214,10 @@ type PKCS11SigningConfig struct {
 
 func (psc PKCS11SigningConfig) validate() error {
 	if psc.Module == "" {
-		return errors.New("pkcs11.module is required")
+		return fmt.Errorf("pkcs11.module is required")
 	}
 	if psc.SigningLabel == "" {
-		return errors.New("pkcs11.signing-key-label is required")
+		return fmt.Errorf("pkcs11.signing-key-label is required")
 	}
 	// key-slot is allowed to be 0 (which is a valid slot).
 	return nil
@@ -246,10 +245,10 @@ func (ic intermediateConfig) validate() error {
 
 	// Input fields
 	if ic.Inputs.PublicKeyPath == "" {
-		return errors.New("inputs.public-key-path is required")
+		return fmt.Errorf("inputs.public-key-path is required")
 	}
 	if ic.Inputs.IssuerCertificatePath == "" {
-		return errors.New("inputs.issuer-certificate is required")
+		return fmt.Errorf("inputs.issuer-certificate is required")
 	}
 
 	// Output fields
@@ -288,13 +287,13 @@ func (csc crossCertConfig) validate() error {
 		return err
 	}
 	if csc.Inputs.PublicKeyPath == "" {
-		return errors.New("inputs.public-key-path is required")
+		return fmt.Errorf("inputs.public-key-path is required")
 	}
 	if csc.Inputs.IssuerCertificatePath == "" {
-		return errors.New("inputs.issuer-certificate is required")
+		return fmt.Errorf("inputs.issuer-certificate is required")
 	}
 	if csc.Inputs.CertificateToCrossSignPath == "" {
-		return errors.New("inputs.certificate-to-cross-sign-path is required")
+		return fmt.Errorf("inputs.certificate-to-cross-sign-path is required")
 	}
 	err = checkOutputFile(csc.Outputs.CertificatePath, "certificate-path")
 	if err != nil {
@@ -328,7 +327,7 @@ func (cc csrConfig) validate() error {
 
 	// Input fields
 	if cc.Inputs.PublicKeyPath == "" {
-		return errors.New("inputs.public-key-path is required")
+		return fmt.Errorf("inputs.public-key-path is required")
 	}
 
 	// Output fields
@@ -407,7 +406,7 @@ func (cc crlConfig) validate() error {
 
 	// Input fields
 	if cc.Inputs.IssuerCertificatePath == "" {
-		return errors.New("inputs.issuer-certificate-path is required")
+		return fmt.Errorf("inputs.issuer-certificate-path is required")
 	}
 
 	// Output fields
@@ -418,23 +417,23 @@ func (cc crlConfig) validate() error {
 
 	// CRL profile fields
 	if cc.CRLProfile.ThisUpdate == "" {
-		return errors.New("crl-profile.this-update is required")
+		return fmt.Errorf("crl-profile.this-update is required")
 	}
 	if cc.CRLProfile.NextUpdate == "" {
-		return errors.New("crl-profile.next-update is required")
+		return fmt.Errorf("crl-profile.next-update is required")
 	}
 	if cc.CRLProfile.Number == 0 {
-		return errors.New("crl-profile.number must be non-zero")
+		return fmt.Errorf("crl-profile.number must be non-zero")
 	}
 	for _, rc := range cc.CRLProfile.RevokedCertificates {
 		if rc.CertificatePath == "" {
-			return errors.New("crl-profile.revoked-certificates.certificate-path is required")
+			return fmt.Errorf("crl-profile.revoked-certificates.certificate-path is required")
 		}
 		if rc.RevocationDate == "" {
-			return errors.New("crl-profile.revoked-certificates.revocation-date is required")
+			return fmt.Errorf("crl-profile.revoked-certificates.revocation-date is required")
 		}
 		if rc.RevocationReason == "" {
-			return errors.New("crl-profile.revoked-certificates.revocation-reason is required")
+			return fmt.Errorf("crl-profile.revoked-certificates.revocation-reason is required")
 		}
 	}
 

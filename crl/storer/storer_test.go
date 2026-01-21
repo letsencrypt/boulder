@@ -8,7 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net/http"
@@ -288,7 +288,7 @@ func (p *fakeSimpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput,
 		return nil, err
 	}
 	if !bytes.Equal(p.expectBytes, recvBytes) {
-		return nil, errors.New("received bytes did not match expectation")
+		return nil, fmt.Errorf("received bytes did not match expectation")
 	}
 	return &s3.PutObjectOutput{}, nil
 }
@@ -477,11 +477,11 @@ func TestUploadCRLBackwardsNumber(t *testing.T) {
 type brokenSimpleS3 struct{}
 
 func (p *brokenSimpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	return nil, errors.New("sorry")
+	return nil, fmt.Errorf("sorry")
 }
 
 func (p *brokenSimpleS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
-	return nil, errors.New("oops")
+	return nil, fmt.Errorf("oops")
 }
 
 // Test that we get an error when S3 falls over.

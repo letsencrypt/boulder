@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -87,7 +86,7 @@ func LetsEncryptCPS() AllowedKeys {
 // ways in which an ACME request can have an erroneous key (BadPublicKeyError,
 // BadCSRError) because this library is used to check both JWS signing keys and
 // keys in CSRs.
-var ErrBadKey = errors.New("")
+var ErrBadKey = fmt.Errorf("")
 
 func badKey(msg string, args ...any) error {
 	return fmt.Errorf("%w%s", ErrBadKey, fmt.Errorf(msg, args...))

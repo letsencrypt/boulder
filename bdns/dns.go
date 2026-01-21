@@ -266,7 +266,7 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 
 	// It's impossible to get past the bottom of the loop: on the last attempt
 	// (when tries == c.maxTries), all paths lead to a return from inside the loop.
-	return nil, "", errors.New("unexpected loop escape in exchangeOne")
+	return nil, "", fmt.Errorf("unexpected loop escape in exchangeOne")
 }
 
 // LookupA sends a DNS query to find all A records associated with the provided

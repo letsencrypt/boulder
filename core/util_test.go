@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -422,7 +421,7 @@ func TestIsCanceled(t *testing.T) {
 	if !IsCanceled(status.Errorf(codes.Canceled, "hi")) {
 		t.Errorf("Expected gRPC cancellation to be canceled, but wasn't.")
 	}
-	if IsCanceled(errors.New("hi")) {
+	if IsCanceled(fmt.Errorf("hi")) {
 		t.Errorf("Expected random error to not be canceled, but was.")
 	}
 }

@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -220,10 +219,10 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 	switch ident.Type {
 	case identifier.TypeDNS:
 		if len(cert.DNSNames) != 1 || len(cert.IPAddresses) != 0 {
-			return errors.New("wrong number of identifiers")
+			return fmt.Errorf("wrong number of identifiers")
 		}
 		if !strings.EqualFold(cert.DNSNames[0], ident.Value) {
-			return errors.New("identifier does not match expected identifier")
+			return fmt.Errorf("identifier does not match expected identifier")
 		}
 		bytes, err := asn1.Marshal([]asn1.RawValue{
 			{Tag: 2, Class: 2, Bytes: []byte(ident.Value)},
@@ -234,10 +233,10 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 		expectedSANBytes = bytes
 	case identifier.TypeIP:
 		if len(cert.IPAddresses) != 1 || len(cert.DNSNames) != 0 {
-			return errors.New("wrong number of identifiers")
+			return fmt.Errorf("wrong number of identifiers")
 		}
 		if !cert.IPAddresses[0].Equal(net.ParseIP(ident.Value)) {
-			return errors.New("identifier does not match expected identifier")
+			return fmt.Errorf("identifier does not match expected identifier")
 		}
 		netipAddr, err := netip.ParseAddr(ident.Value)
 		if err != nil {
@@ -263,7 +262,7 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 	for _, ext := range cert.Extensions {
 		if IdCeSubjectAltName.Equal(ext.Id) {
 			if !bytes.Equal(ext.Value, expectedSANBytes) {
-				return errors.New("SAN extension does not match expected bytes")
+				return fmt.Errorf("SAN extension does not match expected bytes")
 			}
 		}
 	}

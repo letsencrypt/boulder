@@ -6,7 +6,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"encoding/asn1"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -35,7 +34,7 @@ type Session struct {
 func Initialize(module string, slot uint, pin string) (*Session, error) {
 	ctx := pkcs11.New(module)
 	if ctx == nil {
-		return nil, errors.New("failed to load module")
+		return nil, fmt.Errorf("failed to load module")
 	}
 	err := ctx.Initialize()
 	if err != nil {
@@ -161,7 +160,7 @@ func (s *Session) GetRSAPublicKey(object pkcs11.ObjectHandle) (*rsa.PublicKey, e
 	}
 	// Fail if we are missing either the public exponent or modulus
 	if !gotExp || !gotMod {
-		return nil, errors.New("Couldn't retrieve modulus and exponent")
+		return nil, fmt.Errorf("Couldn't retrieve modulus and exponent")
 	}
 	return pubKey, nil
 }
@@ -192,7 +191,7 @@ func (s *Session) GetECDSAPublicKey(object pkcs11.ObjectHandle) (*ecdsa.PublicKe
 		case pkcs11.CKA_EC_PARAMS:
 			rCurve, present := oidDERToCurve[fmt.Sprintf("%X", a.Value)]
 			if !present {
-				return nil, errors.New("Unknown curve OID value returned")
+				return nil, fmt.Errorf("Unknown curve OID value returned")
 			}
 			pubKey.Curve = rCurve
 		case pkcs11.CKA_EC_POINT:
@@ -200,7 +199,7 @@ func (s *Session) GetECDSAPublicKey(object pkcs11.ObjectHandle) (*ecdsa.PublicKe
 		}
 	}
 	if pointBytes == nil || pubKey.Curve == nil {
-		return nil, errors.New("Couldn't retrieve EC point and EC parameters")
+		return nil, fmt.Errorf("Couldn't retrieve EC point and EC parameters")
 	}
 
 	x, y := elliptic.Unmarshal(pubKey.Curve, pointBytes)
@@ -214,11 +213,11 @@ func (s *Session) GetECDSAPublicKey(object pkcs11.ObjectHandle) (*ecdsa.PublicKe
 			return nil, fmt.Errorf("Failed to unmarshal returned CKA_EC_POINT: %s", err)
 		}
 		if len(point.Bytes) == 0 {
-			return nil, errors.New("Invalid CKA_EC_POINT value returned, OCTET string is empty")
+			return nil, fmt.Errorf("Invalid CKA_EC_POINT value returned, OCTET string is empty")
 		}
 		x, y = elliptic.Unmarshal(pubKey.Curve, point.Bytes)
 		if x == nil {
-			return nil, errors.New("Invalid CKA_EC_POINT value returned, point is malformed")
+			return nil, fmt.Errorf("Invalid CKA_EC_POINT value returned, point is malformed")
 		}
 	}
 	pubKey.X, pubKey.Y = x, y
@@ -243,7 +242,7 @@ var hashIdents = map[crypto.Hash][]byte{
 
 func (s *Session) Sign(object pkcs11.ObjectHandle, keyType keyType, digest []byte, hash crypto.Hash) ([]byte, error) {
 	if len(digest) != hash.Size() {
-		return nil, errors.New("digest length doesn't match hash length")
+		return nil, fmt.Errorf("digest length doesn't match hash length")
 	}
 
 	mech := make([]*pkcs11.Mechanism, 1)
@@ -252,7 +251,7 @@ func (s *Session) Sign(object pkcs11.ObjectHandle, keyType keyType, digest []byt
 		mech[0] = pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)
 		prefix, ok := hashIdents[hash]
 		if !ok {
-			return nil, errors.New("unsupported hash function")
+			return nil, fmt.Errorf("unsupported hash function")
 		}
 		digest = append(prefix, digest...)
 	case ECDSAKey:
@@ -271,7 +270,7 @@ func (s *Session) Sign(object pkcs11.ObjectHandle, keyType keyType, digest []byt
 	return signature, nil
 }
 
-var ErrNoObject = errors.New("no objects found matching provided template")
+var ErrNoObject = fmt.Errorf("no objects found matching provided template")
 
 // FindObject looks up a PKCS#11 object handle based on the provided template.
 // In the case where zero or more than one objects are found to match the

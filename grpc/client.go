@@ -32,7 +32,7 @@ import (
 // It dials the remote service and returns a grpc.ClientConn if successful.
 func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (*grpc.ClientConn, error) {
 	if c == nil {
-		return nil, errors.New("nil gRPC client config provided: JSON config is probably missing a fooService section")
+		return nil, fmt.Errorf("nil gRPC client config provided: JSON config is probably missing a fooService section")
 	}
 	if tlsConfig == nil {
 		return nil, errNilTLS

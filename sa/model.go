@@ -247,7 +247,7 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 
 func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 	if reg.ID == 0 || len(reg.Key) == 0 {
-		return nil, errors.New("incomplete Registration retrieved from DB")
+		return nil, fmt.Errorf("incomplete Registration retrieved from DB")
 	}
 
 	return &corepb.Registration{
@@ -649,7 +649,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		am.ID = int64(id)
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
-		return nil, errors.New("multiple challenges are non-pending")
+		return nil, fmt.Errorf("multiple challenges are non-pending")
 	}
 	// In the v2 authorization style we don't store individual challenges with their own
 	// token, validation errors/records, etc. Instead we store a single token/error/record
@@ -1024,7 +1024,7 @@ func reverseFQDN(fqdn string) string {
 
 func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) error {
 	if cert.RawSubjectPublicKeyInfo == nil {
-		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
+		return fmt.Errorf("certificate has a nil RawSubjectPublicKeyInfo")
 	}
 	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
 	khm := &keyHashModel{

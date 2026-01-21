@@ -3,7 +3,6 @@ package idp
 import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"errors"
 	"fmt"
 )
 
@@ -98,5 +97,5 @@ func GetIDPURIs(exts []pkix.Extension) ([]string, error) {
 			return uris, nil
 		}
 	}
-	return nil, errors.New("no IssuingDistributionPoint extension found")
+	return nil, fmt.Errorf("no IssuingDistributionPoint extension found")
 }

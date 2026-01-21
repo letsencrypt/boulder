@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	errIncompleteRequest = errors.New("incomplete gRPC request message")
+	errIncompleteRequest = fmt.Errorf("incomplete gRPC request message")
 )
 
 // SQLStorageAuthority defines a Storage Authority.
@@ -469,7 +469,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			// This is a belt-and-suspenders check. These were just created by the RA,
 			// so their RegIDs should match. But if they don't, the consequences would
 			// be very bad, so we do an extra check here.
-			return nil, errors.New("new order and authzs must all be associated with same account")
+			return nil, fmt.Errorf("new order and authzs must all be associated with same account")
 		}
 	}
 
@@ -808,7 +808,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // specifies a non-zero ShardIdx.
 func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.RevokeCertificateRequest, revokedDate time.Time) error {
 	if req.ShardIdx == 0 {
-		return errors.New("cannot add revoked certificate with shard index 0")
+		return fmt.Errorf("cannot add revoked certificate with shard index 0")
 	}
 
 	var serial struct {
@@ -979,7 +979,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	}
 	sourceInt, ok := stringToSourceInt[req.Source]
 	if !ok {
-		return nil, errors.New("unknown source")
+		return nil, fmt.Errorf("unknown source")
 	}
 	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
 	vals := []any{
@@ -1127,7 +1127,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 				return -1, fmt.Errorf("confirming update of selected shard: %w", err)
 			}
 			if rowsAffected != 1 {
-				return -1, errors.New("failed to lease shard")
+				return -1, fmt.Errorf("failed to lease shard")
 			}
 		}
 
@@ -1204,7 +1204,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 				return -1, fmt.Errorf("confirming update of selected shard: %w", err)
 			}
 			if rowsAffected != 1 {
-				return -1, errors.New("failed to lease shard")
+				return -1, fmt.Errorf("failed to lease shard")
 			}
 		}
 
@@ -1271,7 +1271,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 			return nil, fmt.Errorf("unable to update shard %d for issuer %d; possibly because shard exists", req.ShardIdx, req.IssuerNameID)
 		}
 		if rowsAffected != 1 {
-			return nil, errors.New("update affected unexpected number of rows")
+			return nil, fmt.Errorf("update affected unexpected number of rows")
 		}
 		return nil, nil
 	})

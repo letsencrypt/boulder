@@ -36,7 +36,7 @@ func (p *subcommandPauseIdentifier) Flags(flag *flag.FlagSet) {
 
 func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 	if p.batchFile == "" {
-		return errors.New("the -batch-file flag is required")
+		return fmt.Errorf("the -batch-file flag is required")
 	}
 
 	idents, err := a.readPausedAccountFile(p.batchFile)
@@ -57,7 +57,7 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 // errors.
 func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, parallelism uint) ([]*sapb.PauseIdentifiersResponse, error) {
 	if len(entries) <= 0 {
-		return nil, errors.New("cannot pause identifiers because no pauseData was sent")
+		return nil, fmt.Errorf("cannot pause identifiers because no pauseData was sent")
 	}
 
 	accountToIdents := make(map[int64][]*corepb.Identifier)

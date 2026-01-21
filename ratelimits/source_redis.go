@@ -3,6 +3,7 @@ package ratelimits
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -39,7 +40,7 @@ func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Regist
 	}
 }
 
-var errMixedSuccess = errors.New("some keys not found")
+var errMixedSuccess = fmt.Errorf("some keys not found")
 
 // resultForError returns a string representing the result of the operation
 // based on the provided error.

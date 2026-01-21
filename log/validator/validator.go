@@ -18,7 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/log"
 )
 
-var errInvalidChecksum = errors.New("invalid checksum length")
+var errInvalidChecksum = fmt.Errorf("invalid checksum length")
 
 type Validator struct {
 	// mu guards patterns and tailers to prevent Shutdown racing monitor
@@ -230,7 +230,7 @@ func ValidateFile(filename string) error {
 	}
 
 	if badFile {
-		return errors.New("file contained invalid lines")
+		return fmt.Errorf("file contained invalid lines")
 	}
 	return nil
 }

@@ -230,7 +230,7 @@ func NewValidationAuthorityImpl(
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
-		return nil, errors.New("no account URI prefixes configured")
+		return nil, fmt.Errorf("no account URI prefixes configured")
 	}
 
 	for i, va1 := range remoteVAs {
@@ -671,7 +671,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 
 	chall, err := bgrpc.PBToChallenge(req.Challenge)
 	if err != nil {
-		return nil, errors.New("challenge failed to deserialize")
+		return nil, fmt.Errorf("challenge failed to deserialize")
 	}
 
 	err = chall.CheckPending()
@@ -743,7 +743,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// Check for malformed ValidationRecords
 	logEvent.Challenge.ValidationRecord = records
 	if err == nil && !logEvent.Challenge.RecordsSane() {
-		err = errors.New("records from local validation failed sanity check")
+		err = fmt.Errorf("records from local validation failed sanity check")
 	}
 
 	if err != nil {

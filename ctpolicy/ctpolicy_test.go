@@ -3,7 +3,7 @@ package ctpolicy
 import (
 	"bytes"
 	"context"
-	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -30,14 +30,14 @@ func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Reques
 type mockFailPub struct{}
 
 func (mp *mockFailPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
-	return nil, errors.New("BAD")
+	return nil, fmt.Errorf("BAD")
 }
 
 type mockSlowPub struct{}
 
 func (mp *mockSlowPub) SubmitToSingleCTWithResult(ctx context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	<-ctx.Done()
-	return nil, errors.New("timed out")
+	return nil, fmt.Errorf("timed out")
 }
 
 func TestGetSCTs(t *testing.T) {
@@ -117,7 +117,7 @@ type mockFailOnePub struct {
 
 func (mp *mockFailOnePub) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	if req.LogURL == mp.badURL {
-		return nil, errors.New("BAD")
+		return nil, fmt.Errorf("BAD")
 	}
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
@@ -203,7 +203,7 @@ func TestCompliantSet(t *testing.T) {
 			name: "only one good result",
 			results: []result{
 				{log: loglist.Log{Operator: "A", Tiled: false}, sct: []byte("sct1")},
-				{log: loglist.Log{Operator: "B", Tiled: false}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "B", Tiled: false}, err: fmt.Errorf("oops")},
 			},
 			want: nil,
 		},
@@ -226,13 +226,13 @@ func TestCompliantSet(t *testing.T) {
 		{
 			name: "happy path",
 			results: []result{
-				{log: loglist.Log{Operator: "A", Tiled: false}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "A", Tiled: false}, err: fmt.Errorf("oops")},
 				{log: loglist.Log{Operator: "A", Tiled: true}, sct: []byte("sct2")},
 				{log: loglist.Log{Operator: "A", Tiled: false}, sct: []byte("sct3")},
-				{log: loglist.Log{Operator: "B", Tiled: false}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "B", Tiled: false}, err: fmt.Errorf("oops")},
 				{log: loglist.Log{Operator: "B", Tiled: true}, sct: []byte("sct4")},
 				{log: loglist.Log{Operator: "B", Tiled: false}, sct: []byte("sct6")},
-				{log: loglist.Log{Operator: "C", Tiled: false}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "C", Tiled: false}, err: fmt.Errorf("oops")},
 				{log: loglist.Log{Operator: "C", Tiled: true}, sct: []byte("sct8")},
 				{log: loglist.Log{Operator: "C", Tiled: false}, sct: []byte("sct9")},
 			},

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -35,7 +34,7 @@ var fc = clock.NewFake()
 
 func testHandler(_ context.Context, i any) (any, error) {
 	if i != nil {
-		return nil, errors.New("")
+		return nil, fmt.Errorf("")
 	}
 	fc.Sleep(time.Second)
 	return nil, nil
@@ -44,7 +43,7 @@ func testHandler(_ context.Context, i any) (any, error) {
 func testInvoker(_ context.Context, method string, _, _ any, _ *grpc.ClientConn, opts ...grpc.CallOption) error {
 	switch method {
 	case "-service-brokeTest":
-		return errors.New("")
+		return fmt.Errorf("")
 	case "-service-requesterCanceledTest":
 		return status.Error(1, context.Canceled.Error())
 	}
@@ -171,7 +170,7 @@ func (s *testTimeoutServer) Chill(ctx context.Context, in *test_proto.Time) (*te
 		spent := time.Since(start) / time.Nanosecond
 		return &test_proto.Time{Duration: durationpb.New(spent)}, nil
 	case <-ctx.Done():
-		return nil, errors.New("unique error indicating that the server's shortened context timed itself out")
+		return nil, fmt.Errorf("unique error indicating that the server's shortened context timed itself out")
 	}
 }
 

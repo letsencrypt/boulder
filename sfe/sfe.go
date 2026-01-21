@@ -357,7 +357,7 @@ func (sfe *SelfServiceFrontEndImpl) parseUnpauseJWT(incomingJWT string) (int64, 
 	if convErr != nil {
 		// This should never happen as this was just validated by the call to
 		// unpause.RedeemJWT().
-		return 0, nil, errors.New("failed to parse account ID from JWT")
+		return 0, nil, fmt.Errorf("failed to parse account ID from JWT")
 	}
 
 	return account, strings.Split(claims.I, ","), nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -277,7 +276,7 @@ type brokenRemoteVA struct{}
 
 // errBrokenRemoteVA is the error returned by a brokenRemoteVA's
 // PerformValidation and IsSafeDomain functions.
-var errBrokenRemoteVA = errors.New("brokenRemoteVA is broken")
+var errBrokenRemoteVA = fmt.Errorf("brokenRemoteVA is broken")
 
 // DoDCV returns errBrokenRemoteVA unconditionally
 func (b brokenRemoteVA) DoDCV(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {

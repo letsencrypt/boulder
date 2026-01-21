@@ -102,7 +102,7 @@ type PAConfig struct {
 // actually contains valid challenge names
 func (pc PAConfig) CheckChallenges() error {
 	if len(pc.Challenges) == 0 {
-		return errors.New("empty challenges map in the Policy Authority config is not allowed")
+		return fmt.Errorf("empty challenges map in the Policy Authority config is not allowed")
 	}
 	for c := range pc.Challenges {
 		if !c.IsValid() {
@@ -355,7 +355,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 	var hostOverride string
 	if c.ServerAddress != "" {
 		if c.SRVLookup != nil {
-			return "", "", errors.New(
+			return "", "", fmt.Errorf(
 				"both 'serverAddress' and 'SRVLookup' in gRPC client config. Only one should be provided",
 			)
 		}
@@ -373,7 +373,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 
 	} else if c.SRVLookup != nil {
 		if c.DNSAuthority == "" {
-			return "", "", errors.New("field 'dnsAuthority' is required in gRPC client config with SRVLookup")
+			return "", "", fmt.Errorf("field 'dnsAuthority' is required in gRPC client config with SRVLookup")
 		}
 		scheme, err := c.makeSRVScheme()
 		if err != nil {
@@ -390,7 +390,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 
 	} else if c.SRVLookups != nil {
 		if c.DNSAuthority == "" {
-			return "", "", errors.New("field 'dnsAuthority' is required in gRPC client config with SRVLookups")
+			return "", "", fmt.Errorf("field 'dnsAuthority' is required in gRPC client config with SRVLookups")
 		}
 		scheme, err := c.makeSRVScheme()
 		if err != nil {
@@ -407,7 +407,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, strings.Join(targetHosts, ",")), hostOverride, nil
 
 	} else {
-		return "", "", errors.New(
+		return "", "", fmt.Errorf(
 			"at least one of 'serverAddress', 'SRVLookup', or 'SRVLookups' required in gRPC client config",
 		)
 	}

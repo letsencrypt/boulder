@@ -229,7 +229,7 @@ func New(
 // to the caller.
 func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
 	if core.IsAnyNilOrZero(req.Der, req.LogURL, req.LogPublicKey, req.Kind) {
-		return nil, errors.New("incomplete gRPC request message")
+		return nil, fmt.Errorf("incomplete gRPC request message")
 	}
 
 	cert, err := x509.ParseCertificate(req.Der)

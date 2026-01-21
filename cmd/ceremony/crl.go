@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -22,18 +21,18 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	}
 
 	if nextUpdate.Before(thisUpdate) {
-		return nil, errors.New("thisUpdate must be before nextUpdate")
+		return nil, fmt.Errorf("thisUpdate must be before nextUpdate")
 	}
 	if thisUpdate.Before(issuer.NotBefore) {
-		return nil, errors.New("thisUpdate is before issuing certificate's notBefore")
+		return nil, fmt.Errorf("thisUpdate is before issuing certificate's notBefore")
 	} else if nextUpdate.After(issuer.NotAfter) {
-		return nil, errors.New("nextUpdate is after issuing certificate's notAfter")
+		return nil, fmt.Errorf("nextUpdate is after issuing certificate's notAfter")
 	}
 
 	// Verify that the CRL is not valid for more than 12 months as specified in
 	// CABF BRs Section 4.9.7
 	if nextUpdate.Sub(thisUpdate) > time.Hour*24*365 {
-		return nil, errors.New("nextUpdate must be less than 12 months after thisUpdate")
+		return nil, fmt.Errorf("nextUpdate must be less than 12 months after thisUpdate")
 	}
 	// Add the Issuing Distribution Point extension.
 	idp, err := idp.MakeCACertsExt()

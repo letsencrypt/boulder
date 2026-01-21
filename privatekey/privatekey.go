@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"hash"
 	"os"
@@ -52,7 +51,7 @@ func verifyECDSA(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey, msgHash has
 
 	verify := ecdsa.Verify(pubKey, msgHash.Sum(nil), r, s)
 	if !verify {
-		return nil, nil, errors.New("the provided ECDSA private key failed signature verification")
+		return nil, nil, fmt.Errorf("the provided ECDSA private key failed signature verification")
 	}
 	return privKey, privKey.Public(), nil
 }
@@ -76,7 +75,7 @@ func verify(privateKey crypto.Signer) (crypto.Signer, crypto.PublicKey, error) {
 
 	default:
 		// This should never happen.
-		return nil, nil, errors.New("the provided private key could not be asserted to ECDSA or RSA")
+		return nil, nil, fmt.Errorf("the provided private key could not be asserted to ECDSA or RSA")
 	}
 }
 

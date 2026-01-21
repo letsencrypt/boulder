@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"sync"
@@ -26,10 +25,10 @@ func (c *subcommandImportOverrides) Flags(f *flag.FlagSet) {
 
 func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	if c.file == "" {
-		return errors.New("--file is required")
+		return fmt.Errorf("--file is required")
 	}
 	if c.parallelism <= 0 {
-		return errors.New("--parallelism must be greater than 0")
+		return fmt.Errorf("--parallelism must be greater than 0")
 	}
 	overrides, err := ratelimits.LoadOverridesByBucketKey(c.file)
 	if err != nil {

@@ -22,7 +22,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -46,7 +45,7 @@ const (
 	defaultMaxUsed = 65536
 )
 
-var errInvalidNonceLength = errors.New("invalid nonce length")
+var errInvalidNonceLength = fmt.Errorf("invalid nonce length")
 
 // PrefixCtxKey is exported for use as a key in a context.Context.
 type PrefixCtxKey struct{}
@@ -116,7 +115,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 			)
 		}
 		if _, err := base64.RawURLEncoding.DecodeString(prefix); err != nil {
-			return nil, errors.New("nonce prefix must be valid base64url")
+			return nil, fmt.Errorf("nonce prefix must be valid base64url")
 		}
 	}
 

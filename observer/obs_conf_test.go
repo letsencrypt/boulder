@@ -1,7 +1,7 @@
 package observer
 
 import (
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -19,7 +19,7 @@ const (
 )
 
 func TestObsConf_makeMonitors(t *testing.T) {
-	var errDBZ = errors.New(errDBZMsg)
+	var errDBZ = fmt.Errorf("%s", errDBZMsg)
 	var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}
 	var cfgDur = config.Duration{Duration: time.Second * 5}
 	var cfgBuckets = []float64{.001}

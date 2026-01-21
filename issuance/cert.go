@@ -10,7 +10,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -121,26 +120,26 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 	switch req.PublicKey.PublicKey.(type) {
 	case *rsa.PublicKey, *ecdsa.PublicKey:
 	default:
-		return errors.New("unsupported public key type")
+		return fmt.Errorf("unsupported public key type")
 	}
 
 	if len(req.precertDER) == 0 && !i.active {
-		return errors.New("inactive issuer cannot issue precert")
+		return fmt.Errorf("inactive issuer cannot issue precert")
 	}
 
 	if len(req.SubjectKeyId) != 0 && len(req.SubjectKeyId) != 20 {
-		return errors.New("unexpected subject key ID length")
+		return fmt.Errorf("unexpected subject key ID length")
 	}
 
 	if req.IncludeCTPoison && req.sctList != nil {
-		return errors.New("cannot include both ct poison and sct list extensions")
+		return fmt.Errorf("cannot include both ct poison and sct list extensions")
 	}
 
 	// The validity period is calculated inclusive of the whole second represented
 	// by the notAfter timestamp.
 	validity := req.NotAfter.Add(time.Second).Sub(req.NotBefore)
 	if validity <= 0 {
-		return errors.New("NotAfter must be after NotBefore")
+		return fmt.Errorf("NotAfter must be after NotBefore")
 	}
 	if validity > prof.maxValidity {
 		return fmt.Errorf("validity period is more than the maximum allowed period (%s>%s)", validity, prof.maxValidity)
@@ -150,14 +149,14 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 		return fmt.Errorf("NotBefore is backdated more than the maximum allowed period (%s>%s)", backdatedBy, prof.maxBackdate)
 	}
 	if backdatedBy < 0 {
-		return errors.New("NotBefore is in the future")
+		return fmt.Errorf("NotBefore is in the future")
 	}
 
 	// We use 19 here because a 20-byte serial could produce >20 octets when
 	// encoded in ASN.1. That happens when the first byte is >0x80. See
 	// https://letsencrypt.org/docs/a-warm-welcome-to-asn1-and-der/#integer-encoding
 	if len(req.Serial) > 19 || len(req.Serial) < 9 {
-		return errors.New("serial must be between 9 and 19 bytes")
+		return fmt.Errorf("serial must be between 9 and 19 bytes")
 	}
 
 	return nil
@@ -336,7 +335,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
 	} else if len(req.sctList) > 0 {
 		if len(req.precertDER) == 0 {
-			return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+			return nil, nil, fmt.Errorf("inconsistent request contains sctList but no precertDER")
 		}
 		sctListExt, err := generateSCTListExt(req.sctList)
 		if err != nil {
@@ -344,7 +343,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
-		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+		return nil, nil, fmt.Errorf("invalid request contains neither sctList nor precertDER")
 	}
 
 	// Pick a CRL shard based on the serial number modulo the number of shards.
@@ -377,18 +376,18 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 // the first will receive an error.
 func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
 	if token == nil {
-		return nil, errors.New("nil issuanceToken")
+		return nil, fmt.Errorf("nil issuanceToken")
 	}
 	token.mu.Lock()
 	defer token.mu.Unlock()
 	if token.template == nil {
-		return nil, errors.New("issuance token already redeemed")
+		return nil, fmt.Errorf("issuance token already redeemed")
 	}
 	template := token.template
 	token.template = nil
 
 	if token.issuer != i {
-		return nil, errors.New("tried to redeem issuance token with the wrong issuer")
+		return nil, fmt.Errorf("tried to redeem issuance token with the wrong issuer")
 	}
 
 	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, token.pubKey.PublicKey, i.Signer)
@@ -411,7 +410,7 @@ func containsCTPoison(extensions []pkix.Extension) bool {
 // contain the CT poison extension.
 func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTimestamp) (*IssuanceRequest, error) {
 	if !containsCTPoison(precert.Extensions) {
-		return nil, errors.New("provided certificate doesn't contain the CT poison extension")
+		return nil, fmt.Errorf("provided certificate doesn't contain the CT poison extension")
 	}
 	return &IssuanceRequest{
 		PublicKey:    MarshalablePublicKey{precert.PublicKey},

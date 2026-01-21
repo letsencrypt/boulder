@@ -1,7 +1,7 @@
 package noncebalancer
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/letsencrypt/boulder/nonce"
@@ -35,10 +35,10 @@ const (
 // detect that the status it receives is this exact status object, so don't
 // wrap this with fmt.Errorf when returning it.
 var ErrNoBackendsMatchPrefix = status.New(codes.Unavailable, "no backends match the nonce prefix")
-var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
-var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
-var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
-var errInvalidHMACKeyCtxKeyType = errors.New("nonce.HMACKeyCtxKey value in RPC context must be a byte slice")
+var errMissingPrefixCtxKey = fmt.Errorf("nonce.PrefixCtxKey value required in RPC context")
+var errMissingHMACKeyCtxKey = fmt.Errorf("nonce.HMACKeyCtxKey value required in RPC context")
+var errInvalidPrefixCtxKeyType = fmt.Errorf("nonce.PrefixCtxKey value in RPC context must be a string")
+var errInvalidHMACKeyCtxKeyType = fmt.Errorf("nonce.HMACKeyCtxKey value in RPC context must be a byte slice")
 
 // pickerBuilder implements the base.PickerBuilder interface. It's used to
 // create new Picker instances. It should only be used by nonce-service clients.

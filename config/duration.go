@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 )
@@ -26,7 +27,7 @@ func DurationCustomTypeFunc(field reflect.Value) any {
 
 // ErrDurationMustBeString is returned when a non-string value is
 // presented to be deserialized as a ConfigDuration
-var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")
+var ErrDurationMustBeString = fmt.Errorf("cannot JSON unmarshal something other than a string into a ConfigDuration")
 
 // UnmarshalJSON parses a string into a ConfigDuration using
 // time.ParseDuration.  If the input does not unmarshal as a

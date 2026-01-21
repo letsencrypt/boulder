@@ -147,15 +147,15 @@ func NewCertificateAuthorityImpl(
 	clk clock.Clock,
 ) (*certificateAuthorityImpl, error) {
 	if serialPrefix < 0x01 || serialPrefix > 0x7f {
-		return nil, errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
+		return nil, fmt.Errorf("serial prefix must be between 0x01 (1) and 0x7f (127)")
 	}
 
 	if len(issuers) == 0 {
-		return nil, errors.New("must have at least one issuer")
+		return nil, fmt.Errorf("must have at least one issuer")
 	}
 
 	if len(profiles) == 0 {
-		return nil, errors.New("must have at least one certificate profile")
+		return nil, fmt.Errorf("must have at least one certificate profile")
 	}
 
 	issuableKeys := make(map[x509.PublicKeyAlgorithm]bool)
@@ -224,7 +224,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	}
 
 	if ca.sctClient == nil {
-		return nil, errors.New("IssueCertificate called with a nil SCT service")
+		return nil, fmt.Errorf("IssueCertificate called with a nil SCT service")
 	}
 
 	profile, ok := ca.profiles[req.CertProfileName]
@@ -553,17 +553,17 @@ func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
 
 		// Extract the Certificate bytes
 		if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("malformed certificate")
+			return nil, fmt.Errorf("malformed certificate")
 		}
 
 		var tbs cryptobyte.String
 		// Extract the TBSCertificate bytes from the Certificate bytes
 		if !input.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("malformed tbs certificate")
+			return nil, fmt.Errorf("malformed tbs certificate")
 		}
 
 		if tbs.Empty() {
-			return nil, errors.New("parsed RawTBSCertificate field was empty")
+			return nil, fmt.Errorf("parsed RawTBSCertificate field was empty")
 		}
 
 		return tbs, nil

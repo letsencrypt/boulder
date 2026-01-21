@@ -15,7 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var ErrNoShardsResolved = errors.New("0 shards were resolved")
+var ErrNoShardsResolved = fmt.Errorf("0 shards were resolved")
 
 // lookup wraps a Redis ring client by reference and keeps the Redis ring shards
 // up to date via periodic SRV lookups.

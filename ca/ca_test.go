@@ -389,7 +389,7 @@ func deserializeSCTList(sctListExtensionValue []byte) ([]ct.SignedCertificateTim
 		return nil, err
 	}
 	if len(rest) != 0 {
-		return nil, errors.New("serialized SCT list contained trailing garbage")
+		return nil, fmt.Errorf("serialized SCT list contained trailing garbage")
 	}
 	list := make([]ct.SignedCertificateTimestamp, len(sctList.SCTList))
 	for i, serializedSCT := range sctList.SCTList {
@@ -399,7 +399,7 @@ func deserializeSCTList(sctListExtensionValue []byte) ([]ct.SignedCertificateTim
 			return nil, err
 		}
 		if len(rest) != 0 {
-			return nil, errors.New("serialized SCT contained trailing garbage")
+			return nil, fmt.Errorf("serialized SCT contained trailing garbage")
 		}
 		list[i] = sct
 	}
@@ -928,7 +928,7 @@ func TestNoteSignError(t *testing.T) {
 	testCtx := newCAArgs(t)
 	metrics := testCtx.metrics
 
-	err := fmt.Errorf("wrapped non-signing error: %w", errors.New("oops"))
+	err := fmt.Errorf("wrapped non-signing error: %w", fmt.Errorf("oops"))
 	metrics.noteSignError(err)
 	test.AssertMetricWithLabelsEquals(t, metrics.signErrorCount, prometheus.Labels{"type": "HSM"}, 0)
 

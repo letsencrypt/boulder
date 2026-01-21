@@ -94,7 +94,7 @@ func GenerateJWT(signer JWTSigner, regID int64, idents []string, lifetime time.D
 }
 
 // ErrMalformedJWT is returned when the JWT is malformed.
-var ErrMalformedJWT = errors.New("malformed JWT")
+var ErrMalformedJWT = fmt.Errorf("malformed JWT")
 
 // RedeemJWT deserializes an unpause JWT and returns the validated claims. The
 // key is used to validate the signature of the JWT. The version is the expected
@@ -134,18 +134,18 @@ func RedeemJWT(token string, key []byte, version string, clk clock.Clock) (JWTCl
 	}
 
 	if len(claims.Subject) == 0 {
-		return JWTClaims{}, errors.New("no account ID specified in the JWT")
+		return JWTClaims{}, fmt.Errorf("no account ID specified in the JWT")
 	}
 	account, err := strconv.ParseInt(claims.Subject, 10, 64)
 	if err != nil {
-		return JWTClaims{}, errors.New("invalid account ID specified in the JWT")
+		return JWTClaims{}, fmt.Errorf("invalid account ID specified in the JWT")
 	}
 	if account == 0 {
-		return JWTClaims{}, errors.New("no account ID specified in the JWT")
+		return JWTClaims{}, fmt.Errorf("no account ID specified in the JWT")
 	}
 
 	if claims.V == "" {
-		return JWTClaims{}, errors.New("no API version specified in the JWT")
+		return JWTClaims{}, fmt.Errorf("no API version specified in the JWT")
 	}
 
 	if claims.V != version {
@@ -153,7 +153,7 @@ func RedeemJWT(token string, key []byte, version string, clk clock.Clock) (JWTCl
 	}
 
 	if claims.I == "" {
-		return JWTClaims{}, errors.New("no identifiers specified in the JWT")
+		return JWTClaims{}, fmt.Errorf("no identifiers specified in the JWT")
 	}
 
 	return claims, nil

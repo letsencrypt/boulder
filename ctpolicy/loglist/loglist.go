@@ -3,7 +3,6 @@ package loglist
 import (
 	_ "embed"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -206,7 +205,7 @@ func (ll List) forPurpose(p purpose, submitToTestLogs bool) (List, error) {
 	}
 
 	if len(operators) < 2 && p != Informational {
-		return nil, errors.New("log list does not have enough groups to satisfy Chrome policy")
+		return nil, fmt.Errorf("log list does not have enough groups to satisfy Chrome policy")
 	}
 
 	return res, nil

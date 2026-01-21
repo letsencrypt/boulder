@@ -2,7 +2,6 @@ package va
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -127,7 +126,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ident identifier.ACMEIdentifier,
 	params *caaParams) error {
 	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
-		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
+		return fmt.Errorf("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
 	foundAt, valid, response, err := va.checkCAARecords(ctx, ident, params)

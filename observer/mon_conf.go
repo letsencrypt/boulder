@@ -1,7 +1,7 @@
 package observer
 
 import (
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,7 +21,7 @@ type MonConf struct {
 // validatePeriod ensures the received `Period` field is at least 1µs.
 func (c *MonConf) validatePeriod() error {
 	if c.Period.Duration < 1*time.Microsecond {
-		return errors.New("period must be at least 1µs")
+		return fmt.Errorf("period must be at least 1µs")
 	}
 	return nil
 }

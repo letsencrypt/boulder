@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"errors"
 	"fmt"
 	"log"
 
@@ -69,7 +68,7 @@ func ecPub(
 		return nil, err
 	}
 	if pubKey.Curve != expectedCurve {
-		return nil, errors.New("returned EC parameters doesn't match expected curve")
+		return nil, fmt.Errorf("returned EC parameters doesn't match expected curve")
 	}
 	log.Printf("\tX: %X\n", pubKey.X.Bytes())
 	log.Printf("\tY: %X\n", pubKey.Y.Bytes())

@@ -119,10 +119,10 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		switch payload := in.Payload.(type) {
 		case *cspb.UploadCRLRequest_Metadata:
 			if crlNumber != nil || issuer != nil {
-				return errors.New("got more than one metadata message")
+				return fmt.Errorf("got more than one metadata message")
 			}
 			if payload.Metadata.IssuerNameID == 0 || payload.Metadata.Number == 0 {
-				return errors.New("got incomplete metadata message")
+				return fmt.Errorf("got incomplete metadata message")
 			}
 
 			cacheControl = payload.Metadata.CacheControl
@@ -144,7 +144,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 
 	// Do some basic sanity checks on the received metadata and CRL.
 	if issuer == nil || crlNumber == nil {
-		return errors.New("got no metadata message")
+		return fmt.Errorf("got no metadata message")
 	}
 
 	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
@@ -157,7 +157,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	}
 
 	if crl.Number.Cmp(crlNumber) != 0 {
-		return errors.New("got mismatched CRL Number")
+		return fmt.Errorf("got mismatched CRL Number")
 	}
 
 	err = crl.CheckSignatureFrom(issuer.Certificate)

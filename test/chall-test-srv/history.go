@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -95,7 +94,7 @@ func requestHost(r *http.Request) (string, error) {
 		return "", err
 	}
 	if request.Host == "" {
-		return "", errors.New("host parameter of POST body must not be empty")
+		return "", fmt.Errorf("host parameter of POST body must not be empty")
 	}
 	return request.Host, nil
 }

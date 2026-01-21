@@ -3,7 +3,7 @@ package sa
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -38,7 +38,7 @@ func TestInvalidDSN(t *testing.T) {
 	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
 }
 
-var errExpected = errors.New("expected")
+var errExpected = fmt.Errorf("expected")
 
 func TestDbSettings(t *testing.T) {
 	// TODO(#5248): Add a full db.mockWrappedMap to sa/database tests

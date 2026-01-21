@@ -1,7 +1,6 @@
 package rfc
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -181,7 +180,7 @@ func lintTimestamp(der *cryptobyte.String, tag cryptobyte_asn1.Tag) error {
 	derBytes := *der
 	var tsBytes cryptobyte.String
 	if !derBytes.ReadASN1(&tsBytes, tag) {
-		return errors.New("failed to read timestamp")
+		return fmt.Errorf("failed to read timestamp")
 	}
 	tsLen := len(string(tsBytes))
 
@@ -194,13 +193,13 @@ func lintTimestamp(der *cryptobyte.String, tag cryptobyte_asn1.Tag) error {
 		}
 
 		if !der.ReadASN1UTCTime(&parsedTime) {
-			return errors.New("failed to read timestamp encoded using UTCTime")
+			return fmt.Errorf("failed to read timestamp encoded using UTCTime")
 		}
 
 		// Verify that the timestamp is prior to the year 2050. This should
 		// really never happen.
 		if parsedTime.Year() > 2049 {
-			return errors.New("ReadASN1UTCTime returned a UTCTime after 2049")
+			return fmt.Errorf("ReadASN1UTCTime returned a UTCTime after 2049")
 		}
 	case cryptobyte_asn1.GeneralizedTime:
 		// Verify that the timestamp is properly formatted.
@@ -216,15 +215,15 @@ func lintTimestamp(der *cryptobyte.String, tag cryptobyte_asn1.Tag) error {
 
 		// Verify that the timestamp occurred after the year 2049.
 		if parsedTime.Year() < 2050 {
-			return errors.New("timestamps prior to 2050 MUST be encoded using UTCTime")
+			return fmt.Errorf("timestamps prior to 2050 MUST be encoded using UTCTime")
 		}
 	default:
-		return errors.New("unsupported time format")
+		return fmt.Errorf("unsupported time format")
 	}
 
 	// Verify that the location is UTC.
 	if parsedTime.Location() != time.UTC {
-		return errors.New("time must be in UTC")
+		return fmt.Errorf("time must be in UTC")
 	}
 	return nil
 }

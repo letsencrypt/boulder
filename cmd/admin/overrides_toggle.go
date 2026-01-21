@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/netip"
@@ -38,7 +37,7 @@ func (c *subcommandToggleOverride) Flags(f *flag.FlagSet) {
 
 func (c *subcommandToggleOverride) Run(ctx context.Context, a *admin) error {
 	if c.limit == "" {
-		return errors.New("--limit is required")
+		return fmt.Errorf("--limit is required")
 	}
 	name, ok := rl.StringToName[c.limit]
 	if !ok {

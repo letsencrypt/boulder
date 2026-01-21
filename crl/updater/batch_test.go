@@ -2,7 +2,7 @@ package updater
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -29,7 +29,7 @@ func TestRunOnce(t *testing.T) {
 		6*time.Hour, time.Minute, 1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
-		&fakeSAC{revokedCerts: revokedCertsStream{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
+		&fakeSAC{revokedCerts: revokedCertsStream{err: fmt.Errorf("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, mockLog, clk,

@@ -2,7 +2,7 @@ package grpc
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,7 +27,7 @@ func TestServerBuilderInitLongRunningCheck(t *testing.T) {
 	failEveryThirdCheck := func(context.Context) error {
 		count++
 		if count%3 == 0 {
-			return errors.New("oops")
+			return fmt.Errorf("oops")
 		}
 		return nil
 	}
@@ -53,7 +53,7 @@ func TestServerBuilderInitLongRunningCheck(t *testing.T) {
 	failEveryOtherCheck := func(context.Context) error {
 		count++
 		if count%2 == 0 {
-			return errors.New("oops")
+			return fmt.Errorf("oops")
 		}
 		return nil
 	}

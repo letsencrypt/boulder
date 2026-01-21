@@ -56,8 +56,8 @@ import (
 )
 
 var (
-	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
-	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+	errIncompleteGRPCRequest  = fmt.Errorf("incomplete gRPC request message")
+	errIncompleteGRPCResponse = fmt.Errorf("incomplete gRPC response message")
 
 	// caaRecheckDuration is the amount of time after a CAA check that we will
 	// recheck the CAA records for a domain. Per Baseline Requirements, we must
@@ -114,7 +114,7 @@ func (ra *RegistrationAuthorityImpl) Health(ctx context.Context) error {
 	if ra.txnBuilder.Ready() {
 		return nil
 	}
-	return errors.New("waiting for overrides")
+	return fmt.Errorf("waiting for overrides")
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -312,7 +312,7 @@ type validationProfiles struct {
 // are within the bounds mandated by the Baseline Requirements.
 func NewValidationProfiles(defaultName string, configs map[string]*ValidationProfileConfig) (*validationProfiles, error) {
 	if defaultName == "" {
-		return nil, errors.New("default profile name must be configured")
+		return nil, fmt.Errorf("default profile name must be configured")
 	}
 
 	profiles := make(map[string]*validationProfile, len(configs))
@@ -1826,10 +1826,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 // on this certificate comes from one of our issuers.
 func crlShard(cert *x509.Certificate) (int64, error) {
 	if len(cert.CRLDistributionPoints) == 0 {
-		return 0, errors.New("no crlDistributionPoints in certificate")
+		return 0, fmt.Errorf("no crlDistributionPoints in certificate")
 	}
 	if len(cert.CRLDistributionPoints) > 1 {
-		return 0, errors.New("too many crlDistributionPoints in certificate")
+		return 0, fmt.Errorf("too many crlDistributionPoints in certificate")
 	}
 
 	url := strings.TrimSuffix(cert.CRLDistributionPoints[0], ".crl")
@@ -1956,10 +1956,10 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return nil, errIncompleteGRPCRequest
 	}
 	if req.CrlShard != 0 && !req.Malformed {
-		return nil, errors.New("non-zero CRLShard is only allowed for malformed certificates (shard is automatic for well formed certificates)")
+		return nil, fmt.Errorf("non-zero CRLShard is only allowed for malformed certificates (shard is automatic for well formed certificates)")
 	}
 	if req.Malformed && req.CrlShard == 0 {
-		return nil, errors.New("CRLShard is required for malformed certificates")
+		return nil, fmt.Errorf("CRLShard is required for malformed certificates")
 	}
 
 	reasonCode := revocation.Reason(req.Code)
@@ -2059,7 +2059,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	if reasonCode == revocation.KeyCompromise && !req.SkipBlockKey {
 		if cert == nil {
-			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
+			return nil, fmt.Errorf("revoking for key compromise requires providing the certificate's DER")
 		}
 		err = ra.addToBlockedKeys(ctx, cert.PublicKey, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 		if err != nil {

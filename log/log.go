@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -60,7 +59,7 @@ const auditTag = "[AUDIT]"
 // and also writes to stdout/stderr. It is safe for concurrent use.
 func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, error) {
 	if log == nil {
-		return nil, errors.New("Attempted to use a nil System Logger")
+		return nil, fmt.Errorf("Attempted to use a nil System Logger")
 	}
 	return &impl{
 		&bothWriter{
@@ -112,7 +111,7 @@ func initialize() {
 // first time.
 func Set(logger Logger) (err error) {
 	if _Singleton.log != nil {
-		err = errors.New("You may not call Set after it has already been implicitly or explicitly set")
+		err = fmt.Errorf("You may not call Set after it has already been implicitly or explicitly set")
 		_Singleton.log.Warning(err.Error())
 	} else {
 		_Singleton.log = logger

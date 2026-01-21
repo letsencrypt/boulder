@@ -2,7 +2,6 @@ package sa
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -60,7 +59,7 @@ func (tc BoulderTypeConverter) FromDb(target any) (borp.CustomScanner, bool) {
 		binder := func(holder, target any) error {
 			s, ok := holder.(*string)
 			if !ok {
-				return errors.New("FromDb: Unable to convert *string")
+				return fmt.Errorf("FromDb: Unable to convert *string")
 			}
 			b := []byte(*s)
 			err := json.Unmarshal(b, target)
@@ -80,7 +79,7 @@ func (tc BoulderTypeConverter) FromDb(target any) (borp.CustomScanner, bool) {
 				return fmt.Errorf("FromDb: Unable to convert %T to *string", holder)
 			}
 			if *s == "" {
-				return errors.New("FromDb: Empty JWK field.")
+				return fmt.Errorf("FromDb: Empty JWK field.")
 			}
 			b := []byte(*s)
 			k, ok := target.(*jose.JSONWebKey)

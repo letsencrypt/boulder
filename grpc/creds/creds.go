@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"net"
 
@@ -12,17 +11,17 @@ import (
 )
 
 var (
-	ErrClientHandshakeNop = errors.New(
+	ErrClientHandshakeNop = fmt.Errorf(
 		"boulder/grpc/creds: Client-side handshakes are not implemented with " +
 			"serverTransportCredentials")
-	ErrServerHandshakeNop = errors.New(
+	ErrServerHandshakeNop = fmt.Errorf(
 		"boulder/grpc/creds: Server-side handshakes are not implemented with " +
 			"clientTransportCredentials")
-	ErrOverrideServerNameNop = errors.New(
+	ErrOverrideServerNameNop = fmt.Errorf(
 		"boulder/grpc/creds: OverrideServerName() is not implemented")
-	ErrNilServerConfig = errors.New(
+	ErrNilServerConfig = fmt.Errorf(
 		"boulder/grpc/creds: `serverConfig` must not be nil")
-	ErrEmptyPeerCerts = errors.New(
+	ErrEmptyPeerCerts = fmt.Errorf(
 		"boulder/grpc/creds: validateClient given state with empty PeerCertificates")
 )
 

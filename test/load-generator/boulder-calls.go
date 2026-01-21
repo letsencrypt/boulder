@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	mrand "math/rand/v2"
@@ -66,7 +65,7 @@ func getAccount(s *State, c *acmeCache) error {
 
 	// There must be an existing v2 account in the state
 	if len(s.accts) == 0 {
-		return errors.New("no accounts to return")
+		return fmt.Errorf("no accounts to return")
 	}
 
 	// Select a random account from the state and put it into the context
@@ -375,7 +374,7 @@ func pollAuthorization(authz *core.Authorization, s *State, c *acmeCache) error 
 func fulfillOrder(s *State, c *acmeCache) error {
 	// There must be at least one pending order in the context to fulfill
 	if len(c.pendingOrders) == 0 {
-		return errors.New("no pending orders to fulfill")
+		return fmt.Errorf("no pending orders to fulfill")
 	}
 
 	// Get an order to fulfill from the context
@@ -473,7 +472,7 @@ func popFulfilledOrder(c *acmeCache) string {
 func finalizeOrder(s *State, c *acmeCache) error {
 	// There must be at least one fulfilled order in the context
 	if len(c.fulfilledOrders) < 1 {
-		return errors.New("No fulfilled orders in the context ready to be finalized")
+		return fmt.Errorf("No fulfilled orders in the context ready to be finalized")
 	}
 
 	// Pop a fulfilled order to process, and then GET its contents
@@ -596,7 +595,7 @@ func getCert(s *State, c *acmeCache, url string) ([]byte, error) {
 // key.
 func revokeCertificate(s *State, c *acmeCache) error {
 	if len(c.certs) < 1 {
-		return errors.New("No certificates in the context that can be revoked")
+		return fmt.Errorf("No certificates in the context that can be revoked")
 	}
 
 	if r := mrand.Float32(); r > s.revokeChance {
