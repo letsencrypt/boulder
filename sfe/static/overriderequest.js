@@ -3,7 +3,7 @@ const RATE_LIMIT = form.dataset.rateLimit;
 const VALIDATE_FIELD_PATH = form.dataset.validateFieldPath;
 const SUBMIT_REQUEST_PATH = form.dataset.submitRequestPath;
 const AUTO_APPROVED_SUCCESS_PATH = form.dataset.autoApprovedSuccessPath;
-const REQUEST_SUBMITTED_SUCCESS_PATH = form.dataset.RequestSubmittedSuccessPath;
+const REQUEST_SUBMITTED_SUCCESS_PATH = form.dataset.requestSubmittedSuccessPath;
 
 const ERR_REQUIRED = "This field is required.";
 const ERR_VALIDATE = "Unable to validate this field due to timeout, please try again.";
