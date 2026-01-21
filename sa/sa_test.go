@@ -125,8 +125,17 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 // CreateWorkingTestRegistration inserts a new, correct Registration into the
 // given SA.
 func createWorkingRegistration(t testing.TB, sa *SQLStorageAuthority) *corepb.Registration {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate ECDSA key: %s", err)
+	}
+	jwk, err := json.Marshal(jose.JSONWebKey{Key: key.Public()})
+	if err != nil {
+		t.Fatalf("Failed to marshal JSONWebKey: %s", err)
+	}
+
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
-		Key:       []byte(theKey),
+		Key:       jwk,
 		CreatedAt: mustTimestamp("2003-05-10 00:00"),
 		Status:    string(core.StatusValid),
 	})
@@ -2471,70 +2480,78 @@ func TestAuthzModelMapToPB(t *testing.T) {
 	}
 }
 
-func TestGetValidOrderAuthorizations2(t *testing.T) {
+func TestGetOrderAuthorizations(t *testing.T) {
 	sa, fc := initSA(t)
 
-	// Create three new valid authorizations
-	reg := createWorkingRegistration(t, sa)
-	identA := identifier.NewDNS("a.example.com")
-	identB := identifier.NewDNS("b.example.com")
-	identC := identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee"))
-	expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
-	attemptedAt := fc.Now()
+	gvoa2 := func(orderID, acctID int64) (*sapb.Authorizations, error) {
+		return sa.GetValidOrderAuthorizations2(context.Background(), &sapb.GetValidOrderAuthorizationsRequest{
+			Id:     orderID,
+			AcctID: acctID,
+		})
+	}
 
-	authzIDA := createFinalizedAuthorization(t, sa, reg.Id, identA, expires, "valid", attemptedAt)
-	authzIDB := createFinalizedAuthorization(t, sa, reg.Id, identB, expires, "valid", attemptedAt)
-	authzIDC := createFinalizedAuthorization(t, sa, reg.Id, identC, expires, "valid", attemptedAt)
+	goa := func(orderID, acctID int64) (*sapb.Authorizations, error) {
+		return sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
+			Id:     orderID,
+			AcctID: acctID,
+		})
+	}
 
-	orderExpr := fc.Now().Truncate(time.Second)
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID: reg.Id,
-			Expires:        timestamppb.New(orderExpr),
-			Identifiers: []*corepb.Identifier{
-				identifier.NewDNS("a.example.com").ToProto(),
-				identifier.NewDNS("b.example.com").ToProto(),
-				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")).ToProto(),
+	type F func(orderID, acctID int64) (*sapb.Authorizations, error)
+
+	for _, getOrderAuthorizations := range []F{gvoa2, goa} {
+		// Create three new valid authorizations
+		reg := createWorkingRegistration(t, sa)
+		identA := identifier.NewDNS("a.example.com")
+		identB := identifier.NewDNS("b.example.com")
+		identC := identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee"))
+		expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
+		attemptedAt := fc.Now()
+
+		authzIDA := createFinalizedAuthorization(t, sa, reg.Id, identA, expires, "valid", attemptedAt)
+		authzIDB := createFinalizedAuthorization(t, sa, reg.Id, identB, expires, "valid", attemptedAt)
+		authzIDC := createFinalizedAuthorization(t, sa, reg.Id, identC, expires, "valid", attemptedAt)
+
+		orderExpr := fc.Now().Truncate(time.Second)
+		order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+			NewOrder: &sapb.NewOrderRequest{
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(orderExpr),
+				Identifiers: []*corepb.Identifier{
+					identifier.NewDNS("a.example.com").ToProto(),
+					identifier.NewDNS("b.example.com").ToProto(),
+					identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")).ToProto(),
+				},
+				V2Authorizations: []int64{authzIDA, authzIDB, authzIDC},
 			},
-			V2Authorizations: []int64{authzIDA, authzIDB, authzIDC},
-		},
-	})
-	test.AssertNotError(t, err, "AddOrder failed")
-
-	authzPBs, err := sa.GetValidOrderAuthorizations2(
-		context.Background(),
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     order.Id,
-			AcctID: reg.Id,
 		})
-	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
-	test.AssertNotNil(t, authzPBs, "sa.GetValidOrderAuthorizations result was nil")
-	test.AssertEquals(t, len(authzPBs.Authzs), 3)
+		test.AssertNotError(t, err, "AddOrder failed")
 
-	identsToCheck := map[identifier.ACMEIdentifier]int64{
-		identifier.NewDNS("a.example.com"):                                              authzIDA,
-		identifier.NewDNS("b.example.com"):                                              authzIDB,
-		identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")): authzIDC,
-	}
-	for _, a := range authzPBs.Authzs {
-		ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
-		if fmt.Sprintf("%d", identsToCheck[ident]) != a.Id {
-			t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
+		authzPBs, err := getOrderAuthorizations(order.Id, reg.Id)
+		test.AssertNotError(t, err, "request failed")
+		test.AssertNotNil(t, authzPBs, "result was nil")
+		test.AssertEquals(t, len(authzPBs.Authzs), 3)
+
+		identsToCheck := map[identifier.ACMEIdentifier]int64{
+			identifier.NewDNS("a.example.com"):                                              authzIDA,
+			identifier.NewDNS("b.example.com"):                                              authzIDB,
+			identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")): authzIDC,
 		}
-		test.AssertEquals(t, a.Expires.AsTime(), expires)
-		delete(identsToCheck, ident)
-	}
+		for _, a := range authzPBs.Authzs {
+			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
+			if fmt.Sprintf("%d", identsToCheck[ident]) != a.Id {
+				t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
+			}
+			test.AssertEquals(t, a.Expires.AsTime(), expires)
+			delete(identsToCheck, ident)
+		}
 
-	// Getting the order authorizations for an order that doesn't exist should return nothing
-	missingID := int64(0xC0FFEEEEEEE)
-	authzPBs, err = sa.GetValidOrderAuthorizations2(
-		context.Background(),
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     missingID,
-			AcctID: reg.Id,
-		})
-	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
-	test.AssertEquals(t, len(authzPBs.Authzs), 0)
+		// Getting the order authorizations for an order that doesn't exist should return nothing
+		missingID := int64(0xC0FFEEEEEEE)
+		authzPBs, err = getOrderAuthorizations(missingID, reg.Id)
+		test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
+		test.AssertEquals(t, len(authzPBs.Authzs), 0)
+	}
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {

@@ -319,6 +319,10 @@ func (sa *StorageAuthorityReadOnly) GetValidOrderAuthorizations2(ctx context.Con
 	return nil, nil
 }
 
+func (sa *StorageAuthorityReadOnly) GetOrderAuthorizations(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+	return nil, nil
+}
+
 func (sa *StorageAuthorityReadOnly) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
 }
