@@ -6,11 +6,13 @@ import (
 	"os"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/email"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/salesforce"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 )
 
 // Config holds the configuration for the email-exporter service.
@@ -62,6 +64,38 @@ type Config struct {
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
+// legacyEmailExporterServer is an adapter that implements the email.Exporter
+// gRPC interface by delegating to an inner salesforce.Exporter server.
+//
+// TODO(#8410): Remove legacyEmailExporterServer once fully migrated to
+// salesforcepb.Exporter.
+type legacyEmailExporterServer struct {
+	emailpb.UnimplementedExporterServer
+	inner salesforcepb.ExporterServer
+}
+
+// SendContacts is an interface adapter that forwards the request to the same
+// method on the inner salesforce.Exporter server.
+func (s legacyEmailExporterServer) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
+	return s.inner.SendContacts(ctx, &salesforcepb.SendContactsRequest{Emails: req.GetEmails()})
+}
+
+// SendCase is an interface adapter that forwards the request to the same method
+// on the inner salesforce.Exporter server.
+func (s legacyEmailExporterServer) SendCase(ctx context.Context, req *emailpb.SendCaseRequest) (*emptypb.Empty, error) {
+	return s.inner.SendCase(ctx, &salesforcepb.SendCaseRequest{
+		Origin:        req.GetOrigin(),
+		Subject:       req.GetSubject(),
+		Description:   req.GetDescription(),
+		ContactEmail:  req.GetContactEmail(),
+		Organization:  req.GetOrganization(),
+		AccountId:     req.GetAccountId(),
+		RateLimitName: req.GetRateLimitName(),
+		RateLimitTier: req.GetRateLimitTier(),
+		UseCase:       req.GetUseCase(),
+	})
+}
+
 func main() {
 	configFile := flag.String("config", "", "Path to configuration file")
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
@@ -95,12 +129,12 @@ func main() {
 	clientSecret, err := c.EmailExporter.ClientSecret.Pass()
 	cmd.FailOnError(err, "Loading clientSecret")
 
-	var cache *email.EmailCache
+	var cache *salesforce.EmailCache
 	if c.EmailExporter.EmailCacheSize > 0 {
-		cache = email.NewHashedEmailCache(c.EmailExporter.EmailCacheSize, scope)
+		cache = salesforce.NewHashedEmailCache(c.EmailExporter.EmailCacheSize, scope)
 	}
 
-	sfClient, err := email.NewSalesforceClientImpl(
+	sfClient, err := salesforce.NewSalesforceClientImpl(
 		clk,
 		c.EmailExporter.PardotBusinessUnit,
 		clientId,
@@ -109,21 +143,25 @@ func main() {
 		c.EmailExporter.PardotBaseURL,
 	)
 	cmd.FailOnError(err, "Creating Pardot API client")
-	exporterServer := email.NewExporterImpl(sfClient, cache, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
+	server := salesforce.NewExporterImpl(sfClient, cache, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
 
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading email-exporter TLS config")
 
-	daemonCtx, shutdownExporterServer := context.WithCancel(context.Background())
-	go exporterServer.Start(daemonCtx)
+	daemonCtx, shutdown := context.WithCancel(context.Background())
+	go server.Start(daemonCtx)
 
 	start, err := bgrpc.NewServer(c.EmailExporter.GRPC, logger).Add(
-		&emailpb.Exporter_ServiceDesc, exporterServer).Build(tlsConfig, scope, clk)
+		&salesforcepb.Exporter_ServiceDesc, server).Add(
+		// TODO(#8410): Remove emailpb.Exporter once fully migrated to
+		// salesforcepb.Exporter.
+		&emailpb.Exporter_ServiceDesc, legacyEmailExporterServer{inner: server}).Build(
+		tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Configuring email-exporter gRPC server")
 
 	err = start()
-	shutdownExporterServer()
-	exporterServer.Drain()
+	shutdown()
+	server.Drain()
 	cmd.FailOnError(err, "email-exporter gRPC service failed to start")
 }
 

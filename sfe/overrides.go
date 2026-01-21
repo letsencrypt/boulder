@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"strings"
 
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/policy"
 	rl "github.com/letsencrypt/boulder/ratelimits"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/sfe/forms"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/web"
@@ -723,14 +723,14 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	}
 
 	if sfe.ee != nil && validFields[mailingListFieldName] == "true" {
-		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
+		_, err := sfe.ee.SendContacts(r.Context(), &salesforcepb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
 			sfe.log.Errf("failed to send contact to email-exporter: %s", err)
 		}
 	}
 
 	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
-		_, err := sfe.ee.SendCase(r.Context(), &emailpb.SendCaseRequest{
+		_, err := sfe.ee.SendCase(r.Context(), &salesforcepb.SendCaseRequest{
 			Origin:        "Web",
 			Subject:       fmt.Sprintf("%s rate limit override request for %s", req.RateLimit, validFields[OrganizationFieldName]),
 			ContactEmail:  validFields[emailAddressFieldName],
