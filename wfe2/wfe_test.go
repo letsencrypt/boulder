@@ -834,6 +834,7 @@ func TestDirectory(t *testing.T) {
   "newNonce": "http://localhost:4300/acme/new-nonce",
   "newAccount": "http://localhost:4300/acme/new-acct",
   "newOrder": "http://localhost:4300/acme/new-order",
+  "renewalInfo": "http://localhost:4300/acme/renewal-info",
   "revokeCert": "http://localhost:4300/acme/revoke-cert",
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 }`,
@@ -859,6 +860,7 @@ func TestDirectory(t *testing.T) {
   "newAccount": "http://localhost:4300/acme/new-acct",
   "newNonce": "http://localhost:4300/acme/new-nonce",
   "newOrder": "http://localhost:4300/acme/new-order",
+  "renewalInfo": "http://localhost:4300/acme/renewal-info",
   "revokeCert": "http://localhost:4300/acme/revoke-cert"
 }`,
 		},
@@ -883,6 +885,7 @@ func TestDirectory(t *testing.T) {
   "newAccount": "http://localhost/acme/new-acct",
   "newNonce": "http://localhost/acme/new-nonce",
   "newOrder": "http://localhost/acme/new-order",
+  "renewalInfo": "http://localhost/acme/renewal-info",
   "revokeCert": "http://localhost/acme/revoke-cert"
 }`,
 		},
@@ -924,6 +927,7 @@ func TestRelativeDirectory(t *testing.T) {
 		fmt.Fprintf(expected, `"newNonce":"%s/acme/new-nonce",`, hostname)
 		fmt.Fprintf(expected, `"newAccount":"%s/acme/new-acct",`, hostname)
 		fmt.Fprintf(expected, `"newOrder":"%s/acme/new-order",`, hostname)
+		fmt.Fprintf(expected, `"renewalInfo":"%s/acme/renewal-info",`, hostname)
 		fmt.Fprintf(expected, `"revokeCert":"%s/acme/revoke-cert",`, hostname)
 		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
 		fmt.Fprintf(expected, `"meta":{`)
@@ -3841,7 +3845,6 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
-	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3920,7 +3923,6 @@ func TestIncidentARI(t *testing.T) {
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
-	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {

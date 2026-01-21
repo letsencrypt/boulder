@@ -428,10 +428,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, healthzPath, wfe.Healthz, "GET")
 
-	// Endpoint for draft-ietf-acme-ari
-	if features.Get().ServeRenewalInfo {
-		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
-	}
+	wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
@@ -505,13 +502,11 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  rolloverPath,
 	}
 
-	if features.Get().ServeRenewalInfo {
-		// ARI-capable clients are expected to add the trailing slash per the
-		// draft. We explicitly strip the trailing slash here so that clients
-		// don't need to add trailing slash handling in their own code, saving
-		// them minimal amounts of complexity.
-		directoryEndpoints["renewalInfo"] = strings.TrimRight(renewalInfoPath, "/")
-	}
+	// ARI-capable clients are expected to add the trailing slash per the
+	// draft. We explicitly strip the trailing slash here so that clients
+	// don't need to add trailing slash handling in their own code, saving
+	// them minimal amounts of complexity.
+	directoryEndpoints["renewalInfo"] = strings.TrimRight(renewalInfoPath, "/")
 
 	if request.Method == http.MethodPost {
 		acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
@@ -2696,11 +2691,6 @@ func parseARICertID(path string, issuerCertificates map[issuance.NameID]*issuanc
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if !features.Get().ServeRenewalInfo {
-		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
-		return
-	}
-
 	if len(request.URL.Path) == 0 {
 		wfe.sendError(response, logEvent, probs.NotFound("Must specify a request path"), nil)
 		return
