@@ -3845,8 +3845,6 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
-	defer features.Reset()
-
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]any{}}
@@ -3922,8 +3920,6 @@ func TestIncidentARI(t *testing.T) {
 	expectSerial := big.NewInt(12345)
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
-
-	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
