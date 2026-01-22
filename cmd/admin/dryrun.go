@@ -13,9 +13,10 @@ import (
 )
 
 type dryRunRAC struct {
-	rapb.RegistrationAuthorityClient
 	log blog.Logger
 }
+
+var _ adminRAClient = (*dryRunRAC)(nil)
 
 func (d dryRunRAC) AdministrativelyRevokeCertificate(_ context.Context, req *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	b, err := prototext.Marshal(req)
@@ -27,9 +28,10 @@ func (d dryRunRAC) AdministrativelyRevokeCertificate(_ context.Context, req *rap
 }
 
 type dryRunSAC struct {
-	sapb.StorageAuthorityClient
 	log blog.Logger
 }
+
+var _ adminSAClient = (*dryRunSAC)(nil)
 
 func (d dryRunSAC) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	d.log.Infof("dry-run: Block SPKI hash %x by %s %s", req.KeyHash, req.Comment, req.Source)
@@ -38,7 +40,7 @@ func (d dryRunSAC) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyReque
 
 func (d dryRunSAC) AddRateLimitOverride(_ context.Context, req *sapb.AddRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error) {
 	d.log.Infof("dry-run: Add override for %q (%s)", req.Override.BucketKey, req.Override.Comment)
-	return &sapb.AddRateLimitOverrideResponse{}, nil
+	return &sapb.AddRateLimitOverrideResponse{Inserted: true, Enabled: true}, nil
 }
 
 func (d dryRunSAC) DisableRateLimitOverride(_ context.Context, req *sapb.DisableRateLimitOverrideRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -51,7 +53,12 @@ func (d dryRunSAC) EnableRateLimitOverride(_ context.Context, req *sapb.EnableRa
 	return &emptypb.Empty{}, nil
 }
 
+func (d dryRunSAC) PauseIdentifiers(_ context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
+	d.log.Infof("dry-run: Pause identifiers %#v for account %d", req.Identifiers, req.RegistrationID)
+	return &sapb.PauseIdentifiersResponse{Paused: int64(len(req.Identifiers))}, nil
+}
+
 func (d dryRunSAC) UnpauseAccount(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
 	d.log.Infof("dry-run: Unpause account %d", req.Id)
-	return &sapb.Count{}, nil
+	return &sapb.Count{Count: 1}, nil
 }
