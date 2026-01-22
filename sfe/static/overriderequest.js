@@ -58,6 +58,11 @@ const updateSubmitButtonState = () => {
 const validateFieldContents = async (field) => {
     const val = field.type === "checkbox" ? String(field.checked) : field.value.trim();
 
+    if (field.type === "checkbox" && !field.required) {  
+        markFieldValid(field);
+        return;
+    }
+
     if (field.required && ((field.type === "checkbox" && !field.checked) || (field.type !== "checkbox" && !val))) {
         markFieldInvalid(field, ERR_REQUIRED);
         return;
@@ -126,7 +131,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.querySelectorAll(FIELDS_SELECTOR).forEach(field => {
         if (field.tagName === "INPUT" && field.type !== "checkbox") field.setAttribute("autocomplete", "off");
-        FIELD_STATES[field.name] = false;
+        const isOptionalCheckbox = field.type === "checkbox" && !field.required;
+        FIELD_STATES[field.name] = isOptionalCheckbox;
         const handler = () => validateFieldContents(field);
         field.addEventListener(field.type === "checkbox" ? "change" : "input", debounce(handler, 300));
     });
