@@ -1366,33 +1366,6 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, 
 	return update, nil
 }
 
-// recordValidation records an authorization validation event,
-// it should only be used on v2 style authorizations.
-func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authID string, authExpires time.Time, challenge *core.Challenge) error {
-	authzID, err := strconv.ParseInt(authID, 10, 64)
-	if err != nil {
-		return err
-	}
-	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error, "", "")
-	if err != nil {
-		return err
-	}
-	var validated *timestamppb.Timestamp
-	if challenge.Validated != nil {
-		validated = timestamppb.New(*challenge.Validated)
-	}
-	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:                authzID,
-		Status:            string(challenge.Status),
-		Expires:           timestamppb.New(authExpires),
-		Attempted:         string(challenge.Type),
-		AttemptedAt:       validated,
-		ValidationRecords: vr.Records,
-		ValidationError:   vr.Problem,
-	})
-	return err
-}
-
 // countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
 // and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
@@ -1493,6 +1466,10 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if err != nil {
 		return nil, err
 	}
+	authzID, err := strconv.ParseInt(authz.ID, 10, 64)
+	if err != nil {
+		return nil, err
+	}
 
 	// Refuse to update expired authorizations
 	if authz.Expires == nil || authz.Expires.Before(ra.clk.Now()) {
@@ -1506,8 +1483,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 	challIndex := int(req.ChallengeIndex)
 	if challIndex >= len(authz.Challenges) {
-		return nil,
-			berrors.MalformedError("invalid challenge index '%d'", challIndex)
+		return nil, berrors.MalformedError("invalid challenge index '%d'", challIndex)
 	}
 
 	ch := &authz.Challenges[challIndex]
@@ -1529,7 +1505,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("authorization must be pending")
 	}
 
-	// Look up the account key for this authorization
+	// Compute the key authorization field based on the registration key
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
 	if err != nil {
 		return nil, berrors.InternalServerError("getting acct for authorization: %s", err.Error())
@@ -1538,8 +1514,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if err != nil {
 		return nil, berrors.InternalServerError("getting acct for authorization: %s", err.Error())
 	}
-
-	// Compute the key authorization field based on the registration key
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		return nil, berrors.InternalServerError("could not compute expected key authorization value")
@@ -1551,94 +1525,78 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	// Dispatch to the VA for service
-	ra.drainWG.Add(1)
-	vaCtx := context.Background()
-	go func(authz core.Authorization) {
-		defer ra.drainWG.Done()
+	ra.drainWG.Go(func() {
+		ctx := context.WithoutCancel(ctx)
 
-		// We will mutate challenges later in this goroutine to change status and
-		// add error, but we also return a copy of authz immediately. To avoid a
-		// data race, make a copy of the challenges slice here for mutation.
-		challenges := make([]core.Challenge, len(authz.Challenges))
-		copy(challenges, authz.Challenges)
-		authz.Challenges = challenges
-		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
-		checkProb, checkRecords, err := ra.checkDCVAndCAA(
-			vaCtx,
+		prob, records, err := ra.checkDCVAndCAA(
+			ctx,
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
-				Challenge:                chall,
+				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
-				ValidationMethod: chall.Type,
+				ValidationMethod: string(ch.Type),
 				AccountURIID:     authz.RegistrationID,
 				AuthzID:          authz.ID,
 			},
 		)
-		challenge := &authz.Challenges[challIndex]
-		var prob *probs.ProblemDetails
 		if err != nil {
-			prob = probs.ServerInternal("Could not communicate with VA")
-			ra.log.AuditErrf("Could not communicate with VA: %s", err)
-		} else {
-			if checkProb != nil {
-				prob, err = bgrpc.PBToProblemDetails(checkProb)
-				if err != nil {
-					prob = probs.ServerInternal("Could not communicate with VA")
-					ra.log.AuditErrf("Could not communicate with VA: %s", err)
-				}
-			}
-			// Save the updated records
-			records := make([]core.ValidationRecord, len(checkRecords))
-			for i, r := range checkRecords {
-				records[i], err = bgrpc.PBToValidationRecord(r)
-				if err != nil {
-					prob = probs.ServerInternal("Records for validation corrupt")
-				}
-			}
-			challenge.ValidationRecord = records
-		}
-		if !challenge.RecordsSane() && prob == nil {
-			prob = probs.ServerInternal("Records for validation failed sanity check")
+			// ProblemDetailsToPB never returns an error.
+			prob, _ = bgrpc.ProblemDetailsToPB(probs.ServerInternal("Could not communicate with VA"))
+			ra.log.Errf("Failed to communicate with VA: %s", err)
 		}
 
-		expires := *authz.Expires
+		var status core.AcmeStatus
+		var expires time.Time
 		if prob != nil {
-			challenge.Status = core.StatusInvalid
-			challenge.Error = prob
-			err := ra.countFailedValidations(vaCtx, authz.RegistrationID, authz.Identifier)
+			status = core.StatusInvalid
+			expires = *authz.Expires
+			err := ra.countFailedValidations(ctx, authz.RegistrationID, authz.Identifier)
 			if err != nil {
 				ra.log.Warningf("incrementing failed validations: %s", err)
 			}
 		} else {
-			challenge.Status = core.StatusValid
+			status = core.StatusValid
 			expires = ra.clk.Now().Add(profile.validAuthzLifetime)
 			if features.Get().AutomaticallyPauseZombieClients {
-				ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
+				ra.resetAccountPausingLimit(ctx, authz.RegistrationID, authz.Identifier)
 			}
 		}
-		challenge.Validated = &vStart
-		authz.Challenges[challIndex] = *challenge
 
-		err = ra.recordValidation(vaCtx, authz.ID, expires, challenge)
+		_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
+			Id:                authzID,
+			Status:            string(status),
+			Expires:           timestamppb.New(expires),
+			Attempted:         string(ch.Type),
+			AttemptedAt:       timestamppb.New(vStart),
+			ValidationRecords: records,
+			ValidationError:   prob,
+		})
 		if err != nil {
 			if errors.Is(err, berrors.NotFound) {
 				// We log NotFound at a lower level because this is largely due to a
 				// parallel-validation race: a different validation attempt has already
 				// updated this authz, so we failed to find a *pending* authz with the
 				// given ID to update.
-				ra.log.Infof("Failed to record validation (likely parallel validation race): regID=[%d] authzID=[%s] err=[%s]",
+				ra.log.Infof(
+					"Failed to record validation (likely parallel validation race): regID=[%d] authzID=[%s] err=[%s]",
 					authz.RegistrationID, authz.ID, err)
 			} else {
-				ra.log.AuditErrf("Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
+				ra.log.AuditErrf(
+					"Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
 					authz.RegistrationID, authz.ID, err)
 			}
 		}
-	}(authz)
-	return bgrpc.AuthzToPB(authz)
+	})
+
+	// Because Authorizations do not have a "processing" state like Orders do,
+	// a client POSTing to a Challenge URL does not result in any state changes
+	// for the Authorization itself. Therefore we just return the exact same authz
+	// as we started with.
+	return req.Authz, nil
 }
 
 // revokeCertificate updates the database to mark the certificate as revoked,
