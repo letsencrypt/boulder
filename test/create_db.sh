@@ -37,7 +37,7 @@ function create_empty_db() {
   local db="${1}"
   local dbconn="${2}"
   create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
-  mysql ${dbconn} -e "${create_script}" || exit_err "unable to create ${db} on ${cbconn}"
+  mysql ${dbconn} -e "${create_script}" || exit_err "unable to create ${db} on ${dbconn}"
 }
 
 dbconn="-u root -h ${DB_HOST} --port ${DB_PORT}"
