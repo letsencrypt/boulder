@@ -5,12 +5,9 @@ datasources:
     type: grafana-clickhouse-datasource
     jsonData:
       defaultDatabase: otel
-      port: 9440
+      port: 9000
       server: clickhouse
       username: grafana_reader
-      tlsAuth: true
-      tlsAuthWithCACert: true
-      tlsSkipVerify: true
       logs:
         defaultDatabase: otel
         defaultTable: otel_logs
@@ -25,11 +22,6 @@ datasources:
         otelEnabled: true
         otelVersion: latest
     secureJsonData:
-      tlsCACert: |
-        $__file{/etc/grafana/certs/minica.pem}
-      tlsClientCert: |
-        $__file{/etc/grafana/certs/grafana/cert.pem}
-      tlsClientKey: |
-        $__file{/etc/grafana/certs/grafana/key.pem}
+      password: grafana_reader_very_bad_password
     isDefault: true
     editable: true

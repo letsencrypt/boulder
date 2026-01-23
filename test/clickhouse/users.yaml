@@ -7,9 +7,7 @@ users:
       profile: default
       quota: default
   grafana_reader:
-    ssl_certificates:
-      subject_alt_name:
-        - "DNS:grafana"
+    password: grafana_reader_very_bad_password
     grants:
       query:
         - GRANT SELECT ON otel.*
@@ -18,9 +16,7 @@ users:
         - '::/0'
     quota: default
   otel_writer:
-    ssl_certificates:
-      subject_alt_name:
-        - "DNS:otel-collector"
+    password: otel_writer_very_bad_password
     grants:
       query:
         - GRANT CREATE DATABASE ON otel.*

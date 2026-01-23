@@ -50,11 +50,6 @@ ipki() (
     minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder" &
   done
 
-  # Test services
-  for SERVICE in clickhouse grafana otel-collector; do
-    minica -domains "${SERVICE}" &
-  done
-
   wait
 
   # minica sets restrictive directory permissions, but we don't want that

@@ -7,8 +7,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -47,29 +45,13 @@ func getTraceFromClickHouse(t *testing.T, traceID trace.TraceID) Trace {
 	t.Helper()
 
 	query := fmt.Sprintf("SELECT TraceId, SpanId, ParentSpanId, SpanName, ServiceName FROM otel.otel_traces WHERE TraceId = '%s'", traceID.String())
-	clickhouseURL := fmt.Sprintf("https://clickhouse:8443/?default_format=JSON&query=%s", url.QueryEscape(query))
+	clickhouseURL := fmt.Sprintf("http://clickhouse:8123/?default_format=JSON&query=%s", url.QueryEscape(query))
 
 	req, err := http.NewRequest("GET", clickhouseURL, nil)
 	test.AssertNotError(t, err, "failed to create request")
 	req.SetBasicAuth("default", "default_user_very_bad_password")
 
-	caCert, err := os.ReadFile("../certs/ipki/minica.pem")
-	test.AssertNotError(t, err, "failed to read CA cert")
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	clientCert, err := tls.LoadX509KeyPair("../certs/ipki/otel-collector/cert.pem", "../certs/ipki/otel-collector/key.pem")
-	test.AssertNotError(t, err, "failed to load client key pair")
-
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs:            caCertPool,
-			Certificates:       []tls.Certificate{clientCert},
-			InsecureSkipVerify: true,
-		},
-	}
-	client := &http.Client{Transport: tr}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	test.AssertNotError(t, err, "failed to query clickhouse")
 	defer resp.Body.Close()
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
