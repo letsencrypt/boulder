@@ -132,7 +132,7 @@ func TestAIAProbe_Metrics(t *testing.T) {
 
 	conf := AIAConf{URL: ts.URL}
 	colls := conf.Instrument()
-	
+
 	// Register metrics with a test registry
 	testReg := prometheus.NewRegistry()
 	for _, coll := range colls {
