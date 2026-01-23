@@ -23,8 +23,6 @@ import (
 
 type Config struct {
 	Admin struct {
-		// TODO(#7350): Remove this once removed from production configs.
-		DB cmd.DBConfig
 		// TLS controls the TLS client the admin tool uses for gRPC connections.
 		TLS cmd.TLSConfig
 
