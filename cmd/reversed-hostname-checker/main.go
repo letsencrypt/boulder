@@ -40,7 +40,7 @@ func main() {
 
 	scanner := bufio.NewScanner(input)
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 	pa, err := policy.New(nil, nil, logger)
 	if err != nil {
 		log.Fatal(err)

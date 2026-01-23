@@ -1,7 +1,13 @@
+// NOTE: Any changes to this service MUST also be made to email.Exporter and
+// kept in sync with the adapter in cmd/email-exporter/main.go.
+//
+// TODO(#8410): Remove this comment once we've fully migrated to
+// salesforce.Exporter.
+
 syntax = "proto3";
 
-package email;
-option go_package = "github.com/letsencrypt/boulder/email/proto";
+package salesforce;
+option go_package = "github.com/letsencrypt/boulder/salesforce/proto";
 
 import "google/protobuf/empty.proto";
 

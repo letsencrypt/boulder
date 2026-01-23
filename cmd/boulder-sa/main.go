@@ -60,7 +60,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	dbMap, err := sa.InitWrappedDb(c.SA.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")

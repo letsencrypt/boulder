@@ -3361,7 +3361,7 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authenticated revocation"), []string{
-		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"RegID":1,"Method":"applicant"}`,
+		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"Requester":1,"Method":"applicant"}`,
 	})
 }
 
@@ -3390,7 +3390,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authenticated revocation"), []string{
-		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":1,"RegID":0,"Method":"privkey"}`,
+		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":1,"Requester":0,"Method":"privkey"}`,
 	})
 }
 
@@ -3638,7 +3638,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	authzJSON, err := json.Marshal(authz)
 	test.AssertNotError(t, err, "Failed to marshal authz")
 	test.AssertNotContains(t, string(authzJSON), "\"id\":\"12345\"")
-	test.AssertNotContains(t, string(authzJSON), "\"registrationID\":\"1\"")
+	test.AssertNotContains(t, string(authzJSON), "\"requester\":\"1\"")
 }
 
 func TestPrepRevokedAuthzForDisplay(t *testing.T) {

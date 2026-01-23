@@ -23,8 +23,6 @@ import (
 
 type Config struct {
 	Admin struct {
-		// DB controls the admin tool's direct connection to the database.
-		DB cmd.DBConfig
 		// TLS controls the TLS client the admin tool uses for gRPC connections.
 		TLS cmd.TLSConfig
 
@@ -132,7 +130,7 @@ func main() {
 	cmd.FailOnError(err, "creating admin object")
 
 	// Finally, run the selected subcommand.
-	if a.dryRun {
+	if *dryRun {
 		a.log.AuditInfof("admin tool executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
 	} else {
 		a.log.AuditInfof("admin tool executing with the following arguments: %q", strings.Join(os.Args, " "))
@@ -141,7 +139,7 @@ func main() {
 	err = subcommand.Run(context.Background(), a)
 	cmd.FailOnError(err, "executing subcommand")
 
-	if a.dryRun {
+	if *dryRun {
 		a.log.AuditInfof("admin tool has successfully completed executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
 		a.log.Info("Dry run complete. Pass -dry-run=false to mutate the database.")
 	} else {

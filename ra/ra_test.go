@@ -3276,34 +3276,6 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	test.AssertEquals(t, event.Rechecked, 2)
 }
 
-// TestUpdateMissingAuthorization tests the race condition where a challenge is
-// updated to valid concurrently with another attempt to have the challenge
-// updated. Previously this would return a `berrors.InternalServer` error when
-// the row was found missing from `pendingAuthorizations` by the 2nd update
-// since the 1st had already deleted it. We accept this may happen and now test
-// for a `berrors.NotFound` error return.
-//
-// See https://github.com/letsencrypt/boulder/issues/3201
-func TestUpdateMissingAuthorization(t *testing.T) {
-	_, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	ctx := context.Background()
-
-	authzPB := createPendingAuthorization(t, sa, registration.Id, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
-	authz, err := bgrpc.PBToAuthz(authzPB)
-	test.AssertNotError(t, err, "failed to deserialize authz")
-
-	// Twiddle the authz to pretend its been validated by the VA
-	authz.Challenges[0].Status = "valid"
-	err = ra.recordValidation(ctx, authz.ID, fc.Now().Add(24*time.Hour), &authz.Challenges[0])
-	test.AssertNotError(t, err, "ra.recordValidation failed")
-
-	// Try to record the same validation a second time.
-	err = ra.recordValidation(ctx, authz.ID, fc.Now().Add(25*time.Hour), &authz.Challenges[0])
-	test.AssertError(t, err, "ra.recordValidation didn't fail")
-	test.AssertErrorIs(t, err, berrors.NotFound)
-}
-
 func TestPerformValidationBadChallengeType(t *testing.T) {
 	_, _, ra, _, fc, _, cleanUp := initAuthorities(t)
 	defer cleanUp()

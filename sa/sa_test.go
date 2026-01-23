@@ -2226,6 +2226,57 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertDeepEquals(t, dbVer.Challenges[0].Error, prob)
 }
 
+func TestFinalizeAuthorization2_Race(t *testing.T) {
+	// Attempting to finalize the same authorization twice, e.g. because two
+	// requests to validate one of its challenges arrived in rapid succession and
+	// both succeeded, should result in a NotFound error for the second attempt.
+	sa, fc := initSA(t)
+	fc.Set(mustTime("2021-01-01 00:00"))
+
+	reg := createWorkingRegistration(t, sa)
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
+
+	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: authzID,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   []byte("1.1.1.1"),
+				ResolverAddrs: []string{"resolver:5353"},
+			},
+		},
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(fc.Now().Add(time.Hour * 24)),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(fc.Now()),
+	})
+	if err != nil {
+		t.Fatalf("FinalizeAuthorization2() = %#v, but want success", err)
+	}
+
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: authzID,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   []byte("2.2.2.2"),
+				ResolverAddrs: []string{"resolver:5354"},
+			},
+		},
+		Status:      string(core.StatusInvalid),
+		Expires:     timestamppb.New(fc.Now().Add(time.Hour * 2)),
+		Attempted:   string(core.ChallengeTypeTLSALPN01),
+		AttemptedAt: timestamppb.New(fc.Now()),
+	})
+	if !errors.Is(err, berrors.NotFound) {
+		t.Fatalf("FinalizeAuthorization2(repeat ID) = %s, but want NotFound error", err)
+	}
+}
+
 func TestRehydrateHostPort(t *testing.T) {
 	sa, fc := initSA(t)
 

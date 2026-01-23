@@ -574,6 +574,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 	var failed []string
 	var passedRIRs = map[string]struct{}{}
 	var firstProb *probs.ProblemDetails
+	var slowTimerSet bool
 
 	for resp := range responses {
 		var currProb *probs.ProblemDetails
@@ -585,7 +586,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			if core.IsCanceled(resp.err) {
 				currProb = probs.ServerInternal("Secondary validation RPC canceled")
 			} else {
-				va.log.Errf("Operation on remote VA (%s) failed: %s", resp.addr, resp.err)
+				va.log.AuditErrf("Operation on remote VA (%s) failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Secondary validation RPC failed")
 			}
 		} else if resp.result.GetProblem() != nil {
@@ -595,7 +596,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.GetProblem())
 			if err != nil {
-				va.log.Errf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
+				va.log.AuditErrf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary validation RPC returned malformed result")
 			}
 		} else {
@@ -609,13 +610,14 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
-		if va.slowRemoteTimeout != 0 {
+		if va.slowRemoteTimeout != 0 && !slowTimerSet {
 			// If enough perspectives have passed, or enough perspectives have
 			// failed, set a tighter deadline for the remaining perspectives.
 			if (len(passed) >= required && len(passedRIRs) >= requiredRIRs) ||
 				(len(failed) > remoteVACount-required) {
 				timer := time.AfterFunc(va.slowRemoteTimeout, cancel)
 				defer timer.Stop()
+				slowTimerSet = true
 			}
 		}
 
