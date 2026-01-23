@@ -22,7 +22,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -493,15 +492,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 		// Second, insert the new order.
 		created := ssa.clk.Now()
-		var encodedAuthzs []byte
-		var err error
-		if features.Get().StoreAuthzsInOrders {
-			encodedAuthzs, err = proto.Marshal(&sapb.Authzs{
-				AuthzIDs: allAuthzIds,
-			})
-			if err != nil {
-				return nil, err
-			}
+		encodedAuthzs, err := proto.Marshal(&sapb.Authzs{
+			AuthzIDs: allAuthzIds,
+		})
+		if err != nil {
+			return nil, err
 		}
 
 		om := orderModel{
@@ -517,22 +512,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		orderID := om.ID
-
-		// Third, insert all of the orderToAuthz relations.
-		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"})
-		if err != nil {
-			return nil, err
-		}
-		for _, id := range allAuthzIds {
-			err := inserter.Add([]any{orderID, id})
-			if err != nil {
-				return nil, err
-			}
-		}
-		err = inserter.Insert(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
 
 		// Fourth, insert the FQDNSet entry for the order.
 		err = addOrderFQDNSet(ctx, tx, identifier.FromProtoSlice(req.NewOrder.Identifiers), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
