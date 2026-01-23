@@ -1910,45 +1910,60 @@ func TestNewOrder_ProfileIdentifierTypes(t *testing.T) {
 
 	testCases := []struct {
 		name       string
+		profile    string
 		identTypes []identifier.IdentifierType
 		idents     []*corepb.Identifier
 		expectErr  string
 	}{
 		{
+			name:       "Default profile bans IPs",
+			profile:    "",
+			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
+			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto()},
+			expectErr:  "Default profile does not permit IP address identifiers",
+		},
+		{
 			name:       "Permit DNS, provide DNS names",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
 		},
 		{
 			name:       "Permit IP, provide IPs",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewIP(randomIPv6()).ToProto()},
 		},
 		{
 			name:       "Permit DNS & IP, provide DNS & IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS, identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
 		},
 		{
 			name:       "Permit DNS, provide IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto()},
 			expectErr:  "Profile \"test\" does not permit IP address identifiers",
 		},
 		{
 			name:       "Permit DNS, provide DNS & IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto(), identifier.NewIP(randomIPv6()).ToProto()},
 			expectErr:  "Profile \"test\" does not permit IP address identifiers",
 		},
 		{
 			name:       "Permit IP, provide DNS",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto()},
 			expectErr:  "Profile \"test\" does not permit DNS identifiers",
 		},
 		{
 			name:       "Permit IP, provide DNS & IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
 			expectErr:  "Profile \"test\" does not permit DNS identifiers",
@@ -1967,7 +1982,7 @@ func TestNewOrder_ProfileIdentifierTypes(t *testing.T) {
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         registration.Id,
 				Identifiers:            tc.idents,
-				CertificateProfileName: "test",
+				CertificateProfileName: tc.profile,
 			}
 			_, err := ra.NewOrder(context.Background(), orderReq)
 
