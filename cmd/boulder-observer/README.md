@@ -25,9 +25,12 @@ Prometheus.
       * [CRL](#crl)
         * [Schema](#schema-4)
         * [Example](#example-4)
-      * [TLS](#tls)
+      * [AIA](#aia)
         * [Schema](#schema-5)
         * [Example](#example-5)
+      * [TLS](#tls)
+        * [Schema](#schema-6)
+        * [Example](#example-6)
   * [Metrics](#metrics)
     * [Global Metrics](#global-metrics)
       * [obs_monitors](#obs_monitors)
@@ -36,6 +39,9 @@ Prometheus.
       * [obs_crl_this_update](#obs_crl_this_update)
       * [obs_crl_next_update](#obs_crl_next_update)
       * [obs_crl_revoked_cert_count](#obs_crl_revoked_cert_count)
+    * [AIA Metrics](#aia-metrics)
+      * [obs_aia_not_before](#obs_aia_not_before)
+      * [obs_aia_not_after](#obs_aia_not_after)
     * [TLS Metrics](#tls-metrics)
       * [obs_crl_this_update](#obs_tls_not_after)
       * [obs_crl_next_update](#obs_tls_reason)
@@ -203,6 +209,23 @@ monitors:
       url: http://x1.c.lencr.org/
 ```
 
+#### AIA
+
+##### Schema
+
+`url`: Scheme + Hostname to grab the AIA certificate from (e.g. `http://r3.i.lencr.org/`).
+
+##### Example
+
+```yaml
+monitors:
+  - 
+    period: 1h
+    kind: AIA
+    settings:
+      url: http://r3.i.lencr.org/
+```
+
 #### TLS
 
 ##### Schema
@@ -320,6 +343,39 @@ Count of revoked certificates in a CRL.
 **Labels:**
 
 `url`: Url of the CRL
+
+### AIA Metrics
+
+These metrics will be available whenever a valid AIA prober is configured.
+
+#### obs_aia_not_before
+
+Unix timestamp value (in seconds) of the notBefore field for an AIA certificate.
+
+**Labels:**
+
+`url`: URL of the AIA certificate
+
+#### obs_aia_not_after
+
+Unix timestamp value (in seconds) of the notAfter field for an AIA certificate.
+
+**Labels:**
+
+`url`: URL of the AIA certificate
+
+**Example Usage:**
+
+This is a sample rule that alerts when an AIA certificate has a notAfter timestamp indicating that the certificate will expire within the next 30 days:
+
+```yaml
+- alert: AIACertExpiresSoon
+  expr: obs_aia_not_after{url="http://r3.i.lencr.org/"} <= time() + 2592000
+  labels:
+    severity: warning
+  annotations:
+    description: 'AIA certificate expires within 30 days'
+```
 
 ### TLS Metrics
 

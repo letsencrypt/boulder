@@ -95,3 +95,8 @@ monitors:
     kind: TCP
     settings:
       hostport: acme-v02.api.letsencrypt.org:443
+  -
+    period: 1h
+    kind: AIA
+    settings:
+      url: http://r3.i.lencr.org/
