@@ -1,6 +1,7 @@
 package probers
 
 import (
+	"context"
 	"crypto/x509"
 	"io"
 	"net/http"
@@ -30,7 +31,17 @@ func (p AIAProbe) Kind() string {
 // Probe requests the configured AIA certificate and publishes metrics about it if found.
 func (p AIAProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
-	resp, err := http.Get(p.url)
+	
+	// Create a client with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	
+	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
+	if err != nil {
+		return false, time.Since(start)
+	}
+	
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return false, time.Since(start)
 	}
