@@ -72,7 +72,11 @@ processors:
 
 exporters:
   clickhouse:
-    endpoint: http://clickhouse:8123
+    endpoint: https://clickhouse:8443
+    tls:
+      ca_file: /etc/otel-collector/certs/minica.pem
+      cert_file: /etc/otel-collector/certs/otel-collector/cert.pem
+      key_file: /etc/otel-collector/certs/otel-collector/key.pem
     database: otel
     username: otel_writer
     password: otel_writer_very_bad_password

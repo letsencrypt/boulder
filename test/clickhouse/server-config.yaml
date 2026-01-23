@@ -1,0 +1,21 @@
+tcp_port_secure: 9440
+https_port: 8443
+
+openSSL:
+  server:
+    certificateFile: "/etc/clickhouse-server/certs/clickhouse/cert.pem"
+    privateKeyFile: "/etc/clickhouse-server/certs/clickhouse/key.pem"
+    caConfig: "/etc/clickhouse-server/certs/minica.pem"
+    verificationMode: "relaxed"
+    requireClientCertificate: true
+    loadDefaultCAFile: true
+    cacheSessions: true
+    disableProtocols: "sslv2,sslv3"
+    preferServerCiphers: true
+  client:
+    loadDefaultCAFile: true
+    caConfig: "/etc/clickhouse-server/certs/minica.pem"
+    verificationMode: "relaxed"
+    cacheSessions: true
+    disableProtocols: "sslv2,sslv3"
+    preferServerCiphers: true

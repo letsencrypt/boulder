@@ -142,12 +142,16 @@ services:
     container_name: clickhouse
     ports:
       - "8123:8123"  # HTTP interface
+      - "8443:8443"  # HTTPS interface
       - "9000:9000"  # Native interface
+      - "9440:9440"  # Native TLS interface
     environment:
       CLICKHOUSE_DB: otel
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./test/clickhouse/users.yaml:/etc/clickhouse-server/users.d/users.yaml:ro
+      - ./test/clickhouse/server-config.yaml:/etc/clickhouse-server/config.d/server-config.yaml:ro
+      - ./test/certs/ipki:/etc/clickhouse-server/certs:ro
     ulimits:
       nofile:
         soft: 262144
@@ -163,6 +167,7 @@ services:
     volumes:
       - logs:/var/log/boulder/
       - ./test/otelcol/config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./test/certs/ipki:/etc/otel-collector/certs:ro
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
@@ -187,6 +192,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./test/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./test/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./test/certs/ipki:/etc/grafana/certs:ro
     depends_on:
       - clickhouse
     restart: unless-stopped
