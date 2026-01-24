@@ -172,7 +172,11 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 			},
 		)
 		if err != nil {
-			c.logger.AuditErrf("finding starting certificate: %s", err)
+			c.logger.AuditErr("finding starting certificate", err, map[string]any{
+				"begin":   queryBegin,
+				"end":     queryEnd,
+				"attempt": retries + 1,
+			})
 			retries++
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
@@ -234,7 +238,12 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 			},
 		)
 		if err != nil {
-			c.logger.AuditErrf("selecting certificates: %s", err)
+			c.logger.AuditErr("selecting certificates", err, map[string]any{
+				"begin":        c.issuedReport.begin,
+				"end":          c.issuedReport.end,
+				"batchStartID": batchStartID,
+				"attempt":      retries + 1,
+			})
 			retries++
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
@@ -519,7 +528,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 				for _, ident := range idents {
 					identValues = append(identValues, ident.Value)
 				}
-				c.logger.AuditErrf("Certificate %s %s: %s", cert.Serial, identValues, err)
+				c.logger.Warningf("Certificate %s %s: %s", cert.Serial, identValues, err)
 			}
 		}
 	}

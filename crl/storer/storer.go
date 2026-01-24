@@ -241,15 +241,18 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 
 	if err != nil {
 		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
-		cs.log.AuditErrf("CRL upload failed: id=[%s] err=[%s]", crlId, err)
+		cs.log.AuditErr("CRL upload failed", err, map[string]any{"id": crlId})
 		return fmt.Errorf("uploading to S3: %w", err)
 	}
 
 	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
-	cs.log.AuditInfof(
-		"CRL uploaded: id=[%s] issuerCN=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-		crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificateEntries),
-	)
+	cs.log.AuditInfo("CRL uploaded", map[string]any{
+		"id":         crlId,
+		"issuerCN":   issuer.Subject.CommonName,
+		"thisUpdate": crl.ThisUpdate,
+		"nextUpdate": crl.NextUpdate,
+		"numEntries": len(crl.RevokedCertificateEntries),
+	})
 
 	return stream.SendAndClose(&emptypb.Empty{})
 }

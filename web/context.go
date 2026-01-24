@@ -197,10 +197,13 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	if logEvent.suppressed {
 		return
 	}
-	var msg string
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.AuditErrf("failed to marshal logEvent - %s - %#v", msg, err)
+		th.log.Errf("%s %s %d %d %d %s JSON=%s",
+			logEvent.Method, logEvent.Endpoint, logEvent.Requester, logEvent.Code,
+			int(logEvent.Latency*1000), logEvent.RealIP, map[string]any{
+				"InternalErrors": fmt.Errorf("failed to marshal json log event: %w", err),
+			})
 		return
 	}
 	th.log.Infof("%s %s %d %d %d %s JSON=%s",

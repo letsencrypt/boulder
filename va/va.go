@@ -586,7 +586,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			if core.IsCanceled(resp.err) {
 				currProb = probs.ServerInternal("Secondary validation RPC canceled")
 			} else {
-				va.log.AuditErrf("Operation on remote VA (%s) failed: %s", resp.addr, resp.err)
+				va.log.Errf("Operation on remote VA (%s) failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Secondary validation RPC failed")
 			}
 		} else if resp.result.GetProblem() != nil {
@@ -596,7 +596,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.GetProblem())
 			if err != nil {
-				va.log.AuditErrf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
+				va.log.Errf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary validation RPC returned malformed result")
 			}
 		} else {
@@ -715,7 +715,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 
 		// Log the total validation latency.
 		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
-		va.log.AuditObject("Validation result", logEvent)
+		va.log.AuditInfo("Validation result", logEvent)
 	}()
 
 	// For dns-account-01 challenges, construct the account URI from the configured prefix

@@ -1002,7 +1002,7 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 		return err
 	}
 
-	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
+	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
 		Serial:    core.SerialToString(cert.SerialNumber),
 		Reason:    reason,
 		Requester: acct.ID,
@@ -1055,7 +1055,7 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 	}
 
-	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
+	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
 		Serial:    core.SerialToString(cert.SerialNumber),
 		Reason:    reason,
 		Requester: 0,
@@ -2036,8 +2036,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	if order.Error != nil {
 		prob, err := bgrpc.PBToProblemDetails(order.Error)
 		if err != nil {
-			wfe.log.AuditErrf("Internal error converting order ID %d "+
-				"proto buf prob to problem details: %q", order.Id, err)
+			wfe.log.AuditErr("Failed to serialize order problem details", err, map[string]any{
+				"requester": order.RegistrationID,
+				"order":     order.Id,
+				"prob":      order.Error.Detail,
+			})
 		}
 		respObj.Error = prob
 		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type

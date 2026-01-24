@@ -831,7 +831,11 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				AccountURIID:     authz.RegistrationID,
 			})
 			if err != nil {
-				ra.log.AuditErrf("Rechecking CAA: %s", err)
+				ra.log.AuditErr("Rechecking CAA", err, map[string]any{
+					"requester":  authz.RegistrationID,
+					"identifier": authz.Identifier,
+					"method":     method,
+				})
 				err = berrors.InternalServerError(
 					"Internal error rechecking CAA for authorization ID %v (%v)",
 					authz.ID, authz.Identifier.Value,
@@ -901,7 +905,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 	// Convert the problem to a protobuf problem for the *corepb.Order field
 	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
 	if err != nil {
-		ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
+		ra.log.AuditErr("Converting order problem to PB", err, map[string]any{
+			"requester": order.RegistrationID,
+			"order":     order.Id,
+			"prob":      prob,
+		})
 		return
 	}
 
@@ -912,7 +920,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 		Error: order.Error,
 	})
 	if err != nil {
-		ra.log.AuditErrf("Could not persist order error: %q", err)
+		ra.log.AuditErr("Persisting failed order", err, map[string]any{
+			"requester": order.RegistrationID,
+			"order":     order.Id,
+			"prob":      order.Error,
+		})
 	}
 }
 
@@ -995,7 +1007,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 			if err != nil {
 				// We only log here, because this is in a background goroutine with
 				// no parent goroutine waiting for it to receive the error.
-				ra.log.AuditErrf("Asynchronous finalization failed: %s", err.Error())
+				ra.log.AuditErr("Asynchronous finalization failed", err, map[string]any{
+					"requester": order.RegistrationID,
+					"order":     order.Id,
+				})
 			}
 		})
 		return order, nil
@@ -1216,7 +1231,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	}
 
 	logEvent.ResponseTime = ra.clk.Now()
-	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
+	ra.log.AuditInfo(fmt.Sprintf("Certificate request - %s", result), logEvent)
 
 	return order, err
 }
@@ -1581,13 +1596,16 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// parallel-validation race: a different validation attempt has already
 				// updated this authz, so we failed to find a *pending* authz with the
 				// given ID to update.
-				ra.log.Infof(
-					"Failed to record validation (likely parallel validation race): regID=[%d] authzID=[%s] err=[%s]",
-					authz.RegistrationID, authz.ID, err)
+				ra.log.InfoObject("Failed to record validation (likely parallel validation race)", map[string]any{
+					"requester": authz.RegistrationID,
+					"authz":     authz.ID,
+					"error":     err.Error(),
+				})
 			} else {
-				ra.log.AuditErrf(
-					"Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
-					authz.RegistrationID, authz.ID, err)
+				ra.log.AuditErr("Failed to record validation (likely parallel validation race)", err, map[string]any{
+					"requester": authz.RegistrationID,
+					"authz":     authz.ID,
+				})
 			}
 		}
 	})
@@ -1715,7 +1733,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		if err != nil {
 			logEvent.Error = err.Error()
 		}
-		ra.log.AuditObject("Revocation request:", logEvent)
+		ra.log.AuditInfo("Revocation request", logEvent)
 	}()
 
 	metadata, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: serialString})
@@ -1859,7 +1877,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		if err != nil {
 			logEvent.Error = err.Error()
 		}
-		ra.log.AuditObject("Revocation request:", logEvent)
+		ra.log.AuditInfo("Revocation request", logEvent)
 	}()
 
 	// We revoke the cert before adding it to the blocked keys list, to avoid a
@@ -1948,7 +1966,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if err != nil {
 			logEvent.Error = err.Error()
 		}
-		ra.log.AuditObject("Revocation request:", logEvent)
+		ra.log.AuditInfo("Revocation request", logEvent)
 	}()
 
 	var cert *x509.Certificate

@@ -195,20 +195,29 @@ func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
 // invoke exits early and returns true if there is no work to be done.
 // Otherwise, it processes a single key in the blockedKeys table and returns false.
 func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
+	logEvent := make(map[string]any)
+	var err error
+	defer func() {
+		if err != nil {
+			bkr.logger.AuditErr("Error while processing bad key", err, logEvent)
+		} else {
+			bkr.logger.AuditInfo("Processed bad key", logEvent)
+		}
+	}()
+
 	// Gather a count of rows to be processed.
 	uncheckedCount, err := bkr.countUncheckedKeys(ctx)
 	if err != nil {
 		return false, err
 	}
+	logEvent["keysToProcess"] = uncheckedCount
 
 	// Set the gauge to the number of rows to be processed (max:
 	// blockedKeysGaugeLimit).
 	bkr.keysToProcess.Set(float64(uncheckedCount))
 
 	if uncheckedCount >= blockedKeysGaugeLimit {
-		bkr.logger.AuditInfof("found >= %d unchecked blocked keys left to process", uncheckedCount)
-	} else {
-		bkr.logger.AuditInfof("found %d unchecked blocked keys left to process", uncheckedCount)
+		logEvent["keysToProcessOverflow"] = true
 	}
 
 	// select a row to process
@@ -219,17 +228,17 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 		}
 		return false, err
 	}
-	bkr.logger.AuditInfof("found unchecked block key to work on: %s", unchecked)
+	logEvent["keyHash"] = unchecked.KeyHash
+	logEvent["revokedBy"] = unchecked.RevokedBy
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash
 	unrevokedCerts, err := bkr.findUnrevoked(ctx, unchecked)
 	if err != nil {
-		bkr.logger.AuditInfof("finding unrevoked certificates related to %s: %s", unchecked, err)
 		return false, err
 	}
+	logEvent["certsToProcess"] = len(unrevokedCerts)
+
 	if len(unrevokedCerts) == 0 {
-		bkr.logger.AuditInfof("found no certificates that need revoking related to %s, marking row as checked", unchecked)
-		// mark row as checked
 		err = bkr.markRowChecked(ctx, unchecked)
 		if err != nil {
 			return false, err
@@ -241,7 +250,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 	for _, cert := range unrevokedCerts {
 		serials = append(serials, cert.Serial)
 	}
-	bkr.logger.AuditInfof("revoking serials %v for key with hash %x", serials, unchecked.KeyHash)
+	logEvent["serials"] = serials
 
 	// revoke each certificate
 	err = bkr.revokeCerts(unrevokedCerts)
@@ -384,13 +393,11 @@ func main() {
 		noWork, err := bkr.invoke(context.Background())
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
-			logger.AuditErrf("failed to process blockedKeys row: %s", err)
 			// Calculate and sleep for a backoff interval
 			bkr.backoff()
 			continue
 		}
 		if noWork {
-			logger.Info("no work to do")
 			// Calculate and sleep for a backoff interval
 			bkr.backoff()
 		} else {

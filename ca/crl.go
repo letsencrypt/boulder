@@ -117,28 +117,32 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 	// Compute a unique ID for this issuer-number-shard combo, to tie together all
 	// the audit log lines related to its issuance.
 	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.NameID()) + req.Number.String() + fmt.Sprintf("%d", req.Shard))
-	ci.log.AuditInfof(
-		"Signing CRL: logID=[%s] issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] numEntries=[%d]",
-		logID, issuer.Cert.Subject.CommonName, req.Number.String(), req.Shard, req.ThisUpdate, len(rcs),
-	)
+	ci.log.AuditInfo("Signing CRL", map[string]any{
+		"logID":      logID,
+		"issuer":     issuer.Cert.Subject.CommonName,
+		"number":     req.Number.String(),
+		"shard":      req.Shard,
+		"thisUpdate": req.ThisUpdate,
+		"numEntries": len(rcs),
+	})
 
 	if len(rcs) > 0 {
 		builder := strings.Builder{}
 		for i := range len(rcs) {
-			if builder.Len() == 0 {
-				fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
-			}
-
 			fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
 
 			if builder.Len() >= ci.maxLogLen {
-				fmt.Fprint(&builder, "]")
-				ci.log.AuditInfo(builder.String())
+				ci.log.AuditInfo("Signing CRL entries", map[string]any{
+					"logID":   logID,
+					"entries": fmt.Sprintf("[%s]", builder.String()),
+				})
 				builder = strings.Builder{}
 			}
 		}
-		fmt.Fprint(&builder, "]")
-		ci.log.AuditInfo(builder.String())
+		ci.log.AuditInfo("Signing CRL entries", map[string]any{
+			"logID":   logID,
+			"entries": fmt.Sprintf("[%s]", builder.String()),
+		})
 	}
 
 	req.Entries = rcs
@@ -151,10 +155,11 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 	ci.metrics.signatureCount.With(prometheus.Labels{"purpose": "crl", "issuer": issuer.Name()}).Inc()
 
 	hash := sha256.Sum256(crlBytes)
-	ci.log.AuditInfof(
-		"Signing CRL success: logID=[%s] size=[%d] hash=[%x]",
-		logID, len(crlBytes), hash,
-	)
+	ci.log.AuditInfo("Signing CRL success", map[string]any{
+		"logID": logID,
+		"size":  len(crlBytes),
+		"hash":  fmt.Sprintf("%x", hash),
+	})
 
 	for i := 0; i < len(crlBytes); i += 1000 {
 		j := min(i+1000, len(crlBytes))
