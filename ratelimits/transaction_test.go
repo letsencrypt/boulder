@@ -281,32 +281,32 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 			name: "2 valid overrides",
 			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
 				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.com", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.net", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "example.com"), Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "example.net"), Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
 				}}, nil
 			},
 			expectOverrides: map[string]Limit{
-				"example.com": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
-				"example.net": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				joinWithColon(CertificatesPerDomain.EnumString(), "example.com"): {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				joinWithColon(CertificatesPerDomain.EnumString(), "example.net"): {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
 			},
 		},
 		{
 			name: "2 valid & 4 incomplete overrides",
 			overrides: func(context.Context, *emptypb.Empty, ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.RateLimitOverrideResponse], error) {
 				return &mocks.ServerStreamClient[sapb.RateLimitOverrideResponse]{Results: []*sapb.RateLimitOverrideResponse{
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.com", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "example.net", Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.com"}},
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "bad-example.net"}},
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "worse-example.com"}},
-					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: "even-worse-example.xyz"}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "example.com"), Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "example.net"), Period: &durationpb.Duration{Seconds: 1}, Count: 1, Burst: 1}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "bad-example.com")}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "bad-example.net")}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "worse-example.com")}},
+					{Override: &sapb.RateLimitOverride{LimitEnum: int64(StringToName["CertificatesPerDomain"]), BucketKey: joinWithColon(CertificatesPerDomain.EnumString(), "even-worse-example.xyz")}},
 				}}, nil
 			},
 			expectOverrides: map[string]Limit{
-				"example.com": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
-				"example.net": {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, Comment: "Last Updated: 1970-01-01 - ", emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				joinWithColon(CertificatesPerDomain.EnumString(), "example.com"): {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
+				joinWithColon(CertificatesPerDomain.EnumString(), "example.net"): {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
 			},
-			expectLog:            "ERR: hydrating CertificatesPerDomain override with key \"bad-example.com\": invalid burst '0', must be > 0",
+			expectLog:            fmt.Sprintf("ERR: hydrating CertificatesPerDomain override with key %q: invalid burst '0', must be > 0", joinWithColon(CertificatesPerDomain.EnumString(), "bad-example.com")),
 			expectOverrideErrors: 4,
 		},
 	}

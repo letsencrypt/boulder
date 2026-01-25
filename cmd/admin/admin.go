@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -18,12 +20,27 @@ import (
 // admin holds all of the external connections necessary to perform admin
 // actions on a boulder deployment.
 type admin struct {
-	rac   rapb.RegistrationAuthorityClient
-	sac   sapb.StorageAuthorityClient
+	rac   adminRAClient
+	sac   adminSAClient
 	saroc sapb.StorageAuthorityReadOnlyClient
 
 	clk clock.Clock
 	log blog.Logger
+}
+
+// adminRAClient defines the subset of RA methods that the admin tool relies on.
+type adminRAClient interface {
+	AdministrativelyRevokeCertificate(context.Context, *rapb.AdministrativelyRevokeCertificateRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+}
+
+// adminSAClient defines the subset of SA methods that the admin tool relies on.
+type adminSAClient interface {
+	AddBlockedKey(context.Context, *sapb.AddBlockedKeyRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+	AddRateLimitOverride(context.Context, *sapb.AddRateLimitOverrideRequest, ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error)
+	DisableRateLimitOverride(context.Context, *sapb.DisableRateLimitOverrideRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+	EnableRateLimitOverride(context.Context, *sapb.EnableRateLimitOverrideRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+	PauseIdentifiers(context.Context, *sapb.PauseRequest, ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error)
+	UnpauseAccount(context.Context, *sapb.RegistrationID, ...grpc.CallOption) (*sapb.Count, error)
 }
 
 // newAdmin constructs a new admin object on the heap and returns a pointer to
@@ -51,7 +68,7 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
 
-	var rac rapb.RegistrationAuthorityClient = dryRunRAC{log: logger}
+	var rac adminRAClient = dryRunRAC{log: logger}
 	if !dryRun {
 		raConn, err := bgrpc.ClientSetup(c.Admin.RAService, tlsConfig, scope, clk)
 		if err != nil {
@@ -66,7 +83,7 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 	}
 	saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	var sac sapb.StorageAuthorityClient = dryRunSAC{log: logger}
+	var sac adminSAClient = dryRunSAC{log: logger}
 	if !dryRun {
 		sac = sapb.NewStorageAuthorityClient(saConn)
 	}

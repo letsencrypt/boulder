@@ -263,15 +263,15 @@ func main() {
 	oauthMux.HandleFunc("/services/oauth2/token", ts.getTokenHandler)
 	oauthMux.HandleFunc("/services/data/v64.0/sobjects/Case", ts.createCaseHandler)
 	oauthMux.HandleFunc("/cases", ts.queryCasesHandler)
-	oauthServer := &http.Server{
+	salesforceServer := &http.Server{
 		Addr:        c.SalesforceAddr,
 		Handler:     oauthMux,
 		ReadTimeout: 30 * time.Second,
 	}
 
-	log.Printf("pardot-test-srv Salesforce REST API and OAuth server listening at %s", c.SalesforceAddr)
+	log.Printf("salesforce-test-srv Salesforce REST API and OAuth server listening at %s", c.SalesforceAddr)
 	go func() {
-		err := oauthServer.ListenAndServe()
+		err := salesforceServer.ListenAndServe()
 		if err != nil {
 			log.Fatalf("Failed to start Salesforce REST API and OAuth server: %s", err)
 		}
@@ -287,7 +287,7 @@ func main() {
 		Handler:     pardotMux,
 		ReadTimeout: 30 * time.Second,
 	}
-	log.Printf("pardot-test-srv Salesforce Pardot API server listening at %s", c.PardotAddr)
+	log.Printf("salesforce-test-srv Salesforce Pardot API server listening at %s", c.PardotAddr)
 	go func() {
 		err := pardotServer.ListenAndServe()
 		if err != nil {

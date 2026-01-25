@@ -6,7 +6,8 @@
     <div id="form-error-banner"></div>
     <form id="override-form" referrerpolicy="no-referrer" data-rate-limit="{{.RateLimit}}"
         data-validate-field-path="{{.ValidateFieldPath}}" data-submit-request-path="{{.SubmitRequestPath}}"
-        data-submit-success-path="{{.SubmitSuccessPath}}">
+        data-auto-approved-success-path="{{.AutoApprovedSuccessPath}}"
+        data-request-submitted-success-path="{{.RequestSubmittedSuccessPath}}">
         {{ .FormHTML }}
         <button type="submit" class="primary btn-disabled" id="submit-button">Submit</button>
     </form>

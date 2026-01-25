@@ -18,12 +18,12 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/letsencrypt/boulder/core"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/unpause"
 )
@@ -57,7 +57,7 @@ var (
 type SelfServiceFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
-	ee emailpb.ExporterClient
+	ee salesforcepb.ExporterClient
 
 	log blog.Logger
 	clk clock.Clock
@@ -87,7 +87,7 @@ func NewSelfServiceFrontEndImpl(
 	requestTimeout time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	eec emailpb.ExporterClient,
+	eec salesforcepb.ExporterClient,
 	unpauseHMACKey []byte,
 	zendeskClient *zendesk.Client,
 	limiter *rl.Limiter,
