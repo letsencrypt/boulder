@@ -47,10 +47,7 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {
-			"StoreAuthzsInOrders": true,
-			"StoreARIReplacesInOrders": true
-		}
+		"features": {}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

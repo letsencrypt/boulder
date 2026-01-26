@@ -50,9 +50,7 @@ configure_database_endpoints
 # make sure we can reach pkilint
 ./test/wait-for-it.sh bpkimetal 8080
 
-# create the databases
 if [[ "${USE_VITESS}" == "true" ]]; then
-  MYSQL_CONTAINER=1 \
   DB_HOST="boulder-vitess" \
   DB_PORT=33577 \
   DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mysql8.yml" \
@@ -60,7 +58,6 @@ if [[ "${USE_VITESS}" == "true" ]]; then
   SKIP_USERS=1 \
   "$DIR/create_db.sh"
 else
-  MYSQL_CONTAINER=1 \
   DB_HOST="boulder-mariadb" \
   DB_PORT=3306 \
   DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mariadb.yml" \
