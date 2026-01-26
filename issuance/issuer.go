@@ -194,7 +194,6 @@ type Issuer struct {
 
 	keyAlg x509.PublicKeyAlgorithm
 	sigAlg x509.SignatureAlgorithm
-	active bool
 
 	// Used to set the Authority Information Access caIssuers URL in issued
 	// certificates.
@@ -274,7 +273,6 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		Linter:     lintSigner,
 		keyAlg:     keyAlg,
 		sigAlg:     sigAlg,
-		active:     len(config.Profiles) > 0,
 		issuerURL:  config.IssuerURL,
 		crlURLBase: config.CRLURLBase,
 		crlShards:  config.CRLShards,
@@ -294,7 +292,7 @@ func (i *Issuer) KeyType() x509.PublicKeyAlgorithm {
 // IsActive is true if the issuer is willing to issue precertificates, and false
 // if the issuer is only willing to issue final certificates and CRLs.
 func (i *Issuer) IsActive() bool {
-	return i.active
+	return len(i.profiles) > 0
 }
 
 // Name provides the Common Name specified in the issuer's certificate.
