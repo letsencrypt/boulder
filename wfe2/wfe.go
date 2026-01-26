@@ -2740,15 +2740,9 @@ func urlForAuthz(authz core.Authorization, request *http.Request) string {
 }
 
 // createJitter will return a random integer within a 20% window of the base that is provided.
-// If the jittered amount is a negative number, the jitter is retried until a positive
-// number is generated
 func createJitter(base int) int {
 	factor := 0.2 * (2*rand.Float64() - 1)
 	jittered := int(float64(base) * (1 + factor))
-
-	if jittered < 0 {
-		return createJitter(base)
-	}
 
 	return jittered
 }
