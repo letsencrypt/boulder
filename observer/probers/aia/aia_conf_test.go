@@ -21,7 +21,8 @@ func TestAIAConf_MakeProber(t *testing.T) {
 		[]string{},
 	))
 	type fields struct {
-		URL string
+		URL              string
+		ExpectCommonName string
 	}
 	tests := []struct {
 		name    string
@@ -30,21 +31,22 @@ func TestAIAConf_MakeProber(t *testing.T) {
 		wantErr bool
 	}{
 		// valid
-		{"valid fqdn", fields{"http://example.com"}, colls, false},
-		{"valid fqdn with path", fields{"http://example.com/foo/bar"}, colls, false},
-		{"valid hostname", fields{"http://example"}, colls, false},
+		{"valid fqdn", fields{"http://example.com", "Test CA"}, colls, false},
+		{"valid fqdn with path", fields{"http://example.com/foo/bar", "Test CA"}, colls, false},
+		{"valid hostname", fields{"http://example", "Test CA"}, colls, false},
 		// invalid
-		{"bad fqdn", fields{":::::"}, colls, true},
-		{"missing scheme", fields{"example.com"}, colls, true},
+		{"bad fqdn", fields{":::::", "Test CA"}, colls, true},
+		{"missing scheme", fields{"example.com", "Test CA"}, colls, true},
+		{"missing expectCommonName", fields{"http://example.com", ""}, colls, true},
 		{
 			"unexpected collector",
-			fields{"http://example.com"},
+			fields{"http://example.com", "Test CA"},
 			map[string]prometheus.Collector{"obs_aia_foo": badColl},
 			true,
 		},
 		{
 			"missing collectors",
-			fields{"http://example.com"},
+			fields{"http://example.com", "Test CA"},
 			map[string]prometheus.Collector{},
 			true,
 		},
@@ -52,7 +54,8 @@ func TestAIAConf_MakeProber(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := AIAConf{
-				URL: tt.fields.URL,
+				URL:              tt.fields.URL,
+				ExpectCommonName: tt.fields.ExpectCommonName,
 			}
 			p, err := c.MakeProber(tt.colls)
 			if tt.wantErr {

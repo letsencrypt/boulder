@@ -60,6 +60,11 @@ func (c AIAConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, err
 	}
 
+	// validate `expectCommonName` is provided
+	if c.ExpectCommonName == "" {
+		return nil, fmt.Errorf("'expectCommonName' is required")
+	}
+
 	// validate the prometheus collectors that were passed in
 	coll, ok := collectors[notBeforeName]
 	if !ok {
