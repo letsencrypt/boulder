@@ -100,3 +100,4 @@ monitors:
     kind: AIA
     settings:
       url: http://r3.i.lencr.org/
+      expectCommonName: "R3"

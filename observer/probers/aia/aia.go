@@ -13,9 +13,10 @@ import (
 // AIAProbe is the exported 'Prober' object for monitors configured to
 // monitor AIA certificate availability & characteristics.
 type AIAProbe struct {
-	url        string
-	cNotBefore *prometheus.GaugeVec
-	cNotAfter  *prometheus.GaugeVec
+	url              string
+	expectCommonName string
+	cNotBefore       *prometheus.GaugeVec
+	cNotAfter        *prometheus.GaugeVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
@@ -62,6 +63,16 @@ func (p AIAProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	// Parse the DER-encoded certificate
 	cert, err := x509.ParseCertificate(body)
 	if err != nil {
+		return false, dur
+	}
+
+	// Check if the certificate is a CA certificate
+	if !cert.IsCA {
+		return false, dur
+	}
+
+	// Check if the CommonName matches the expected value (if provided)
+	if p.expectCommonName != "" && cert.Subject.CommonName != p.expectCommonName {
 		return false, dur
 	}
 

@@ -215,6 +215,8 @@ monitors:
 
 `url`: Scheme + Hostname to grab the AIA certificate from (e.g. `http://r3.i.lencr.org/`).
 
+`expectCommonName`: (Optional) Expected Common Name (CN) of the certificate. If provided, the prober verifies the certificate's CN matches this value.
+
 ##### Example
 
 ```yaml
@@ -224,6 +226,7 @@ monitors:
     kind: AIA
     settings:
       url: http://r3.i.lencr.org/
+      expectCommonName: "R3"
 ```
 
 #### TLS
