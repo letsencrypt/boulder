@@ -35,11 +35,11 @@
 		"features": {}
 	},
 	"syslog": {
-		"stdoutlevel": 6,
-		"sysloglevel": -1
+		"stdoutlevel": 7,
+		"sysloglevel": 7
 	},
 	"openTelemetry": {
-		"endpoint": "bjaeger:4317",
+		"endpoint": "otel-collector:4317",
 		"sampleratio": 1
 	},
 	"openTelemetryHttpConfig": {
