@@ -76,7 +76,8 @@ func TestAIAConf_UnmarshalSettings(t *testing.T) {
 		want    probers.Configurer
 		wantErr bool
 	}{
-		{"valid", probers.Settings{"url": "google.com"}, AIAConf{"google.com"}, false},
+		{"valid", probers.Settings{"url": "google.com"}, AIAConf{"google.com", ""}, false},
+		{"valid with expectCommonName", probers.Settings{"url": "google.com", "expectCommonName": "Test CA"}, AIAConf{"google.com", "Test CA"}, false},
 		{"invalid (map)", probers.Settings{"url": make(map[string]any)}, nil, true},
 		{"invalid (list)", probers.Settings{"url": make([]string, 0)}, nil, true},
 	}
