@@ -17,7 +17,8 @@ const (
 
 // AIAConf is exported to receive YAML configuration
 type AIAConf struct {
-	URL string `yaml:"url"`
+	URL              string `yaml:"url"`
+	ExpectCommonName string `yaml:"expectCommonName"`
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
@@ -78,7 +79,7 @@ func (c AIAConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("aia prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notAfterName, coll)
 	}
 
-	return AIAProbe{c.URL, notBeforeColl, notAfterColl}, nil
+	return AIAProbe{c.URL, c.ExpectCommonName, notBeforeColl, notAfterColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `AIAProbe` will
