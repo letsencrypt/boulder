@@ -215,7 +215,7 @@ monitors:
 
 `url`: Scheme + Hostname to grab the AIA certificate from (e.g. `http://r3.i.lencr.org/`).
 
-`expectCommonName`: (Optional) Expected Common Name (CN) of the certificate. If provided, the prober verifies the certificate's CN matches this value.
+`expectCommonName`: Expected Common Name (CN) of the certificate. The prober verifies the certificate's CN matches this value.
 
 ##### Example
 

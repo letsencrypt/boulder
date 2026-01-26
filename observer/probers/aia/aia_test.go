@@ -47,7 +47,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		conf := AIAConf{URL: ts.URL}
+		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
 		colls := conf.Instrument()
 		prober, err := conf.MakeProber(colls)
 		test.AssertNotError(t, err, "making prober")
@@ -117,7 +117,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		conf := AIAConf{URL: ts.URL}
+		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Not a CA"}
 		colls := conf.Instrument()
 		prober, err := conf.MakeProber(colls)
 		test.AssertNotError(t, err, "making prober")
@@ -134,7 +134,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		conf := AIAConf{URL: ts.URL}
+		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
 		colls := conf.Instrument()
 		prober, err := conf.MakeProber(colls)
 		test.AssertNotError(t, err, "making prober")
@@ -151,7 +151,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 		}))
 		defer ts.Close()
 
-		conf := AIAConf{URL: ts.URL}
+		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
 		colls := conf.Instrument()
 		prober, err := conf.MakeProber(colls)
 		test.AssertNotError(t, err, "making prober")
@@ -162,7 +162,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 
 	// Test with unreachable server
 	t.Run("unreachable server", func(t *testing.T) {
-		conf := AIAConf{URL: "http://127.0.0.1:1"}
+		conf := AIAConf{URL: "http://127.0.0.1:1", ExpectCommonName: "Test CA"}
 		colls := conf.Instrument()
 		prober, err := conf.MakeProber(colls)
 		test.AssertNotError(t, err, "making prober")
@@ -203,7 +203,7 @@ func TestAIAProbe_Metrics(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	conf := AIAConf{URL: ts.URL}
+	conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
 	colls := conf.Instrument()
 
 	// Register metrics with a test registry
