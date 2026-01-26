@@ -350,11 +350,6 @@ type orderModel struct {
 	Authzs                 []byte
 }
 
-type orderToAuthzModel struct {
-	OrderID int64
-	AuthzID int64
-}
-
 func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	profile := ""
 	if om.CertificateProfileName != nil {
@@ -1180,18 +1175,6 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 	}
 
 	return validities, nil
-}
-
-// authzForOrder retrieves the authorization IDs for an order.
-func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, error) {
-	var v2IDs []int64
-	_, err := s.Select(
-		ctx,
-		&v2IDs,
-		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
-		orderID,
-	)
-	return v2IDs, err
 }
 
 // crlShardModel represents one row in the crlShards table. The ThisUpdate and

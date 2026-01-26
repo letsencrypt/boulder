@@ -134,9 +134,12 @@ func TestStrictness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = dbMap.ExecContext(ctx, `insert into orderToAuthz2 set
-		orderID=999999999999999999999999999,
-		authzID=999999999999999999999999999;`)
+	_, err = dbMap.ExecContext(ctx, `insert into serials set
+		id=999999999999999999999999999,
+		serial="abcd",
+		registrationID=99,
+		created="2026-01-01",
+		expires="2026-02-01";`)
 	if err == nil {
 		t.Fatal("Expected error when providing out of range value, got none.")
 	}

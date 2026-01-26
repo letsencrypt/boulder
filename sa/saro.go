@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/letsencrypt/boulder/features"
 	"math"
 	"regexp"
 	"strings"
@@ -374,16 +373,6 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		// For orders created before feature flag StoreAuthzsInOrders, fetch the list of authz IDs
-		// from the orderToAuthz2 table.
-		if len(order.V2Authorizations) == 0 {
-			authzIDs, err := authzForOrder(ctx, tx, order.Id)
-			if err != nil {
-				return nil, err
-			}
-			order.V2Authorizations = authzIDs
-		}
-
 		// Get the partial Authorization objects for the order
 		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, order.V2Authorizations)
 		// If there was an error getting the authorizations, return it immediately
@@ -616,76 +605,30 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, errIncompleteRequest
 	}
 
-	if features.Get().StoreAuthzsInOrders {
-		om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModel{}, req.Id)
-		if err != nil {
-			return nil, err
-		}
-		// Nonexistent orders return no error, with an empty list of authorizations
-		if om == nil {
-			return &sapb.Authorizations{}, nil
-		}
-
-		order, err := modelToOrder(om.(*orderModel))
-		if err != nil {
-			return nil, err
-		}
-
-		// If the order had a list of authz IDs (from the `Authzs` column in the DB), query
-		// them and return. Otherwise, fall through to doing a JOIN query using orderToAuthz2
-		// and authz2 tables.
-		if len(order.V2Authorizations) > 0 {
-			authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
-			if err != nil {
-				return nil, err
-			}
-			return authzs, nil
-		}
+	om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModel{}, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	// Nonexistent orders should return no error, with an empty list of authorizations
+	if om == nil {
+		return &sapb.Authorizations{}, nil
 	}
 
-	// The authz2 and orderToAuthz2 tables both have a column named "id", so we
-	// need to be explicit about which table's "id" column we want to select.
-	qualifiedAuthzFields := strings.Split(authzFields, " ")
-	for i, field := range qualifiedAuthzFields {
-		if field == "id," {
-			qualifiedAuthzFields[i] = "authz2.id,"
-			break
-		}
-	}
-
-	var ams []authzModel
-	_, err := ssa.dbReadOnlyMap.Select(
-		ctx,
-		&ams,
-		fmt.Sprintf(`SELECT %s FROM authz2
-			LEFT JOIN orderToAuthz2 ON authz2.ID = orderToAuthz2.authzID
-			WHERE orderToAuthz2.orderID = :orderID`,
-			strings.Join(qualifiedAuthzFields, " "),
-		),
-		map[string]any{
-			"orderID": req.Id,
-		},
-	)
+	order, err := modelToOrder(om.(*orderModel))
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO(#8111): Consider reducing the volume of data in this map.
-	byIdent := make(map[identifier.ACMEIdentifier]authzModel)
-	for _, am := range ams {
-		identType, ok := uintToIdentifierType[am.IdentifierType]
-		if !ok {
-			return nil, fmt.Errorf("unrecognized identifier type encoding %d on authz id %d", am.IdentifierType, am.ID)
-		}
-		ident := identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}
-		_, present := byIdent[ident]
-		if present {
-			return nil, fmt.Errorf("identifier %q appears twice in authzs for order %d", am.IdentifierValue, req.Id)
-		}
-		byIdent[ident] = am
+	if len(order.V2Authorizations) == 0 {
+		return nil, fmt.Errorf("invalid order: no authorization IDs")
 	}
 
-	return authzModelMapToPB(byIdent)
+	// Fetch the fully-hydrated Authorization objects and return them.
+	authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
+	if err != nil {
+		return nil, err
+	}
+	return authzs, nil
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
