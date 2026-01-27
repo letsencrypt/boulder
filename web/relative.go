@@ -3,11 +3,15 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"path"
 )
 
 // RelativeEndpoint takes a path component of URL and constructs a new URL using
-// the host and port from the request combined the provided path.
-func RelativeEndpoint(request *http.Request, endpoint string) string {
+// the host and port from the request combined the provided basePath and any
+// additionalPaths if provided. If only a basePath is provided with no
+// additionalPaths and the basePath has a trailing slash, the trailing
+// slash will be retained.
+func RelativeEndpoint(request *http.Request, basePath string, additionalPaths ...string) string {
 	var result string
 	proto := "http"
 	host := request.Host
@@ -27,6 +31,17 @@ func RelativeEndpoint(request *http.Request, endpoint string) string {
 	// with an empty `Host` produce results like `http:///acme/new-authz`
 	if request.Host == "" {
 		host = "localhost"
+	}
+
+	endpoint := basePath
+	// Checking for additionalPaths is vital because path.Join runs path.Clean
+	// and removes trailing slashes but there are scenarios such as in
+	// WebFrontEndImpl.acctIDFromURL where the basePath is only
+	// provided and the trailing slash needs to be kept
+	if len(additionalPaths) > 0 {
+		paths := []string{basePath}
+		paths = append(paths, additionalPaths...)
+		endpoint = path.Join(paths...)
 	}
 
 	resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
