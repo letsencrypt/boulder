@@ -157,7 +157,6 @@ func newCAArgs(t *testing.T) *caArgs {
 	issuers := make([]*issuance.Issuer, 4)
 	for i, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
 		issuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
-			Active:     true,
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
 			CRLShards:  10,
@@ -880,8 +879,11 @@ func TestPickIssuer_Inactive(t *testing.T) {
 	// Load our own set of issuers, but with half of them inactive.
 	var issuers []*issuance.Issuer
 	for i, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
+		var profiles []string
+		if i%2 == 0 {
+			profiles = []string{"legacy", "modern"}
+		}
 		issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
-			Active:     i%2 == 0,
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
 			CRLShards:  10,
@@ -889,7 +891,7 @@ func TestPickIssuer_Inactive(t *testing.T) {
 				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
 				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
 			},
-			Profiles: []string{"legacy", "modern"},
+			Profiles: profiles,
 		}, cargs.clk)
 		if err != nil {
 			t.Fatalf("loading test issuer: %s", err)

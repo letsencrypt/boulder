@@ -96,7 +96,6 @@
 			},
 			"issuers": [
 				{
-					"active": true,
 					"profiles": [
 						"legacy"
 					],
@@ -110,7 +109,6 @@
 					}
 				},
 				{
-					"active": true,
 					"profiles": [
 						"legacy",
 						"modern",
@@ -126,7 +124,6 @@
 					}
 				},
 				{
-					"active": false,
 					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56560759852043581/",
@@ -137,7 +134,6 @@
 					}
 				},
 				{
-					"active": true,
 					"profiles": [
 						"legacy"
 					],
@@ -151,7 +147,6 @@
 					}
 				},
 				{
-					"active": true,
 					"profiles": [
 						"legacy",
 						"modern",
@@ -167,7 +162,6 @@
 					}
 				},
 				{
-					"active": false,
 					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56183656833365902/",

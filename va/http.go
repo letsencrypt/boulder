@@ -507,9 +507,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// DialContext function
 	transport := httpTransport(dialer.DialContext)
 
-	va.log.AuditInfof("Attempting to validate HTTP-01 for %q with GET to %q",
-		initialReq.Host, initialReq.URL.String())
-
 	// Create a closure around records & numRedirects we can use with a HTTP
 	// client to process redirects per our own policy (e.g. resolving IP
 	// addresses explicitly, not following redirects to ports != [80,443], etc)
@@ -671,7 +668,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
-		va.log.Infof("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident)
+		va.log.Errf("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for HTTP-01 challenge was not DNS or IP")
 	}
 

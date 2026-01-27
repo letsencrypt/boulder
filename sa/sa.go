@@ -7,9 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"google.golang.org/protobuf/proto"
 	"strings"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
@@ -370,7 +371,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// but don't return an error from AddCertificate.
 	if fqdnTransactionErr != nil {
 		ssa.rateLimitWriteErrors.Inc()
-		ssa.log.AuditErrf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
+		ssa.log.Errf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
 	}
 
 	return &emptypb.Empty{}, nil

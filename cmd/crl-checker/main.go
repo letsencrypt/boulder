@@ -139,9 +139,12 @@ func main() {
 		cmd.Fail(fmt.Sprintf("Encountered %d errors", errCount))
 	}
 
-	logger.AuditInfof(
-		"Validated %d CRLs, %d serials, %d bytes. Oldest CRL: %s",
-		len(urls), len(seenSerials), totalBytes, oldestTimestamp.Format(time.RFC3339))
+	logger.AuditInfo("CRL checking complete", map[string]string{
+		"numCRLs":    fmt.Sprintf("%d", len(urls)),
+		"numSerials": fmt.Sprintf("%d", len(seenSerials)),
+		"numBytes":   fmt.Sprintf("%d", totalBytes),
+		"oldestCRL":  oldestTimestamp.Format(time.RFC3339),
+	})
 }
 
 func init() {
