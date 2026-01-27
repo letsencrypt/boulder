@@ -124,7 +124,7 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 		return errors.New("unsupported public key type")
 	}
 
-	if len(req.precertDER) == 0 && !i.active {
+	if len(req.precertDER) == 0 && !i.IsActive() {
 		return errors.New("inactive issuer cannot issue precert")
 	}
 

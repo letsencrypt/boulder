@@ -118,7 +118,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "skid too short",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -130,7 +130,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "both sct list and ct poison provided",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -144,7 +144,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "negative validity",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -158,7 +158,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity larger than max",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Minute,
@@ -174,7 +174,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity larger than max due to inclusivity",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Hour,
@@ -190,7 +190,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity backdated more than max",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -207,7 +207,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity is forward dated",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -224,7 +224,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "serial too short",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -241,7 +241,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "serial too long",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -258,7 +258,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "good with poison",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -275,7 +275,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "good with scts",
 			issuer: &Issuer{
-				active: true,
+				profiles: []string{"modern"},
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
