@@ -194,9 +194,8 @@ func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
 
 // invoke exits early and returns true if there is no work to be done.
 // Otherwise, it processes a single key in the blockedKeys table and returns false.
-func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
+func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	logEvent := make(map[string]any)
-	var err error
 	defer func() {
 		if err != nil {
 			bkr.logger.AuditErr("Error while processing bad key", err, logEvent)

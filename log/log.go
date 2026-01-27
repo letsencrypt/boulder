@@ -361,6 +361,6 @@ func formatObj(obj any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	bs := bb.Bytes()
-	return string(bs[:len(bs)-1]), nil
+	bs := bb.String()
+	return strings.TrimRight(bs, "\n"), nil
 }
