@@ -2718,7 +2718,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	response.Header().Set(headerRetryAfter, jitterRetryHeader(6*time.Hour))
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, renewalInfo)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
@@ -2728,4 +2728,13 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
 	return web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s", authzPath, authz.RegistrationID, authz.ID))
+}
+
+// jitterRetryHeader will return a string formatted random integer of seconds within a 20% window of the
+// duration that is provided.
+func jitterRetryHeader(duration time.Duration) string {
+	factor := 0.2 * (2*rand.Float64() - 1)
+	jittered := int(float64(duration/time.Second) * (1 + factor))
+
+	return fmt.Sprintf("%d", jittered)
 }
