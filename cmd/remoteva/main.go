@@ -85,7 +85,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RVA.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 	clk := clock.New()
 
 	var servers bdns.ServerProvider

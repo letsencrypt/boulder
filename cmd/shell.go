@@ -48,7 +48,7 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(VersionString())
+			fmt.Printf("%+v", info())
 			os.Exit(0)
 		}
 	}
@@ -60,7 +60,7 @@ type mysqlLogger struct {
 }
 
 func (m mysqlLogger) Print(v ...any) {
-	m.AuditErrf("[mysql] %s", fmt.Sprint(v...))
+	m.Errf("[mysql] %s", fmt.Sprint(v...))
 }
 
 // grpcLogger implements the grpclog.LoggerV2 interface.
@@ -83,15 +83,15 @@ func (log grpcLogger) Fatalln(args ...any) {
 	os.Exit(1)
 }
 
-// Treat all gRPC error logs as potential audit events.
+// Pass through all Error level logs.
 func (log grpcLogger) Error(args ...any) {
-	log.Logger.AuditErr(fmt.Sprint(args...))
+	log.Logger.Errf("%s", fmt.Sprint(args...))
 }
 func (log grpcLogger) Errorf(format string, args ...any) {
-	log.Logger.AuditErrf(format, args...)
+	log.Logger.Errf(format, args...)
 }
 func (log grpcLogger) Errorln(args ...any) {
-	log.Logger.AuditErr(fmt.Sprintln(args...))
+	log.Logger.Errf("%s", fmt.Sprintln(args...))
 }
 
 // Pass through most Warnings, but filter out a few noisy ones.
@@ -137,7 +137,7 @@ type promLogger struct {
 }
 
 func (log promLogger) Println(args ...any) {
-	log.AuditErr(fmt.Sprint(args...))
+	log.Errf("%s", fmt.Sprint(args...))
 }
 
 type redisLogger struct {
@@ -305,7 +305,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {
-			logger.Errf("unable to boot debug server on %s: %v", addr, err)
+			logger.AuditErrf("Unable to boot debug server on %s: %v", addr, err)
 			os.Exit(1)
 		}
 	}()
@@ -362,6 +362,7 @@ func AuditPanic() {
 	err := recover()
 	// No panic, no problem
 	if err == nil {
+		blog.Get().AuditObject("Process exiting normally", info())
 		return
 	}
 	// Get the global logger if it's initialized, or create a default one if not.
@@ -529,9 +530,27 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	return nil
 }
 
-// VersionString produces a friendly Application version string.
-func VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", core.Command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+type buildInfo struct {
+	Command   string
+	BuildID   string
+	BuildTime string
+	GoVersion string
+	BuildHost string
+}
+
+// info produces build information about this binary
+func info() buildInfo {
+	return buildInfo{
+		Command:   core.Command(),
+		BuildID:   core.GetBuildID(),
+		BuildTime: core.GetBuildTime(),
+		GoVersion: runtime.Version(),
+		BuildHost: core.GetBuildHost(),
+	}
+}
+
+func LogStartup(logger blog.Logger) {
+	logger.AuditObject("Process starting", info())
 }
 
 // CatchSignals blocks until a SIGTERM, SIGINT, or SIGHUP is received, then

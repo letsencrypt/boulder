@@ -85,7 +85,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, noncePrefix)
 	cmd.FailOnError(err, "Failed to initialize nonce service")
@@ -97,7 +97,7 @@ func main() {
 		&noncepb.NonceService_ServiceDesc, ns).Build(tlsConfig, scope, clock.New())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
 
-	logger.Info(fmt.Sprintf("Nonce server listening on %s with prefix %q", c.NonceService.GRPC.Address, noncePrefix))
+	logger.Infof("Nonce server listening on %s with prefix %q", c.NonceService.GRPC.Address, noncePrefix)
 
 	cmd.FailOnError(start(), "Nonce service gRPC server failed")
 }
