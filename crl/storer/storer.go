@@ -249,8 +249,8 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	cs.log.AuditInfo("CRL uploaded", map[string]any{
 		"id":         crlId,
 		"issuerCN":   issuer.Subject.CommonName,
-		"thisUpdate": crl.ThisUpdate,
-		"nextUpdate": crl.NextUpdate,
+		"thisUpdate": crl.ThisUpdate.Format(time.RFC3339),
+		"nextUpdate": crl.NextUpdate.Format(time.RFC3339),
 		"numEntries": len(crl.RevokedCertificateEntries),
 	})
 

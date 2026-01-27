@@ -139,10 +139,10 @@ func main() {
 		cmd.Fail(fmt.Sprintf("Encountered %d errors", errCount))
 	}
 
-	logger.AuditInfo("CRL checking complete", map[string]any{
-		"numCRLs":    len(urls),
-		"numSerials": len(seenSerials),
-		"numBytes":   totalBytes,
+	logger.AuditInfo("CRL checking complete", map[string]string{
+		"numCRLs":    fmt.Sprintf("%d", len(urls)),
+		"numSerials": fmt.Sprintf("%d", len(seenSerials)),
+		"numBytes":   fmt.Sprintf("%d", totalBytes),
 		"oldestCRL":  oldestTimestamp.Format(time.RFC3339),
 	})
 }

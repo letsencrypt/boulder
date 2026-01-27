@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -122,26 +123,26 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 		"issuer":     issuer.Cert.Subject.CommonName,
 		"number":     req.Number.String(),
 		"shard":      req.Shard,
-		"thisUpdate": req.ThisUpdate,
+		"thisUpdate": req.ThisUpdate.Format(time.RFC3339),
 		"numEntries": len(rcs),
 	})
 
 	if len(rcs) > 0 {
 		builder := strings.Builder{}
 		for i := range len(rcs) {
-			fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
+			fmt.Fprintf(&builder, "\"%x:%d\",", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
 
 			if builder.Len() >= ci.maxLogLen {
-				ci.log.AuditInfo("Signing CRL entries", map[string]any{
+				ci.log.AuditInfo("Signing CRL entries", map[string]string{
 					"logID":   logID,
-					"entries": fmt.Sprintf("[%s]", builder.String()),
+					"entries": fmt.Sprintf("[%s]", strings.TrimSuffix(builder.String(), ",")),
 				})
 				builder = strings.Builder{}
 			}
 		}
 		ci.log.AuditInfo("Signing CRL entries", map[string]any{
 			"logID":   logID,
-			"entries": fmt.Sprintf("[%s]", builder.String()),
+			"entries": fmt.Sprintf("[%s]", strings.TrimSuffix(builder.String(), ",")),
 		})
 	}
 

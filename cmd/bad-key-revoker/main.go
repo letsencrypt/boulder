@@ -228,7 +228,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 		}
 		return false, err
 	}
-	logEvent["keyHash"] = unchecked.KeyHash
+	logEvent["keyHash"] = fmt.Sprintf("%x", unchecked.KeyHash)
 	logEvent["revokedBy"] = unchecked.RevokedBy
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash

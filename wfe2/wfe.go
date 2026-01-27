@@ -2039,7 +2039,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 			wfe.log.AuditErr("Failed to serialize order problem details", err, map[string]any{
 				"requester": order.RegistrationID,
 				"order":     order.Id,
-				"prob":      order.Error.Detail,
+				"prob":      order.Error.String(),
 			})
 		}
 		respObj.Error = prob

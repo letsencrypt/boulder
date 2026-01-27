@@ -150,7 +150,7 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 		if i != 0 {
 			cu.log.AuditErr("Generating CRL failed", err, map[string]any{
 				"id":         crlID,
-				"retryAfter": sleepTime.Seconds(),
+				"retryAfter": int(sleepTime.Seconds()),
 			})
 		}
 		cu.clk.Sleep(sleepTime)

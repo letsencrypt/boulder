@@ -833,7 +833,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			if err != nil {
 				ra.log.AuditErr("Rechecking CAA", err, map[string]any{
 					"requester":  authz.RegistrationID,
-					"identifier": authz.Identifier,
+					"identifier": authz.Identifier.Value,
 					"method":     method,
 				})
 				err = berrors.InternalServerError(
@@ -908,7 +908,7 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 		ra.log.AuditErr("Converting order problem to PB", err, map[string]any{
 			"requester": order.RegistrationID,
 			"order":     order.Id,
-			"prob":      prob,
+			"prob":      prob.String(),
 		})
 		return
 	}
@@ -923,7 +923,7 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 		ra.log.AuditErr("Persisting failed order", err, map[string]any{
 			"requester": order.RegistrationID,
 			"order":     order.Id,
-			"prob":      order.Error,
+			"prob":      order.Error.String(),
 		})
 	}
 }

@@ -371,9 +371,10 @@ func AuditPanic() {
 	if ok {
 		log.AuditErr(fail.msg, nil, nil)
 	} else {
-		// For all other values passed to `panic`, log them and a stack trace
-		log.AuditErr("Panic caused by err", nil, map[string]any{
-			"error": err,
+		// For all other values (which might not be an error) passed to `panic`, log
+		// them and a stack trace
+		log.AuditErr("Panic", nil, map[string]any{
+			"panic": fmt.Sprintf("%#v", err),
 			"stack": string(debug.Stack()),
 		})
 	}
