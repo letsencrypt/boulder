@@ -714,6 +714,15 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 		return nil, berrors.UnauthorizedError("incorrect number of identifiers requested for finalization")
 	}
 
+	if !features.Get().CAARechecksFailOrder {
+		// Check that the authzs either don't need CAA rechecking, or do the
+		// necessary CAA rechecks right now.
+		err = ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, now)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return authzs, nil
 }
 
@@ -932,11 +941,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, errIncompleteGRPCRequest
 	}
 
-	requester := req.Order.RegistrationID
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
 		OrderID:     req.Order.Id,
-		Requester:   requester,
+		Requester:   req.Order.RegistrationID,
 		RequestTime: ra.clk.Now(),
 		UserAgent:   web.UserAgent(ctx),
 	}
@@ -1292,11 +1300,13 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return fmt.Errorf("%s: %s", prefix, e)
 	}
 
-	// Check that the authzs either don't need CAA rechecking, or do the
-	// necessary CAA rechecks right now.
-	err := ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, ra.clk.Now())
-	if err != nil {
-		return nil, err
+	if features.Get().CAARechecksFailOrder {
+		// Check that the authzs either don't need CAA rechecking, or do the
+		// necessary CAA rechecks right now.
+		err := ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, ra.clk.Now())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	issueReq := &capb.IssueCertificateRequest{
