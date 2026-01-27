@@ -29,12 +29,9 @@ type Config struct {
 	DOH                         bool
 	IgnoreAccountContacts       bool
 	NoPendingAuthzReuse         bool
+	ServeRenewalInfo            bool
 	StoreAuthzsInOrders         bool
 	StoreARIReplacesInOrders    bool
-
-	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
-	// GET requests. WARNING: This feature is a draft and highly unstable.
-	ServeRenewalInfo bool
 
 	// CertCheckerChecksValidations enables an extra query for each certificate
 	// checked, to find the relevant authzs. Since this query might be
