@@ -27,7 +27,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -44,6 +43,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 )
@@ -91,7 +91,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 type WebFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
-	ee emailpb.ExporterClient
+	ee salesforcepb.ExporterClient
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
@@ -182,7 +182,7 @@ func NewWebFrontEndImpl(
 	maxContactsPerReg int,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	eec emailpb.ExporterClient,
+	eec salesforcepb.ExporterClient,
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
 	rncKey []byte,
@@ -906,7 +906,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	newRegistrationSuccessful = true
 
 	if wfe.ee != nil && len(emails) > 0 {
-		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
+		_, err := wfe.ee.SendContacts(ctx, &salesforcepb.SendContactsRequest{
 			// Note: We are explicitly using the contacts provided by the
 			// subscriber here. The RA will eventually stop accepting contacts.
 			Emails: emails,
@@ -977,10 +977,10 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 }
 
 type revocationEvidence struct {
-	Serial string
-	Reason revocation.Reason
-	RegID  int64
-	Method string
+	Serial    string
+	Reason    revocation.Reason
+	Requester int64
+	Method    string
 }
 
 // revokeCertBySubscriberKey processes an outer JWS as a revocation request that
@@ -1003,10 +1003,10 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 	}
 
 	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
-		Serial: core.SerialToString(cert.SerialNumber),
-		Reason: reason,
-		RegID:  acct.ID,
-		Method: "applicant",
+		Serial:    core.SerialToString(cert.SerialNumber),
+		Reason:    reason,
+		Requester: acct.ID,
+		Method:    "applicant",
 	})
 
 	// The RA will confirm that the authenticated account either originally
@@ -1056,10 +1056,10 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	}
 
 	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
-		Serial: core.SerialToString(cert.SerialNumber),
-		Reason: reason,
-		RegID:  0,
-		Method: "privkey",
+		Serial:    core.SerialToString(cert.SerialNumber),
+		Reason:    reason,
+		Requester: 0,
+		Method:    "privkey",
 	})
 
 	// The RA assumes here that the WFE2 has validated the JWS as proving

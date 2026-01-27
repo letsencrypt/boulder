@@ -24,7 +24,6 @@ import (
 // NewMock(). Any additions to this interface with format strings should be
 // added to the govet configuration in .golangci.yml
 type Logger interface {
-	Err(msg string)
 	Errf(format string, a ...any)
 	Warning(msg string)
 	Warningf(format string, a ...any)
@@ -272,16 +271,10 @@ func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...any) {
 	log.w.logAtLevel(level, msg, a...)
 }
 
-// Err level messages are always marked with the audit tag, for special handling
-// at the upstream system logger.
-func (log *impl) Err(msg string) {
-	log.Errf(msg)
-}
-
 // Errf level messages are always marked with the audit tag, for special handling
 // at the upstream system logger.
 func (log *impl) Errf(format string, a ...any) {
-	log.auditAtLevel(syslog.LOG_ERR, format, a...)
+	log.w.logAtLevel(syslog.LOG_ERR, format, a...)
 }
 
 // Warning level messages pass through normally.

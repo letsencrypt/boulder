@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"strings"
 
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/policy"
 	rl "github.com/letsencrypt/boulder/ratelimits"
+	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/sfe/forms"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/web"
@@ -564,21 +564,21 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	if sfe.limiter != nil && sfe.txnBuilder != nil {
 		requesterIP, err := web.ExtractRequesterIP(r)
 		if err != nil {
-			sfe.log.Errf("determining requester IP address: %s", err)
+			sfe.log.Errf("failed to determine requester IP address: %s", err)
 			http.Error(w, "failed to determine the IP address of the requester", http.StatusInternalServerError)
 			return
 		}
 
 		txns, err := sfe.txnBuilder.LimitOverrideRequestsPerIPAddressTransaction(requesterIP)
 		if err != nil {
-			sfe.log.Errf("building transaction for override request form limits: %s", err)
+			sfe.log.Errf("failed to build transaction for override request form limits: %s", err)
 			http.Error(w, "failed to build transaction for override request form limits", http.StatusInternalServerError)
 			return
 		}
 
 		d, err := sfe.limiter.Spend(r.Context(), txns)
 		if err != nil {
-			sfe.log.Errf("spending transaction for override request form limits: %s", err)
+			sfe.log.Errf("failed to spend transaction for override request form limits: %s", err)
 			http.Error(w, "failed to spend transaction for override request form limits", http.StatusInternalServerError)
 			return
 		}
@@ -590,7 +590,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 				http.Error(w, bErr.Detail, http.StatusTooManyRequests)
 				return
 			}
-			sfe.log.Errf("determining result of override request form limits transaction: %s", err)
+			sfe.log.Errf("failed to determine result of override request form limits transaction: %s", err)
 			http.Error(w, "failed to determine result of override request form limits transaction", http.StatusInternalServerError)
 			return
 		}
@@ -598,7 +598,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		refundLimits = func() {
 			_, err := sfe.limiter.Refund(r.Context(), txns)
 			if err != nil {
-				sfe.log.Errf("refunding transaction for override request form limits: %s", err)
+				sfe.log.Errf("failed to refund transaction for override request form limits: %s", err)
 			}
 		}
 	}
@@ -723,14 +723,14 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	}
 
 	if sfe.ee != nil && validFields[mailingListFieldName] == "true" {
-		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
+		_, err := sfe.ee.SendContacts(r.Context(), &salesforcepb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
-			sfe.log.Errf("sending contact to email-exporter: %s", err)
+			sfe.log.Errf("failed to send contact to email-exporter: %s", err)
 		}
 	}
 
 	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
-		_, err := sfe.ee.SendCase(r.Context(), &emailpb.SendCaseRequest{
+		_, err := sfe.ee.SendCase(r.Context(), &salesforcepb.SendCaseRequest{
 			Origin:        "Web",
 			Subject:       fmt.Sprintf("%s rate limit override request for %s", req.RateLimit, validFields[OrganizationFieldName]),
 			ContactEmail:  validFields[emailAddressFieldName],
@@ -740,7 +740,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			UseCase:       validFields[useCaseFieldName],
 		})
 		if err != nil {
-			sfe.log.Errf("sending case to email-exporter: %s", err)
+			sfe.log.Errf("failed to send case to email-exporter: %s", err)
 		}
 	}
 

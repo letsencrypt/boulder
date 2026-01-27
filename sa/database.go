@@ -13,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -250,18 +249,9 @@ func initTables(dbMap *borp.DbMap) {
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(certificateStatusModel{}, "certificateStatus").SetKeys(true, "ID")
 	dbMap.AddTableWithName(fqdnSet{}, "fqdnSets").SetKeys(true, "ID")
-	tableMap := dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
-	if !features.Get().StoreARIReplacesInOrders {
-		tableMap.ColMap("Replaces").SetTransient(true)
-	}
-	if !features.Get().StoreAuthzsInOrders {
-		tableMap.ColMap("Authzs").SetTransient(true)
-	}
-
-	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz").SetKeys(false, "OrderID", "AuthzID")
+	dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
 	dbMap.AddTableWithName(orderFQDNSet{}, "orderFqdnSets").SetKeys(true, "ID")
 	dbMap.AddTableWithName(authzModel{}, "authz2").SetKeys(true, "ID")
-	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz2").SetKeys(false, "OrderID", "AuthzID")
 	dbMap.AddTableWithName(recordedSerialModel{}, "serials").SetKeys(true, "ID")
 	dbMap.AddTableWithName(lintingCertModel{}, "precertificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(keyHashModel{}, "keyHashToSerial").SetKeys(true, "ID")

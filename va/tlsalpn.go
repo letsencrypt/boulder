@@ -161,7 +161,7 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		return nil, nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
-	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, serverName))
+	va.log.Infof("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, serverName)
 
 	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
 	defer cancel()
@@ -295,7 +295,7 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 challenge was not DNS or IP: %s", ident))
+		va.log.Infof("Identifier type for TLS-ALPN-01 challenge was not DNS or IP: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
 	}
 

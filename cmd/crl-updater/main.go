@@ -144,7 +144,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 	clk := clock.New()
 
 	tlsConfig, err := c.CRLUpdater.TLS.Load(scope)

@@ -80,15 +80,15 @@ func TestMysqlLogger(t *testing.T) {
 	}{
 		{
 			[]any{nil},
-			`ERR: [AUDIT] [mysql] <nil>`,
+			`ERR: [mysql] <nil>`,
 		},
 		{
 			[]any{""},
-			`ERR: [AUDIT] [mysql] `,
+			`ERR: [mysql] `,
 		},
 		{
 			[]any{"Sup ", 12345, " Sup sup"},
-			`ERR: [AUDIT] [mysql] Sup 12345 Sup sup`,
+			`ERR: [mysql] Sup 12345 Sup sup`,
 		},
 	}
 
@@ -118,14 +118,16 @@ func TestCaptureStdlibLog(t *testing.T) {
 	}
 }
 
-func TestVersionString(t *testing.T) {
+func TestLogStartup(t *testing.T) {
 	core.BuildID = "TestBuildID"
 	core.BuildTime = "RightNow!"
 	core.BuildHost = "Localhost"
 
-	versionStr := VersionString()
-	expected := fmt.Sprintf("Versions: cmd.test=(TestBuildID RightNow!) Golang=(%s) BuildHost=(Localhost)", runtime.Version())
-	test.AssertEquals(t, versionStr, expected)
+	log := blog.NewMock()
+	LogStartup(log)
+	logged := strings.Join(log.GetAll(), "\n")
+	expected := fmt.Sprintf(`INFO: [AUDIT] Process starting JSON={"Command":"cmd.test","BuildID":"TestBuildID","BuildTime":"RightNow!","GoVersion":"%s","BuildHost":"Localhost"}`, runtime.Version())
+	test.AssertEquals(t, logged, expected)
 }
 
 func TestReadConfigFile(t *testing.T) {
