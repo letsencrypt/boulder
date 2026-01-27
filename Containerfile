@@ -46,7 +46,7 @@ COPY --from=builder \
     /opt/boulder/bin/boulder \
     /opt/boulder/bin/chall-test-srv \
     /opt/boulder/bin/ct-test-srv \
-    /opt/boulder/bin/pardot-test-srv \
+    /opt/boulder/bin/salesforce-test-srv \
     /opt/boulder/bin/zendesk-test-srv \
     /opt/boulder/bin/
 COPY --from=builder /opt/boulder/data /opt/boulder/data

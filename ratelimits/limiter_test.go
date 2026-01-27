@@ -527,7 +527,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "4:12345:example.com",
 				},
 			},
-			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account",
+			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-identifier-per-account",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -577,7 +577,7 @@ func TestRateLimitError(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:     "too many override request form submissions (3) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#limit-override-requests-per-ip-address",
+			expectedErr:     "too many override request form submissions (3) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ip-address",
 			expectedErrType: berrors.RateLimit,
 		},
 		{

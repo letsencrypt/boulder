@@ -103,6 +103,15 @@ func Load(keyPath string) (crypto.Signer, crypto.PublicKey, error) {
 		return nil, nil, fmt.Errorf("no PEM formatted block found in %q", keyPath)
 	}
 
+	sign, pk, err := LoadDER(keyDER)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing %q: %w", keyPath, err)
+	}
+
+	return sign, pk, nil
+}
+
+func LoadDER(keyDER *pem.Block) (crypto.Signer, crypto.PublicKey, error) {
 	// Attempt to parse the PEM block as a private key in a PKCS #8 container.
 	signer, err := x509.ParsePKCS8PrivateKey(keyDER.Bytes)
 	if err == nil {
@@ -115,7 +124,7 @@ func Load(keyPath string) (crypto.Signer, crypto.PublicKey, error) {
 	// Attempt to parse the PEM block as a private key in a PKCS #1 container.
 	rsaSigner, err := x509.ParsePKCS1PrivateKey(keyDER.Bytes)
 	if err != nil && keyDER.Type == "RSA PRIVATE KEY" {
-		return nil, nil, fmt.Errorf("unable to parse %q as a PKCS#1 RSA private key: %w", keyPath, err)
+		return nil, nil, fmt.Errorf("unable to parse %q as a PKCS#1 RSA private key: %w", keyDER.Type, err)
 	}
 	if err == nil {
 		return verify(rsaSigner)
@@ -126,5 +135,5 @@ func Load(keyPath string) (crypto.Signer, crypto.PublicKey, error) {
 	if err == nil {
 		return verify(ecdsaSigner)
 	}
-	return nil, nil, fmt.Errorf("unable to parse %q as a private key", keyPath)
+	return nil, nil, fmt.Errorf("unable to parse %q as a private key", keyDER.Type)
 }

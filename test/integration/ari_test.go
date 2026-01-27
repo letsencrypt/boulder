@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"crypto/x509/pkix"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -60,11 +59,7 @@ func TestARIAndReplacement(t *testing.T) {
 	// Retrieve the order and verify that it has the correct replaces field.
 	resp, err := client.FetchOrder(client.Account, order.URL)
 	test.AssertNotError(t, err, "failed to fetch order")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		test.AssertEquals(t, resp.Replaces, order.Replaces)
-	} else {
-		test.AssertEquals(t, resp.Replaces, "")
-	}
+	test.AssertEquals(t, resp.Replaces, order.Replaces)
 
 	// Try another replacement order and verify that it fails.
 	_, order, err = makeClientAndOrder(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "", cert)

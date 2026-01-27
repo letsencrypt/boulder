@@ -671,7 +671,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
-		va.log.Info(fmt.Sprintf("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident))
+		va.log.Infof("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for HTTP-01 challenge was not DNS or IP")
 	}
 

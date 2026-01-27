@@ -6,33 +6,41 @@ import (
 	"fmt"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // admin holds all of the external connections necessary to perform admin
 // actions on a boulder deployment.
 type admin struct {
-	rac   rapb.RegistrationAuthorityClient
-	sac   sapb.StorageAuthorityClient
+	rac   adminRAClient
+	sac   adminSAClient
 	saroc sapb.StorageAuthorityReadOnlyClient
-	// TODO: Remove this and only use sac and saroc to interact with the db.
-	// We cannot have true dry-run safety as long as we have a direct dbMap.
-	dbMap *db.WrappedMap
-
-	// TODO: Remove this when the dbMap is removed and the dryRunSAC and dryRunRAC
-	// handle all dry-run safety.
-	dryRun bool
 
 	clk clock.Clock
 	log blog.Logger
+}
+
+// adminRAClient defines the subset of RA methods that the admin tool relies on.
+type adminRAClient interface {
+	AdministrativelyRevokeCertificate(context.Context, *rapb.AdministrativelyRevokeCertificateRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+}
+
+// adminSAClient defines the subset of SA methods that the admin tool relies on.
+type adminSAClient interface {
+	AddBlockedKey(context.Context, *sapb.AddBlockedKeyRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+	AddRateLimitOverride(context.Context, *sapb.AddRateLimitOverrideRequest, ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error)
+	DisableRateLimitOverride(context.Context, *sapb.DisableRateLimitOverrideRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+	EnableRateLimitOverride(context.Context, *sapb.EnableRateLimitOverrideRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+	PauseIdentifiers(context.Context, *sapb.PauseRequest, ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error)
+	UnpauseAccount(context.Context, *sapb.RegistrationID, ...grpc.CallOption) (*sapb.Count, error)
 }
 
 // newAdmin constructs a new admin object on the heap and returns a pointer to
@@ -50,7 +58,7 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, "")
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	clk := clock.New()
 	features.Set(c.Admin.Features)
@@ -60,7 +68,7 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
 
-	var rac rapb.RegistrationAuthorityClient = dryRunRAC{log: logger}
+	var rac adminRAClient = dryRunRAC{log: logger}
 	if !dryRun {
 		raConn, err := bgrpc.ClientSetup(c.Admin.RAService, tlsConfig, scope, clk)
 		if err != nil {
@@ -75,24 +83,17 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 	}
 	saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	var sac sapb.StorageAuthorityClient = dryRunSAC{log: logger}
+	var sac adminSAClient = dryRunSAC{log: logger}
 	if !dryRun {
 		sac = sapb.NewStorageAuthorityClient(saConn)
 	}
 
-	dbMap, err := sa.InitWrappedDb(c.Admin.DB, nil, logger)
-	if err != nil {
-		return nil, fmt.Errorf("creating database connection: %w", err)
-	}
-
 	return &admin{
-		rac:    rac,
-		sac:    sac,
-		saroc:  saroc,
-		dbMap:  dbMap,
-		dryRun: dryRun,
-		clk:    clk,
-		log:    logger,
+		rac:   rac,
+		sac:   sac,
+		saroc: saroc,
+		clk:   clk,
+		log:   logger,
 	}, nil
 }
 

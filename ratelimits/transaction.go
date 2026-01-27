@@ -217,7 +217,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 		overrides := make(Limits)
 		var errorCount float64
 		for {
-			r, err := stream.Recv()
+			resp, err := stream.Recv()
 			if err != nil {
 				if err == io.EOF {
 					break
@@ -225,35 +225,22 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 				return nil, fmt.Errorf("reading overrides stream: %w", err)
 			}
 
-			limitName := Name(r.Override.LimitEnum)
-
-			bucketKey, err := hydrateOverrideLimit(r.Override.BucketKey, limitName)
-			if err != nil {
-				logger.Errf("hydrating %s override with key %q: %v", limitName.String(), r.Override.BucketKey, err)
-				errorCount++
-				continue
-			}
-
-			newLimit := &Limit{
-				Burst:  r.Override.Burst,
-				Count:  r.Override.Count,
-				Period: config.Duration{Duration: r.Override.Period.AsDuration()},
-				Name:   limitName,
-				Comment: fmt.Sprintf("Last Updated: %s - %s",
-					r.UpdatedAt.AsTime().Format("2006-01-02"),
-					r.Override.Comment,
-				),
+			override := &Limit{
+				Burst:      resp.Override.Burst,
+				Count:      resp.Override.Count,
+				Period:     config.Duration{Duration: resp.Override.Period.AsDuration()},
+				Name:       Name(resp.Override.LimitEnum),
 				isOverride: true,
 			}
 
-			err = ValidateLimit(newLimit)
+			err = ValidateLimit(override)
 			if err != nil {
-				logger.Errf("hydrating %s override with key %q: %v", newLimit.Name.String(), r.Override.BucketKey, err)
+				logger.Errf("hydrating %s override with key %q: %s", override.Name.String(), resp.Override.BucketKey, err)
 				errorCount++
 				continue
 			}
 
-			overrides[bucketKey] = newLimit
+			overrides[resp.Override.BucketKey] = override
 		}
 		errorGauge.Set(errorCount)
 		return overrides, nil
