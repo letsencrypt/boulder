@@ -714,13 +714,6 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 		return nil, berrors.UnauthorizedError("incorrect number of identifiers requested for finalization")
 	}
 
-	// Check that the authzs either don't need CAA rechecking, or do the
-	// necessary CAA rechecks right now.
-	err = ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, now)
-	if err != nil {
-		return nil, err
-	}
-
 	return authzs, nil
 }
 
@@ -939,14 +932,15 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, errIncompleteGRPCRequest
 	}
 
+	requester := req.Order.RegistrationID
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
 		OrderID:     req.Order.Id,
-		Requester:   req.Order.RegistrationID,
+		Requester:   requester,
 		RequestTime: ra.clk.Now(),
 		UserAgent:   web.UserAgent(ctx),
 	}
-	csr, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
+	csr, authzs, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
 		return nil, err
 	}
@@ -995,7 +989,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 			// so split off a context that won't be canceled (and has its own timeout).
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
 			defer cancel()
-			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
+
+			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, authzs, logEvent)
 			if err != nil {
 				// We only log here, because this is in a background goroutine with
 				// no parent goroutine waiting for it to receive the error.
@@ -1007,7 +1002,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		})
 		return order, nil
 	} else {
-		return ra.issueCertificateOuter(ctx, order, csr, logEvent)
+		return ra.issueCertificateOuter(ctx, order, csr, authzs, logEvent)
 	}
 }
 
@@ -1033,27 +1028,30 @@ func containsMustStaple(extensions []pkix.Extension) bool {
 
 // validateFinalizeRequest checks that a FinalizeOrder request is fully correct
 // and ready for issuance.
+//
+// Returns a CertificateRequest, a map of identifiers to authorizations, and an error.
 func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	ctx context.Context,
 	req *rapb.FinalizeOrderRequest,
-	logEvent *certificateRequestEvent) (*x509.CertificateRequest, error) {
+	logEvent *certificateRequestEvent) (
+	*x509.CertificateRequest, map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	if req.Order.Id <= 0 {
-		return nil, berrors.MalformedError("invalid order ID: %d", req.Order.Id)
+		return nil, nil, berrors.MalformedError("invalid order ID: %d", req.Order.Id)
 	}
 
 	if req.Order.RegistrationID <= 0 {
-		return nil, berrors.MalformedError("invalid account ID: %d", req.Order.RegistrationID)
+		return nil, nil, berrors.MalformedError("invalid account ID: %d", req.Order.RegistrationID)
 	}
 
 	if core.AcmeStatus(req.Order.Status) != core.StatusReady {
-		return nil, berrors.OrderNotReadyError(
+		return nil, nil, berrors.OrderNotReadyError(
 			"Order's status (%q) is not acceptable for finalization",
 			req.Order.Status)
 	}
 
 	profile, err := ra.profiles.get(req.Order.CertificateProfileName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	orderIdents := identifier.Normalize(identifier.FromProtoSlice(req.Order.Identifiers))
@@ -1062,17 +1060,17 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
 	if len(orderIdents) == 0 {
-		return nil, berrors.InternalServerError("Order has no associated identifiers")
+		return nil, nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
 
 	// Parse the CSR from the request
 	csr, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {
-		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
+		return nil, nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
 	}
 
 	if containsMustStaple(csr.Extensions) {
-		return nil, berrors.UnauthorizedError(
+		return nil, nil, berrors.UnauthorizedError(
 			"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
 		)
 	}
@@ -1081,7 +1079,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
@@ -1089,23 +1087,23 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	csrIdents := identifier.FromCSR(csr)
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
-		return nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
+		return nil, nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
 	}
 
 	// Get the originating account for use in the next check.
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: req.Order.RegistrationID})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	account, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Make sure they're not using their account key as the certificate key too.
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
-		return nil, berrors.MalformedError("certificate public key must be different than account key")
+		return nil, nil, berrors.MalformedError("certificate public key must be different than account key")
 	}
 
 	// Double-check that all authorizations on this order are valid, are also
@@ -1115,7 +1113,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Collect up a certificateRequestAuthz that stores the ID and challenge type
@@ -1137,7 +1135,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
-	return csr, nil
+	return csr, authzs, nil
 }
 
 func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
@@ -1158,6 +1156,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ctx context.Context,
 	order *corepb.Order,
 	csr *x509.CertificateRequest,
+	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	logEvent certificateRequestEvent,
 ) (*corepb.Order, error) {
 	ra.inflightFinalizes.Inc()
@@ -1186,7 +1185,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 	// Step 3: Issue the Certificate
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1277,6 +1276,7 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
+	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	isRenewal bool,
 	profileName string,
 	acctID accountID,
@@ -1290,6 +1290,13 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 			return berr
 		}
 		return fmt.Errorf("%s: %s", prefix, e)
+	}
+
+	// Check that the authzs either don't need CAA rechecking, or do the
+	// necessary CAA rechecks right now.
+	err := ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, ra.clk.Now())
+	if err != nil {
+		return nil, err
 	}
 
 	issueReq := &capb.IssueCertificateRequest{
