@@ -180,7 +180,7 @@ func (a *admin) spkiHashFromCSRPEM(filename string, checkSignature bool, expecte
 		return nil, fmt.Errorf("no PEM data found in %q", filename)
 	}
 
-	a.log.AuditInfof("Parsing key to block from CSR PEM: %x", data)
+	a.log.Debugf("Parsing key to block from CSR PEM: %x", data)
 
 	csr, err := x509.ParseCertificateRequest(data.Bytes)
 	if err != nil {

@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"sync"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type subcommandImportOverrides struct {
@@ -70,7 +71,7 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	for range overrideCount {
 		result := <-results
 		if result.err != nil {
-			a.log.AuditErrf("failed to add override: key=%q limit=%d: %s", result.ov.BucketKey, result.ov.LimitEnum, result.err)
+			a.log.Errf("failed to add override: key=%q limit=%d: %s", result.ov.BucketKey, result.ov.LimitEnum, result.err)
 			errorCount++
 		}
 	}

@@ -309,6 +309,6 @@ func TestPanicStackTrace(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 	test.AssertError(t, err, "running a failing program")
 	test.AssertContains(t, string(output), "nil pointer dereference")
-	test.AssertContains(t, string(output), "Stack Trace")
+	test.AssertContains(t, string(output), "runtime/debug.Stack()")
 	test.AssertContains(t, string(output), "cmd/shell_test.go:")
 }

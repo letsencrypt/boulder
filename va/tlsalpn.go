@@ -209,7 +209,7 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		return nil, nil, berrors.UnauthorizedError("No certs presented for %s challenge", core.ChallengeTypeTLSALPN01)
 	}
 	for i, cert := range certs {
-		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
+		va.log.Infof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
 			core.ChallengeTypeTLSALPN01, ident.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
 	return certs[0], &cs, nil

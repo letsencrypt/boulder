@@ -312,7 +312,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 
 	lintPrecertDER, issuanceToken, err := issuer.Prepare(profile, precertReq)
 	if err != nil {
-		ca.log.AuditErrf("Preparing precert failed: serial=[%s] err=[%v]", serialHex, err)
+		ca.log.AuditErr("Preparing precert failed", err, map[string]any{"serial": serialHex})
 		if errors.Is(err, linter.ErrLinting) {
 			ca.metrics.lintErrorCount.Inc()
 		}
@@ -334,7 +334,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, fmt.Errorf("persisting linting precert to database: %w", err)
 	}
 
-	ca.log.AuditObject("Signing precert", issuanceEvent{
+	ca.log.AuditInfo("Signing precert", issuanceEvent{
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
@@ -346,12 +346,12 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	precertDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
-		ca.log.AuditErrf("Signing precert failed: serial=[%s] err=[%v]", serialHex, err)
+		ca.log.AuditErr("Signing precert failed", err, map[string]any{"serial": serialHex})
 		return nil, fmt.Errorf("failed to sign precertificate: %w", err)
 	}
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 
-	ca.log.AuditObject("Signing precert success", issuanceEvent{
+	ca.log.AuditInfo("Signing precert success", issuanceEvent{
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
@@ -408,11 +408,11 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 
 	lintCertDER, issuanceToken, err := issuer.Prepare(profile, certReq)
 	if err != nil {
-		ca.log.AuditErrf("Preparing cert failed: serial=[%s] err=[%v]", serialHex, err)
+		ca.log.AuditErr("Preparing cert failed", err, map[string]any{"serial": serialHex})
 		return nil, fmt.Errorf("failed to prepare certificate signing: %w", err)
 	}
 
-	ca.log.AuditObject("Signing cert", issuanceEvent{
+	ca.log.AuditInfo("Signing cert", issuanceEvent{
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
@@ -423,13 +423,13 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
-		ca.log.AuditErrf("Signing cert failed: serial=[%s] err=[%v]", serialHex, err)
+		ca.log.AuditErr("Signing cert failed", err, map[string]any{"serial": serialHex})
 		return nil, fmt.Errorf("failed to sign certificate: %w", err)
 	}
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.metrics.certificates.With(prometheus.Labels{"profile": req.CertProfileName}).Inc()
 
-	ca.log.AuditObject("Signing cert success", issuanceEvent{
+	ca.log.AuditInfo("Signing cert success", issuanceEvent{
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
@@ -449,7 +449,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		Issued: timestamppb.New(ca.clk.Now()),
 	})
 	if err != nil {
-		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] err=[%v]", serialHex, err)
+		ca.log.AuditErr("Storing cert failed", err, map[string]any{"serial": serialHex})
 		return nil, fmt.Errorf("persisting cert to database: %w", err)
 	}
 
@@ -491,7 +491,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
-		ca.log.AuditErrf("Serial randomness failed, err=[%v]", err)
+		ca.log.AuditErr("Serial randomness failed", err, nil)
 		return nil, err
 	}
 	serialBigInt := big.NewInt(0)
