@@ -2484,14 +2484,14 @@ func TestGetOrderAuthorizations(t *testing.T) {
 	sa, fc := initSA(t)
 
 	gvoa2 := func(orderID, acctID int64) (*sapb.Authorizations, error) {
-		return sa.GetValidOrderAuthorizations2(context.Background(), &sapb.GetValidOrderAuthorizationsRequest{
+		return sa.GetValidOrderAuthorizations2(t.Context(), &sapb.GetValidOrderAuthorizationsRequest{
 			Id:     orderID,
 			AcctID: acctID,
 		})
 	}
 
 	goa := func(orderID, acctID int64) (*sapb.Authorizations, error) {
-		return sa.GetOrderAuthorizations(context.Background(), &sapb.GetOrderAuthorizationsRequest{
+		return sa.GetOrderAuthorizations(t.Context(), &sapb.GetOrderAuthorizationsRequest{
 			Id:     orderID,
 			AcctID: acctID,
 		})
@@ -2513,7 +2513,7 @@ func TestGetOrderAuthorizations(t *testing.T) {
 		authzIDC := createFinalizedAuthorization(t, sa, reg.Id, identC, expires, "valid", attemptedAt)
 
 		orderExpr := fc.Now().Truncate(time.Second)
-		order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		order, err := sa.NewOrderAndAuthzs(t.Context(), &sapb.NewOrderAndAuthzsRequest{
 			NewOrder: &sapb.NewOrderRequest{
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(orderExpr),
