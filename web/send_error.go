@@ -73,7 +73,7 @@ func SendError(
 	enc.SetEscapeHTML(false)
 	err := enc.Encode(prob)
 	if err != nil {
-		log.AuditErrf("Could not marshal error message: %s - %+v", err, prob)
+		logEvent.AddError("%s", err)
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	} else {
 		problemDoc = bytes.TrimSuffix(buf.Bytes(), []byte("\n"))

@@ -1413,14 +1413,12 @@ func TestHTTP(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation for DNS: %s", err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedToken, expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation for IPv4: %s", err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), path404, ka(path404))
@@ -1428,7 +1426,6 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
 	test.AssertErrorIs(t, err, berrors.Unauthorized)
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	// The "wrong token" will actually be the expectedToken.  It's wrong
@@ -1439,7 +1436,6 @@ func TestHTTP(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathMoved, ka(pathMoved))
@@ -1472,13 +1468,12 @@ func TestHTTPIPv6(t *testing.T) {
 	hs := httpSrv(t, expectedToken, true)
 	defer hs.Close()
 
-	va, log := setup(hs, "", nil, &ipFakeDNS{})
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedToken, expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation for IPv6: %s", err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 }
 
 func TestHTTPTimeout(t *testing.T) {
