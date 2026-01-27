@@ -3151,22 +3151,30 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	test.AssertDeepEquals(t, event.VerifiedFields, []string{"subject.commonName", "subjectAltName"})
 	// The event CommonName should match the expected common name
 	test.AssertEquals(t, event.CommonName, "not-example.com")
-	// The event identifiers should match the order identifiers
-	test.AssertDeepEquals(t, identifier.Normalize(event.Identifiers), identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
 	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
 
-	// There should be one event Authorization entry for each name
-	test.AssertEquals(t, len(event.Authorizations), len(names))
+	// There should be one event identifier/authz entry for each name.
+	test.AssertEquals(t, len(event.Identifiers), len(names))
 
-	// Check the authz entry for each name
+	// The event identifiers should match the order identifiers
+	eventIdents := make([]identifier.ACMEIdentifier, 0)
+	for _, eventIdent := range event.Identifiers {
+		eventIdents = append(eventIdents, eventIdent.Ident)
+	}
+	test.AssertDeepEquals(t, identifier.Normalize(eventIdents), identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)))
+
+	// Check the identifier/authz entry for each name
 	for i, name := range names {
-		authzEntry := event.Authorizations[name]
-		// The authz entry should have the correct authz ID
-		test.AssertEquals(t, authzEntry.ID, fmt.Sprintf("%d", authzIDs[i]))
-		// The authz entry should have the correct challenge type
-		test.AssertEquals(t, authzEntry.ChallengeType, challs[i])
+		for _, entry := range event.Identifiers {
+			if entry.Ident.Value == name {
+				// The authz entry should have the correct authz ID
+				test.AssertEquals(t, entry.Authz, fmt.Sprintf("%d", authzIDs[i]))
+				// The authz entry should have the correct challenge type
+				test.AssertEquals(t, entry.Challenge, challs[i])
+			}
+		}
 	}
 }
 

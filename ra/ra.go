@@ -382,14 +382,15 @@ func (vp *validationProfiles) get(name string) (*validationProfile, error) {
 	return profile, nil
 }
 
-// certificateRequestAuthz is a struct for holding information about a valid
-// authz referenced during a certificateRequestEvent. It holds both the
-// authorization ID and the challenge type that made the authorization valid. We
-// specifically include the challenge type that solved the authorization to make
-// some common analysis easier.
-type certificateRequestAuthz struct {
-	ID            string
-	ChallengeType core.AcmeChallenge
+// certificateRequestAuthz is a struct for logging information about when and
+// how an identifier was validated. We include the challenge type that solved
+// the authorization and when the challenge was completed to make some common
+// analysis easier.
+type identifierLog struct {
+	Ident     identifier.ACMEIdentifier
+	Authz     string
+	Challenge core.AcmeChallenge
+	Validated time.Time
 }
 
 // certificateRequestEvent is a struct for holding information that is logged as
@@ -408,8 +409,8 @@ type certificateRequestEvent struct {
 	VerifiedFields []string `json:",omitempty"`
 	// CommonName is the subject common name from the issued cert
 	CommonName string `json:",omitempty"`
-	// Identifiers are the identifiers from the issued cert
-	Identifiers identifier.ACMEIdentifiers `json:",omitempty"`
+	// Identifiers are the identifiers and validation data from the issued cert
+	Identifiers []identifierLog `json:",omitempty"`
 	// NotBefore is the starting timestamp of the issued cert's validity period
 	NotBefore time.Time
 	// NotAfter is the ending timestamp of the issued cert's validity period
@@ -419,10 +420,6 @@ type certificateRequestEvent struct {
 	ResponseTime time.Time
 	// Error contains any encountered errors
 	Error string `json:",omitempty"`
-	// Authorizations is a map of identifier names to certificateRequestAuthz
-	// objects. It can be used to understand how the names in a certificate
-	// request were authorized.
-	Authorizations map[string]certificateRequestAuthz
 	// CertProfileName is a human readable name used to refer to the certificate
 	// profile.
 	CertProfileName string `json:",omitempty"`
@@ -1111,21 +1108,28 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, err
 	}
 
-	// Collect up a certificateRequestAuthz that stores the ID and challenge type
-	// of each of the valid authorizations we used for this issuance.
-	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrIdents))
-	for _, authz := range authzs {
-		// No need to check for error here because we know this same call just
-		// succeeded inside ra.checkOrderAuthorizations
-		solvedByChallengeType, _ := authz.SolvedBy()
-		logEventAuthzs[authz.Identifier.Value] = certificateRequestAuthz{
-			ID:            authz.ID,
-			ChallengeType: solvedByChallengeType,
+	// Collect up identifierLogs to log validation information for each identifier.
+	logIdents := make([]identifierLog, 0)
+	for ident, authz := range authzs {
+		// We know that at least one challenge is valid, because this was just
+		// confirmed by ra.checkOrderAuthorizations.
+		var solvedChall core.Challenge
+		for _, chall := range authz.Challenges {
+			if chall.Status == core.StatusValid {
+				solvedChall = chall
+				break
+			}
 		}
+		logIdents = append(logIdents, identifierLog{
+			Ident:     ident,
+			Authz:     authz.ID,
+			Challenge: solvedChall.Type,
+			Validated: *solvedChall.Validated,
+		})
 		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		ra.authzAges.WithLabelValues("FinalizeOrder", string(authz.Status)).Observe(authzAge)
 	}
-	logEvent.Authorizations = logEventAuthzs
+	logEvent.Identifiers = logIdents
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
@@ -1207,7 +1211,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
-		logEvent.Identifiers = identifier.FromCert(cert)
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
 		logEvent.CertProfileName = profileName
