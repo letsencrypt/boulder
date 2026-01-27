@@ -199,7 +199,7 @@ func TestIPShortLived(t *testing.T) {
 	if err == nil {
 		t.Error("issued for IP address identifier under legacy profile")
 	}
-	if !strings.Contains(err.Error(), "Profile \"legacy\" does not permit ip type identifiers") {
+	if !strings.Contains(err.Error(), "Profile \"legacy\" does not permit IP address identifiers") {
 		t.Fatalf("issuing under legacy profile failed for the wrong reason: %s", err)
 	}
 
@@ -207,7 +207,7 @@ func TestIPShortLived(t *testing.T) {
 	if err == nil {
 		t.Error("issued for IP address identifier under modern profile")
 	}
-	if !strings.Contains(err.Error(), "Profile \"modern\" does not permit ip type identifiers") {
+	if !strings.Contains(err.Error(), "Profile \"modern\" does not permit IP address identifiers") {
 		t.Fatalf("issuing under legacy profile failed for the wrong reason: %s", err)
 	}
 
