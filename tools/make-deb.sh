@@ -10,6 +10,10 @@
 set -eu
 cd "$(realpath -- "$(dirname -- "$0")")/.."
 
+if [ -z "${ARCH:-}" ]; then echo "ARCH not set"; exit 1; fi
+if [ -z "${VERSION:-}" ]; then echo "VERSION not set"; exit 1; fi
+if [ -z "${COMMIT_ID:-}" ]; then echo "COMMIT_ID not set"; exit 1; fi
+
 BUILD="$(mktemp -d)"
 
 mkdir -p "${BUILD}/opt"
@@ -21,7 +25,7 @@ Package: boulder
 Version: 1:${VERSION}
 License: Mozilla Public License v2.0
 Vendor: ISRG
-Architecture: amd64
+Architecture: ${ARCH}
 Maintainer: Community
 Section: default
 Priority: extra
@@ -29,4 +33,4 @@ Homepage: https://github.com/letsencrypt/boulder
 Description: Boulder is an ACME-compatible X.509 Certificate Authority
 EOF
 
-dpkg-deb -Zgzip -b "${BUILD}" "boulder-${VERSION}-${COMMIT_ID}.x86_64.deb"
+dpkg-deb -Zgzip -b "${BUILD}" "boulder-${VERSION}-${COMMIT_ID}.${ARCH}.deb"
