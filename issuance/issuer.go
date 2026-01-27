@@ -147,14 +147,12 @@ type IssuerConfig struct {
 	// Profiles is the list of profiles for which this issuer is willing to issue.
 	// The names listed here must match the names of configured profiles (see
 	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's
-	// ProfileConfig).
-	// If Profiles is not empty then the issuer can be used to sign precertificates
-	// and final certificates.
-	// All issuers, regardless if this field is empty or not, can be used to
-	// sign CRLs. All issuers with a profile(s) of a given key type (RSA or ECDSA)
-	// are part of a pool and each precertificate will be issued randomly
-	// from a selected pool. The selection of which pool depends on the
-	// precertificate's key algorithm.
+	// ProfileConfig). If Profiles is not empty then the issuer can be used
+	// to sign precertificates and final certificates. All issuers, regardless
+	// if this field is empty or not, can be used to sign CRLs. All issuers
+	// with a profile(s) of a given key type (RSA or ECDSA) are part of a pool
+	// and each precertificate will be issued randomly from a selected pool.
+	// The selection of which pool depends on the precertificate's key algorithm.
 	Profiles []string `validate:"dive,alphanum,min=1,max=32"`
 
 	IssuerURL  string `validate:"required,url"`
