@@ -903,19 +903,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 	defer cancel()
 
 	// Convert the problem to a protobuf problem for the *corepb.Order field
-	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
-	if err != nil {
-		ra.log.AuditErr("Converting order problem to PB", err, map[string]any{
-			"requester": order.RegistrationID,
-			"order":     order.Id,
-			"prob":      prob.String(),
-		})
-		return
-	}
+	pbProb := bgrpc.ProblemDetailsToPB(prob)
 
 	// Assign the protobuf problem to the field and save it via the SA
 	order.Error = pbProb
-	_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
+	_, err := ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
 		Id:    order.Id,
 		Error: order.Error,
 	})
@@ -1559,8 +1551,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			},
 		)
 		if err != nil {
-			// ProblemDetailsToPB never returns an error.
-			prob, _ = bgrpc.ProblemDetailsToPB(probs.ServerInternal("Could not communicate with VA"))
+			prob = bgrpc.ProblemDetailsToPB(probs.ServerInternal("Could not communicate with VA"))
 			ra.log.Errf("Failed to communicate with VA: %s", err)
 		}
 
