@@ -2,11 +2,11 @@
 -- component with the appropriate permissions.
 
 -- These lines require MariaDB 10.1+
-CREATE USER IF NOT EXISTS 'incidents_sa'@'localhost';
-CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
+CREATE USER IF NOT EXISTS 'incidents_sa'@'%';
+CREATE USER IF NOT EXISTS 'test_setup'@'%';
 
 -- Storage Authority
-GRANT SELECT ON * TO 'incidents_sa'@'localhost';
+GRANT SELECT ON * TO 'incidents_sa'@'%';
 
 -- Test setup and teardown
-GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
+GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';

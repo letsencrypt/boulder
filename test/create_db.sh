@@ -97,8 +97,7 @@ for db in $DBS; do
   then
     echo "Skipping user grants for ${dbname}"
   else
-    sed -e "s/'localhost'/'%'/g" < "${USERS_SQL}" | \
-      mysql ${dbconn} -D "${dbname}" -f || exit_err "Unable to add users from ${USERS_SQL}"
+    mysql ${dbconn} -D "${dbname}" -f < "${USERS_SQL}"
     echo "Added users from ${USERS_SQL}"
   fi
 
