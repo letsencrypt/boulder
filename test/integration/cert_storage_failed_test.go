@@ -78,7 +78,7 @@ func getPrecertByName(db *sql.DB, reversedName string) (*x509.Certificate, error
 func TestIssuanceCertStorageFailed(t *testing.T) {
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed to open db connection")
 
 	if os.Getenv("USE_VITESS") == "false" {

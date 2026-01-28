@@ -323,7 +323,7 @@ New migrations should be added at `./sa/db-next`:
 
 ```shell
 $ cd sa/db
-$ sql-migrate new -env="boulder_sa_test" AddWizards
+$ sql-migrate new -env="boulder_sa" AddWizards
 Created migration boulder_sa/20220906165519-AddWizards.sql
 ```
 

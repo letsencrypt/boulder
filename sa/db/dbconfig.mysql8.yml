@@ -1,20 +1,10 @@
 # https://github.com/rubenv/sql-migrate#readme
-boulder_sa_test:
+boulder_sa:
   dialect: mysql
-  datasource: root@tcp(boulder-vitess:33577)/boulder_sa_test?parseTime=true
+  datasource: root@tcp(boulder-vitess:33577)/boulder_sa?parseTime=true
   dir: boulder_sa
 
-boulder_sa_integration:
+incidents_sa:
   dialect: mysql
-  datasource: root@tcp(boulder-vitess:33577)/boulder_sa_integration?parseTime=true
-  dir: boulder_sa
-
-incidents_sa_test:
-  dialect: mysql
-  datasource: root@tcp(boulder-vitess:33577)/incidents_sa_test?parseTime=true
-  dir: incidents_sa
-
-incidents_sa_integration:
-  dialect: mysql
-  datasource: root@tcp(boulder-vitess:33577)/incidents_sa_integration?parseTime=true
+  datasource: root@tcp(boulder-vitess:33577)/incidents_sa?parseTime=true
   dir: incidents_sa
