@@ -344,6 +344,8 @@ type GRPCClientConfig struct {
 	// The current default, grpc.WaitForReady(true), means that if all of a GRPC client's
 	// backends are down, it will wait until either one becomes available or the RPC
 	// times out.
+	//
+	// Deprecated: Is ignored and always never waits for ready
 	NoWaitForReady bool
 }
 
