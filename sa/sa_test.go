@@ -2484,7 +2484,7 @@ func TestGetOrderAuthorizations(t *testing.T) {
 	sa, fc := initSA(t)
 
 	gvoa2 := func(orderID, acctID int64) (*sapb.Authorizations, error) {
-		return sa.GetValidOrderAuthorizations2(t.Background(), &sapb.GetOrderAuthorizationsRequest{
+		return sa.GetValidOrderAuthorizations2(t.Context(), &sapb.GetOrderAuthorizationsRequest{
 			Id:     orderID,
 			AcctID: acctID,
 		})
