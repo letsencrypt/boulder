@@ -62,6 +62,7 @@ service StorageAuthority {
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
   rpc GetValidOrderAuthorizations2(GetOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
