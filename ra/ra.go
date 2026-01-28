@@ -748,6 +748,9 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	acctID int64,
 	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	now time.Time) error {
+	if len(authzs) == 0 {
+		return berrors.MalformedError("order with no authorizations")
+	}
 	// recheckAuthzs is a list of authorizations that must have their CAA records rechecked
 	var recheckAuthzs []*core.Authorization
 
