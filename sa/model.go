@@ -733,10 +733,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 				am.ValidationError,
 				err)
 		}
-		challenge.Error, err = grpc.ProblemDetailsToPB(&prob)
-		if err != nil {
-			return err
-		}
+		challenge.Error = grpc.ProblemDetailsToPB(&prob)
 	} else {
 		// If the error is empty the challenge must be valid.
 		challenge.Status = string(core.StatusValid)
