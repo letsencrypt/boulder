@@ -600,7 +600,7 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 // generally in a better position to provide insightful error messages, whereas
 // simply omitting an authz from this method's response would leave the caller
 // wondering why that authz was omitted.
-func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
 	return ssa.GetOrderAuthorizations(ctx, &sapb.GetOrderAuthorizationsRequest{
 		Id:     req.Id,
 		AcctID: req.AcctID,
