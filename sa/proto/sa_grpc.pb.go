@@ -40,6 +40,7 @@ const (
 	StorageAuthorityReadOnly_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetSerialsByKey"
 	StorageAuthorityReadOnly_GetValidAuthorizations2_FullMethodName      = "/sa.StorageAuthorityReadOnly/GetValidAuthorizations2"
 	StorageAuthorityReadOnly_GetValidOrderAuthorizations2_FullMethodName = "/sa.StorageAuthorityReadOnly/GetValidOrderAuthorizations2"
+	StorageAuthorityReadOnly_GetOrderAuthorizations_FullMethodName       = "/sa.StorageAuthorityReadOnly/GetOrderAuthorizations"
 	StorageAuthorityReadOnly_IncidentsForSerial_FullMethodName           = "/sa.StorageAuthorityReadOnly/IncidentsForSerial"
 	StorageAuthorityReadOnly_KeyBlocked_FullMethodName                   = "/sa.StorageAuthorityReadOnly/KeyBlocked"
 	StorageAuthorityReadOnly_ReplacementOrderExists_FullMethodName       = "/sa.StorageAuthorityReadOnly/ReplacementOrderExists"
@@ -74,7 +75,8 @@ type StorageAuthorityReadOnlyClient interface {
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
-	GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
+	GetValidOrderAuthorizations2(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
+	GetOrderAuthorizations(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
@@ -300,10 +302,20 @@ func (c *storageAuthorityReadOnlyClient) GetValidAuthorizations2(ctx context.Con
 	return out, nil
 }
 
-func (c *storageAuthorityReadOnlyClient) GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error) {
+func (c *storageAuthorityReadOnlyClient) GetValidOrderAuthorizations2(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Authorizations)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetValidOrderAuthorizations2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityReadOnlyClient) GetOrderAuthorizations(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Authorizations)
+	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetOrderAuthorizations_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +444,8 @@ type StorageAuthorityReadOnlyServer interface {
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
 	GetSerialsByKey(*SPKIHash, grpc.ServerStreamingServer[Serial]) error
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
-	GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error)
+	GetValidOrderAuthorizations2(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error)
+	GetOrderAuthorizations(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
@@ -505,8 +518,11 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetSerialsByKey(*SPKIHash, gr
 func (UnimplementedStorageAuthorityReadOnlyServer) GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetValidAuthorizations2 not implemented")
 }
-func (UnimplementedStorageAuthorityReadOnlyServer) GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error) {
+func (UnimplementedStorageAuthorityReadOnlyServer) GetValidOrderAuthorizations2(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetValidOrderAuthorizations2 not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetOrderAuthorizations(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOrderAuthorizations not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) IncidentsForSerial(context.Context, *Serial) (*Incidents, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IncidentsForSerial not implemented")
@@ -858,7 +874,7 @@ func _StorageAuthorityReadOnly_GetValidAuthorizations2_Handler(srv interface{}, 
 }
 
 func _StorageAuthorityReadOnly_GetValidOrderAuthorizations2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetValidOrderAuthorizationsRequest)
+	in := new(GetOrderAuthorizationsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -870,7 +886,25 @@ func _StorageAuthorityReadOnly_GetValidOrderAuthorizations2_Handler(srv interfac
 		FullMethod: StorageAuthorityReadOnly_GetValidOrderAuthorizations2_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).GetValidOrderAuthorizations2(ctx, req.(*GetValidOrderAuthorizationsRequest))
+		return srv.(StorageAuthorityReadOnlyServer).GetValidOrderAuthorizations2(ctx, req.(*GetOrderAuthorizationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthorityReadOnly_GetOrderAuthorizations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOrderAuthorizationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityReadOnlyServer).GetOrderAuthorizations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthorityReadOnly_GetOrderAuthorizations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityReadOnlyServer).GetOrderAuthorizations(ctx, req.(*GetOrderAuthorizationsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1077,6 +1111,10 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_GetValidOrderAuthorizations2_Handler,
 		},
 		{
+			MethodName: "GetOrderAuthorizations",
+			Handler:    _StorageAuthorityReadOnly_GetOrderAuthorizations_Handler,
+		},
+		{
 			MethodName: "IncidentsForSerial",
 			Handler:    _StorageAuthorityReadOnly_IncidentsForSerial_Handler,
 		},
@@ -1151,6 +1189,7 @@ const (
 	StorageAuthority_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthority/GetSerialsByKey"
 	StorageAuthority_GetValidAuthorizations2_FullMethodName      = "/sa.StorageAuthority/GetValidAuthorizations2"
 	StorageAuthority_GetValidOrderAuthorizations2_FullMethodName = "/sa.StorageAuthority/GetValidOrderAuthorizations2"
+	StorageAuthority_GetOrderAuthorizations_FullMethodName       = "/sa.StorageAuthority/GetOrderAuthorizations"
 	StorageAuthority_IncidentsForSerial_FullMethodName           = "/sa.StorageAuthority/IncidentsForSerial"
 	StorageAuthority_KeyBlocked_FullMethodName                   = "/sa.StorageAuthority/KeyBlocked"
 	StorageAuthority_ReplacementOrderExists_FullMethodName       = "/sa.StorageAuthority/ReplacementOrderExists"
@@ -1208,7 +1247,8 @@ type StorageAuthorityClient interface {
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
-	GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
+	GetValidOrderAuthorizations2(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
+	GetOrderAuthorizations(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
@@ -1457,10 +1497,20 @@ func (c *storageAuthorityClient) GetValidAuthorizations2(ctx context.Context, in
 	return out, nil
 }
 
-func (c *storageAuthorityClient) GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error) {
+func (c *storageAuthorityClient) GetValidOrderAuthorizations2(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Authorizations)
 	err := c.cc.Invoke(ctx, StorageAuthority_GetValidOrderAuthorizations2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) GetOrderAuthorizations(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Authorizations)
+	err := c.cc.Invoke(ctx, StorageAuthority_GetOrderAuthorizations_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1810,7 +1860,8 @@ type StorageAuthorityServer interface {
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
 	GetSerialsByKey(*SPKIHash, grpc.ServerStreamingServer[Serial]) error
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
-	GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error)
+	GetValidOrderAuthorizations2(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error)
+	GetOrderAuthorizations(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
@@ -1906,8 +1957,11 @@ func (UnimplementedStorageAuthorityServer) GetSerialsByKey(*SPKIHash, grpc.Serve
 func (UnimplementedStorageAuthorityServer) GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetValidAuthorizations2 not implemented")
 }
-func (UnimplementedStorageAuthorityServer) GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error) {
+func (UnimplementedStorageAuthorityServer) GetValidOrderAuthorizations2(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetValidOrderAuthorizations2 not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetOrderAuthorizations(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOrderAuthorizations not implemented")
 }
 func (UnimplementedStorageAuthorityServer) IncidentsForSerial(context.Context, *Serial) (*Incidents, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IncidentsForSerial not implemented")
@@ -2324,7 +2378,7 @@ func _StorageAuthority_GetValidAuthorizations2_Handler(srv interface{}, ctx cont
 }
 
 func _StorageAuthority_GetValidOrderAuthorizations2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetValidOrderAuthorizationsRequest)
+	in := new(GetOrderAuthorizationsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -2336,7 +2390,25 @@ func _StorageAuthority_GetValidOrderAuthorizations2_Handler(srv interface{}, ctx
 		FullMethod: StorageAuthority_GetValidOrderAuthorizations2_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).GetValidOrderAuthorizations2(ctx, req.(*GetValidOrderAuthorizationsRequest))
+		return srv.(StorageAuthorityServer).GetValidOrderAuthorizations2(ctx, req.(*GetOrderAuthorizationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_GetOrderAuthorizations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOrderAuthorizationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).GetOrderAuthorizations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_GetOrderAuthorizations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).GetOrderAuthorizations(ctx, req.(*GetOrderAuthorizationsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2937,6 +3009,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetValidOrderAuthorizations2",
 			Handler:    _StorageAuthority_GetValidOrderAuthorizations2_Handler,
+		},
+		{
+			MethodName: "GetOrderAuthorizations",
+			Handler:    _StorageAuthority_GetOrderAuthorizations_Handler,
 		},
 		{
 			MethodName: "IncidentsForSerial",
