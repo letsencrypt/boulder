@@ -156,8 +156,8 @@ services:
     environment:
       # By specifying KEYSPACES vttestserver will create the corresponding
       # databases on startup.
-      KEYSPACES: boulder_sa_test,boulder_sa_integration,incidents_sa_test,incidents_sa_integration
-      NUM_SHARDS: 1,1,1,1
+      KEYSPACES: boulder_sa,incidents_sa
+      NUM_SHARDS: 1,1
     networks:
       bouldernet:
         aliases:

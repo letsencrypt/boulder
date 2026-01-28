@@ -15,18 +15,13 @@ func dsn(user, database string) string {
 
 var (
 	// DBConnSA is the sa database connection
-	DBConnSA = dsn("sa", "boulder_sa_test")
-	// DBConnSAMailer is the sa mailer database connection
-	DBConnSAMailer = dsn("mailer", "boulder_sa_test")
+	DBConnSA = dsn("sa", "boulder_sa")
 	// DBConnSAFullPerms is the sa database connection with full perms
-	DBConnSAFullPerms = dsn("test_setup", "boulder_sa_test")
-	// DBConnSAIntegrationFullPerms is the sa database connection for the
-	// integration test DB, with full perms
-	DBConnSAIntegrationFullPerms = dsn("test_setup", "boulder_sa_integration")
+	DBConnSAFullPerms = dsn("test_setup", "boulder_sa")
 	// DBInfoSchemaRoot is the root user and the information_schema connection.
 	DBInfoSchemaRoot = dsn("root", "information_schema")
 	// DBConnIncidents is the incidents database connection.
-	DBConnIncidents = dsn("incidents_sa", "incidents_sa_test")
+	DBConnIncidents = dsn("incidents_sa", "incidents_sa")
 	// DBConnIncidentsFullPerms is the incidents database connection with full perms.
-	DBConnIncidentsFullPerms = dsn("test_setup", "incidents_sa_test")
+	DBConnIncidentsFullPerms = dsn("test_setup", "incidents_sa")
 )
