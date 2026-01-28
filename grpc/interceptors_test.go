@@ -89,51 +89,16 @@ func TestClientInterceptor(t *testing.T) {
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
 }
 
-// TestWaitForReadyTrue configures a gRPC client with waitForReady: true and
-// sends a request to a backend that is unavailable. It ensures that the
-// request doesn't error out until the timeout is reached, i.e. that
-// FailFast is set to false.
-// https://github.com/grpc/grpc/blob/main/doc/wait-for-ready.md
-func TestWaitForReadyTrue(t *testing.T) {
-	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientMetadataInterceptor{
-		timeout:      100 * time.Millisecond,
-		metrics:      clientMetrics,
-		clk:          clock.NewFake(),
-		waitForReady: true,
-	}
-	conn, err := grpc.NewClient("localhost:19876", // random, probably unused port
-		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.Unary))
-	if err != nil {
-		t.Fatalf("did not connect: %v", err)
-	}
-	defer conn.Close()
-	c := test_proto.NewChillerClient(conn)
-
-	start := time.Now()
-	_, err = c.Chill(context.Background(), &test_proto.Time{Duration: durationpb.New(time.Second)})
-	if err == nil {
-		t.Errorf("Successful Chill when we expected failure.")
-	}
-	if time.Since(start) < 90*time.Millisecond {
-		t.Errorf("Chill failed fast, when WaitForReady should be enabled.")
-	}
-}
-
-// TestWaitForReadyFalse configures a gRPC client with waitForReady: false and
-// sends a request to a backend that is unavailable, and ensures that the request
+// TestThereIsNoWaitForReady checks the gRPC client does default to not wait for ready by
+// sending a request to a backend that is unavailable, and ensures that the request
 // errors out promptly.
-func TestWaitForReadyFalse(t *testing.T) {
+func TestThereIsNoWaitForReady(t *testing.T) {
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientMetadataInterceptor{
-		timeout:      time.Second,
-		metrics:      clientMetrics,
-		clk:          clock.NewFake(),
-		waitForReady: false,
+		timeout: time.Second,
+		metrics: clientMetrics,
+		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.NewClient("localhost:19876", // random, probably unused port
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
