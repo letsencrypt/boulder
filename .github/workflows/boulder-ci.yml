@@ -66,7 +66,7 @@ jobs:
       # use in tests. It will be set appropriately for each tag in the list
       # defined in the matrix.
       BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
-      BOULDER_VTCOMBOSERVER_TAG: vitessv23.0.0_2025-12-02
+      BOULDER_VTCOMBOSERVER_TAG: vitessv23.0.0_2026-01-28
 
     # Sequence of tasks that will be executed as part of the job.
     steps:
