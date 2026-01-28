@@ -755,7 +755,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		}
 
 		response.Header().Set("Location",
-			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acctPB.Id)))
+			web.RelativeEndpoint(request, acctPath, fmt.Sprintf("%d", acctPB.Id)))
 		logEvent.Requester = acctPB.Id
 		addRequesterHeader(response, acctPB.Id)
 
@@ -883,7 +883,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	logEvent.Requester = acct.ID
 	addRequesterHeader(response, acct.ID)
 
-	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
+	acctURL := web.RelativeEndpoint(request, acctPath, fmt.Sprintf("%d", acct.ID))
 
 	response.Header().Add("Location", acctURL)
 	if len(wfe.SubscriberAgreementURL) > 0 {
@@ -1199,7 +1199,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	challenge *core.Challenge,
 ) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s/%s", challengePath, authz.RegistrationID, authz.ID, challenge.StringID()))
+	challenge.URL = web.RelativeEndpoint(request, challengePath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID, challenge.StringID())
 
 	// Internally, we store challenge error problems with just the short form
 	// (e.g. "CAA") of the problem type. But for external display, we need to
@@ -1762,7 +1762,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 				continue
 			}
 			chainURL := web.RelativeEndpoint(request,
-				fmt.Sprintf("%s%s/%d", certPath, serial, chainID))
+				certPath, serial, fmt.Sprintf("%d", chainID))
 			response.Header().Add("Link", link(chainURL, "alternate"))
 		}
 
@@ -1954,7 +1954,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
 	if err == nil {
 		response.Header().Set("Location",
-			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.Id)))
+			web.RelativeEndpoint(request, acctPath, fmt.Sprintf("%d", existingAcct.Id)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
 		return
@@ -1977,7 +1977,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 				return
 			}
 			response.Header().Set("Location",
-				web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.Id)))
+				web.RelativeEndpoint(request, acctPath, fmt.Sprintf("%d", existingAcct.Id)))
 			wfe.sendError(response, logEvent,
 				probs.Conflict("New key is already in use for a different account"), err)
 			return
@@ -2016,8 +2016,8 @@ type orderJSON struct {
 // DNS type identifiers and additionally create absolute URLs for the finalize
 // URL and the certificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
-	finalizeURL := web.RelativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
+	finalizeURL := web.RelativeEndpoint(request, finalizeOrderPath,
+		fmt.Sprintf("%d", order.RegistrationID), fmt.Sprintf("%d", order.Id))
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
 		Expires:     order.Expires.AsTime(),
@@ -2040,11 +2040,13 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type
 	}
 	for _, v2ID := range order.V2Authorizations {
-		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%d", authzPath, order.RegistrationID, v2ID)))
+		endpoint := web.RelativeEndpoint(request,
+			authzPath, fmt.Sprintf("%d", order.RegistrationID), fmt.Sprintf("%d", v2ID))
+		respObj.Authorizations = append(respObj.Authorizations, endpoint)
 	}
 	if respObj.Status == core.StatusValid {
 		certURL := web.RelativeEndpoint(request,
-			fmt.Sprintf("%s%s", certPath, order.CertificateSerial))
+			certPath, order.CertificateSerial)
 		respObj.Certificate = certURL
 	}
 	return respObj
@@ -2429,8 +2431,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
 
-	orderURL := web.RelativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, order.Id))
+	orderURL := web.RelativeEndpoint(request, orderPath,
+		fmt.Sprintf("%d", acct.ID), fmt.Sprintf("%d", order.Id))
 	response.Header().Set("Location", orderURL)
 
 	respObj := wfe.orderToOrderJSON(request, order)
@@ -2508,8 +2510,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
 	}
 
-	orderURL := web.RelativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d", orderPath, acctID, order.Id))
+	orderURL := web.RelativeEndpoint(request, orderPath,
+		fmt.Sprintf("%d", acctID), fmt.Sprintf("%d", order.Id))
 	response.Header().Set("Location", orderURL)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
@@ -2637,8 +2639,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// Inc CSR signature algorithm counter
 	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": csr.SignatureAlgorithm.String()}).Inc()
 
-	orderURL := web.RelativeEndpoint(request,
-		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, updatedOrder.Id))
+	orderURL := web.RelativeEndpoint(request, orderPath,
+		fmt.Sprintf("%d", acct.ID), fmt.Sprintf("%d", updatedOrder.Id))
 	response.Header().Set("Location", orderURL)
 
 	respObj := wfe.orderToOrderJSON(request, updatedOrder)
@@ -2727,7 +2729,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	return web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s", authzPath, authz.RegistrationID, authz.ID))
+	return web.RelativeEndpoint(request, authzPath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID)
 }
 
 // jitterRetryHeader will return a string formatted random integer of seconds within a 20% window of the
