@@ -5,14 +5,13 @@
 // This code is copied directly from
 // https://cs.opensource.google/go/go/+/refs/tags/go1.26rc2:src/log/slog/multi_handler.go;l=13
 // The only modificiations are:
+//   - use the `slog.` package qualifier for slog types; and
+//   - unexport the multiHandler type and its constructor.
 //
-// * use the `slog.` package qualifier for slog types; and
-// * unexport the multiHandler type and its constructor.
-//
-// It should be replaced with the stdlib MultiHandler when Boulder updates to
-// go1.26.
+// It should be replaced with the stdlib slog.MultiHandler when Boulder updates
+// to go1.26.
 
-package log
+package blog
 
 import (
 	"context"

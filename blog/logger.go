@@ -1,7 +1,6 @@
-package log
+package blog
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -56,17 +55,18 @@ func configToSlogLevel(l int) slog.Level {
 	}
 }
 
-// NewSlogger returns a slog.Logger which writes log messages to stdout and
-// syslog as configured.
-func NewSlogger(conf SlogConfig) (*slog.Logger, error) {
+// New returns a slog.Logger which prepends the [AUDIT] tag to audit messages,
+// prepends a checksum to all messages, and then writes log messages to stdout
+// and syslog as configured.
+func New(conf SlogConfig) (*slog.Logger, error) {
 	var stdoutHandler slog.Handler
 	if conf.StdoutLevel >= 0 {
-		writer := NewChecksumWriter(os.Stdout)
+		writer := newChecksumWriter(os.Stdout)
 		opts := &slog.HandlerOptions{Level: configToSlogLevel(conf.StdoutLevel)}
 		if conf.TextFormat {
-			stdoutHandler = slog.NewTextHandler(writer, opts)
+			stdoutHandler = newAuditHandler(slog.NewTextHandler, writer, opts)
 		} else {
-			stdoutHandler = slog.NewJSONHandler(writer, opts)
+			stdoutHandler = newAuditHandler(slog.NewJSONHandler, writer, opts)
 		}
 	}
 
@@ -77,12 +77,12 @@ func NewSlogger(conf SlogConfig) (*slog.Logger, error) {
 			return nil, fmt.Errorf("failed to connect to syslog: %w", err)
 		}
 
-		writer := NewChecksumWriter(syslogger)
+		writer := newChecksumWriter(syslogger)
 		opts := &slog.HandlerOptions{Level: configToSlogLevel(conf.SyslogLevel)}
 		if conf.TextFormat {
-			syslogHandler = slog.NewTextHandler(writer, opts)
+			syslogHandler = newAuditHandler(slog.NewTextHandler, writer, opts)
 		} else {
-			syslogHandler = slog.NewJSONHandler(writer, opts)
+			syslogHandler = newAuditHandler(slog.NewJSONHandler, writer, opts)
 		}
 	}
 
@@ -99,39 +99,4 @@ func NewSlogger(conf SlogConfig) (*slog.Logger, error) {
 	}
 
 	return l, nil
-}
-
-var sloggerContextKey = struct{}{}
-
-func ContextWith(ctx context.Context, pairs ...any) context.Context {
-	slogger := fromContext(ctx).With(pairs...)
-	return context.WithValue(ctx, sloggerContextKey, slogger)
-}
-
-func fromContext(ctx context.Context) *slog.Logger {
-	slogger, ok := ctx.Value(sloggerContextKey).(*slog.Logger)
-	if slogger == nil || !ok {
-		panic("context not initialized with slogger")
-	}
-	return slogger
-}
-
-func Error(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
-	slogger := fromContext(ctx).With(slog.Any("error", err))
-	slogger.LogAttrs(ctx, slog.LevelError, msg, attrs...)
-}
-
-func Warn(ctx context.Context, msg string, attrs ...slog.Attr) {
-	slogger := fromContext(ctx)
-	slogger.LogAttrs(ctx, slog.LevelWarn, msg, attrs...)
-}
-
-func Info(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
-	slogger := fromContext(ctx)
-	slogger.LogAttrs(ctx, slog.LevelInfo, msg, attrs...)
-}
-
-func Debug(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
-	slogger := fromContext(ctx)
-	slogger.LogAttrs(ctx, slog.LevelDebug, msg, attrs...)
 }
