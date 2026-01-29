@@ -160,7 +160,7 @@
 			]
 		},
 		"features": {
-			"AsyncFinalize": true,
+			"CAARechecksFailOrder": true,
 			"AutomaticallyPauseZombieClients": true,
 			"DNSAccount01Enabled": true,
 			"NoPendingAuthzReuse": true
