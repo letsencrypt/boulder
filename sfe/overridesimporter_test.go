@@ -26,6 +26,7 @@ const (
 	ok raBehavior = iota
 	alwaysError
 	alwaysAdministrativelyDisabled
+	alwaysLowerThanExisting
 )
 
 type raFakeServer struct {
@@ -49,6 +50,18 @@ func (s *raFakeServer) AddRateLimitOverride(ctx context.Context, r *rapb.AddRate
 		return &rapb.AddRateLimitOverrideResponse{Enabled: true}, nil
 	case alwaysAdministrativelyDisabled:
 		return &rapb.AddRateLimitOverrideResponse{Enabled: false}, nil
+	case alwaysLowerThanExisting:
+		return &rapb.AddRateLimitOverrideResponse{
+			Enabled: false,
+			Existing: &rapb.RateLimitOverride{
+				LimitEnum: r.Override.LimitEnum,
+				BucketKey: r.Override.BucketKey,
+				Comment:   "existing",
+				Period:    r.Override.Period,
+				Count:     r.Override.Count + 1,
+				Burst:     r.Override.Burst + 1,
+			},
+		}, nil
 	case alwaysError:
 		return nil, status.Error(codes.Internal, "oh no, something has gone terribly awry!")
 	default:
@@ -249,24 +262,24 @@ func TestOverridesImporterProcessTicketHappyPath(t *testing.T) {
 				t.Errorf("RA AddRateLimitOverride was not called")
 				return
 			}
-			if req.LimitEnum != int64(tc.expectLimit) {
-				t.Errorf("got rapb.AddRateLimitOverrideRequest.LimitEnum=%d, expected %d", req.LimitEnum, tc.expectLimit)
+			if req.Override.LimitEnum != int64(tc.expectLimit) {
+				t.Errorf("got rapb.AddRateLimitOverrideRequest.LimitEnum=%d, expected %d", req.Override.LimitEnum, tc.expectLimit)
 			}
-			if req.Comment != tc.expectOrgComment {
-				t.Errorf("got rapb.AddRateLimitOverrideRequest.Comment=%q, expected %q", req.Comment, tc.expectOrgComment)
+			if req.Override.Comment != tc.expectOrgComment {
+				t.Errorf("got rapb.AddRateLimitOverrideRequest.Comment=%q, expected %q", req.Override.Comment, tc.expectOrgComment)
 			}
-			if req.Count != tc.expectCount {
-				t.Errorf("got rapb.AddRateLimitOverrideRequest.Count=%d, expected %d", req.Count, tc.expectCount)
+			if req.Override.Count != tc.expectCount {
+				t.Errorf("got rapb.AddRateLimitOverrideRequest.Count=%d, expected %d", req.Override.Count, tc.expectCount)
 			}
-			if req.Burst != tc.expectBurst {
-				t.Errorf("got rapb.AddRateLimitOverrideRequest.Burst=%d, expected %d", req.Burst, tc.expectBurst)
+			if req.Override.Burst != tc.expectBurst {
+				t.Errorf("got rapb.AddRateLimitOverrideRequest.Burst=%d, expected %d", req.Override.Burst, tc.expectBurst)
 			}
-			gotPeriod := req.Period.AsDuration()
+			gotPeriod := req.Override.Period.AsDuration()
 			if gotPeriod != tc.expectPeriod {
 				t.Errorf("got rapb.AddRateLimitOverrideRequest.Period=%s, expected %s", gotPeriod, tc.expectPeriod)
 			}
-			if req.BucketKey != tc.expectBucketKey {
-				t.Errorf("got rapb.AddRateLimitOverrideRequest.BucketKey=%q, expected %q", req.BucketKey, tc.expectBucketKey)
+			if req.Override.BucketKey != tc.expectBucketKey {
+				t.Errorf("got rapb.AddRateLimitOverrideRequest.BucketKey=%q, expected %q", req.Override.BucketKey, tc.expectBucketKey)
 			}
 
 			got, ok := zdServer.GetTicket(ticketID)
@@ -369,6 +382,19 @@ func TestOverridesImporterProcessTicketSadPath(t *testing.T) {
 			expectErrSubstring:         "administratively disabled",
 			expectStatus:               "pending",
 			expectLastCommentSubstring: "administratively disabled",
+		},
+		{
+			name: "RA existing override higher",
+			tickerFields: map[string]string{
+				RateLimitFieldName:    rl.NewOrdersPerAccount.String(),
+				TierFieldName:         "1000",
+				OrganizationFieldName: "Acme Corp",
+				AccountURIFieldName:   "https://acme-v02.api.letsencrypt.org/acme/acct/12345",
+			},
+			raFakeBehavior:             alwaysLowerThanExisting,
+			expectErrSubstring:         "lower than existing override",
+			expectStatus:               "pending",
+			expectLastCommentSubstring: "Import blocked: the requested override is lower than an existing override",
 		},
 		{
 			name: "RA internal error (no ticket update)",
