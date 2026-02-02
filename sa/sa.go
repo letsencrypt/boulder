@@ -1417,8 +1417,9 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 // throughput than the existing override. Note: this does not consider the burst
 // value of either override.
 func overrideLowerThanExisting(new *sapb.RateLimitOverride, existing overrideModel) bool {
-	// The math below assumes low counts which won't overflow int64 when multiplied.
-	return (new.Count * existing.PeriodNS) < (existing.Count * new.Period.AsDuration().Nanoseconds())
+	// Compare via emission interval (period/count) to mirror how our limiter
+	// computes the refill rate for a given limit.
+	return new.Period.AsDuration().Nanoseconds()/new.Count > existing.PeriodNS/existing.Count
 }
 
 // AddRateLimitOverride adds a rate limit override to the database.
