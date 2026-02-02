@@ -62,7 +62,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 
 	bkr := &badKeyRevoker{
 		dbMap:                     dbMap,
-		logger:                    blog.NewMock(),
+		logctx:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
 	}
@@ -303,7 +303,7 @@ func TestCertificateAbsent(t *testing.T) {
 		maxRevocations:            1,
 		serialBatchSize:           1,
 		raClient:                  &mockRevoker{},
-		logger:                    blog.NewMock(),
+		logctx:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
 		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
@@ -344,7 +344,7 @@ func TestInvoke(t *testing.T) {
 		maxRevocations:            10,
 		serialBatchSize:           1,
 		raClient:                  mr,
-		logger:                    blog.NewMock(),
+		logctx:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
 		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
@@ -412,7 +412,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 		maxRevocations:            10,
 		serialBatchSize:           1,
 		raClient:                  mr,
-		logger:                    blog.NewMock(),
+		logctx:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
 		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
@@ -447,7 +447,7 @@ func TestBackoffPolicy(t *testing.T) {
 		backoffIntervalMax:  time.Second * 60,
 		backoffIntervalBase: time.Second * 1,
 		backoffFactor:       1.3,
-		logger:              mocklog,
+		logctx:              mocklog,
 	}
 
 	// Backoff once. Check to make sure the backoff is logged.

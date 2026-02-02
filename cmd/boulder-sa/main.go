@@ -31,7 +31,7 @@ type Config struct {
 		LagFactor config.Duration `validate:"-"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

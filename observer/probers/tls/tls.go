@@ -154,7 +154,7 @@ func (p TLSProbe) exportMetrics(cert *x509.Certificate, reason reason) {
 	p.reason.WithLabelValues(p.hostname, reasonToString[reason]).Inc()
 }
 
-func (p TLSProbe) probeExpired(timeout time.Duration) bool {
+func (p TLSProbe) probeExpired(ctx context.Context) bool {
 	addr := p.hostname
 	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -189,9 +189,6 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		p.exportMetrics(nil, internalError)
@@ -217,7 +214,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	return true
 }
 
-func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
+func (p TLSProbe) probeUnexpired(ctx context.Context) bool {
 	addr := p.hostname
 	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -248,9 +245,6 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 			},
 		},
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
 
 	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -302,13 +296,13 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 // or unexpired, depending on what is configured). Exports metrics for the
 // NotAfter timestamp of the end entity certificate and the reason for the Probe
 // returning false ("none" if returns true).
-func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
+func (p TLSProbe) Probe(ctx context.Context) (bool, time.Duration) {
 	start := time.Now()
 	var success bool
 	if p.response == "expired" {
-		success = p.probeExpired(timeout)
+		success = p.probeExpired(ctx)
 	} else {
-		success = p.probeUnexpired(timeout)
+		success = p.probeUnexpired(ctx)
 	}
 
 	return success, time.Since(start)

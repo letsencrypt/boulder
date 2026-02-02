@@ -35,7 +35,7 @@ type Config struct {
 		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -93,7 +93,7 @@ func main() {
 	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 
 	start, err := bgrpc.NewServer(c.Publisher.GRPC, logger).Add(
-		&pubpb.Publisher_ServiceDesc, pubi).Build(tlsConfig, scope, clk)
+		&pubpb.Publisher_ServiceDesc, pubi).Build(tlsConfig, scope, logger, clk)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 
 	cmd.FailOnError(start(), "Publisher gRPC service failed")

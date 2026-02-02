@@ -1,16 +1,10 @@
 package blog
 
 import (
-	"errors"
-	"fmt"
 	"log/slog"
-	"log/syslog"
-	"os"
-
-	"github.com/letsencrypt/boulder/core"
 )
 
-// SlogConfig defines the config for logging to syslog and stdout/stderr. The
+// Config defines the config for logging to syslog and stdout/stderr. The
 // level meanings are as follows:
 //
 //	-1: suppress all output
@@ -25,7 +19,7 @@ import (
 //
 // The structure of this config object is a superset of cmd.SyslogConfig, so
 // that the same existing json objects can be parsed into it.
-type SlogConfig struct {
+type Config struct {
 	// When absent or zero, this causes no logs to be emitted on stdout/stderr.
 	// Errors and warnings will be emitted on stderr if the configured level
 	// allows.
@@ -53,50 +47,4 @@ func configToSlogLevel(l int) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
-}
-
-// New returns a slog.Logger which prepends the [AUDIT] tag to audit messages,
-// prepends a checksum to all messages, and then writes log messages to stdout
-// and syslog as configured.
-func New(conf SlogConfig) (*slog.Logger, error) {
-	var stdoutHandler slog.Handler
-	if conf.StdoutLevel >= 0 {
-		writer := newChecksumWriter(os.Stdout)
-		opts := &slog.HandlerOptions{Level: configToSlogLevel(conf.StdoutLevel)}
-		if conf.TextFormat {
-			stdoutHandler = newAuditHandler(slog.NewTextHandler, writer, opts)
-		} else {
-			stdoutHandler = newAuditHandler(slog.NewJSONHandler, writer, opts)
-		}
-	}
-
-	var syslogHandler slog.Handler
-	if conf.SyslogLevel >= 0 {
-		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO, core.Command())
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to syslog: %w", err)
-		}
-
-		writer := newChecksumWriter(syslogger)
-		opts := &slog.HandlerOptions{Level: configToSlogLevel(conf.SyslogLevel)}
-		if conf.TextFormat {
-			syslogHandler = newAuditHandler(slog.NewTextHandler, writer, opts)
-		} else {
-			syslogHandler = newAuditHandler(slog.NewJSONHandler, writer, opts)
-		}
-	}
-
-	var l *slog.Logger
-	switch {
-	case stdoutHandler != nil && syslogHandler != nil:
-		l = slog.New(newMultiHandler(stdoutHandler, syslogHandler))
-	case stdoutHandler != nil:
-		l = slog.New(stdoutHandler)
-	case syslogHandler != nil:
-		l = slog.New(syslogHandler)
-	default:
-		return nil, errors.New("either StdoutLevel or SyslogLevel must be positive")
-	}
-
-	return l, nil
 }

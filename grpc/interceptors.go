@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -60,12 +61,14 @@ type clientInterceptor interface {
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
 type serverMetadataInterceptor struct {
 	metrics serverMetrics
+	logger  slog.Logger
 	clk     clock.Clock
 }
 
-func newServerMetadataInterceptor(metrics serverMetrics, clk clock.Clock) serverMetadataInterceptor {
+func newServerMetadataInterceptor(metrics serverMetrics, logger slog.Logger, clk clock.Clock) serverMetadataInterceptor {
 	return serverMetadataInterceptor{
 		metrics: metrics,
+		logger:  logger,
 		clk:     clk,
 	}
 }

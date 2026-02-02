@@ -1,3 +1,8 @@
+// This file implements our ability to prepend a checksum to the beginning of
+// every log line. Since we want to be using the built-in TextHandler and
+// JSONHandler, we have to do this at the level of an io.Writer which we pass
+// to those Handlers.
+
 package blog
 
 import (

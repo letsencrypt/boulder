@@ -105,7 +105,7 @@ type Config struct {
 
 	PA cmd.PAConfig
 
-	Syslog        cmd.SyslogConfig
+	Syslog blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

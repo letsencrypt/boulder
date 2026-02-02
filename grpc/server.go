@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"slices"
 	"strings"
@@ -94,7 +95,7 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 // the server. It spawns a goroutine which will listen for OS signals and
 // gracefully stop the server if one is caught, causing the start() function to
 // exit.
-func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
+func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, logger slog.Logger, clk clock.Clock) (func() error, error) {
 	// Register the health service with the server.
 	sb.healthSrv = health.NewServer()
 	sb.Add(&healthpb.Health_ServiceDesc, sb.healthSrv)
@@ -158,7 +159,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		ai = &noopServerInterceptor{}
 	}
 
-	mi := newServerMetadataInterceptor(metrics, clk)
+	mi := newServerMetadataInterceptor(metrics, logger, clk)
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		mi.metrics.grpcMetrics.UnaryServerInterceptor(),

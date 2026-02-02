@@ -3,8 +3,8 @@ package observer
 import (
 	"context"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 	_ "github.com/letsencrypt/boulder/observer/probers/crl"
 	_ "github.com/letsencrypt/boulder/observer/probers/dns"
 	_ "github.com/letsencrypt/boulder/observer/probers/http"
@@ -14,7 +14,7 @@ import (
 
 // Observer is the steward of goroutines started for each `monitor`.
 type Observer struct {
-	logger   blog.Logger
+	logger   *blog.LogContext
 	monitors []*monitor
 	shutdown func(ctx context.Context)
 }

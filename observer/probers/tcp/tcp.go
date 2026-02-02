@@ -23,9 +23,7 @@ func (p TCPProbe) Kind() string {
 }
 
 // Probe performs the configured TCP dial.
-func (p TCPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+func (p TCPProbe) Probe(ctx context.Context) (bool, time.Duration) {
 	start := time.Now()
 	c, err := obsdialer.Dialer.DialContext(ctx, "tcp", p.hostport)
 	if err != nil {

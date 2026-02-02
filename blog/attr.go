@@ -17,22 +17,34 @@
 
 package blog
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/letsencrypt/boulder/identifier"
+)
 
 // Acct returns a slog.Attr whose key is "acct" and whose value is the unique
 // numeric ID of the account.
-func Acct(acctID int) slog.Attr {
-	return slog.Int("acct", acctID)
+func Acct(acctID int64) slog.Attr {
+	return slog.Int64("acct", acctID)
 }
 
 // Order returns a slog.Attr whose key is "order" and whose value is the unique
 // numeric ID of the order.
-func Order(orderID int) slog.Attr {
-	return slog.Int("order", orderID)
+func Order(orderID int64) slog.Attr {
+	return slog.Int64("order", orderID)
 }
 
 // Authz returns a slog.Attr whose key is "authz" and whose value is the unique
 // numeric ID of the authz.
-func Authz(authzID int) slog.Attr {
-	return slog.Int("acct", authzID)
+func Authz(authzID int64) slog.Attr {
+	return slog.Int64("acct", authzID)
+}
+
+func Serial(serial string) slog.Attr {
+	return slog.String("serial", serial)
+}
+
+func Idents(idents identifier.ACMEIdentifiers) slog.Attr {
+	return slog.Any("idents", idents)
 }

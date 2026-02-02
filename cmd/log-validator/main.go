@@ -11,7 +11,7 @@ import (
 type Config struct {
 	Files         []string `validate:"min=1,dive,required"`
 	DebugAddr     string   `validate:"omitempty,hostname_port"`
-	Syslog        cmd.SyslogConfig
+	Syslog blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

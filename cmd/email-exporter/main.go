@@ -60,7 +60,7 @@ type Config struct {
 		// of memory. If left unset, no caching is performed.
 		EmailCacheSize int `validate:"omitempty,min=1"`
 	}
-	Syslog        cmd.SyslogConfig
+	Syslog blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
