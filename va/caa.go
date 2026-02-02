@@ -439,6 +439,10 @@ func parseCAARecord(caa *dns.CAA) (string, []caaParameter, error) {
 			}
 		}
 
+		// normalize parameter tag names to lowercase so AccountURI/accounturi are
+		// treated identically (consistent with rfc 8659 case-insensitive property tags)
+		tag = strings.ToLower(tag)
+
 		value := strings.TrimFunc(tv[1], isWSP)
 		//lint:ignore S1029,SA6003 we iterate over runes because the RFC specifies ascii codepoints.
 		for _, r := range []rune(value) {
