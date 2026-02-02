@@ -100,6 +100,10 @@ func (mock *caaFakeDNS) LookupCAA(_ context.Context, domain string) (*bdns.Resul
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; validationmethods=dns-01"
 		results = append(results, &record)
+	case "present-mixedcase-validationmethods.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; ValidationMethods=dns-01"
+		results = append(results, &record)
 	case "present-http-only.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; validationmethods=http-01"
@@ -120,6 +124,10 @@ func (mock *caaFakeDNS) LookupCAA(_ context.Context, domain string) (*bdns.Resul
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321; validationmethods=http-01"
 		results = append(results, &record)
+	case "present-mixedcase-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; AccountURI=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
 	case "present-correct-accounturi.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123"
@@ -127,6 +135,10 @@ func (mock *caaFakeDNS) LookupCAA(_ context.Context, domain string) (*bdns.Resul
 	case "present-incorrect-accounturi.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
+	case "present-wildcard-mixedcase-validationmethods.com":
+		record.Tag = "issuewild"
+		record.Value = "letsencrypt.org; ValidationMethods=dns-01"
 		results = append(results, &record)
 	case "present-multiple-accounturi.com":
 		record.Tag = "issue"
@@ -311,6 +323,12 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   false,
 		},
 		{
+			Name:    "Bad (restricts to dns-01, mixed-case validationmethods tag)",
+			Domain:  "present-mixedcase-validationmethods.com",
+			FoundAt: "present-mixedcase-validationmethods.com",
+			Valid:   false,
+		},
+		{
 			Name:    "Good (restricts to http-01, tested with http-01)",
 			Domain:  "present-http-only.com",
 			FoundAt: "present-http-only.com",
@@ -353,6 +371,12 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   false,
 		},
 		{
+			Name:    "Bad (restricts to accounturi, mixed-case accounturi tag)",
+			Domain:  "present-mixedcase-accounturi.com",
+			FoundAt: "present-mixedcase-accounturi.com",
+			Valid:   false,
+		},
+		{
 			Name:    "Good (restricts to multiple accounturi, tested with a correct account)",
 			Domain:  "present-multiple-accounturi.com",
 			FoundAt: "present-multiple-accounturi.com",
@@ -387,6 +411,12 @@ func TestCAAChecking(t *testing.T) {
 			Domain:  "*.satisfiable-wildcard.com",
 			FoundAt: "satisfiable-wildcard.com",
 			Valid:   true,
+		},
+		{
+			Name:    "Bad (restricts to dns-01, mixed-case validationmethods tag, wildcard)",
+			Domain:  "*.present-wildcard-mixedcase-validationmethods.com",
+			FoundAt: "present-wildcard-mixedcase-validationmethods.com",
+			Valid:   false,
 		},
 		{
 			Name:    "Good (multiple issuewild, one satisfiable)",
