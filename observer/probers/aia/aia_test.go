@@ -202,22 +202,16 @@ func TestAIAProbe_Metrics(t *testing.T) {
 	conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
 	colls := conf.Instrument()
 
-	// Register metrics with a test registry
-	testReg := prometheus.NewRegistry()
-	for _, coll := range colls {
-		testReg.MustRegister(coll)
-	}
-
 	prober, err := conf.MakeProber(colls)
 	test.AssertNotError(t, err, "making prober")
+
+	aiaProber, ok := prober.(AIAProbe)
+	test.Assert(t, ok, "prober should be AIAProbe")
 
 	success, _ := prober.Probe(5 * time.Second)
 	test.Assert(t, success, "probe should succeed")
 
-	// Check that metrics were gathered
-	metricFamilies, err := testReg.Gather()
-	test.AssertNotError(t, err, "gathering metrics")
-
-	// Verify we have the expected metrics
-	test.AssertEquals(t, len(metricFamilies), 2)
+	// Check metric values are set to right values
+	test.AssertMetricWithLabelsEquals(t, aiaProber.cNotBefore, prometheus.Labels{}, float64(notBefore.Unix()))
+	test.AssertMetricWithLabelsEquals(t, aiaProber.cNotAfter, prometheus.Labels{}, float64(notAfter.Unix()))
 }
