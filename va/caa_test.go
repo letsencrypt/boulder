@@ -444,7 +444,7 @@ func TestCAAChecking(t *testing.T) {
 		defer mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
 			ident := identifier.NewDNS(caaTest.Domain)
-			foundAt, valid, _, err := va.checkCAARecords(ctx, ident, params)
+			foundAt, valid, _, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -545,6 +545,35 @@ func TestCAALogging(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCAAMisCapitalizedStandardParameterTagFailsClosedWithHelpfulError(t *testing.T) {
+	va, _ := setup(nil, "", nil, &caaFakeDNS{})
+	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
+
+	resp, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Identifier:       identifier.NewDNS("present-mixedcase-accounturi.com").ToProto(),
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     123,
+	})
+	test.AssertNotError(t, err, "Unexpected error calling DoCAA")
+	test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
+	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
+	test.AssertContains(t, resp.Problem.Detail, "invalid capitalization")
+	test.AssertContains(t, resp.Problem.Detail, "AccountURI")
+	test.AssertContains(t, resp.Problem.Detail, "accounturi")
+
+	resp, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Identifier:       identifier.NewDNS("present-mixedcase-validationmethods.com").ToProto(),
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     123,
+	})
+	test.AssertNotError(t, err, "Unexpected error calling DoCAA")
+	test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
+	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
+	test.AssertContains(t, resp.Problem.Detail, "invalid capitalization")
+	test.AssertContains(t, resp.Problem.Detail, "ValidationMethods")
+	test.AssertContains(t, resp.Problem.Detail, "validationmethods")
 }
 
 // TestDoCAAErrMessage tests that an error result from `va.IsCAAValid`
