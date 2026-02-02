@@ -51,6 +51,10 @@ type Config struct {
 	// for the cert URL to appear.
 	AsyncFinalize bool
 
+	// CAARechecksFailOrder causes the RA to set an order to "invalid" if its CAA
+	// rechecks fail.
+	CAARechecksFailOrder bool
+
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
 	// returned to the Subscriber indicating that the order cannot be processed

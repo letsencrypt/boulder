@@ -3451,7 +3451,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 				CertificateProfileName: tc.profile,
 			}
 
-			order, err = ra.issueCertificateOuter(context.Background(), order, csr, certificateRequestEvent{})
+			order, err = ra.issueCertificateOuter(context.Background(), order, csr, nil, certificateRequestEvent{})
 
 			// The resulting order should have new fields populated
 			if order.Status != string(core.StatusValid) {
