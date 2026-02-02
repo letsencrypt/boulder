@@ -48,8 +48,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 		defer ts.Close()
 
 		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
-		colls := conf.Instrument()
-		prober, err := conf.MakeProber(colls)
+		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
 		success, dur := prober.Probe(5 * time.Second)
@@ -135,8 +134,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 		defer ts.Close()
 
 		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
-		colls := conf.Instrument()
-		prober, err := conf.MakeProber(colls)
+		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
 		success, _ := prober.Probe(5 * time.Second)
@@ -152,8 +150,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 		defer ts.Close()
 
 		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
-		colls := conf.Instrument()
-		prober, err := conf.MakeProber(colls)
+		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
 		success, _ := prober.Probe(5 * time.Second)
@@ -163,8 +160,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 	// Test with unreachable server
 	t.Run("unreachable server", func(t *testing.T) {
 		conf := AIAConf{URL: "http://127.0.0.1:1", ExpectCommonName: "Test CA"}
-		colls := conf.Instrument()
-		prober, err := conf.MakeProber(colls)
+		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
 		success, _ := prober.Probe(1 * time.Second)
