@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"time"
 
 	"github.com/letsencrypt/boulder/observer/obsdialer"
 )
@@ -21,7 +20,6 @@ type HTTPProbe struct {
 }
 
 // Name returns a string that uniquely identifies the monitor.
-
 func (p HTTPProbe) Name() string {
 	insecure := ""
 	if p.insecure {
@@ -42,24 +40,22 @@ func (p HTTPProbe) isExpected(received int) bool {
 }
 
 // Probe performs the configured HTTP request.
-func (p HTTPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	client := http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
-			DialContext:     obsdialer.Dialer.DialContext,
-		}}
+func (p HTTPProbe) Probe(ctx context.Context) bool {
+	client := http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
+		DialContext:     obsdialer.Dialer.DialContext,
+	}}
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
-		return false, 0
+		return false
 	}
 	req.Header.Set("User-Agent", p.useragent)
-	start := time.Now()
+
 	// TODO(@beautifulentropy): add support for more than HTTP GET
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, time.Since(start)
+		return false
 	}
-	return p.isExpected(resp.StatusCode), time.Since(start)
+
+	return p.isExpected(resp.StatusCode)
 }

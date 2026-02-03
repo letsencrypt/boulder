@@ -1,7 +1,7 @@
 package probers
 
 import (
-	"time"
+	"context"
 
 	"github.com/letsencrypt/boulder/config"
 )
@@ -21,6 +21,6 @@ func (p MockProber) Kind() string {
 	return p.kind
 }
 
-func (p MockProber) Probe(timeout time.Duration) (bool, time.Duration) {
-	return p.success, p.took.Duration
+func (p MockProber) Probe(ctx context.Context) bool {
+	return p.success
 }

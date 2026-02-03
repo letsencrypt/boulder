@@ -1,8 +1,8 @@
 package probers
 
 import (
+	"context"
 	"fmt"
-	"time"
 
 	"github.com/miekg/dns"
 )
@@ -35,21 +35,21 @@ func (p DNSProbe) Kind() string {
 }
 
 // Probe performs the configured DNS query.
-func (p DNSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
+func (p DNSProbe) Probe(ctx context.Context) bool {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(p.qname), p.qtype)
 	m.RecursionDesired = p.recurse
-	c := dns.Client{Timeout: timeout, Net: p.proto}
-	start := time.Now()
-	r, _, err := c.Exchange(m, p.server)
+	c := dns.Client{Net: p.proto}
+
+	r, _, err := c.ExchangeContext(ctx, m, p.server)
 	if err != nil {
-		return false, time.Since(start)
+		return false
 	}
 	if r == nil {
-		return false, time.Since(start)
+		return false
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		return false, time.Since(start)
+		return false
 	}
-	return true, time.Since(start)
+	return true
 }

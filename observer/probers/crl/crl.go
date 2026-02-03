@@ -1,15 +1,17 @@
 package probers
 
 import (
+	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"io"
 	"net/http"
 	"slices"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/crl/idp"
+	"github.com/letsencrypt/boulder/observer/obsdialer"
 )
 
 // CRLProbe is the exported 'Prober' object for monitors configured to
@@ -33,22 +35,29 @@ func (p CRLProbe) Kind() string {
 }
 
 // Probe requests the configured CRL and publishes metrics about it if found.
-func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	start := time.Now()
-	resp, err := http.Get(p.url)
+func (p CRLProbe) Probe(ctx context.Context) bool {
+	client := http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		DialContext:     obsdialer.Dialer.DialContext,
+	}}
+	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
-		return false, time.Since(start)
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, time.Since(start)
+		return false
 	}
-	dur := time.Since(start)
 
 	crl, err := x509.ParseRevocationList(body)
 	if err != nil {
-		return false, dur
+		return false
 	}
 
 	// Partitioned CRLs MUST contain an issuingDistributionPoint extension, which
@@ -57,10 +66,10 @@ func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	if p.partitioned {
 		idps, err := idp.GetIDPURIs(crl.Extensions)
 		if err != nil {
-			return false, dur
+			return false
 		}
 		if !slices.Contains(idps, p.url) {
-			return false, dur
+			return false
 		}
 	}
 
@@ -69,5 +78,5 @@ func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	p.cNextUpdate.WithLabelValues(p.url).Set(float64(crl.NextUpdate.Unix()))
 	p.cCertCount.WithLabelValues(p.url).Set(float64(len(crl.RevokedCertificateEntries)))
 
-	return true, dur
+	return true
 }

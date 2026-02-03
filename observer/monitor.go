@@ -1,6 +1,7 @@
 package observer
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -17,11 +18,15 @@ type monitor struct {
 // with a timeout of half `m.period`
 func (m monitor) start(logger blog.Logger) {
 	ticker := time.NewTicker(m.period)
-	timeout := m.period / 2
 	for {
 		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), m.period/2)
+			defer cancel()
+
 			// Attempt to probe the configured target.
-			success, dur := m.prober.Probe(timeout)
+			start := time.Now()
+			success := m.prober.Probe(ctx)
+			dur := time.Since(start)
 
 			// Produce metrics to be scraped by Prometheus.
 			histObservations.WithLabelValues(
