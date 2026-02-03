@@ -21,11 +21,12 @@ func (p TCPProbe) Kind() string {
 }
 
 // Probe performs the configured TCP dial.
-func (p TCPProbe) Probe(ctx context.Context) bool {
+func (p TCPProbe) Probe(ctx context.Context) error {
 	c, err := obsdialer.Dialer.DialContext(ctx, "tcp", p.hostport)
 	if err != nil {
-		return false
+		return err
 	}
+
 	c.Close()
-	return true
+	return nil
 }

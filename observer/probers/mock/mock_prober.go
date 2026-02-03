@@ -2,6 +2,7 @@ package probers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/letsencrypt/boulder/config"
 )
@@ -21,6 +22,9 @@ func (p MockProber) Kind() string {
 	return p.kind
 }
 
-func (p MockProber) Probe(ctx context.Context) bool {
-	return p.success
+func (p MockProber) Probe(ctx context.Context) error {
+	if !p.success {
+		return fmt.Errorf("oops!")
+	}
+	return nil
 }

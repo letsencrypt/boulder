@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -35,29 +36,29 @@ func (p CRLProbe) Kind() string {
 }
 
 // Probe requests the configured CRL and publishes metrics about it if found.
-func (p CRLProbe) Probe(ctx context.Context) bool {
+func (p CRLProbe) Probe(ctx context.Context) error {
 	client := http.Client{Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		DialContext:     obsdialer.Dialer.DialContext,
 	}}
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
-		return false
+		return err
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return false
+		return err
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false
+		return err
 	}
 
 	crl, err := x509.ParseRevocationList(body)
 	if err != nil {
-		return false
+		return err
 	}
 
 	// Partitioned CRLs MUST contain an issuingDistributionPoint extension, which
@@ -66,10 +67,10 @@ func (p CRLProbe) Probe(ctx context.Context) bool {
 	if p.partitioned {
 		idps, err := idp.GetIDPURIs(crl.Extensions)
 		if err != nil {
-			return false
+			return err
 		}
 		if !slices.Contains(idps, p.url) {
-			return false
+			return fmt.Errorf("desired url %q not found in CRL IDPs", p.url)
 		}
 	}
 
@@ -78,5 +79,5 @@ func (p CRLProbe) Probe(ctx context.Context) bool {
 	p.cNextUpdate.WithLabelValues(p.url).Set(float64(crl.NextUpdate.Unix()))
 	p.cCertCount.WithLabelValues(p.url).Set(float64(len(crl.RevokedCertificateEntries)))
 
-	return true
+	return nil
 }

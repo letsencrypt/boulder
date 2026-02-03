@@ -29,7 +29,7 @@ type Prober interface {
 
 	// Probe attempts the configured request or query. It must respect the
 	// cancellation of its context.
-	Probe(context.Context) bool
+	Probe(context.Context) error
 }
 
 // Configurer is the interface for `Configurer` types.

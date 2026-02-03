@@ -35,7 +35,7 @@ func (p DNSProbe) Kind() string {
 }
 
 // Probe performs the configured DNS query.
-func (p DNSProbe) Probe(ctx context.Context) bool {
+func (p DNSProbe) Probe(ctx context.Context) error {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(p.qname), p.qtype)
 	m.RecursionDesired = p.recurse
@@ -43,13 +43,16 @@ func (p DNSProbe) Probe(ctx context.Context) bool {
 
 	r, _, err := c.ExchangeContext(ctx, m, p.server)
 	if err != nil {
-		return false
+		return err
 	}
+
 	if r == nil {
-		return false
+		return fmt.Errorf("no DNS response retrieved")
 	}
+
 	if r.Rcode != dns.RcodeSuccess {
-		return false
+		return fmt.Errorf("DNS response not successful, has code %v", r.Rcode)
 	}
-	return true
+
+	return nil
 }

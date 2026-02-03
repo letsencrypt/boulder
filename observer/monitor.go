@@ -25,18 +25,22 @@ func (m monitor) start(logger blog.Logger) {
 
 			// Attempt to probe the configured target.
 			start := time.Now()
-			success := m.prober.Probe(ctx)
+			err := m.prober.Probe(ctx)
 			dur := time.Since(start)
 
 			// Produce metrics to be scraped by Prometheus.
 			histObservations.WithLabelValues(
-				m.prober.Name(), m.prober.Kind(), strconv.FormatBool(success),
+				m.prober.Name(), m.prober.Kind(), strconv.FormatBool(err == nil),
 			).Observe(dur.Seconds())
 
 			// Log the outcome of the probe attempt.
-			logger.Infof(
-				"kind=[%s] success=[%v] duration=[%f] name=[%s]",
-				m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
+			if err != nil {
+				logger.Errf("kind=[%s] success=[%t] duration=[%f] name=[%s] error=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name(), err)
+			} else {
+				logger.Infof("kind=[%s] success=[%t] duration=[%f] name=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name())
+			}
 		}()
 		<-ticker.C
 	}

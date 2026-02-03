@@ -154,7 +154,7 @@ func (p TLSProbe) exportMetrics(cert *x509.Certificate, reason reason) {
 	p.reason.WithLabelValues(p.hostname, reasonToString[reason]).Inc()
 }
 
-func (p TLSProbe) probeExpired(ctx context.Context) bool {
+func (p TLSProbe) probeExpired(ctx context.Context) error {
 	addr := p.hostname
 	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -192,7 +192,7 @@ func (p TLSProbe) probeExpired(ctx context.Context) bool {
 	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		p.exportMetrics(nil, internalError)
-		return false
+		return err
 	}
 	defer conn.Close()
 
@@ -200,21 +200,21 @@ func (p TLSProbe) probeExpired(ctx context.Context) bool {
 	peers := conn.(*tls.Conn).ConnectionState().PeerCertificates
 	if time.Until(peers[0].NotAfter) > 0 {
 		p.exportMetrics(peers[0], statusDidNotMatch)
-		return false
+		return fmt.Errorf("certificate is not expired, notAfter %s", peers[0].NotAfter)
 	}
 
 	root := peers[len(peers)-1].Issuer
 	err = p.checkRoot(root.Organization[0], root.CommonName)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
-		return false
+		return err
 	}
 
 	p.exportMetrics(peers[0], none)
-	return true
+	return nil
 }
 
-func (p TLSProbe) probeUnexpired(ctx context.Context) bool {
+func (p TLSProbe) probeUnexpired(ctx context.Context) error {
 	addr := p.hostname
 	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -249,7 +249,7 @@ func (p TLSProbe) probeUnexpired(ctx context.Context) bool {
 	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		p.exportMetrics(nil, internalError)
-		return false
+		return err
 	}
 	defer conn.Close()
 
@@ -259,7 +259,7 @@ func (p TLSProbe) probeUnexpired(ctx context.Context) bool {
 	err = p.checkRoot(root.Organization[0], root.CommonName)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
-		return false
+		return err
 	}
 
 	var wantStatus int
@@ -278,25 +278,25 @@ func (p TLSProbe) probeUnexpired(ctx context.Context) bool {
 	}
 	if err != nil {
 		p.exportMetrics(peers[0], revocationStatusError)
-		return false
+		return err
 	}
 
 	if !statusMatch {
 		p.exportMetrics(peers[0], statusDidNotMatch)
-		return false
+		return fmt.Errorf("unexpected certificate revocation status, want %v", wantStatus)
 	}
 
 	p.exportMetrics(peers[0], none)
-	return true
+	return nil
 }
 
-// Probe performs the configured TLS probe. Return true if the root has the
+// Probe performs the configured TLS probe. Return nil if the root has the
 // expected Subject (or if no root is provided for comparison in settings), and
 // the end entity certificate has the correct expiration status (either expired
 // or unexpired, depending on what is configured). Exports metrics for the
 // NotAfter timestamp of the end entity certificate and the reason for the Probe
-// returning false ("none" if returns true).
-func (p TLSProbe) Probe(ctx context.Context) bool {
+// returning and error ("none" if returns nil).
+func (p TLSProbe) Probe(ctx context.Context) error {
 	if p.response == "expired" {
 		return p.probeExpired(ctx)
 	} else {

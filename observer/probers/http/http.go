@@ -33,29 +33,27 @@ func (p HTTPProbe) Kind() string {
 	return "HTTP"
 }
 
-// isExpected ensures that the received HTTP response code matches one
-// that's expected.
-func (p HTTPProbe) isExpected(received int) bool {
-	return slices.Contains(p.rcodes, received)
-}
-
 // Probe performs the configured HTTP request.
-func (p HTTPProbe) Probe(ctx context.Context) bool {
+func (p HTTPProbe) Probe(ctx context.Context) error {
 	client := http.Client{Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
 		DialContext:     obsdialer.Dialer.DialContext,
 	}}
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
-		return false
+		return err
 	}
 	req.Header.Set("User-Agent", p.useragent)
 
 	// TODO(@beautifulentropy): add support for more than HTTP GET
 	resp, err := client.Do(req)
 	if err != nil {
-		return false
+		return err
 	}
 
-	return p.isExpected(resp.StatusCode)
+	if !slices.Contains(p.rcodes, resp.StatusCode) {
+		return fmt.Errorf("got HTTP status code %d, but want one of %#v", resp.StatusCode, p.rcodes)
+	}
+
+	return nil
 }
