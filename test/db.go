@@ -23,7 +23,7 @@ type CleanUpDB interface {
 }
 
 // ResetBoulderTestDatabase returns a cleanup function which deletes all rows in
-// all tables of the 'boulder_sa_test' database. Omits the 'gorp_migrations'
+// all tables of the 'boulder_sa' database. Omits the 'gorp_migrations'
 // table as this is used by sql-migrate (https://github.com/rubenv/sql-migrate)
 // to track migrations. If it encounters an error it fails the tests.
 func ResetBoulderTestDatabase(t testing.TB) func() {
@@ -31,7 +31,7 @@ func ResetBoulderTestDatabase(t testing.TB) func() {
 }
 
 // ResetIncidentsTestDatabase returns a cleanup function which deletes all rows
-// in all tables of the 'incidents_sa_test' database. Omits the
+// in all tables of the 'incidents_sa' database. Omits the
 // 'gorp_migrations' table as this is used by sql-migrate
 // (https://github.com/rubenv/sql-migrate) to track migrations. If it encounters
 // an error it fails the tests.

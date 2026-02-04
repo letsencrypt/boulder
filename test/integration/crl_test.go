@@ -48,7 +48,7 @@ func runUpdater(t *testing.T, configFile string) {
 	// Reset the "leasedUntil" column so this can be done alongside other
 	// updater runs without worrying about unclean state.
 	fc := clock.NewFake()
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "opening database connection")
 	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
 	test.AssertNotError(t, err, "resetting leasedUntil column")
@@ -132,7 +132,7 @@ func TestCRLPipeline(t *testing.T) {
 	configFile := path.Join(configDir, "crl-updater.json")
 
 	// Create a database connection so we can pretend to jump forward in time.
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "creating database connection")
 
 	// Issue a test certificate and save its serial number.
