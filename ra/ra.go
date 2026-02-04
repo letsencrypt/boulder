@@ -2129,7 +2129,19 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	for _, ident := range idents {
 		if !slices.Contains(profile.identifierTypes, ident.Type) {
-			return nil, berrors.RejectedIdentifierError("Profile %q does not permit %s type identifiers", req.CertificateProfileName, ident.Type)
+			name := "Default profile"
+			if req.CertificateProfileName != "" {
+				name = fmt.Sprintf("Profile %q", req.CertificateProfileName)
+			}
+			identType := "unknown"
+			switch ident.Type {
+			case identifier.TypeIP:
+				identType = "IP address"
+			case identifier.TypeDNS:
+				identType = "DNS"
+			}
+			return nil, berrors.RejectedIdentifierError("%s does not permit %s identifiers. "+
+				"See available profiles at https://letsencrypt.org/docs/profiles/.", name, identType)
 		}
 	}
 
