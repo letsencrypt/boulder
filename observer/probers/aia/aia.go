@@ -3,9 +3,9 @@ package probers
 import (
 	"context"
 	"crypto/x509"
+	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -30,55 +30,48 @@ func (p AIAProbe) Kind() string {
 }
 
 // Probe requests the configured AIA certificate and publishes metrics about it if found.
-func (p AIAProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	start := time.Now()
-
-	// Create a client with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
+func (p AIAProbe) Probe(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
-		return false, time.Since(start)
+		return err
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return false, time.Since(start)
+		return err
 	}
 	defer resp.Body.Close()
 
 	// Check Content-Type header
 	contentType := resp.Header.Get("Content-Type")
 	if contentType != "application/pkix-cert" {
-		return false, time.Since(start)
+		return fmt.Errorf("certificate Content-Type is %q but want application/pkix-cert", contentType)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, time.Since(start)
+		return err
 	}
-	dur := time.Since(start)
 
 	// Parse the DER-encoded certificate
 	cert, err := x509.ParseCertificate(body)
 	if err != nil {
-		return false, dur
+		return err
 	}
 
 	// Check if the certificate is a CA certificate
 	if !cert.IsCA {
-		return false, dur
+		return fmt.Errorf("certificate is not a CA certificate")
 	}
 
 	// Check if the CommonName matches the expected value
 	if cert.Subject.CommonName != p.expectCommonName {
-		return false, dur
+		return fmt.Errorf("certificate has CN %q but want %q", cert.Subject.CommonName, p.expectCommonName)
 	}
 
 	// Report metrics for this certificate
 	p.cNotBefore.WithLabelValues(p.url).Set(float64(cert.NotBefore.Unix()))
 	p.cNotAfter.WithLabelValues(p.url).Set(float64(cert.NotAfter.Unix()))
 
-	return true, dur
+	return nil
 }

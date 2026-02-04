@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,59 +40,7 @@ func TestAIAProbe_Probe(t *testing.T) {
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
 	test.AssertNotError(t, err, "creating certificate")
 
-	// Test with valid CA certificate and correct content-type
-	t.Run("valid CA certificate", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/pkix-cert")
-			w.Write(certDER)
-		}))
-		defer ts.Close()
-
-		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
-		prober, err := conf.MakeProber(conf.Instrument())
-		test.AssertNotError(t, err, "making prober")
-
-		success, dur := prober.Probe(5 * time.Second)
-		test.Assert(t, success, "probe should succeed")
-		test.Assert(t, dur > 0, "duration should be positive")
-	})
-
-	// Test with valid CA certificate and correct CommonName
-	t.Run("valid CA certificate with matching CommonName", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/pkix-cert")
-			w.Write(certDER)
-		}))
-		defer ts.Close()
-
-		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
-		colls := conf.Instrument()
-		prober, err := conf.MakeProber(colls)
-		test.AssertNotError(t, err, "making prober")
-
-		success, dur := prober.Probe(5 * time.Second)
-		test.Assert(t, success, "probe should succeed with matching CommonName")
-		test.Assert(t, dur > 0, "duration should be positive")
-	})
-
-	// Test with valid CA certificate but wrong CommonName
-	t.Run("valid CA certificate with non-matching CommonName", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/pkix-cert")
-			w.Write(certDER)
-		}))
-		defer ts.Close()
-
-		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Wrong CA"}
-		colls := conf.Instrument()
-		prober, err := conf.MakeProber(colls)
-		test.AssertNotError(t, err, "making prober")
-
-		success, _ := prober.Probe(5 * time.Second)
-		test.Assert(t, !success, "probe should fail with non-matching CommonName")
-	})
-
-	// Create a non-CA certificate for testing
+	// Create a test non-CA certificate
 	nonCATemplate := x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
@@ -108,6 +57,48 @@ func TestAIAProbe_Probe(t *testing.T) {
 	nonCACertDER, err := x509.CreateCertificate(rand.Reader, &nonCATemplate, &nonCATemplate, &privateKey.PublicKey, privateKey)
 	test.AssertNotError(t, err, "creating non-CA certificate")
 
+	// Test with valid CA certificate and correct content-type
+	t.Run("valid CA certificate", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/pkix-cert")
+			w.Write(certDER)
+		}))
+		defer ts.Close()
+
+		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
+		prober, err := conf.MakeProber(conf.Instrument())
+		test.AssertNotError(t, err, "making prober")
+
+		err = prober.Probe(t.Context())
+		if err != nil {
+			t.Errorf("Probe() = %q, but want success", err)
+		}
+
+		// Check metric values are set to right values
+		aiaProber, ok := prober.(AIAProbe)
+		test.Assert(t, ok, "prober should be AIAProbe")
+		test.AssertMetricWithLabelsEquals(t, aiaProber.cNotBefore, prometheus.Labels{"url": ts.URL}, float64(template.NotBefore.Unix()))
+		test.AssertMetricWithLabelsEquals(t, aiaProber.cNotAfter, prometheus.Labels{"url": ts.URL}, float64(template.NotAfter.Unix()))
+	})
+
+	// Test with valid CA certificate but wrong CommonName
+	t.Run("valid CA certificate with non-matching CommonName", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/pkix-cert")
+			w.Write(certDER)
+		}))
+		defer ts.Close()
+
+		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Wrong CA"}
+		prober, err := conf.MakeProber(conf.Instrument())
+		test.AssertNotError(t, err, "making prober")
+
+		err = prober.Probe(t.Context())
+		if err == nil || !strings.Contains(err.Error(), "certificate has CN \"Test CA\" but want \"Wrong CA\"") {
+			t.Errorf("Probe() = %q, but want wrong CN error", err)
+		}
+	})
+
 	// Test with non-CA certificate
 	t.Run("non-CA certificate", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,12 +108,13 @@ func TestAIAProbe_Probe(t *testing.T) {
 		defer ts.Close()
 
 		conf := AIAConf{URL: ts.URL, ExpectCommonName: "Not a CA"}
-		colls := conf.Instrument()
-		prober, err := conf.MakeProber(colls)
+		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
-		success, _ := prober.Probe(5 * time.Second)
-		test.Assert(t, !success, "probe should fail with non-CA certificate")
+		err = prober.Probe(t.Context())
+		if err == nil || !strings.Contains(err.Error(), "certificate is not a CA certificate") {
+			t.Errorf("Probe() = %q, but want not a CA error", err)
+		}
 	})
 
 	// Test with wrong content-type
@@ -137,8 +129,10 @@ func TestAIAProbe_Probe(t *testing.T) {
 		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
-		success, _ := prober.Probe(5 * time.Second)
-		test.Assert(t, !success, "probe should fail with wrong content-type")
+		err = prober.Probe(t.Context())
+		if err == nil || !strings.Contains(err.Error(), "but want application/pkix-cert") {
+			t.Errorf("Probe() = %q, but want Content-Type error", err)
+		}
 	})
 
 	// Test with invalid certificate data
@@ -153,8 +147,10 @@ func TestAIAProbe_Probe(t *testing.T) {
 		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
-		success, _ := prober.Probe(5 * time.Second)
-		test.Assert(t, !success, "probe should fail with invalid certificate")
+		err = prober.Probe(t.Context())
+		if err == nil || !strings.Contains(err.Error(), "x509: malformed certificate") {
+			t.Errorf("Probe() = %q, but want parse error", err)
+		}
 	})
 
 	// Test with unreachable server
@@ -163,55 +159,9 @@ func TestAIAProbe_Probe(t *testing.T) {
 		prober, err := conf.MakeProber(conf.Instrument())
 		test.AssertNotError(t, err, "making prober")
 
-		success, _ := prober.Probe(1 * time.Second)
-		test.Assert(t, !success, "probe should fail with unreachable server")
+		err = prober.Probe(t.Context())
+		if err == nil || !strings.Contains(err.Error(), "connection refused") {
+			t.Errorf("Probe() = %q, but want unreachable server error", err)
+		}
 	})
-}
-
-// TestAIAProbe_Metrics tests that metrics are correctly set
-func TestAIAProbe_Metrics(t *testing.T) {
-	// Create a test CA certificate
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "generating private key")
-
-	notBefore := time.Now().Add(-24 * time.Hour)
-	notAfter := time.Now().Add(365 * 24 * time.Hour)
-
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization: []string{"Test Org"},
-			CommonName:   "Test CA",
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
-	test.AssertNotError(t, err, "creating certificate")
-
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/pkix-cert")
-		w.Write(certDER)
-	}))
-	defer ts.Close()
-
-	conf := AIAConf{URL: ts.URL, ExpectCommonName: "Test CA"}
-	colls := conf.Instrument()
-
-	prober, err := conf.MakeProber(colls)
-	test.AssertNotError(t, err, "making prober")
-
-	aiaProber, ok := prober.(AIAProbe)
-	test.Assert(t, ok, "prober should be AIAProbe")
-
-	success, _ := prober.Probe(5 * time.Second)
-	test.Assert(t, success, "probe should succeed")
-
-	// Check metric values are set to right values
-	test.AssertMetricWithLabelsEquals(t, aiaProber.cNotBefore, prometheus.Labels{}, float64(notBefore.Unix()))
-	test.AssertMetricWithLabelsEquals(t, aiaProber.cNotAfter, prometheus.Labels{}, float64(notAfter.Unix()))
 }
