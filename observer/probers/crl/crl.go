@@ -2,7 +2,6 @@ package probers
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -38,8 +37,7 @@ func (p CRLProbe) Kind() string {
 // Probe requests the configured CRL and publishes metrics about it if found.
 func (p CRLProbe) Probe(ctx context.Context) error {
 	client := http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		DialContext:     obsdialer.Dialer.DialContext,
+		DialContext: obsdialer.Dialer.DialContext,
 	}}
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
