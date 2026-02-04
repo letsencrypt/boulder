@@ -647,7 +647,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	idents identifier.ACMEIdentifiers,
 	now time.Time) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	// Get all of the valid authorizations for this account/order
-	req := &sapb.GetValidOrderAuthorizationsRequest{
+	req := &sapb.GetOrderAuthorizationsRequest{
 		Id:     int64(orderID),
 		AcctID: int64(acctID),
 	}
