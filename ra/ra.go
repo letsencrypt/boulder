@@ -382,14 +382,15 @@ func (vp *validationProfiles) get(name string) (*validationProfile, error) {
 	return profile, nil
 }
 
-// certificateRequestAuthz is a struct for holding information about a valid
-// authz referenced during a certificateRequestEvent. It holds both the
-// authorization ID and the challenge type that made the authorization valid. We
-// specifically include the challenge type that solved the authorization to make
-// some common analysis easier.
-type certificateRequestAuthz struct {
-	ID            string
-	ChallengeType core.AcmeChallenge
+// certificateRequestAuthz is a struct for logging information about when and
+// how an identifier was validated. We include the challenge type that solved
+// the authorization and when the challenge was completed to make some common
+// analysis easier.
+type identifierLog struct {
+	Ident     identifier.ACMEIdentifier
+	Authz     string
+	Challenge core.AcmeChallenge
+	Validated time.Time
 }
 
 // certificateRequestEvent is a struct for holding information that is logged as
@@ -408,8 +409,8 @@ type certificateRequestEvent struct {
 	VerifiedFields []string `json:",omitempty"`
 	// CommonName is the subject common name from the issued cert
 	CommonName string `json:",omitempty"`
-	// Identifiers are the identifiers from the issued cert
-	Identifiers identifier.ACMEIdentifiers `json:",omitempty"`
+	// Identifiers are the identifiers and validation data from the issued cert
+	Identifiers []identifierLog `json:",omitempty"`
 	// NotBefore is the starting timestamp of the issued cert's validity period
 	NotBefore time.Time
 	// NotAfter is the ending timestamp of the issued cert's validity period
@@ -419,10 +420,6 @@ type certificateRequestEvent struct {
 	ResponseTime time.Time
 	// Error contains any encountered errors
 	Error string `json:",omitempty"`
-	// Authorizations is a map of identifier names to certificateRequestAuthz
-	// objects. It can be used to understand how the names in a certificate
-	// request were authorized.
-	Authorizations map[string]certificateRequestAuthz
 	// CertProfileName is a human readable name used to refer to the certificate
 	// profile.
 	CertProfileName string `json:",omitempty"`
@@ -650,7 +647,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	idents identifier.ACMEIdentifiers,
 	now time.Time) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	// Get all of the valid authorizations for this account/order
-	req := &sapb.GetValidOrderAuthorizationsRequest{
+	req := &sapb.GetOrderAuthorizationsRequest{
 		Id:     int64(orderID),
 		AcctID: int64(acctID),
 	}
@@ -714,11 +711,13 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 		return nil, berrors.UnauthorizedError("incorrect number of identifiers requested for finalization")
 	}
 
-	// Check that the authzs either don't need CAA rechecking, or do the
-	// necessary CAA rechecks right now.
-	err = ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, now)
-	if err != nil {
-		return nil, err
+	if !features.Get().CAARechecksFailOrder {
+		// Check that the authzs either don't need CAA rechecking, or do the
+		// necessary CAA rechecks right now.
+		err = ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, now)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return authzs, nil
@@ -746,6 +745,9 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	acctID int64,
 	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	now time.Time) error {
+	if len(authzs) == 0 {
+		return berrors.MalformedError("order with no authorizations")
+	}
 	// recheckAuthzs is a list of authorizations that must have their CAA records rechecked
 	var recheckAuthzs []*core.Authorization
 
@@ -903,19 +905,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 	defer cancel()
 
 	// Convert the problem to a protobuf problem for the *corepb.Order field
-	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
-	if err != nil {
-		ra.log.AuditErr("Converting order problem to PB", err, map[string]any{
-			"requester": order.RegistrationID,
-			"order":     order.Id,
-			"prob":      prob.String(),
-		})
-		return
-	}
+	pbProb := bgrpc.ProblemDetailsToPB(prob)
 
 	// Assign the protobuf problem to the field and save it via the SA
 	order.Error = pbProb
-	_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
+	_, err := ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
 		Id:    order.Id,
 		Error: order.Error,
 	})
@@ -954,7 +948,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		RequestTime: ra.clk.Now(),
 		UserAgent:   web.UserAgent(ctx),
 	}
-	csr, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
+	csr, authzs, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
 		return nil, err
 	}
@@ -1003,7 +997,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 			// so split off a context that won't be canceled (and has its own timeout).
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
 			defer cancel()
-			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
+
+			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, authzs, logEvent)
 			if err != nil {
 				// We only log here, because this is in a background goroutine with
 				// no parent goroutine waiting for it to receive the error.
@@ -1015,7 +1010,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		})
 		return order, nil
 	} else {
-		return ra.issueCertificateOuter(ctx, order, csr, logEvent)
+		return ra.issueCertificateOuter(ctx, order, csr, authzs, logEvent)
 	}
 }
 
@@ -1041,27 +1036,30 @@ func containsMustStaple(extensions []pkix.Extension) bool {
 
 // validateFinalizeRequest checks that a FinalizeOrder request is fully correct
 // and ready for issuance.
+//
+// Returns a CertificateRequest, a map of identifiers to authorizations, and an error.
 func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	ctx context.Context,
 	req *rapb.FinalizeOrderRequest,
-	logEvent *certificateRequestEvent) (*x509.CertificateRequest, error) {
+	logEvent *certificateRequestEvent) (
+	*x509.CertificateRequest, map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	if req.Order.Id <= 0 {
-		return nil, berrors.MalformedError("invalid order ID: %d", req.Order.Id)
+		return nil, nil, berrors.MalformedError("invalid order ID: %d", req.Order.Id)
 	}
 
 	if req.Order.RegistrationID <= 0 {
-		return nil, berrors.MalformedError("invalid account ID: %d", req.Order.RegistrationID)
+		return nil, nil, berrors.MalformedError("invalid account ID: %d", req.Order.RegistrationID)
 	}
 
 	if core.AcmeStatus(req.Order.Status) != core.StatusReady {
-		return nil, berrors.OrderNotReadyError(
+		return nil, nil, berrors.OrderNotReadyError(
 			"Order's status (%q) is not acceptable for finalization",
 			req.Order.Status)
 	}
 
 	profile, err := ra.profiles.get(req.Order.CertificateProfileName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	orderIdents := identifier.Normalize(identifier.FromProtoSlice(req.Order.Identifiers))
@@ -1070,17 +1068,17 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
 	if len(orderIdents) == 0 {
-		return nil, berrors.InternalServerError("Order has no associated identifiers")
+		return nil, nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
 
 	// Parse the CSR from the request
 	csr, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {
-		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
+		return nil, nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
 	}
 
 	if containsMustStaple(csr.Extensions) {
-		return nil, berrors.UnauthorizedError(
+		return nil, nil, berrors.UnauthorizedError(
 			"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
 		)
 	}
@@ -1089,7 +1087,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
@@ -1097,23 +1095,23 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	csrIdents := identifier.FromCSR(csr)
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
-		return nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
+		return nil, nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
 	}
 
 	// Get the originating account for use in the next check.
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: req.Order.RegistrationID})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	account, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Make sure they're not using their account key as the certificate key too.
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
-		return nil, berrors.MalformedError("certificate public key must be different than account key")
+		return nil, nil, berrors.MalformedError("certificate public key must be different than account key")
 	}
 
 	// Double-check that all authorizations on this order are valid, are also
@@ -1123,29 +1121,36 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
-		return nil, err
+		return nil, nil, err
 	}
 
-	// Collect up a certificateRequestAuthz that stores the ID and challenge type
-	// of each of the valid authorizations we used for this issuance.
-	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrIdents))
-	for _, authz := range authzs {
-		// No need to check for error here because we know this same call just
-		// succeeded inside ra.checkOrderAuthorizations
-		solvedByChallengeType, _ := authz.SolvedBy()
-		logEventAuthzs[authz.Identifier.Value] = certificateRequestAuthz{
-			ID:            authz.ID,
-			ChallengeType: solvedByChallengeType,
+	// Collect up identifierLogs to log validation information for each identifier.
+	logIdents := make([]identifierLog, 0)
+	for ident, authz := range authzs {
+		// We know that at least one challenge is valid, because this was just
+		// confirmed by ra.checkOrderAuthorizations.
+		var solvedChall core.Challenge
+		for _, chall := range authz.Challenges {
+			if chall.Status == core.StatusValid {
+				solvedChall = chall
+				break
+			}
 		}
+		logIdents = append(logIdents, identifierLog{
+			Ident:     ident,
+			Authz:     authz.ID,
+			Challenge: solvedChall.Type,
+			Validated: *solvedChall.Validated,
+		})
 		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		ra.authzAges.WithLabelValues("FinalizeOrder", string(authz.Status)).Observe(authzAge)
 	}
-	logEvent.Authorizations = logEventAuthzs
+	logEvent.Identifiers = logIdents
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
-	return csr, nil
+	return csr, authzs, nil
 }
 
 func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
@@ -1166,6 +1171,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ctx context.Context,
 	order *corepb.Order,
 	csr *x509.CertificateRequest,
+	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	logEvent certificateRequestEvent,
 ) (*corepb.Order, error) {
 	ra.inflightFinalizes.Inc()
@@ -1194,7 +1200,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 	// Step 3: Issue the Certificate
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1222,7 +1228,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
-		logEvent.Identifiers = identifier.FromCert(cert)
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
 		logEvent.CertProfileName = profileName
@@ -1285,6 +1290,7 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
+	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	isRenewal bool,
 	profileName string,
 	acctID accountID,
@@ -1298,6 +1304,15 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 			return berr
 		}
 		return fmt.Errorf("%s: %s", prefix, e)
+	}
+
+	if features.Get().CAARechecksFailOrder {
+		// Check that the authzs either don't need CAA rechecking, or do the
+		// necessary CAA rechecks right now.
+		err := ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, ra.clk.Now())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	issueReq := &capb.IssueCertificateRequest{
@@ -1559,8 +1574,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			},
 		)
 		if err != nil {
-			// ProblemDetailsToPB never returns an error.
-			prob, _ = bgrpc.ProblemDetailsToPB(probs.ServerInternal("Could not communicate with VA"))
+			prob = bgrpc.ProblemDetailsToPB(probs.ServerInternal("Could not communicate with VA"))
 			ra.log.Errf("Failed to communicate with VA: %s", err)
 		}
 
@@ -2115,7 +2129,19 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	for _, ident := range idents {
 		if !slices.Contains(profile.identifierTypes, ident.Type) {
-			return nil, berrors.RejectedIdentifierError("Profile %q does not permit %s type identifiers", req.CertificateProfileName, ident.Type)
+			name := "Default profile"
+			if req.CertificateProfileName != "" {
+				name = fmt.Sprintf("Profile %q", req.CertificateProfileName)
+			}
+			identType := "unknown"
+			switch ident.Type {
+			case identifier.TypeIP:
+				identType = "IP address"
+			case identifier.TypeDNS:
+				identType = "DNS"
+			}
+			return nil, berrors.RejectedIdentifierError("%s does not permit %s identifiers. "+
+				"See available profiles at https://letsencrypt.org/docs/profiles/.", name, identType)
 		}
 	}
 

@@ -41,7 +41,7 @@ func (sa SA) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuth
 	return sa.Impl.GetValidAuthorizations2(ctx, req)
 }
 
-func (sa SA) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+func (sa SA) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return sa.Impl.GetValidOrderAuthorizations2(ctx, req)
 }
 

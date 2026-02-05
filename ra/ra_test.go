@@ -1910,48 +1910,63 @@ func TestNewOrder_ProfileIdentifierTypes(t *testing.T) {
 
 	testCases := []struct {
 		name       string
+		profile    string
 		identTypes []identifier.IdentifierType
 		idents     []*corepb.Identifier
 		expectErr  string
 	}{
 		{
+			name:       "Default profile bans IPs",
+			profile:    "",
+			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
+			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto()},
+			expectErr:  "Default profile does not permit IP address identifiers",
+		},
+		{
 			name:       "Permit DNS, provide DNS names",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
 		},
 		{
 			name:       "Permit IP, provide IPs",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewIP(randomIPv6()).ToProto()},
 		},
 		{
 			name:       "Permit DNS & IP, provide DNS & IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS, identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
 		},
 		{
 			name:       "Permit DNS, provide IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto()},
-			expectErr:  "Profile \"test\" does not permit ip type identifiers",
+			expectErr:  "Profile \"test\" does not permit IP address identifiers",
 		},
 		{
 			name:       "Permit DNS, provide DNS & IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto(), identifier.NewIP(randomIPv6()).ToProto()},
-			expectErr:  "Profile \"test\" does not permit ip type identifiers",
+			expectErr:  "Profile \"test\" does not permit IP address identifiers",
 		},
 		{
 			name:       "Permit IP, provide DNS",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto()},
-			expectErr:  "Profile \"test\" does not permit dns type identifiers",
+			expectErr:  "Profile \"test\" does not permit DNS identifiers",
 		},
 		{
 			name:       "Permit IP, provide DNS & IP",
+			profile:    "test",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
-			expectErr:  "Profile \"test\" does not permit dns type identifiers",
+			expectErr:  "Profile \"test\" does not permit DNS identifiers",
 		},
 	}
 
@@ -1967,7 +1982,7 @@ func TestNewOrder_ProfileIdentifierTypes(t *testing.T) {
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         registration.Id,
 				Identifiers:            tc.idents,
-				CertificateProfileName: "test",
+				CertificateProfileName: tc.profile,
 			}
 			_, err := ra.NewOrder(context.Background(), orderReq)
 
@@ -3151,22 +3166,30 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	test.AssertDeepEquals(t, event.VerifiedFields, []string{"subject.commonName", "subjectAltName"})
 	// The event CommonName should match the expected common name
 	test.AssertEquals(t, event.CommonName, "not-example.com")
-	// The event identifiers should match the order identifiers
-	test.AssertDeepEquals(t, identifier.Normalize(event.Identifiers), identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
 	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
 
-	// There should be one event Authorization entry for each name
-	test.AssertEquals(t, len(event.Authorizations), len(names))
+	// There should be one event identifier/authz entry for each name.
+	test.AssertEquals(t, len(event.Identifiers), len(names))
 
-	// Check the authz entry for each name
+	// The event identifiers should match the order identifiers
+	eventIdents := make([]identifier.ACMEIdentifier, 0)
+	for _, eventIdent := range event.Identifiers {
+		eventIdents = append(eventIdents, eventIdent.Ident)
+	}
+	test.AssertDeepEquals(t, identifier.Normalize(eventIdents), identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)))
+
+	// Check the identifier/authz entry for each name
 	for i, name := range names {
-		authzEntry := event.Authorizations[name]
-		// The authz entry should have the correct authz ID
-		test.AssertEquals(t, authzEntry.ID, fmt.Sprintf("%d", authzIDs[i]))
-		// The authz entry should have the correct challenge type
-		test.AssertEquals(t, authzEntry.ChallengeType, challs[i])
+		for _, entry := range event.Identifiers {
+			if entry.Ident.Value == name {
+				// The authz entry should have the correct authz ID
+				test.AssertEquals(t, entry.Authz, fmt.Sprintf("%d", authzIDs[i]))
+				// The authz entry should have the correct challenge type
+				test.AssertEquals(t, entry.Challenge, challs[i])
+			}
+		}
 	}
 }
 
@@ -3443,7 +3466,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 				CertificateProfileName: tc.profile,
 			}
 
-			order, err = ra.issueCertificateOuter(context.Background(), order, csr, certificateRequestEvent{})
+			order, err = ra.issueCertificateOuter(context.Background(), order, csr, nil, certificateRequestEvent{})
 
 			// The resulting order should have new fields populated
 			if order.Status != string(core.StatusValid) {

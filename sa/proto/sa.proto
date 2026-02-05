@@ -28,7 +28,8 @@ service StorageAuthorityReadOnly {
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
-  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetValidOrderAuthorizations2(GetOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
@@ -60,7 +61,8 @@ service StorageAuthority {
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
-  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetValidOrderAuthorizations2(GetOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
@@ -255,7 +257,7 @@ message SetOrderErrorRequest {
   core.ProblemDetails error = 2;
 }
 
-message GetValidOrderAuthorizationsRequest {
+message GetOrderAuthorizationsRequest {
   int64 id = 1;
   int64 acctID = 2;
 }

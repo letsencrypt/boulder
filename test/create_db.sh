@@ -3,14 +3,11 @@ set -o errexit
 cd $(dirname $0)/..
 
 
-# If you modify DBS or ENVS, you must also modify the corresponding keys in
+# If you modify DBS, you must also modify the corresponding keys in
 # sa/db/dbconfig.yml, see: https://github.com/rubenv/sql-migrate#readme
 
 DBS="boulder_sa
 incidents_sa"
-
-ENVS="test
-integration"
 
 # /path/to/boulder/repo
 root_dir=$(dirname $(dirname $(readlink -f "$0")))
@@ -60,55 +57,52 @@ then
 fi
 
 for db in $DBS; do
-  for env in $ENVS; do
-    dbname="${db}_${env}"
-    print_heading "${dbname}"
-    if [[ ${SKIP_CREATE} -eq 0 ]]
+  dbname="${db}"
+  print_heading "${dbname}"
+  if [[ ${SKIP_CREATE} -eq 0 ]]
+  then
+    if mysql ${dbconn} -e 'show databases;' | grep -q "${dbname}"
     then
-      if mysql ${dbconn} -e 'show databases;' | grep -q "${dbname}"
-      then
-        echo "Already exists - skipping create"
-      else
-        echo "Doesn't exist - creating"
-        create_empty_db "${dbname}" "${dbconn}"
-      fi
+      echo "Already exists - skipping create"
     else
-      echo "Skipping database create for ${dbname}"
+      echo "Doesn't exist - creating"
+      create_empty_db "${dbname}" "${dbconn}"
     fi
+  else
+    echo "Skipping database create for ${dbname}"
+  fi
 
-    if [[ "${BOULDER_CONFIG_DIR}" == "test/config-next" ]]
-    then
-      dbpath="./sa/db-next"
-    else
-      dbpath="./sa/db"
-    fi
+  if [[ "${BOULDER_CONFIG_DIR}" == "test/config-next" ]]
+  then
+    dbpath="./sa/db-next"
+  else
+    dbpath="./sa/db"
+  fi
 
-    # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
-    # as relative.
-    cd "${dbpath}"
-    r=`sql-migrate up -config="${DB_CONFIG_FILE}" -env="${dbname}" | xargs -0 echo`
-    if [[ "${r}" == "Migration failed"* ]]
-    then
-      echo "sql-migrate: ${r}"
-      echo "Try \`docker compose down --volumes\` and running again"
-      exit 1
-    else
-      echo "sql-migrate: ${r}"
-    fi
+  # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
+  # as relative.
+  cd "${dbpath}"
+  r=`sql-migrate up -config="${DB_CONFIG_FILE}" -env="${dbname}" | xargs -0 echo`
+  if [[ "${r}" == "Migration failed"* ]]
+  then
+    echo "sql-migrate: ${r}"
+    echo "Try \`docker compose down --volumes\` and running again"
+    exit 1
+  else
+    echo "sql-migrate: ${r}"
+  fi
 
-    USERS_SQL="../db-users/${db}.sql"
-    if [[ ${SKIP_USERS} -eq 1 ]]
-    then
-      echo "Skipping user grants for ${dbname}"
-    else
-      sed -e "s/'localhost'/'%'/g" < "${USERS_SQL}" | \
-        mysql ${dbconn} -D "${dbname}" -f || exit_err "Unable to add users from ${USERS_SQL}"
-      echo "Added users from ${USERS_SQL}"
-    fi
+  USERS_SQL="../db-users/${db}.sql"
+  if [[ ${SKIP_USERS} -eq 1 ]]
+  then
+    echo "Skipping user grants for ${dbname}"
+  else
+    mysql ${dbconn} -D "${dbname}" -f < "${USERS_SQL}"
+    echo "Added users from ${USERS_SQL}"
+  fi
 
-    # return to the root directory
-    cd "${root_dir}"
-  done
+  # return to the root directory
+  cd "${root_dir}"
 done
 
 echo
