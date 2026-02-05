@@ -4514,8 +4514,11 @@ func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 
 	got, err = sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
 	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
-	test.AssertEquals(t, got.Override.Count, int64(200))
-	test.AssertEquals(t, got.Override.Burst, int64(200))
+	test.AssertEquals(t, got.Override.LimitEnum, resp.Existing.LimitEnum)
+	test.AssertEquals(t, got.Override.Count, resp.Existing.Count)
+	test.AssertEquals(t, got.Override.Burst, resp.Existing.Burst)
+	test.AssertEquals(t, got.Override.Period.AsDuration(), resp.Existing.Period.AsDuration())
+	test.AssertEquals(t, got.Override.Comment, resp.Existing.Comment)
 
 	// Force lower override to apply.
 	resp, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov, Force: true})
