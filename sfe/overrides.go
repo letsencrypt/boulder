@@ -15,6 +15,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/policy"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/sfe/forms"
@@ -602,9 +603,9 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 			}
 		}
 	}
-	var overrideRequestHandled bool
+	var requestHandled bool
 	defer func() {
-		if !overrideRequestHandled && refundLimits != nil {
+		if !requestHandled && refundLimits != nil {
 			refundLimits()
 		}
 	}()
@@ -651,23 +652,24 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[name] = val
 	}
 
-	autoApproveOverride := func(ctx context.Context, rateLimitFieldValue string, fields map[string]string) bool {
+	autoApproveOverride := func(ctx context.Context, rateLimitFieldValue string, fields map[string]string) (bool, *rapb.RateLimitOverride) {
 		if !sfe.autoApproveOverrides {
-			return false
+			return false, nil
 		}
 		req, _, err := makeAddOverrideRequest(rateLimitFieldValue, fields)
 		if err != nil {
 			sfe.log.Errf("failed to create automatically approved override request: %s", err)
-			return false
+			return false, nil
 		}
 		resp, err := sfe.ra.AddRateLimitOverride(ctx, req)
 		if err != nil {
 			sfe.log.Errf("failed to create automatically approved override request: %s", err)
-			return false
+			return false, nil
 		}
-		return resp.Enabled
+		return resp.Enabled, resp.Existing
 	}
 
+	var existingOverride *rapb.RateLimitOverride
 	switch req.RateLimit {
 	case rl.NewOrdersPerAccount.String():
 		accountURI, err := getValidated(AccountURIFieldName)
@@ -678,7 +680,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[AccountURIFieldName] = accountURI
 
 		if validFields[TierFieldName] == newOrdersPerAccountTierOptions[0] {
-			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomainPerAccount.String():
@@ -690,7 +692,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[AccountURIFieldName] = accountURI
 
 		if validFields[TierFieldName] == certificatesPerDomainPerAccountTierOptions[0] {
-			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perDNSNameSuffix:
@@ -702,7 +704,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[RegisteredDomainFieldName] = registeredDomain
 
 		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
-			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perIPSuffix:
@@ -714,7 +716,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[IPAddressFieldName] = ipAddress
 
 		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
-			overrideRequestHandled = autoApproveOverride(r.Context(), req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	default:
@@ -744,7 +746,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		}
 	}
 
-	if overrideRequestHandled {
+	if requestHandled {
 		sfe.log.Infof("automatically approved override request for %s", validFields[OrganizationFieldName])
 		w.WriteHeader(http.StatusCreated)
 		return
@@ -770,9 +772,37 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		return
 	}
 
+	if existingOverride != nil {
+		privateBody := fmt.Sprintf(
+			`Auto-approval blocked: the requested override is lower than an existing override.
+
+Existing override:
+  - count: %d
+  - over period: %s
+  - comment: %s
+
+Security note:
+This request is NOT authenticated. Do not disclose internal details or 
+override values to the requester until their legitimacy has been verified.
+				
+If the email address provided looks suspicious, it's probably best to 
+ignore the request entirely.
+
+Requester-provided email: %s`,
+			existingOverride.Count,
+			existingOverride.Period.AsDuration(),
+			existingOverride.Comment,
+			validFields[emailAddressFieldName],
+		)
+		err := sfe.zendeskClient.AddComment(ticketID, privateBody, false)
+		if err != nil {
+			sfe.log.Errf("failed to add Zendesk comment to ticket %d: %s", ticketID, err)
+		}
+	}
+
 	// If we got here the request has either been auto-approved or a Zendesk
 	// ticket has been created for manual review, so a refund is not needed.
-	overrideRequestHandled = true
+	requestHandled = true
 	sfe.log.Infof("created override request Zendesk ticket %d", ticketID)
 	w.WriteHeader(http.StatusAccepted)
 }

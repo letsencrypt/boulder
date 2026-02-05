@@ -4237,20 +4237,22 @@ func TestAddRateLimitOverride(t *testing.T) {
 
 	expectBucketKey := core.RandomString(10)
 	ov := rapb.AddRateLimitOverrideRequest{
-		LimitEnum: 1,
-		BucketKey: expectBucketKey,
-		Comment:   "insert",
-		Period:    durationpb.New(time.Hour),
-		Count:     100,
-		Burst:     100,
+		Override: &rapb.RateLimitOverride{
+			LimitEnum: 1,
+			BucketKey: expectBucketKey,
+			Comment:   "insert",
+			Period:    durationpb.New(time.Hour),
+			Count:     100,
+			Burst:     100,
+		},
 	}
 
 	_, err := ra.AddRateLimitOverride(ctx, &ov)
 	test.AssertNotError(t, err, "expected successful insert, got error")
-	test.AssertEquals(t, mockSA.inserted.Override.LimitEnum, ov.LimitEnum)
+	test.AssertEquals(t, mockSA.inserted.Override.LimitEnum, ov.Override.LimitEnum)
 	test.AssertEquals(t, mockSA.inserted.Override.BucketKey, expectBucketKey)
-	test.AssertEquals(t, mockSA.inserted.Override.Comment, ov.Comment)
-	test.AssertEquals(t, mockSA.inserted.Override.Period.AsDuration(), ov.Period.AsDuration())
-	test.AssertEquals(t, mockSA.inserted.Override.Count, ov.Count)
-	test.AssertEquals(t, mockSA.inserted.Override.Burst, ov.Burst)
+	test.AssertEquals(t, mockSA.inserted.Override.Comment, ov.Override.Comment)
+	test.AssertEquals(t, mockSA.inserted.Override.Period.AsDuration(), ov.Override.Period.AsDuration())
+	test.AssertEquals(t, mockSA.inserted.Override.Count, ov.Override.Count)
+	test.AssertEquals(t, mockSA.inserted.Override.Burst, ov.Override.Burst)
 }

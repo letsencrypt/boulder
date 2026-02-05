@@ -425,11 +425,13 @@ message RateLimitOverride {
 
 message AddRateLimitOverrideRequest {
   RateLimitOverride override = 1;
+  bool force = 2;
 }
 
 message AddRateLimitOverrideResponse {
   bool inserted = 1;
   bool enabled = 2;
+  RateLimitOverride existing = 3;
 }
 
 message EnableRateLimitOverrideRequest {

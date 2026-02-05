@@ -4504,6 +4504,31 @@ func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 	test.AssertEquals(t, got.Override.Period.AsDuration(), 2*time.Hour)
 	test.AssertEquals(t, got.Override.Count, int64(200))
 	test.AssertEquals(t, got.Override.Burst, int64(200))
+
+	// Attempt lower override without force (no-op).
+	ov.Count = 100
+	ov.Burst = 100
+	resp, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
+	test.AssertNotError(t, err, "expected successful no-op, got error")
+	test.Assert(t, resp.Existing != nil && !resp.Enabled, "expected existing override returned for lower override")
+
+	got, err = sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
+	test.AssertEquals(t, got.Override.LimitEnum, resp.Existing.LimitEnum)
+	test.AssertEquals(t, got.Override.Count, resp.Existing.Count)
+	test.AssertEquals(t, got.Override.Burst, resp.Existing.Burst)
+	test.AssertEquals(t, got.Override.Period.AsDuration(), resp.Existing.Period.AsDuration())
+	test.AssertEquals(t, got.Override.Comment, resp.Existing.Comment)
+
+	// Force lower override to apply.
+	resp, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov, Force: true})
+	test.AssertNotError(t, err, "expected successful forced update, got error")
+	test.Assert(t, resp.Existing == nil && !resp.Enabled, "expected forced update to apply without re-enabling")
+
+	got, err = sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
+	test.AssertEquals(t, got.Override.Count, int64(100))
+	test.AssertEquals(t, got.Override.Burst, int64(100))
 }
 
 func TestDisableEnableRateLimitOverride(t *testing.T) {
@@ -4577,4 +4602,66 @@ func TestGetEnabledRateLimitOverrides(t *testing.T) {
 	test.AssertNotError(t, err, "expected streaming enabled overrides to succeed, got error")
 	test.AssertEquals(t, len(stream.sent), 1)
 	test.AssertEquals(t, stream.sent[0].Override.BucketKey, "on")
+}
+
+func TestOverrideLowerThanExisting(t *testing.T) {
+	t.Parallel()
+
+	makeOverride := func(count int64, period time.Duration) *sapb.RateLimitOverride {
+		return &sapb.RateLimitOverride{
+			Count:  count,
+			Period: durationpb.New(period),
+		}
+	}
+
+	cases := []struct {
+		name     string
+		new      *sapb.RateLimitOverride
+		existing overrideModel
+		want     bool
+	}{
+		{
+			name: "lower same period",
+			new:  makeOverride(50, 7*24*time.Hour),
+			existing: overrideModel{
+				Count:    100,
+				PeriodNS: (7 * 24 * time.Hour).Nanoseconds(),
+			},
+			want: true,
+		},
+		{
+			name: "higher same period",
+			new:  makeOverride(200, 7*24*time.Hour),
+			existing: overrideModel{
+				Count:    100,
+				PeriodNS: (7 * 24 * time.Hour).Nanoseconds(),
+			},
+			want: false,
+		},
+		{
+			name: "equal rate different period",
+			new:  makeOverride(50, 84*time.Hour),
+			existing: overrideModel{
+				Count:    100,
+				PeriodNS: (168 * time.Hour).Nanoseconds(),
+			},
+			want: false,
+		},
+		{
+			name: "lower rate different period",
+			new:  makeOverride(50, 168*time.Hour),
+			existing: overrideModel{
+				Count:    100,
+				PeriodNS: (84 * time.Hour).Nanoseconds(),
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := overrideLowerThanExisting(tc.new, tc.existing)
+			test.AssertEquals(t, got, tc.want)
+		})
+	}
 }
