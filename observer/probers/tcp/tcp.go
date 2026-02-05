@@ -3,7 +3,7 @@ package tcp
 import (
 	"context"
 
-	"github.com/letsencrypt/boulder/observer/obsdialer"
+	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
 type TCPProbe struct {
@@ -22,7 +22,7 @@ func (p TCPProbe) Kind() string {
 
 // Probe performs the configured TCP dial.
 func (p TCPProbe) Probe(ctx context.Context) error {
-	c, err := obsdialer.Dialer.DialContext(ctx, "tcp", p.hostport)
+	c, err := obsclient.Dialer().DialContext(ctx, "tcp", p.hostport)
 	if err != nil {
 		return err
 	}

@@ -2,12 +2,11 @@ package probers
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"slices"
 
-	"github.com/letsencrypt/boulder/observer/obsdialer"
+	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
 // HTTPProbe is the exported 'Prober' object for monitors configured to
@@ -35,10 +34,6 @@ func (p HTTPProbe) Kind() string {
 
 // Probe performs the configured HTTP request.
 func (p HTTPProbe) Probe(ctx context.Context) error {
-	client := http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
-		DialContext:     obsdialer.Dialer.DialContext,
-	}}
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
 		return err
@@ -46,7 +41,7 @@ func (p HTTPProbe) Probe(ctx context.Context) error {
 	req.Header.Set("User-Agent", p.useragent)
 
 	// TODO(@beautifulentropy): add support for more than HTTP GET
-	resp, err := client.Do(req)
+	resp, err := obsclient.Client(p.insecure).Do(req)
 	if err != nil {
 		return err
 	}

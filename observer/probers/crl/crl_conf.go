@@ -41,12 +41,13 @@ func (c CRLConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) 
 func (c CRLConf) validateURL() error {
 	url, err := url.Parse(c.URL)
 	if err != nil {
-		return fmt.Errorf(
-			"invalid 'url', got: %q, expected a valid url", c.URL)
+		return fmt.Errorf("invalid 'url', got: %q, expected a valid url", c.URL)
 	}
 	if url.Scheme == "" {
-		return fmt.Errorf(
-			"invalid 'url', got: %q, missing scheme", c.URL)
+		return fmt.Errorf("invalid 'url', got: %q, missing scheme", c.URL)
+	}
+	if url.Scheme != "http" {
+		return fmt.Errorf("invalid 'url', got: %q, scheme must be http", c.URL)
 	}
 	return nil
 }

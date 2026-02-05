@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/crl/idp"
-	"github.com/letsencrypt/boulder/observer/obsdialer"
+	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
 // CRLProbe is the exported 'Prober' object for monitors configured to
@@ -36,15 +36,12 @@ func (p CRLProbe) Kind() string {
 
 // Probe requests the configured CRL and publishes metrics about it if found.
 func (p CRLProbe) Probe(ctx context.Context) error {
-	client := http.Client{Transport: &http.Transport{
-		DialContext: obsdialer.Dialer.DialContext,
-	}}
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
 		return err
 	}
 
-	resp, err := client.Do(req)
+	resp, err := obsclient.Client(false).Do(req)
 	if err != nil {
 		return err
 	}
@@ -68,7 +65,7 @@ func (p CRLProbe) Probe(ctx context.Context) error {
 			return err
 		}
 		if !slices.Contains(idps, p.url) {
-			return fmt.Errorf("desired url %q not found in CRL IDPs", p.url)
+			return fmt.Errorf("CRL fetched from %q had CRL IssuingDistributionPoints %v", p.url, idps)
 		}
 	}
 

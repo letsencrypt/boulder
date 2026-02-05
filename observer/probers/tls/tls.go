@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
-	"github.com/letsencrypt/boulder/observer/obsdialer"
+	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
 type reason int
@@ -162,7 +162,7 @@ func (p TLSProbe) probeExpired(ctx context.Context) error {
 	}
 
 	tlsDialer := tls.Dialer{
-		NetDialer: &obsdialer.Dialer,
+		NetDialer: obsclient.Dialer(),
 		Config: &tls.Config{
 			// Set InsecureSkipVerify to skip the default validation we are
 			// replacing. This will not disable VerifyConnection.
@@ -222,7 +222,7 @@ func (p TLSProbe) probeUnexpired(ctx context.Context) error {
 	}
 
 	tlsDialer := tls.Dialer{
-		NetDialer: &obsdialer.Dialer,
+		NetDialer: obsclient.Dialer(),
 		Config: &tls.Config{
 			// Set InsecureSkipVerify to skip the default validation we are
 			// replacing. This will not disable VerifyConnection.
@@ -290,12 +290,11 @@ func (p TLSProbe) probeUnexpired(ctx context.Context) error {
 	return nil
 }
 
-// Probe performs the configured TLS probe. Return nil if the root has the
+// Probe performs the configured TLS probe. Returns nil if the root has the
 // expected Subject (or if no root is provided for comparison in settings), and
 // the end entity certificate has the correct expiration status (either expired
 // or unexpired, depending on what is configured). Exports metrics for the
-// NotAfter timestamp of the end entity certificate and the reason for the Probe
-// returning and error ("none" if returns nil).
+// validity interval of the end entity certificate and the result of the probe.
 func (p TLSProbe) Probe(ctx context.Context) error {
 	if p.response == "expired" {
 		return p.probeExpired(ctx)
