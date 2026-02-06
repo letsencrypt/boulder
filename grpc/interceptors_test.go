@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"strconv"
@@ -17,7 +16,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -87,37 +85,6 @@ func TestClientInterceptor(t *testing.T) {
 
 	err = ci.Unary(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
-}
-
-// TestThereIsNoWaitForReady checks the gRPC client does default to not wait for ready by
-// sending a request to a backend that is unavailable, and ensures that the request
-// errors out promptly.
-func TestThereIsNoWaitForReady(t *testing.T) {
-	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientMetadataInterceptor{
-		timeout: time.Second,
-		metrics: clientMetrics,
-		clk:     clock.NewFake(),
-	}
-	conn, err := grpc.NewClient("localhost:19876", // random, probably unused port
-		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.Unary))
-	if err != nil {
-		t.Fatalf("did not connect: %v", err)
-	}
-	defer conn.Close()
-	c := test_proto.NewChillerClient(conn)
-
-	start := time.Now()
-	_, err = c.Chill(context.Background(), &test_proto.Time{Duration: durationpb.New(time.Second)})
-	if err == nil {
-		t.Errorf("Successful Chill when we expected failure.")
-	}
-	if time.Since(start) > 200*time.Millisecond {
-		t.Errorf("Chill failed slow, when WaitForReady should be disabled.")
-	}
 }
 
 // testTimeoutServer is used to implement TestTimeouts, and will attempt to sleep for

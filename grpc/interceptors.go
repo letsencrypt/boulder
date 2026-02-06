@@ -241,12 +241,9 @@ func (smi *serverMetadataInterceptor) checkLatency(clientReqTime string) error {
 var _ serverInterceptor = (*serverMetadataInterceptor)(nil)
 
 // clientMetadataInterceptor is a gRPC interceptor that adds Prometheus
-// metrics to sent requests, and disables WaitForReady. We disable WaitForReady
-// because non-WaitForReady mode is most similar to the old AMQP RPC layer: If a
-// client makes a request while all backends are briefly down (e.g. for a restart),
-// the request doesn't necessarily fail. A backend can service the request if it
-// comes back up within the timeout. Under gRPC the same effect is achieved by
-// retries up to the Context deadline.
+// metrics to sent requests. A backend can service the request if it
+// comes back up within the timeout. Under gRPC the same effect is
+// achieved by retries up to the Context deadline.
 type clientMetadataInterceptor struct {
 	timeout time.Duration
 	metrics clientMetrics
@@ -281,10 +278,6 @@ func (cmi *clientMetadataInterceptor) Unary(
 	})
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
-
-	// Disable wait for ready so RPCs will retry until deadline, even if all backends
-	// are down.
-	opts = append(opts, grpc.WaitForReady(false))
 
 	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
 	respMD := metadata.New(nil)
@@ -393,10 +386,6 @@ func (cmi *clientMetadataInterceptor) Stream(
 	})
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
-
-	// Disable wait for ready so RPCs will retry until deadline, even if all backends
-	// are down.
-	opts = append(opts, grpc.WaitForReady(false))
 
 	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
 	respMD := metadata.New(nil)
