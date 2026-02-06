@@ -2,9 +2,8 @@ package tcp
 
 import (
 	"context"
-	"time"
 
-	"github.com/letsencrypt/boulder/observer/obsdialer"
+	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
 type TCPProbe struct {
@@ -12,7 +11,6 @@ type TCPProbe struct {
 }
 
 // Name returns a string that uniquely identifies the monitor.
-
 func (p TCPProbe) Name() string {
 	return p.hostport
 }
@@ -23,14 +21,12 @@ func (p TCPProbe) Kind() string {
 }
 
 // Probe performs the configured TCP dial.
-func (p TCPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	start := time.Now()
-	c, err := obsdialer.Dialer.DialContext(ctx, "tcp", p.hostport)
+func (p TCPProbe) Probe(ctx context.Context) error {
+	c, err := obsclient.Dialer().DialContext(ctx, "tcp", p.hostport)
 	if err != nil {
-		return false, time.Since(start)
+		return err
 	}
+
 	c.Close()
-	return true, time.Since(start)
+	return nil
 }
