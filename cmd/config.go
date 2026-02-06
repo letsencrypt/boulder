@@ -345,7 +345,10 @@ type GRPCClientConfig struct {
 	// backends are down, it will wait until either one becomes available or the RPC
 	// times out.
 	//
-	// Deprecated: Is ignored and always never waits for ready
+	// Deprecated: This field no longer has any effect.
+	//
+	// TODO(#7843): Remove this field entirely once it is no longer referenced
+	// in our production configuration.
 	NoWaitForReady bool
 }
 
