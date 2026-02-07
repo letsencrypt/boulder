@@ -35,9 +35,8 @@ func RelativeEndpoint(request *http.Request, basePath string, segments ...string
 		host = "localhost"
 	}
 
-	paths := []string{basePath}
-	paths = append(paths, segments...)
-	endpoint := path.Join(paths...)
+	// path.Join will clean the resulting path, removing any trailing slashes.
+	endpoint := path.Join(append([]string{basePath}, segments...)...)
 
 	resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
 	result = resultUrl.String()
