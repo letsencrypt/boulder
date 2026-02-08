@@ -8,8 +8,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
-	"log"
-	"log/syslog"
+	"log/slog"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -17,27 +16,24 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/go-logr/stdr"
-	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.30.0"
-	"google.golang.org/grpc/grpclog"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/validator/v10"
 )
@@ -54,120 +50,34 @@ func init() {
 	}
 }
 
-// mysqlLogger implements the mysql.Logger interface.
-type mysqlLogger struct {
-	blog.Logger
-}
-
-func (m mysqlLogger) Print(v ...any) {
-	m.Errf("[mysql] %s", fmt.Sprint(v...))
-}
-
-// grpcLogger implements the grpclog.LoggerV2 interface.
-type grpcLogger struct {
-	blog.Logger
-}
-
-// Ensure that fatal logs exit, because we use neither the gRPC default logger
-// nor the stdlib default logger, both of which would call os.Exit(1) for us.
-func (log grpcLogger) Fatal(args ...any) {
-	log.Error(args...)
-	os.Exit(1)
-}
-func (log grpcLogger) Fatalf(format string, args ...any) {
-	log.Errorf(format, args...)
-	os.Exit(1)
-}
-func (log grpcLogger) Fatalln(args ...any) {
-	log.Errorln(args...)
-	os.Exit(1)
-}
-
-// Pass through all Error level logs.
-func (log grpcLogger) Error(args ...any) {
-	log.Logger.Errf("%s", fmt.Sprint(args...))
-}
-func (log grpcLogger) Errorf(format string, args ...any) {
-	log.Logger.Errf(format, args...)
-}
-func (log grpcLogger) Errorln(args ...any) {
-	log.Logger.Errf("%s", fmt.Sprintln(args...))
-}
-
-// Pass through most Warnings, but filter out a few noisy ones.
-func (log grpcLogger) Warning(args ...any) {
-	log.Logger.Warning(fmt.Sprint(args...))
-}
-func (log grpcLogger) Warningf(format string, args ...any) {
-	log.Logger.Warningf(format, args...)
-}
-func (log grpcLogger) Warningln(args ...any) {
-	msg := fmt.Sprintln(args...)
-	// See https://github.com/letsencrypt/boulder/issues/4628
-	if strings.Contains(msg, `ccResolverWrapper: error parsing service config: no JSON service config provided`) {
-		return
-	}
-	// See https://github.com/letsencrypt/boulder/issues/4379
-	if strings.Contains(msg, `Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"`) {
-		return
-	}
-	// Since we've already formatted the message, just pass through to .Warning()
-	log.Logger.Warning(msg)
-}
-
-// Don't log any INFO-level gRPC stuff. In practice this is all noise, like
-// failed TXT lookups for service discovery (we only use A records).
-func (log grpcLogger) Info(args ...any)                 {}
-func (log grpcLogger) Infof(format string, args ...any) {}
-func (log grpcLogger) Infoln(args ...any)               {}
-
-// V returns true if the verbosity level l is less than the verbosity we want to
-// log at.
-func (log grpcLogger) V(l int) bool {
-	// We always return false. This causes gRPC to not log some things which are
-	// only logged conditionally if the logLevel is set below a certain value.
-	// TODO: Use the wrapped log.Logger.stdoutLevel and log.Logger.syslogLevel
-	// to determine a correct return value here.
-	return false
-}
-
-// promLogger implements the promhttp.Logger interface.
+// promLogger implements the promhttp.Logger interface. This adapter is here
+// instead of in blog/adapters.go because it is used at the individual handler
+// level, rather than at the package-global level.
 type promLogger struct {
-	blog.Logger
+	*blog.LogContext
 }
 
 func (log promLogger) Println(args ...any) {
-	log.Errf("%s", fmt.Sprint(args...))
+	blog.Error(log.New(), "Prometheus error", errors.New(fmt.Sprint(args...)))
 }
 
-type redisLogger struct {
-	blog.Logger
+// singletonLogger can only be initialized once, then never overwritten.
+type singletonLogger struct {
+	once sync.Once
+	log  *blog.LogContext
 }
 
-func (rl redisLogger) Printf(ctx context.Context, format string, v ...any) {
-	rl.Infof(format, v...)
+func (s *singletonLogger) init(l *blog.LogContext) {
+	s.once.Do(func() {
+		s.log = l
+	})
 }
 
-// logWriter implements the io.Writer interface.
-type logWriter struct {
-	blog.Logger
-}
-
-func (lw logWriter) Write(p []byte) (n int, err error) {
-	// Lines received by logWriter will always have a trailing newline.
-	lw.Logger.Info(strings.Trim(string(p), "\n"))
-	return
-}
-
-// logOutput implements the log.Logger interface's Output method for use with logr
-type logOutput struct {
-	blog.Logger
-}
-
-func (l logOutput) Output(calldepth int, logline string) error {
-	l.Logger.Info(logline)
-	return nil
-}
+// backupLogger is used only by AuditPanic, which is deferred before we've had a
+// chance to build a real logger. If NewLogger is called, it initializes this
+// backup to be the same as the real logger it returns. Otherwise, AuditPanic
+// will construct its own logger with a known-good config.
+var backupLogger singletonLogger
 
 // StatsAndLogging sets up an AuditLogger, Prometheus Registerer, and
 // OpenTelemetry tracing.  It returns the Registerer and AuditLogger, along
@@ -181,53 +91,33 @@ func (l logOutput) Output(calldepth int, logline string) error {
 // is called, because gRPC's SetLogger doesn't use any locking.
 //
 // This function does not return an error, and will panic on problems.
-func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
-	logger := NewLogger(logConf)
+func StatsAndLogging(logConf blog.Config, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, *blog.LogContext, func(context.Context)) {
+	logctx := NewLogger(logConf)
 
-	shutdown := NewOpenTelemetry(otConf, logger)
+	shutdown := NewOpenTelemetry(logctx.New(), otConf)
 
-	return newStatsRegistry(addr, logger), logger, shutdown
+	return newStatsRegistry(addr, logctx), logctx, shutdown
 }
 
-// NewLogger creates a logger object with the provided settings, sets it as
-// the global logger, and returns it.
-//
-// It also sets the logging systems for various packages we use to go through
-// the created logger, and sets up a periodic log event for the current timestamp.
-func NewLogger(logConf SyslogConfig) blog.Logger {
-	var logger blog.Logger
-	if logConf.SyslogLevel >= 0 {
-		syslogger, err := syslog.Dial(
-			"",
-			"",
-			syslog.LOG_INFO, // default, not actually used
-			core.Command())
-		FailOnError(err, "Could not connect to Syslog")
-		syslogLevel := int(syslog.LOG_INFO)
-		if logConf.SyslogLevel != 0 {
-			syslogLevel = logConf.SyslogLevel
-		}
-		logger, err = blog.New(syslogger, logConf.StdoutLevel, syslogLevel)
-		FailOnError(err, "Could not connect to Syslog")
-	} else {
-		logger = blog.StdoutLogger(logConf.StdoutLevel)
-	}
+// NewLogger creates a LogContext with the provided settings and returns it. It
+// also installs this logger as the default logger for third-party packages,
+// and sets up a periodic log event for the current timestamp.
+func NewLogger(logConf blog.Config) *blog.LogContext {
+	logctx, err := blog.NewLogContext(logConf)
+	FailOnError(err, "While constructing loggers")
 
-	_ = blog.Set(logger)
-	_ = mysql.SetLogger(mysqlLogger{logger})
-	grpclog.SetLoggerV2(grpcLogger{logger})
-	log.SetOutput(logWriter{logger})
-	redis.SetLogger(redisLogger{logger})
+	blog.InitAdapters(logctx)
+	backupLogger.init(logctx)
 
 	// Periodically log the current timestamp, to ensure syslog timestamps match
 	// Boulder's conception of time.
 	go func() {
 		for {
 			time.Sleep(time.Hour)
-			logger.Info(fmt.Sprintf("time=%s", time.Now().Format(time.RFC3339Nano)))
+			blog.Info(logctx.New(), "heartbeat")
 		}
 	}()
-	return logger
+	return logctx
 }
 
 func newVersionCollector() prometheus.Collector {
@@ -260,11 +150,11 @@ func newVersionCollector() prometheus.Collector {
 	)
 }
 
-func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
+func newStatsRegistry(addr string, logctx *blog.LogContext) prometheus.Registerer {
 	registry := prometheus.NewRegistry()
 
 	if addr == "" {
-		logger.Info("No debug listen address specified")
+		blog.Debug(logctx.New(), "No debug listen address specified")
 		return registry
 	}
 
@@ -292,10 +182,10 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 
 	mux.Handle("/debug/vars", expvar.Handler())
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
-		ErrorLog: promLogger{logger},
+		ErrorLog: promLogger{logctx},
 	}))
 
-	logger.Infof("Debug server listening on %s", addr)
+	blog.Debug(logctx.New(), "Debug server listening", slog.String("addr", addr))
 
 	server := http.Server{
 		Addr:        addr,
@@ -311,9 +201,8 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 
 // NewOpenTelemetry sets up our OpenTelemetry tracing
 // It returns a graceful shutdown function to be deferred.
-func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx context.Context) {
-	otel.SetLogger(stdr.New(logOutput{logger}))
-	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { logger.Errf("OpenTelemetry error: %v", err) }))
+func NewOpenTelemetry(ctx context.Context, config OpenTelemetryConfig) func(ctx context.Context) {
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { blog.Error(ctx, "OpenTelemetry error", err) }))
 
 	resources := resource.NewWithAttributes(
 		semconv.SchemaURL,
@@ -348,7 +237,7 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 	return func(ctx context.Context) {
 		err := tracerProvider.Shutdown(ctx)
 		if err != nil {
-			logger.Errf("Error while shutting down OpenTelemetry: %v", err)
+			blog.Error(ctx, "Failed to shut down OpenTelemetry", err)
 		}
 	}
 }
@@ -356,27 +245,28 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 // AuditPanic catches and logs panics, then exits with exit code 1.
 // This method should be called in a defer statement as early as possible.
 func AuditPanic() {
+	if backupLogger.log == nil {
+		// We're so early in the process that a real logger hasn't been built yet.
+		// Create one with a sane default config that cannot error during creation.
+		logger, _ := blog.NewLogContext(blog.Config{StdoutLevel: 6, SyslogLevel: -1})
+		backupLogger.init(logger)
+	}
+	ctx := backupLogger.log.New()
+
 	err := recover()
 	// No panic, no problem
 	if err == nil {
-		blog.Get().AuditInfo("Process exiting normally", info())
+		blog.AuditInfo(ctx, "Process exiting normally", info()...)
 		return
 	}
-	// Get the global logger if it's initialized, or create a default one if not.
-	// We could wind up creating a default logger if we panic so early in a process'
-	// lifetime that we haven't yet parsed the config and created a logger.
-	log := blog.Get()
 	// For the special type `failure`, audit log the message and exit quietly
 	fail, ok := err.(failure)
 	if ok {
-		log.AuditErr(fail.msg, nil, nil)
+		blog.AuditError(ctx, "Command failed", errors.New(fail.msg))
 	} else {
 		// For all other values (which might not be an error) passed to `panic`, log
 		// them and a stack trace
-		log.AuditErr("Panic", nil, map[string]any{
-			"panic": fmt.Sprintf("%#v", err),
-			"stack": string(debug.Stack()),
-		})
+		blog.AuditError(ctx, "Panic", fmt.Errorf("%#v", err), slog.String("stack", string(debug.Stack())))
 	}
 	// Because this function is deferred as early as possible, there's no further defers to run after this one
 	// So it is safe to os.Exit to set the exit code and exit without losing any defers we haven't executed.
@@ -529,27 +419,19 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	return nil
 }
 
-type buildInfo struct {
-	Command   string
-	BuildID   string
-	BuildTime string
-	GoVersion string
-	BuildHost string
-}
-
 // info produces build information about this binary
-func info() buildInfo {
-	return buildInfo{
-		Command:   core.Command(),
-		BuildID:   core.GetBuildID(),
-		BuildTime: core.GetBuildTime(),
-		GoVersion: runtime.Version(),
-		BuildHost: core.GetBuildHost(),
+func info() []slog.Attr {
+	return []slog.Attr{
+		slog.String("command", core.Command()),
+		slog.String("buildID", core.GetBuildID()),
+		slog.String("buildTime", core.GetBuildTime()),
+		slog.String("goVersion", runtime.Version()),
+		slog.String("buildHost", core.GetBuildHost()),
 	}
 }
 
-func LogStartup(logger blog.Logger) {
-	logger.AuditInfo("Process starting", info())
+func LogStartup(logctx *blog.LogContext) {
+	blog.AuditInfo(logctx.New(), "Process starting", info()...)
 }
 
 // CatchSignals blocks until a SIGTERM, SIGINT, or SIGHUP is received, then

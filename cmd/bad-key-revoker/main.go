@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -13,12 +14,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
@@ -38,7 +39,6 @@ type badKeyRevoker struct {
 	maxRevocations            int
 	serialBatchSize           int
 	raClient                  revoker
-	logger                    blog.Logger
 	clk                       clock.Clock
 	backoffIntervalBase       time.Duration
 	backoffIntervalMax        time.Duration
@@ -198,9 +198,9 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	logEvent := make(map[string]any)
 	defer func() {
 		if err != nil {
-			bkr.logger.AuditErr("Error while processing bad key", err, logEvent)
+			blog.AuditError(ctx, "Error while processing bad key", err, logEvent)
 		} else {
-			bkr.logger.AuditInfo("Processed bad key", logEvent)
+			blog.AuditInfo(ctx, "Processed bad key", logEvent)
 		}
 	}()
 
@@ -301,7 +301,7 @@ type Config struct {
 		MaxExpectedReplicationLag config.Duration `validate:"-"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -322,9 +322,9 @@ func main() {
 		config.BadKeyRevoker.DebugAddr = *debugAddr
 	}
 
-	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
+	stats, logctx, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
 	defer oTelShutdown(context.Background())
-	cmd.LogStartup(logger)
+	cmd.LogStartup(logctx)
 	clk := clock.New()
 
 	keysToProcess := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
@@ -340,7 +340,7 @@ func main() {
 		Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
 	})
 
-	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, stats, logger)
+	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, stats, logctx)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load(stats)
@@ -355,7 +355,6 @@ func main() {
 		maxRevocations:            config.BadKeyRevoker.MaximumRevocations,
 		serialBatchSize:           config.BadKeyRevoker.FindCertificatesBatchSize,
 		raClient:                  rac,
-		logger:                    logger,
 		clk:                       clk,
 		backoffIntervalMax:        config.BadKeyRevoker.BackoffIntervalMax.Duration,
 		backoffIntervalBase:       config.BadKeyRevoker.Interval.Duration,
@@ -389,16 +388,17 @@ func main() {
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.
 	for {
-		noWork, err := bkr.invoke(context.Background())
+		ctx := logctx.New()
+		noWork, err := bkr.invoke(ctx)
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
 			// Calculate and sleep for a backoff interval
-			bkr.backoff()
+			bkr.backoff(ctx)
 			continue
 		}
 		if noWork {
 			// Calculate and sleep for a backoff interval
-			bkr.backoff()
+			bkr.backoff(ctx)
 		} else {
 			keysProcessed.WithLabelValues("success").Inc()
 			// Successfully processed, reset backoff.
@@ -410,7 +410,7 @@ func main() {
 // backoff increments the backoffTicker, calls core.RetryBackoff to
 // calculate a new backoff duration, then logs the backoff and sleeps for
 // the calculated duration.
-func (bkr *badKeyRevoker) backoff() {
+func (bkr *badKeyRevoker) backoff(ctx context.Context) {
 	bkr.backoffTicker++
 	backoffDur := core.RetryBackoff(
 		bkr.backoffTicker,
@@ -418,7 +418,7 @@ func (bkr *badKeyRevoker) backoff() {
 		bkr.backoffIntervalMax,
 		bkr.backoffFactor,
 	)
-	bkr.logger.Infof("backoff trying again in %.2f seconds", backoffDur.Seconds())
+	blog.Info(ctx, "backing off", slog.Duration("duration", backoffDur))
 	bkr.clk.Sleep(backoffDur)
 }
 

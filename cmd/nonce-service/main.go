@@ -30,7 +30,7 @@ type Config struct {
 		// boulder-wfe and nonce-service instances.
 		NonceHMACKey cmd.HMACKeyConfig `validate:"required"`
 
-		Syslog        cmd.SyslogConfig
+		Syslog blog.Config
 		OpenTelemetry cmd.OpenTelemetryConfig
 	}
 }

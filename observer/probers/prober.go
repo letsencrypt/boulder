@@ -1,12 +1,14 @@
 package probers
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 var (
@@ -26,9 +28,9 @@ type Prober interface {
 	// `Prober`.
 	Kind() string
 
-	// Probe attempts the configured request or query, Each `Prober`
-	// must treat the duration passed to it as a timeout.
-	Probe(time.Duration) (bool, time.Duration)
+	// Probe attempts the configured request or query, Each `Prober` must
+	// check its context for cancellation, as it may have a timeout.
+	Probe(context.Context) (bool, time.Duration)
 }
 
 // Configurer is the interface for `Configurer` types.

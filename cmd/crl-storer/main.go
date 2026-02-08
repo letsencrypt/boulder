@@ -50,7 +50,7 @@ type Config struct {
 		Features features.Config
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

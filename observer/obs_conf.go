@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
 )
@@ -24,9 +25,9 @@ var (
 
 // ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
-	DebugAddr     string           `yaml:"debugaddr" validate:"omitempty,hostname_port"`
-	Buckets       []float64        `yaml:"buckets" validate:"min=1,dive"`
-	Syslog        cmd.SyslogConfig `yaml:"syslog"`
+	DebugAddr     string      `yaml:"debugaddr" validate:"omitempty,hostname_port"`
+	Buckets       []float64   `yaml:"buckets" validate:"min=1,dive"`
+	Syslog        blog.Config `yaml:"syslog"`
 	OpenTelemetry cmd.OpenTelemetryConfig
 	MonConfs      []*MonConf `yaml:"monitors" validate:"min=1,dive"`
 }

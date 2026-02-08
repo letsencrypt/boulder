@@ -1,10 +1,12 @@
 package observer
 
 import (
+	"context"
+	"log/slog"
 	"strconv"
 	"time"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/observer/probers"
 )
 
@@ -15,13 +17,16 @@ type monitor struct {
 
 // start spins off a 'Prober' goroutine on an interval of `m.period`
 // with a timeout of half `m.period`
-func (m monitor) start(logger blog.Logger) {
+func (m monitor) start(ctx context.Context) {
 	ticker := time.NewTicker(m.period)
 	timeout := m.period / 2
 	for {
 		go func() {
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
 			// Attempt to probe the configured target.
-			success, dur := m.prober.Probe(timeout)
+			success, dur := m.prober.Probe(ctx)
 
 			// Produce metrics to be scraped by Prometheus.
 			histObservations.WithLabelValues(
@@ -29,9 +34,12 @@ func (m monitor) start(logger blog.Logger) {
 			).Observe(dur.Seconds())
 
 			// Log the outcome of the probe attempt.
-			logger.Infof(
-				"kind=[%s] success=[%v] duration=[%f] name=[%s]",
-				m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
+			blog.Info(ctx, "Probe complete",
+				slog.String("kind", m.prober.Kind()),
+				slog.String("name", m.prober.Name()),
+				slog.Bool("success", success),
+				slog.Duration("duration", dur),
+			)
 		}()
 		<-ticker.C
 	}
