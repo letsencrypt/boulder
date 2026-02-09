@@ -141,19 +141,19 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 
 // IssuerConfig describes the constraints on and URLs used by a single issuer.
 type IssuerConfig struct {
-	// Active determines if the issuer can be used to sign precertificates. All
-	// issuers, regardless of this field, can be used to sign final certificates
-	// (for which an issuance token is presented) and CRLs.
-	// All Active issuers of a given key type (RSA or ECDSA) are part of a pool
-	// and each precertificate will be issued randomly from a selected pool.
-	// The selection of which pool depends on the precertificate's key algorithm.
+	// Deprecated: Populate IssuerConfig.Profiles to ensure "Active"
 	Active bool
 
 	// Profiles is the list of profiles for which this issuer is willing to issue.
 	// The names listed here must match the names of configured profiles (see
 	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's
-	// ProfileConfig). Can be empty if the issuer is not Active.
-	Profiles []string `validate:"required_if=Active true,dive,alphanum,min=1,max=32"`
+	// ProfileConfig). If Profiles is not empty then the issuer can be used
+	// to sign precertificates and final certificates. All issuers, regardless
+	// if this field is empty or not, can be used to sign CRLs. All issuers
+	// with a profile(s) of a given key type (RSA or ECDSA) are part of a pool
+	// and each precertificate will be issued randomly from a selected pool.
+	// The selection of which pool depends on the precertificate's key algorithm.
+	Profiles []string `validate:"dive,alphanum,min=1,max=32"`
 
 	IssuerURL  string `validate:"required,url"`
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
@@ -192,7 +192,6 @@ type Issuer struct {
 
 	keyAlg x509.PublicKeyAlgorithm
 	sigAlg x509.SignatureAlgorithm
-	active bool
 
 	// Used to set the Authority Information Access caIssuers URL in issued
 	// certificates.
@@ -261,11 +260,6 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		return nil, errors.New("end-entity signing cert does not have keyUsage digitalSignature")
 	}
 
-	// If the issuer is active, it must have at least one profile configured.
-	if config.Active && len(config.Profiles) == 0 {
-		return nil, errors.New("active issuers must have at least one profile")
-	}
-
 	lintSigner, err := linter.New(cert.Certificate, signer)
 	if err != nil {
 		return nil, fmt.Errorf("creating fake lint signer: %w", err)
@@ -277,7 +271,6 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		Linter:     lintSigner,
 		keyAlg:     keyAlg,
 		sigAlg:     sigAlg,
-		active:     config.Active,
 		issuerURL:  config.IssuerURL,
 		crlURLBase: config.CRLURLBase,
 		crlShards:  config.CRLShards,
@@ -297,7 +290,7 @@ func (i *Issuer) KeyType() x509.PublicKeyAlgorithm {
 // IsActive is true if the issuer is willing to issue precertificates, and false
 // if the issuer is only willing to issue final certificates and CRLs.
 func (i *Issuer) IsActive() bool {
-	return i.active
+	return len(i.profiles) > 0
 }
 
 // Name provides the Common Name specified in the issuer's certificate.

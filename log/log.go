@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -32,11 +33,8 @@ type Logger interface {
 	InfoObject(string, any)
 	Debug(msg string)
 	Debugf(format string, a ...any)
-	AuditInfo(msg string)
-	AuditInfof(format string, a ...any)
-	AuditObject(string, any)
-	AuditErr(string)
-	AuditErrf(format string, a ...any)
+	AuditInfo(string, any)
+	AuditErr(string, error, map[string]any)
 }
 
 // impl implements Logger.
@@ -266,9 +264,9 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
 	}
 }
 
-func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...any) {
+func (log *impl) auditAtLevel(level syslog.Priority, msg string) {
 	msg = fmt.Sprintf("%s %s", auditTag, msg)
-	log.w.logAtLevel(level, msg, a...)
+	log.w.logAtLevel(level, msg)
 }
 
 // Errf level messages are always marked with the audit tag, for special handling
@@ -299,7 +297,7 @@ func (log *impl) Infof(format string, a ...any) {
 
 // InfoObject logs an INFO level JSON-serialized object message.
 func (log *impl) InfoObject(msg string, obj any) {
-	jsonObj, err := json.Marshal(obj)
+	jsonObj, err := formatObj(obj)
 	if err != nil {
 		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
 		return
@@ -319,22 +317,10 @@ func (log *impl) Debugf(format string, a ...any) {
 	log.w.logAtLevel(syslog.LOG_DEBUG, format, a...)
 }
 
-// AuditInfo sends an INFO-severity message that is prefixed with the
-// audit tag, for special handling at the upstream system logger.
-func (log *impl) AuditInfo(msg string) {
-	log.AuditInfof(msg)
-}
-
-// AuditInfof sends an INFO-severity message that is prefixed with the
-// audit tag, for special handling at the upstream system logger.
-func (log *impl) AuditInfof(format string, a ...any) {
-	log.auditAtLevel(syslog.LOG_INFO, format, a...)
-}
-
-// AuditObject sends an INFO-severity JSON-serialized object message that is prefixed
+// AuditInfo sends an INFO-severity JSON-serialized object message that is prefixed
 // with the audit tag, for special handling at the upstream system logger.
-func (log *impl) AuditObject(msg string, obj any) {
-	jsonObj, err := json.Marshal(obj)
+func (log *impl) AuditInfo(msg string, obj any) {
+	jsonObj, err := formatObj(obj)
 	if err != nil {
 		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
 		return
@@ -343,12 +329,38 @@ func (log *impl) AuditObject(msg string, obj any) {
 	log.auditAtLevel(syslog.LOG_INFO, fmt.Sprintf("%s JSON=%s", msg, jsonObj))
 }
 
-// AuditErr can format an error for auditing; it does so at ERR level.
-func (log *impl) AuditErr(msg string) {
-	log.AuditErrf(msg)
+// AuditErr sends an ERROR-level JSON-serialized message that is prefixed with
+// the audit tag. It restricts its last argument to map[string]any, rather than
+// allowing any struct at all like AuditInfo, so that it can add the given error
+// to that map under the key "error".
+func (log *impl) AuditErr(msg string, err error, obj map[string]any) {
+	if err != nil {
+		if obj == nil {
+			obj = make(map[string]any)
+		}
+		obj["error"] = err.Error()
+	}
+
+	jsonObj, err := formatObj(obj)
+	if err != nil {
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
+		return
+	}
+
+	log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("%s JSON=%s", msg, jsonObj))
 }
 
-// AuditErrf can format an error for auditing; it does so at ERR level.
-func (log *impl) AuditErrf(format string, a ...any) {
-	log.auditAtLevel(syslog.LOG_ERR, format, a...)
+// formatObj marshals any object to json. It's the equivalent of json.Marshal,
+// except that it doesn't escape <, >, and &, and it doesn't include the
+// trailing newline. Code based on appendJSONMarshal from the slog package.
+func formatObj(obj any) (string, error) {
+	var bb bytes.Buffer
+	enc := json.NewEncoder(&bb)
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(obj)
+	if err != nil {
+		return "", err
+	}
+	bs := bb.String()
+	return strings.TrimRight(bs, "\n"), nil
 }

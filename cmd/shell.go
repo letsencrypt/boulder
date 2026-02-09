@@ -304,10 +304,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	}
 	go func() {
 		err := server.ListenAndServe()
-		if err != nil {
-			logger.AuditErrf("Unable to boot debug server on %s: %v", addr, err)
-			os.Exit(1)
-		}
+		FailOnError(err, "Unable to boot debug server")
 	}()
 	return registry
 }
@@ -362,7 +359,7 @@ func AuditPanic() {
 	err := recover()
 	// No panic, no problem
 	if err == nil {
-		blog.Get().AuditObject("Process exiting normally", info())
+		blog.Get().AuditInfo("Process exiting normally", info())
 		return
 	}
 	// Get the global logger if it's initialized, or create a default one if not.
@@ -372,12 +369,14 @@ func AuditPanic() {
 	// For the special type `failure`, audit log the message and exit quietly
 	fail, ok := err.(failure)
 	if ok {
-		log.AuditErr(fail.msg)
+		log.AuditErr(fail.msg, nil, nil)
 	} else {
-		// For all other values passed to `panic`, log them and a stack trace
-		log.AuditErrf("Panic caused by err: %s", err)
-
-		log.AuditErrf("Stack Trace (Current goroutine) %s", debug.Stack())
+		// For all other values (which might not be an error) passed to `panic`, log
+		// them and a stack trace
+		log.AuditErr("Panic", nil, map[string]any{
+			"panic": fmt.Sprintf("%#v", err),
+			"stack": string(debug.Stack()),
+		})
 	}
 	// Because this function is deferred as early as possible, there's no further defers to run after this one
 	// So it is safe to os.Exit to set the exit code and exit without losing any defers we haven't executed.
@@ -550,7 +549,7 @@ func info() buildInfo {
 }
 
 func LogStartup(logger blog.Logger) {
-	logger.AuditObject("Process starting", info())
+	logger.AuditInfo("Process starting", info())
 }
 
 // CatchSignals blocks until a SIGTERM, SIGINT, or SIGHUP is received, then

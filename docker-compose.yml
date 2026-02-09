@@ -8,7 +8,7 @@ services:
       context: test/boulder-tools/
       # Should match one of the GO_CI_VERSIONS in test/boulder-tools/tag_and_upload.sh.
       args:
-        GO_VERSION: 1.25.5
+        GO_VERSION: 1.25.7
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening. This is
@@ -84,14 +84,6 @@ services:
           - boulder-mariadb
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-    # Send slow queries to a table so we can check for them in the
-    # integration tests. For now we ignore queries not using indexes,
-    # because that seems to trigger based on the optimizer's choice to not
-    # use an index for certain queries, particularly when tables are still
-    # small.
-    command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
-    logging:
-      driver: none
 
   bproxysql:
     image: proxysql/proxysql:2.7.2
@@ -156,8 +148,8 @@ services:
     environment:
       # By specifying KEYSPACES vttestserver will create the corresponding
       # databases on startup.
-      KEYSPACES: boulder_sa_test,boulder_sa_integration,incidents_sa_test,incidents_sa_integration
-      NUM_SHARDS: 1,1,1,1
+      KEYSPACES: boulder_sa,incidents_sa
+      NUM_SHARDS: 1,1
     networks:
       bouldernet:
         aliases:

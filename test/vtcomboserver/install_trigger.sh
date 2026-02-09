@@ -10,7 +10,7 @@
 
 set -eu
 
-VT_DB="vt_${MYSQL_DATABASE:-boulder_sa_integration}_0"
+VT_DB="vt_${MYSQL_DATABASE:-boulder_sa}_0"
 SOCK="/vt/vtdataroot/vt_0000000001/mysql.sock"
 MYSQL_ARGS=(-uroot -S "$SOCK")
 TIMEOUT=120

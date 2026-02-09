@@ -7,9 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"google.golang.org/protobuf/proto"
 	"strings"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
@@ -370,7 +371,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// but don't return an error from AddCertificate.
 	if fqdnTransactionErr != nil {
 		ssa.rateLimitWriteErrors.Inc()
-		ssa.log.AuditErrf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
+		ssa.log.Errf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -1412,12 +1413,26 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 	return total, nil
 }
 
-// AddRateLimitOverride adds a rate limit override to the database. If the
-// override already exists, it will be updated. If the override does not exist,
-// it will be inserted and enabled. If the override exists but has been
-// disabled, it will be updated but not be re-enabled. The status of the
-// override is returned in Enabled field of the response. To re-enable an
-// override, use the EnableRateLimitOverride method.
+// overrideLowerThanExisting returns true if the new override has a lower
+// throughput than the existing override. Note: this does not consider the burst
+// value of either override.
+func overrideLowerThanExisting(new *sapb.RateLimitOverride, existing overrideModel) bool {
+	// Compare via emission interval (period/count) to mirror how our limiter
+	// computes the refill rate for a given limit.
+	return new.Period.AsDuration().Nanoseconds()/new.Count > existing.PeriodNS/existing.Count
+}
+
+// AddRateLimitOverride adds a rate limit override to the database.
+//
+// If the override does not exist, it is inserted and enabled. If the override
+// already exists, it is updated only if the new override is higher than the
+// existing override, or if Force is true. If a lower override is requested and
+// Force is false, the existing override is returned in the Existing field of
+// the response and Enabled will be false.
+//
+// If the override exists but is disabled, it may be updated but will not be
+// re-enabled. The current status is returned in the Enabled field of the
+// response. To re-enable an override, use EnableRateLimitOverride.
 func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *sapb.AddRateLimitOverrideRequest) (*sapb.AddRateLimitOverrideResponse, error) {
 	if core.IsAnyNilOrZero(req, req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period, req.Override.Comment) {
 		return nil, errIncompleteRequest
@@ -1425,13 +1440,20 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 
 	var inserted bool
 	var enabled bool
+	var existingOverride *sapb.RateLimitOverride
 	now := ssa.clk.Now()
 
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
-		var alreadyEnabled bool
-		err := tx.SelectOne(ctx, &alreadyEnabled, `
-			SELECT enabled
-			  FROM overrides
+	overrideColumnsList, err := ssa.dbMap.ColumnsForModel(overrideModel{})
+	if err != nil {
+		return nil, fmt.Errorf("getting columns for override model: %w", err)
+	}
+	overrideColumns := strings.Join(overrideColumnsList, ", ")
+
+	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
+
+		var existing overrideModel
+		err := tx.SelectOne(ctx, &existing, `
+			SELECT `+overrideColumns+` FROM overrides
 			 WHERE limitEnum = ? AND
 			       bucketKey = ?`,
 			req.Override.LimitEnum,
@@ -1462,8 +1484,16 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 			enabled = true
 
 		default:
+			if !req.Force && overrideLowerThanExisting(req.Override, existing) {
+				existingOverride = newPBFromOverrideModel(&existing)
+				inserted = false
+				enabled = false
+				// Requested override is lower than existing override, no-op.
+				return nil, nil
+			}
+
 			// Update the existing overrides row.
-			updated := overrideModelForPB(req.Override, now, alreadyEnabled)
+			updated := overrideModelForPB(req.Override, now, existing.Enabled)
 			_, err = tx.Update(ctx, &updated)
 			if err != nil {
 				return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s override: %w",
@@ -1473,7 +1503,7 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 				)
 			}
 			inserted = false
-			enabled = alreadyEnabled
+			enabled = existing.Enabled
 		}
 		return nil, nil
 	})
@@ -1481,7 +1511,7 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 		// Error occurred during transaction.
 		return nil, err
 	}
-	return &sapb.AddRateLimitOverrideResponse{Inserted: inserted, Enabled: enabled}, nil
+	return &sapb.AddRateLimitOverrideResponse{Inserted: inserted, Enabled: enabled, Existing: existingOverride}, nil
 }
 
 // setRateLimitOverride sets the enabled field of a rate limit override to the

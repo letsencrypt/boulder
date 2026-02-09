@@ -421,17 +421,13 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, authzPath, wfe.AuthorizationHandler, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.ChallengeHandler, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
+	wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 
 	// Boulder specific endpoints
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, getCertInfoPath, wfe.CertificateInfo, "GET")
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 	wfe.HandleFunc(m, healthzPath, wfe.Healthz, "GET")
-
-	// Endpoint for draft-ietf-acme-ari
-	if features.Get().ServeRenewalInfo {
-		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
-	}
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
@@ -505,13 +501,11 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  rolloverPath,
 	}
 
-	if features.Get().ServeRenewalInfo {
-		// ARI-capable clients are expected to add the trailing slash per the
-		// draft. We explicitly strip the trailing slash here so that clients
-		// don't need to add trailing slash handling in their own code, saving
-		// them minimal amounts of complexity.
-		directoryEndpoints["renewalInfo"] = strings.TrimRight(renewalInfoPath, "/")
-	}
+	// ARI-capable clients are expected to add the trailing slash per the
+	// draft. We explicitly strip the trailing slash here so that clients
+	// don't need to add trailing slash handling in their own code, saving
+	// them minimal amounts of complexity.
+	directoryEndpoints["renewalInfo"] = strings.TrimRight(renewalInfoPath, "/")
 
 	if request.Method == http.MethodPost {
 		acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
@@ -1002,7 +996,7 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 		return err
 	}
 
-	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
+	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
 		Serial:    core.SerialToString(cert.SerialNumber),
 		Reason:    reason,
 		Requester: acct.ID,
@@ -1055,7 +1049,7 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 	}
 
-	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
+	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
 		Serial:    core.SerialToString(cert.SerialNumber),
 		Reason:    reason,
 		Requester: 0,
@@ -2036,8 +2030,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	if order.Error != nil {
 		prob, err := bgrpc.PBToProblemDetails(order.Error)
 		if err != nil {
-			wfe.log.AuditErrf("Internal error converting order ID %d "+
-				"proto buf prob to problem details: %q", order.Id, err)
+			wfe.log.AuditErr("Failed to serialize order problem details", err, map[string]any{
+				"requester": order.RegistrationID,
+				"order":     order.Id,
+				"prob":      order.Error.String(),
+			})
 		}
 		respObj.Error = prob
 		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type
@@ -2696,11 +2693,6 @@ func parseARICertID(path string, issuerCertificates map[issuance.NameID]*issuanc
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if !features.Get().ServeRenewalInfo {
-		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
-		return
-	}
-
 	if len(request.URL.Path) == 0 {
 		wfe.sendError(response, logEvent, probs.NotFound("Must specify a request path"), nil)
 		return
@@ -2726,7 +2718,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	response.Header().Set(headerRetryAfter, jitterRetryHeader(6*time.Hour))
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, renewalInfo)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
@@ -2736,4 +2728,13 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
 	return web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s", authzPath, authz.RegistrationID, authz.ID))
+}
+
+// jitterRetryHeader will return a string formatted random integer of seconds within a 20% window of the
+// duration that is provided.
+func jitterRetryHeader(duration time.Duration) string {
+	factor := 0.2 * (2*rand.Float64() - 1)
+	jittered := int(float64(duration/time.Second) * (1 + factor))
+
+	return fmt.Sprintf("%d", jittered)
 }
