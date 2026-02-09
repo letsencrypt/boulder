@@ -148,9 +148,10 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 		// core.RetryBackoff always returns 0 when its first argument is zero.
 		sleepTime := core.RetryBackoff(i, time.Second, time.Minute, 2)
 		if i != 0 {
-			cu.log.AuditErrf(
-				"Generating CRL failed, will retry in %vs: id=[%s] err=[%s]",
-				sleepTime.Seconds(), crlID, err)
+			cu.log.AuditErr("Generating CRL failed", err, map[string]any{
+				"id":         crlID,
+				"retryAfter": int(sleepTime.Seconds()),
+			})
 		}
 		cu.clk.Sleep(sleepTime)
 

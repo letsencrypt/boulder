@@ -37,6 +37,7 @@ jobs:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
           - go1.25.5_2025-12-03
+          - go1.25.7_2026-02-04
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -66,7 +67,7 @@ jobs:
       # use in tests. It will be set appropriately for each tag in the list
       # defined in the matrix.
       BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
-      BOULDER_VTCOMBOSERVER_TAG: vitessv23.0.0_2025-12-02
+      BOULDER_VTCOMBOSERVER_TAG: vitessv23.0.0_2026-01-28
 
     # Sequence of tasks that will be executed as part of the job.
     steps:
@@ -113,7 +114,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           # When Go produces a security release, we want govulncheck to run
           # against the most recently released Go version.
@@ -129,7 +130,7 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        go-version: [ '1.25.5' ]
+        go-version: [ '1.25.7' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -138,7 +139,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
 

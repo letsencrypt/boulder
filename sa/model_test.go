@@ -118,8 +118,7 @@ func TestAuthzModel(t *testing.T) {
 	validationErr := probs.Connection("weewoo")
 
 	authzPB.Challenges[0].Status = string(core.StatusInvalid)
-	authzPB.Challenges[0].Error, err = grpc.ProblemDetailsToPB(validationErr)
-	test.AssertNotError(t, err, "grpc.ProblemDetailsToPB failed")
+	authzPB.Challenges[0].Error = grpc.ProblemDetailsToPB(validationErr)
 	model, err = authzPBToModel(authzPB)
 	test.AssertNotError(t, err, "authzPBToModel failed")
 

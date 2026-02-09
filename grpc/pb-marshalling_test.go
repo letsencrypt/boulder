@@ -19,13 +19,11 @@ import (
 const JWK1JSON = `{"kty":"RSA","n":"vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ","e":"AQAB"}`
 
 func TestProblemDetails(t *testing.T) {
-	pb, err := ProblemDetailsToPB(nil)
-	test.AssertNotEquals(t, err, "problemDetailToPB failed")
+	pb := ProblemDetailsToPB(nil)
 	test.Assert(t, pb == nil, "Returned corepb.ProblemDetails is not nil")
 
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
-	pb, err = ProblemDetailsToPB(prob)
-	test.AssertNotError(t, err, "problemDetailToPB failed")
+	pb = ProblemDetailsToPB(prob)
 	test.Assert(t, pb != nil, "return corepb.ProblemDetails is nill")
 	test.AssertDeepEquals(t, pb.ProblemType, string(prob.Type))
 	test.AssertEquals(t, pb.Detail, prob.Detail)

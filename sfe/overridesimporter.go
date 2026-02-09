@@ -145,12 +145,14 @@ func getValidatedFieldValue(fields map[string]string, fieldName, rateLimit strin
 func makeAddOverrideRequest(rateLimitFieldValue string, fields map[string]string) (*rapb.AddRateLimitOverrideRequest, string, error) {
 	makeReq := func(limit rl.Name, bucket, organization string, tier int64) *rapb.AddRateLimitOverrideRequest {
 		return &rapb.AddRateLimitOverrideRequest{
-			LimitEnum: int64(limit),
-			BucketKey: bucket,
-			Count:     tier,
-			Burst:     tier,
-			Period:    durationpb.New(7 * 24 * time.Hour),
-			Comment:   organization,
+			Override: &rapb.RateLimitOverride{
+				LimitEnum: int64(limit),
+				BucketKey: bucket,
+				Count:     tier,
+				Burst:     tier,
+				Period:    durationpb.New(7 * 24 * time.Hour),
+				Comment:   organization,
+			},
 		}
 	}
 
@@ -254,8 +256,31 @@ func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, 
 		return fmt.Errorf("calling ra.AddRateLimitOverride: %w", err)
 	}
 
-	rateLimit := rl.Name(req.LimitEnum).String()
+	rateLimit := rl.Name(req.Override.LimitEnum).String()
 	if !resp.Enabled {
+		if resp.Existing != nil {
+			privateBody := fmt.Sprintf(
+				`Import blocked: the requested override is lower than an existing override.
+
+Existing override:
+  - count: %d
+  - over period: %s
+  - comment: %s
+
+Security note:
+This request is NOT authenticated. Do not disclose internal details or 
+override values to the requester until their legitimacy has been verified.
+				
+If the email address provided looks suspicious, it's probably best to 
+ignore the request entirely.`,
+				resp.Existing.Count,
+				resp.Existing.Period.AsDuration(),
+				resp.Existing.Comment,
+			)
+			im.transitionToPendingWithComment(ticketID, privateBody)
+			return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is lower than existing override", rateLimit, accountDomainOrIP)
+		}
+
 		// Move to "pending" so the next tick won't comment again.
 		im.transitionToPendingWithComment(ticketID, "An existing override for this limit and requester is currently administratively disabled.")
 		return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is administratively disabled", rateLimit, accountDomainOrIP)
@@ -269,7 +294,7 @@ func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, 
 		"Your override request for rate limit %s and account/domain/IP: %s "+
 			"has been approved. Your new limit is %d per period (see: https://letsencrypt.org/docs/rate-limits for the period). "+
 			"Please allow up to 30 minutes for this change to take effect.",
-		rateLimit, accountDomainOrIP, req.Count,
+		rateLimit, accountDomainOrIP, req.Override.Count,
 	)
 
 	err = im.zendesk.UpdateTicketStatus(ticketID, "solved", successCommentBody, true)

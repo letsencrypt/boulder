@@ -28,16 +28,16 @@ var ErrInvalidParameters = CodedError(codes.InvalidArgument, "RPC parameter was 
 // This file defines functions to translate between the protobuf types and the
 // code types.
 
-func ProblemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
+func ProblemDetailsToPB(prob *probs.ProblemDetails) *corepb.ProblemDetails {
 	if prob == nil {
 		// nil problemDetails is valid
-		return nil, nil
+		return nil
 	}
 	return &corepb.ProblemDetails{
 		ProblemType: string(prob.Type),
 		Detail:      prob.Detail,
 		HttpStatus:  int32(prob.HTTPStatus), //nolint: gosec // HTTP status codes are guaranteed to be small, no risk of overflow.
-	}, nil
+	}
 }
 
 func PBToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error) {
@@ -59,12 +59,10 @@ func PBToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 }
 
 func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
-	prob, err := ProblemDetailsToPB(challenge.Error)
-	if err != nil {
-		return nil, err
-	}
+	prob := ProblemDetailsToPB(challenge.Error)
 	recordAry := make([]*corepb.ValidationRecord, len(challenge.ValidationRecord))
 	for i, v := range challenge.ValidationRecord {
+		var err error
 		recordAry[i], err = ValidationRecordToPB(v)
 		if err != nil {
 			return nil, err
@@ -196,10 +194,7 @@ func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDe
 			return nil, err
 		}
 	}
-	marshalledProb, err := ProblemDetailsToPB(prob)
-	if err != nil {
-		return nil, err
-	}
+	marshalledProb := ProblemDetailsToPB(prob)
 	return &vapb.ValidationResult{
 		Records:     recordAry,
 		Problem:     marshalledProb,
@@ -228,10 +223,7 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 }
 
 func CAAResultToPB(prob *probs.ProblemDetails, perspective, rir string) (*vapb.IsCAAValidResponse, error) {
-	marshalledProb, err := ProblemDetailsToPB(prob)
-	if err != nil {
-		return nil, err
-	}
+	marshalledProb := ProblemDetailsToPB(prob)
 	return &vapb.IsCAAValidResponse{
 		Problem:     marshalledProb,
 		Perspective: perspective,
