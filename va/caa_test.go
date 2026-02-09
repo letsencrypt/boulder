@@ -442,55 +442,55 @@ func TestCAALogging(t *testing.T) {
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"reserved.com\",\"identifier\":\"reserved.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"dns-01\",\"foundAt\":\"reserved.com\",\"identifier\":\"reserved.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"mixedcase.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"mixedcase.com\",\"identifier\":\"mixedcase.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"critical.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"critical.com\",\"identifier\":\"critical.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"present.com\",\"identifier\":\"present.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "not.here.but.still.present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for not.here.but.still.present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"present.com\",\"identifier\":\"not.here.but.still.present.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"multi-crit-present.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"multi-crit-present.com\",\"identifier\":\"multi-crit-present.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present-with-parameter.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"present-with-parameter.com\",\"identifier\":\"present-with-parameter.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"satisfiable-wildcard-override.com\"] Response=\"<nil> MsgHdr\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"satisfiable-wildcard-override.com\",\"identifier\":\"satisfiable-wildcard-override.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 	}
 
@@ -505,10 +505,11 @@ func TestCAALogging(t *testing.T) {
 			}
 			_ = va.checkCAA(ctx, identifier.NewDNS(tc.Domain), params)
 
-			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
+			caaLogLines := mockLog.GetAllMatching(`Checked CAA records`)
 			if len(caaLogLines) != 1 {
-				t.Errorf("checkCAARecords didn't audit log CAA record info. Instead got:\n%s\n",
-					strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
+				t.Errorf("checkCAARecords logged:\n%s\nBut want:\n%s\n",
+					strings.Join(mockLog.GetAll(), "\n"),
+					tc.ExpectedLogline)
 			} else {
 				test.AssertEquals(t, caaLogLines[0], tc.ExpectedLogline)
 			}
@@ -1080,7 +1081,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			}
 
 			if tc.expectedSummary != nil {
-				gotAuditLog := parseValidationLogEvent(t, mockLog.GetAllMatching("JSON=.*"))
+				gotAuditLog := parseValidationLogEvent(t, mockLog.GetAllMatching("CAA check result JSON=.*"))
 				slices.Sort(tc.expectedSummary.Passed)
 				slices.Sort(tc.expectedSummary.Failed)
 				slices.Sort(tc.expectedSummary.PassedRIRs)

@@ -41,6 +41,6 @@ func TestRunOnce(t *testing.T) {
 	err = cu.RunOnce(context.Background())
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "one or more errors")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 4)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed")), 4)
 	cu.tickHistogram.Reset()
 }

@@ -39,7 +39,6 @@ func defaultProfileConfig() ProfileConfig {
 
 func defaultIssuerConfig() IssuerConfig {
 	return IssuerConfig{
-		Active:     true,
 		IssuerURL:  "http://issuer-url.example.org",
 		CRLURLBase: "http://crl-url.example.org/",
 		CRLShards:  10,

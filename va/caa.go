@@ -89,7 +89,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 
 		// Log the total check latency.
 		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
-		va.log.AuditObject("CAA check result", logEvent)
+		va.log.AuditInfo("CAA check result", logEvent)
 	}()
 
 	// Do the local checks. We do these before kicking off the remote checks to
@@ -135,8 +135,15 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return berrors.DNSError("%s", err)
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
-		ident.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
+	va.log.AuditInfo("Checked CAA records", map[string]any{
+		"identifier": ident.Value,
+		"present":    foundAt != "",
+		"requester":  params.accountURIID,
+		"challenge":  params.validationMethod,
+		"valid":      valid,
+		"foundAt":    foundAt,
+		"response":   response,
+	})
 	if !valid {
 		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}

@@ -496,13 +496,29 @@ func (f *addedOverrideDisabledRA) AddRateLimitOverride(ctx context.Context, req 
 	return &rapb.AddRateLimitOverrideResponse{Enabled: false}, nil
 }
 
+type addedOverrideLowerExistingRA struct {
+	rapb.RegistrationAuthorityClient
+}
+
+func (f *addedOverrideLowerExistingRA) AddRateLimitOverride(ctx context.Context, req *rapb.AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*rapb.AddRateLimitOverrideResponse, error) {
+	return &rapb.AddRateLimitOverrideResponse{
+		Enabled: false,
+		Existing: &rapb.RateLimitOverride{
+			LimitEnum: req.Override.LimitEnum,
+			BucketKey: req.Override.BucketKey,
+			Comment:   req.Override.Comment,
+			Period:    req.Override.Period,
+			Count:     req.Override.Count + 1,
+			Burst:     req.Override.Burst + 1,
+		},
+	}, nil
+}
+
 func TestSubmitOverrideRequestHandlerAutoApproved(t *testing.T) {
 	t.Parallel()
 
 	sfe, _ := setupSFE(t)
 	sfe.templatePages = minimalTemplates(t)
-	_, client := createFakeZendeskClientServer(t)
-	sfe.zendeskClient = client
 	sfe.autoApproveOverrides = true
 
 	reqObj := overrideRequest{
@@ -525,9 +541,10 @@ func TestSubmitOverrideRequestHandlerAutoApproved(t *testing.T) {
 	}
 
 	type testCase struct {
-		name         string
-		ra           rapb.RegistrationAuthorityClient
-		expectedCode int
+		name                 string
+		ra                   rapb.RegistrationAuthorityClient
+		expectedCode         int
+		expectPrivateComment bool
 	}
 	cases := []testCase{
 		{
@@ -540,10 +557,18 @@ func TestSubmitOverrideRequestHandlerAutoApproved(t *testing.T) {
 			ra:           &addedOverrideDisabledRA{},
 			expectedCode: http.StatusAccepted,
 		},
+		{
+			name:                 "Existing override higher",
+			ra:                   &addedOverrideLowerExistingRA{},
+			expectedCode:         http.StatusAccepted,
+			expectPrivateComment: true,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			zdServer, client := createFakeZendeskClientServer(t)
+			sfe.zendeskClient = client
 
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqObjBytes))
 			rec := httptest.NewRecorder()
@@ -553,6 +578,40 @@ func TestSubmitOverrideRequestHandlerAutoApproved(t *testing.T) {
 
 			if rec.Code != tc.expectedCode {
 				t.Errorf("Unexpected status=%d, expected status=%d", rec.Code, tc.expectedCode)
+			}
+
+			if tc.expectedCode != http.StatusAccepted {
+				// No ticket contents to check.
+				return
+			}
+
+			ticket, ok := zdServer.GetTicket(1)
+			if !ok {
+				t.Fatalf("expected ticket to be created")
+			}
+
+			if len(ticket.Comments) < 1 {
+				t.Fatalf("expected an initial comment, got %d comments (%#v)", len(ticket.Comments), ticket.Comments)
+			}
+			first := ticket.Comments[0]
+			if !first.Public {
+				t.Errorf("expected the initial comment to be public, got private")
+			}
+			if !strings.Contains(first.Body, "Requested Override") {
+				t.Errorf("expected initial comment to mention \"Requested Override\", got %q", first.Body)
+			}
+
+			if tc.expectPrivateComment {
+				if len(ticket.Comments) != 2 {
+					t.Fatalf("expected 2 comments, got %d comments (%#v)", len(ticket.Comments), ticket.Comments)
+				}
+				second := ticket.Comments[1]
+				if second.Public {
+					t.Errorf("expected the 2nd comment to be private, got public")
+				}
+				if !strings.Contains(second.Body, "Auto-approval blocked:") {
+					t.Errorf("expected the 2nd comment to mention \"Auto-approval blocked:\", got %q", second.Body)
+				}
 			}
 		})
 	}
