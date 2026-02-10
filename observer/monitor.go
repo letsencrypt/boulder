@@ -1,6 +1,7 @@
 package observer
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -17,21 +18,29 @@ type monitor struct {
 // with a timeout of half `m.period`
 func (m monitor) start(logger blog.Logger) {
 	ticker := time.NewTicker(m.period)
-	timeout := m.period / 2
 	for {
 		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), m.period/2)
+			defer cancel()
+
 			// Attempt to probe the configured target.
-			success, dur := m.prober.Probe(timeout)
+			start := time.Now()
+			err := m.prober.Probe(ctx)
+			dur := time.Since(start)
 
 			// Produce metrics to be scraped by Prometheus.
 			histObservations.WithLabelValues(
-				m.prober.Name(), m.prober.Kind(), strconv.FormatBool(success),
+				m.prober.Name(), m.prober.Kind(), strconv.FormatBool(err == nil),
 			).Observe(dur.Seconds())
 
 			// Log the outcome of the probe attempt.
-			logger.Infof(
-				"kind=[%s] success=[%v] duration=[%f] name=[%s]",
-				m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
+			if err != nil {
+				logger.Errf("kind=[%s] success=[%t] duration=[%f] name=[%s] error=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name(), err)
+			} else {
+				logger.Infof("kind=[%s] success=[%t] duration=[%f] name=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name())
+			}
 		}()
 		<-ticker.C
 	}
