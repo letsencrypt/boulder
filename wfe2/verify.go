@@ -459,7 +459,7 @@ func (wfe *WebFrontEndImpl) extractJWK(header jose.Header) (*jose.JSONWebKey, er
 func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request) (int64, error) {
 	// For normal ACME v2 accounts we expect the account URL has a prefix composed
 	// of the Host header and the acctPath.
-	expectedURLPrefix := web.RelativeEndpoint(request, acctPath)
+	expectedURLPrefix := web.RelativeEndpoint(request, acctPath) + "/"
 
 	// Process the acctURL to find only the trailing numeric account ID. Both the
 	// expected URL prefix and a legacy URL prefix are permitted in order to allow
