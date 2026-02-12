@@ -35,7 +35,7 @@
 		"pardotBaseURL": "http://localhost:9602"
 	},
 	"syslog": {
-		"stdoutlevel": 6,
-		"sysloglevel": -1
+		"stdoutlevel": 7,
+		"sysloglevel": 7
 	}
 }
