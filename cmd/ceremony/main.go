@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -207,10 +208,30 @@ func (rc rootConfig) validate() error {
 }
 
 type PKCS11SigningConfig struct {
-	Module       string `yaml:"module"`
-	PIN          string `yaml:"pin"`
-	SigningSlot  uint   `yaml:"signing-key-slot"`
-	SigningLabel string `yaml:"signing-key-label"`
+	Module       string `yaml:"module" json:"module"`
+	PIN          string `yaml:"pin" json:"pin"`
+	SigningSlot  uint   `yaml:"signing-key-slot" json:"signing_key_slot"`
+	SigningLabel string `yaml:"signing-key-label" json:"signing_key_label"`
+
+	// CredentialsPath is used with the intermediate config to support the use
+	// of an optional separate json file specifying a module, pin, signing
+	// slot, and signing label instead of it being part of the entire
+	// intermediate yaml config
+	CredentialsPath string `yaml:"credentials-path"`
+}
+
+func (psc *PKCS11SigningConfig) loadCredentialsFromPath() error {
+	credsBytes, err := os.ReadFile(psc.CredentialsPath)
+	if err != nil {
+		return fmt.Errorf("unable to read pkcs11 cred file: %s", err)
+	}
+
+	err = json.Unmarshal(credsBytes, &psc)
+	if err != nil {
+		return fmt.Errorf("unable to parse pkcs11 file: %s", err)
+	}
+
+	return nil
 }
 
 func (psc PKCS11SigningConfig) validate() error {
@@ -611,6 +632,15 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
+
+	if config.PKCS11.CredentialsPath != "" {
+		log.Printf("PKSC11 signing credentials path not empty, loading from path")
+		err = config.PKCS11.loadCredentialsFromPath()
+		if err != nil {
+			return fmt.Errorf("failed to load pks11 signing credentials path: %s", err)
+		}
+	}
+
 	log.Printf("Preparing intermediate ceremony for %s\n", config.Outputs.CertificatePath)
 	err = config.validate()
 	if err != nil {

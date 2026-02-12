@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -488,6 +489,54 @@ func TestIntermediateConfigValidate(t *testing.T) {
 				t.Fatalf("validate didn't fail, wanted: %q", err)
 			}
 		})
+	}
+}
+
+func TestIntermediateConfigValidateWhenUsingPKSC11CredentialsFile(t *testing.T) {
+	credBytes := []byte(`{"module": "module", "signing_key_label":"label"}`)
+	credFilePath := filepath.Join(t.TempDir(), "int.pkcs11.json")
+	err := os.WriteFile(credFilePath, credBytes, 0644)
+	if err != nil {
+		t.Fatalf("should not error when writing tmp credentials file: %s", err)
+	}
+
+	config := intermediateConfig{
+		PKCS11: PKCS11SigningConfig{
+			CredentialsPath: credFilePath,
+		},
+		Inputs: struct {
+			PublicKeyPath         string `yaml:"public-key-path"`
+			IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+		}{
+			PublicKeyPath:         "path",
+			IssuerCertificatePath: "path",
+		},
+		Outputs: struct {
+			CertificatePath string `yaml:"certificate-path"`
+		}{
+			CertificatePath: "path",
+		},
+		CertProfile: certProfile{
+			NotBefore:          "a",
+			NotAfter:           "b",
+			SignatureAlgorithm: "c",
+			CommonName:         "d",
+			Organization:       "e",
+			Country:            "f",
+			CRLURL:             "h",
+			IssuerURL:          "i",
+			Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
+		},
+		SkipLints: []string{},
+	}
+
+	err = config.PKCS11.loadCredentialsFromPath()
+	if err != nil {
+		t.Fatalf("unexpected error when loading pkcs cred file: %s", err)
+	}
+	err = config.validate()
+	if err != nil {
+		t.Fatalf("unexpected error, got: %q", err)
 	}
 }
 
@@ -1230,4 +1279,24 @@ func TestPostIssuanceLinting(t *testing.T) {
 	test.AssertNotError(t, err, "unable to parse DER bytes")
 	err = postIssuanceLinting(parsedCert, nil)
 	test.AssertNotError(t, err, "should not have errored")
+}
+
+func TestPKCS11SigningConfigLoadCredentialsFromPath(t *testing.T) {
+	credBytes := []byte(`{"module": "module", "pin": "1234", "signing_key_slot":1307844626, "signing_key_label":"root rsa"}`)
+	credFilePath := filepath.Join(t.TempDir(), "int.pkcs11.json")
+	err := os.WriteFile(credFilePath, credBytes, 0644)
+	test.AssertNotError(t, err, "should not error when writing tmp credentials file")
+
+	got := PKCS11SigningConfig{CredentialsPath: credFilePath}
+	err = got.loadCredentialsFromPath()
+	test.AssertNotError(t, err, "should not have errored")
+
+	expected := PKCS11SigningConfig{
+		Module:          "module",
+		PIN:             "1234",
+		SigningSlot:     1307844626,
+		SigningLabel:    "root rsa",
+		CredentialsPath: credFilePath,
+	}
+	test.AssertDeepEquals(t, expected, got)
 }
