@@ -1282,21 +1282,53 @@ func TestPostIssuanceLinting(t *testing.T) {
 }
 
 func TestPKCS11SigningConfigLoadCredentialsFromPath(t *testing.T) {
-	credBytes := []byte(`{"module": "module", "pin": "1234", "signing_key_slot":1307844626, "signing_key_label":"root rsa"}`)
-	credFilePath := filepath.Join(t.TempDir(), "int.pkcs11.json")
-	err := os.WriteFile(credFilePath, credBytes, 0644)
-	test.AssertNotError(t, err, "should not error when writing tmp credentials file")
+	credentialsPath := filepath.Join(t.TempDir(), "int.pkcs11.json")
 
-	got := PKCS11SigningConfig{CredentialsPath: credFilePath}
-	err = got.loadCredentialsFromPath()
-	test.AssertNotError(t, err, "should not have errored")
-
-	expected := PKCS11SigningConfig{
-		Module:          "module",
-		PIN:             "1234",
-		SigningSlot:     1307844626,
-		SigningLabel:    "root rsa",
-		CredentialsPath: credFilePath,
+	cases := []struct {
+		name           string
+		credentials    []byte
+		filePathToLoad string
+		expected       PKCS11SigningConfig
+		expectedError  bool
+	}{
+		{
+			name:           "fail to read credentials",
+			filePathToLoad: filepath.Join(t.TempDir(), "wrongfile.json"),
+			expectedError:  true,
+		},
+		{
+			name:           "fail to parse credentials",
+			credentials:    []byte(`{module":"module,}`),
+			filePathToLoad: credentialsPath,
+			expectedError:  true,
+		},
+		{
+			name:           "successful loading of credentials",
+			credentials:    []byte(`{"module": "module", "pin": "1234", "signing_key_slot":1307844626, "signing_key_label":"root rsa"}`),
+			filePathToLoad: credentialsPath,
+			expected: PKCS11SigningConfig{
+				Module:          "module",
+				PIN:             "1234",
+				SigningSlot:     1307844626,
+				SigningLabel:    "root rsa",
+				CredentialsPath: credentialsPath,
+			},
+		},
 	}
-	test.AssertDeepEquals(t, expected, got)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := os.WriteFile(credentialsPath, tc.credentials, 0644)
+			test.AssertNotError(t, err, "should not error when writing tmp credentials file")
+
+			got := PKCS11SigningConfig{CredentialsPath: tc.filePathToLoad}
+			err = got.loadCredentialsFromPath()
+			if err == nil && tc.expectedError {
+				t.Fatalf("Unexpected error, got none")
+			}
+			if !tc.expectedError {
+				test.AssertDeepEquals(t, tc.expected, got)
+			}
+		})
+	}
 }
