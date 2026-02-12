@@ -33,8 +33,8 @@ func (l *crlViaPKIMetal) Configure() any {
 
 func (l *crlViaPKIMetal) CheckApplies(c *x509.RevocationList) bool {
 	// This lint applies to all CRLs issued by Boulder, as long as it has
-	// been configured with an address to reach out to. If not, skip it.
-	return l.Addr != ""
+	// been configured with an address or socket to reach out to. If not, skip it.
+	return l.Addr != "" || l.Socket != ""
 }
 
 func (l *crlViaPKIMetal) Execute(c *x509.RevocationList) *lint.LintResult {
