@@ -187,7 +187,7 @@ type TransactionBuilder struct {
 }
 
 func (builder *TransactionBuilder) Ready() bool {
-	return builder.limitRegistry.overridesLoaded
+	return builder.limitRegistry.Ready()
 }
 
 // GetOverridesFunc is used to pass in the sa.GetEnabledRateLimitOverrides
