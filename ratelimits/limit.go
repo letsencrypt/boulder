@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -313,11 +314,17 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
 type OverridesRefresher func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error)
 
 type limitRegistry struct {
+	sync.RWMutex
+
 	// defaults stores default limits by 'name'.
 	defaults Limits
 
 	// overrides stores override limits by 'name:id'.
-	overrides       Limits
+	overrides Limits
+
+	// overridesLoaded is true if at least one loadOverrides attempt has
+	// completed successfully. Callers should check this using the Ready()
+	// method.
 	overridesLoaded bool
 
 	// refreshOverrides is a function to refresh override limits.
@@ -341,6 +348,8 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 		return nil, fmt.Errorf("specified name enum %q, is invalid", name)
 	}
 	if bucketKey != "" {
+		l.RLock()
+		defer l.RUnlock()
 		// Check for override.
 		ol, ok := l.overrides[bucketKey]
 		if ok {
@@ -360,9 +369,11 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	l.overridesLoaded = true
 
 	if len(newOverrides) < 1 {
+		l.Lock()
+		defer l.Unlock()
+		l.overridesLoaded = true
 		l.logger.Warning("loading overrides: no valid overrides")
 		// If it's an empty set, don't replace any current overrides.
 		return nil
@@ -374,6 +385,9 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 		newOverridesPerLimit[override.Name]++
 	}
 
+	l.Lock()
+	defer l.Unlock()
+	l.overridesLoaded = true
 	l.overrides = newOverrides
 	l.overridesTimestamp.SetToCurrentTime()
 	for rlName, rlString := range nameToString {
@@ -381,6 +395,14 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Ready reports whether at least one override load attempt has completed
+// successfully.
+func (l *limitRegistry) Ready() bool {
+	l.RLock()
+	defer l.RUnlock()
+	return l.overridesLoaded
 }
 
 // loadOverridesWithRetry tries to loadOverrides, retrying at least every 30
