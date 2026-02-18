@@ -916,10 +916,10 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 		// currently relying on the query above to exit early if the certificate
 		// does not have an appropriate status and revocation reason.
 		res, err = tx.ExecContext(ctx,
-			`UPDATE revokedCertificates SET
-					revokedReason = ?
-				WHERE serial = ?
-                AND shardIdx = ?`,
+			`UPDATE revokedCertificates
+			 SET revokedReason = ?
+			 WHERE serial = ?
+			 AND shardIdx = ?`,
 			revocation.KeyCompromise,
 			req.Serial,
 			req.ShardIdx)
@@ -1239,7 +1239,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("confirming update of selected shard: %w", err)
 		}
 		if rowsAffected == 0 {
 			return nil, fmt.Errorf("unable to update shard %d for issuer %d; possibly because shard exists", req.ShardIdx, req.IssuerNameID)
