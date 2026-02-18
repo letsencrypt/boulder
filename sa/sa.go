@@ -770,7 +770,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("confirming update of authorization: %w", err)
 	}
 	if rows == 0 {
 		return nil, berrors.NotFoundError("no pending authorization with id %d", req.Id)
@@ -849,7 +849,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		}
 		rows, err := res.RowsAffected()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("confirming update of certificateStatus: %w", err)
 		}
 		if rows == 0 {
 			return nil, berrors.AlreadyRevokedError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
@@ -902,7 +902,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 		}
 		rows, err := res.RowsAffected()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("confirming update of certificateStatus: %w", err)
 		}
 		if rows == 0 {
 			// InternalServerError because we expected this certificate status to exist,
@@ -929,7 +929,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 
 		rows, err = res.RowsAffected()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("confirming update of CRL shard: %w", err)
 		}
 		if rows == 0 {
 			// InternalServerError because we expected this serial / shardIdx to exist.
@@ -1394,7 +1394,7 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("confirming update of selected shard: %w", err)
 		}
 
 		total.Count += rowsAffected
