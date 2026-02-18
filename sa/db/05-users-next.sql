@@ -1,7 +1,5 @@
--- this file is run by test/create_db.sh to create users for each
--- component with the appropriate permissions.
+USE boulder_sa_next;
 
--- These lines require MariaDB 10.1+
 CREATE USER IF NOT EXISTS 'policy'@'%';
 CREATE USER IF NOT EXISTS 'sa'@'%';
 CREATE USER IF NOT EXISTS 'sa_ro'@'%';

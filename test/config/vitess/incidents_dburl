@@ -1,0 +1,1 @@
+incidents_sa@tcp(boulder-vitess:33577)/incidents_sa?readTimeout=14s&timeout=1s

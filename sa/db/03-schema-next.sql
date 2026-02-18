@@ -1,5 +1,8 @@
--- +migrate Up
--- SQL in section 'Up' is executed when this migration is applied
+-- For easy diffability, the main part of this schema
+-- should be identical with 01-schema.sql. Any differences
+-- for the "next" schema should be expressed as ALTER TABLE
+-- commands at the end of the file.
+USE boulder_sa_next;
 
 CREATE TABLE `authz2` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -241,25 +244,7 @@ CREATE TABLE `serials` (
   CONSTRAINT `regId_serials` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
--- +migrate Down
--- SQL section 'Down' is executed when this migration is rolled back
-
--- First set of tables have foreign key constraints, so are dropped first.
-DROP TABLE `serials`;
-
-DROP TABLE `authz2`;
-DROP TABLE `blockedKeys`;
-DROP TABLE `certificateStatus`;
-DROP TABLE `certificatesPerName`;
-DROP TABLE `certificates`;
-DROP TABLE `fqdnSets`;
-DROP TABLE `incidents`;
-DROP TABLE `issuedNames`;
-DROP TABLE `keyHashToSerial`;
-DROP TABLE `newOrdersRL`;
-DROP TABLE `orderFqdnSets`;
-DROP TABLE `orderToAuthz2`;
-DROP TABLE `orders`;
-DROP TABLE `precertificates`;
-DROP TABLE `registrations`;
-DROP TABLE `requestedNames`;
+ALTER TABLE `certificateStatus` DROP COLUMN `subscriberApproved`;
+ALTER TABLE `certificateStatus` DROP COLUMN `LockCol`;
+ALTER TABLE `registrations` DROP COLUMN `LockCol`;
+ALTER TABLE `revokedCertificates` ADD KEY `serial` (`serial`);

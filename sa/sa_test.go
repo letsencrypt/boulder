@@ -2038,7 +2038,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		ShardIdx: 2,
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
-	test.AssertContains(t, err.Error(), "mismatched shard index")
+	test.AssertContains(t, err.Error(), "no certificate with")
 
 	// Try to update its revocation info correctly
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
@@ -3807,10 +3807,7 @@ func TestUnpauseAccount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
-				test.AssertNotError(t, err, "cleaning up paused table")
-			}()
+			defer test.ResetBoulderTestDatabase(t)
 
 			// Setup table state.
 			for _, state := range tt.state {
@@ -4054,10 +4051,7 @@ func TestPauseIdentifiers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
-				test.AssertNotError(t, err, "cleaning up paused table")
-			}()
+			defer test.ResetBoulderTestDatabase(t)
 
 			// Setup table state.
 			for _, state := range tt.state {
@@ -4195,10 +4189,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
-				test.AssertNotError(t, err, "cleaning up paused table")
-			}()
+			defer test.ResetBoulderTestDatabase(t)
 
 			// Setup table state.
 			for _, state := range tt.state {
@@ -4304,10 +4295,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				_, err := sa.dbMap.ExecContext(ctx, "DELETE FROM paused WHERE 1 = 1")
-				test.AssertNotError(t, err, "cleaning up paused table")
-			}()
+			defer test.ResetBoulderTestDatabase(t)
 
 			// Setup table state.
 			for _, state := range tt.state {
@@ -4663,5 +4651,19 @@ func TestOverrideLowerThanExisting(t *testing.T) {
 			got := overrideLowerThanExisting(tc.new, tc.existing)
 			test.AssertEquals(t, got, tc.want)
 		})
+	}
+}
+
+func TestCreateAndFetchRegistrations(t *testing.T) {
+	sa, _ := initSA(t)
+	for i := 0; i < 10; i++ {
+		reg := createWorkingRegistration(t, sa)
+		t.Logf("registration %d created", reg.Id)
+		_, err := sa.GetRegistration(context.Background(), &sapb.RegistrationID{
+			Id: reg.Id,
+		})
+		if err != nil {
+			t.Errorf("getting registration %d: %v", reg.Id, err)
+		}
 	}
 }

@@ -78,6 +78,8 @@ services:
 
   bmariadb:
     image: mariadb:10.11.13
+    volumes:
+      - ./sa/db:/docker-entrypoint-initdb.d
     networks:
       bouldernet:
         aliases:
@@ -145,11 +147,14 @@ services:
     image: letsencrypt/boulder-vtcomboserver:${BOULDER_VTCOMBOSERVER_TAG:-latest}
     build:
       context: test/vtcomboserver/
+    volumes:
+      - ./sa/db/:/db/
+      - ./sa/vtschema/:/vt/schema/
     environment:
       # By specifying KEYSPACES vttestserver will create the corresponding
       # databases on startup.
-      KEYSPACES: boulder_sa,incidents_sa
-      NUM_SHARDS: 1,1
+      KEYSPACES: boulder_sa,incidents_sa,boulder_sa_next,incidents_sa_next
+      NUM_SHARDS: 1,1,1,1
     networks:
       bouldernet:
         aliases:
