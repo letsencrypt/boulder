@@ -372,10 +372,10 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 
 	l.Lock()
 	defer l.Unlock()
+	l.overridesLoaded = true
 
 	if len(newOverrides) < 1 {
 		// If it's an empty set, don't replace any current overrides.
-		l.overridesLoaded = true
 		l.logger.Warning("loading overrides: no valid overrides")
 		return nil
 	}
@@ -386,7 +386,6 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 		newOverridesPerLimit[override.Name]++
 	}
 
-	l.overridesLoaded = true
 	l.overrides = newOverrides
 	l.overridesTimestamp.SetToCurrentTime()
 	for rlName, rlString := range nameToString {
