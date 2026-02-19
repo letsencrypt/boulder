@@ -81,3 +81,14 @@ GRANT ALL PRIVILEGES ON monitor TO 'proxysql'@'%';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';
+
+USE incidents_sa_next;
+
+CREATE USER IF NOT EXISTS 'incidents_sa'@'%';
+CREATE USER IF NOT EXISTS 'test_setup'@'%';
+
+-- Storage Authority
+GRANT SELECT ON * TO 'incidents_sa'@'%';
+
+-- Test setup and teardown
+GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';

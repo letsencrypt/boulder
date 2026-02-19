@@ -240,8 +240,7 @@ CREATE TABLE `serials` (
   `expires` datetime NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `serial` (`serial`),
-  KEY `regId_serials_idx` (`registrationID`),
-  CONSTRAINT `regId_serials` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  KEY `regId_serials_idx` (`registrationID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
 ALTER TABLE `certificateStatus` DROP COLUMN `subscriberApproved`;
