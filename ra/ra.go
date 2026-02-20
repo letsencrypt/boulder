@@ -1335,7 +1335,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ra.countCertificateIssued(ctx, int64(acctID), identifier.FromCert(parsedCertificate), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(resp.DER, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(ctx, resp.DER, parsedCertificate.NotAfter)
 
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {

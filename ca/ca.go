@@ -324,7 +324,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	// an error immediately after signing the precertificate, we have a record in the DB of what we
 	// intended to sign, and can do revocations based on that. See #6807.
 	// The name of the SA method ("AddPrecertificate") is a historical artifact.
-	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+	_, err = ca.sa.AddPrecertificate(context.WithoutCancel(ctx), &sapb.AddCertificateRequest{
 		Der:          lintPrecertDER,
 		RegID:        req.RegistrationID,
 		Issued:       timestamppb.New(ca.clk.Now()),
