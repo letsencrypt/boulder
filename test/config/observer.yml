@@ -91,11 +91,6 @@ monitors:
       rcodes: [200, 404]
       useragent: "letsencrypt/boulder-observer-http-client"
   -
-    period: 10s
-    kind: TCP
-    settings:
-      hostport: acme-v02.api.letsencrypt.org:443
-  -
     period: 1h
     kind: AIA
     settings:
