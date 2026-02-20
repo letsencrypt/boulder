@@ -130,7 +130,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
-	foundAt, valid, response, err := va.checkCAARecords(ctx, ident, params)
+	foundAt, valid, response, denyDetail, err := va.checkCAARecords(ctx, ident, params)
 	if err != nil {
 		return berrors.DNSError("%s", err)
 	}
@@ -145,6 +145,9 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		"response":   response,
 	})
 	if !valid {
+		if denyDetail != "" {
+			return berrors.CAAError("CAA record for %s prevents issuance: %s", foundAt, denyDetail)
+		}
 		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}
 	return nil
@@ -292,7 +295,7 @@ func (va *ValidationAuthorityImpl) getCAA(ctx context.Context, hostname string) 
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
-	params *caaParams) (string, bool, string, error) {
+	params *caaParams) (string, bool, string, string, error) {
 	hostname := strings.ToLower(ident.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
@@ -302,14 +305,14 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	}
 	caaSet, err := va.getCAA(ctx, hostname)
 	if err != nil {
-		return "", false, "", err
+		return "", false, "", "", err
 	}
 	raw := ""
 	if caaSet != nil {
 		raw = caaSet.dig
 	}
-	valid, foundAt := va.validateCAA(caaSet, wildcard, params)
-	return foundAt, valid, raw, nil
+	valid, foundAt, denyDetail := va.validateCAA(caaSet, wildcard, params)
+	return foundAt, valid, raw, denyDetail, nil
 }
 
 // validateCAA checks a provided *caaResult. When the wildcard argument is true
@@ -318,17 +321,17 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 // records, and a string indicating the name at which the CAA records allowing
 // issuance were found (if any -- since finding no records at all allows
 // issuance).
-func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool, params *caaParams) (bool, string) {
+func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool, params *caaParams) (bool, string, string) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.metrics.caaCounter.WithLabelValues("no records").Inc()
-		return true, ""
+		return true, "", ""
 	}
 
 	if caaSet.criticalUnknown {
 		// Contains unknown critical directives
 		va.metrics.caaCounter.WithLabelValues("record with unknown critical directive").Inc()
-		return false, caaSet.name
+		return false, caaSet.name, ""
 	}
 
 	// Per RFC 8659 Section 5.3:
@@ -351,7 +354,23 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
 		va.metrics.caaCounter.WithLabelValues("no relevant records").Inc()
-		return true, caaSet.name
+		return true, caaSet.name, ""
+	}
+
+	nonStandardCapitalizationDetail := func(badTag, expectedLower string) string {
+		return fmt.Sprintf("CAA parameter tag %q has invalid capitalization; use %q", badTag, expectedLower)
+	}
+
+	nonStandardCapitalization := func(parsedParams []caaParameter) (badTag string, expectedLower string, ok bool) {
+		for _, param := range parsedParams {
+			if strings.EqualFold(param.tag, "accounturi") && param.tag != "accounturi" {
+				return param.tag, "accounturi", true
+			}
+			if strings.EqualFold(param.tag, "validationmethods") && param.tag != "validationmethods" {
+				return param.tag, "validationmethods", true
+			}
+		}
+		return "", "", false
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this
@@ -369,6 +388,11 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 			continue
 		}
 
+		if badTag, expectedLower, ok := nonStandardCapitalization(parsedParams); ok {
+			va.metrics.caaCounter.WithLabelValues("invalid parameter tag capitalization").Inc()
+			return false, caaSet.name, nonStandardCapitalizationDetail(badTag, expectedLower)
+		}
+
 		if !caaAccountURIMatches(parsedParams, va.accountURIPrefixes, params.accountURIID) {
 			continue
 		}
@@ -378,12 +402,12 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 		}
 
 		va.metrics.caaCounter.WithLabelValues("authorized").Inc()
-		return true, caaSet.name
+		return true, caaSet.name, ""
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
 	va.metrics.caaCounter.WithLabelValues("unauthorized").Inc()
-	return false, caaSet.name
+	return false, caaSet.name, ""
 }
 
 // caaParameter is a key-value pair parsed from a single CAA RR.
