@@ -1,7 +1,5 @@
--- this file is run by test/create_db.sh to create users for each
--- component with the appropriate permissions.
+USE boulder_sa_next;
 
--- These lines require MariaDB 10.1+
 CREATE USER IF NOT EXISTS 'policy'@'%';
 CREATE USER IF NOT EXISTS 'sa'@'%';
 CREATE USER IF NOT EXISTS 'sa_ro'@'%';
@@ -80,6 +78,17 @@ GRANT SELECT ON registrations TO 'badkeyrevoker'@'%';
 
 -- ProxySQL --
 GRANT ALL PRIVILEGES ON monitor TO 'proxysql'@'%';
+
+-- Test setup and teardown
+GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';
+
+USE incidents_sa_next;
+
+CREATE USER IF NOT EXISTS 'incidents_sa'@'%';
+CREATE USER IF NOT EXISTS 'test_setup'@'%';
+
+-- Storage Authority
+GRANT SELECT ON * TO 'incidents_sa'@'%';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';

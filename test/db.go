@@ -66,42 +66,22 @@ func deleteEverythingInAllTables(ctx context.Context, db CleanUpDB) error {
 		return err
 	}
 
-	// We do this in a transaction to make sure that the foreign
-	// key checks remain disabled even if the db object chooses
-	// another connection to make the deletion on. Note that
-	// `alter table` statements will silently cause transactions
-	// to commit, so we do them outside of the transaction.
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("unable to start transaction to delete all rows: %s", err)
-	}
-
-	_, err = tx.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 0")
-	if err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("unable to disable FOREIGN_KEY_CHECKS: %s", err)
-	}
-
 	for _, tn := range ts {
-		// 1 = 1 here prevents the i_am_a_dummy setting from rejecting the
-		// DELETE for not having a WHERE clause.
-		_, err = tx.ExecContext(ctx, "DELETE FROM `"+tn+"` WHERE 1 = 1")
-		if err != nil {
-			_, _ = tx.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
-			_ = tx.Rollback()
-			return fmt.Errorf("unable to delete all rows from table %#v: %s", tn, err)
+		for {
+			result, err := db.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s LIMIT 10000", tn))
+			if err != nil {
+				return fmt.Errorf("unable to delete from table %q: %s", tn, err)
+			}
+			n, err := result.RowsAffected()
+			if err != nil {
+				return fmt.Errorf("deleting %q: %s", tn, err)
+			}
+			if n < 10000 {
+				break
+			}
 		}
 	}
-	_, err = tx.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
-	if err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("unable to re-enable FOREIGN_KEY_CHECKS: %s", err)
-	}
 
-	err = tx.Commit()
-	if err != nil {
-		return fmt.Errorf("unable to commit transaction to delete all rows: %s", err)
-	}
 	return nil
 }
 
