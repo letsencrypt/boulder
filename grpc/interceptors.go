@@ -199,8 +199,9 @@ func (smi *serverMetadataInterceptor) Stream(
 // a `UnaryClientInterceptor`.
 func splitMethodName(fullMethodName string) (string, string) {
 	fullMethodName = strings.TrimPrefix(fullMethodName, "/") // remove leading slash
-	if i := strings.Index(fullMethodName, "/"); i >= 0 {
-		return fullMethodName[:i], fullMethodName[i+1:]
+	before, after, ok := strings.Cut(fullMethodName, "/")
+	if ok {
+		return before, after
 	}
 	return "unknown", "unknown"
 }

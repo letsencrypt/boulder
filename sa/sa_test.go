@@ -3843,22 +3843,23 @@ func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, r
 	batches := (count + batchSize - 1) / batchSize
 
 	for batch := range batches {
-		query := `
+		var query strings.Builder
+		query.WriteString(`
 		INSERT INTO paused (registrationID, identifierType, identifierValue, pausedAt)
-		VALUES`
+		VALUES`)
 
 		start := batch * batchSize
 		end := min(start+batchSize, count)
 
 		for i := start; i < end; i++ {
 			if i > start {
-				query += ","
+				query.WriteString(",")
 			}
-			query += "(?, ?, ?, ?)"
+			query.WriteString("(?, ?, ?, ?)")
 			values = append(values, regID, identifierTypeToUint[string(identifier.TypeDNS)], fmt.Sprintf("example%d.com", i), now)
 		}
 
-		_, err := sa.dbMap.ExecContext(ctx, query, values...)
+		_, err := sa.dbMap.ExecContext(ctx, query.String(), values...)
 		if err != nil {
 			return fmt.Errorf("bulk inserting paused identifiers: %w", err)
 		}
