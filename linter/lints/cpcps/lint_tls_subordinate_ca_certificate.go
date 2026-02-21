@@ -10,30 +10,30 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-type subordinateCACertValidityTooLong struct{}
+type tlsSubordinateCACertificateMatchesCPSProfile struct{}
 
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_validity_period_greater_than_8_years",
-			Description:   "Let's Encrypt Intermediate CA Certificates have Validity Periods of up to 8 years",
+			Name:          "e_tls_subordinate_ca_certificate_matches_cps_profile",
+			Description:   "Let's Encrypt TLS Subordinate CA Certificates are issued in accordance with the CP/CPS Profile",
 			Citation:      "CPS: 7.1",
 			Source:        lints.LetsEncryptCPS,
-			EffectiveDate: lints.CPSV33Date,
+			EffectiveDate: lints.GenYHierarchyDate,
 		},
-		Lint: NewSubordinateCACertValidityTooLong,
+		Lint: NewTLSSubordinateCACertificateMatchesCPSProfile,
 	})
 }
 
-func NewSubordinateCACertValidityTooLong() lint.CertificateLintInterface {
-	return &subordinateCACertValidityTooLong{}
+func NewTLSSubordinateCACertificateMatchesCPSProfile() lint.CertificateLintInterface {
+	return &tlsSubordinateCACertificateMatchesCPSProfile{}
 }
 
-func (l *subordinateCACertValidityTooLong) CheckApplies(c *x509.Certificate) bool {
+func (l *tlsSubordinateCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool {
 	return util.IsSubCA(c)
 }
 
-func (l *subordinateCACertValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
+func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
 	// CPS 7.1: "Intermediate CA Certificate Validity Period: Up to 8 years."
 	maxValidity := 8 * 365 * lints.BRDay
 

@@ -26,6 +26,7 @@ const (
 
 var (
 	CPSV33Date           = time.Date(2021, time.June, 8, 0, 0, 0, 0, time.UTC)
+	GenYHierarchyDate    = time.Date(2025, time.September, 2, 0, 0, 0, 0, time.UTC)
 	MozillaPolicy281Date = time.Date(2023, time.February, 15, 0, 0, 0, 0, time.UTC)
 )
 
