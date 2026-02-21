@@ -53,7 +53,7 @@ jobs:
         run: ./tools/container-build.sh
 
       - name: Tag Boulder container
-        run: docker tag boulder "ghcr.io/letsencrypt/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        run: docker tag boulder "ghcr.io/${GITHUB_REPOSITORY_OWNER}/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
 
       - name: Compute checksums
         id: checksums
@@ -68,7 +68,7 @@ jobs:
         run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz boulder*.checksums.txt
 
       - name: Build ct-test-srv container
-        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/${{ github.repository_owner }}/ct-test-srv:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
@@ -78,10 +78,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push Boulder container
-        run: docker push "ghcr.io/letsencrypt/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        run: docker push "ghcr.io/${{ github.repository_owner }}/boulder:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
 
       - name: Push ct-test-srv container
-        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
+        run: docker push "ghcr.io/${{ github.repository_owner }}/ct-test-srv:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
 
   publish-release:
     needs: push-release
