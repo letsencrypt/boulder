@@ -1,0 +1,115 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+  syslog:
+    udp:
+      listen_address: "0.0.0.0:5514"
+    protocol: rfc3164
+  filelog:
+    include:
+      - /var/log/boulder/boulder-*.log
+      - /var/log/boulder/crl-storer.log
+      - /var/log/boulder/log-validator.log
+      - /var/log/boulder/nonce-service.log
+    operators:
+      - type: regex_parser
+        regex: '^(?P<timestamp>\S+) (?P<hostname>\S+) (?P<datacenter>\S+) (?P<syslogseverity>\d+) (?P<service>[^\[]+)\[(?P<pid>\d+)\]: (?P<checksum>\S+) (?P<msg>.*?)$'
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%dT%H:%M:%S.%f%j'
+        severity:
+          parse_from: attributes.syslogseverity
+          preset: none
+          overwrite_text: true
+          mapping: # Map syslog levels to otel ones
+            fatal:  0 # syslog: emerg
+            error3: 1 # syslog: alert
+            error2: 2 # syslog: crit
+            error:  3 # syslog: err
+            warn:   4 # syslog: warning
+            info2:  5 # syslog: notice
+            info:   6 # syslog: info
+            debug:  7 # syslog: debug
+      - type: move
+        from: attributes.msg
+        to: body
+      - type: remove
+        field: attributes.timestamp
+      - type: remove
+        field: attributes.syslogseverity
+      - type: add
+        field: attributes.audit
+        value: true
+        if: 'body startsWith "[AUDIT] "'
+      - type: regex_parser
+        regex: ' JSON=(?P<json_payload>\{.*\})$'
+        if: 'body matches " JSON=\\{.*\\}$"'
+        on_error: send
+      - type: json_parser
+        parse_from: attributes.json_payload
+        if: 'attributes.json_payload != nil'
+        on_error: send
+      - type: remove
+        field: attributes.json_payload
+        if: 'attributes.json_payload != nil'
+      - type: move
+        from: attributes.service
+        to: resource["service.name"]
+      - type: move
+        from: attributes.pid
+        to: resource["process.pid"]
+      - type: regex_parser
+        regex: '^(?P<Method>\S+) (?P<Endpoint>\S+) (?P<Requester>\d+) (?P<Code>\d+) (?P<Latency>\d+) (?P<ClientIP>\S+) JSON=\{.*\}$'
+        if: 'resource["service.name"] == "boulder-wfe2"'
+        on_error: send
+
+processors:
+  batch:
+
+exporters:
+  clickhouse:
+    endpoint: http://clickhouse:8123
+    database: otel
+    username: otel_writer
+    password: otel_writer_very_bad_password
+    logs_table_name: otel_logs
+    traces_table_name: otel_traces
+    metrics_table_name: otel_metrics
+    timeout: 5s
+    ttl: 240h
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  prometheus:
+    namespace: "something"
+    endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouse]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouse, prometheus]
+    logs:
+      receivers: [otlp, syslog, filelog]
+      processors: [batch]
+      exporters: [clickhouse]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
