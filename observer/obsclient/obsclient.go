@@ -11,7 +11,7 @@ import (
 func Client(insecure bool) *http.Client {
 	// Use the default transport, because it comes with useful defaults that are
 	// not just the http.Transport zero-values.
-	t := http.DefaultTransport.(*http.Transport)
+	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.DialContext = Dialer().DialContext
 	t.TLSClientConfig = &tls.Config{InsecureSkipVerify: insecure}
 
