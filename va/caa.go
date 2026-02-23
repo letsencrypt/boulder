@@ -297,7 +297,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
 	if strings.HasPrefix(hostname, `*.`) {
-		hostname = strings.TrimPrefix(ident.Value, `*.`)
+		hostname = strings.TrimPrefix(hostname, `*.`)
 		wildcard = true
 	}
 	caaSet, err := va.getCAA(ctx, hostname)
