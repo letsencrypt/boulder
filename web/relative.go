@@ -3,11 +3,17 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"path"
 )
 
-// RelativeEndpoint takes a path component of URL and constructs a new URL using
-// the host and port from the request combined the provided path.
-func RelativeEndpoint(request *http.Request, endpoint string) string {
+// RelativeEndpoint constructs a URL using the scheme and host inferred from
+// request, and a path composed of basePath plus any additional path segments.
+// All trailing slashes will be removed from the resulting URL.
+//
+// basePath is an absolute path as defined in RFC 3986 section 3.3 and thus
+// should begin with "/" (e.g. "/acme/acct/"). Segments are additional path
+// segments to be appended to basePath and should not contain slashes.
+func RelativeEndpoint(request *http.Request, basePath string, segments ...string) string {
 	var result string
 	proto := "http"
 	host := request.Host
@@ -28,6 +34,9 @@ func RelativeEndpoint(request *http.Request, endpoint string) string {
 	if request.Host == "" {
 		host = "localhost"
 	}
+
+	// path.Join will clean the resulting path, removing any trailing slashes.
+	endpoint := path.Join(append([]string{basePath}, segments...)...)
 
 	resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
 	result = resultUrl.String()

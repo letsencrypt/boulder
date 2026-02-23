@@ -910,37 +910,31 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 			return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
 		}
 
-		var rcm revokedCertModel
 		// Note: this query MUST be updated to enforce the same preconditions as
 		// the "UPDATE certificateStatus SET revokedReason..." above if this
 		// query ever becomes the first or only query in this transaction. We are
 		// currently relying on the query above to exit early if the certificate
 		// does not have an appropriate status and revocation reason.
-		err = tx.SelectOne(
-			ctx, &rcm, `SELECT * FROM revokedCertificates WHERE serial = ?`, req.Serial)
-		if db.IsNoRows(err) {
-			// TODO: Remove this fallback codepath once we know that all unexpired
-			// certs marked as revoked in the certificateStatus table have
-			// corresponding rows in the revokedCertificates table. That should be
-			// 90+ days after the RA starts sending ShardIdx in its
-			// RevokeCertificateRequest messages.
-			err = addRevokedCertificate(ctx, tx, req, revokedDate)
-			if err != nil {
-				return nil, err
-			}
-			return nil, nil
-		} else if err != nil {
-			return nil, fmt.Errorf("retrieving revoked certificate row: %w", err)
-		}
-
-		if rcm.ShardIdx != req.ShardIdx {
-			return nil, berrors.InternalServerError("mismatched shard index %d != %d", req.ShardIdx, rcm.ShardIdx)
-		}
-
-		rcm.RevokedReason = revocation.KeyCompromise
-		_, err = tx.Update(ctx, &rcm)
+		res, err = tx.ExecContext(ctx,
+			`UPDATE revokedCertificates
+			 SET revokedReason = ?
+			 WHERE serial = ?
+			 AND shardIdx = ?`,
+			revocation.KeyCompromise,
+			req.Serial,
+			req.ShardIdx)
 		if err != nil {
 			return nil, fmt.Errorf("updating revoked certificate row: %w", err)
+		}
+
+		rows, err = res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if rows == 0 {
+			// InternalServerError because we expected this serial / shardIdx to exist.
+			return nil, berrors.InternalServerError("no certificate with serial %s in CRL shard %d",
+				req.Serial, req.ShardIdx)
 		}
 
 		return nil, nil
@@ -1245,7 +1239,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("confirming update of selected shard: %w", err)
 		}
 		if rowsAffected == 0 {
 			return nil, fmt.Errorf("unable to update shard %d for issuer %d; possibly because shard exists", req.ShardIdx, req.IssuerNameID)
@@ -1494,14 +1488,14 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 
 			// Update the existing overrides row.
 			updated := overrideModelForPB(req.Override, now, existing.Enabled)
-			_, err = tx.Update(ctx, &updated)
+			err = ssa.updateRateLimitOverride(ctx, tx, &updated, now, enabled)
 			if err != nil {
-				return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s override: %w",
+				return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s: %w",
 					req.Override.LimitEnum,
 					req.Override.BucketKey,
-					err,
-				)
+					err)
 			}
+
 			inserted = false
 			enabled = existing.Enabled
 		}
@@ -1562,14 +1556,12 @@ func (ssa *SQLStorageAuthority) setRateLimitOverride(ctx context.Context, limitE
 		updated.Enabled = enabled
 		updated.UpdatedAt = ssa.clk.Now()
 
-		_, err = tx.Update(ctx, &updated)
+		err = ssa.updateRateLimitOverride(ctx, tx, &updated, ssa.clk.Now(), enabled)
 		if err != nil {
-			return nil, fmt.Errorf("updating status of override for rate limit %d and bucket key %s to %t: %w",
-				limitEnum,
-				bucketKey,
-				enabled,
-				err,
-			)
+			return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s: %w",
+				updated.LimitEnum,
+				updated.BucketKey,
+				err)
 		}
 		return nil, nil
 	})
@@ -1577,6 +1569,46 @@ func (ssa *SQLStorageAuthority) setRateLimitOverride(ctx context.Context, limitE
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func (ssa *SQLStorageAuthority) updateRateLimitOverride(
+	ctx context.Context,
+	tx db.Executor,
+	model *overrideModel,
+	now time.Time,
+	enabled bool,
+) error {
+	result, err := tx.ExecContext(ctx, `
+				UPDATE overrides
+				SET comment = :comment,
+					periodNS = :periodNS,
+					count = :count,		
+					burst = :burst,
+					updatedAt = :updatedAt,
+					enabled = :enabled
+				WHERE limitEnum = :limitEnum AND bucketKey = :bucketKey`,
+		map[string]any{
+			"comment":   model.Comment,
+			"periodNS":  model.PeriodNS,
+			"count":     model.Count,
+			"burst":     model.Burst,
+			"updatedAt": now,
+			"enabled":   enabled,
+			"limitEnum": model.LimitEnum,
+			"bucketKey": model.BucketKey,
+		})
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no rows updated")
+	}
+	return nil
 }
 
 // DisableRateLimitOverride disables a rate limit override. If the override does

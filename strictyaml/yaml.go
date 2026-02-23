@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Unmarshal takes a byte array and an interface passed by reference. The

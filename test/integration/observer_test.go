@@ -4,7 +4,6 @@ package integration
 
 import (
 	"bufio"
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -156,7 +155,7 @@ monitors:
 		t.Fatalf("computing boulder binary path: %s", err)
 	}
 
-	c := exec.CommandContext(context.Background(), binPath, "boulder-observer", "-config", configFile.Name(), "-debug-addr", ":8024")
+	c := exec.CommandContext(t.Context(), binPath, "boulder-observer", "-config", configFile.Name(), "-debug-addr", ":8024")
 	output, cancel := streamOutput(t, c)
 	defer cancel()
 

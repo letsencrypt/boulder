@@ -29,12 +29,16 @@ case "${PLATFORM}" in
     *) echo "Unsupported platform: ${PLATFORM}" && exit 1 ;;
 esac
 COMMIT_ID="$(git rev-parse --short=8 HEAD)"
-VERSION="${GO_VERSION}.$(date +%s)"
+COMMIT_TIMESTAMP="$(git show -s --format=%ct HEAD)"
+COMMIT_DATE_ISO8601="$(TZ=UTC0 git show -s --format=%cd --date=format:%Y-%m-%dT%H:%M:%SZ HEAD)"
+VERSION="${GO_VERSION}.${COMMIT_TIMESTAMP}"
 
 docker buildx build \
     --platform "$PLATFORM" \
     --file Containerfile \
     --build-arg "COMMIT_ID=${COMMIT_ID}" \
+    --build-arg "COMMIT_TIMESTAMP=${COMMIT_TIMESTAMP}" \
+    --build-arg "COMMIT_DATE_ISO8601=${COMMIT_DATE_ISO8601}" \
     --build-arg "GO_VERSION=${GO_VERSION}" \
     --build-arg "VERSION=${VERSION}" \
     --tag "boulder:${VERSION}" \
@@ -42,11 +46,12 @@ docker buildx build \
     --tag boulder \
     .
 
-docker run boulder tar -C /opt/boulder -cpz . > "./boulder-${VERSION}-${COMMIT_ID}.${ARCH}.tar.gz"
-# Produces e.g. boulder-1.25.0.1754519595-591c0545.amd64.deb
+docker run boulder tar -C /opt/boulder --mtime="@${COMMIT_TIMESTAMP}" --owner=0 --group=0 --numeric-owner --sort=name -cp . | gzip -n > "./boulder-${VERSION}-${COMMIT_ID}.${ARCH}.tar.gz"
+# Produces e.g. boulder-1.25.0.1754519595-591c0545.x86_64.deb
 docker run -v .:/boulderrepo \
   -e "ARCH=${ARCH}" \
   -e "COMMIT_ID=${COMMIT_ID}" \
   -e "VERSION=${VERSION}" \
+  -e "SOURCE_DATE_EPOCH=${COMMIT_TIMESTAMP}" \
   boulder \
   /boulderrepo/tools/make-deb.sh

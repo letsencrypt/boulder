@@ -2,13 +2,11 @@ package probers
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"slices"
-	"time"
 
-	"github.com/letsencrypt/boulder/observer/obsdialer"
+	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
 // HTTPProbe is the exported 'Prober' object for monitors configured to
@@ -21,7 +19,6 @@ type HTTPProbe struct {
 }
 
 // Name returns a string that uniquely identifies the monitor.
-
 func (p HTTPProbe) Name() string {
 	insecure := ""
 	if p.insecure {
@@ -35,31 +32,23 @@ func (p HTTPProbe) Kind() string {
 	return "HTTP"
 }
 
-// isExpected ensures that the received HTTP response code matches one
-// that's expected.
-func (p HTTPProbe) isExpected(received int) bool {
-	return slices.Contains(p.rcodes, received)
-}
-
 // Probe performs the configured HTTP request.
-func (p HTTPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	client := http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
-			DialContext:     obsdialer.Dialer.DialContext,
-		}}
+func (p HTTPProbe) Probe(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", p.url, nil)
 	if err != nil {
-		return false, 0
+		return err
 	}
 	req.Header.Set("User-Agent", p.useragent)
-	start := time.Now()
+
 	// TODO(@beautifulentropy): add support for more than HTTP GET
-	resp, err := client.Do(req)
+	resp, err := obsclient.Client(p.insecure).Do(req)
 	if err != nil {
-		return false, time.Since(start)
+		return err
 	}
-	return p.isExpected(resp.StatusCode), time.Since(start)
+
+	if !slices.Contains(p.rcodes, resp.StatusCode) {
+		return fmt.Errorf("got HTTP status code %d, but want one of %#v", resp.StatusCode, p.rcodes)
+	}
+
+	return nil
 }
