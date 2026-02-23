@@ -2038,7 +2038,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		ShardIdx: 2,
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
-	test.AssertContains(t, err.Error(), "mismatched shard index")
+	test.AssertContains(t, err.Error(), "no certificate with")
 
 	// Try to update its revocation info correctly
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
