@@ -84,7 +84,7 @@ func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probe
 		return nil, fmt.Errorf("CCADB prober did not receive metric \"ccadb_crls_success\"")
 	}
 
-	crlRegexp := `http://[a-z0-9-]+.c.lencr.org/\d+.crl`
+	crlRegexp := `^http://[a-z0-9-]+\.c\.lencr\.org/\d+\.crl$`
 	if c.CRLRegexp != "" {
 		crlRegexp = c.CRLRegexp
 	}
