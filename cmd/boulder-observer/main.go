@@ -47,6 +47,8 @@ func main() {
 		cmd.FailOnError(err, "config failed validation")
 	}
 
+	defer cmd.AuditPanic()
+
 	// Start the `Observer` daemon.
 	obs.Start()
 }
