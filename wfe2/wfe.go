@@ -2782,7 +2782,7 @@ func looksLikeRecursiveOnDemandRequest(idents identifier.ACMEIdentifiers, blocke
 		for i, label := range labels {
 			if slices.Contains(blockedLabels, label) {
 				if i >= 1 && label == labels[i-1] {
-					// Reject identifiers with two blocked labels in a row.
+					// Reject identifiers with two identical blocked labels in a row.
 					return berrors.RejectedIdentifierError("Cannot issue for %q: domain name contains too many subdomain labels indicative of recursive on-demand issuance", ident.Value)
 				}
 				blockedInARow += 1
