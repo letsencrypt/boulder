@@ -148,7 +148,8 @@
 			},
 			"jwtLifetime": "336h",
 			"url": "https://boulder.service.consul:4003"
-		}
+		},
+		"jitBlockedLabels": ["asdf"]
 	},
 	"syslog": {
 		"stdoutlevel": 7,

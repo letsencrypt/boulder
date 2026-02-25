@@ -186,6 +186,16 @@ type Config struct {
 			// to enable the pausing feature.
 			URL string `validate:"omitempty,required_with=HMACKey JWTLifetime,url,startswith=https://,endsnotwith=/"`
 		}
+
+		// JITBlockedLabels is a list of subdomain labels that frequently appear in
+		// just-in-time requests for certificates as a result of automated crawler
+		// activity. For example, a vulnerability-seeking bot might see a cert for
+		// example.com in CT, and attempt to access asdf.example.com. The webserver
+		// receiving that request uses us to just-in-time issue a cert for that
+		// name, when then appears in CT. Moments later, the crawler attempts to
+		// access asdf.asdf.example.com, and the cycle repeats. We don't want to
+		// issue certs for names that look like they result from this process.
+		JITBlockedLabels []string `validate:"omitempty"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -387,6 +397,7 @@ func main() {
 		unpauseSigner,
 		c.WFE.Unpause.JWTLifetime.Duration,
 		c.WFE.Unpause.URL,
+		c.WFE.JITBlockedLabels,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
