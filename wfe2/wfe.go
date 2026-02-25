@@ -221,6 +221,11 @@ func NewWebFrontEndImpl(
 		return WebFrontEndImpl{}, errors.New("must provide a service for nonce redemption")
 	}
 
+	var blockedLabels []string
+	for _, label := range blockedOnDemandLabels {
+		blockedLabels = append(blockedLabels, strings.ToLower(label))
+	}
+
 	wfe := WebFrontEndImpl{
 		log:                   logger,
 		clk:                   clk,
@@ -244,7 +249,7 @@ func NewWebFrontEndImpl(
 		unpauseSigner:         unpauseSigner,
 		unpauseJWTLifetime:    unpauseJWTLifetime,
 		unpauseURL:            unpauseURL,
-		blockedOnDemandLabels: blockedOnDemandLabels,
+		blockedOnDemandLabels: blockedLabels,
 	}
 
 	return wfe, nil
