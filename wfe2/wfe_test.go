@@ -2857,7 +2857,7 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:         "POST, blocked DNS identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":"asdf.asdf.example.com"}]}`),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Disallowed identifier requested :: Cannot issue for \"asdf.asdf.example.com\": domain name contains too many subdomain labels indicative of recursive just-in-time issuance","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Disallowed identifier requested :: Cannot issue for \"asdf.asdf.example.com\": domain name contains too many subdomain labels indicative of recursive on-demand issuance","status":400}`,
 		},
 		{
 			Name:         "POST, invalid IP identifier",
@@ -4419,7 +4419,7 @@ ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
 	}
 }
 
-func TestLooksLikeRecursiveJITRequest(t *testing.T) {
+func TestLooksLikeRecursiveOnDemandRequest(t *testing.T) {
 	testCases := []struct {
 		name    string
 		idents  identifier.ACMEIdentifiers
@@ -4495,11 +4495,11 @@ func TestLooksLikeRecursiveJITRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := looksLikeRecursiveJITRequest(tc.idents, tc.blocked)
+			err := looksLikeRecursiveOnDemandRequest(tc.idents, tc.blocked)
 			if err != nil && !tc.wantErr {
-				t.Errorf("looksLikeRecursiveJITRequest(%#v, %#v) = %#v, but want success", tc.idents, tc.blocked, err)
+				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = %#v, but want success", tc.idents, tc.blocked, err)
 			} else if err == nil && tc.wantErr {
-				t.Errorf("looksLikeRecursiveJITRequest(%#v, %#v) = nil, but want error", tc.idents, tc.blocked)
+				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = nil, but want error", tc.idents, tc.blocked)
 			}
 		})
 	}
