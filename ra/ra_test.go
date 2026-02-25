@@ -3956,6 +3956,41 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
 }
 
+func TestAdministrativelyRevokeCertificateReRevokeKeyCompromiseBlocksKey(t *testing.T) {
+	_, _, ra, _, clk, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	serial, cert := test.ThrowAwayCert(t, clk)
+	cert.IsCA = true
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	mockSA := newMockSARevocation(cert)
+	ra.SA = mockSA
+
+	// First, revoke for a non-keyCompromise reason. This should succeed but not block the key.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Serial:    serial,
+		Code:      int64(revocation.Unspecified),
+		AdminName: "root",
+	})
+	test.AssertNotError(t, err, "initial administrative revocation failed")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
+	test.AssertEquals(t, mockSA.revoked[serial].RevokedReason, int64(revocation.Unspecified))
+
+	// Now, re-revoke for keyCompromise. This should both update the reason AND block the key.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Serial:    serial,
+		Code:      int64(revocation.KeyCompromise),
+		AdminName: "root",
+	})
+	test.AssertNotError(t, err, "keyCompromise re-revocation should have succeeded")
+	test.AssertEquals(t, len(mockSA.blocked), 1)
+	test.AssertEquals(t, mockSA.revoked[serial].RevokedReason, int64(revocation.KeyCompromise))
+}
+
 // An authority that returns an error from NewOrderAndAuthzs if the
 // "ReplacesSerial" field of the request is empty.
 type mockNewOrderMustBeReplacementAuthority struct {
