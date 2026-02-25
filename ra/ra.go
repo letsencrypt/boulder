@@ -2030,23 +2030,21 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		shard = req.CrlShard
 	}
 
-	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+	// We revoke the cert before adding it to the blocked keys list, to avoid a
+	// race between this and the bad-key-revoker. But we don't check the error
+	// from this operation until after we add the key to the blocked keys list,
+	// since that addition needs to happen no matter what.
+	_, revokeErr := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   req.Serial,
 		Reason:   int64(reasonCode),
 		Date:     timestamppb.New(ra.clk.Now()),
 		IssuerID: int64(issuerID),
 		ShardIdx: shard,
 	})
-	if err != nil {
-		if reasonCode == revocation.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
-			err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return nil, err
-	}
 
+	// Failing to add the key to the blocked keys list is a worse failure than
+	// failing to revoke in the first place, because it means that
+	// bad-key-revoker won't revoke the cert anyway.
 	if reasonCode == revocation.KeyCompromise && !req.SkipBlockKey {
 		if cert == nil {
 			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
@@ -2055,6 +2053,18 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Check the error returned from sa.RevokeCertificate itself.
+	err = revokeErr
+	if errors.Is(err, berrors.AlreadyRevoked) && reasonCode == revocation.KeyCompromise {
+		err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
+		if err != nil {
+			return nil, err
+		}
+		return &emptypb.Empty{}, nil
+	} else if err != nil {
+		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
