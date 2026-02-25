@@ -2778,17 +2778,19 @@ func looksLikeRecursiveJITRequest(idents identifier.ACMEIdentifiers, blockedLabe
 		if len(labels) <= 3 {
 			continue
 		}
-		var prevBlocked, thisBlocked, nextBlocked bool
-		thisBlocked = slices.Contains(blockedLabels, labels[0])
-		nextBlocked = slices.Contains(blockedLabels, labels[1])
-		for i := 1; i < len(labels)-1; i++ { // loop through all indices except first and last
-			prevBlocked = thisBlocked
-			thisBlocked = nextBlocked
-			if thisBlocked && labels[i-1] == labels[i] {
-				return berrors.RejectedIdentifierError("Cannot issue for %q: domain name contains too many subdomain labels indicative of recursive just-in-time issuance", ident.Value)
+		blockedInARow := 0
+		for i, label := range labels {
+			if slices.Contains(blockedLabels, label) {
+				if i >= 1 && label == labels[i-1] {
+					// Reject identifiers with two blocked labels in a row.
+					return berrors.RejectedIdentifierError("Cannot issue for %q: domain name contains too many subdomain labels indicative of recursive just-in-time issuance", ident.Value)
+				}
+				blockedInARow += 1
+			} else {
+				blockedInARow = 0
 			}
-			nextBlocked = slices.Contains(blockedLabels, labels[i+1])
-			if prevBlocked && thisBlocked && nextBlocked {
+			if blockedInARow >= 3 {
+				// Reject identifiers with any three blocked labels in a row.
 				return berrors.RejectedIdentifierError("Cannot issue for %q: domain name contains too many subdomain labels indicative of recursive just-in-time issuance", ident.Value)
 			}
 		}
