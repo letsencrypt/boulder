@@ -368,16 +368,16 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "making keypolicy")
 
-	profiles := &validationProfiles{
-		defaultName: "test",
-		byName: map[string]*validationProfile{"test": {
-			pendingAuthzLifetime: 7 * 24 * time.Hour,
-			validAuthzLifetime:   300 * 24 * time.Hour,
-			orderLifetime:        7 * 24 * time.Hour,
-			maxNames:             100,
-			identifierTypes:      []identifier.IdentifierType{identifier.TypeDNS},
-		}},
-	}
+	profiles, err := NewValidationProfiles("test", map[string]*ValidationProfileConfig{
+		"test": {
+			PendingAuthzLifetime: config.Duration{Duration: 7 * 24 * time.Hour},
+			ValidAuthzLifetime:   config.Duration{Duration: 30 * 24 * time.Hour},
+			OrderLifetime:        config.Duration{Duration: 7 * 24 * time.Hour},
+			MaxNames:             100,
+			IdentifierTypes:      []identifier.IdentifierType{identifier.TypeDNS},
+		},
+	})
+	test.AssertNotError(t, err, "making validation profiles")
 
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
