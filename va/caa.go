@@ -126,7 +126,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	params *caaParams) error {
-	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
+	if core.IsAnyNilOrZero(params.validationMethod, params.accountURIID) {
 		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 

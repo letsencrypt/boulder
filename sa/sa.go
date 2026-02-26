@@ -1428,7 +1428,7 @@ func overrideLowerThanExisting(new *sapb.RateLimitOverride, existing overrideMod
 // re-enabled. The current status is returned in the Enabled field of the
 // response. To re-enable an override, use EnableRateLimitOverride.
 func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *sapb.AddRateLimitOverrideRequest) (*sapb.AddRateLimitOverrideResponse, error) {
-	if core.IsAnyNilOrZero(req, req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period, req.Override.Comment) {
+	if core.IsAnyNilOrZero(req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period, req.Override.Comment) {
 		return nil, errIncompleteRequest
 	}
 
@@ -1615,7 +1615,7 @@ func (ssa *SQLStorageAuthority) updateRateLimitOverride(
 // not exist, a NotFoundError is returned. If the override exists but is already
 // disabled, this is a no-op.
 func (ssa *SQLStorageAuthority) DisableRateLimitOverride(ctx context.Context, req *sapb.DisableRateLimitOverrideRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey) {
+	if core.IsAnyNilOrZero(req.LimitEnum, req.BucketKey) {
 		return nil, errIncompleteRequest
 	}
 	return ssa.setRateLimitOverride(ctx, req.LimitEnum, req.BucketKey, false)
@@ -1625,7 +1625,7 @@ func (ssa *SQLStorageAuthority) DisableRateLimitOverride(ctx context.Context, re
 // not exist, a NotFoundError is returned. If the override exists but is already
 // enabled, this is a no-op.
 func (ssa *SQLStorageAuthority) EnableRateLimitOverride(ctx context.Context, req *sapb.EnableRateLimitOverrideRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey) {
+	if core.IsAnyNilOrZero(req.LimitEnum, req.BucketKey) {
 		return nil, errIncompleteRequest
 	}
 	return ssa.setRateLimitOverride(ctx, req.LimitEnum, req.BucketKey, true)

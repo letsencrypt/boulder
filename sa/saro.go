@@ -685,7 +685,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	idents := identifier.FromProtoSlice(req.Identifiers)
 
-	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
+	if core.IsAnyNilOrZero(req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
@@ -1128,7 +1128,7 @@ func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiers(ctx context.Context, req 
 // GetRateLimitOverride retrieves a rate limit override for the given bucket key
 // and limit. If no override is found, a NotFound error is returned.
 func (ssa *SQLStorageAuthorityRO) GetRateLimitOverride(ctx context.Context, req *sapb.GetRateLimitOverrideRequest) (*sapb.RateLimitOverrideResponse, error) {
-	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey) {
+	if core.IsAnyNilOrZero(req.LimitEnum, req.BucketKey) {
 		return nil, errIncompleteRequest
 	}
 

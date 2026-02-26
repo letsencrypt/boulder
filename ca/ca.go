@@ -219,7 +219,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	// Step 1: Locally process the gRPC request and its embedded CSR to extract
 	// the relevant information, like the pubkey and SANs. Also generate
 	// some metadata from scratch, such as the serial and validity period.
-	if core.IsAnyNilOrZero(req, req.RegistrationID, req.OrderID, req.CertProfileName, req.Csr) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.OrderID, req.CertProfileName, req.Csr) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
 

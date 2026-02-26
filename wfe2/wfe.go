@@ -1348,7 +1348,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
+		if err != nil || core.IsAnyNilOrZero(authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -2450,7 +2450,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		ReplacesSerial:         replacesSerial,
 	})
 
-	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.Identifiers, order.Created, order.Expires) {
+	if err != nil || core.IsAnyNilOrZero(order.Id, order.RegistrationID, order.Identifiers, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}

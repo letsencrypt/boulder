@@ -105,7 +105,7 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 // SendContacts enqueues the provided email addresses. If the queue cannot
 // accommodate the new emails, an ErrQueueFull is returned.
 func (impl *ExporterImpl) SendContacts(ctx context.Context, req *salesforcepb.SendContactsRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.Emails) {
+	if core.IsAnyNilOrZero(req.Emails) {
 		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}
 
@@ -127,7 +127,7 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *salesforcepb.Se
 // provided details. Any retries are handled internally by the SalesforceClient.
 // The following fields are required: Origin, Subject, ContactEmail.
 func (impl *ExporterImpl) SendCase(ctx context.Context, req *salesforcepb.SendCaseRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req, req.Origin, req.Subject, req.ContactEmail) {
+	if core.IsAnyNilOrZero(req.Origin, req.Subject, req.ContactEmail) {
 		return nil, berrors.InternalServerError("incomplete gRPC request message")
 	}
 

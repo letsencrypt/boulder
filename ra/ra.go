@@ -2096,7 +2096,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
 	ident := identifier.FromProto(req.Identifier)
 
-	if core.IsAnyNilOrZero(req, req.Id, ident, req.Status, req.RegistrationID) {
+	if core.IsAnyNilOrZero(req.Id, ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
 	authzID, err := strconv.ParseInt(req.Id, 10, 64)
@@ -2413,7 +2413,7 @@ func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request
 }
 
 func (ra *RegistrationAuthorityImpl) GetAuthorization(ctx context.Context, req *rapb.GetAuthorizationRequest) (*corepb.Authorization, error) {
-	if core.IsAnyNilOrZero(req, req.Id) {
+	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2437,7 +2437,7 @@ func (ra *RegistrationAuthorityImpl) GetAuthorization(ctx context.Context, req *
 
 // AddRateLimitOverride is a pass-through to the SA's AddRateLimitOverride method.
 func (ra *RegistrationAuthorityImpl) AddRateLimitOverride(ctx context.Context, req *rapb.AddRateLimitOverrideRequest) (*rapb.AddRateLimitOverrideResponse, error) {
-	if core.IsAnyNilOrZero(req, req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period, req.Override.Comment) {
+	if core.IsAnyNilOrZero(req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period, req.Override.Comment) {
 		return nil, errIncompleteGRPCRequest
 	}
 
