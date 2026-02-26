@@ -13,6 +13,8 @@ import (
 )
 
 func main() {
+	defer cmd.AuditPanic()
+
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configPath := flag.String(
 		"config", "config.yml", "Path to boulder-observer configuration file")
@@ -46,8 +48,6 @@ func main() {
 	if err != nil {
 		cmd.FailOnError(err, "config failed validation")
 	}
-
-	defer cmd.AuditPanic()
 
 	// Start the `Observer` daemon.
 	obs.Start()

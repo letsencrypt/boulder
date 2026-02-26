@@ -99,8 +99,9 @@ func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probe
 		certificatePEMsURL:    certificatePEMsURL,
 		caOwner:               caOwner,
 		crlAgeLimit:           ageLimitDuration,
-		crlsSuccess:           crlsSuccess,
 		crlRegexp:             re,
+
+		crlsSuccess: crlsSuccess,
 	}, nil
 }
 
@@ -164,24 +165,22 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 		return err
 	}
 
-	crlURLs, err := c.getCRLURLs(ctx, c.allCertificatesCSVURL, c.caOwner, issuers)
+	crlURLs, err := c.getCRLURLs(ctx, issuers)
 	if err != nil {
 		return err
 	}
-
-	var crls, entries, bytes int
 
 	serials := make(map[string]*x509.RevocationList)
 
 	var errs []error
 	for skid, urls := range crlURLs {
-		for _, url := range urls {
-			crls++
-			issuer := issuers[skid]
-			if issuer == nil {
-				return fmt.Errorf("no issuer found for skid %x", skid)
-			}
+		issuer := issuers[skid]
+		if issuer == nil {
+			errs = append(errs, fmt.Errorf("no issuer found for skid %x", skid))
+			continue
+		}
 
+		for _, url := range urls {
 			// This can happen when an issuer is not yet issuing.
 			if url == "" {
 				continue
@@ -208,15 +207,13 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 				if otherCRL, ok := serials[serialByteString]; ok {
 					otherCRLURL, err := getIDP(otherCRL)
 					if err != nil {
-						return err
+						errs = append(errs, fmt.Errorf("failed to get CRL from other CRL: %s", err))
+						continue
 					}
 					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s", entry.SerialNumber, otherCRLURL, url))
 				}
 				serials[serialByteString] = crl
 			}
-
-			entries += len(crl.RevokedCertificateEntries)
-			bytes += len(crl.Raw)
 		}
 	}
 
@@ -319,8 +316,8 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (ma
 }
 
 // returns a map from issuer SKID to list of URLs
-func (c CCADBProber) getCRLURLs(ctx context.Context, csvURL string, owner string, issuers map[string]*x509.Certificate) (map[string][]string, error) {
-	header, reader, err := getCSV(ctx, csvURL)
+func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Certificate) (map[string][]string, error) {
+	header, reader, err := getCSV(ctx, c.allCertificatesCSVURL)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +335,7 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, csvURL string, owner string
 		if err != nil {
 			return nil, err
 		}
-		if record[ownerIndex] != owner {
+		if record[ownerIndex] != c.caOwner {
 			continue
 		}
 		crlJSON := record[crlIndex]
@@ -373,7 +370,7 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, csvURL string, owner string
 	}
 
 	if len(allCRLs) == 0 {
-		return nil, fmt.Errorf("no records found in CCADB for CA Owner %q", owner)
+		return nil, fmt.Errorf("no records found in CCADB for CA Owner %q", c.caOwner)
 	}
 	return allCRLs, nil
 }
