@@ -7,8 +7,19 @@ import (
 	"net/http"
 )
 
-// Client returns an http.Client for use in probers.
+var secureClient = newClient(false)
+var insecureClient = newClient(true)
+
+// Client returns a shared *http.Client, with the appropriate TLS configuration,
+// shared across all probers.
 func Client(insecure bool) *http.Client {
+	if insecure {
+		return insecureClient
+	}
+	return secureClient
+}
+
+func newClient(insecure bool) *http.Client {
 	// Use the default transport, because it comes with useful defaults that are
 	// not just the http.Transport zero-values.
 	t := http.DefaultTransport.(*http.Transport).Clone()

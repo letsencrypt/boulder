@@ -83,6 +83,7 @@ func checkOCSP(ctx context.Context, cert, issuer *x509.Certificate, want int) (b
 	if err != nil {
 		return false, err
 	}
+	defer res.Body.Close()
 
 	output, err := io.ReadAll(res.Body)
 	if err != nil {

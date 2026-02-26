@@ -45,6 +45,7 @@ func (p HTTPProbe) Probe(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	if !slices.Contains(p.rcodes, resp.StatusCode) {
 		return fmt.Errorf("got HTTP status code %d, but want one of %#v", resp.StatusCode, p.rcodes)
