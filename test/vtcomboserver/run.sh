@@ -30,6 +30,13 @@ echo "max_connections = $MYSQL_MAX_CONNECTIONS" >> /vt/config/mycnf/test-suite.c
 # https://github.com/vitessio/vitess/pull/5115/files
 rm -vf "$VTDATAROOT"/"$tablet_dir"/{mysql.sock,mysql.sock.lock}
 
+VTSCHEMADIR=/vt/schema/
+for DB in boulder_sa boulder_sa_next incidents incidents_next ; do
+  # In MariaDB land, we need a `USE` statement in the SQL. In Vitess,
+  # it's disallowed.
+  grep -v '^USE ' sa/db/*"{$DB}".sql > "${VTSCHEMADIR}/{$DB}/schema.sql"
+done
+
 # Kick off script to install trigger we use to simulate
 # errors in our integration tests, in the background.
 MYSQL_DATABASE=boulder_sa /vt/install_trigger.sh &
@@ -38,7 +45,7 @@ MYSQL_DATABASE=boulder_sa_next /vt/install_trigger.sh &
 /vt/bin/vttestserver \
   --alsologtostderr \
   --data-dir=/vt/vtdataroot/ \
-  --schema-dir=/vt/schema/ \
+  --schema-dir="${VTSCHEMADIR}" \
   --persistent_mode \
   --port=33574 \
   --mysql-bind-host=0.0.0.0 \
