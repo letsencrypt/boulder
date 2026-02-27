@@ -355,7 +355,7 @@ func (s *State) Run(
 	challSrv, err := challtestsrv.New(challtestsrv.Config{
 		HTTPOneAddrs:    httpOneAddrs,
 		TLSALPNOneAddrs: tlsALPNOneAddrs,
-		DNSOneAddrs:     dnsAddrs,
+		DNSAddrs:        dnsAddrs,
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})

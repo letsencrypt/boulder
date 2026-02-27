@@ -214,8 +214,8 @@ github.com/jmhodges/clock
 # github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae
 ## explicit; go 1.20
 github.com/letsencrypt/borp
-# github.com/letsencrypt/challtestsrv v1.3.3
-## explicit; go 1.13
+# github.com/letsencrypt/challtestsrv v1.4.2
+## explicit; go 1.24
 github.com/letsencrypt/challtestsrv
 # github.com/letsencrypt/pkcs11key/v4 v4.0.0
 ## explicit; go 1.12
@@ -223,7 +223,7 @@ github.com/letsencrypt/pkcs11key/v4
 # github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
 ## explicit; go 1.18
 github.com/letsencrypt/validator/v10
-# github.com/miekg/dns v1.1.61
+# github.com/miekg/dns v1.1.62
 ## explicit; go 1.19
 github.com/miekg/dns
 # github.com/miekg/pkcs11 v1.1.1

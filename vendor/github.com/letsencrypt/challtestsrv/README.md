@@ -7,9 +7,9 @@
 
 The `challtestsrv` package offers a library that can be used by test
 code to respond to HTTP-01, DNS-01, and TLS-ALPN-01 ACME challenges. The
-`challtestsrv` package can also be used as a mock DNS server letting
-developers mock `A`, `AAAA`, `CNAME`, and `CAA` DNS data for specific hostnames.
-The mock server will resolve up to one level of `CNAME` aliasing for accepted
+`challtestsrv` package can also be used as a DNS server letting
+developers configure `A`, `AAAA`, `CNAME`, and `CAA` DNS data for specific hostnames.
+The DNS server will resolve up to one level of `CNAME` aliasing for accepted
 DNS request types.
 
 **Important note: The `challtestsrv` library is for TEST USAGE
@@ -26,11 +26,11 @@ Create a challenge server responding to HTTP-01 challenges on ":8888" and
 DNS-01 challenges on ":9999" and "10.0.0.1:9998":
 
 ```
-  import "github.com/letsencrypt/pebble/challtestsrv"
+  import "github.com/letsencrypt/challtestsrv"
 
-  challSrv, err := challtestsrv.New(challsrv.Config{
-    HTTPOneAddr: []string{":8888"},
-    DNSOneAddr: []string{":9999", "10.0.0.1:9998"},
+  challSrv, err := challtestsrv.New(challtestsrv.Config{
+    HTTPOneAddrs: []string{":8888"},
+    DNSAddrs: []string{":9999", "10.0.0.1:9998"},
   })
   if err != nil {
     panic(err)
@@ -50,11 +50,11 @@ cleaning it up again:
   defer challSrv.DeleteHTTPOneChallenge("aaa")
 ```
 
-Add a DNS-01 TXT response for the host `"_acme-challenge.example.com."` and the
+Add a DNS TXT response for the host `"_acme-challenge.example.com."` and the
 value `"bbb"`, defer cleaning it up again:
 ```
-  challSrv.AddDNSOneChallenge("_acme-challenge.example.com.", "bbb")
-  defer challSrv.DeleteHTTPOneChallenge("_acme-challenge.example.com.")
+  challSrv.AddDNSTXTRecord("_acme-challenge.example.com.", "bbb")
+  defer challSrv.DeleteDNSTXTRecord("_acme-challenge.example.com.")
 ```
 
 Get the history of HTTP requests processed by the challenge server for the host

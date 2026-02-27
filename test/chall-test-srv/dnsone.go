@@ -28,7 +28,7 @@ func (srv *managementServer) addDNS01(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add the DNS-01 challenge response TXT to the challenge server
-	srv.challSrv.AddDNSOneChallenge(request.Host, request.Value)
+	srv.challSrv.AddDNSTXTRecord(request.Host, request.Value)
 	srv.log.Printf("Added DNS-01 TXT challenge for Host %q - Value %q\n",
 		request.Host, request.Value)
 	w.WriteHeader(http.StatusOK)
@@ -59,7 +59,7 @@ func (srv *managementServer) delDNS01(w http.ResponseWriter, r *http.Request) {
 
 	// Delete the DNS-01 challenge response TXT for the given host from the
 	// challenge server
-	srv.challSrv.DeleteDNSOneChallenge(request.Host)
+	srv.challSrv.DeleteDNSTXTRecord(request.Host)
 	srv.log.Printf("Removed DNS-01 TXT challenge for Host %q\n", request.Host)
 	w.WriteHeader(http.StatusOK)
 }

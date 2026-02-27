@@ -1,35 +1,75 @@
-linters-settings:
-  gocyclo:
-    min-complexity: 25
-  govet:
-    check-shadowing: false
-  misspell:
-    locale: "US"
-
+version: "2"
 linters:
-  enable-all: true
-  disable:
-    - stylecheck
-    - gosec
-    - dupl
-    - maligned
-    - depguard
-    - lll
-    - prealloc
-    - scopelint
-    - gocritic
-    - gochecknoinits
-    - gochecknoglobals
-    - gomnd
-    - wsl
-    - goerr113
-    - godot
-
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - containedctx
+    - copyloopvar
+    - decorder
+    - dogsled
+    - dupword
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - forcetypeassert
+    - ginkgolinter
+    - gocheckcompilerdirectives
+    - gocognit
+    - goconst
+    - gocyclo
+    - goheader
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - importas
+    - inamedparam
+    - ireturn
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - nakedret
+    - nolintlint
+    - nonamedreturns
+    - nosprintfhostport
+    - perfsprint
+    - predeclared
+    - reassign
+    - revive
+    - tagalign
+    - testableexamples
+    - testifylint
+    - thelper
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+  settings:
+    gocyclo:
+      min-complexity: 25
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
 issues:
-  exclude-use-default: true
-  max-per-linter: 0
+  max-issues-per-linter: 0
   max-same-issues: 0
-  # The following excludes are considered false-positives/known-OK.
-  exclude-rules:
-    - path: tlsalpnone.go
-      text: '`marshalling` is a misspelling of `marshaling`'
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -69,7 +69,7 @@ func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientH
 		kaHash := sha256.Sum256([]byte(ka))
 		extValue, err := asn1.Marshal(kaHash[:])
 		if err != nil {
-			return nil, fmt.Errorf("failed marshalling hash OCTET STRING: %s", err)
+			return nil, fmt.Errorf("failed marshaling hash OCTET STRING: %w", err)
 		}
 		certTmpl := x509.Certificate{
 			SerialNumber: big.NewInt(1729),
@@ -84,7 +84,7 @@ func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientH
 		}
 		certBytes, err := x509.CreateCertificate(rand.Reader, &certTmpl, &certTmpl, k.Public(), k)
 		if err != nil {
-			return nil, fmt.Errorf("failed creating challenge certificate: %s", err)
+			return nil, fmt.Errorf("failed creating challenge certificate: %w", err)
 		}
 		return &tls.Certificate{
 			Certificate: [][]byte{certBytes},
@@ -104,10 +104,10 @@ func (c challTLSServer) Shutdown() error {
 func (c challTLSServer) ListenAndServe() error {
 	// Since we set TLSConfig.GetCertificate, the certfile and keyFile arguments
 	// are ignored and we leave them blank.
-	return c.Server.ListenAndServeTLS("", "")
+	return c.ListenAndServeTLS("", "")
 }
 
-func tlsALPNOneServer(address string, challSrv *ChallSrv) challengeServer {
+func tlsALPNOneServer(address string, challSrv *ChallSrv) challTLSServer {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		panic(err)

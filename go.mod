@@ -16,10 +16,10 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
 	github.com/jmhodges/clock v1.2.0
 	github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae
-	github.com/letsencrypt/challtestsrv v1.3.3
+	github.com/letsencrypt/challtestsrv v1.4.2
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
 	github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
-	github.com/miekg/dns v1.1.61
+	github.com/miekg/dns v1.1.62
 	github.com/miekg/pkcs11 v1.1.1
 	github.com/nxadm/tail v1.4.11
 	github.com/prometheus/client_golang v1.22.0

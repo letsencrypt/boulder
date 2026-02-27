@@ -1,30 +1,213 @@
 package challtestsrv
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/miekg/dns"
 )
 
-// mockSOA returns a mock DNS SOA record with fake data.
-func mockSOA() *dns.SOA {
-	return &dns.SOA{
-		Hdr: dns.RR_Header{
-			Name:   "challtestsrv.invalid.",
-			Rrtype: dns.TypeSOA,
-			Class:  dns.ClassINET,
-		},
-		Ns:      "ns.challtestsrv.invalid.",
-		Mbox:    "master.challtestsrv.invalid.",
-		Serial:  1,
-		Refresh: 1,
-		Retry:   1,
-		Expire:  1,
-		Minttl:  1,
-	}
+// SetDefaultDNSIPv4 sets the default IPv4 address used for A query responses
+// that don't match hosts added with AddDNSARecord. Use "" to disable default
+// A query responses.
+func (s *ChallSrv) SetDefaultDNSIPv4(addr string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	s.dnsData.defaultIPv4 = addr
+}
+
+// SetDefaultDNSIPv6 sets the default IPv6 address used for AAAA query responses
+// that don't match hosts added with AddDNSAAAARecord. Use "" to disable default
+// AAAA query responses.
+func (s *ChallSrv) SetDefaultDNSIPv6(addr string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	s.dnsData.defaultIPv6 = addr
+}
+
+// GetDefaultDNSIPv4 gets the default IPv4 address used for A query responses
+// (in string form), or an empty string if no default is being used.
+func (s *ChallSrv) GetDefaultDNSIPv4() string {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	return s.dnsData.defaultIPv4
+}
+
+// GetDefaultDNSIPv6 gets the default IPv6 address used for AAAA query responses
+// (in string form), or an empty string if no default is being used.
+func (s *ChallSrv) GetDefaultDNSIPv6() string {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	return s.dnsData.defaultIPv6
+}
+
+// AddDNSCNAMERecord sets a CNAME record that will be used like an alias when
+// querying for other DNS records for the given host.
+func (s *ChallSrv) AddDNSCNAMERecord(host string, value string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	value = dns.Fqdn(value)
+	s.dnsData.cnameRecords[host] = value
+}
+
+// GetDNSCNAMERecord returns a target host if a CNAME is set for the querying
+// host and an empty string otherwise.
+func (s *ChallSrv) GetDNSCNAMERecord(host string) string {
+	s.challMu.RLock()
+	host = dns.Fqdn(host)
+	defer s.challMu.RUnlock()
+	return s.dnsData.cnameRecords[host]
+}
+
+// DeleteDNSCAMERecord deletes any CNAME alias set for the given host.
+func (s *ChallSrv) DeleteDNSCNAMERecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	delete(s.dnsData.cnameRecords, host)
+}
+
+// AddDNSTXTRecord adds a TXT record for the given host with the given content.
+func (s *ChallSrv) AddDNSTXTRecord(host, content string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	s.dnsData.txtRecords[host] = append(s.dnsData.txtRecords[host], content)
+}
+
+// GetDNSTXTRecords returns a slice of TXT record values for the given host. If
+// the host does not exist in the TXT record data then nil is returned.
+func (s *ChallSrv) GetDNSTXTRecords(host string) []string {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	return s.dnsData.txtRecords[dns.Fqdn(host)]
+}
+
+// DeleteDNSTXTRecord deletes all TXT records for the given host.
+func (s *ChallSrv) DeleteDNSTXTRecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	delete(s.dnsData.txtRecords, dns.Fqdn(host))
+}
+
+// AddDNSARecord adds IPv4 addresses that will be returned when querying for
+// A records for the given host.
+func (s *ChallSrv) AddDNSARecord(host string, addresses []string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	s.dnsData.aRecords[host] = append(s.dnsData.aRecords[host], addresses...)
+}
+
+// DeleteDNSARecord deletes any IPv4 addresses that will be returned when
+// querying for A records for the given host.record for the given host.
+func (s *ChallSrv) DeleteDNSARecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	delete(s.dnsData.aRecords, host)
+}
+
+// GetDNSARecord returns a slice of IPv4 addresses (in string form) that will be
+// returned when querying for A records for the given host.
+func (s *ChallSrv) GetDNSARecord(host string) []string {
+	s.challMu.RLock()
+	host = dns.Fqdn(host)
+	defer s.challMu.RUnlock()
+	return s.dnsData.aRecords[host]
+}
+
+// AddDNSAAAARecord adds IPv6 addresses that will be returned when querying for
+// AAAA records for the given host.
+func (s *ChallSrv) AddDNSAAAARecord(host string, addresses []string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	s.dnsData.aaaaRecords[host] = append(s.dnsData.aaaaRecords[host], addresses...)
+}
+
+// DeleteDNSAAAARecord deletes any IPv6 addresses that will be returned when
+// querying for A records for the given host.
+func (s *ChallSrv) DeleteDNSAAAARecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	delete(s.dnsData.aaaaRecords, host)
+}
+
+// GetDNSAAAARecord returns a slice of IPv6 addresses (in string form) that will
+// be returned when querying for A records for the given host.
+func (s *ChallSrv) GetDNSAAAARecord(host string) []string {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	host = dns.Fqdn(host)
+	return s.dnsData.aaaaRecords[host]
+}
+
+// CAAPolicy holds a tag and a value for a CAA policy record. See
+// https://tools.ietf.org/html/rfc6844
+type CAAPolicy struct {
+	Tag   string
+	Value string
+}
+
+// AddDNSCAARecord adds CAA records that will be returned when querying
+// CAA for the given host.
+func (s *ChallSrv) AddDNSCAARecord(host string, policies []CAAPolicy) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	s.dnsData.caaRecords[host] = append(s.dnsData.caaRecords[host], policies...)
+}
+
+// DeleteDNSCAARecord deletes any CAA policies that will be returned when
+// querying CAA for the given host.
+func (s *ChallSrv) DeleteDNSCAARecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	delete(s.dnsData.caaRecords, host)
+}
+
+// GetDNSCAARecord returns a slice of CAA policy records that will
+// be returned when querying CAA for the given host.
+func (s *ChallSrv) GetDNSCAARecord(host string) []CAAPolicy {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	host = dns.Fqdn(host)
+	return s.dnsData.caaRecords[host]
+}
+
+// AddDNSServFailRecord configures the chall srv to return SERVFAIL responses
+// for all queries for the given host.
+func (s *ChallSrv) AddDNSServFailRecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	s.dnsData.servFailRecords[host] = true
+}
+
+// DeleteDNSServFailRecord configures the chall srv to no longer return SERVFAIL
+// responses for all queries for the given host.
+func (s *ChallSrv) DeleteDNSServFailRecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	delete(s.dnsData.servFailRecords, host)
+}
+
+// GetDNSServFailRecord returns true when the chall srv has been configured with
+// AddDNSServFailRecord to return SERVFAIL for all queries to the given host.
+func (s *ChallSrv) GetDNSServFailRecord(host string) bool {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	host = dns.Fqdn(host)
+	return s.dnsData.servFailRecords[host]
 }
 
 // dnsAnswerFunc is a function that accepts a DNS question and returns one or
@@ -32,7 +215,7 @@ func mockSOA() *dns.SOA {
 type dnsAnswerFunc func(question dns.Question) []dns.RR
 
 // cnameAnswers is a dnsAnswerFunc that creates CNAME RR's for the given question
-// using the ChallSrv's dns mock data. If there is no mock CNAME data for the
+// using the ChallSrv's DNS records. If there is no CNAME record for the
 // given hostname in the question no RR's will be returned.
 func (s *ChallSrv) cnameAnswers(q dns.Question) []dns.RR {
 	var records []dns.RR
@@ -54,11 +237,11 @@ func (s *ChallSrv) cnameAnswers(q dns.Question) []dns.RR {
 }
 
 // txtAnswers is a dnsAnswerFunc that creates TXT RR's for the given question
-// using the ChallSrv's dns mock data. If there is no mock TXT data for the
+// using the ChallSrv's DNS records. If there is no TXT record for the
 // given hostname in the question no RR's will be returned.
 func (s *ChallSrv) txtAnswers(q dns.Question) []dns.RR {
 	var records []dns.RR
-	values := s.GetDNSOneChallenge(q.Name)
+	values := s.GetDNSTXTRecords(q.Name)
 	for _, resp := range values {
 		record := &dns.TXT{
 			Hdr: dns.RR_Header{
@@ -66,15 +249,35 @@ func (s *ChallSrv) txtAnswers(q dns.Question) []dns.RR {
 				Rrtype: dns.TypeTXT,
 				Class:  dns.ClassINET,
 			},
-			Txt: []string{resp},
+			Txt: splitTXTRecordValue(resp),
 		}
 		records = append(records, record)
 	}
 	return records
 }
 
+// splitTXTRecordValue splits a TXT value into RFC 1035 <character-string>
+// chunks of at most 255 octets so long TXT values can be represented as
+// multiple strings in one RR.
+func splitTXTRecordValue(value string) []string {
+	const maxTXTStringOctets = 255
+	if len(value) <= maxTXTStringOctets {
+		return []string{value}
+	}
+
+	var chunks []string
+	for len(value) > maxTXTStringOctets {
+		chunks = append(chunks, value[:maxTXTStringOctets])
+		value = value[maxTXTStringOctets:]
+	}
+	if len(value) > 0 {
+		chunks = append(chunks, value)
+	}
+	return chunks
+}
+
 // aAnswers is a dnsAnswerFunc that creates A RR's for the given question using
-// the ChallSrv's dns mock data. If there is not a mock ipv4 A response added
+// the ChallSrv's DNS records. If there is not a IPv4 A record added
 // for the given hostname in the question the default IPv4 address will be used
 // for the response.
 func (s *ChallSrv) aAnswers(q dns.Question) []dns.RR {
@@ -91,7 +294,7 @@ func (s *ChallSrv) aAnswers(q dns.Question) []dns.RR {
 	for _, resp := range values {
 		ipAddr := net.ParseIP(resp)
 		if ipAddr == nil || ipAddr.To4() == nil {
-			// If the mock data isn't a valid IPv4 address, don't use it.
+			// If the DNS records aren't a valid IPv4 address, don't use them.
 			continue
 		}
 		record := &dns.A{
@@ -108,7 +311,7 @@ func (s *ChallSrv) aAnswers(q dns.Question) []dns.RR {
 }
 
 // aaaaAnswers is a dnsAnswerFunc that creates AAAA RR's for the given question
-// using the ChallSrv's dns mock data. If there is not a mock IPv6 AAAA response
+// using the ChallSrv's DNS records. If there is not an IPv6 AAAA record
 // added for the given hostname in the question the default IPv6 address will be
 // used for the response.
 func (s *ChallSrv) aaaaAnswers(q dns.Question) []dns.RR {
@@ -120,7 +323,7 @@ func (s *ChallSrv) aaaaAnswers(q dns.Question) []dns.RR {
 	for _, resp := range values {
 		ipAddr := net.ParseIP(resp)
 		if ipAddr == nil || ipAddr.To4() != nil {
-			// If the mock data isn't a valid IPv6 address, don't use it.
+			// If the DNS records aren't a valid IPv6 address, don't use them.
 			continue
 		}
 		record := &dns.AAAA{
@@ -137,7 +340,7 @@ func (s *ChallSrv) aaaaAnswers(q dns.Question) []dns.RR {
 }
 
 // caaAnswers is a dnsAnswerFunc that creates CAA RR's for the given question
-// using the ChallSrv's dns mock data. If there is not a mock CAA response
+// using the ChallSrv's DNS records. If there is not a CAA record
 // added for the given hostname in the question no RRs will be returned.
 func (s *ChallSrv) caaAnswers(q dns.Question) []dns.RR {
 	var records []dns.RR
@@ -158,7 +361,7 @@ func (s *ChallSrv) caaAnswers(q dns.Question) []dns.RR {
 }
 
 type writeMsg interface {
-	WriteMsg(*dns.Msg) error
+	WriteMsg(m *dns.Msg) error
 }
 
 type dnsToHTTPWriter struct {
@@ -200,11 +403,29 @@ func (s *ChallSrv) dohHandler(w http.ResponseWriter, r *http.Request) {
 
 // dnsHandler is a miekg/dns handler that can process a dns.Msg request and
 // write a response to the provided dns.ResponseWriter. TXT, A, AAAA, CNAME,
-// and CAA queries types are supported and answered using the ChallSrv's mock
-// DNS data. A host that is aliased by a CNAME record will follow that alias
+// and CAA queries types are supported and answered using the ChallSrv's DNS
+// records. A host that is aliased by a CNAME record will follow that alias
 // one level and return the requested record types for that alias' target
 func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	s.dnsHandlerInner(w, r, "")
+}
+
+// newDefaultSOA returns a DNS SOA record with sensible default values.
+func newDefaultSOA() *dns.SOA {
+	return &dns.SOA{
+		Hdr: dns.RR_Header{
+			Name:   "challtestsrv.invalid.",
+			Rrtype: dns.TypeSOA,
+			Class:  dns.ClassINET,
+		},
+		Ns:      "ns.challtestsrv.invalid.",
+		Mbox:    "master.challtestsrv.invalid.",
+		Serial:  1,
+		Refresh: 1,
+		Retry:   1,
+		Expire:  1,
+		Minttl:  1,
+	}
 }
 
 func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg, userAgent string) {
@@ -219,7 +440,7 @@ func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg, userAgent string) {
 			UserAgent: userAgent,
 		})
 
-		// If there is a ServFail mock set then ignore the question and set the
+		// If there is a ServFail record set then ignore the question and set the
 		// SERVFAIL rcode and continue.
 		if s.GetDNSServFailRecord(q.Name) {
 			m.SetRcode(r, dns.RcodeServerFailure)
@@ -260,6 +481,58 @@ func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg, userAgent string) {
 		}
 	}
 
-	m.Ns = append(m.Ns, mockSOA())
+	m.Ns = append(m.Ns, newDefaultSOA())
 	_ = w.WriteMsg(m)
+}
+
+type dnsHandler func(dns.ResponseWriter, *dns.Msg)
+
+// dnsServer creates a DNS server that registers the provided handler with the
+// `miekg/dns` package. Because the DNS server runs both a UDP and a TCP
+// listener, two `server` objects are returned.
+func dnsServer(address string, handler dnsHandler) []challengeServer {
+	// Register the dnsHandler
+	dns.HandleFunc(".", handler)
+	// Create a UDP DNS server
+	udpServer := &dns.Server{
+		Addr:         address,
+		Net:          "udp",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	}
+	// Create a TCP DNS server
+	tcpServer := &dns.Server{
+		Addr:         address,
+		Net:          "tcp",
+		ReadTimeout:  time.Second,
+		WriteTimeout: time.Second,
+	}
+	return []challengeServer{udpServer, tcpServer}
+}
+
+type doh struct {
+	*http.Server
+	tlsCert, tlsCertKey string
+}
+
+func (s *doh) Shutdown() error {
+	return s.Server.Shutdown(context.Background())
+}
+
+func (s *doh) ListenAndServe() error {
+	return s.ListenAndServeTLS(s.tlsCert, s.tlsCertKey)
+}
+
+// dohServer creates a DNS-over-HTTPS server backed by the provided handler.
+func dohServer(address string, tlsCert, tlsCertKey string, handler http.Handler) *doh {
+	return &doh{
+		&http.Server{
+			Handler:      handler,
+			Addr:         address,
+			ReadTimeout:  time.Second,
+			WriteTimeout: time.Second,
+		},
+		tlsCert,
+		tlsCertKey,
+	}
 }

@@ -296,8 +296,8 @@ func completeAuthorization(authz *core.Authorization, s *State, c *acmeCache) er
 		h.Write([]byte(authStr))
 		authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 		domain := "_acme-challenge." + authz.Identifier.Value + "."
-		s.challSrv.AddDNSOneChallenge(domain, authorizedKeysDigest)
-		defer s.challSrv.DeleteDNSOneChallenge(domain)
+		s.challSrv.AddDNSTXTRecord(domain, authorizedKeysDigest)
+		defer s.challSrv.DeleteDNSTXTRecord(domain)
 	case core.ChallengeTypeTLSALPN01:
 		s.challSrv.AddTLSALPNChallenge(authz.Identifier.Value, authStr)
 		defer s.challSrv.DeleteTLSALPNChallenge(authz.Identifier.Value)
