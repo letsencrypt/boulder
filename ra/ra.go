@@ -318,20 +318,28 @@ func NewValidationProfiles(defaultName string, configs map[string]*ValidationPro
 	profiles := make(map[string]*validationProfile, len(configs))
 
 	for name, config := range configs {
-		// The Baseline Requirements v1.8.1 state that validation tokens "MUST
-		// NOT be used for more than 30 days from its creation". If unconfigured
-		// or the configured value pendingAuthorizationLifetimeDays is greater
-		// than 29 days, bail out.
+		// The Baseline Requirements v2.2.5 state that a validation token (Random
+		// Value) "MUST NOT be used more than 30 days from its creation". If
+		// unconfigured or the configured value pendingAuthorizationLifetimeDays is
+		// greater than 29 days, bail out.
 		if config.PendingAuthzLifetime.Duration <= 0 || config.PendingAuthzLifetime.Duration > 29*(24*time.Hour) {
 			return nil, fmt.Errorf("PendingAuthzLifetime value must be greater than 0 and less than 30d, but got %q", config.PendingAuthzLifetime.Duration)
 		}
 
-		// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
-		// or completed validation MUST be obtained no more than 398 days prior
-		// to issuing the Certificate". If unconfigured or the configured value is
-		// greater than 397 days, bail out.
-		if config.ValidAuthzLifetime.Duration <= 0 || config.ValidAuthzLifetime.Duration > 397*(24*time.Hour) {
-			return nil, fmt.Errorf("ValidAuthzLifetime value must be greater than 0 and less than 398d, but got %q", config.ValidAuthzLifetime.Duration)
+		// Baseline Requirements v2.2.5, Section 4.2.1: "any data, document, or
+		// completed validation used MUST be obtained within the maximum number of
+		// days prior to issuing the Certificate, as defined in the following...:
+		// 2026-03-15: 200 days; 2027-03-15: 100 days; 2029-03-15: 10 days"
+		//
+		// Our CP/CPS, v6.0, Section 4.2.1: "Certificate information is verified
+		// using data and documents obtained no more than 90 days prior to issuance
+		// of the Certificate."
+		//
+		// If unconfigured or the configured value is greater than 89 days, bail
+		// out.
+		// TODO before 2029-03-15: Update this to 9 days.
+		if config.ValidAuthzLifetime.Duration <= 0 || config.ValidAuthzLifetime.Duration > 89*(24*time.Hour) {
+			return nil, fmt.Errorf("ValidAuthzLifetime value must be greater than 0 and less than 89d, but got %q", config.ValidAuthzLifetime.Duration)
 		}
 
 		if config.MaxNames <= 0 || config.MaxNames > 100 {
@@ -1335,7 +1343,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ra.countCertificateIssued(ctx, int64(acctID), identifier.FromCert(parsedCertificate), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(resp.DER, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(ctx, resp.DER, parsedCertificate.NotAfter)
 
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {
@@ -2030,23 +2038,21 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		shard = req.CrlShard
 	}
 
-	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+	// We revoke the cert before adding it to the blocked keys list, to avoid a
+	// race between this and the bad-key-revoker. But we don't check the error
+	// from this operation until after we add the key to the blocked keys list,
+	// since that addition needs to happen no matter what.
+	_, revokeErr := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   req.Serial,
 		Reason:   int64(reasonCode),
 		Date:     timestamppb.New(ra.clk.Now()),
 		IssuerID: int64(issuerID),
 		ShardIdx: shard,
 	})
-	if err != nil {
-		if reasonCode == revocation.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
-			err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return nil, err
-	}
 
+	// Failing to add the key to the blocked keys list is a worse failure than
+	// failing to revoke in the first place, because it means that
+	// bad-key-revoker won't revoke the cert anyway.
 	if reasonCode == revocation.KeyCompromise && !req.SkipBlockKey {
 		if cert == nil {
 			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
@@ -2055,6 +2061,18 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Check the error returned from sa.RevokeCertificate itself.
+	err = revokeErr
+	if errors.Is(err, berrors.AlreadyRevoked) && reasonCode == revocation.KeyCompromise {
+		err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
+		if err != nil {
+			return nil, err
+		}
+		return &emptypb.Empty{}, nil
+	} else if err != nil {
+		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil

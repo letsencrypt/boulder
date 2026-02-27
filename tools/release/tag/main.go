@@ -121,7 +121,7 @@ func tag(args []string) error {
 	// Produce the tag, using -s to PGP sign it. This will fail if a tag with
 	// that name already exists.
 	message := fmt.Sprintf("Release %s", tag)
-	_, err = git("tag", "-s", "-m", message, tag, "origin/"+branch)
+	_, err = git("tag", "-s", "-m", message, tag, "refs/remotes/origin/"+branch)
 	if err != nil {
 		return err
 	}

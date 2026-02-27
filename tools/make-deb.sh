@@ -10,6 +10,10 @@
 set -eu
 cd "$(realpath -- "$(dirname -- "$0")")/.."
 
+if [ -z "${ARCH:-}" ]; then echo "ARCH not set"; exit 1; fi
+if [ -z "${VERSION:-}" ]; then echo "VERSION not set"; exit 1; fi
+if [ -z "${COMMIT_ID:-}" ]; then echo "COMMIT_ID not set"; exit 1; fi
+
 BUILD="$(mktemp -d)"
 
 mkdir -p "${BUILD}/opt"
@@ -21,7 +25,7 @@ Package: boulder
 Version: 1:${VERSION}
 License: Mozilla Public License v2.0
 Vendor: ISRG
-Architecture: amd64
+Architecture: ${ARCH}
 Maintainer: Community
 Section: default
 Priority: extra
@@ -33,4 +37,4 @@ EOF
 find "${BUILD}" ! -type l -exec touch -d "@${SOURCE_DATE_EPOCH}" {} \;
 find "${BUILD}" -type l -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} \;
 
-dpkg-deb -Zgzip -b "${BUILD}" "boulder-${VERSION}-${COMMIT_ID}.x86_64.deb"
+dpkg-deb -Zgzip -b "${BUILD}" "boulder-${VERSION}-${COMMIT_ID}.${ARCH}.deb"

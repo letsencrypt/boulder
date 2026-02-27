@@ -18,7 +18,7 @@ import (
 	"slices"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	zlintx509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"

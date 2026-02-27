@@ -176,9 +176,9 @@ func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked unchecke
 // revokeCerts revokes all the provided certificates. It uses reason
 // keyCompromise and includes note indicating that they were revoked by
 // bad-key-revoker.
-func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
+func (bkr *badKeyRevoker) revokeCerts(ctx context.Context, certs []unrevokedCertificate) error {
 	for _, cert := range certs {
-		_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		_, err := bkr.raClient.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
 			Cert:      cert.DER,
 			Serial:    cert.Serial,
 			Code:      int64(revocation.KeyCompromise),
@@ -252,7 +252,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	logEvent["serials"] = serials
 
 	// revoke each certificate
-	err = bkr.revokeCerts(unrevokedCerts)
+	err = bkr.revokeCerts(ctx, unrevokedCerts)
 	if err != nil {
 		return false, err
 	}

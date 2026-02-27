@@ -442,6 +442,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		unpauseSigner,
 		unpauseLifetime,
 		unpauseURL,
+		[]string{"asdf"},
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
@@ -2854,6 +2855,11 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Invalid identifiers requested :: Cannot issue for \"example.invalid\": Domain name does not end with a valid public suffix (TLD)","status":400}`,
 		},
 		{
+			Name:         "POST, blocked DNS identifier",
+			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":"asdf.asdf.example.com"}]}`),
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Disallowed identifier requested :: Cannot issue for \"asdf.asdf.example.com\": domain name contains too many subdomain labels indicative of recursive on-demand issuance","status":400}`,
+		},
+		{
 			Name:         "POST, invalid IP identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"ip","value":"127.0.0.0.0.0.0.1"}]}`),
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Invalid identifiers requested :: Cannot issue for \"127.0.0.0.0.0.0.1\": IP address is invalid","status":400}`,
@@ -4408,6 +4414,92 @@ ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
 
 			for _, email := range tc.expected {
 				test.AssertSliceContains(t, mockImpl.GetCreatedContacts(), email)
+			}
+		})
+	}
+}
+
+func TestLooksLikeRecursiveOnDemandRequest(t *testing.T) {
+	testCases := []struct {
+		name    string
+		idents  identifier.ACMEIdentifiers
+		blocked []string
+		wantErr bool
+	}{
+		{
+			name:    "no blocks",
+			idents:  identifier.ACMEIdentifiers{{Type: identifier.TypeDNS, Value: "example.com"}},
+			blocked: nil,
+			wantErr: false,
+		},
+		{
+			name:    "no idents",
+			idents:  nil,
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name:    "no dns idents",
+			idents:  identifier.ACMEIdentifiers{{Type: identifier.TypeIP, Value: "1.2.3.4"}},
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name: "short idents",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "bar.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name: "long but not blocked ident",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "asdf.qwer.zxcv.asdf.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name: "two identical blocked labels early",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "asdf.asdf.qwer.zxcv.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: true,
+		},
+		{
+			name: "two identical blocked labels late",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "qwer.zxcv.asdf.asdf.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: true,
+		},
+		{
+			name: "three blocked labels",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "asdf.qwer.zxcv.asdf.example.com"},
+			},
+			blocked: []string{"asdf", "qwer", "zxcv"},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := looksLikeRecursiveOnDemandRequest(tc.idents, tc.blocked)
+			if err != nil && !tc.wantErr {
+				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = %#v, but want success", tc.idents, tc.blocked, err)
+			} else if err == nil && tc.wantErr {
+				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = nil, but want error", tc.idents, tc.blocked)
 			}
 		})
 	}

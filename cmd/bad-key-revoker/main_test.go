@@ -282,7 +282,7 @@ func TestRevokeCerts(t *testing.T) {
 		certsRevoked: prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
 
-	err = bkr.revokeCerts([]unrevokedCertificate{
+	err = bkr.revokeCerts(t.Context(), []unrevokedCertificate{
 		{ID: 0, Serial: "ff"},
 		{ID: 1, Serial: "ee"},
 	})

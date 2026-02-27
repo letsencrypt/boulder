@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -506,7 +506,6 @@ func TestChallengeTypesFor(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc // Capture range variable
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 				challs, err := pa.ChallengeTypesFor(tc.ident)
@@ -562,7 +561,6 @@ func TestChallengeTypesFor(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc // Capture range variable
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 				challs, err := pa.ChallengeTypesFor(tc.ident)

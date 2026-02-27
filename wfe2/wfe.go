@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -163,6 +164,15 @@ type WebFrontEndImpl struct {
 	unpauseJWTLifetime time.Duration
 	unpauseURL         string
 
+	// blockedOnDemandLabels is a list of subdomain labels that frequently appear
+	// in on-demand requests for certificates as a result of automated crawler
+	// activity. We don't want to issue certs for names that result from this.
+	//
+	// This enforcement happens in the WFE, rather than in the policy package,
+	// because the various components that use pa.WillingToIssue do not know if a
+	// given request counts as a renewal or not.
+	blockedOnDemandLabels []string `validate:"omitempty"`
+
 	// certProfiles is a map of acceptable certificate profile names to
 	// descriptions (perhaps including URLs) of those profiles. NewOrder
 	// Requests with a profile name not present in this map will be rejected.
@@ -193,6 +203,7 @@ func NewWebFrontEndImpl(
 	unpauseSigner unpause.JWTSigner,
 	unpauseJWTLifetime time.Duration,
 	unpauseURL string,
+	blockedOnDemandLabels []string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -210,29 +221,35 @@ func NewWebFrontEndImpl(
 		return WebFrontEndImpl{}, errors.New("must provide a service for nonce redemption")
 	}
 
+	var blockedLabels []string
+	for _, label := range blockedOnDemandLabels {
+		blockedLabels = append(blockedLabels, strings.ToLower(label))
+	}
+
 	wfe := WebFrontEndImpl{
-		log:                logger,
-		clk:                clk,
-		keyPolicy:          keyPolicy,
-		certificateChains:  certificateChains,
-		issuerCertificates: issuerCertificates,
-		stats:              initStats(stats),
-		requestTimeout:     requestTimeout,
-		staleTimeout:       staleTimeout,
-		maxContactsPerReg:  maxContactsPerReg,
-		ra:                 rac,
-		sa:                 sac,
-		ee:                 eec,
-		gnc:                gnc,
-		rnc:                rnc,
-		rncKey:             rncKey,
-		accountGetter:      accountGetter,
-		limiter:            limiter,
-		txnBuilder:         txnBuilder,
-		certProfiles:       certProfiles,
-		unpauseSigner:      unpauseSigner,
-		unpauseJWTLifetime: unpauseJWTLifetime,
-		unpauseURL:         unpauseURL,
+		log:                   logger,
+		clk:                   clk,
+		keyPolicy:             keyPolicy,
+		certificateChains:     certificateChains,
+		issuerCertificates:    issuerCertificates,
+		stats:                 initStats(stats),
+		requestTimeout:        requestTimeout,
+		staleTimeout:          staleTimeout,
+		maxContactsPerReg:     maxContactsPerReg,
+		ra:                    rac,
+		sa:                    sac,
+		ee:                    eec,
+		gnc:                   gnc,
+		rnc:                   rnc,
+		rncKey:                rncKey,
+		accountGetter:         accountGetter,
+		limiter:               limiter,
+		txnBuilder:            txnBuilder,
+		certProfiles:          certProfiles,
+		unpauseSigner:         unpauseSigner,
+		unpauseJWTLifetime:    unpauseJWTLifetime,
+		unpauseURL:            unpauseURL,
+		blockedOnDemandLabels: blockedLabels,
 	}
 
 	return wfe, nil
@@ -2383,6 +2400,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		isRenewal = len(timestamps.Timestamps) > 0
 	}
 
+	if !isRenewal {
+		err = looksLikeRecursiveOnDemandRequest(idents, wfe.blockedOnDemandLabels)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Disallowed identifier requested"), nil)
+			return
+		}
+	}
+
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
 	if err != nil {
 		// TODO(#7392) Provide link to profile documentation.
@@ -2739,4 +2764,41 @@ func jitterRetryHeader(duration time.Duration) string {
 	jittered := int(float64(duration/time.Second) * (1 + factor))
 
 	return fmt.Sprintf("%d", jittered)
+}
+
+// looksLikeRecursiveOnDemandRequest returns berrors.RejectedIdentifier if any
+// identifier has:
+// - at least four domain labels; and either
+// - two identical blockedLabels in a row, or
+// - any three blockedLabels in a row.
+func looksLikeRecursiveOnDemandRequest(idents identifier.ACMEIdentifiers, blockedLabels []string) error {
+	if len(blockedLabels) == 0 {
+		return nil
+	}
+	for _, ident := range idents {
+		if ident.Type != identifier.TypeDNS {
+			continue
+		}
+		labels := strings.Split(ident.Value, ".")
+		if len(labels) <= 3 {
+			continue
+		}
+		blockedInARow := 0
+		for i, label := range labels {
+			if slices.Contains(blockedLabels, label) {
+				if i >= 1 && label == labels[i-1] {
+					// Reject identifiers with two identical blocked labels in a row.
+					return berrors.RejectedIdentifierError("Cannot issue for %q: domain name contains too many subdomain labels indicative of recursive on-demand issuance", ident.Value)
+				}
+				blockedInARow += 1
+			} else {
+				blockedInARow = 0
+			}
+			if blockedInARow >= 3 {
+				// Reject identifiers with any three blocked labels in a row.
+				return berrors.RejectedIdentifierError("Cannot issue for %q: domain name contains too many subdomain labels indicative of recursive on-demand issuance", ident.Value)
+			}
+		}
+	}
+	return nil
 }

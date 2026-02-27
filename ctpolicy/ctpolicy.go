@@ -127,7 +127,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 		go ctp.getOne(subCtx, cert, logs[nextLog], resChan)
 	}
 
-	go ctp.submitPrecertInformational(cert, expiration)
+	go ctp.submitPrecertInformational(ctx, cert, expiration)
 
 	// staggerTicker will be used to start a new submission each stagger interval
 	staggerTicker := time.NewTicker(ctp.stagger)
@@ -215,7 +215,9 @@ func compliantSet(results []result) core.SCTDERs {
 // submitAllBestEffort submits the given certificate or precertificate to every
 // log ("informational" for precerts, "final" for certs) configured in the policy.
 // It neither waits for these submission to complete, nor tracks their success.
-func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, kind pubpb.SubmissionType, expiry time.Time) {
+func (ctp *CTPolicy) submitAllBestEffort(ctx context.Context, blob core.CertDER, kind pubpb.SubmissionType, expiry time.Time) {
+	ctx = context.WithoutCancel(ctx)
+
 	logs := ctp.finalLogs
 	if kind == pubpb.SubmissionType_info {
 		logs = ctp.infoLogs
@@ -228,7 +230,7 @@ func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, kind pubpb.Submissio
 
 		go func(log loglist.Log) {
 			_, err := ctp.pub.SubmitToSingleCTWithResult(
-				context.Background(),
+				ctx,
 				&pubpb.Request{
 					LogURL:       log.Url,
 					LogPublicKey: base64.StdEncoding.EncodeToString(log.Key),
@@ -245,12 +247,12 @@ func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, kind pubpb.Submissio
 
 // submitPrecertInformational submits precertificates to any configured
 // "informational" logs, but does not care about success or returned SCTs.
-func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration time.Time) {
-	ctp.submitAllBestEffort(cert, pubpb.SubmissionType_info, expiration)
+func (ctp *CTPolicy) submitPrecertInformational(ctx context.Context, cert core.CertDER, expiration time.Time) {
+	ctp.submitAllBestEffort(ctx, cert, pubpb.SubmissionType_info, expiration)
 }
 
 // SubmitFinalCert submits finalized certificates created from precertificates
 // to any configured "final" logs, but does not care about success.
-func (ctp *CTPolicy) SubmitFinalCert(cert core.CertDER, expiration time.Time) {
-	ctp.submitAllBestEffort(cert, pubpb.SubmissionType_final, expiration)
+func (ctp *CTPolicy) SubmitFinalCert(ctx context.Context, cert core.CertDER, expiration time.Time) {
+	ctp.submitAllBestEffort(ctx, cert, pubpb.SubmissionType_final, expiration)
 }

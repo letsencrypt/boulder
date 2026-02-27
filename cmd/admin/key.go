@@ -218,7 +218,7 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 	for range parallelism {
 		wg.Go(func() {
 			for spkiHash := range work {
-				err = a.blockSPKIHash(ctx, spkiHash, u, comment)
+				err := a.blockSPKIHash(ctx, spkiHash, u, comment)
 				if err != nil {
 					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/observer/probers"
@@ -14,7 +14,7 @@ import (
 // MonConf is exported to receive YAML configuration in `ObsConf`.
 type MonConf struct {
 	Period   config.Duration  `yaml:"period"`
-	Kind     string           `yaml:"kind" validate:"required,oneof=DNS HTTP CRL TLS TCP AIA"`
+	Kind     string           `yaml:"kind" validate:"required,oneof=DNS HTTP CRL TLS AIA"`
 	Settings probers.Settings `yaml:"settings" validate:"min=1,dive"`
 }
 

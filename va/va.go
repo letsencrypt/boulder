@@ -261,6 +261,7 @@ func NewValidationAuthorityImpl(
 		// used for the DialContext operations that take place during an
 		// HTTP-01 challenge validation.
 		singleDialTimeout:    10 * time.Second,
+		slowRemoteTimeout:    slowRemoteTimeout,
 		perspective:          perspective,
 		rir:                  rir,
 		isReservedIPFunc:     reservedIPChecker,

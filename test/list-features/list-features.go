@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	for _, flag := range reflect.VisibleFields(reflect.TypeOf(features.Config{})) {
+	for _, flag := range reflect.VisibleFields(reflect.TypeFor[features.Config]()) {
 		fmt.Println(flag.Name)
 	}
 }
