@@ -32,7 +32,8 @@ rm -vf "$VTDATAROOT"/"$tablet_dir"/{mysql.sock,mysql.sock.lock}
 
 # Kick off script to install trigger we use to simulate
 # errors in our integration tests, in the background.
-/vt/install_trigger.sh &
+MYSQL_DATABASE=boulder_sa /vt/install_trigger.sh &
+MYSQL_DATABASE=boulder_sa_next /vt/install_trigger.sh &
 
 /vt/bin/vttestserver \
   --alsologtostderr \
