@@ -164,7 +164,7 @@ CREATE TABLE `overrides` (
   `burst` int(10) unsigned NOT NULL,
   `updatedAt` datetime NOT NULL,
   `enabled` tinyint(1) NOT NULL DEFAULT 0,
-  UNIQUE KEY `limitEnum_bucketKey` (`limitEnum`,`bucketKey`),
+  PRIMARY KEY `limitEnum_bucketKey` (`limitEnum`,`bucketKey`),
   KEY `idx_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
