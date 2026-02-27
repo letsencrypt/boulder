@@ -26,7 +26,7 @@ import (
 // there is an error resolving the hostname, or if no usable IP addresses are
 // available then a berrors.DNSError instance is returned with a nil netip.Addr
 // slice.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, []string, error) {
+func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, []string, error) {
 	// Kick off both the A and AAAA lookups in parallel.
 	var wg sync.WaitGroup
 

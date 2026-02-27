@@ -100,7 +100,7 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer) (*Linter, error
 // replaced with the linter's pubkey so that it appears self-signed. It returns
 // an error if any lint fails. On success it also returns the DER bytes of the
 // linting certificate.
-func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, reg lint.Registry) ([]byte, error) {
+func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, reg lint.Registry) ([]byte, error) {
 	lintPubKey := subjectPubKey
 	selfSigned, err := core.PublicKeysEqual(subjectPubKey, l.realPubKey)
 	if err != nil {
@@ -127,7 +127,7 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, reg
 // CheckCRL signs the given RevocationList template using the Linter's fake
 // issuer cert and private key, then runs the resulting CRL through all CRL
 // lints in the registry. It returns an error if any check fails.
-func (l Linter) CheckCRL(tbs *x509.RevocationList, reg lint.Registry) error {
+func (l *Linter) CheckCRL(tbs *x509.RevocationList, reg lint.Registry) error {
 	crl, err := makeLintCRL(tbs, l.issuer, l.signer)
 	if err != nil {
 		return err

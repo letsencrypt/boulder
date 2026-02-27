@@ -20,7 +20,7 @@ type Observer struct {
 }
 
 // Start spins off a goroutine for each monitor, and waits for a signal to exit
-func (o Observer) Start() {
+func (o *Observer) Start() {
 	for _, mon := range o.monitors {
 		go mon.start(o.logger)
 	}
