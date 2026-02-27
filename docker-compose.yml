@@ -148,8 +148,7 @@ services:
     build:
       context: test/vtcomboserver/
     volumes:
-      - ./sa/db/:/db/
-      - ./sa/vtschema/:/vt/schema/
+      - ./:/boulder/
     environment:
       # By specifying KEYSPACES vttestserver will create the corresponding
       # databases on startup.

@@ -31,10 +31,11 @@ echo "max_connections = $MYSQL_MAX_CONNECTIONS" >> /vt/config/mycnf/test-suite.c
 rm -vf "$VTDATAROOT"/"$tablet_dir"/{mysql.sock,mysql.sock.lock}
 
 VTSCHEMADIR=/vt/schema/
-for DB in boulder_sa boulder_sa_next incidents incidents_next ; do
+cp -r /boulder/sa/vtschema/ "${VTSCHEMADIR}"
+for DB in boulder_sa boulder_sa_next incidents_sa incidents_sa_next ; do
   # In MariaDB land, we need a `USE` statement in the SQL. In Vitess,
   # it's disallowed.
-  grep -v '^USE ' sa/db/*"{$DB}".sql > "${VTSCHEMADIR}/{$DB}/schema.sql"
+  grep -v '^USE ' /boulder/sa/db/*"${DB}".sql > "${VTSCHEMADIR}/${DB}/schema.sql"
 done
 
 # Kick off script to install trigger we use to simulate
