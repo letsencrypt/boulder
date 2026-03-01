@@ -49,7 +49,7 @@
 		"rir": "RIPE"
 	},
 	"syslog": {
-		"stdoutlevel": 4,
-		"sysloglevel": 4
+		"stdoutlevel": 7,
+		"sysloglevel": 7
 	}
 }
