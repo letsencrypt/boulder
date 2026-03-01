@@ -71,7 +71,7 @@ jobs:
         run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${GITHUB_REF_NAME}-go${{ matrix.GO_VERSION }}"
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        uses: docker/login-action@3227f5311cb93ffd14d13e65d8cc400d30f4dd8a # v3.0.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
