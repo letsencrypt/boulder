@@ -1,0 +1,2 @@
+server:
+  webserverPath: /var/run/pkimetal/pkimetal.sock

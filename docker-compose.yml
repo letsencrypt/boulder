@@ -21,6 +21,7 @@ services:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
       - ./test/certs/.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
+      - pkimetal-socket:/var/run/pkimetal
     networks:
       bouldernet:
         ipv4_address: 10.77.77.77
@@ -134,7 +135,11 @@ services:
       - bouldernet
 
   bpkimetal:
-    image: ghcr.io/pkimetal/pkimetal:v1.20.0
+    image: ghcr.io/pkimetal/pkimetal:v1.32.0
+    user: root
+    volumes:
+      - pkimetal-socket:/var/run/pkimetal
+      - ./test/config/pkimetal.yaml:/app/config.yaml:ro
     networks:
       - bouldernet
 
@@ -201,3 +206,6 @@ networks:
       driver: default
       config:
         - subnet: 64.112.117.128/25
+
+volumes:
+  pkimetal-socket:

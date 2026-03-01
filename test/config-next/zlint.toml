@@ -1,5 +1,5 @@
 [e_pkimetal_lint_cabf_serverauth_cert]
-addr = "http://bpkimetal:8080"
+socket = "/var/run/pkimetal/pkimetal.sock"
 severity = "notice"
 timeout = 2000000000 # 2 seconds
 ignore_lints = [
@@ -22,7 +22,7 @@ ignore_lints = [
 ]
 
 [e_pkimetal_lint_cabf_serverauth_crl]
-addr = "http://bpkimetal:8080"
+socket = "/var/run/pkimetal/pkimetal.sock"
 severity = "notice"
 timeout = 2000000000 # 2 seconds
 ignore_lints = []
