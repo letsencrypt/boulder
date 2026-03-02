@@ -2400,7 +2400,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		isRenewal = len(timestamps.Timestamps) > 0
 	}
 
-	if !isRenewal {
+	if !isRenewal && !isARIRenewal {
 		err = looksLikeRecursiveOnDemandRequest(idents, wfe.blockedOnDemandLabels)
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Disallowed identifier requested"), nil)
