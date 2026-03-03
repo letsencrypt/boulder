@@ -1,5 +1,5 @@
 -- For easy diffability, the main part of this schema
--- should be identical with 01-schema.sql. Any differences
+-- should be identical with 01-boulder_sa.sql. Any differences
 -- for the "next" schema should be expressed as ALTER TABLE
 -- commands at the end of the file.
 USE boulder_sa_next;
