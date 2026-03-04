@@ -369,6 +369,16 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 			continue
 		}
 
+		for _, param := range parsedParams {
+			// The existence of any parameters other than the ones we recognize means
+			// that this user wants something we don't understand. Don't interpret
+			// this record as allowing issuance. We're case-sensitive here to be
+			// strict in what we accept.
+			if param.tag != "accounturi" && param.tag != "validationmethods" {
+				continue
+			}
+		}
+
 		if !caaAccountURIMatches(parsedParams, va.accountURIPrefixes, params.accountURIID) {
 			continue
 		}
