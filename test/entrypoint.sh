@@ -46,9 +46,6 @@ configure_database_endpoints
 ./test/wait-for-it.sh boulder-mariadb 3306
 ./test/wait-for-it.sh boulder-proxysql 6033
 
-# make sure we can reach vitess
-./test/wait-for-it.sh boulder-vitess 33577
-
 # make sure we can reach pkilint
 ./test/wait-for-it.sh bpkimetal 8080
 
