@@ -35,7 +35,7 @@ cp -r /boulder/sa/vtschema/ "${VTSCHEMADIR}"
 for DB in boulder_sa boulder_sa_next incidents_sa incidents_sa_next ; do
   # In MariaDB land, we need a `USE` statement in the SQL. In Vitess,
   # it's disallowed.
-  grep --ignore-case --inver-match '^USE ' \
+  grep --ignore-case --invert-match '^USE ' \
     /boulder/sa/db/*"${DB}".sql > "${VTSCHEMADIR}/${DB}/schema.sql"
 done
 
