@@ -5,6 +5,11 @@ syslog:
   sysloglevel: 6
 monitors:
   -
+    period: 1h
+    kind: CCADB
+    settings:
+      crlAgeLimit: 2h
+  -
     period: 5s
     kind: DNS
     settings:

@@ -99,7 +99,6 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 		}, []string{"name", "kind", "success"})
 	metrics.MustRegister(countMonitors)
 	metrics.MustRegister(histObservations)
-	defer cmd.AuditPanic()
 	cmd.LogStartup(logger)
 	logger.Infof("Initializing boulder-observer daemon")
 	logger.Debugf("Using config: %+v", c)

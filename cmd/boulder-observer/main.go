@@ -13,6 +13,8 @@ import (
 )
 
 func main() {
+	defer cmd.AuditPanic()
+
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configPath := flag.String(
 		"config", "config.yml", "Path to boulder-observer configuration file")
