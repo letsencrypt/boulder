@@ -1,0 +1,29 @@
+{
+  "sharded":true,
+  "vindexes": {
+    "xxhash": {
+      "type": "xxhash"
+    }
+  },
+  "tables": {
+    "authz2": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
+    "blockedKeys": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
+    "certificateStatus": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
+    "certificates": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
+    "crlShards": { "column_vindexes": [ { "column": "issuerID", "name": "xxhash" } ] },
+    "crls": { "column_vindexes": [ { "column": "serials", "name": "xxhash" } ] },
+    "fqdnSets": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
+    "incidents": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
+    "issuedNames": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
+    "keyHashToSerial": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
+    "orderFqdnSets": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
+    "orders": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
+    "overrides": { "column_vindexes": [ { "column": "bucketKey", "name": "xxhash" } ] },
+    "paused": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
+    "precertificates": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
+    "registrations": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
+    "replacementOrders": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
+    "revokedCertificates": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
+    "serials": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] }
+  }
+}

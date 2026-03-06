@@ -22,8 +22,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --depth 1 --branch "${VITESS_TAG}" https://github.com/vitessio/vitess.git .
 
 # Build only the binaries we need
+RUN go build -trimpath -o /out/vtctldclient ./go/cmd/vtctldclient
+RUN go build -trimpath -o /out/vttestserver ./go/cmd/vttestserver
 RUN go build -trimpath -o /out/vtcombo ./go/cmd/vtcombo
+RUN go build -trimpath -o /out/vtexplain ./go/cmd/vtexplain
 RUN go build -trimpath -o /out/mysqlctl ./go/cmd/mysqlctl
+
 
 FROM ${MYSQL_BASE_IMAGE} AS runtime
 
@@ -42,6 +46,9 @@ RUN mkdir -p /vt/vtdataroot /vt/bin /vt/config/mycnf /vt/web \
 # Copy only the binaries we need
 COPY --from=build /out/vtcombo  /vt/bin/vtcombo
 COPY --from=build /out/mysqlctl /vt/bin/mysqlctl
+COPY --from=build /out/vttestserver /vt/bin/vttestserver
+COPY --from=build /out/vtctldclient /vt/bin/vtctldclient
+COPY --from=build /out/vtexplain /vt/bin/vtexplain
 RUN chmod +x /vt/bin/* && chown -R vitess:vitess /vt/bin
 
 # Copy other necessary files

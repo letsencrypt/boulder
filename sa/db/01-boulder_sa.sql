@@ -1,5 +1,4 @@
--- +migrate Up
--- SQL in section 'Up' is executed when this migration is applied
+USE boulder_sa;
 
 CREATE TABLE `authz2` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -165,7 +164,7 @@ CREATE TABLE `overrides` (
   `burst` int(10) unsigned NOT NULL,
   `updatedAt` datetime NOT NULL,
   `enabled` tinyint(1) NOT NULL DEFAULT 0,
-  UNIQUE KEY `limitEnum_bucketKey` (`limitEnum`,`bucketKey`),
+  PRIMARY KEY `limitEnum_bucketKey` (`limitEnum`,`bucketKey`),
   KEY `idx_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -237,29 +236,5 @@ CREATE TABLE `serials` (
   `expires` datetime NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `serial` (`serial`),
-  KEY `regId_serials_idx` (`registrationID`),
-  CONSTRAINT `regId_serials` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+  KEY `regId_serials_idx` (`registrationID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
-
--- +migrate Down
--- SQL section 'Down' is executed when this migration is rolled back
-
--- First set of tables have foreign key constraints, so are dropped first.
-DROP TABLE `serials`;
-
-DROP TABLE `authz2`;
-DROP TABLE `blockedKeys`;
-DROP TABLE `certificateStatus`;
-DROP TABLE `certificatesPerName`;
-DROP TABLE `certificates`;
-DROP TABLE `fqdnSets`;
-DROP TABLE `incidents`;
-DROP TABLE `issuedNames`;
-DROP TABLE `keyHashToSerial`;
-DROP TABLE `newOrdersRL`;
-DROP TABLE `orderFqdnSets`;
-DROP TABLE `orderToAuthz2`;
-DROP TABLE `orders`;
-DROP TABLE `precertificates`;
-DROP TABLE `registrations`;
-DROP TABLE `requestedNames`;
