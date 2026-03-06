@@ -46,6 +46,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/unpause"
+	"github.com/letsencrypt/boulder/va"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -126,8 +127,9 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// DirectoryCAAIdentity is used for the /directory response's "meta"
-	// element's "caaIdentities" field. It should match the VA's issuerDomain
-	// field value.
+	// element's "caaIdentities" field and the "issuer-domain-names" field of
+	// dns-persist-01 challenges. It MUST match the VA's issuerDomain field
+	// value.
 	DirectoryCAAIdentity string
 
 	// DirectoryWebsite is used for the /directory response's "meta" element's
@@ -204,6 +206,7 @@ func NewWebFrontEndImpl(
 	unpauseJWTLifetime time.Duration,
 	unpauseURL string,
 	blockedOnDemandLabels []string,
+	caaIdentity string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -224,6 +227,11 @@ func NewWebFrontEndImpl(
 	var blockedLabels []string
 	for _, label := range blockedOnDemandLabels {
 		blockedLabels = append(blockedLabels, strings.ToLower(label))
+	}
+
+	normalizedCAAIdentity, err := va.NormalizeIssuerDomainName(caaIdentity)
+	if err != nil {
+		return WebFrontEndImpl{}, fmt.Errorf("normalizing caaIdentity: %w", err)
 	}
 
 	wfe := WebFrontEndImpl{
@@ -250,6 +258,7 @@ func NewWebFrontEndImpl(
 		unpauseJWTLifetime:    unpauseJWTLifetime,
 		unpauseURL:            unpauseURL,
 		blockedOnDemandLabels: blockedLabels,
+		DirectoryCAAIdentity:  normalizedCAAIdentity,
 	}
 
 	return wfe, nil
@@ -1234,6 +1243,18 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	// This field is not useful for the client, only internal debugging,
 	for idx := range challenge.ValidationRecord {
 		challenge.ValidationRecord[idx].ResolverAddrs = nil
+	}
+
+	if challenge.Type == core.ChallengeTypeDNSPersist01 {
+		// draft-ietf-acme-dns-persist-00 section 3.1 states, "Servers MUST NOT
+		// send more than 10 issuer domain names." Be aware of this if we ever
+		// support configuration of multiple CAA identities.
+		challenge.IssuerDomainNames = []string{wfe.DirectoryCAAIdentity}
+
+		// dns-persist-01 does not use a token, so clear it for display.
+		challenge.Token = ""
+	} else {
+		challenge.IssuerDomainNames = nil
 	}
 }
 

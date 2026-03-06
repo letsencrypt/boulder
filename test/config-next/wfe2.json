@@ -135,7 +135,8 @@
 		},
 		"features": {
 			"PropagateCancels": true,
-			"CheckIdentifiersPaused": true
+			"CheckIdentifiersPaused": true,
+			"DNSPersist01Enabled": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",

@@ -2070,172 +2070,114 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	defer cleanUp()
 
 	ctx := context.Background()
-	idents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
-
-	// Use a mock SA that always returns a valid HTTP-01 authz for the name
-	// "zombo.com"
-	expires := time.Now()
-	ra.SA = &mockSAWithAuthzs{
-		authzs: []*core.Authorization{
-			{
-				// A static fake ID we can check for in a unit test
-				ID:             "1",
-				Identifier:     identifier.NewDNS("*.zombo.com"),
-				RegistrationID: registration.Id,
-				// Authz is valid
-				Status:  "valid",
-				Expires: &expires,
-				Challenges: []core.Challenge{
-					// HTTP-01 challenge is valid
-					{
-						Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
-						Status: core.StatusValid,
-						Token:  core.NewToken(),
-					},
-					// DNS-01 challenge is pending
-					{
-						Type:   core.ChallengeTypeDNS01,
-						Status: core.StatusPending,
-						Token:  core.NewToken(),
-					},
-				},
-			},
-			{
-				// A static fake ID we can check for in a unit test
-				ID:             "2",
-				Identifier:     identifier.NewDNS("zombo.com"),
-				RegistrationID: registration.Id,
-				// Authz is valid
-				Status:  "valid",
-				Expires: &expires,
-				Challenges: []core.Challenge{
-					// HTTP-01 challenge is valid
-					{
-						Type:   core.ChallengeTypeHTTP01,
-						Status: core.StatusValid,
-						Token:  core.NewToken(),
-					},
-					// DNS-01 challenge is pending
-					{
-						Type:   core.ChallengeTypeDNS01,
-						Status: core.StatusPending,
-						Token:  core.NewToken(),
-					},
-				},
-			},
-		},
-	}
-
-	// Create an initial request with regA and names
-	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: registration.Id,
-		Identifiers:    idents.ToProtoSlice(),
-	}
-
-	// Create an order for that request
-	_, err := ra.NewOrder(ctx, orderReq)
-	// It should fail because HTTP-01 is not a valid challenge type for wildcards
-	test.AssertError(t, err, "Added an initial order for regA with invalid challenge(s)")
-	test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with invalid challenge(s)")
-}
-
-// TestNewOrderAuthzReuseDNSAccount01 checks that the RA correctly allows reuse
-// of a wildcard authorization with a DNS-Account-01 challenge.
-func TestNewOrderAuthzReuseDNSAccount01(t *testing.T) {
-	_, _, ra, _, _, registration, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	features.Set(features.Config{DNSAccount01Enabled: true})
-	defer features.Reset()
-
-	ctx := context.Background()
-	idents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
-
-	// Use a mock SA that returns a pending authz with both DNS-01 and
-	// DNS-Account-01 challenges for wildcard. This tests that pending wildcard
-	// authorizations with 2 challenges can be reused.
 	expires := time.Now().Add(24 * time.Hour)
-	ra.SA = &mockSAWithAuthzs{
-		authzs: []*core.Authorization{
-			{
-				ID:             "1",
-				Identifier:     identifier.NewDNS("*.zombo.com"),
-				RegistrationID: registration.Id,
-				Status:         "pending",
-				Expires:        &expires,
-				Challenges: []core.Challenge{
-					{
-						Type:   core.ChallengeTypeDNS01,
-						Status: core.StatusPending,
-						Token:  core.NewToken(),
-					},
-					{
-						Type:   core.ChallengeTypeDNSAccount01,
-						Status: core.StatusPending,
-						Token:  core.NewToken(),
-					},
-				},
+
+	testCases := []struct {
+		name        string
+		features    features.Config
+		challenges  []core.Challenge
+		expectError bool
+		expectReuse bool
+	}{
+		{
+			name: "HTTP-01 rejected for wildcard",
+			challenges: []core.Challenge{
+				// A valid HTTP-01 challenge is present, but this should never
+				// be reused for a wildcard name.
+				{Type: core.ChallengeTypeHTTP01, Status: core.StatusValid, Token: core.NewToken()},
+				// Pending challenges for the valid wildcard authz types are
+				// also present, but these should be ignored.
+				{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: core.NewToken()},
+				{Type: core.ChallengeTypeDNSAccount01, Status: core.StatusPending, Token: core.NewToken()},
+				{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending, Token: core.NewToken()},
 			},
+			expectReuse: true,
+			expectError: true,
+		},
+		{
+			name: "DNS-01 accepted and reused for wildcard",
+			challenges: []core.Challenge{
+				{Type: core.ChallengeTypeDNS01, Status: core.StatusValid, Token: core.NewToken()},
+			},
+			expectReuse: true,
+			expectError: false,
+		},
+		{
+			name:     "DNS-account-01 accepted and reused for wildcard",
+			features: features.Config{DNSAccount01Enabled: true},
+			challenges: []core.Challenge{
+				{Type: core.ChallengeTypeDNSAccount01, Status: core.StatusValid, Token: core.NewToken()},
+			},
+			expectReuse: true,
+			expectError: false,
+		},
+		{
+			name:     "DNS-persist-01 accepted for wildcard but never reused",
+			features: features.Config{DNSPersist01Enabled: true},
+			challenges: []core.Challenge{
+				{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusValid, Token: core.NewToken()},
+			},
+			expectReuse: false,
+			expectError: false,
+		},
+		{
+			name:     "DNS-account-01 rejected for wildcard reuse when feature disabled",
+			features: features.Config{DNSAccount01Enabled: false},
+			challenges: []core.Challenge{
+				{Type: core.ChallengeTypeDNSAccount01, Status: core.StatusValid, Token: core.NewToken()},
+			},
+			expectReuse: false,
+			expectError: true,
+		},
+		{
+			name:     "DNS-persist-01 rejected for wildcard reuse when feature disabled",
+			features: features.Config{DNSPersist01Enabled: false},
+			challenges: []core.Challenge{
+				{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusValid, Token: core.NewToken()},
+			},
+			expectReuse: false,
+			expectError: true,
 		},
 	}
 
-	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: registration.Id,
-		Identifiers:    idents.ToProtoSlice(),
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			features.Set(tc.features)
+			defer features.Reset()
 
-	// Create an order for the wildcard domain. NewOrder should recognize that
-	// the existing valid authorization with DNS-Account-01 challenge can be
-	// reused for this wildcard domain request.
-	order, err := ra.NewOrder(ctx, orderReq)
-	test.AssertNotError(t, err, "NewOrder failed to reuse wildcard authz with DNS-Account-01")
-	// The order should contain exactly one authorization (the reused one)
-	test.AssertEquals(t, len(order.V2Authorizations), 1)
-	// The authorization ID should match the mock authz we provided (ID "1")
-	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
-}
-
-// TestNewOrderAuthzReuseDNSAccount01Disabled checks that the RA rejects
-// wildcard authorization reuse with DNS-Account-01 when the feature is disabled.
-func TestNewOrderAuthzReuseDNSAccount01Disabled(t *testing.T) {
-	_, _, ra, _, _, registration, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Feature flag is NOT set - DNSAccount01Enabled defaults to false
-
-	ctx := context.Background()
-	idents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
-
-	// Use a mock SA that returns a DNS-Account-01 authz for wildcard
-	expires := time.Now().Add(24 * time.Hour)
-	ra.SA = &mockSAWithAuthzs{
-		authzs: []*core.Authorization{
-			{
-				ID:             "1",
-				Identifier:     identifier.NewDNS("*.zombo.com"),
-				RegistrationID: registration.Id,
-				Status:         "valid",
-				Expires:        &expires,
-				Challenges: []core.Challenge{
+			ra.SA = &mockSAWithAuthzs{
+				authzs: []*core.Authorization{
 					{
-						Type:   core.ChallengeTypeDNSAccount01,
-						Status: core.StatusValid,
-						Token:  core.NewToken(),
+						ID:             "1",
+						Identifier:     identifier.NewDNS("*.zombo.com"),
+						RegistrationID: registration.Id,
+						Status:         core.StatusValid,
+						Expires:        &expires,
+						Challenges:     tc.challenges,
 					},
 				},
-			},
-		},
-	}
+			}
 
-	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: registration.Id,
-		Identifiers:    idents.ToProtoSlice(),
-	}
+			order, err := ra.NewOrder(ctx, &rapb.NewOrderRequest{
+				RegistrationID: registration.Id,
+				Identifiers:    identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}.ToProtoSlice(),
+			})
 
-	// NewOrder should reject the DNS-Account-01 authz when feature is disabled
-	_, err := ra.NewOrder(ctx, orderReq)
-	test.AssertError(t, err, "NewOrder should reject DNS-Account-01 when feature disabled")
-	test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with invalid challenge(s)")
+			if tc.expectError {
+				test.AssertError(t, err, "expected NewOrder to fail")
+				test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with invalid challenge(s)")
+				return
+			}
+
+			test.AssertNotError(t, err, "expected NewOrder to succeed")
+			test.AssertEquals(t, len(order.V2Authorizations), 1)
+			if tc.expectReuse {
+				test.AssertEquals(t, order.V2Authorizations[0], int64(1))
+			} else {
+				test.AssertNotEquals(t, order.V2Authorizations[0], int64(1))
+			}
+		})
+	}
 }
 
 func TestNewOrderWildcard(t *testing.T) {

@@ -443,6 +443,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		unpauseLifetime,
 		unpauseURL,
 		[]string{"asdf"},
+		"letsencrypt.org",
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
@@ -933,6 +934,7 @@ func TestRelativeDirectory(t *testing.T) {
 		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
 		fmt.Fprintf(expected, `"meta":{`)
 		fmt.Fprintf(expected, `"termsOfService":"http://example.invalid/terms",`)
+		fmt.Fprintf(expected, `"caaIdentities":["letsencrypt.org"],`)
 		fmt.Fprintf(expected, `"profiles":{"default":"a test profile"}`)
 		fmt.Fprintf(expected, "}")
 		fmt.Fprintf(expected, "}")
@@ -3697,6 +3699,26 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 	// as a wildcard.
 	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
 	test.AssertEquals(t, authz.Wildcard, true)
+}
+
+func TestPrepDNSPersistChallengeForDisplay(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+	wfe.DirectoryCAAIdentity = "letsencrypt.org"
+
+	authz := &core.Authorization{
+		ID:             "12345",
+		Status:         core.StatusPending,
+		RegistrationID: 1,
+		Identifier:     identifier.NewDNS("example.com"),
+		Challenges: []core.Challenge{
+			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending, Token: "token"},
+		},
+	}
+
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+	test.AssertDeepEquals(t, authz.Challenges[0].IssuerDomainNames, []string{"letsencrypt.org"})
+	test.Assert(t, authz.Challenges[0].Token == "", "expected token to be cleared for dns-persist-01")
 }
 
 func TestPrepAuthzForDisplayShuffle(t *testing.T) {
