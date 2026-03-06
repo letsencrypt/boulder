@@ -23,6 +23,7 @@ func paImpl(t *testing.T) *AuthorityImpl {
 		core.ChallengeTypeDNS01:        true,
 		core.ChallengeTypeTLSALPN01:    true,
 		core.ChallengeTypeDNSAccount01: true,
+		core.ChallengeTypeDNSPersist01: true,
 	}
 
 	enabledIdentifiers := map[identifier.IdentifierType]bool{
@@ -463,8 +464,8 @@ func TestChallengeTypesFor(t *testing.T) {
 	t.Parallel()
 	pa := paImpl(t)
 
-	t.Run("DNSAccount01Enabled=true", func(t *testing.T) {
-		features.Set(features.Config{DNSAccount01Enabled: true})
+	t.Run("DNSAccount01Enabled=true,DNSPersist01Enabled=true", func(t *testing.T) {
+		features.Set(features.Config{DNSAccount01Enabled: true, DNSPersist01Enabled: true})
 		t.Cleanup(features.Reset)
 
 		testCases := []struct {
@@ -481,6 +482,7 @@ func TestChallengeTypesFor(t *testing.T) {
 					core.ChallengeTypeDNS01,
 					core.ChallengeTypeTLSALPN01,
 					core.ChallengeTypeDNSAccount01,
+					core.ChallengeTypeDNSPersist01,
 				},
 			},
 			{
@@ -489,6 +491,7 @@ func TestChallengeTypesFor(t *testing.T) {
 				wantChalls: []core.AcmeChallenge{
 					core.ChallengeTypeDNS01,
 					core.ChallengeTypeDNSAccount01,
+					core.ChallengeTypeDNSPersist01,
 				},
 			},
 			{
@@ -523,8 +526,8 @@ func TestChallengeTypesFor(t *testing.T) {
 		}
 	})
 
-	t.Run("DNSAccount01Enabled=false", func(t *testing.T) {
-		features.Set(features.Config{DNSAccount01Enabled: false})
+	t.Run("DNSAccount01Enabled=false,DNSPersist01Enabled=false", func(t *testing.T) {
+		features.Set(features.Config{DNSAccount01Enabled: false, DNSPersist01Enabled: false})
 		t.Cleanup(features.Reset)
 
 		testCases := []struct {
@@ -541,6 +544,7 @@ func TestChallengeTypesFor(t *testing.T) {
 					core.ChallengeTypeDNS01,
 					core.ChallengeTypeTLSALPN01,
 					// DNSAccount01 excluded
+					// DNSPersist01 excluded
 				},
 			},
 			{
@@ -549,6 +553,7 @@ func TestChallengeTypesFor(t *testing.T) {
 				wantChalls: []core.AcmeChallenge{
 					core.ChallengeTypeDNS01,
 					// DNSAccount01 excluded
+					// DNSPersist01 excluded
 				},
 			},
 			{

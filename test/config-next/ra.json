@@ -163,6 +163,7 @@
 			"CAARechecksFailOrder": true,
 			"AutomaticallyPauseZombieClients": true,
 			"DNSAccount01Enabled": true,
+			"DNSPersist01Enabled": true,
 			"NoPendingAuthzReuse": true
 		}
 	},
@@ -171,7 +172,8 @@
 			"http-01": true,
 			"dns-01": true,
 			"tls-alpn-01": true,
-			"dns-account-01": true
+			"dns-account-01": true,
+			"dns-persist-01": true
 		},
 		"identifiers": {
 			"dns": true,
