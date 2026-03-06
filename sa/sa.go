@@ -633,12 +633,12 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 			errJSON,
 			req.Id)
 		if err != nil {
-			return nil, berrors.InternalServerError("error updating order error field")
+			return nil, fmt.Errorf("updating order error field: %s", err)
 		}
 
 		n, err := result.RowsAffected()
 		if err != nil || n == 0 {
-			return nil, berrors.InternalServerError("no order updated with new error field")
+			return nil, fmt.Errorf("no order updated with new error field: %s", err)
 		}
 
 		return nil, nil
