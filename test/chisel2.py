@@ -55,11 +55,21 @@ def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     client = uninitialized_client()
     tos = client.directory.meta.terms_of_service
-    if tos == ACCEPTABLE_TOS:
-        client.net.account = client.new_account(messages.NewRegistration.from_data(email=email,
-            terms_of_service_agreed=True))
-    else:
+    if tos != ACCEPTABLE_TOS:
         raise Exception("Unrecognized terms of service URL %s" % tos)
+    
+    # Make up to three attempts, retrying on badNonce errors
+    for n in range(3):
+        time.sleep(0.2 * n)  # No sleep before the first attempt, then backoff
+        try:
+            client.net.account = client.new_account(messages.NewRegistration.from_data(email=email,
+                terms_of_service_agreed=True))
+        except messages.Error as e:
+            if e.typ == "urn:ietf:params:acme:error:badNonce":
+                continue
+            raise
+        else:
+            break
     return client
 
 class NoClientError(ValueError):
