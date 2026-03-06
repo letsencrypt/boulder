@@ -426,10 +426,9 @@ func TestRevocation(t *testing.T) {
 					rcMu.Unlock()
 				}()
 			}
+			wg.Wait()
 		}
 	}
-
-	wg.Wait()
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
 	allCRLs := getAllCRLs(t)
