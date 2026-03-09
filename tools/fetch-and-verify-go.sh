@@ -26,7 +26,7 @@ export GNUPGHOME="$(mktemp -d)"
 # 4) `curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o new`,
 #    then `gpg --show-keys --with-fingerprint --with-subkey-fingerprint new`.
 #    Confirm the same `pub` fingerprint.
-# 5) Import the old keyblock using with `gpg --import old`.
+# 5) Import the old keyblock with `gpg --import old`.
 # 6) `gpg --import new` and expect only new subkeys to be added.
 # 7) With this confirmed, update the embedded key block with the contents
 #    of `new`.
