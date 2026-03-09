@@ -14,46 +14,25 @@ PLATFORM="${2:-linux-amd64}"
 
 export GNUPGHOME="$(mktemp -d)"
 
-# From https://www.google.com/linuxrepositories/
+# Import Google's published Linux package signing key bundle.
+# Source: https://dl.google.com/linux/linux_signing_key.pub
 #
-# Key Details
-#   Download: https://dl.google.com/linux/linux_signing_key.pub
-#   Key ID: Google, Inc. Linux Package Signing Key <linux-packages-keymaster@google.com>
-#   Fingerprint: 4CCA 1EAF 950C EE4A B839 76DC A040 830F 7FAC 5991
-#   Google, Inc. (Linux Package Signing Authority) <linux-packages-keymaster@google.com>
-#   Fingerprint: EB4C 1BFD 4F04 2F6D DDCC EC91 7721 F63B D38B 4796
+# You may occasionally need to update the pinned key bundle below. To verify
+# "old block vs new block" is only a subkey update:
+# 1) Make an isolated keyring: `export GNUPGHOME="$(mktemp -d)"`.
+# 2) Save this embedded key block into a file named `old`
+# 3) Import the old key: `gpg --import old`
+#    Then run `gpg --show-keys --with-fingerprint old` and capture the
+#    fingerprint under `pub` as `<old-rsa-primary-fingerprint>`.
+# 4) `curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o new`,
+#    then `gpg --show-keys --with-fingerprint --with-subkey-fingerprint new`.
+#    Confirm the same `pub` fingerprint and capture the newest `sub`
+#    fingerprint.
+# 5) `gpg --import new` and expect `new subkeys: 1` (and usually
+#    `new signatures: 1`).
+# 6) `gpg --list-keys --with-subkey-fingerprint "<old-rsa-primary-fingerprint>"`
+#     and confirm the newest subkey from step 4 appears.
 gpg2 --import <<EOF
------BEGIN PGP PUBLIC KEY BLOCK-----
-Version: GnuPG v1.4.2.2 (GNU/Linux)
-
-mQGiBEXwb0YRBADQva2NLpYXxgjNkbuP0LnPoEXruGmvi3XMIxjEUFuGNCP4Rj/a
-kv2E5VixBP1vcQFDRJ+p1puh8NU0XERlhpyZrVMzzS/RdWdyXf7E5S8oqNXsoD1z
-fvmI+i9b2EhHAA19Kgw7ifV8vMa4tkwslEmcTiwiw8lyUl28Wh4Et8SxzwCggDcA
-feGqtn3PP5YAdD0km4S4XeMEAJjlrqPoPv2Gf//tfznY2UyS9PUqFCPLHgFLe80u
-QhI2U5jt6jUKN4fHauvR6z3seSAsh1YyzyZCKxJFEKXCCqnrFSoh4WSJsbFNc4PN
-b0V0SqiTCkWADZyLT5wll8sWuQ5ylTf3z1ENoHf+G3um3/wk/+xmEHvj9HCTBEXP
-78X0A/0Tqlhc2RBnEf+AqxWvM8sk8LzJI/XGjwBvKfXe+l3rnSR2kEAvGzj5Sg0X
-4XmfTg4Jl8BNjWyvm2Wmjfet41LPmYJKsux3g0b8yzQxeOA4pQKKAU3Z4+rgzGmf
-HdwCG5MNT2A5XxD/eDd+L4fRx0HbFkIQoAi1J3YWQSiTk15fw7RMR29vZ2xlLCBJ
-bmMuIExpbnV4IFBhY2thZ2UgU2lnbmluZyBLZXkgPGxpbnV4LXBhY2thZ2VzLWtl
-eW1hc3RlckBnb29nbGUuY29tPohjBBMRAgAjAhsDBgsJCAcDAgQVAggDBBYCAwEC
-HgECF4AFAkYVdn8CGQEACgkQoECDD3+sWZHKSgCfdq3HtNYJLv+XZleb6HN4zOcF
-AJEAniSFbuv8V5FSHxeRimHx25671az+uQINBEXwb0sQCACuA8HT2nr+FM5y/kzI
-A51ZcC46KFtIDgjQJ31Q3OrkYP8LbxOpKMRIzvOZrsjOlFmDVqitiVc7qj3lYp6U
-rgNVaFv6Qu4bo2/ctjNHDDBdv6nufmusJUWq/9TwieepM/cwnXd+HMxu1XBKRVk9
-XyAZ9SvfcW4EtxVgysI+XlptKFa5JCqFM3qJllVohMmr7lMwO8+sxTWTXqxsptJo
-pZeKz+UBEEqPyw7CUIVYGC9ENEtIMFvAvPqnhj1GS96REMpry+5s9WKuLEaclWpd
-K3krttbDlY1NaeQUCRvBYZ8iAG9YSLHUHMTuI2oea07Rh4dtIAqPwAX8xn36JAYG
-2vgLAAMFB/wKqaycjWAZwIe98Yt0qHsdkpmIbarD9fGiA6kfkK/UxjL/k7tmS4Vm
-CljrrDZkPSQ/19mpdRcGXtb0NI9+nyM5trweTvtPw+HPkDiJlTaiCcx+izg79Fj9
-KcofuNb3lPdXZb9tzf5oDnmm/B+4vkeTuEZJ//IFty8cmvCpzvY+DAz1Vo9rA+Zn
-cpWY1n6z6oSS9AsyT/IFlWWBZZ17SpMHu+h4Bxy62+AbPHKGSujEGQhWq8ZRoJAT
-G0KSObnmZ7FwFWu1e9XFoUCt0bSjiJWTIyaObMrWu/LvJ3e9I87HseSJStfw6fki
-5og9qFEkMrIrBCp3QGuQWBq/rTdMuwNFiEkEGBECAAkFAkXwb0sCGwwACgkQoECD
-D3+sWZF/WACfeNAu1/1hwZtUo1bR+MWiCjpvHtwAnA1R3IHqFLQ2X3xJ40XPuAyY
-/FJG
-=Quqp
------END PGP PUBLIC KEY BLOCK-----
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBFcMjNMBEAC6Wr5QuLIFgz1V1EFPlg8ty2TsjQEl4VWftUAqWlMevJFWvYEx
@@ -287,8 +266,43 @@ pU5M3j2F1RFKRr95+HZT/NXNeGbFvsdKmvP4ELtDAuYVMgYR8GqjI5yP/ccVMsi/
 mhT+cUxO/F7+7nixw1Go637Jqr/NF5kjjrBD8EiGy8QrGm6uBR3NGad0BnMWKa2Y
 oYKF1m3Fs/evBkcymR+hSwFzkXm6WSOb8hzJIayFa6kAc7uSKyR5iG00p/neibbq
 M1aUAQDBwV7g9wPmcdRIjJS2MtK1JXHZCR1gVKb+EObct6RJOVw8s58ES5O9wGZm
-bVtIZ+JHTbuH+tg0EoRNcCbz
-=JIbr
+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
+p6XgWgagKw==
+=4eJy
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 
