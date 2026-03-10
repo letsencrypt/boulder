@@ -10,7 +10,7 @@
 		},
 		"debugAddr": ":8111",
 		"grpc": {
-			"maxConnectionAge": "30m",,
+			"maxConnectionAge": "30m",
 			"address": ":9101",
 			"services": {
 				"nonce.NonceService": {
