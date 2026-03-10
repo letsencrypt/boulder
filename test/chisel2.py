@@ -14,8 +14,6 @@ import os
 import sys
 import signal
 import threading
-import time
-
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography import x509
@@ -140,21 +138,13 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
-    # Make up to three attempts, retrying on badNonce errors
-    for n in range(3):
-        time.sleep(0.2 * n)  # No sleep before the first attempt, then backoff
-        try:
-            order = client.poll_and_finalize(order)
-            if cert_output is not None:
-                with open(cert_output, "w") as f:
-                    f.write(order.fullchain_pem)
-        except messages.Error as e:
-            if e.typ == "urn:ietf:params:acme:error:badNonce":
-                continue
-        else:
-            break
-        finally:
-            cleanup()
+    try:
+        order = client.poll_and_finalize(order)
+        if cert_output is not None:
+            with open(cert_output, "w") as f:
+                f.write(order.fullchain_pem)
+    finally:
+        cleanup()
 
     return order
 
