@@ -13,7 +13,7 @@
 			"sampleratio": 1
 		},
 		"grpc": {
-			"maxConnectionAge": "30s",
+			"maxConnectionAge": "30m",
 			"services": {
 				"nonce.NonceService": {
 					"clientNames": [
