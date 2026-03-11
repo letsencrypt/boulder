@@ -23,18 +23,15 @@ type CleanUpDB interface {
 }
 
 // ResetBoulderTestDatabase returns a cleanup function which deletes all rows in
-// all tables of the 'boulder_sa' database. Omits the 'gorp_migrations'
-// table as this is used by sql-migrate (https://github.com/rubenv/sql-migrate)
-// to track migrations. If it encounters an error it fails the tests.
+// all tables of the 'boulder_sa' database.
+// If it encounters an error it fails the tests.
 func ResetBoulderTestDatabase(t testing.TB) func() {
 	return resetTestDatabase(t, context.Background(), vars.DBConnSAFullPerms)
 }
 
 // ResetIncidentsTestDatabase returns a cleanup function which deletes all rows
-// in all tables of the 'incidents_sa' database. Omits the
-// 'gorp_migrations' table as this is used by sql-migrate
-// (https://github.com/rubenv/sql-migrate) to track migrations. If it encounters
-// an error it fails the tests.
+// in all tables of the 'incidents_sa' database.
+// If it encounters an error it fails the tests.
 func ResetIncidentsTestDatabase(t testing.TB) func() {
 	return resetTestDatabase(t, context.Background(), vars.DBConnIncidentsFullPerms)
 }
@@ -86,10 +83,9 @@ func deleteEverythingInAllTables(ctx context.Context, db CleanUpDB) error {
 }
 
 // allTableNamesInDB returns the names of the tables available to the passed
-// CleanUpDB. Omits the 'gorp_migrations' table as this is used by sql-migrate
-// (https://github.com/rubenv/sql-migrate) to track migrations.
+// CleanUpDB.
 func allTableNamesInDB(ctx context.Context, db CleanUpDB) ([]string, error) {
-	r, err := db.QueryContext(ctx, "select table_name from information_schema.tables t where t.table_schema = DATABASE() and t.table_name != 'gorp_migrations';")
+	r, err := db.QueryContext(ctx, "select table_name from information_schema.tables t where t.table_schema = DATABASE();")
 	if err != nil {
 		return nil, err
 	}

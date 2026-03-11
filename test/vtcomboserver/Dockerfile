@@ -28,7 +28,6 @@ RUN go build -trimpath -o /out/vtcombo ./go/cmd/vtcombo
 RUN go build -trimpath -o /out/vtexplain ./go/cmd/vtexplain
 RUN go build -trimpath -o /out/mysqlctl ./go/cmd/mysqlctl
 
-
 FROM ${MYSQL_BASE_IMAGE} AS runtime
 
 # Vitess expects to run as a non-root user

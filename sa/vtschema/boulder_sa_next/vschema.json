@@ -11,7 +11,7 @@
     "certificateStatus": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
     "certificates": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
     "crlShards": { "column_vindexes": [ { "column": "issuerID", "name": "xxhash" } ] },
-    "crls": { "column_vindexes": [ { "column": "serials", "name": "xxhash" } ] },
+    "crls": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
     "fqdnSets": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
     "incidents": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
     "issuedNames": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
