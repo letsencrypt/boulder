@@ -79,11 +79,6 @@ func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probe
 		}
 	}
 
-	crlsSuccess, ok := collectors["ccadb_crls_success"]
-	if !ok {
-		return nil, fmt.Errorf("CCADB prober did not receive metric \"ccadb_crls_success\"")
-	}
-
 	crlRegexp := `^http://[a-z0-9-]+\.c\.lencr\.org/\d+\.crl$`
 	if c.CRLRegexp != "" {
 		crlRegexp = c.CRLRegexp
@@ -100,8 +95,6 @@ func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probe
 		caOwner:               caOwner,
 		crlAgeLimit:           ageLimitDuration,
 		crlRegexp:             re,
-
-		crlsSuccess: crlsSuccess,
 	}, nil
 }
 
@@ -110,14 +103,7 @@ func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probe
 // objects, indexed by the name of the Prometheus metric.  If no objects were
 // constructed, nil is returned.
 func (c CCADBConf) Instrument() map[string]prometheus.Collector {
-	crlsSuccess := prometheus.Collector(prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "ccadb_crls_success",
-			Help: "Fetching and linting all CRLs succeeded.",
-		}))
-	return map[string]prometheus.Collector{
-		"ccadb_crls_success": crlsSuccess,
-	}
+	return nil
 }
 
 func getIDP(crl *x509.RevocationList) (string, error) {
@@ -147,8 +133,6 @@ type CCADBProber struct {
 	caOwner               string
 	crlAgeLimit           time.Duration
 	crlRegexp             *regexp.Regexp
-
-	crlsSuccess prometheus.Collector
 }
 
 func (c CCADBProber) Kind() string {
@@ -253,7 +237,7 @@ func getCSV(ctx context.Context, url string) ([]string, *csv.Reader, error) {
 	reader := csv.NewReader(bytes.NewReader(body))
 	header, err := reader.Read()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%q: %w", url, err)
 	}
 
 	return header, reader, nil
@@ -282,6 +266,9 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (ma
 	}
 
 	pemIndex := slices.Index(header, "X.509 Certificate (PEM)")
+	if pemIndex == -1 {
+		return nil, fmt.Errorf("no column named \"X.509 Certificate (PEM)\" in %s", url)
+	}
 
 	ret := make(map[string]*x509.Certificate)
 	for {
@@ -290,7 +277,7 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (ma
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%q: %w", url, err)
 		}
 
 		if len(record) < pemIndex {
@@ -322,10 +309,22 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Ce
 		return nil, err
 	}
 
-	ownerIndex := slices.Index(header, "CA Owner")
-	crlIndex := slices.Index(header, "JSON Array of Partitioned CRLs")
-	skidIndex := slices.Index(header, "Subject Key Identifier")
-	certificateNameIndex := slices.Index(header, "Certificate Name")
+	const (
+		owner           = "CA Owner"
+		crl             = "JSON Array of Partitioned CRLs"
+		skid            = "Subject Key Identifier"
+		certificateName = "Certificate Name"
+	)
+
+	columns := map[string]int{}
+	for _, headerName := range []string{owner, crl, skid, certificateName} {
+		index := slices.Index(header, headerName)
+		if index == -1 {
+			return nil, fmt.Errorf("no column named %q in %s", headerName, c.allCertificatesCSVURL)
+		}
+		columns[headerName] = index
+	}
+
 	allCRLs := make(map[string][]string)
 	for {
 		record, err := reader.Read()
@@ -333,12 +332,12 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Ce
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%q: %w", c.allCertificatesCSVURL, err)
 		}
-		if record[ownerIndex] != c.caOwner {
+		if record[columns[owner]] != c.caOwner {
 			continue
 		}
-		crlJSON := record[crlIndex]
+		crlJSON := record[columns[crl]]
 		if crlJSON == "" {
 			continue
 		}
@@ -347,8 +346,8 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Ce
 		if err != nil {
 			return nil, err
 		}
-		certificateName := record[certificateNameIndex]
-		skidBase64 := record[skidIndex]
+		certificateName := record[columns[certificateName]]
+		skidBase64 := record[columns[skid]]
 		skid, err := base64.StdEncoding.DecodeString(skidBase64)
 		if err != nil {
 			return nil, err
