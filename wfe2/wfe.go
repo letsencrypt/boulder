@@ -32,7 +32,8 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	_ "github.com/letsencrypt/boulder/grpc/noncebalancer" // imported for its init function.
+	_ "github.com/letsencrypt/boulder/grpc/noncebalancer"   // imported for its init function.
+	_ "github.com/letsencrypt/boulder/grpc/noncebalancerv2" // imported for its init function.
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
