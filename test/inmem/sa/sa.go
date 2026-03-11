@@ -45,10 +45,6 @@ func (sa SA) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetOrde
 	return sa.Impl.GetValidOrderAuthorizations2(ctx, req)
 }
 
-func (sa SA) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountPendingAuthorizations2(ctx, req)
-}
-
 func (sa SA) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.DeactivateAuthorization2(ctx, req)
 }

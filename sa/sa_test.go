@@ -2364,40 +2364,6 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertError(t, err, "URL field cannot be empty")
 }
 
-func TestCountPendingAuthorizations2(t *testing.T) {
-	sa, fc := initSA(t)
-
-	reg := createWorkingRegistration(t, sa)
-	expiresA := fc.Now().Add(time.Hour).UTC()
-	expiresB := fc.Now().Add(time.Hour * 3).UTC()
-	_ = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expiresA)
-	_ = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expiresB)
-
-	// Registration has two new style pending authorizations
-	regID := reg.Id
-	count, err := sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
-		Id: regID,
-	})
-	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
-	test.AssertEquals(t, count.Count, int64(2))
-
-	// Registration has two new style pending authorizations, one of which has expired
-	fc.Add(time.Hour * 2)
-	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
-		Id: regID,
-	})
-	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
-	test.AssertEquals(t, count.Count, int64(1))
-
-	// Registration with no authorizations should be 0
-	noReg := reg.Id + 100
-	count, err = sa.CountPendingAuthorizations2(context.Background(), &sapb.RegistrationID{
-		Id: noReg,
-	})
-	test.AssertNotError(t, err, "sa.CountPendingAuthorizations2 failed")
-	test.AssertEquals(t, count.Count, int64(0))
-}
-
 func TestAuthzModelMapToPB(t *testing.T) {
 	baseExpires := time.Now()
 	input := map[identifier.ACMEIdentifier]authzModel{
@@ -2551,38 +2517,6 @@ func TestGetOrderAuthorizations(t *testing.T) {
 		authzPBs, err = getOrderAuthorizations(missingID, reg.Id)
 		test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 		test.AssertEquals(t, len(authzPBs.Authzs), 0)
-	}
-}
-
-func TestCountInvalidAuthorizations2(t *testing.T) {
-	sa, fc := initSA(t)
-
-	fc.Add(time.Hour)
-	reg := createWorkingRegistration(t, sa)
-	idents := identifier.ACMEIdentifiers{
-		identifier.NewDNS("aaa"),
-		identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
-	}
-	for _, ident := range idents {
-		// Create two authorizations, one pending, one invalid
-		expiresA := fc.Now().Add(time.Hour).UTC()
-		expiresB := fc.Now().Add(time.Hour * 3).UTC()
-		attemptedAt := fc.Now()
-		_ = createFinalizedAuthorization(t, sa, reg.Id, ident, expiresA, "invalid", attemptedAt)
-		_ = createPendingAuthorization(t, sa, reg.Id, ident, expiresB)
-
-		earliest := fc.Now().Add(-time.Hour).UTC()
-		latest := fc.Now().Add(time.Hour * 5).UTC()
-		count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
-			RegistrationID: reg.Id,
-			Identifier:     ident.ToProto(),
-			Range: &sapb.Range{
-				Earliest: timestamppb.New(earliest),
-				Latest:   timestamppb.New(latest),
-			},
-		})
-		test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
-		test.AssertEquals(t, count.Count, int64(1))
 	}
 }
 
