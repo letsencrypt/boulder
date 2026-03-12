@@ -160,7 +160,7 @@ func TestForTime(t *testing.T) {
 	test.AssertDeepEquals(t, actual, expected)
 }
 
-func TestPermute(t *testing.T) {
+func TestShuffle(t *testing.T) {
 	input := List{
 		Log{Name: "Log A1"},
 		Log{Name: "Log A2"},
@@ -176,7 +176,7 @@ func TestPermute(t *testing.T) {
 	}
 
 	for range 100 {
-		actual := input.Permute()
+		actual := input.Shuffle()
 		for index, log := range actual {
 			foundIndices[log.Name][index]++
 		}
@@ -188,6 +188,30 @@ func TestPermute(t *testing.T) {
 				t.Errorf("Log %s appeared at index %d too few times", name, index)
 			}
 		}
+	}
+}
+
+func TestShufflePrefersTiled(t *testing.T) {
+	input := List{
+		Log{Name: "Log A1"},
+		Log{Name: "Log A2"},
+		Log{Name: "Log T1", Tiled: true},
+	}
+
+	foundIndices := make(map[string]map[int]int)
+	for _, log := range input {
+		foundIndices[log.Name] = make(map[int]int)
+	}
+
+	for range 100 {
+		actual := input.Shuffle()
+		for index, log := range actual {
+			foundIndices[log.Name][index]++
+		}
+	}
+
+	if foundIndices["Log T1"][2] != 0 {
+		t.Errorf("Tiled log should have always been pulled into first two indices")
 	}
 }
 

@@ -111,7 +111,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// Identify the set of candidate logs whose temporal interval includes this
 	// cert's expiry. Randomize the order of the logs so that we're not always
 	// trying to submit to the same two.
-	logs := ctp.sctLogs.ForTime(expiration).Permute()
+	logs := ctp.sctLogs.ForTime(expiration).Shuffle()
 	if len(logs) < 2 {
 		return nil, berrors.MissingSCTsError("Insufficient CT logs available (%d)", len(logs))
 	}
