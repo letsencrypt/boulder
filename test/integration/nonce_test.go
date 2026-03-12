@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	nbv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"testing"
 	"time"
