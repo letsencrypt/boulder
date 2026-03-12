@@ -610,3 +610,63 @@ func TestRateLimitError(t *testing.T) {
 		})
 	}
 }
+
+func TestStricterDeniedBeatsAllowed(t *testing.T) {
+	t.Parallel()
+
+	clk := clock.NewFake()
+	l := newInmemTestLimiter(t, clk)
+	ctx := context.Background()
+
+	// Limit A, our fast limit, permits 2 requests per second.
+	limitA := &Limit{
+		Burst:  2,
+		Count:  2,
+		Period: config.Duration{Duration: time.Second},
+		Name:   NewRegistrationsPerIPAddress,
+	}
+	limitA.precompute()
+
+	// Limit B, our slow limit, permits 2 requests per hour. An allowed decision
+	// from this limit will have a retryIn up to 30 minutes, far exceeding any
+	// retryIn from the denied limit A.
+	limitB := &Limit{
+		Burst:  2,
+		Count:  2,
+		Period: config.Duration{Duration: time.Hour},
+		Name:   NewRegistrationsPerIPv6Range,
+	}
+	limitB.precompute()
+
+	bucketKeyA := "limitA:testkey"
+	bucketKeyB := "limitB:testkey"
+
+	// Exhaust limit A's bucket completely.
+	txnA2, err := newTransaction(limitA, bucketKeyA, 2)
+	test.AssertNotError(t, err, "Txn should be valid")
+	d, err := l.Spend(ctx, txnA2)
+	test.AssertNotError(t, err, "Should not error")
+	test.Assert(t, d.allowed, "Initial spend should be allowed")
+	test.AssertEquals(t, d.remaining, int64(0))
+
+	// Spend 1 from limit B so it's reduced to 1 remaining.
+	txnB1, err := newTransaction(limitB, bucketKeyB, 1)
+	test.AssertNotError(t, err, "Txn should be valid")
+	d, err = l.Spend(ctx, txnB1)
+	test.AssertNotError(t, err, "Should not error")
+	test.Assert(t, d.allowed, "Initial spend should be allowed")
+	test.AssertEquals(t, d.remaining, int64(1))
+
+	// Now batch, limit A should deny (0 remaining), limit B should allow (1
+	// remaining) but with a large retryIn (~30 minutes).
+	txnA1, err := newTransaction(limitA, bucketKeyA, 1)
+	test.AssertNotError(t, err, "Txn should be valid")
+	txnB1, err = newTransaction(limitB, bucketKeyB, 1)
+	test.AssertNotError(t, err, "Txn should be valid")
+
+	d, err = l.BatchSpend(ctx, []Transaction{txnA1, txnB1})
+	test.AssertNotError(t, err, "Should not error")
+
+	// The batch MUST be denied because limit A denied the request.
+	test.Assert(t, !d.allowed, "Batch should be denied when any limit denies")
+}
