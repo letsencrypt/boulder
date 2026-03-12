@@ -238,17 +238,27 @@ func prepareBatch(txns []Transaction) ([]Transaction, []string, error) {
 	return transactions, bucketKeys, nil
 }
 
-func stricter(existing *Decision, incoming *Decision) *Decision {
-	if existing.retryIn == incoming.retryIn {
-		if existing.remaining < incoming.remaining {
-			return existing
+func stricter(a, b *Decision) *Decision {
+	switch {
+	case a.allowed != b.allowed:
+		// Denied is always stricter than allowed.
+		if !a.allowed {
+			return a
 		}
-		return incoming
+		return b
+	case a.retryIn != b.retryIn:
+		// Longer wait is stricter.
+		if a.retryIn > b.retryIn {
+			return a
+		}
+		return b
+	default:
+		// Fewer remaining is stricter.
+		if a.remaining < b.remaining {
+			return a
+		}
+		return b
 	}
-	if existing.retryIn > incoming.retryIn {
-		return existing
-	}
-	return incoming
 }
 
 // BatchSpend attempts to deduct the costs from the provided buckets'
