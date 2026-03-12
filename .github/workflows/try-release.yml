@@ -20,7 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.25.8"
           - "1.26.1"
     runs-on: ubuntu-24.04
     steps:
