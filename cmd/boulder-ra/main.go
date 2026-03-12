@@ -172,11 +172,11 @@ func main() {
 	pa, err := policy.New(c.PA.Identifiers, c.PA.Challenges, logger)
 	cmd.FailOnError(err, "Couldn't create PA")
 
-	if features.Get().DNSPersist01Enabled && !pa.ChallengeTypeEnabled(core.ChallengeTypeDNSPersist01) {
-		cmd.Fail("Feature flag DNSPersist01Enabled requires dns-persist-01 to be enabled in the PA")
+	if features.Get().DNSAccount01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
+		cmd.Fail("Feature flag DNSAccount01Enabled and PA dns-account-01 challenge must both be enabled or disabled")
 	}
-	if pa.ChallengeTypeEnabled(core.ChallengeTypeDNSPersist01) && !features.Get().DNSAccount01Enabled {
-		cmd.Fail("Feature flag DNSAccount01Enabled must be enabled to use dns-persist-01 challenge type")
+	if features.Get().DNSPersist01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypeDNSPersist01) {
+		cmd.Fail("Feature flag DNSPersist01Enabled and PA dns-persist-01 challenge must both be enabled or disabled")
 	}
 
 	if c.RA.HostnamePolicyFile == "" {

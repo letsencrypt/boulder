@@ -3640,10 +3640,10 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending, Token: "token"},
 		},
 	}
 
-	// This modifies the authz in-place.
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
 	// Ensure ID and RegID are omitted.
@@ -3651,6 +3651,17 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal authz")
 	test.AssertNotContains(t, string(authzJSON), "\"id\":\"12345\"")
 	test.AssertNotContains(t, string(authzJSON), "\"requester\":\"1\"")
+
+	// Verify per-challenge-type display behavior.
+	for _, chall := range authz.Challenges {
+		if chall.Type == core.ChallengeTypeDNSPersist01 {
+			test.Assert(t, chall.Token == "", fmt.Sprintf("expected %s to have no token", chall.Type))
+			test.AssertDeepEquals(t, chall.IssuerDomainNames, []string{"letsencrypt.org"})
+		} else {
+			test.Assert(t, chall.Token != "", fmt.Sprintf("expected %s to have a token", chall.Type))
+			test.Assert(t, chall.IssuerDomainNames == nil, fmt.Sprintf("expected %s to have no issuer domain names", chall.Type))
+		}
+	}
 }
 
 func TestPrepRevokedAuthzForDisplay(t *testing.T) {
@@ -3666,6 +3677,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending},
 		},
 	}
 
@@ -3699,26 +3711,6 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 	// as a wildcard.
 	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
 	test.AssertEquals(t, authz.Wildcard, true)
-}
-
-func TestPrepDNSPersistChallengeForDisplay(t *testing.T) {
-	t.Parallel()
-	wfe, _, _ := setupWFE(t)
-	wfe.DirectoryCAAIdentity = "letsencrypt.org"
-
-	authz := &core.Authorization{
-		ID:             "12345",
-		Status:         core.StatusPending,
-		RegistrationID: 1,
-		Identifier:     identifier.NewDNS("example.com"),
-		Challenges: []core.Challenge{
-			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending, Token: "token"},
-		},
-	}
-
-	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
-	test.AssertDeepEquals(t, authz.Challenges[0].IssuerDomainNames, []string{"letsencrypt.org"})
-	test.Assert(t, authz.Challenges[0].Token == "", "expected token to be cleared for dns-persist-01")
 }
 
 func TestPrepAuthzForDisplayShuffle(t *testing.T) {

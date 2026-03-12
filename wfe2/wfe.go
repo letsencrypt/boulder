@@ -46,7 +46,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/unpause"
-	"github.com/letsencrypt/boulder/va"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -229,7 +228,7 @@ func NewWebFrontEndImpl(
 		blockedLabels = append(blockedLabels, strings.ToLower(label))
 	}
 
-	normalizedCAAIdentity, err := va.NormalizeIssuerDomainName(caaIdentity)
+	normalizedCAAIdentity, err := core.NormalizeIssuerDomainName(caaIdentity)
 	if err != nil {
 		return WebFrontEndImpl{}, fmt.Errorf("normalizing caaIdentity: %w", err)
 	}
@@ -1251,9 +1250,13 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 		// support configuration of multiple CAA identities.
 		challenge.IssuerDomainNames = []string{wfe.DirectoryCAAIdentity}
 
-		// dns-persist-01 does not use a token, so clear it for display.
+		// dns-persist-01 does not use a token, but authorizations store a
+		// single token which gets unconditionally assigned to all challenge
+		// types during deserialization.
 		challenge.Token = ""
 	} else {
+		// Belt and suspenders: we don't expect this to ever be populated
+		// outside of this function, but just in case.
 		challenge.IssuerDomainNames = nil
 	}
 }

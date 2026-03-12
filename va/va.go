@@ -241,7 +241,7 @@ func NewValidationAuthorityImpl(
 		}
 	}
 
-	normalizedIssuerDomain, err := NormalizeIssuerDomainName(issuerDomain)
+	normalizedIssuerDomain, err := core.NormalizeIssuerDomainName(issuerDomain)
 	if err != nil {
 		return nil, err
 	}

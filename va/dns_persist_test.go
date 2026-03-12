@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/netip"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -15,6 +15,259 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
+
+func TestParseDNSPersistRecord(t *testing.T) {
+	t.Parallel()
+
+	const issuer = "letsencrypt.org"
+	accountURI := accountURIPrefixes[0] + "1"
+
+	testCases := []struct {
+		name              string
+		record            string
+		expectIssuer      string
+		expectParams      bool
+		expectAccountURI  string
+		expectPolicy      string
+		expectErrContains string
+	}{
+		{
+			name:             "Valid record",
+			record:           "letsencrypt.org;accounturi=" + accountURI,
+			expectIssuer:     "letsencrypt.org",
+			expectParams:     true,
+			expectAccountURI: accountURI,
+		},
+		{
+			name:             "Issuer-domain-name is uppercase + trailing dot",
+			record:           "LETSENCRYPT.ORG.;accounturi=" + accountURI,
+			expectIssuer:     "LETSENCRYPT.ORG.",
+			expectParams:     true,
+			expectAccountURI: accountURI,
+		},
+		{
+			name:   "Non-matching issuer-domain-name returns nil",
+			record: "other.example;accounturi=" + accountURI,
+		},
+		{
+			name:   "Missing issuer-domain-name returns nil",
+			record: ";accounturi=" + accountURI,
+		},
+		{
+			name:             "All known fields with heavy whitespace",
+			record:           "   letsencrypt.org   ;   accounturi   =   " + accountURI + "   ;   policy   =   wildcard   ;   persistUntil   =   4102444800   ",
+			expectIssuer:     "letsencrypt.org",
+			expectParams:     true,
+			expectAccountURI: accountURI,
+			expectPolicy:     "wildcard",
+		},
+		{
+			name:             "Unknown tags are ignored",
+			record:           "letsencrypt.org;accounturi=" + accountURI + ";bad tag=value;\nweird=\\x01337",
+			expectIssuer:     "letsencrypt.org",
+			expectParams:     true,
+			expectAccountURI: accountURI,
+		},
+		{
+			name:             "Duplicate unknown parameter is ignored",
+			record:           "letsencrypt.org;accounturi=" + accountURI + ";foo=bar;foo=baz",
+			expectIssuer:     "letsencrypt.org",
+			expectParams:     true,
+			expectAccountURI: accountURI,
+		},
+		{
+			name:              "Missing equals is malformed",
+			record:            "letsencrypt.org;accounturi=" + accountURI + ";invalidparam",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: `malformed parameter "invalidparam" should be tag=value pair`,
+		},
+		{
+			name:              "Empty tag is malformed",
+			record:            "letsencrypt.org;accounturi=" + accountURI + ";=abc",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: `malformed parameter "=abc", empty tag`,
+		},
+		{
+			name:              "Empty accounturi value is malformed",
+			record:            "letsencrypt.org;accounturi=",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: "empty value provided for mandatory accounturi",
+		},
+		{
+			name:              "Invalid value character is malformed",
+			record:            "letsencrypt.org;accounturi=" + accountURI + ";policy=wild card",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: `malformed value "wild card" for tag "policy"`,
+		},
+		{
+			name:              "Non-numeric persistUntil is malformed",
+			record:            "letsencrypt.org;accounturi=" + accountURI + ";persistUntil=not-a-unix-timestamp",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: `malformed persistUntil timestamp "not-a-unix-timestamp"`,
+		},
+		{
+			name:              "Trailing semicolon is malformed",
+			record:            "letsencrypt.org;accounturi=" + accountURI + ";",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: "empty parameter or trailing semicolon provided",
+		},
+		{
+			name:              "Duplicate parameter detection is case-insensitive",
+			record:            "letsencrypt.org;ACCOUNTURI=" + accountURI + ";accounturi=other",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: `duplicate parameter "accounturi"`,
+		},
+		{
+			name:              "Empty persistUntil value is malformed",
+			record:            "letsencrypt.org;accounturi=" + accountURI + ";persistUntil=",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: `malformed persistUntil timestamp ""`,
+		},
+		{
+			name:             "Case-insensitive policy tag",
+			record:           "letsencrypt.org;accounturi=" + accountURI + ";pOlIcY=wildcard",
+			expectIssuer:     "letsencrypt.org",
+			expectParams:     true,
+			expectAccountURI: accountURI,
+			expectPolicy:     "wildcard",
+		},
+		{
+			name:   "Non-matching malformed record is ignored",
+			record: "other.example;accounturi=" + accountURI + ";accounturi=other",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			receivedIssuer, params, err := parseDNSPersistRecord(tc.record, issuer)
+			if tc.expectErrContains != "" {
+				test.AssertError(t, err, "expected parse error")
+				test.AssertContains(t, err.Error(), tc.expectErrContains)
+				test.AssertEquals(t, receivedIssuer, tc.expectIssuer)
+				return
+			}
+			test.AssertNotError(t, err, "unexpected parse error")
+			if !tc.expectParams {
+				test.Assert(t, params == nil, "expected nil params for non-matching record")
+				return
+			}
+			test.Assert(t, params != nil, "expected non-nil params")
+			test.AssertEquals(t, receivedIssuer, tc.expectIssuer)
+			test.AssertEquals(t, params.accountURI, tc.expectAccountURI)
+			if tc.expectPolicy != "" {
+				test.AssertEquals(t, params.policy, tc.expectPolicy)
+			}
+		})
+	}
+}
+
+func TestCheckDNSPersistRecord(t *testing.T) {
+	t.Parallel()
+
+	accountURI := accountURIPrefixes[0] + "1"
+	now := time.Now().UTC()
+
+	testCases := []struct {
+		name        string
+		params      *dnsPersistIssueValue
+		accountURI  string
+		wildcard    bool
+		validatedAt time.Time
+		wantErr     error
+		wantErrLike string
+	}{
+		{
+			name:        "Valid non-wildcard",
+			params:      &dnsPersistIssueValue{accountURI: accountURI},
+			accountURI:  accountURI,
+			validatedAt: now,
+		},
+		{
+			name:        "Valid wildcard",
+			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "wildcard"},
+			accountURI:  accountURI,
+			wildcard:    true,
+			validatedAt: now,
+		},
+		{
+			name:        "Wildcard accepts case-insensitive policy",
+			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "wIlDcArD"},
+			accountURI:  accountURI,
+			wildcard:    true,
+			validatedAt: now,
+		},
+		{
+			name:        "Policy other than wildcard is treated as absent for non-wildcard",
+			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "notwildcard"},
+			accountURI:  accountURI,
+			validatedAt: now,
+		},
+		{
+			name:        "Missing accounturi",
+			params:      &dnsPersistIssueValue{},
+			accountURI:  accountURI,
+			validatedAt: now,
+			wantErr:     berrors.Malformed,
+			wantErrLike: "missing mandatory accountURI parameter",
+		},
+		{
+			name:        "Accounturi mismatch",
+			params:      &dnsPersistIssueValue{accountURI: "http://other/acme/reg/999"},
+			accountURI:  accountURI,
+			validatedAt: now,
+			wantErr:     berrors.Unauthorized,
+			wantErrLike: "accounturi mismatch",
+		},
+		{
+			name:        "Wildcard policy mismatch",
+			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "notwildcard"},
+			accountURI:  accountURI,
+			wildcard:    true,
+			validatedAt: now,
+			wantErr:     berrors.Unauthorized,
+			wantErrLike: `policy mismatch: expected "wildcard"`,
+		},
+		{
+			name: "Expired persistUntil",
+			params: &dnsPersistIssueValue{
+				accountURI:   accountURI,
+				persistUntil: now.Add(-time.Hour),
+			},
+			accountURI:  accountURI,
+			validatedAt: now,
+			wantErr:     berrors.Unauthorized,
+			wantErrLike: "validation time",
+		},
+		{
+			name: "Negative persistUntil",
+			params: &dnsPersistIssueValue{
+				accountURI:   accountURI,
+				persistUntil: time.Unix(-1, 0).UTC(),
+			},
+			accountURI:  accountURI,
+			validatedAt: now,
+			wantErr:     berrors.Unauthorized,
+			wantErrLike: "validation time",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := checkDNSPersistRecord(tc.params, tc.accountURI, tc.wildcard, tc.validatedAt)
+			if tc.wantErr != nil {
+				test.AssertError(t, err, "expected check error")
+				test.AssertErrorIs(t, err, tc.wantErr)
+				test.AssertContains(t, err.Error(), tc.wantErrLike)
+				return
+			}
+			test.AssertNotError(t, err, "unexpected check error")
+		})
+	}
+}
 
 type dnsPersistFakeDNS struct {
 	bdns.Client
@@ -34,7 +287,7 @@ func (d *dnsPersistFakeDNS) LookupTXT(_ context.Context, hostname string) (*bdns
 	return &bdns.Result[*dns.TXT]{Final: rrs}, "dnsPersistFakeDNS", nil
 }
 
-func TestDNSPersist01Validation(t *testing.T) {
+func TestValidateDNSPersist01(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -44,208 +297,69 @@ func TestDNSPersist01Validation(t *testing.T) {
 	accountURI := accountURIPrefixes[0] + "1"
 
 	testCases := []struct {
-		name           string
-		txtRecords     []string
-		wildcard       bool
-		dnsErr         error
-		wantProbType   probs.ProblemType
-		wantDetailLike string
+		name                 string
+		txtRecords           []string
+		wildcard             bool
+		dnsErr               error
+		expectProbType       probs.ProblemType
+		expectDetailContains string
 	}{
 		{
-			name: "matching malformed and matching valid record succeeds",
+			name:                 "Lookup failure returns DNS problem",
+			dnsErr:               errors.New("SERVFAIL"),
+			expectProbType:       probs.DNSProblem,
+			expectDetailContains: "Retrieving TXT records for DNS-PERSIST-01 challenge",
+		},
+		{
+			name:                 "No TXT records found returns unauthorized",
+			expectProbType:       probs.UnauthorizedProblem,
+			expectDetailContains: "No TXT record found for DNS-PERSIST-01 challenge",
+		},
+		{
+			name: "Matching malformed and matching valid record succeeds",
 			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;accounturi=http://letsencrypt.org:4000/acme/reg/2",
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1",
+				"letsencrypt.org;accounturi=" + accountURI + ";accounturi=other",
+				"letsencrypt.org;accounturi=" + accountURI,
 			},
 		},
 		{
-			name: "matching unauthorized and matching valid record succeeds",
+			name: "Matching unauthorized and matching valid record succeeds",
 			txtRecords: []string{
 				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/999",
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1",
+				"letsencrypt.org;accounturi=" + accountURI,
 			},
 		},
 		{
-			name: "unknown tags are ignored",
+			name: "Only matching malformed record returns malformed",
 			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;bad tag=value;\nweird=\\x01337",
+				"letsencrypt.org;accounturi=" + accountURI + ";accounturi=other",
 			},
+			expectProbType:       probs.MalformedProblem,
+			expectDetailContains: "duplicate parameter",
 		},
 		{
-			name: "issuer-domain-name is normalized before comparison (uppercase + trailing dot)",
-			txtRecords: []string{
-				"LETSENCRYPT.ORG.;accounturi=http://letsencrypt.org:4000/acme/reg/1",
-			},
-		},
-		{
-			name: "wildcard accepts case-insensitive policy value",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;policy=wIlDcArD",
-			},
-			wildcard: true,
-		},
-		{
-			name:           "lookup failure returns DNS problem",
-			dnsErr:         errors.New("SERVFAIL"),
-			wantProbType:   probs.DNSProblem,
-			wantDetailLike: "Retrieving TXT records for DNS-PERSIST-01 challenge",
-		},
-		{
-			name:           "no txt records found returns unauthorized",
-			wantProbType:   probs.UnauthorizedProblem,
-			wantDetailLike: "No TXT record found for DNS-PERSIST-01 challenge",
-		},
-		{
-			name: "only matching malformed record returns malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;accounturi=http://letsencrypt.org:4000/acme/reg/2",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: "duplicate parameter",
-		},
-		{
-			name: "only matching unauthorized record returns unauthorized",
+			name: "Only matching unauthorized record returns unauthorized",
 			txtRecords: []string{
 				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/999",
 			},
-			wantProbType:   probs.UnauthorizedProblem,
-			wantDetailLike: "accounturi mismatch",
+			expectProbType:       probs.UnauthorizedProblem,
+			expectDetailContains: "accounturi mismatch",
 		},
 		{
-			name: "non-matching issuer-domain-name record is ignored",
-			txtRecords: []string{
-				"other.example;accounturi=http://letsencrypt.org:4000/acme/reg/1",
-			},
-			wantProbType:   probs.UnauthorizedProblem,
-			wantDetailLike: "No valid TXT record found",
-		},
-		{
-			name: "missing equals is malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;invalidparam",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: `malformed parameter "invalidparam" should be tag=value pair`,
-		},
-		{
-			name: "empty tag is malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;=abc",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: `malformed parameter "=abc", empty tag`,
-		},
-		{
-			name: "empty accounturi value is malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: "empty value provided for mandatory accounturi",
-		},
-		{
-			name: "invalid value character is malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;policy=wild card",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: `malformed value "wild card" for tag "policy"`,
-		},
-		{
-			name: "persistUntil non unix timestamp is malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;persistUntil=not-a-unix-timestamp",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: `malformed persistUntil timestamp "not-a-unix-timestamp"`,
-		},
-		{
-			name: "duplicate unknown parameter is ignored",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;foo=bar;foo=baz",
-			},
-		},
-		{
-			name: "matching record missing accounturi returns malformed",
+			name: "Missing accounturi in check returns malformed",
 			txtRecords: []string{
 				"letsencrypt.org;policy=wildcard",
 			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: "missing mandatory accountURI parameter",
+			expectProbType:       probs.MalformedProblem,
+			expectDetailContains: "missing mandatory accountURI parameter",
 		},
 		{
-			name: "wildcard policy mismatch returns unauthorized",
+			name: "Non-matching issuer with no valid records returns unauthorized",
 			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;policy=notwildcard",
+				"other.example;accounturi=" + accountURI,
 			},
-			wildcard:       true,
-			wantProbType:   probs.UnauthorizedProblem,
-			wantDetailLike: `policy mismatch: expected "wildcard", got`,
-		},
-		{
-			name: "trailing semicolon in matching record returns malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: "empty parameter or trailing semicolon provided",
-		},
-		{
-			name: "expired persistUntil returns unauthorized",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;persistUntil=-1",
-			},
-			wantProbType:   probs.UnauthorizedProblem,
-			wantDetailLike: "validation time",
-		},
-		{
-			name: "unknown tag with empty value is ignored",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;foo=",
-			},
-		},
-		{
-			name: "unknown tag with invalid-character value is ignored",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;futurefeature=value with spaces",
-			},
-		},
-		{
-			name: "all known fields with heavy whitespace",
-			txtRecords: []string{
-				"   letsencrypt.org   ;   accounturi   =   http://letsencrypt.org:4000/acme/reg/1   ;   policy   =   wildcard   ;   persistUntil   =   4102444800   ",
-			},
-			wildcard: true,
-		},
-		{
-			name: "policy other than wildcard is treated as absent for non-wildcard request",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;policy=notwildcard",
-			},
-		},
-		{
-			name: "missing issuer-domain-name is ignored",
-			txtRecords: []string{
-				";accounturi=http://letsencrypt.org:4000/acme/reg/1",
-			},
-			wantProbType:   probs.UnauthorizedProblem,
-			wantDetailLike: "No valid TXT record found",
-		},
-		{
-			name: "duplicate parameter detection is case-insensitive",
-			txtRecords: []string{
-				"letsencrypt.org;ACCOUNTURI=http://letsencrypt.org:4000/acme/reg/1;accounturi=http://letsencrypt.org:4000/acme/reg/2",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: `duplicate parameter "accounturi"`,
-		},
-		{
-			name: "empty persistUntil value is malformed",
-			txtRecords: []string{
-				"letsencrypt.org;accounturi=http://letsencrypt.org:4000/acme/reg/1;persistUntil=",
-			},
-			wantProbType:   probs.MalformedProblem,
-			wantDetailLike: `malformed persistUntil timestamp ""`,
+			expectProbType:       probs.UnauthorizedProblem,
+			expectDetailContains: "No valid TXT record found",
 		},
 	}
 
@@ -261,15 +375,15 @@ func TestDNSPersist01Validation(t *testing.T) {
 			})
 
 			_, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS(domain), accountURI, tc.wildcard)
-			if tc.wantProbType == "" {
+			if tc.expectProbType == "" {
 				test.AssertNotError(t, err, "expected validation to succeed")
 				return
 			}
 
 			test.AssertError(t, err, "expected validation failure")
 			prob := detailedError(err)
-			test.AssertEquals(t, prob.Type, tc.wantProbType)
-			test.Assert(t, strings.Contains(prob.Detail, tc.wantDetailLike), "expected error detail substring not found")
+			test.AssertEquals(t, prob.Type, tc.expectProbType)
+			test.AssertContains(t, prob.Detail, tc.expectDetailContains)
 		})
 	}
 }
@@ -290,8 +404,6 @@ func (d *dnsPersistMultiStringDNS) LookupTXT(_ context.Context, _ string) (*bdns
 func TestDNSPersist01MultiStringTXTRecord(t *testing.T) {
 	t.Parallel()
 
-	accountURI := accountURIPrefixes[0] + "1"
-
 	// Simulate a TXT record split across two character-strings, as a DNS
 	// server would do for RDATA exceeding 255 bytes.
 	va, _ := setup(nil, "", nil, &dnsPersistMultiStringDNS{
@@ -301,7 +413,7 @@ func TestDNSPersist01MultiStringTXTRecord(t *testing.T) {
 		},
 	})
 
-	records, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS("example.com"), accountURI, false)
+	records, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS("example.com"), accountURIPrefixes[0]+"1", false)
 	test.AssertNotError(t, err, "expected multi-string TXT record to validate")
 	test.AssertEquals(t, len(records), 1)
 	test.AssertEquals(t, records[0].Hostname, "example.com")
