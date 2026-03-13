@@ -13,8 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 )
 
-type dnsPersistIssueValue struct {
-	issuerDomain string
+type dnsPersistIssueValueParams struct {
 	accountURI   string
 	policy       string
 	persistUntil time.Time
@@ -26,48 +25,49 @@ func isWSP(r rune) bool {
 	return r == '\t' || r == ' '
 }
 
-// parseDNSPersistIssueValue parses the raw parameter segments of an RFC 8659
-// issue-value from a dns-persist-01 TXT record. It returns an error if any
-// recognized parameter is malformed or duplicated.
-func parseDNSPersistIssueValue(issuerDomainName string, paramsRaw []string) (*dnsPersistIssueValue, error) {
-	result := &dnsPersistIssueValue{issuerDomain: issuerDomainName}
+// parseDNSPersistRecord parses a raw TXT record string per RFC 8659 issue-value
+// syntax. It returns the normalized issuer-domain-name and parsed parameters on
+// success, or an error if the record is malformed.
+func parseDNSPersistRecord(record string) (string, *dnsPersistIssueValueParams, error) {
+	parts := strings.Split(record, ";")
+	rawIssuer := strings.TrimFunc(parts[0], isWSP)
+	if rawIssuer == "" {
+		return "", nil, errors.New("empty issuer-domain-name")
+	}
+
+	normalizedIssuer, err := core.NormalizeIssuerDomainName(rawIssuer)
+	if err != nil {
+		return "", nil, fmt.Errorf("malformed issuer-domain-name %q: %w", rawIssuer, err)
+	}
+
+	params := &dnsPersistIssueValueParams{}
 
 	seenTags := make(map[string]bool)
+	seenTag := func(tag string) bool {
+		if seenTags[tag] {
+			return true
+		}
+		seenTags[tag] = true
+		return false
+	}
 
-	for _, param := range paramsRaw {
+	for _, param := range parts[1:] {
 		// Clean optional WSP from the parameter.
 		param = strings.TrimFunc(param, isWSP)
 		if param == "" {
-			return nil, errors.New("empty parameter or trailing semicolon provided")
+			return normalizedIssuer, nil, errors.New("empty parameter or trailing semicolon provided")
 		}
 
 		// Capture each tag=value pair.
 		tagValue := strings.SplitN(param, "=", 2)
 		if len(tagValue) != 2 {
-			return nil, fmt.Errorf("malformed parameter %q should be tag=value pair", param)
+			return normalizedIssuer, nil, fmt.Errorf("malformed parameter %q should be tag=value pair", param)
 		}
 		tag := strings.TrimFunc(tagValue[0], isWSP)
 		value := strings.TrimFunc(tagValue[1], isWSP)
 		if tag == "" {
-			return nil, fmt.Errorf("malformed parameter %q, empty tag", param)
+			return normalizedIssuer, nil, fmt.Errorf("malformed parameter %q, empty tag", param)
 		}
-
-		// Per the RFC 8659, matching of tags is case insensitive; canonicalize
-		// before checking whether the tag is recognized.
-		canonicalTag := strings.ToLower(tag)
-
-		switch canonicalTag {
-		case "accounturi", "policy", "persistuntil":
-			// Recognized tag — fall through to validation below.
-		default:
-			// Per draft-ietf-acme-dns-persist-00, "the server MUST ignore any
-			// parameter within the issue-value that has an unrecognized tag."
-			continue
-		}
-		if seenTags[canonicalTag] {
-			return nil, fmt.Errorf("duplicate parameter %q", tag)
-		}
-		seenTags[canonicalTag] = true
 
 		// Ensure values contain no whitespace, control, or non-ASCII
 		// characters.
@@ -75,62 +75,56 @@ func parseDNSPersistIssueValue(issuerDomainName string, paramsRaw []string) (*dn
 			if (r >= 0x21 && r <= 0x3A) || (r >= 0x3C && r <= 0x7E) {
 				continue
 			}
-			return nil, fmt.Errorf("malformed value %q for tag %q", value, tag)
+			return normalizedIssuer, nil, fmt.Errorf("malformed value %q for tag %q", value, tag)
 		}
+
+		// Per the RFC 8659, matching of tags is case insensitive; canonicalize
+		// before checking whether the tag is recognized.
+		canonicalTag := strings.ToLower(tag)
 
 		switch canonicalTag {
 		case "accounturi":
-			if value == "" {
-				return nil, fmt.Errorf("empty value provided for mandatory accounturi")
+			if seenTag(canonicalTag) {
+				return normalizedIssuer, nil, fmt.Errorf("duplicate parameter %q", tag)
 			}
-			result.accountURI = value
+			if value == "" {
+				return normalizedIssuer, nil, fmt.Errorf("empty value provided for mandatory accounturi")
+			}
+			params.accountURI = value
 
 		case "policy":
-			result.policy = value
+			if seenTag(canonicalTag) {
+				return normalizedIssuer, nil, fmt.Errorf("duplicate parameter %q", tag)
+			}
+			params.policy = value
 
 		case "persistuntil":
+			if seenTag(canonicalTag) {
+				return normalizedIssuer, nil, fmt.Errorf("duplicate parameter %q", tag)
+			}
 			persistUntilVal, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("malformed persistUntil timestamp %q", value)
+				return normalizedIssuer, nil, fmt.Errorf("malformed persistUntil timestamp %q", value)
 			}
-			result.persistUntil = time.Unix(persistUntilVal, 0).UTC()
+			params.persistUntil = time.Unix(persistUntilVal, 0).UTC()
+
+		default:
+			// Per draft-ietf-acme-dns-persist-00, "the server MUST ignore any
+			// parameter within the issue-value that has an unrecognized tag."
+			continue
 		}
 	}
-	return result, nil
-}
-
-// parseDNSPersistRecord parses a raw TXT record string into a
-// dnsPersistIssueValue. It returns ("", nil, nil) if the record's
-// issuer-domain-name is empty or does not match allowedIssuer.
-func parseDNSPersistRecord(record string, allowedIssuer string) (string, *dnsPersistIssueValue, error) {
-	// Split into issuer-domain-name and parameters per RFC 8659.
-	parts := strings.Split(record, ";")
-	receivedIssuer := strings.TrimFunc(parts[0], isWSP)
-	if receivedIssuer == "" {
-		return "", nil, nil
+	if params.accountURI == "" {
+		return normalizedIssuer, nil, errors.New("missing mandatory accounturi parameter")
 	}
-
-	normalizedIssuer, err := core.NormalizeIssuerDomainName(receivedIssuer)
-	if err != nil || normalizedIssuer != allowedIssuer {
-		return "", nil, nil
-	}
-
-	params, err := parseDNSPersistIssueValue(receivedIssuer, parts[1:])
-	if err != nil {
-		return receivedIssuer, nil, err
-	}
-	return receivedIssuer, params, nil
+	return normalizedIssuer, params, nil
 }
 
 // checkDNSPersistRecord checks whether a parsed dns-persist-01 record
 // authorizes issuance for the given account URI and wildcard status at the
-// given time. It returns nil if the record authorizes issuance, a
-// berrors.Malformed error for syntax problems, or a berrors.Unauthorized error
-// for authorization failures.
-func checkDNSPersistRecord(params *dnsPersistIssueValue, validAccountURI string, wildcardName bool, validatedAt time.Time) error {
-	if params.accountURI == "" {
-		return berrors.MalformedError("missing mandatory accountURI parameter")
-	}
+// given time. It returns nil if the record authorizes issuance, or a
+// berrors.Unauthorized error for authorization failures.
+func checkDNSPersistRecord(params *dnsPersistIssueValueParams, validAccountURI string, wildcardName bool, validatedAt time.Time) error {
 	if params.accountURI != validAccountURI {
 		return berrors.UnauthorizedError("accounturi mismatch: expected %q, got %q", validAccountURI, params.accountURI)
 	}
@@ -175,26 +169,24 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 	for _, rr := range txts.Final {
 		record := strings.Join(rr.Txt, "")
 
-		receivedIssuer, params, err := parseDNSPersistRecord(record, va.issuerDomain)
+		receivedIssuer, params, err := parseDNSPersistRecord(record)
 		if err != nil {
-			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err))
+			if receivedIssuer == va.issuerDomain {
+				syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+					"Parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err))
+			}
+			// Record is malformed, skip.
 			continue
 		}
-		if params == nil {
-			// Record didn't match our issuer domain, skip.
+		if receivedIssuer != va.issuerDomain {
+			// Record is well-formed but for a different CA, skip.
 			continue
 		}
 
 		err = checkDNSPersistRecord(params, validAccountURI, wildcardName, validatedAt)
 		if err != nil {
-			msg := fmt.Sprintf(
-				"Parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err)
-			if errors.Is(err, berrors.Malformed) {
-				syntaxErrs = append(syntaxErrs, msg)
-			} else {
-				authorizationErrs = append(authorizationErrs, msg)
-			}
+			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
+				"Checking DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err))
 			continue
 		}
 

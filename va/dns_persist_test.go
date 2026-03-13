@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -19,60 +20,58 @@ import (
 func TestParseDNSPersistRecord(t *testing.T) {
 	t.Parallel()
 
-	const issuer = "letsencrypt.org"
 	accountURI := accountURIPrefixes[0] + "1"
 
 	testCases := []struct {
-		name              string
-		record            string
-		expectIssuer      string
-		expectParams      bool
-		expectAccountURI  string
-		expectPolicy      string
-		expectErrContains string
+		name               string
+		record             string
+		expectIssuer       string
+		expectAccountURI   string
+		expectPolicy       string
+		expectPersistUntil time.Time
+		expectErrContains  string
 	}{
 		{
 			name:             "Valid record",
 			record:           "letsencrypt.org;accounturi=" + accountURI,
 			expectIssuer:     "letsencrypt.org",
-			expectParams:     true,
 			expectAccountURI: accountURI,
 		},
 		{
 			name:             "Issuer-domain-name is uppercase + trailing dot",
 			record:           "LETSENCRYPT.ORG.;accounturi=" + accountURI,
-			expectIssuer:     "LETSENCRYPT.ORG.",
-			expectParams:     true,
-			expectAccountURI: accountURI,
-		},
-		{
-			name:   "Non-matching issuer-domain-name returns nil",
-			record: "other.example;accounturi=" + accountURI,
-		},
-		{
-			name:   "Missing issuer-domain-name returns nil",
-			record: ";accounturi=" + accountURI,
-		},
-		{
-			name:             "All known fields with heavy whitespace",
-			record:           "   letsencrypt.org   ;   accounturi   =   " + accountURI + "   ;   policy   =   wildcard   ;   persistUntil   =   4102444800   ",
 			expectIssuer:     "letsencrypt.org",
-			expectParams:     true,
 			expectAccountURI: accountURI,
-			expectPolicy:     "wildcard",
+		},
+		{
+			name:             "Non-matching issuer-domain-name is parsed",
+			record:           "other.example;accounturi=" + accountURI,
+			expectIssuer:     "other.example",
+			expectAccountURI: accountURI,
+		},
+		{
+			name:              "Missing issuer-domain-name is malformed",
+			record:            ";accounturi=" + accountURI,
+			expectErrContains: "empty issuer-domain-name",
+		},
+		{
+			name:               "All known fields with heavy whitespace",
+			record:             "   letsencrypt.org   ;   accounturi   =   " + accountURI + "   ;   policy   =   wildcard   ;   persistUntil   =   4102444800   ",
+			expectIssuer:       "letsencrypt.org",
+			expectAccountURI:   accountURI,
+			expectPolicy:       "wildcard",
+			expectPersistUntil: time.Unix(4102444800, 0).UTC(),
 		},
 		{
 			name:             "Unknown tags are ignored",
 			record:           "letsencrypt.org;accounturi=" + accountURI + ";bad tag=value;\nweird=\\x01337",
 			expectIssuer:     "letsencrypt.org",
-			expectParams:     true,
 			expectAccountURI: accountURI,
 		},
 		{
 			name:             "Duplicate unknown parameter is ignored",
 			record:           "letsencrypt.org;accounturi=" + accountURI + ";foo=bar;foo=baz",
 			expectIssuer:     "letsencrypt.org",
-			expectParams:     true,
 			expectAccountURI: accountURI,
 		},
 		{
@@ -92,6 +91,12 @@ func TestParseDNSPersistRecord(t *testing.T) {
 			record:            "letsencrypt.org;accounturi=",
 			expectIssuer:      "letsencrypt.org",
 			expectErrContains: "empty value provided for mandatory accounturi",
+		},
+		{
+			name:              "Missing accounturi parameter is malformed",
+			record:            "letsencrypt.org;policy=wildcard",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: "missing mandatory accounturi parameter",
 		},
 		{
 			name:              "Invalid value character is malformed",
@@ -127,13 +132,27 @@ func TestParseDNSPersistRecord(t *testing.T) {
 			name:             "Case-insensitive policy tag",
 			record:           "letsencrypt.org;accounturi=" + accountURI + ";pOlIcY=wildcard",
 			expectIssuer:     "letsencrypt.org",
-			expectParams:     true,
 			expectAccountURI: accountURI,
 			expectPolicy:     "wildcard",
 		},
 		{
-			name:   "Non-matching malformed record is ignored",
-			record: "other.example;accounturi=" + accountURI + ";accounturi=other",
+			name:              "Non-matching record with duplicate parameter returns error",
+			record:            "other.example;accounturi=" + accountURI + ";accounturi=other",
+			expectIssuer:      "other.example",
+			expectErrContains: `duplicate parameter "accounturi"`,
+		},
+		{
+			name:              "Issuer only without parameters is malformed",
+			record:            "letsencrypt.org",
+			expectIssuer:      "letsencrypt.org",
+			expectErrContains: "missing mandatory accounturi parameter",
+		},
+		{
+			name:               "Valid persistUntil is parsed",
+			record:             "letsencrypt.org;accounturi=" + accountURI + ";persistUntil=1721952000",
+			expectIssuer:       "letsencrypt.org",
+			expectAccountURI:   accountURI,
+			expectPersistUntil: time.Unix(1721952000, 0).UTC(),
 		},
 	}
 
@@ -141,7 +160,7 @@ func TestParseDNSPersistRecord(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			receivedIssuer, params, err := parseDNSPersistRecord(tc.record, issuer)
+			receivedIssuer, params, err := parseDNSPersistRecord(tc.record)
 			if tc.expectErrContains != "" {
 				test.AssertError(t, err, "expected parse error")
 				test.AssertContains(t, err.Error(), tc.expectErrContains)
@@ -149,15 +168,14 @@ func TestParseDNSPersistRecord(t *testing.T) {
 				return
 			}
 			test.AssertNotError(t, err, "unexpected parse error")
-			if !tc.expectParams {
-				test.Assert(t, params == nil, "expected nil params for non-matching record")
-				return
-			}
 			test.Assert(t, params != nil, "expected non-nil params")
 			test.AssertEquals(t, receivedIssuer, tc.expectIssuer)
 			test.AssertEquals(t, params.accountURI, tc.expectAccountURI)
 			if tc.expectPolicy != "" {
 				test.AssertEquals(t, params.policy, tc.expectPolicy)
+			}
+			if !tc.expectPersistUntil.IsZero() {
+				test.AssertEquals(t, params.persistUntil, tc.expectPersistUntil)
 			}
 		})
 	}
@@ -170,86 +188,96 @@ func TestCheckDNSPersistRecord(t *testing.T) {
 	now := time.Now().UTC()
 
 	testCases := []struct {
-		name        string
-		params      *dnsPersistIssueValue
-		accountURI  string
-		wildcard    bool
-		validatedAt time.Time
-		wantErr     error
-		wantErrLike string
+		name              string
+		params            *dnsPersistIssueValueParams
+		accountURI        string
+		wildcardName      bool
+		validatedAt       time.Time
+		exceptErr         error
+		expectErrContains string
 	}{
 		{
 			name:        "Valid non-wildcard",
-			params:      &dnsPersistIssueValue{accountURI: accountURI},
+			params:      &dnsPersistIssueValueParams{accountURI: accountURI},
 			accountURI:  accountURI,
 			validatedAt: now,
 		},
 		{
-			name:        "Valid wildcard",
-			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "wildcard"},
-			accountURI:  accountURI,
-			wildcard:    true,
-			validatedAt: now,
+			name:         "Valid wildcard",
+			params:       &dnsPersistIssueValueParams{accountURI: accountURI, policy: "wildcard"},
+			accountURI:   accountURI,
+			wildcardName: true,
+			validatedAt:  now,
 		},
 		{
-			name:        "Wildcard accepts case-insensitive policy",
-			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "wIlDcArD"},
-			accountURI:  accountURI,
-			wildcard:    true,
-			validatedAt: now,
+			name:         "Wildcard accepts case-insensitive policy",
+			params:       &dnsPersistIssueValueParams{accountURI: accountURI, policy: "wIlDcArD"},
+			accountURI:   accountURI,
+			wildcardName: true,
+			validatedAt:  now,
 		},
 		{
 			name:        "Policy other than wildcard is treated as absent for non-wildcard",
-			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "notwildcard"},
+			params:      &dnsPersistIssueValueParams{accountURI: accountURI, policy: "notwildcard"},
 			accountURI:  accountURI,
 			validatedAt: now,
 		},
 		{
-			name:        "Missing accounturi",
-			params:      &dnsPersistIssueValue{},
+			name: "Valid with future persistUntil",
+			params: &dnsPersistIssueValueParams{
+				accountURI:   accountURI,
+				persistUntil: now.Add(time.Hour),
+			},
 			accountURI:  accountURI,
 			validatedAt: now,
-			wantErr:     berrors.Malformed,
-			wantErrLike: "missing mandatory accountURI parameter",
 		},
 		{
-			name:        "Accounturi mismatch",
-			params:      &dnsPersistIssueValue{accountURI: "http://other/acme/reg/999"},
-			accountURI:  accountURI,
-			validatedAt: now,
-			wantErr:     berrors.Unauthorized,
-			wantErrLike: "accounturi mismatch",
+			name:              "Accounturi mismatch",
+			params:            &dnsPersistIssueValueParams{accountURI: "http://other/acme/reg/999"},
+			accountURI:        accountURI,
+			validatedAt:       now,
+			exceptErr:         berrors.Unauthorized,
+			expectErrContains: "accounturi mismatch",
 		},
 		{
-			name:        "Wildcard policy mismatch",
-			params:      &dnsPersistIssueValue{accountURI: accountURI, policy: "notwildcard"},
-			accountURI:  accountURI,
-			wildcard:    true,
-			validatedAt: now,
-			wantErr:     berrors.Unauthorized,
-			wantErrLike: `policy mismatch: expected "wildcard"`,
+			name:              "Wildcard request with absent policy is unauthorized",
+			params:            &dnsPersistIssueValueParams{accountURI: accountURI},
+			accountURI:        accountURI,
+			wildcardName:      true,
+			validatedAt:       now,
+			exceptErr:         berrors.Unauthorized,
+			expectErrContains: `policy mismatch: expected "wildcard"`,
+		},
+		{
+			name:              "Wildcard policy mismatch",
+			params:            &dnsPersistIssueValueParams{accountURI: accountURI, policy: "notwildcard"},
+			accountURI:        accountURI,
+			wildcardName:      true,
+			validatedAt:       now,
+			exceptErr:         berrors.Unauthorized,
+			expectErrContains: `policy mismatch: expected "wildcard"`,
 		},
 		{
 			name: "Expired persistUntil",
-			params: &dnsPersistIssueValue{
+			params: &dnsPersistIssueValueParams{
 				accountURI:   accountURI,
 				persistUntil: now.Add(-time.Hour),
 			},
-			accountURI:  accountURI,
-			validatedAt: now,
-			wantErr:     berrors.Unauthorized,
-			wantErrLike: "validation time",
+			accountURI:        accountURI,
+			validatedAt:       now,
+			exceptErr:         berrors.Unauthorized,
+			expectErrContains: "validation time",
 		},
 		{
 			name: "Negative persistUntil",
-			params: &dnsPersistIssueValue{
+			params: &dnsPersistIssueValueParams{
 				accountURI:   accountURI,
 				persistUntil: time.Unix(-1, 0).UTC(),
 			},
-			accountURI:  accountURI,
-			validatedAt: now,
-			wantErr:     berrors.Unauthorized,
-			wantErrLike: "validation time",
+			accountURI:        accountURI,
+			validatedAt:       now,
+			exceptErr:         berrors.Unauthorized,
+			expectErrContains: "validation time",
 		},
 	}
 
@@ -257,11 +285,11 @@ func TestCheckDNSPersistRecord(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := checkDNSPersistRecord(tc.params, tc.accountURI, tc.wildcard, tc.validatedAt)
-			if tc.wantErr != nil {
+			err := checkDNSPersistRecord(tc.params, tc.accountURI, tc.wildcardName, tc.validatedAt)
+			if tc.exceptErr != nil {
 				test.AssertError(t, err, "expected check error")
-				test.AssertErrorIs(t, err, tc.wantErr)
-				test.AssertContains(t, err.Error(), tc.wantErrLike)
+				test.AssertErrorIs(t, err, tc.exceptErr)
+				test.AssertContains(t, err.Error(), tc.expectErrContains)
 				return
 			}
 			test.AssertNotError(t, err, "unexpected check error")
@@ -330,6 +358,13 @@ func TestValidateDNSPersist01(t *testing.T) {
 			},
 		},
 		{
+			name: "Valid wildcard record succeeds",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";policy=wildcard",
+			},
+			wildcard: true,
+		},
+		{
 			name: "Only matching malformed record returns malformed",
 			txtRecords: []string{
 				"letsencrypt.org;accounturi=" + accountURI + ";accounturi=other",
@@ -346,12 +381,20 @@ func TestValidateDNSPersist01(t *testing.T) {
 			expectDetailContains: "accounturi mismatch",
 		},
 		{
-			name: "Missing accounturi in check returns malformed",
+			name: "Missing accounturi returns malformed",
 			txtRecords: []string{
 				"letsencrypt.org;policy=wildcard",
 			},
 			expectProbType:       probs.MalformedProblem,
-			expectDetailContains: "missing mandatory accountURI parameter",
+			expectDetailContains: "missing mandatory accounturi parameter",
+		},
+		{
+			name: "Expired persistUntil returns unauthorized",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=0",
+			},
+			expectProbType:       probs.UnauthorizedProblem,
+			expectDetailContains: "validation time",
 		},
 		{
 			name: "Non-matching issuer with no valid records returns unauthorized",
@@ -373,6 +416,9 @@ func TestValidateDNSPersist01(t *testing.T) {
 				},
 				err: tc.dnsErr,
 			})
+			fc := clock.NewFake()
+			fc.Set(time.Now())
+			va.clk = fc
 
 			_, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS(domain), accountURI, tc.wildcard)
 			if tc.expectProbType == "" {
