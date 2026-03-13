@@ -4,30 +4,56 @@ import (
 	"context"
 	"testing"
 
-	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/balancer/base"
-	"google.golang.org/grpc/resolver"
-
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/test"
+	"google.golang.org/grpc/balancer"
 )
 
+// mockPicker implements the balancer.Picker interface.
+//
+// In this test it's used to fill the role of a child picker.
+type mockPicker struct {
+	called bool
+}
+
+func (mp *mockPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+	mp.called = true
+	return balancer.PickResult{}, nil
+}
+
 func TestPickerPicksCorrectBackend(t *testing.T) {
-	_, p, subConns := setupTest(false)
-	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, []byte("Kala namak"))
+	addr1 := "10.77.77.77:8080"
+	addr2 := "10.88.88.88:9090"
+	prefix := nonce.DerivePrefix(addr1, []byte("Kala namak"))
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "HNmOnt8w")
 	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, []byte(prefix))
 	info := balancer.PickInfo{Ctx: testCtx}
 
-	gotPick, err := p.Pick(info)
-	test.AssertNotError(t, err, "Pick failed")
-	test.AssertDeepEquals(t, subConns[0], gotPick.SubConn)
+	childPicker1 := &mockPicker{}
+	childPicker2 := &mockPicker{}
+
+	p := newPicker(map[string]balancer.Picker{
+		addr1: childPicker1,
+		addr2: childPicker2,
+	})
+
+	_, err := p.Pick(info)
+	if err != nil {
+		t.Fatalf("Pick failed: %v", err)
+	}
+
+	if !childPicker1.called {
+		t.Errorf("childPicker1 not called")
+	}
+	if childPicker2.called {
+		t.Errorf("childPicker2 called, should not have been")
+	}
 }
 
 func TestPickerMissingPrefixInCtx(t *testing.T) {
-	_, p, subConns := setupTest(false)
-	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, []byte("Kala namak"))
+	p, addr := setupTest()
+	prefix := nonce.DerivePrefix(addr, []byte("Kala namak"))
 
 	testCtx := context.WithValue(context.Background(), nonce.HMACKeyCtxKey{}, []byte(prefix))
 	info := balancer.PickInfo{Ctx: testCtx}
@@ -38,7 +64,7 @@ func TestPickerMissingPrefixInCtx(t *testing.T) {
 }
 
 func TestPickerInvalidPrefixInCtx(t *testing.T) {
-	_, p, _ := setupTest(false)
+	p, _ := setupTest()
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, 9)
 	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, []byte("foobar"))
@@ -50,7 +76,7 @@ func TestPickerInvalidPrefixInCtx(t *testing.T) {
 }
 
 func TestPickerMissingHMACKeyInCtx(t *testing.T) {
-	_, p, _ := setupTest(false)
+	p, _ := setupTest()
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "HNmOnt8w")
 	info := balancer.PickInfo{Ctx: testCtx}
@@ -61,7 +87,7 @@ func TestPickerMissingHMACKeyInCtx(t *testing.T) {
 }
 
 func TestPickerInvalidHMACKeyInCtx(t *testing.T) {
-	_, p, _ := setupTest(false)
+	p, _ := setupTest()
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "HNmOnt8w")
 	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, 9)
@@ -73,8 +99,8 @@ func TestPickerInvalidHMACKeyInCtx(t *testing.T) {
 }
 
 func TestPickerNoMatchingSubConnAvailable(t *testing.T) {
-	_, p, subConns := setupTest(false)
-	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, []byte("Kala namak"))
+	p, addr := setupTest()
+	prefix := nonce.DerivePrefix(addr, []byte("Kala namak"))
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "rUsTrUin")
 	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, []byte(prefix))
@@ -86,41 +112,15 @@ func TestPickerNoMatchingSubConnAvailable(t *testing.T) {
 }
 
 func TestPickerNoSubConnsAvailable(t *testing.T) {
-	b, p, _ := setupTest(true)
-	b.Build(base.PickerBuildInfo{})
+	p := newPicker(map[string]balancer.Picker{})
 	info := balancer.PickInfo{Ctx: context.Background()}
 
-	gotPick, err := p.Pick(info)
+	_, err := p.Pick(info)
 	test.AssertErrorIs(t, err, balancer.ErrNoSubConnAvailable)
-	test.AssertNil(t, gotPick.SubConn, "subConn should be nil")
 }
 
-func setupTest(noSubConns bool) (*pickerBuilder, balancer.Picker, []*subConn) {
-	var subConns []*subConn
-	bi := base.PickerBuildInfo{
-		ReadySCs: make(map[balancer.SubConn]base.SubConnInfo),
-	}
-
-	sc := &subConn{}
-	addr := resolver.Address{Addr: "10.77.77.77:8080"}
-	sc.UpdateAddresses([]resolver.Address{addr})
-
-	if !noSubConns {
-		bi.ReadySCs[sc] = base.SubConnInfo{Address: addr}
-		subConns = append(subConns, sc)
-	}
-
-	b := &pickerBuilder{}
-	p := b.Build(bi)
-	return b, p, subConns
-}
-
-// subConn is a test mock which implements the balancer.SubConn interface.
-type subConn struct {
-	balancer.SubConn
-	addrs []resolver.Address
-}
-
-func (s *subConn) UpdateAddresses(addrs []resolver.Address) {
-	s.addrs = addrs
+func setupTest() (*picker, string) {
+	addr := "10.77.77.77:8080"
+	p := newPicker(map[string]balancer.Picker{addr: &mockPicker{}})
+	return p, addr
 }
