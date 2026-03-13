@@ -51,14 +51,22 @@ services:
       - 4001:4001 # ACMEv2
       - 4003:4003 # SFE
     depends_on:
-      - bmariadb
-      - bproxysql
-      - bvitess
-      - bredis_1
-      - bredis_2
-      - bconsul
-      - bjaeger
-      - bpkimetal
+      bmariadb:
+        condition: service_started
+      bproxysql:
+        condition: service_started
+      bvitess:
+        condition: service_healthy
+      bredis_1:
+        condition: service_started
+      bredis_2:
+        condition: service_started
+      bconsul:
+        condition: service_started
+      bjaeger:
+        condition: service_started
+      bpkimetal:
+        condition: service_started
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -154,6 +162,20 @@ services:
       # databases on startup.
       KEYSPACES: boulder_sa,incidents_sa,boulder_sa_next,incidents_sa_next
       NUM_SHARDS: 1,1,1,1
+    healthcheck:
+      # Make sure the service is up and the tables are created. Use `serials` because it happens
+      # to be last in the SQL initialization files, so if it exists the other tables do too.
+      # Note that the mysql command issues some queries on startup that result in this spurious
+      # logging from bvitess:
+      #   You have an error in your SQL syntax; check the manual that corresponds to your MySQL
+      #   server version for the right syntax to use near '$$ from dual limit 10001'
+      test: [ "CMD", "mysql", "-h", "127.0.0.1", "-P", "33577", "-D", "boulder_sa",
+                "-e", "SELECT 1 FROM serials"]
+      interval: 2s
+      timeout: 30s
+      retries: 3
+      start_period: 10s
+      start_interval: 2s
     networks:
       bouldernet:
         aliases:
