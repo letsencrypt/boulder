@@ -2198,17 +2198,39 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 
 		// If the identifier is a wildcard DNS name, all challenges must be
-		// DNS-01 or DNS-Account-01. The PA guarantees this at order creation
-		// time, but we verify again to be safe.
+		// DNS-based. The PA guarantees this at order creation time, but we
+		// verify again to be safe.
 		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") {
 			for _, chall := range authz.Challenges {
-				if chall.Type != core.ChallengeTypeDNS01 && !(features.Get().DNSAccount01Enabled && chall.Type == core.ChallengeTypeDNSAccount01) {
+				if chall.Type != core.ChallengeTypeDNS01 &&
+					!(features.Get().DNSAccount01Enabled && chall.Type == core.ChallengeTypeDNSAccount01) &&
+					!(features.Get().DNSPersist01Enabled && chall.Type == core.ChallengeTypeDNSPersist01) {
 					return nil, berrors.InternalServerError(
 						"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
 						authz.ID,
 					)
 				}
 			}
+		}
+
+		// Never reuse dns-persist-01 authorizations:
+		// draft-ietf-acme-dns-persist-00 section 7.8 caps the reuse period to
+		// the TXT record's TTL and BRs section 3.2.2.4.22 caps it at 10 days.
+		// Since TTLs are typically seconds to minutes, the TTL cap is likely to
+		// be the binding constraint; re-validating every order is simpler.
+		solvedBy, err := authz.SolvedBy()
+		if err != nil {
+			// This should never happen.
+			return nil, berrors.InternalServerError(
+				"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+				authz.ID,
+			)
+		}
+		if solvedBy == core.ChallengeTypeDNSPersist01 {
+			missingAuthzIdents = append(missingAuthzIdents, ident)
+			// Delete the authz from the identToExistingAuthz map since we are not reusing it.
+			delete(identToExistingAuthz, ident)
+			continue
 		}
 
 		// If we reached this point then the existing authz was acceptable for

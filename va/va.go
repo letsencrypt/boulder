@@ -241,12 +241,17 @@ func NewValidationAuthorityImpl(
 		}
 	}
 
+	normalizedIssuerDomain, err := core.NormalizeIssuerDomainName(issuerDomain)
+	if err != nil {
+		return nil, err
+	}
+
 	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
 		log:                logger,
 		dnsClient:          resolver,
-		issuerDomain:       issuerDomain,
+		issuerDomain:       normalizedIssuerDomain,
 		httpPort:           pc.HTTPPort,
 		httpsPort:          pc.HTTPSPort,
 		tlsPort:            pc.TLSPort,
@@ -398,8 +403,8 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
-// The accountURI parameter is required for dns-account-01 challenges to
-// calculate the account-specific label.
+// The accountURI parameter is required for dns-account-01 and
+// dns-persist-01 challenges.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -415,6 +420,13 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		// Strip a (potential) leading wildcard token from the identifier.
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 		return va.validateDNS01(ctx, ident, keyAuthorization)
+	case core.ChallengeTypeDNSPersist01:
+		if features.Get().DNSPersist01Enabled {
+			wildcard := strings.HasPrefix(ident.Value, "*.")
+			// Strip a (potential) leading wildcard token from the identifier.
+			ident.Value = strings.TrimPrefix(ident.Value, "*.")
+			return va.validateDNSPersist01(ctx, ident, accountURI, wildcard)
+		}
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeDNSAccount01:
@@ -719,9 +731,11 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		va.log.AuditInfo("Validation result", logEvent)
 	}()
 
-	// For dns-account-01 challenges, construct the account URI from the configured prefix
+	// For dns-account-01 and dns-persist-01 challenges, construct the account URI
+	// from the configured prefix.
 	var accountURI string
-	if chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled {
+	if (chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled) ||
+		(chall.Type == core.ChallengeTypeDNSPersist01 && features.Get().DNSPersist01Enabled) {
 		accountURI = fmt.Sprintf("%s%d", va.accountURIPrefixes[0], req.Authz.RegID)
 	}
 

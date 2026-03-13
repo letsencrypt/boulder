@@ -443,6 +443,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		unpauseLifetime,
 		unpauseURL,
 		[]string{"asdf"},
+		"letsencrypt.org",
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
@@ -933,6 +934,7 @@ func TestRelativeDirectory(t *testing.T) {
 		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
 		fmt.Fprintf(expected, `"meta":{`)
 		fmt.Fprintf(expected, `"termsOfService":"http://example.invalid/terms",`)
+		fmt.Fprintf(expected, `"caaIdentities":["letsencrypt.org"],`)
 		fmt.Fprintf(expected, `"profiles":{"default":"a test profile"}`)
 		fmt.Fprintf(expected, "}")
 		fmt.Fprintf(expected, "}")
@@ -3638,10 +3640,10 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending, Token: "token"},
 		},
 	}
 
-	// This modifies the authz in-place.
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
 	// Ensure ID and RegID are omitted.
@@ -3649,6 +3651,17 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal authz")
 	test.AssertNotContains(t, string(authzJSON), "\"id\":\"12345\"")
 	test.AssertNotContains(t, string(authzJSON), "\"requester\":\"1\"")
+
+	// Verify per-challenge-type display behavior.
+	for _, chall := range authz.Challenges {
+		if chall.Type == core.ChallengeTypeDNSPersist01 {
+			test.Assert(t, chall.Token == "", fmt.Sprintf("expected %s to have no token", chall.Type))
+			test.AssertDeepEquals(t, chall.IssuerDomainNames, []string{"letsencrypt.org"})
+		} else {
+			test.Assert(t, chall.Token != "", fmt.Sprintf("expected %s to have a token", chall.Type))
+			test.Assert(t, chall.IssuerDomainNames == nil, fmt.Sprintf("expected %s to have no issuer domain names", chall.Type))
+		}
+	}
 }
 
 func TestPrepRevokedAuthzForDisplay(t *testing.T) {
@@ -3664,6 +3677,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending},
 		},
 	}
 

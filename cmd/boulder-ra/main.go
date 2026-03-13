@@ -11,6 +11,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -170,6 +171,13 @@ func main() {
 
 	pa, err := policy.New(c.PA.Identifiers, c.PA.Challenges, logger)
 	cmd.FailOnError(err, "Couldn't create PA")
+
+	if features.Get().DNSAccount01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
+		cmd.Fail("Feature flag DNSAccount01Enabled and PA dns-account-01 challenge must both be enabled or disabled")
+	}
+	if features.Get().DNSPersist01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypeDNSPersist01) {
+		cmd.Fail("Feature flag DNSPersist01Enabled and PA dns-persist-01 challenge must both be enabled or disabled")
+	}
 
 	if c.RA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile must be provided.")
