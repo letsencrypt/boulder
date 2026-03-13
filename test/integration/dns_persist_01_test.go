@@ -361,8 +361,8 @@ func TestDNSPersist01MissingAccountURI(t *testing.T) {
 	if prob.Type != "urn:ietf:params:acme:error:malformed" {
 		t.Fatalf("updating challenge: expected malformed error, got %s", prob.Type)
 	}
-	if !strings.Contains(prob.Detail, "missing mandatory accountURI") {
-		t.Fatalf("updating challenge: expected missing accountURI error, got %s", prob.Detail)
+	if !strings.Contains(prob.Detail, "missing mandatory accounturi parameter") {
+		t.Fatalf("updating challenge: expected missing accounturi error, got %s", prob.Detail)
 	}
 }
 
