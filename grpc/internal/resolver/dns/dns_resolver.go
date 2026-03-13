@@ -40,6 +40,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/grpc/internal/backoff"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
+	"github.com/letsencrypt/boulder/grpc/noncebalancerv2"
 )
 
 var logger = grpclog.Component("srv")
@@ -54,6 +55,7 @@ var (
 func init() {
 	resolver.Register(NewDefaultSRVBuilder())
 	resolver.Register(NewNonceSRVBuilder())
+	resolver.Register(NewNonceSRVBuilderV2())
 }
 
 const defaultDNSSvrPort = "53"
@@ -94,6 +96,12 @@ func NewDefaultSRVBuilder() resolver.Builder {
 // resolvers with a custom grpc.Balancer used by nonce-service clients.
 func NewNonceSRVBuilder() resolver.Builder {
 	return &srvBuilder{scheme: noncebalancer.SRVResolverScheme, balancer: noncebalancer.Name}
+}
+
+// NewNonceSRVBuilderV2 creates a srvBuilder which is used to factory SRV DNS
+// resolvers with the v2 nonce balancer used by nonce-service clients.
+func NewNonceSRVBuilderV2() resolver.Builder {
+	return &srvBuilder{scheme: noncebalancerv2.SRVResolverScheme, balancer: noncebalancerv2.Name}
 }
 
 type srvBuilder struct {

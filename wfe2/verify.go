@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
 	nb "github.com/letsencrypt/boulder/grpc/noncebalancer"
+	nbv2 "github.com/letsencrypt/boulder/grpc/noncebalancerv2"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -228,7 +229,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 	resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
 	if err != nil {
 		rpcStatus, ok := status.FromError(err)
-		if ok && rpcStatus == nb.ErrNoBackendsMatchPrefix {
+		if ok && (rpcStatus == nb.ErrNoBackendsMatchPrefix || rpcStatus == nbv2.ErrNoBackendsMatchPrefix) {
 			// Getting our sentinel ErrNoBackendsMatchPrefix status.Status means that
 			// the nonce backend which issued this nonce is presently unreachable or
 			// unrecognized by this WFE. As this is a transient failure, the client

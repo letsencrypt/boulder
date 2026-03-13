@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
+	"github.com/letsencrypt/boulder/grpc/noncebalancerv2"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -318,9 +319,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 	gnc := nonce.NewGetter(getNonceConn)
 
-	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme {
+	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme &&
+		c.WFE.RedeemNonceService.SRVResolver != noncebalancerv2.SRVResolverScheme {
 		cmd.Fail(fmt.Sprintf(
-			"'redeemNonceService.SRVResolver' must be set to %q", noncebalancer.SRVResolverScheme),
+			"'redeemNonceService.SRVResolver' must be set to %q or %q",
+			noncebalancer.SRVResolverScheme, noncebalancerv2.SRVResolverScheme),
 		)
 	}
 	redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, stats, clk)
