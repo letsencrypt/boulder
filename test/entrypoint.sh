@@ -20,20 +20,22 @@ DB_URL_FILES=(
 )
 
 configure_database_endpoints() {
-  dburl_target_dir="proxysql"
+  DB_STYLE="proxysql"
   export DB_ADDR="boulder-proxysql:6033"
 
   if [[ "${USE_VITESS}" == "true" ]]
   then
-    dburl_target_dir="vitess"
+    DB_STYLE="vitess"
     export DB_ADDR="boulder-vitess:33577"
   fi
+
+  SECRETS_DIR="${BOULDER_CONFIG_DIR}/${DB_STYLE}"
 
   # Configure DBURL symlinks
   rm -f test/secrets/*_dburl || true
   for file in ${DB_URL_FILES:+${DB_URL_FILES[@]+"${DB_URL_FILES[@]}"}}
   do
-    ln -sf "dburls/${dburl_target_dir}/${file}" "test/secrets/${file}"
+    ln -sf "../../${SECRETS_DIR}/${file}" "test/secrets/${file}"
   done
 }
 
@@ -49,22 +51,6 @@ configure_database_endpoints
 
 # make sure we can reach pkilint
 ./test/wait-for-it.sh bpkimetal 8080
-
-if [[ "${USE_VITESS}" == "true" ]]; then
-  DB_HOST="boulder-vitess" \
-  DB_PORT=33577 \
-  DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mysql8.yml" \
-  SKIP_CREATE=1 \
-  SKIP_USERS=1 \
-  "$DIR/create_db.sh"
-else
-  DB_HOST="boulder-mariadb" \
-  DB_PORT=3306 \
-  DB_CONFIG_FILE="${DIR}/../sa/db/dbconfig.mariadb.yml" \
-  SKIP_CREATE=0 \
-  SKIP_USERS=0 \
-  "$DIR/create_db.sh"
-fi
 
 if [[ $# -eq 0 ]]; then
     exec python3 ./start.py

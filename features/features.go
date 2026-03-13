@@ -78,7 +78,7 @@ type Config struct {
 	// DNSAccount01Enabled controls support for the dns-account-01 challenge
 	// type. When enabled, the server can offer and validate this challenge
 	// during certificate issuance. This flag must be set to true in the
-	// RA, VA, and WFE2 services for full functionality.
+	// RA and VA services for full functionality.
 	DNSAccount01Enabled bool
 
 	// DNSPersist01Enabled controls support for the dns-persist-01 challenge

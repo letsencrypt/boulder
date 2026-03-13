@@ -311,20 +311,12 @@ func (sa *StorageAuthorityReadOnly) GetOrderForNames(_ context.Context, _ *sapb.
 	return nil, nil
 }
 
-func (sa *StorageAuthorityReadOnly) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{}, nil
-}
-
 func (sa *StorageAuthorityReadOnly) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return nil, nil
 }
 
 func (sa *StorageAuthorityReadOnly) GetOrderAuthorizations(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return nil, nil
-}
-
-func (sa *StorageAuthorityReadOnly) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{}, nil
 }
 
 func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {

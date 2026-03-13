@@ -7,10 +7,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -42,7 +40,6 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -513,69 +510,6 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 
 	ra.newRegCounter.Inc()
 	return res, nil
-}
-
-// validateContacts checks the provided list of contacts, returning an error if
-// any are not acceptable. Unacceptable contacts lists include:
-// * An empty list
-// * A list has more than maxContactsPerReg contacts
-// * A list containing an empty contact
-// * A list containing a contact that does not parse as a URL
-// * A list containing a contact that has a URL scheme other than mailto
-// * A list containing a mailto contact that contains hfields
-// * A list containing a contact that has non-ascii characters
-// * A list containing a contact that doesn't pass `policy.ValidEmail`
-func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
-	if len(contacts) == 0 {
-		return nil // Nothing to validate
-	}
-	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
-		return berrors.MalformedError(
-			"too many contacts provided: %d > %d",
-			len(contacts),
-			ra.maxContactsPerReg,
-		)
-	}
-
-	for _, contact := range contacts {
-		if contact == "" {
-			return berrors.InvalidEmailError("empty contact")
-		}
-		parsed, err := url.Parse(contact)
-		if err != nil {
-			return berrors.InvalidEmailError("unparsable contact")
-		}
-		if parsed.Scheme != "mailto" {
-			return berrors.UnsupportedContactError("only contact scheme 'mailto:' is supported")
-		}
-		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
-			return berrors.InvalidEmailError("contact email contains a question mark")
-		}
-		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
-			return berrors.InvalidEmailError("contact email contains a '#'")
-		}
-		if !core.IsASCII(contact) {
-			return berrors.InvalidEmailError("contact email contains non-ASCII characters")
-		}
-		err = policy.ValidEmail(parsed.Opaque)
-		if err != nil {
-			return err
-		}
-	}
-
-	// NOTE(@cpu): For historical reasons (</3) we store ACME account contact
-	// information de-normalized in a fixed size `contact` field on the
-	// `registrations` table. At the time of writing this field is VARCHAR(191)
-	// That means the largest marshalled JSON value we can store is 191 bytes.
-	const maxContactBytes = 191
-	if jsonBytes, err := json.Marshal(contacts); err != nil {
-		return fmt.Errorf("failed to marshal reg.Contact to JSON: %w", err)
-	} else if len(jsonBytes) >= maxContactBytes {
-		return berrors.InvalidEmailError(
-			"too many/too long contact(s). Please use shorter or fewer email addresses")
-	}
-
-	return nil
 }
 
 // matchesCSR tests the contents of a generated certificate to make sure

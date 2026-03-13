@@ -383,14 +383,16 @@ func TestRevocation(t *testing.T) {
 	type revocationCheck func(t *testing.T, allCRLs map[string][]*x509.RevocationList)
 	var revocationChecks []revocationCheck
 	var rcMu sync.Mutex
-	var wg sync.WaitGroup
 
 	for _, kind := range []certKind{precert, finalcert} {
 		for _, reason := range []revocation.Reason{revocation.Unspecified, revocation.KeyCompromise, revocation.Superseded} {
+			// We only schedule four work items at a time because vttestserver only supports 4 concurrent transactions.
+			// If there are more than that, they will hang, timeout, and error.
+			// Specifically, vttestserver runs vtcomboserver with --queryserver-config-transaction-cap 4 and has no
+			// way (as of v23.0) to override it.
+			var wg sync.WaitGroup
 			for _, method := range []authMethod{byAccount, byAuth, byKey, byAdmin} {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					cert := issueAndRevoke(testCase{
 						method: method,
 						reason: reason,
@@ -424,12 +426,11 @@ func TestRevocation(t *testing.T) {
 					rcMu.Lock()
 					revocationChecks = append(revocationChecks, check)
 					rcMu.Unlock()
-				}()
+				})
 			}
+			wg.Wait()
 		}
 	}
-
-	wg.Wait()
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
 	allCRLs := getAllCRLs(t)

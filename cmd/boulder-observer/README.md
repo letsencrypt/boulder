@@ -31,6 +31,9 @@ Prometheus.
       * [TLS](#tls)
         * [Schema](#schema-6)
         * [Example](#example-6)
+      * [CCADB](#ccadb)
+        * [Schema](#schema-7)
+        * [Example](#example-7)
   * [Metrics](#metrics)
     * [Global Metrics](#global-metrics)
       * [obs_monitors](#obs_monitors)
@@ -253,6 +256,38 @@ monitors:
       rootOrg: "Internet Security Research Group"
       rootCN: "ISRG Root X1"
       response: valid
+```
+
+#### CCADB
+
+##### Schema
+
+`allCertificatesCSVURL`: URL of the "V4 All Certificate Information (root and
+  intermediate) in CCADB (CSV)" report from https://www.ccadb.org/resources.
+  Default value works.
+
+`certificatePEMsURL`: Base URL of the "All Certificate PEMs" report from
+  https://www.ccadb.org/resources (i.e. without the "NotBeforeDecade"
+  parameter). Default value works.
+
+`caOwner`: The value of the "CA Owner" field to filter on in the "All
+  Certificate Information" report. Default value works for ISRG.
+
+`crlAgeLimit`: Error when a CRL is older than this.
+
+`crlRegexp`: A regexp that matches our CRL URLs. Prevents fetching arbitrary
+  URLs. At a minimum this should have strict matching on the origin part of the
+  URL. Default value works.
+
+##### Example
+
+```yaml
+monitors:
+  -
+    period: 1h
+    kind: CCADB
+    settings:
+      crlAgeLimit: 2h
 ```
 
 ## Metrics

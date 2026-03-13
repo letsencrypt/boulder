@@ -10,7 +10,11 @@ func dsn(user, database string) string {
 	if addr == "" {
 		addr = "unset DB_ADDR"
 	}
-	return fmt.Sprintf("%s@tcp(%s)/%s", user, addr, database)
+	configVariant := ""
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && database != "information_schema" {
+		configVariant = "_next"
+	}
+	return fmt.Sprintf("%s@tcp(%s)/%s%s", user, addr, database, configVariant)
 }
 
 var (

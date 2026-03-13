@@ -566,31 +566,6 @@ func authzModelMapToPB(m map[identifier.ACMEIdentifier]authzModel) (*sapb.Author
 	return resp, nil
 }
 
-// CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
-// for the given registration.
-func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
-	if req.Id == 0 {
-		return nil, errIncompleteRequest
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.SelectOne(ctx, &count,
-		`SELECT COUNT(*) FROM authz2 WHERE
-		registrationID = :regID AND
-		expires > :expires AND
-		status = :status`,
-		map[string]any{
-			"regID":   req.Id,
-			"expires": ssa.clk.Now(),
-			"status":  statusUint(core.StatusPending),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Count{Count: count}, nil
-}
-
 // GetValidOrderAuthorizations2 is used to get all authorizations
 // associated with the given Order ID.
 // NOTE: The name is outdated. It does *not* filter out invalid or expired
@@ -637,46 +612,6 @@ func (ssa *SQLStorageAuthorityRO) GetOrderAuthorizations(ctx context.Context, re
 		return nil, err
 	}
 	return authzs, nil
-}
-
-// CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
-// in a given time range.
-func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	ident := identifier.FromProto(req.Identifier)
-
-	if core.IsAnyNilOrZero(req.RegistrationID, ident, req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	idType, ok := identifierTypeToUint[ident.ToProto().Type]
-	if !ok {
-		return nil, fmt.Errorf("unsupported identifier type %q", ident.ToProto().Type)
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&count,
-		`SELECT COUNT(*) FROM authz2 WHERE
-		registrationID = :regID AND
-		status = :status AND
-		expires > :expiresEarliest AND
-		expires <= :expiresLatest AND
-		identifierType = :identType AND
-		identifierValue = :identValue`,
-		map[string]any{
-			"regID":           req.RegistrationID,
-			"identType":       idType,
-			"identValue":      ident.Value,
-			"expiresEarliest": req.Range.Earliest.AsTime(),
-			"expiresLatest":   req.Range.Latest.AsTime(),
-			"status":          statusUint(core.StatusInvalid),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Count{Count: count}, nil
 }
 
 // GetValidAuthorizations2 returns a single valid authorization owned by the
