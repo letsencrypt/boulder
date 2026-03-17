@@ -1,0 +1,257 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "PDEE91DDB90597936"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 33,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "spanFilters": {
+          "criticalPathOnly": false,
+          "matchesOnly": false,
+          "serviceNameOperator": "=",
+          "spanNameOperator": "=",
+          "tags": [
+            {
+              "id": "775e0dbb-5cd",
+              "operator": "="
+            }
+          ]
+        }
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "builderOptions": {
+            "columns": [
+              {
+                "hint": "time",
+                "name": "Timestamp"
+              },
+              {
+                "hint": "trace_id",
+                "name": "TraceId"
+              },
+              {
+                "hint": "trace_span_id",
+                "name": "SpanId"
+              },
+              {
+                "hint": "trace_parent_span_id",
+                "name": "ParentSpanId"
+              },
+              {
+                "hint": "trace_service_name",
+                "name": "ServiceName"
+              },
+              {
+                "hint": "trace_operation_name",
+                "name": "SpanName"
+              },
+              {
+                "hint": "trace_duration_time",
+                "name": "Duration"
+              },
+              {
+                "hint": "trace_tags",
+                "name": "SpanAttributes"
+              },
+              {
+                "hint": "trace_service_tags",
+                "name": "ResourceAttributes"
+              },
+              {
+                "hint": "trace_status_code",
+                "name": "StatusCode"
+              },
+              {
+                "hint": "trace_kind",
+                "name": "SpanKind"
+              },
+              {
+                "hint": "trace_status_message",
+                "name": "StatusMessage"
+              },
+              {
+                "hint": "trace_state",
+                "name": "TraceState"
+              }
+            ],
+            "database": "otel",
+            "filters": [],
+            "limit": 1000,
+            "meta": {
+              "flattenNested": false,
+              "isTraceIdMode": true,
+              "minimized": false,
+              "otelEnabled": true,
+              "otelVersion": "latest",
+              "traceDurationUnit": "nanoseconds",
+              "traceEventsColumnPrefix": "Events",
+              "traceId": "3e89dee8f53039d3aadec3180374c0ab",
+              "traceLinksColumnPrefix": "Links"
+            },
+            "mode": "list",
+            "orderBy": [],
+            "queryType": "traces",
+            "table": "otel_traces"
+          },
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "${DS_CLICKHOUSE}"
+          },
+          "editorType": "sql",
+          "format": 3,
+          "meta": {
+            "builderOptions": {
+              "columns": [
+                {
+                  "hint": "time",
+                  "name": "Timestamp"
+                },
+                {
+                  "hint": "trace_id",
+                  "name": "TraceId"
+                },
+                {
+                  "hint": "trace_span_id",
+                  "name": "SpanId"
+                },
+                {
+                  "hint": "trace_parent_span_id",
+                  "name": "ParentSpanId"
+                },
+                {
+                  "hint": "trace_service_name",
+                  "name": "ServiceName"
+                },
+                {
+                  "hint": "trace_operation_name",
+                  "name": "SpanName"
+                },
+                {
+                  "hint": "trace_duration_time",
+                  "name": "Duration"
+                },
+                {
+                  "hint": "trace_tags",
+                  "name": "SpanAttributes"
+                },
+                {
+                  "hint": "trace_service_tags",
+                  "name": "ResourceAttributes"
+                },
+                {
+                  "hint": "trace_status_code",
+                  "name": "StatusCode"
+                },
+                {
+                  "hint": "trace_kind",
+                  "name": "SpanKind"
+                },
+                {
+                  "hint": "trace_status_message",
+                  "name": "StatusMessage"
+                },
+                {
+                  "hint": "trace_state",
+                  "name": "TraceState"
+                }
+              ],
+              "database": "otel",
+              "filters": [],
+              "limit": 1000,
+              "meta": {
+                "flattenNested": false,
+                "isTraceIdMode": true,
+                "minimized": false,
+                "otelEnabled": true,
+                "otelVersion": "latest",
+                "traceDurationUnit": "nanoseconds",
+                "traceEventsColumnPrefix": "Events",
+                "traceId": "3e89dee8f53039d3aadec3180374c0ab",
+                "traceLinksColumnPrefix": "Links"
+              },
+              "mode": "list",
+              "orderBy": [],
+              "queryType": "traces",
+              "table": "otel_traces"
+            }
+          },
+          "pluginVersion": "4.11.4",
+          "queryType": "traces",
+          "rawSql": "WITH\n  ${traceId:sqlstring} as trace_id,\n  (SELECT min(Start) FROM \"otel\".\"otel_traces_trace_id_ts\" WHERE TraceId = trace_id) as trace_start,\n  (SELECT max(End) + 1 FROM \"otel\".\"otel_traces_trace_id_ts\" WHERE TraceId = trace_id) as trace_end\nSELECT\n  \"TraceId\" as traceID,\n  \"SpanId\" as spanID,\n  \"ParentSpanId\" as parentSpanID,\n  \"ServiceName\" as serviceName,\n  \"SpanName\" as operationName,\n  multiply(toUnixTimestamp64Nano(\"Timestamp\"), 0.000001) as startTime,\n  multiply(\"Duration\", 0.000001) as duration,\n  arrayMap(x -> map('key', x.1::String, 'value', x.2::String), JSONExtractKeysAndValues(SpanAttributes::String, 'String')) AS tags,\n  arrayMap(x -> map('key', x.1::String, 'value', x.2::String), JSONExtractKeysAndValues(ResourceAttributes::String, 'String')) AS serviceTags,\n  if(\"StatusCode\" IN ('Error', 'STATUS_CODE_ERROR'), 2, 0) as statusCode,\n  \"SpanKind\" as kind,\n  \"StatusMessage\" as statusMessage,\n  \"TraceState\" as traceState\nFROM \"otel\".\"otel_traces\"\nWHERE traceID = trace_id \n  AND \"Timestamp\" >= trace_start\n  AND \"Timestamp\" <= trace_end\nLIMIT 1000;",
+          "refId": "Trace ID"
+        }
+      ],
+      "title": "Trace",
+      "type": "traces"
+    }
+  ],
+  "preload": false,
+  "schemaVersion": 42,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "",
+        "label": "Trace ID",
+        "name": "traceId",
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "query": "",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-12h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "trace",
+  "uid": "adv5xzn",
+  "version": 8
+}

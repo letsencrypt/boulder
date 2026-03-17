@@ -36,7 +36,7 @@
 		"awsCredsFile": "test/secrets/aws_creds.ini"
 	},
 	"syslog": {
-		"stdoutlevel": 6,
-		"sysloglevel": 6
+		"stdoutlevel": 7,
+		"sysloglevel": 7
 	}
 }
