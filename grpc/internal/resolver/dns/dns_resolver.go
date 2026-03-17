@@ -34,12 +34,13 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/grpclog"
+	"google.golang.org/grpc/resolver"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/grpc/internal/backoff"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	noncebalancerv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
-	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/resolver"
 )
 
 var logger = grpclog.Component("srv")

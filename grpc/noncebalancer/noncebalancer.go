@@ -2,16 +2,16 @@ package noncebalancer
 
 import (
 	"errors"
-	"google.golang.org/grpc/balancer/endpointsharding"
-	"google.golang.org/grpc/balancer/pickfirst"
-	"google.golang.org/grpc/connectivity"
 	"sync"
 
-	"github.com/letsencrypt/boulder/nonce"
-
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/balancer/endpointsharding"
+	"google.golang.org/grpc/balancer/pickfirst"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/status"
+
+	"github.com/letsencrypt/boulder/nonce"
 )
 
 const (
