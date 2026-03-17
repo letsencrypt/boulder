@@ -209,7 +209,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// Initialize long-running health checks of all services which implement the
 	// checker interface.
 	if sb.checkInterval <= 0 {
-		sb.checkInterval = 5 * time.Second
+		sb.checkInterval = 500 * time.Millisecond
 	}
 	healthCtx, stopHealthChecks := context.WithCancel(context.Background())
 	for _, s := range sb.services {
