@@ -43,6 +43,7 @@ func runUpdater(t *testing.T, configFile string) {
 	// this new batch of CRLs.
 	resp, err := http.Post("http://localhost:4501/reset", "", bytes.NewReader([]byte{}))
 	test.AssertNotError(t, err, "opening database connection")
+	defer resp.Body.Close()
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
 	// Reset the "leasedUntil" column so this can be done alongside other

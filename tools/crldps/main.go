@@ -81,7 +81,9 @@ func main() {
 		resp, err := client.Get(crldp)
 		if err != nil {
 			log.Fatalf("Error checking for existence of zero shard %q: %s", crldp, err)
-		} else if resp.StatusCode != http.StatusNotFound {
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
 			log.Fatalf("Was unexpectedly able to fetch zero shard %q; please verify that the generated shards are one-indexed", crldp)
 		}
 	}
@@ -90,7 +92,9 @@ func main() {
 		resp, err := client.Get(crldp)
 		if err != nil {
 			log.Fatalf("Error checking for existence of higher-numbered shard %q: %s", crldp, err)
-		} else if resp.StatusCode != http.StatusNotFound {
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
 			log.Fatalf("Was unexpectedly able to fetch higher-numbered shard %q; please verify that the -shards flag is correct", crldp)
 		}
 	}
@@ -115,10 +119,12 @@ func fetchAndCheck(crldp string, client http.Client, issuer *x509.Certificate) e
 	resp, err := client.Get(crldp)
 	if err != nil {
 		return fmt.Errorf("error downloading crl: %s", err)
-	} else if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code while downloading crl: %s", http.StatusText(resp.StatusCode))
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code while downloading crl: %s", http.StatusText(resp.StatusCode))
+	}
 
 	crlDer, err := io.ReadAll(resp.Body)
 	if err != nil {

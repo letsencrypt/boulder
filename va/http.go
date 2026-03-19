@@ -640,6 +640,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 	}
 
+	defer httpResponse.Body.Close()
+
 	if httpResponse.StatusCode != 200 {
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %d",
 			records[len(records)-1].URL, httpResponse.StatusCode))
@@ -648,10 +650,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// At this point we've made a successful request (be it from a retry or
 	// otherwise) and can read and process the response body.
 	body, err := io.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
-	closeErr := httpResponse.Body.Close()
-	if err == nil {
-		err = closeErr
-	}
 	if err != nil {
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
 	}

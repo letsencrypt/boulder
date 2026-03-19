@@ -182,6 +182,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		}
 		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)
 	} else {
+		defer prevObj.Body.Close()
 		prevBytes, err := io.ReadAll(prevObj.Body)
 		if err != nil {
 			return fmt.Errorf("downloading previous CRL for %s: %w", crlId, err)

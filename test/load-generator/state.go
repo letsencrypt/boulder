@@ -513,6 +513,7 @@ func (s *State) post(
 		ns.addNonce(newNonce)
 	}
 	if resp.StatusCode != expectedCode {
+		defer resp.Body.Close()
 		return nil, fmt.Errorf("POST %q returned HTTP status %d, expected %d",
 			url, resp.StatusCode, expectedCode)
 	}

@@ -79,6 +79,7 @@ func checkARI(baseURL string, certPath string) (*core.RenewalInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	ri, err := parseResponse(resp)
 	if err != nil {
@@ -93,6 +94,7 @@ func getARIURL(directory string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
