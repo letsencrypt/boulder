@@ -127,7 +127,7 @@ func (p *prefixBasedPicker) Pick(info balancer.PickInfo) (balancer.PickResult, e
 // builder builds a nonceBalancer, which internally uses `endpointsharding.NewBalancer`.
 //
 // The embedded `endpointsharding` balancer manages a set of child pickers that all use
-// `pickfirst` on an endpoint that consists of a single IP address (because our `"nonce-srv"`
+// `pickfirst` on an endpoint that consists of a single IP address (because our `"nonce-srv-v2"`
 // resolver returns single-IP endpoints).
 type builder struct{}
 

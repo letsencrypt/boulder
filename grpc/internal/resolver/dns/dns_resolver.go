@@ -26,7 +26,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"google.golang.org/grpc/serviceconfig"
 	"net"
 	"net/netip"
 	"strconv"
@@ -36,6 +35,7 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/serviceconfig"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/grpc/internal/backoff"
