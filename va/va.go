@@ -243,7 +243,10 @@ func NewValidationAuthorityImpl(
 
 	normalizedIssuerDomain, err := core.NormalizeIssuerDomainName(issuerDomain)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid issuerDomain (caaIdentity) %q: %w", issuerDomain, err)
+	}
+	if normalizedIssuerDomain != issuerDomain {
+		return nil, fmt.Errorf("issuerDomain (caaIdentity) %q is not in normalized form, use %q", issuerDomain, normalizedIssuerDomain)
 	}
 
 	pc := newDefaultPortConfig()
