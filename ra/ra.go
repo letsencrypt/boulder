@@ -105,13 +105,11 @@ type RegistrationAuthorityImpl struct {
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
 
-// Health implements our grpc.checker interface. This method will be called
-// periodically to set the gRPC service's healthpb.Health.Check() status.
-func (ra *RegistrationAuthorityImpl) Health(ctx context.Context) error {
-	if ra.txnBuilder.Ready() {
-		return nil
-	}
-	return errors.New("waiting for overrides")
+// OnHealthy registers the callback to be invoked once the txnBuilder is healthy.
+//
+// That happens when the overrides are loaded.
+func (ra *RegistrationAuthorityImpl) OnHealthy(cb func()) {
+	ra.txnBuilder.OnHealthy(cb)
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.

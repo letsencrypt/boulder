@@ -322,6 +322,9 @@ type limitRegistry struct {
 	// overrides stores override limits by 'name:id'.
 	overrides Limits
 
+	// Called once the overrides are loaded.
+	healthyCallbacks []func()
+
 	// overridesLoaded is true if at least one loadOverrides attempt has
 	// completed successfully. Callers should check this using the Ready()
 	// method.
@@ -374,6 +377,10 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 	defer l.Unlock()
 	l.overridesLoaded = true
 
+	for _, cb := range l.healthyCallbacks {
+		cb()
+	}
+
 	if len(newOverrides) < 1 {
 		// If it's an empty set, don't replace any current overrides.
 		l.logger.Warning("loading overrides: no valid overrides")
@@ -401,6 +408,14 @@ func (l *limitRegistry) Ready() bool {
 	l.RLock()
 	defer l.RUnlock()
 	return l.overridesLoaded
+}
+
+// OnHealthy registers the callback to be invoked once the overrides are loaded.
+func (l *limitRegistry) OnHealthy(cb func()) {
+	l.RLock()
+	defer l.RUnlock()
+
+	l.healthyCallbacks = append(l.healthyCallbacks, cb)
 }
 
 // loadOverridesWithRetry tries to loadOverrides, retrying at least every 30
