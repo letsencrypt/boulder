@@ -17,7 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -1055,11 +1054,6 @@ func TestMultiCAARechecking(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			va, mockLog := setupWithRemotes(nil, localUA, tc.remoteVAs, tc.localDNSClient)
 			defer mockLog.Clear()
-
-			features.Set(features.Config{
-				EnforceMultiCAA: true,
-			})
-			defer features.Reset()
 
 			isValidRes, err := va.DoCAA(context.TODO(), &vapb.IsCAAValidRequest{
 				Identifier:       tc.ident.ToProto(),

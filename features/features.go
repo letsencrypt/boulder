@@ -15,24 +15,6 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
-	// Deprecated flags.
-	IncrementRateLimits         bool
-	UseKvLimitsForNewOrder      bool
-	DisableLegacyLimitWrites    bool
-	MultipleCertificateProfiles bool
-	InsertAuthzsIndividually    bool
-	EnforceMultiCAA             bool
-	EnforceMPIC                 bool
-	MPICFullResults             bool
-	UnsplitIssuance             bool
-	ExpirationMailerUsesJoin    bool
-	DOH                         bool
-	IgnoreAccountContacts       bool
-	NoPendingAuthzReuse         bool
-	ServeRenewalInfo            bool
-	StoreAuthzsInOrders         bool
-	StoreARIReplacesInOrders    bool
-
 	// CertCheckerChecksValidations enables an extra query for each certificate
 	// checked, to find the relevant authzs. Since this query might be
 	// expensive, we gate it behind a feature flag.

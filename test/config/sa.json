@@ -47,13 +47,7 @@
 				}
 			}
 		},
-		"features": {
-			"StoreAuthzsInOrders": true,
-			"StoreARIReplacesInOrders": true,
-			"MultipleCertificateProfiles": true,
-			"InsertAuthzsIndividually": true,
-			"IgnoreAccountContacts": true
-		}
+		"features": {}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

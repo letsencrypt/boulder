@@ -37,9 +37,7 @@
 				}
 			}
 		},
-		"features": {
-			"DOH": true
-		},
+		"features": {},
 		"remoteVAs": [
 			{
 				"serverAddress": "rva1.service.consul:9397",

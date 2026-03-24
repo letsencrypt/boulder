@@ -4323,9 +4323,6 @@ func TestNewOrderRateLimits(t *testing.T) {
 		`{"Identifiers": [{"type": "dns", "value": "example.com"}]}`)
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
-	features.Set(features.Config{
-		UseKvLimitsForNewOrder: true,
-	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusTooManyRequests)
 
 	// Make a request with the "Replaces" field, which should satisfy ARI checks
