@@ -162,8 +162,7 @@
 		"features": {
 			"CAARechecksFailOrder": true,
 			"AutomaticallyPauseZombieClients": true,
-			"DNSAccount01Enabled": true,
-			"NoPendingAuthzReuse": true
+			"DNSAccount01Enabled": true
 		}
 	},
 	"pa": {
