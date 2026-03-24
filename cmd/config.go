@@ -94,7 +94,7 @@ func (d *DBConfig) URL() (string, error) {
 // it should offer.
 type PAConfig struct {
 	DBConfig    `validate:"-"`
-	Challenges  map[core.AcmeChallenge]bool        `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01 dns-account-01,endkeys"`
+	Challenges  map[core.AcmeChallenge]bool        `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01 dns-account-01 dns-persist-01,endkeys"`
 	Identifiers map[identifier.IdentifierType]bool `validate:"omitempty,dive,keys,oneof=dns ip,endkeys"`
 }
 
@@ -306,7 +306,7 @@ type GRPCClientConfig struct {
 	// implementation of the SRV resolver should be used. The default is 'srv'
 	// For more details, see the documentation in:
 	// grpc/internal/resolver/dns/dns_resolver.go.
-	SRVResolver string `validate:"excluded_with=ServerAddress,isdefault|oneof=srv nonce-srv"`
+	SRVResolver string `validate:"excluded_with=ServerAddress,isdefault|oneof=srv nonce-srv nonce-srv-v2"`
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.

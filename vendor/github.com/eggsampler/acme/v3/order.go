@@ -159,8 +159,6 @@ func (c Client) FinalizeOrder(account Account, order Order, csr *x509.Certificat
 		return order, err
 	}
 
-	order.URL = resp.Header.Get("Location")
-
 	updateOrder := func(resp *http.Response) (bool, error) {
 		if finished, err := checkFinalizedOrderStatus(order); finished {
 			return true, err

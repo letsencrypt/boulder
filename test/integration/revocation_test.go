@@ -103,6 +103,8 @@ func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.Rev
 	if err != nil {
 		t.Fatalf("getting CRL from %s: %s", crlURL, err)
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("fetching %s: status code %d", crlURL, resp.StatusCode)
 	}
@@ -110,7 +112,6 @@ func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.Rev
 	if err != nil {
 		t.Fatalf("reading CRL from %s: %s", crlURL, err)
 	}
-	resp.Body.Close()
 
 	list, err := x509.ParseRevocationList(body)
 	if err != nil {

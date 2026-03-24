@@ -226,13 +226,25 @@ func (ll List) ForTime(expiry time.Time) List {
 	return res
 }
 
-// Permute returns a new log list containing the exact same logs, but in a
-// randomly-shuffled order.
-func (ll List) Permute() List {
+// Shuffle returns a new log list containing the exact same logs, but in a
+// nearly-randomly-shuffled order. If possible, it ensures that the first two
+// logs consist of one tiled log and one non-tiled log, to boost the percentage
+// of certs which include an SCT from a static log.
+func (ll List) Shuffle() List {
 	res := slices.Clone(ll)
 	rand.Shuffle(len(res), func(i int, j int) {
 		res[i], res[j] = res[j], res[i]
 	})
+	if len(res) > 2 && res[0].Tiled == res[1].Tiled {
+		// If we have more than two logs, and both are either tiled or not,
+		// try to bring another log to the front of the list.
+		for i := 2; i < len(res); i++ {
+			if res[0].Tiled != res[i].Tiled {
+				res[0], res[i] = res[i], res[0]
+				break
+			}
+		}
+	}
 	return res
 }
 

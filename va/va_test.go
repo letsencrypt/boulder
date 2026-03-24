@@ -81,7 +81,7 @@ func TestMain(m *testing.M) {
 	os.Exit(ret)
 }
 
-var accountURIPrefixes = []string{"http://boulder.service.consul:4000/acme/reg/"}
+var accountURIPrefixes = []string{"http://letsencrypt.org:4000/acme/reg/"}
 
 func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
 	return &vapb.PerformValidationRequest{

@@ -398,6 +398,7 @@ var challTypeToUint = map[string]uint8{
 	"dns-01":         1,
 	"tls-alpn-01":    2,
 	"dns-account-01": 3,
+	"dns-persist-01": 4,
 }
 
 var uintToChallType = map[uint8]string{
@@ -405,6 +406,7 @@ var uintToChallType = map[uint8]string{
 	1: "dns-01",
 	2: "tls-alpn-01",
 	3: "dns-account-01",
+	4: "dns-persist-01",
 }
 
 var identifierTypeToUint = map[string]uint8{

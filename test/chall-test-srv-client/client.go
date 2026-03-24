@@ -475,6 +475,49 @@ func calculateDNSAccount01Label(accountURL string) (string, error) {
 	return label, nil
 }
 
+// AddDNSPersist01Response adds an ACME DNS-PERSIST-01 challenge response for
+// the provided host to the challenge test server's DNS interfaces. The value is
+// the raw TXT record content (e.g. "issuer.example;accounturi=https://..."),
+// served for TXT queries to _validation-persist.<host>. Any failure returns an
+// error that includes both the relevant operation and the payload.
+func (c *Client) AddDNSPersist01Response(host, value string) ([]byte, error) {
+	host = "_validation-persist." + host
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
+	payload := map[string]string{"host": host, "value": value}
+	resp, err := c.postURL(addTXT, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while adding DNS-PERSIST-01 response for host %q, val %q (payload: %v): %w",
+			host, value, payload, err,
+		)
+	}
+	return resp, nil
+}
+
+// RemoveDNSPersist01Response removes an ACME DNS-PERSIST-01 challenge response
+// for the provided host from the challenge test server's DNS interfaces. Any
+// failure returns an error that includes both the relevant operation and the
+// payload.
+func (c *Client) RemoveDNSPersist01Response(host string) ([]byte, error) {
+	if !strings.HasPrefix(host, "_validation-persist.") {
+		host = "_validation-persist." + host
+	}
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
+	payload := map[string]string{"host": host}
+	resp, err := c.postURL(delTXT, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while removing DNS-PERSIST-01 response for host %q (payload: %v): %w",
+			host, payload, err,
+		)
+	}
+	return resp, nil
+}
+
 // DNSRequest is a single DNS request in the request history.
 type DNSRequest struct {
 	Question struct {

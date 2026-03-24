@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.95.0
 	github.com/aws/smithy-go v1.24.0
-	github.com/eggsampler/acme/v3 v3.6.2
+	github.com/eggsampler/acme/v3 v3.8.0
 	github.com/go-jose/go-jose/v4 v4.1.2
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-sql-driver/mysql v1.9.1

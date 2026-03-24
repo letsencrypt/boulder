@@ -25,6 +25,8 @@ func TestWFECORS(t *testing.T) {
 	client := &http.Client{}
 	resp, err := client.Do(getReq)
 	test.AssertNotError(t, err, "GET directory")
+	defer resp.Body.Close()
+
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
 	// We expect that the response has the correct Access-Control-Allow-Origin

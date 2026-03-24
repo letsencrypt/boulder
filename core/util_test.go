@@ -426,3 +426,54 @@ func TestIsCanceled(t *testing.T) {
 		t.Errorf("Expected random error to not be canceled, but was.")
 	}
 }
+
+func TestNormalizeIssuerDomainName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		input     string
+		want      string
+		wantError bool
+	}{
+		{
+			name:  "Already normalized",
+			input: "ca.example",
+			want:  "ca.example",
+		},
+		{
+			name:  "Normalizes uppercase and trailing dot",
+			input: "CA.EXAMPLE.",
+			want:  "ca.example",
+		},
+		{
+			name:  "Normalizes IDNA issuer",
+			input: "BÜCHER.example",
+			want:  "xn--bcher-kva.example",
+		},
+		{
+			name:      "Rejects invalid issuer with underscore",
+			input:     "ca_.example",
+			wantError: true,
+		},
+		{
+			name:      "Rejects too-long issuer",
+			input:     strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 63),
+			wantError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := NormalizeIssuerDomainName(tc.input)
+			if tc.wantError {
+				test.AssertError(t, err, "expected normalization error")
+				return
+			}
+			test.AssertNotError(t, err, "unexpected normalization error")
+			test.AssertEquals(t, got, tc.want)
+		})
+	}
+}

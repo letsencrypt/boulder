@@ -607,14 +607,17 @@ func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier) error 
 func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	switch ident.Type {
 	case identifier.TypeDNS:
-		// If the identifier is for a DNS wildcard name we only provide DNS-01
-		// or DNS-ACCOUNT-01 challenges, to comply with the BRs Sections 3.2.2.4.19
-		// and 3.2.2.4.20 stating that ACME HTTP-01 and TLS-ALPN-01 are not
-		// suitable for validating Wildcard Domains.
+		// If the identifier is for a DNS wildcard name we only provide DNS-01,
+		// DNS-ACCOUNT-01, or DNS-PERSIST-01 challenges, to comply with the BRs
+		// Sections 3.2.2.4.19 and 3.2.2.4.20 stating that ACME HTTP-01 and
+		// TLS-ALPN-01 are not suitable for validating Wildcard Domains.
 		if strings.HasPrefix(ident.Value, "*.") {
 			challenges := []core.AcmeChallenge{core.ChallengeTypeDNS01}
 			if features.Get().DNSAccount01Enabled {
 				challenges = append(challenges, core.ChallengeTypeDNSAccount01)
+			}
+			if features.Get().DNSPersist01Enabled {
+				challenges = append(challenges, core.ChallengeTypeDNSPersist01)
 			}
 			return challenges, nil
 		}
@@ -627,6 +630,9 @@ func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]c
 		}
 		if features.Get().DNSAccount01Enabled {
 			challenges = append(challenges, core.ChallengeTypeDNSAccount01)
+		}
+		if features.Get().DNSPersist01Enabled {
+			challenges = append(challenges, core.ChallengeTypeDNSPersist01)
 		}
 		return challenges, nil
 	case identifier.TypeIP:

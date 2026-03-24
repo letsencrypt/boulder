@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
+	noncebalancerv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -98,10 +99,14 @@ type Config struct {
 
 		Features features.Config
 
-		// DirectoryCAAIdentity is used for the /directory response's "meta"
-		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
-		// configuration value (this value is the one used to enforce CAA)
+		// DirectoryCAAIdentity is the CA's issuer domain name, used for:
+		//   1. /directory response: included in the "meta" caaIdentities field.
+		//   2. dns-persist-01 challenges: included in the issuer-domain-names field.
+		//
+		// Must match the VA's IssuerDomain. A mismatch will cause CAA and
+		// dns-persist-01 validation failures.
 		DirectoryCAAIdentity string `validate:"required,fqdn"`
+
 		// DirectoryWebsite is used for the /directory response's "meta" element's
 		// "website" field.
 		DirectoryWebsite string `validate:"required,url"`
@@ -318,9 +323,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 	gnc := nonce.NewGetter(getNonceConn)
 
-	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme {
+	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme &&
+		c.WFE.RedeemNonceService.SRVResolver != noncebalancerv1.SRVResolverScheme {
 		cmd.Fail(fmt.Sprintf(
-			"'redeemNonceService.SRVResolver' must be set to %q", noncebalancer.SRVResolverScheme),
+			"'redeemNonceService.SRVResolver' must be set to %q or %q",
+			noncebalancer.SRVResolverScheme, noncebalancerv1.SRVResolverScheme),
 		)
 	}
 	redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, stats, clk)
@@ -399,12 +406,12 @@ func main() {
 		c.WFE.Unpause.JWTLifetime.Duration,
 		c.WFE.Unpause.URL,
 		c.WFE.BlockedOnDemandLabels,
+		c.WFE.DirectoryCAAIdentity,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
-	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
 

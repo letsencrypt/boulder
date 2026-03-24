@@ -22,6 +22,8 @@ func downloadShard(url string) (*x509.RevocationList, error) {
 	if err != nil {
 		return nil, fmt.Errorf("downloading crl: %w", err)
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("downloading crl: http status %d", resp.StatusCode)
 	}

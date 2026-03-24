@@ -59,20 +59,31 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	types := []AcmeChallenge{ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01, ChallengeTypeDNSAccount01}
-	for _, challengeType := range types {
+	// Challenge types that require a token.
+	tokenTypes := []AcmeChallenge{ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01, ChallengeTypeDNSAccount01}
+	for _, challengeType := range tokenTypes {
 		chall := Challenge{
 			Type:   challengeType,
 			Status: StatusInvalid,
 		}
-		test.AssertError(t, chall.CheckPending(), "CheckConsistencyForClientOffer didn't return an error")
+		test.AssertError(t, chall.CheckPending(), "CheckPending didn't return an error")
 
 		chall.Status = StatusPending
-		test.AssertError(t, chall.CheckPending(), "CheckConsistencyForClientOffer didn't return an error")
+		test.AssertError(t, chall.CheckPending(), "CheckPending didn't return an error")
 
 		chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
-		test.AssertNotError(t, chall.CheckPending(), "CheckConsistencyForClientOffer returned an error")
+		test.AssertNotError(t, chall.CheckPending(), "CheckPending returned an error")
 	}
+
+	// dns-persist-01 does not use a token.
+	chall := Challenge{
+		Type:   ChallengeTypeDNSPersist01,
+		Status: StatusInvalid,
+	}
+	test.AssertError(t, chall.CheckPending(), "CheckPending didn't return an error for invalid status")
+
+	chall.Status = StatusPending
+	test.AssertNotError(t, chall.CheckPending(), "CheckPending returned an error for dns-persist-01 without token")
 }
 
 func TestJSONBufferUnmarshal(t *testing.T) {

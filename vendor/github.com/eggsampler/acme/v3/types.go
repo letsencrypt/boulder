@@ -23,6 +23,7 @@ var (
 const (
 	ChallengeTypeDNS01        = "dns-01"
 	ChallengeTypeDNSAccount01 = "dns-account-01"
+	ChallengeTypeDNSPersist01 = "dns-persist-01"
 	ChallengeTypeHTTP01       = "http-01"
 	ChallengeTypeTLSALPN01    = "tls-alpn-01"
 
@@ -200,6 +201,12 @@ type Challenge struct {
 	// Based on the challenge used
 	Token            string `json:"token"`
 	KeyAuthorization string `json:"keyAuthorization"`
+
+	// IssuerDomainNames is specific to the dns-persist-01 challenge type. It
+	// contains the list of issuer domain names accepted by the CA. For more
+	// information see:
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-dns-persist-00#section-3.1
+	IssuerDomainNames []string `json:"issuer-domain-names,omitempty"`
 
 	// Authorization url provided by the rel="up" Link http header
 	AuthorizationURL string `json:"-"`

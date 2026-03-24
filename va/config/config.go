@@ -14,7 +14,14 @@ type Common struct {
 	// DoH queries.
 	UserAgent string
 
-	IssuerDomain string
+	// IssuerDomain is the CA's issuer domain name, used for:
+	//   1. CAA validation: matched against CAA issue/issuewild tag values.
+	//   2. dns-persist-01 validation: compared against the issuer-domain-name
+	//      in the subscriber's TXT record.
+	//
+	// Must match the WFE's DirectoryCAAIdentity. A mismatch will cause CAA
+	// and dns-persist-01 validation failures.
+	IssuerDomain string `validate:"required"`
 
 	// DNSTries is the number of times to try a DNS query (that has a temporary error)
 	// before giving up. May be short-circuited by deadlines. A zero value
@@ -29,7 +36,8 @@ type Common struct {
 	DNSAllowLoopbackAddresses bool
 
 	// AccountURIPrefixes is a list of prefixes used to construct account URIs.
-	// The first prefix in the list is used for dns-account-01 challenges.
+	// The first prefix in the list is used for dns-account-01 and
+	// dns-persist-01 challenges.
 	// All of the prefixes are used for CAA accounturi validation.
 	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 }

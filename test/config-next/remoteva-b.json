@@ -41,7 +41,8 @@
 		"perspective": "surrealist",
 		"rir": "RIPE",
 		"features": {
-			"DNSAccount01Enabled": true
+			"DNSAccount01Enabled": true,
+			"DNSPersist01Enabled": true
 		}
 	},
 	"syslog": {
