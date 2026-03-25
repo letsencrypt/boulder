@@ -152,6 +152,8 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, fakeDNS
 		isNonLoopbackReservedIP,
 		time.Second,
 		true,
+		nil,
+		0,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
@@ -328,6 +330,8 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		isNonLoopbackReservedIP,
 		time.Second,
 		true,
+		nil,
+		0,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
@@ -386,6 +390,119 @@ func TestValidateMalformedChallenge(t *testing.T) {
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func setupWithExperimental(experimentalDNS bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
+	va, mockLog := setup(nil, "", nil, &txtFakeDNS{})
+	expVA, _ := setup(nil, "", nil, experimentalDNS)
+	expVA.perspective = "Experimental"
+	va.experimentalVA = expVA
+	va.experimentalVASampleRate = 1.0
+	return va, mockLog
+}
+
+func TestExperimentalVAConcurrence(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		experimentalDNS bdns.Client
+		domain          string
+		primaryProblem  bool
+		expectConcur    float64
+		expectDisagree  float64
+		expectLog       string
+	}{
+		{
+			name:            "both pass",
+			experimentalDNS: &txtFakeDNS{},
+			domain:          "good-dns01.com",
+			expectConcur:    1,
+			expectDisagree:  0,
+		},
+		{
+			name:            "primary passes experimental fails",
+			experimentalDNS: &bdns.MockClient{},
+			domain:          "good-dns01.com",
+			expectConcur:    0,
+			expectDisagree:  1,
+			expectLog:       "Primary VA disagreed with experimental VA",
+		},
+		{
+			name:            "both fail",
+			experimentalDNS: &bdns.MockClient{},
+			domain:          "servfail.com",
+			primaryProblem:  true,
+			expectConcur:    1,
+			expectDisagree:  0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			va, mockLog := setupWithExperimental(tc.experimentalDNS)
+			req := createValidationRequest(identifier.NewDNS(tc.domain), core.ChallengeTypeDNS01)
+			res, err := va.DoDCV(context.Background(), req)
+			test.AssertNotError(t, err, "DoDCV failed")
+			if tc.primaryProblem {
+				test.Assert(t, res.Problem != nil, "expected a problem")
+			} else {
+				test.Assert(t, res.Problem == nil, "expected no problem")
+			}
+
+			time.Sleep(100 * time.Millisecond)
+
+			test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+				"operation":   opDCV,
+				"concurrence": "true",
+			}, tc.expectConcur)
+			test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+				"operation":   opDCV,
+				"concurrence": "false",
+			}, tc.expectDisagree)
+
+			if tc.expectLog != "" {
+				test.AssertEquals(t, len(mockLog.GetAllMatching(tc.expectLog)), 1)
+			}
+		})
+	}
+}
+
+func TestExperimentalVANilIsNoop(t *testing.T) {
+	t.Parallel()
+
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
+	res, err := va.DoDCV(context.Background(), req)
+	test.AssertNotError(t, err, "DoDCV failed")
+	test.Assert(t, res.Problem == nil, "validation should succeed")
+}
+
+func TestExperimentalVAZeroSample(t *testing.T) {
+	t.Parallel()
+
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
+	expVA, _ := setup(nil, "", nil, &bdns.MockClient{})
+	expVA.perspective = "Experimental"
+	va.experimentalVA = expVA
+	va.experimentalVASampleRate = 0
+
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
+	res, err := va.DoDCV(context.Background(), req)
+	test.AssertNotError(t, err, "DoDCV failed")
+	test.Assert(t, res.Problem == nil, "expected no problem")
+
+	time.Sleep(100 * time.Millisecond)
+
+	test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+		"operation":   opDCV,
+		"concurrence": "true",
+	}, 0)
+	test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+		"operation":   opDCV,
+		"concurrence": "false",
+	}, 0)
 }
 
 func TestPerformValidationInvalid(t *testing.T) {

@@ -130,6 +130,8 @@ func main() {
 		iana.IsReservedAddr,
 		0,
 		c.RVA.DNSAllowLoopbackAddresses,
+		nil,
+		0,
 	)
 	cmd.FailOnError(err, "Unable to create Remote-VA server")
 

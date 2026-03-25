@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -57,7 +58,23 @@ type Config struct {
 		// when the VA first gets a quorum of (un)successful remote results.
 		// Leaving this value zero means the VA won't early-cancel slow remotes.
 		SlowRemoteTimeout config.Duration
-		Features          features.Config
+
+		// ExperimentalVA configures an optional parallel VA that shadows the
+		// primary VA's DCV and CAA checks using an alternative DNS resolver,
+		// emitting comparison metrics without affecting the real validation
+		// decision.
+		ExperimentalVA *struct {
+			// DNSProvider is the dynamic DNS provider config for the
+			// experimental VA's resolver.
+			DNSProvider *cmd.DNSProvider `validate:"required"`
+			// DNSTimeout is the timeout for DNS queries. Defaults to the
+			// primary VA's DNSTimeout if unset.
+			DNSTimeout config.Duration `validate:"omitempty"`
+			// SampleRate controls the rate of validations that are shadowed
+			// (0.0 to 1.0). A value of 0 disables shadowing.
+			SampleRate float64 `validate:"min=0,max=1"`
+		}
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -130,6 +147,54 @@ func main() {
 		}
 	}
 
+	var experimentalVA *va.ValidationAuthorityImpl
+	var experimentalVASampleRate float64
+	if c.VA.ExperimentalVA != nil {
+		servers, err := bdns.StartDynamicProvider(c.VA.ExperimentalVA.DNSProvider, 60*time.Second, "tcp")
+		cmd.FailOnError(err, "Couldn't start experimental dynamic DNS server resolver")
+		defer servers.Stop()
+
+		dnsTimeout := c.VA.ExperimentalVA.DNSTimeout.Duration
+		if dnsTimeout <= 0 {
+			dnsTimeout = c.VA.DNSTimeout.Duration
+		}
+
+		// Prefix experimental VA metrics to avoid metric name collisions with
+		// the primary VA.
+		scope := prometheus.WrapRegistererWithPrefix("experimental_", scope)
+
+		resolver := bdns.New(
+			dnsTimeout,
+			servers,
+			scope,
+			clk,
+			c.VA.DNSTries,
+			c.VA.UserAgent,
+			logger,
+			tlsConfig,
+		)
+
+		experimentalVA, err = va.NewValidationAuthorityImpl(
+			resolver,
+			nil,
+			c.VA.UserAgent,
+			c.VA.IssuerDomain,
+			scope,
+			clk,
+			logger,
+			c.VA.AccountURIPrefixes,
+			"Experimental",
+			"",
+			iana.IsReservedAddr,
+			0,
+			c.VA.DNSAllowLoopbackAddresses,
+			nil,
+			0,
+		)
+		cmd.FailOnError(err, "Unable to create experimental VA")
+		experimentalVASampleRate = c.VA.ExperimentalVA.SampleRate
+	}
+
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
 		remotes,
@@ -144,6 +209,8 @@ func main() {
 		iana.IsReservedAddr,
 		c.VA.SlowRemoteTimeout.Duration,
 		c.VA.DNSAllowLoopbackAddresses,
+		experimentalVA,
+		experimentalVASampleRate,
 	)
 	cmd.FailOnError(err, "Unable to create VA server")
 

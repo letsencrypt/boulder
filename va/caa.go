@@ -103,7 +103,25 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", ident.Value, prob.Detail)
-		return bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
+	}
+
+	var localResult remoteResult
+	if va.shouldDispatchExperiment() {
+		defer func() {
+			va.dispatchExperiment(opCAA, localResult, func(ctx context.Context) (remoteResult, error) {
+				return va.experimentalVA.DoCAA(ctx, req)
+			})
+		}()
+	}
+
+	// Capture the local validation result for experimental resolver comparison
+	// before MPIC can influence the outcome.
+	localResult, err = bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
+	if err != nil {
+		return nil, err
+	}
+	if prob != nil {
+		return localResult.(*vapb.IsCAAValidResponse), nil
 	}
 
 	if va.isPrimaryVA() {
