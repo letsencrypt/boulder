@@ -375,10 +375,12 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 
 	l.Lock()
 	defer l.Unlock()
-	l.overridesLoaded = true
 
-	for _, cb := range l.healthyCallbacks {
-		cb()
+	if !l.overridesLoaded {
+		l.overridesLoaded = true
+		for _, cb := range l.healthyCallbacks {
+			cb()
+		}
 	}
 
 	if len(newOverrides) < 1 {
