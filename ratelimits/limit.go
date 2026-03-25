@@ -380,6 +380,7 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 		l.overridesLoaded = true
 		for _, cb := range l.healthyCallbacks {
 			cb()
+			l.healthyCallbacks = nil
 		}
 	}
 
@@ -414,8 +415,8 @@ func (l *limitRegistry) Ready() bool {
 
 // OnHealthy registers the callback to be invoked once the overrides are loaded.
 func (l *limitRegistry) OnHealthy(cb func()) {
-	l.RLock()
-	defer l.RUnlock()
+	l.Lock()
+	defer l.Unlock()
 
 	l.healthyCallbacks = append(l.healthyCallbacks, cb)
 }
