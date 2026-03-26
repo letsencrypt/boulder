@@ -381,7 +381,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
-		1, testKeyPolicy, limiter, txnBuilder, 100,
+		1, testKeyPolicy, limiter, txnBuilder,
 		profiles, nil, 5*time.Minute, ctp, nil)
 	ra.SA = sa
 	ra.VA = va

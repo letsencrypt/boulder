@@ -121,7 +121,6 @@ func NewRegistrationAuthorityImpl(
 	keyPolicy goodkey.KeyPolicy,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
-	maxNames int,
 	profiles *validationProfiles,
 	pubc pubpb.PublisherClient,
 	finalizeTimeout time.Duration,
@@ -257,7 +256,7 @@ type ValidationProfileConfig struct {
 	// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
 	// Subscriber Certificate". The value must be less than or equal to the
 	// global (i.e. not per-profile) value configured in the CA.
-	MaxNames int `validate:"omitempty,min=1,max=100"`
+	MaxNames int `validate:"required,min=1,max=100"`
 	// AllowList specifies the path to a YAML file containing a list of
 	// account IDs permitted to use this profile. If no path is
 	// specified, the profile is open to all accounts. If the file

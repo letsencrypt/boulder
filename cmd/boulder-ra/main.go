@@ -81,15 +81,6 @@ type Config struct {
 			OverridesFromDB bool
 		}
 
-		// MaxNames is the maximum number of subjectAltNames in a single cert.
-		// The value supplied MUST be greater than 0 and no more than 100. These
-		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
-		// Subscriber Certificate". The value must match the CA and WFE
-		// configurations.
-		//
-		// Deprecated: Set ValidationProfiles[*].MaxNames instead.
-		MaxNames int `validate:"omitempty,min=1,max=100"`
-
 		// ValidationProfiles is a map of validation profiles to their
 		// respective issuance allow lists. If a profile is not included in this
 		// mapping, it cannot be used by any account. If this field is left
@@ -241,16 +232,6 @@ func main() {
 		cmd.Fail("At least one profile must be configured")
 	}
 
-	// TODO(#7993): Remove this fallback and make ValidationProfile.MaxNames a
-	// required config field. We don't do any validation on the value of this
-	// top-level MaxNames because that happens inside the call to
-	// NewValidationProfiles below.
-	for _, pc := range c.RA.ValidationProfiles {
-		if pc.MaxNames == 0 {
-			pc.MaxNames = c.RA.MaxNames
-		}
-	}
-
 	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)
 	cmd.FailOnError(err, "Failed to load validation profiles")
 
@@ -297,7 +278,6 @@ func main() {
 		kp,
 		limiter,
 		txnBuilder,
-		c.RA.MaxNames,
 		validationProfiles,
 		pubc,
 		c.RA.FinalizeTimeout.Duration,
