@@ -59,7 +59,7 @@ type Config struct {
 		// Leaving this value zero means the VA won't early-cancel slow remotes.
 		SlowRemoteTimeout config.Duration
 
-		// ExperimentalVA configures an optional parallel VA that shadows the
+		// ExperimentalVA configures an optional parallel VA that repeats the
 		// primary VA's DCV and CAA checks using an alternative DNS resolver,
 		// emitting comparison metrics without affecting the real validation
 		// decision.
@@ -70,9 +70,13 @@ type Config struct {
 			// DNSTimeout is the timeout for DNS queries. Defaults to the
 			// primary VA's DNSTimeout if unset.
 			DNSTimeout config.Duration `validate:"omitempty"`
-			// SampleRate controls the rate of validations that are shadowed
-			// (0.0 to 1.0). A value of 0 disables shadowing.
+			// SampleRate controls the rate of validations that are repeated
+			// (0.0 to 1.0). A value of 0 disables it entirely, while 1 repeats
+			// all validations.
 			SampleRate float64 `validate:"min=0,max=1"`
+			// Timeout is the timeout for experimental validation operations.
+			// This should be configured to match the RA->VA timeout.
+			Timeout config.Duration `validate:"required"`
 		}
 		Features features.Config
 	}
@@ -149,6 +153,7 @@ func main() {
 
 	var experimentalVA *va.ValidationAuthorityImpl
 	var experimentalVASampleRate float64
+	var experimentalVATimeout time.Duration
 	if c.VA.ExperimentalVA != nil {
 		servers, err := bdns.StartDynamicProvider(c.VA.ExperimentalVA.DNSProvider, 60*time.Second, "tcp")
 		cmd.FailOnError(err, "Couldn't start experimental dynamic DNS server resolver")
@@ -190,9 +195,11 @@ func main() {
 			c.VA.DNSAllowLoopbackAddresses,
 			nil,
 			0,
+			0,
 		)
 		cmd.FailOnError(err, "Unable to create experimental VA")
 		experimentalVASampleRate = c.VA.ExperimentalVA.SampleRate
+		experimentalVATimeout = c.VA.ExperimentalVA.Timeout.Duration
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(
@@ -211,6 +218,7 @@ func main() {
 		c.VA.DNSAllowLoopbackAddresses,
 		experimentalVA,
 		experimentalVASampleRate,
+		experimentalVATimeout,
 	)
 	cmd.FailOnError(err, "Unable to create VA server")
 

@@ -154,6 +154,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, fakeDNS
 		true,
 		nil,
 		0,
+		0,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
@@ -331,6 +332,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		time.Second,
 		true,
 		nil,
+		0,
 		0,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")

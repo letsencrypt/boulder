@@ -217,6 +217,7 @@ type ValidationAuthorityImpl struct {
 	allowRestrictedAddrs     bool
 	experimentalVA           *ValidationAuthorityImpl
 	experimentalVASampleRate float64
+	experimentalVATimeout    time.Duration
 
 	metrics *vaMetrics
 }
@@ -241,6 +242,7 @@ func NewValidationAuthorityImpl(
 	allowRestrictedAddrs bool,
 	experimentalVA *ValidationAuthorityImpl,
 	experimentalVASampleRate float64,
+	experimentalVATimeout time.Duration,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
@@ -290,43 +292,46 @@ func NewValidationAuthorityImpl(
 		allowRestrictedAddrs:     allowRestrictedAddrs,
 		experimentalVA:           experimentalVA,
 		experimentalVASampleRate: experimentalVASampleRate,
+		experimentalVATimeout:    experimentalVATimeout,
 	}
 
 	return va, nil
 }
 
-func (va *ValidationAuthorityImpl) shouldDispatchExperiment() bool {
+func (va *ValidationAuthorityImpl) shouldRunExperiment() bool {
 	return va.experimentalVA != nil && rand.Float64() < va.experimentalVASampleRate
 }
 
-func (va *ValidationAuthorityImpl) dispatchExperiment(operation string, primary remoteResult, experimentFunc func(context.Context) (remoteResult, error)) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), va.slowRemoteTimeout)
-		defer cancel()
+// runExperiment compares the primary VA's local result against the experimental
+// VA's result and records a concurrence metric. On disagreement, it logs a
+// structured event with both results. The primary argument must be non-nil.
+// Callers should invoke this in a goroutine.
+func (va *ValidationAuthorityImpl) runExperiment(ctx context.Context, operation string, primary remoteResult, experimentFunc func(context.Context) (remoteResult, error)) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), va.experimentalVATimeout)
+	defer cancel()
 
-		experimentResult, err := experimentFunc(ctx)
+	experimentResult, err := experimentFunc(ctx)
 
-		primaryPassed := primary.GetProblem() == nil
-		experimentPassed := (err == nil) && (experimentResult.GetProblem() == nil)
+	primaryPassed := primary.GetProblem() == nil
+	experimentPassed := (err == nil) && (experimentResult.GetProblem() == nil)
 
-		if primaryPassed == experimentPassed {
-			va.metrics.experimentConcurrence.WithLabelValues(operation, "true").Inc()
-			return
-		}
-		va.metrics.experimentConcurrence.WithLabelValues(operation, "false").Inc()
+	if primaryPassed == experimentPassed {
+		va.metrics.experimentConcurrence.WithLabelValues(operation, "true").Inc()
+		return
+	}
+	va.metrics.experimentConcurrence.WithLabelValues(operation, "false").Inc()
 
-		logArgs := map[string]any{
-			"operation":        operation,
-			"primaryPassed":    primaryPassed,
-			"primaryResult":    primary,
-			"experimentPassed": experimentPassed,
-			"experimentResult": experimentResult,
-		}
-		if err != nil {
-			logArgs["experimentErr"] = err.Error()
-		}
-		va.log.AuditInfo("Primary VA disagreed with experimental VA", logArgs)
-	}()
+	logArgs := map[string]any{
+		"operation":        operation,
+		"primaryPassed":    primaryPassed,
+		"primaryResult":    primary,
+		"experimentPassed": experimentPassed,
+		"experimentResult": experimentResult,
+	}
+	if err != nil {
+		logArgs["experimentErr"] = err.Error()
+	}
+	va.log.AuditInfo("Primary VA disagreed with experimental VA", logArgs)
 }
 
 // maxAllowedFailures returns the maximum number of allowed failures
@@ -819,23 +824,25 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		prob = detailedError(err)
 	}
 
-	var localResult remoteResult
-	if va.shouldDispatchExperiment() {
-		defer func() {
-			va.dispatchExperiment(opDCV, localResult, func(ctx context.Context) (remoteResult, error) {
-				return va.experimentalVA.DoDCV(ctx, req)
-			})
-		}()
-	}
-
 	// Capture the local validation result for experimental resolver comparison
 	// before MPIC can influence the outcome.
-	localResult, err = bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	localResult, err := bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 	if err != nil {
 		return nil, err
 	}
+
+	if va.shouldRunExperiment() {
+		go va.runExperiment(
+			ctx,
+			opDCV,
+			proto.Clone(localResult).(*vapb.ValidationResult),
+			func(ctx context.Context) (remoteResult, error) {
+				return va.experimentalVA.DoDCV(ctx, req)
+			})
+	}
+
 	if prob != nil {
-		return localResult.(*vapb.ValidationResult), nil
+		return localResult, nil
 	}
 
 	if va.isPrimaryVA() {

@@ -132,6 +132,7 @@ func main() {
 		c.RVA.DNSAllowLoopbackAddresses,
 		nil,
 		0,
+		0,
 	)
 	cmd.FailOnError(err, "Unable to create Remote-VA server")
 
