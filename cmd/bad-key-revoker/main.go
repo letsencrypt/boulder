@@ -379,12 +379,10 @@ func main() {
 		bkr.backoffIntervalBase = time.Second
 	}
 
-	// If `MaxExpectedReplicationLag` was not set via the config, then set
-	// `bkr.maxExpectedReplicationLag` to a default 22 seconds. This is based on
-	// ProxySQL's max_replication_lag for bad-key-revoker (10s), times two, plus
-	// two seconds.
+	// If `MaxExpectedReplicationLag` was not set via the config, fail. We can't
+	// safely assume or anticipate its value for any given Boulder deployment.
 	if bkr.maxExpectedReplicationLag == 0 {
-		bkr.maxExpectedReplicationLag = time.Second * 22
+		cmd.Fail("maxExpectedReplicationLag must be provided.")
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.
