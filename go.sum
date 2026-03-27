@@ -155,8 +155,8 @@ github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae h1:yFuF5yRIwaandc
 github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae/go.mod h1:gMSMCNKhxox/ccR923EJsIvHeVVYfCABGbirqa0EwuM=
 github.com/letsencrypt/challtestsrv v1.4.2 h1:0ON3ldMhZyWlfVNYYpFuWRTmZNnyfiL9Hh5YzC3JVwU=
 github.com/letsencrypt/challtestsrv v1.4.2/go.mod h1:GhqMqcSoeGpYd5zX5TgwA6er/1MbWzx/o7yuuVya+Wk=
-github.com/letsencrypt/pkcs11key/v4 v4.0.0 h1:qLc/OznH7xMr5ARJgkZCCWk+EomQkiNTOoOF5LAgagc=
-github.com/letsencrypt/pkcs11key/v4 v4.0.0/go.mod h1:EFUvBDay26dErnNb70Nd0/VW3tJiIbETBPTl9ATXQag=
+github.com/letsencrypt/pkcs11key/v4 v4.0.1 h1:XIXFxOnQJS5QYBlMnHhnlOBVcfylh7m3fjOJmVcEV88=
+github.com/letsencrypt/pkcs11key/v4 v4.0.1/go.mod h1:6KfGBMkPEL6OAIRFSZ0VTj3e9G0Yv9G17W5oQ2x1/UQ=
 github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158 h1:HGFsIltYMUiB5eoFSowFzSoXkocM2k9ctmJ57QMGjys=
 github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158/go.mod h1:ZFNBS3H6OEsprCRjscty6GCBe5ZiX44x6qY4s7+bDX0=
 github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
@@ -170,9 +170,8 @@ github.com/mattn/go-sqlite3 v1.14.26/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxU
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/miekg/dns v1.1.62 h1:cN8OuEF1/x5Rq6Np+h1epln8OiyPWV+lROx9LxcGgIQ=
 github.com/miekg/dns v1.1.62/go.mod h1:mvDlcItzm+br7MToIKqkglaGhlFMHJ9DTNNWONWXbNQ=
-github.com/miekg/pkcs11 v1.0.2/go.mod h1:XsNlhZGX73bx86s2hdc/FuaLm2CPZJemRLMA+WTFxgs=
-github.com/miekg/pkcs11 v1.1.1 h1:Ugu9pdy6vAYku5DEpVWVFPYnzV+bxB+iRdbuFSu7TvU=
-github.com/miekg/pkcs11 v1.1.1/go.mod h1:XsNlhZGX73bx86s2hdc/FuaLm2CPZJemRLMA+WTFxgs=
+github.com/miekg/pkcs11 v1.1.2 h1:/VxmeAX5qU6Q3EwafypogwWbYryHFmF2RpkJmw3m4MQ=
+github.com/miekg/pkcs11 v1.1.2/go.mod h1:XsNlhZGX73bx86s2hdc/FuaLm2CPZJemRLMA+WTFxgs=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/mitchellh/mapstructure v1.1.2/go.mod h1:FVVH3fgwuzCH5S8UJGiWEs2h04kUh9fWfEaFds41c1Y=
 github.com/mreiferson/go-httpclient v0.0.0-20160630210159-31f0106b4474/go.mod h1:OQA4XLvDbMgS8P0CevmM4m9Q3Jq4phKUzcocxuGJ5m8=

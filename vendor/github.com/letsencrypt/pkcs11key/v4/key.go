@@ -74,7 +74,7 @@ type ctx interface {
 	GetAttributeValue(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle, a []*pkcs11.Attribute) ([]*pkcs11.Attribute, error)
 	GetSlotList(tokenPresent bool) ([]uint, error)
 	GetTokenInfo(slotID uint) (pkcs11.TokenInfo, error)
-	Initialize() error
+	Initialize(opts ...pkcs11.InitializeOption) error
 	Login(sh pkcs11.SessionHandle, userType uint, pin string) error
 	Logout(sh pkcs11.SessionHandle) error
 	OpenSession(slotID uint, flags uint) (pkcs11.SessionHandle, error)

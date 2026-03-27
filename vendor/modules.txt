@@ -217,8 +217,8 @@ github.com/letsencrypt/borp
 # github.com/letsencrypt/challtestsrv v1.4.2
 ## explicit; go 1.24
 github.com/letsencrypt/challtestsrv
-# github.com/letsencrypt/pkcs11key/v4 v4.0.0
-## explicit; go 1.12
+# github.com/letsencrypt/pkcs11key/v4 v4.0.1
+## explicit; go 1.17
 github.com/letsencrypt/pkcs11key/v4
 # github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
 ## explicit; go 1.18
@@ -226,7 +226,7 @@ github.com/letsencrypt/validator/v10
 # github.com/miekg/dns v1.1.62
 ## explicit; go 1.19
 github.com/miekg/dns
-# github.com/miekg/pkcs11 v1.1.1
+# github.com/miekg/pkcs11 v1.1.2
 ## explicit; go 1.12
 github.com/miekg/pkcs11
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
