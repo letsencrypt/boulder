@@ -106,9 +106,9 @@ func TestClientTransportCredentials(t *testing.T) {
 	roots.AddCert(certB)
 
 	serverA := httptest.NewUnstartedServer(nil)
-	serverA.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derA}, PrivateKey: priv}}, NextProtos: []string{"h2"}}
+	serverA.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derA}, PrivateKey: priv}}}
 	serverB := httptest.NewUnstartedServer(nil)
-	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}, NextProtos: []string{"h2"}}
+	serverB.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{derB}, PrivateKey: priv}}}
 
 	tc := NewClientCredentials(roots, []tls.Certificate{}, "")
 

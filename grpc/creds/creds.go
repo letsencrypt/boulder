@@ -69,7 +69,6 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 		ServerName:   host,
 		RootCAs:      tc.roots,
 		Certificates: tc.clients,
-		NextProtos:   []string{"h2"},
 	})
 	err = conn.HandshakeContext(ctx)
 	if err != nil {
