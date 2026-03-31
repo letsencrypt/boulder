@@ -218,6 +218,8 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		Certificates: []tls.Certificate{cert},
 		// Set the only acceptable TLS to v1.3.
 		MinVersion: tls.VersionTLS13,
+		// HTTP/2 requires us to advertise h2 in the TLS ALPN.
+		NextProtos: []string{"h2"},
 	}, nil
 }
 
