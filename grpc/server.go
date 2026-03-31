@@ -126,6 +126,10 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return nil, errNilTLS
 	}
 
+	// Advertise support for h2 in the ALPN, required by HTTP/2. grpc-go can't do
+	// this for us, since we're handling a raw tls.Config.
+	tlsConfig.NextProtos = []string{"h2"}
+
 	// Collect all names which should be allowed to connect to the server at all.
 	// This is the names which are allowlisted at the server level, plus the union
 	// of all names which are allowlisted for any individual service.
