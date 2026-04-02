@@ -198,7 +198,6 @@ CREATE TABLE `registrations` (
   `jwk` mediumblob NOT NULL,
   `jwk_sha256` varchar(255) NOT NULL,
   `agreement` varchar(255) NOT NULL,
-  `LockCol` bigint(20) NOT NULL DEFAULT 0,
   `createdAt` datetime NOT NULL,
   `status` varchar(255) NOT NULL DEFAULT 'valid',
   PRIMARY KEY (`id`),

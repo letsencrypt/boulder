@@ -202,7 +202,6 @@ CREATE TABLE `registrations` (
   `jwk` mediumblob NOT NULL,
   `jwk_sha256` varchar(255) NOT NULL,
   `agreement` varchar(255) NOT NULL,
-  `LockCol` bigint(20) NOT NULL DEFAULT 0,
   `createdAt` datetime NOT NULL,
   `status` varchar(255) NOT NULL DEFAULT 'valid',
   PRIMARY KEY (`id`),
@@ -245,5 +244,4 @@ CREATE TABLE `serials` (
 
 ALTER TABLE `certificateStatus` DROP COLUMN `subscriberApproved`;
 ALTER TABLE `certificateStatus` DROP COLUMN `LockCol`;
-ALTER TABLE `registrations` DROP COLUMN `LockCol`;
 ALTER TABLE `revokedCertificates` ADD KEY `serial` (`serial`);
