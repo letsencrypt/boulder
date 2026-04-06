@@ -76,7 +76,7 @@ jobs:
           persist-credentials: false
 
       - name: Docker Login
-        run: printenv $DOCKER_PASSWORD | docker login -u "$DOCKER_USERNAME" --password-stdin docker.io
+        run: printenv DOCKER_PASSWORD | docker login -u "$DOCKER_USERNAME" --password-stdin docker.io
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
