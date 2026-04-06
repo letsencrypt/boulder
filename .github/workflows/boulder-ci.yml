@@ -75,10 +75,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Login to GitHub Container Registry
-        run: printenv GITHUB_TOKEN | docker login -u "$GITHUB_ACTOR" --password-stdin ghcr.io
+      - name: Docker Login
+        run: printenv $DOCKER_PASSWORD | docker login -u "$DOCKER_USERNAME" --password-stdin
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME}}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD}}
 
       # Print the env variable being used to pull the docker image. For
       # informational use.
