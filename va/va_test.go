@@ -402,7 +402,6 @@ func TestExperimentalVAConcurrence(t *testing.T) {
 		name            string
 		primaryDNS      bdns.Client
 		experimentalDNS bdns.Client
-		domain          string
 		primaryProblem  bool
 		expectConcur    float64
 		expectDisagree  float64
@@ -470,10 +469,9 @@ func TestExperimentalVAConcurrence(t *testing.T) {
 			}, tc.expectDisagree)
 
 			if tc.expectLog != "" {
-				matchingLogs := mockLog.GetAllMatching(tc.expectLog)
-				if len(matchingLogs) != 1 {
-					t.Errorf("Expected log line matching %q, got: %s",
-						tc.expectLog, strings.Join(mockLog.GetAll(), "\n"))
+				err := mockLog.ExpectMatch(tc.expectLog)
+				if err != nil {
+					t.Error(err)
 				}
 			}
 		})
