@@ -30,6 +30,8 @@ import (
 )
 
 type ipFakeDNS struct {
+	// If non-nil, this IP address will be returned by the appropriate method (LookupA / LookupAAAA) depending on
+	// whether it is IPv4 or IPv6. Otherwise those methods return 127.0.0.1 / ::1.
 	ip net.IP
 	bdns.Client
 }
