@@ -306,14 +306,23 @@ func (va *ValidationAuthorityImpl) shouldRunExperiment() bool {
 // VA's result and records a concurrence metric. On disagreement, it logs a
 // structured event with both results. The primary argument must be non-nil.
 // Callers should invoke this in a goroutine.
-func (va *ValidationAuthorityImpl) runExperiment(ctx context.Context, operation string, primary remoteResult, experimentFunc func(context.Context) (remoteResult, error)) {
+//
+// The passed experimentFunc should return a list of validation records (or nil in the case of CAA),
+// followed by any ProblemDetails relevant (which will be nil on success), and any errors in validation.
+func (va *ValidationAuthorityImpl) runExperiment(
+	ctx context.Context,
+	operation string,
+	primaryProblem *probs.ProblemDetails,
+	primaryValidationRecords []core.ValidationRecord,
+	experimentFunc func(context.Context) ([]core.ValidationRecord, *corepb.ProblemDetails, error),
+) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), va.experimentalVATimeout)
 	defer cancel()
 
-	experimentResult, err := experimentFunc(ctx)
+	experimentValidationRecords, experimentProblem, err := experimentFunc(ctx)
 
-	primaryPassed := primary.GetProblem() == nil
-	experimentPassed := (err == nil) && (experimentResult.GetProblem() == nil)
+	primaryPassed := primaryProblem == nil
+	experimentPassed := err == nil && experimentProblem == nil
 
 	if primaryPassed == experimentPassed {
 		va.metrics.experimentConcurrence.WithLabelValues(operation, "true").Inc()
@@ -322,11 +331,11 @@ func (va *ValidationAuthorityImpl) runExperiment(ctx context.Context, operation 
 	va.metrics.experimentConcurrence.WithLabelValues(operation, "false").Inc()
 
 	logArgs := map[string]any{
-		"operation":        operation,
-		"primaryPassed":    primaryPassed,
-		"primaryResult":    primary,
-		"experimentPassed": experimentPassed,
-		"experimentResult": experimentResult,
+		"operation":                   operation,
+		"primaryProblem":              primaryProblem,
+		"primaryValidationRecords":    primaryValidationRecords,
+		"experimentProblem":           experimentProblem,
+		"experimentValidationRecords": experimentValidationRecords,
 	}
 	if err != nil {
 		logArgs["experimentErr"] = err.Error()
@@ -835,9 +844,22 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		go va.runExperiment(
 			ctx,
 			opDCV,
-			proto.Clone(localResult).(*vapb.ValidationResult),
-			func(ctx context.Context) (remoteResult, error) {
-				return va.experimentalVA.DoDCV(ctx, req)
+			prob,
+			records,
+			func(ctx context.Context) ([]core.ValidationRecord, *corepb.ProblemDetails, error) {
+				result, err := va.experimentalVA.DoDCV(ctx, req)
+				if err != nil {
+					return nil, nil, err
+				}
+				var loggableRecords []core.ValidationRecord
+				for _, record := range result.Records {
+					converted, err := bgrpc.PBToValidationRecord(record)
+					if err != nil {
+						return nil, nil, err
+					}
+					loggableRecords = append(loggableRecords, converted)
+				}
+				return loggableRecords, result.Problem, nil
 			})
 	}
 

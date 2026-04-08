@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"net/url"
 	"regexp"
 	"strings"
@@ -105,25 +106,24 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", ident.Value, prob.Detail)
 	}
 
-	// Capture the local validation result for experimental resolver comparison
-	// before MPIC can influence the outcome.
-	localResult, err := bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
-	if err != nil {
-		return nil, err
-	}
-
 	if va.shouldRunExperiment() {
 		go va.runExperiment(
 			ctx,
 			opCAA,
-			proto.Clone(localResult).(*vapb.IsCAAValidResponse),
-			func(ctx context.Context) (remoteResult, error) {
-				return va.experimentalVA.DoCAA(ctx, req)
+			prob,
+			nil,
+			//nolint:unparam // core.ValidationRecord is always nil because we don't return those for CAA.
+			func(ctx context.Context) ([]core.ValidationRecord, *corepb.ProblemDetails, error) {
+				result, err := va.experimentalVA.DoCAA(ctx, req)
+				if err != nil {
+					return nil, nil, err
+				}
+				return nil, result.Problem, err
 			})
 	}
 
 	if prob != nil {
-		return localResult, nil
+		return bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
 	}
 
 	if va.isPrimaryVA() {
