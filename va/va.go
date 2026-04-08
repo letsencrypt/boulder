@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -340,6 +341,8 @@ func (va *ValidationAuthorityImpl) runExperiment(
 	if err != nil {
 		logArgs["experimentErr"] = err.Error()
 	}
+	b, _ := json.Marshal(logArgs)
+	fmt.Println("oh no", string(b))
 	va.log.AuditInfo("Primary VA disagreed with experimental VA", logArgs)
 }
 

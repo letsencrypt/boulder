@@ -394,20 +394,13 @@ func TestValidateMalformedChallenge(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
-func setupWithExperimental(experimentalDNS bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
-	va, mockLog := setup(nil, "", nil, &txtFakeDNS{})
-	expVA, _ := setup(nil, "", nil, experimentalDNS)
-	expVA.perspective = "Experimental"
-	va.experimentalVA = expVA
-	va.experimentalVASampleRate = 1.0
-	return va, mockLog
-}
-
 func TestExperimentalVAConcurrence(t *testing.T) {
-	t.Parallel()
+	testSrvIPv4 := httpSrv(t, expectedToken, false)
+	t.Cleanup(testSrvIPv4.Close)
 
 	tests := []struct {
 		name            string
+		primaryDNS      bdns.Client
 		experimentalDNS bdns.Client
 		domain          string
 		primaryProblem  bool
@@ -417,23 +410,26 @@ func TestExperimentalVAConcurrence(t *testing.T) {
 	}{
 		{
 			name:            "both pass",
-			experimentalDNS: &txtFakeDNS{},
-			domain:          "good-dns01.com",
+			primaryDNS:      &ipFakeDNS{},
+			experimentalDNS: &ipFakeDNS{},
 			expectConcur:    1,
 			expectDisagree:  0,
 		},
 		{
 			name:            "primary passes experimental fails",
-			experimentalDNS: &bdns.MockClient{},
-			domain:          "good-dns01.com",
+			primaryDNS:      &ipFakeDNS{},
+			experimentalDNS: &ipFakeDNS{ip: net.IPv4(127, 0, 0, 99)},
 			expectConcur:    0,
 			expectDisagree:  1,
-			expectLog:       "Primary VA disagreed with experimental VA",
+			// The addressesResolved and addressUsed fields are checked here to make sure they are not accidentally
+			// base64-encoded (which can happen if we log the protobuf `corepb.ValidationRecord` instead of the nicely
+			// JSON-serializable struct `core.ValidationRecord`)
+			expectLog: `Primary VA disagreed with experimental VA.*"addressesResolved":\["127.0.0.1"\],"addressUsed":"127.0.0.1"`,
 		},
 		{
 			name:            "both fail",
-			experimentalDNS: &bdns.MockClient{},
-			domain:          "servfail.com",
+			primaryDNS:      &ipFakeDNS{ip: net.IPv4(127, 0, 0, 99)},
+			experimentalDNS: &ipFakeDNS{ip: net.IPv4(127, 0, 0, 99)},
 			primaryProblem:  true,
 			expectConcur:    1,
 			expectDisagree:  0,
@@ -442,15 +438,24 @@ func TestExperimentalVAConcurrence(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			va, mockLog := setupWithExperimental(tc.experimentalDNS)
-			req := createValidationRequest(identifier.NewDNS(tc.domain), core.ChallengeTypeDNS01)
-			res, err := va.DoDCV(context.Background(), req)
+			va, mockLog := setup(testSrvIPv4, "", nil, tc.primaryDNS)
+			expVA, _ := setup(testSrvIPv4, "", nil, tc.experimentalDNS)
+			expVA.perspective = "Experimental"
+			va.experimentalVA = expVA
+			va.experimentalVASampleRate = 1.0
+			va.experimentalVATimeout = 10 * time.Second
+
+			ident := identifier.NewDNS("experiment.example.com")
+			req := createValidationRequest(ident, core.ChallengeTypeHTTP01)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			res, err := va.DoDCV(ctx, req)
 			test.AssertNotError(t, err, "DoDCV failed")
-			if tc.primaryProblem {
-				test.Assert(t, res.Problem != nil, "expected a problem")
-			} else {
-				test.Assert(t, res.Problem == nil, "expected no problem")
+			if tc.primaryProblem && res.Problem == nil {
+				t.Errorf("for primary validation, got: nil Problem, want: any non-nil Problem")
+			} else if !tc.primaryProblem && res.Problem != nil {
+				t.Errorf("for primary validation, got: %q, want: nil Problem", res.Problem)
 			}
 
 			time.Sleep(100 * time.Millisecond)
@@ -465,7 +470,11 @@ func TestExperimentalVAConcurrence(t *testing.T) {
 			}, tc.expectDisagree)
 
 			if tc.expectLog != "" {
-				test.AssertEquals(t, len(mockLog.GetAllMatching(tc.expectLog)), 1)
+				matchingLogs := mockLog.GetAllMatching(tc.expectLog)
+				if len(matchingLogs) != 1 {
+					t.Errorf("Expected log line matching %q, got: %s",
+						tc.expectLog, strings.Join(mockLog.GetAll(), "\n"))
+				}
 			}
 		})
 	}
