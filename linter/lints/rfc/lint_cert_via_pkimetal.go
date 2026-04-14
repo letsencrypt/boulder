@@ -22,8 +22,7 @@ import (
 // PKIMetalConfig and its execute method provide a shared basis for linting
 // both certs and CRLs using PKIMetal.
 type PKIMetalConfig struct {
-	Addr        string        `toml:"addr" comment:"The address where a pkilint REST API can be reached. Ignored if socket is set."`
-	Socket      string        `toml:"socket" comment:"Path to a unix socket where a pkilint REST API is listening. Takes precedence over addr."`
+	Socket      string        `toml:"socket" comment:"Path to a unix socket where a pkilint REST API is listening."`
 	Severity    string        `toml:"severity" comment:"The minimum severity of findings to report (meta, debug, info, notice, warning, error, bug, or fatal)."`
 	Timeout     time.Duration `toml:"timeout" comment:"How long, in nanoseconds, to wait before giving up."`
 	IgnoreLints []string      `toml:"ignore_lints" comment:"The unique Validator:Code IDs of lint findings which should be ignored."`
@@ -34,10 +33,6 @@ type PKIMetalConfig struct {
 
 func (pkim *PKIMetalConfig) httpClient() *http.Client {
 	pkim.clientOnce.Do(func() {
-		if pkim.Socket == "" {
-			pkim.client = http.DefaultClient
-			return
-		}
 		socket := pkim.Socket
 		pkim.client = &http.Client{
 			Transport: &http.Transport{
@@ -60,13 +55,8 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// When dialing a unix socket, the URL host is ignored by our custom
-	// transport, so any syntactically valid base works.
-	base := pkim.Addr
-	if pkim.Socket != "" {
-		base = "http://pkimetal"
-	}
-	apiURL, err := url.JoinPath(base, endpoint)
+	// Host is ignored by our unix-socket transport, so any valid base works.
+	apiURL, err := url.JoinPath("http://pkimetal", endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("constructing pkimetal url: %w", err)
 	}
@@ -172,8 +162,8 @@ func (l *certViaPKIMetal) Configure() any {
 
 func (l *certViaPKIMetal) CheckApplies(c *x509.Certificate) bool {
 	// This lint applies to all certificates issued by Boulder, as long as it has
-	// been configured with an address or socket to reach out to. If not, skip it.
-	return l.Addr != "" || l.Socket != ""
+	// been configured with a socket to reach out to. If not, skip it.
+	return l.Socket != ""
 }
 
 func (l *certViaPKIMetal) Execute(c *x509.Certificate) *lint.LintResult {
