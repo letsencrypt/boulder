@@ -75,11 +75,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # Log into dockerhub to avoid rate limits.
       - name: Docker Login
         run: printenv DOCKER_PASSWORD | docker login -u "$DOCKER_USERNAME" --password-stdin docker.io
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        # This task is best-effort, if it fails, e.g. due to running from a fork, it's no big deal.
+        continue-on-error: true
 
       # Print the env variable being used to pull the docker image. For
       # informational use.
