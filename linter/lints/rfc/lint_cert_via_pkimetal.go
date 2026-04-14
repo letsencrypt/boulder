@@ -22,7 +22,7 @@ import (
 // PKIMetalConfig and its execute method provide a shared basis for linting
 // both certs and CRLs using PKIMetal.
 type PKIMetalConfig struct {
-	Socket      string        `toml:"socket" comment:"Path to a unix socket where a pkilint REST API is listening."`
+	Socket      string        `toml:"socket" comment:"Path to a unix socket where pkimetal is listening."`
 	Severity    string        `toml:"severity" comment:"The minimum severity of findings to report (meta, debug, info, notice, warning, error, bug, or fatal)."`
 	Timeout     time.Duration `toml:"timeout" comment:"How long, in nanoseconds, to wait before giving up."`
 	IgnoreLints []string      `toml:"ignore_lints" comment:"The unique Validator:Code IDs of lint findings which should be ignored."`
@@ -34,13 +34,14 @@ type PKIMetalConfig struct {
 func (pkim *PKIMetalConfig) httpClient() *http.Client {
 	pkim.clientOnce.Do(func() {
 		socket := pkim.Socket
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = nil
+		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", socket)
+		}
 		pkim.client = &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-					var d net.Dialer
-					return d.DialContext(ctx, "unix", socket)
-				},
-			},
+			Transport: transport,
 		}
 	})
 	return pkim.client
