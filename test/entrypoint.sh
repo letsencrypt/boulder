@@ -46,8 +46,8 @@ configure_database_endpoints
 ./test/wait-for-it.sh boulder-mariadb 3306
 ./test/wait-for-it.sh boulder-proxysql 6033
 
-# make sure we can reach pkilint
-./test/wait-for-it.sh bpkimetal 8080
+# make sure pkimetal's unix socket is ready
+./test/wait-for-socket.sh /var/run/pkimetal/pkimetal.sock
 
 if [[ $# -eq 0 ]]; then
     exec python3 ./start.py

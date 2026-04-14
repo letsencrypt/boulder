@@ -1,0 +1,7 @@
+server:
+  # Disable the TCP webserver; we only listen on a unix socket so callers
+  # do not need any network access to reach pkimetal.
+  webserverPort: 0
+  webserverPath: /var/run/pkimetal/pkimetal.sock
+  # 0o666: callers in any user namespace can connect to the socket.
+  socketPermissions: 0o666
