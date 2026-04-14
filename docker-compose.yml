@@ -187,8 +187,7 @@ services:
 volumes:
   # Shared between bpkimetal (which listens on a unix socket here) and any
   # boulder container that needs to reach pkimetal. Owned by uid 1001 so
-  # the default pkimetal user can create the socket without us running the
-  # container as root.
+  # the default pkimetal user in the container can create the socket.
   pkimetal-socket:
     driver: local
     driver_opts:
