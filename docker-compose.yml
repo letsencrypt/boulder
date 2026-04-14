@@ -148,12 +148,10 @@ services:
     image: ghcr.io/pkimetal/pkimetal:v1.41.0
     # Run as root so pkimetal can create the socket in the shared named
     # volume, which docker initializes root-owned.
+    # This is not something we'd want to do in prod.
     user: root
     volumes:
       - pkimetal-socket:/var/run/pkimetal
-      # pkimetal only honors the unix socket settings via its config file
-      # (env vars work only for keys with viper defaults, and webserverPath
-      # has none).
       - ./test/pkimetal-config.yaml:/config/config.yaml:ro
     network_mode: none
 
