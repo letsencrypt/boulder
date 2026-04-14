@@ -144,7 +144,7 @@ services:
       - bouldernet
 
   bpkimetal:
-    image: ghcr.io/pkimetal/pkimetal:v1.20.0
+    image: ghcr.io/pkimetal/pkimetal:v1.41.0
     networks:
       - bouldernet
 

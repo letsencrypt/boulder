@@ -18,7 +18,10 @@ ignore_lints = [
   # Some linters continue to complain about the lack of an AIA OCSP URI, even
   # when a CRLDP is present.
   "certlint:br_certificates_must_include_an_http_url_of_the_ocsp_responder",
-  "x509lint:no_ocsp_over_http"
+  "x509lint:no_ocsp_over_http",
+  # ctlint requires CCADB data to verify SCT signatures; our test issuers are
+  # not in CCADB so this warning fires for every issued certificate.
+  "ctlint:cannot_verify_sct_signature_without_issuer_spki,_which_could_not_be_found_in_the_available_ccadb_data",
 ]
 
 [e_pkimetal_lint_cabf_serverauth_crl]
