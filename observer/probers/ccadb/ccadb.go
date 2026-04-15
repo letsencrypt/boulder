@@ -55,7 +55,7 @@ func (c CCADBConf) UnmarshalSettings(settings []byte) (probers.Configurer, error
 // for end-user consumption is returned instead.
 func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probers.Prober, error) {
 	// See https://www.ccadb.org/resources for these URLs.
-	ccadbAllCertificatesCSVURL := "https://ccadb.my.salesforce-sites.com/ccadb/AllCertificateRecordsCSVFormatv4"
+	ccadbAllCertificatesCSVURL := "https://ccadb.my.salesforce-sites.com/ccadb/AllCertificateRecordsCSVFormatV4a"
 	if c.AllCertificatesCSVURL != "" {
 		ccadbAllCertificatesCSVURL = c.AllCertificatesCSVURL
 	}
