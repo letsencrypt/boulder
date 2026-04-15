@@ -1,5 +1,4 @@
 server:
-  # Disable the TCP webserver; we only listen on a unix socket so callers
-  # do not need any network access to reach pkimetal.
+  # Disable the TCP webserver and only listen on a unix socket
   webserverPort: 0
   webserverPath: /var/run/pkimetal/pkimetal.sock
