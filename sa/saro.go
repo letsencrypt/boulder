@@ -32,6 +32,11 @@ var (
 
 // SQLStorageAuthorityRO defines a read-only subset of a Storage Authority
 type SQLStorageAuthorityRO struct {
+	// authorizationsTableMinId is the minimum authorization ID such that the value is
+	// in the `authorizations` table instead of `authz2`.
+	// TODO: fill this at startup
+	authorizationsTableMinId int64
+
 	sapb.UnsafeStorageAuthorityReadOnlyServer
 
 	dbReadOnlyMap  *db.WrappedMap
@@ -489,12 +494,16 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 }
 
 func (ssa *SQLStorageAuthorityRO) getAuthorizationsByID(ctx context.Context, ids []int64) (*sapb.Authorizations, error) {
-	selector, err := db.NewMappedSelector[authzModel](ssa.dbReadOnlyMap)
+	selector, err := db.NewMappedSelector[authorizationModel](ssa.dbReadOnlyMap)
 	if err != nil {
 		return nil, fmt.Errorf("initializing db map: %w", err)
 	}
 
-	clauses := fmt.Sprintf(`WHERE id IN (%s)`, db.QuestionMarks(len(ids)))
+	clauses := fmt.Sprintf(`
+		LEFT OUTER JOIN successfulValidations sv ON sv.successfulValidationID = authorizations.validationID
+		LEFT OUTER JOIN failedValidations fv ON fv.failedValidationID = authorizations.validationID
+		WHERE authorizations.id in (%s)`,
+		db.QuestionMarks(len(ids)))
 
 	var sliceOfAny []any
 	for _, id := range ids {
@@ -506,12 +515,13 @@ func (ssa *SQLStorageAuthorityRO) getAuthorizationsByID(ctx context.Context, ids
 	}
 
 	var ret []*corepb.Authorization
-	err = rows.ForEach(func(row *authzModel) error {
-		authz, err := modelToAuthzPB(*row)
-		if err != nil {
-			return err
-		}
-		ret = append(ret, authz)
+	err = rows.ForEach(func(row *authorizationModel) error {
+		fmt.Printf("row: %#v\n", row)
+		//authz, err := authorizationModelToAuthzPB(*row)
+		//if err != nil {
+		//	return err
+		//}
+		//ret = append(ret, authz)
 		return nil
 	})
 	if err != nil {
@@ -526,30 +536,81 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	obj, err := ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
-	if db.IsNoRows(err) && ssa.lagFactor != 0 {
-		// GetAuthorization2 is often called shortly after a new order is created,
-		// sometimes before the order's associated authz rows have propagated to the
-		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
-		ssa.clk.Sleep(ssa.lagFactor)
-		obj, err = ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
-		if err != nil {
-			if db.IsNoRows(err) {
-				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()
+	if req.Id < ssa.authorizationsTableMinId {
+		obj, err := ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
+		if db.IsNoRows(err) && ssa.lagFactor != 0 {
+			// GetAuthorization2 is often called shortly after a new order is created,
+			// sometimes before the order's associated authz rows have propagated to the
+			// read replica yet. If we get a NoRows, wait a little bit and retry, once.
+			ssa.clk.Sleep(ssa.lagFactor)
+			obj, err = ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
+			if err != nil {
+				if db.IsNoRows(err) {
+					ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()
+				} else {
+					ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "other").Inc()
+				}
 			} else {
-				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "other").Inc()
+				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "found").Inc()
 			}
-		} else {
-			ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "found").Inc()
 		}
+		if err != nil {
+			return nil, err
+		}
+		if obj == nil {
+			return nil, berrors.NotFoundError("authorization %d not found", req.Id)
+		}
+		return modelToAuthzPB(*(obj.(*authzModel)))
+	} else {
+		obj, err := ssa.dbReadOnlyMap.Get(ctx, authorizationModel{}, req.Id)
+		if db.IsNoRows(err) && ssa.lagFactor != 0 {
+			// GetAuthorization2 is often called shortly after a new order is created,
+			// sometimes before the order's associated authz rows have propagated to the
+			// read replica yet. If we get a NoRows, wait a little bit and retry, once.
+			ssa.clk.Sleep(ssa.lagFactor)
+			obj, err = ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
+			if err != nil {
+				if db.IsNoRows(err) {
+					ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()
+				} else {
+					ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "other").Inc()
+				}
+			} else {
+				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "found").Inc()
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		if obj == nil {
+			return nil, berrors.NotFoundError("authorization %d not found", req.Id)
+		}
+
+		am, ok := obj.(authorizationModel)
+		if !ok {
+			return nil, fmt.Errorf("type assertion error in GetAuthorization2")
+		}
+
+		var validationRecord, validationError []byte
+		if am.Status == statusUint(core.StatusValid) {
+			result, err := db.Get[successfulValidationModel](ctx, ssa.dbReadOnlyMap, req.Id)
+			if err != nil {
+				return nil, err
+			}
+			validationRecord = result.ValidationRecord
+			// get validationRecord from successfulValidations
+		} else if am.Status == statusUint(core.StatusInvalid) {
+			// get validationRecord, validationError from failedValidations
+			result, err := db.Get[failedValidationModel](ctx, ssa.dbReadOnlyMap, req.Id)
+			if err != nil {
+				return nil, err
+			}
+			validationRecord = result.ValidationRecord
+			validationError = result.ValidationError
+		}
+
+		return authorizationModelToAuthzPB(am, validationRecord, validationError)
 	}
-	if err != nil {
-		return nil, err
-	}
-	if obj == nil {
-		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
-	}
-	return modelToAuthzPB(*(obj.(*authzModel)))
 }
 
 // authzModelMapToPB converts a mapping of identifiers to authzModels into a

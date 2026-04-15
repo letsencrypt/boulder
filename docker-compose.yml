@@ -52,7 +52,7 @@ services:
       - 4003:4003 # SFE
     depends_on:
       bmariadb:
-        condition: service_started
+        condition: service_healthy
       bproxysql:
         condition: service_started
       bvitess:
@@ -94,6 +94,11 @@ services:
           - boulder-mariadb
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    healthcheck:
+      # Make sure the service is up and the tables are created. Use `serials` because it happens
+      # to be last in the SQL initialization files, so if it exists the other tables do too.
+      test: [ "CMD", "mysql", "-h", "127.0.0.1", "-u", "root", "-D", "boulder_sa_next",
+              "-e", "SELECT 1 FROM serials"]
 
   bproxysql:
     image: proxysql/proxysql:2.7.2

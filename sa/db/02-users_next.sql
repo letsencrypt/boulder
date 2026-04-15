@@ -29,6 +29,10 @@ GRANT SELECT,INSERT,UPDATE ON crlShards TO 'sa'@'%';
 GRANT SELECT,INSERT,UPDATE ON revokedCertificates TO 'sa'@'%';
 GRANT SELECT,INSERT,UPDATE ON replacementOrders TO 'sa'@'%';
 GRANT SELECT,INSERT,UPDATE ON overrides TO 'sa'@'%';
+GRANT SELECT,INSERT,UPDATE ON authorizations TO 'sa'@'%';
+GRANT SELECT,INSERT,UPDATE ON reusableAuthorizations TO 'sa'@'%';
+GRANT SELECT,INSERT,UPDATE ON successfulValidations TO 'sa'@'%';
+GRANT SELECT,INSERT,UPDATE ON failedValidations TO 'sa'@'%';
 -- Tests need to be able to remove rows from this table, so DELETE,DROP is necessary.
 GRANT SELECT,INSERT,UPDATE,DELETE,DROP ON paused TO 'sa'@'%';
 
@@ -50,6 +54,10 @@ GRANT SELECT ON revokedCertificates TO 'sa_ro'@'%';
 GRANT SELECT ON replacementOrders TO 'sa_ro'@'%';
 GRANT SELECT ON paused TO 'sa_ro'@'%';
 GRANT SELECT ON overrides TO 'sa_ro'@'%';
+GRANT SELECT ON authorizations TO 'sa_ro'@'%';
+GRANT SELECT ON reusableAuthorizations TO 'sa_ro'@'%';
+GRANT SELECT ON successfulValidations TO 'sa_ro'@'%';
+GRANT SELECT ON failedValidations TO 'sa_ro'@'%';
 
 -- Revoker Tool
 GRANT SELECT,UPDATE ON registrations TO 'revoker'@'%';

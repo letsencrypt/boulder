@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/letsencrypt/boulder/features"
 	"strings"
 	"time"
 
@@ -477,15 +478,27 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0, len(req.NewAuthzs))
 		for _, authz := range req.NewAuthzs {
-			am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
-			if err != nil {
-				return nil, err
+			if features.Get().EfficientAuthorizationTable {
+				am, err := newAuthzReqToAuthorizationModel(authz, req.NewOrder.CertificateProfileName)
+				if err != nil {
+					return nil, err
+				}
+				err = tx.Insert(ctx, am)
+				if err != nil {
+					return nil, err
+				}
+				newAuthzIDs = append(newAuthzIDs, am.ID)
+			} else {
+				am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
+				if err != nil {
+					return nil, err
+				}
+				err = tx.Insert(ctx, am)
+				if err != nil {
+					return nil, err
+				}
+				newAuthzIDs = append(newAuthzIDs, am.ID)
 			}
-			err = tx.Insert(ctx, am)
-			if err != nil {
-				return nil, err
-			}
-			newAuthzIDs = append(newAuthzIDs, am.ID)
 		}
 
 		// Combine the already-existing and newly-created authzs.

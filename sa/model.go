@@ -461,6 +461,43 @@ type authzModel struct {
 	ValidationRecord       []byte     `db:"validationRecord"`
 }
 
+// authorizationModel represents one row in the authorizations table (the successor to authz2).
+type authorizationModel struct {
+	ID                     int64      `db:"id"`
+	RegistrationID         int64      `db:"registrationID"`
+	IdentifierType         uint8      `db:"identifierType"`
+	IdentifierValue        string     `db:"identifierValue"`
+	Status                 uint8      `db:"status"`
+	ValidationID           *int64     `db:"validationID"`
+	Expires                time.Time  `db:"expires"`
+	Challenges             uint8      `db:"challenges"`
+	Attempted              *uint8     `db:"attempted"`
+	AttemptedAt            *time.Time `db:"attemptedAt"`
+	Token                  []byte     `db:"token"`
+	CertificateProfileName *string    `db:"certificateProfileName"`
+}
+
+type reusableAuthorizationModel struct {
+	ID                     int64     `db:"id"`
+	RegistrationID         int64     `db:"registrationID"`
+	IdentifierType         uint8     `db:"identifierType"`
+	IdentifierValue        string    `db:"identifierValue"`
+	CertificateProfileName *string   `db:"certificateProfileName"`
+	AuthorizationID        int64     `db:"authorizationID"`
+	Expires                time.Time `db:"expires"`
+}
+
+type successfulValidationModel struct {
+	ID               int64  `db:"id"`
+	ValidationRecord []byte `db:"validationRecord"`
+}
+
+type failedValidationModel struct {
+	ID               int64  `db:"id"`
+	ValidationError  []byte `db:"validationError"`
+	ValidationRecord []byte `db:"validationRecord"`
+}
+
 // rehydrateHostPort mutates a validation record. If the URL in the validation
 // record cannot be parsed, an error will be returned. If the Hostname and Port
 // fields already exist in the validation record, they will be retained.
@@ -585,6 +622,36 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 		}
 	}
 	return false
+}
+
+// newAuthzReqToAuthorizationModel converts an sapb.NewAuthzRequest to the authorizationModel storage
+// representation. It hardcodes the status to "pending" because it should be
+// impossible to create an authz in any other state.
+func newAuthzReqToAuthorizationModel(authz *sapb.NewAuthzRequest, profile string) (*authorizationModel, error) {
+	am := &authorizationModel{
+		IdentifierType:  identifierTypeToUint[authz.Identifier.Type],
+		IdentifierValue: authz.Identifier.Value,
+		RegistrationID:  authz.RegistrationID,
+		Status:          statusToUint[core.StatusPending],
+		Expires:         authz.Expires.AsTime(),
+	}
+
+	if profile != "" {
+		am.CertificateProfileName = &profile
+	}
+
+	for _, challType := range authz.ChallengeTypes {
+		// Set the challenge type bit in the bitmap
+		am.Challenges |= 1 << challTypeToUint[challType]
+	}
+
+	token, err := base64.RawURLEncoding.DecodeString(authz.Token)
+	if err != nil {
+		return nil, err
+	}
+	am.Token = token
+
+	return am, nil
 }
 
 // newAuthzReqToModel converts an sapb.NewAuthzRequest to the authzModel storage
@@ -764,6 +831,24 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 		}
 	}
 	return nil
+}
+
+func authorizationModelToAuthzPB(input authorizationModel, validationRecord, validationError []byte) (*corepb.Authorization, error) {
+	return modelToAuthzPB(authzModel{
+		ID:                     input.ID,
+		IdentifierType:         input.IdentifierType,
+		IdentifierValue:        input.IdentifierValue,
+		RegistrationID:         input.RegistrationID,
+		CertificateProfileName: input.CertificateProfileName,
+		Status:                 input.Status,
+		Expires:                input.Expires,
+		Challenges:             input.Challenges,
+		Attempted:              input.Attempted,
+		AttemptedAt:            input.AttemptedAt,
+		Token:                  input.Token,
+		ValidationRecord:       validationRecord,
+		ValidationError:        validationError,
+	})
 }
 
 func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {

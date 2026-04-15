@@ -242,6 +242,56 @@ CREATE TABLE `serials` (
   KEY `regId_serials_idx` (`registrationID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
+-- Differences from 01-boulder_sa.sql begin here.
+
+CREATE TABLE `authorizations` (
+    `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+    `registrationID` bigint(20) NOT NULL,
+    `identifierType` tinyint(4) NOT NULL,
+    `identifierValue` varchar(255) NOT NULL,
+    `status` tinyint(4) NOT NULL,
+    `validationID` bigint(20),
+    `expires` datetime NOT NULL,
+    `challenges` tinyint(4) NOT NULL,
+    `attempted` tinyint(4),
+    `attemptedAt` datetime,
+    `token` binary(32) NOT NULL,
+    `certificateProfileName` varchar(32),
+    `created` datetime DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`)
+);
+
+-- Records are created in this table when validation succeeds.
+CREATE TABLE `reusableAuthorizations` (
+    `reusableAuthorizationID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+    `registrationID` bigint(20) NOT NULL,
+    `identifierType` tinyint(4) NOT NULL,
+    `identifierValue` varchar(255) NOT NULL,
+    `certificateProfileName` varchar(32),
+    `authorizationID` bigint(20) NOT NULL,
+    `expires` datetime NOT NULL,
+    `created` datetime DEFAULT current_timestamp(),
+    PRIMARY KEY (`reusableAuthorizationID`),
+    KEY `regID_identifier_expires_idx` (`registrationID`,`identifierValue`,`expires`)
+);
+
+-- Records are created in this table when validation succeeds.
+CREATE TABLE `successfulValidations` (
+    -- Field is named `validationID` to avoid conflicting with `authorizations.ID` in a JOIN.
+    `successfulValidationID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+    `successfulValidationRecord` mediumblob NOT NULL,
+    PRIMARY KEY (`successfulValidationID`)
+);
+
+-- Records are created in this table when validation fails.
+CREATE TABLE `failedValidations` (
+    -- Field is named `validationID` to avoid conflicting with `authorizations.ID` in a JOIN.
+    `failedValidationID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+    `failedValidationError` mediumblob NOT NULL,
+    `failedValidationRecord` mediumblob NOT NULL,
+    PRIMARY KEY (`failedValidationID`)
+);
+
 ALTER TABLE `certificateStatus` DROP COLUMN `subscriberApproved`;
 ALTER TABLE `certificateStatus` DROP COLUMN `LockCol`;
 ALTER TABLE `revokedCertificates` ADD KEY `serial` (`serial`);

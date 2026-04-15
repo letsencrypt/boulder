@@ -47,7 +47,9 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {}
+		"features": {
+			"EfficientAuthorizationTable": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

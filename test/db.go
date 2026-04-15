@@ -60,7 +60,7 @@ func resetTestDatabase(t testing.TB, ctx context.Context, dsn string) func() {
 func deleteEverythingInAllTables(ctx context.Context, db CleanUpDB) error {
 	ts, err := allTableNamesInDB(ctx, db)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting table names: %s", err)
 	}
 
 	for _, tn := range ts {

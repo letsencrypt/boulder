@@ -36,6 +36,27 @@ func validMariaDBUnquotedIdentifier(s string) error {
 	return nil
 }
 
+// Get returns nil if no result is found. If multiple results are found, it returns error.
+func Get[T any](ctx context.Context, executor MappedExecutor, id any) (*T, error) {
+	s, err := NewMappedSelector[T](executor)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.QueryContext(ctx, "WHERE id = ?", id)
+	if err != nil {
+		return nil, err
+	}
+	var ret *T
+	err = rows.ForEach(func(row *T) error {
+		if ret != nil {
+			return fmt.Errorf("too many results")
+		}
+		ret = row
+		return nil
+	})
+	return ret, err
+}
+
 // NewMappedSelector returns an object which can be used to automagically query
 // the provided type-mapped database for rows of the parameterized type.
 func NewMappedSelector[T any](executor MappedExecutor) (MappedSelector[T], error) {

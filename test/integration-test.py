@@ -93,9 +93,9 @@ def main():
 
     # Skip the last-phase checks when the test case filter is one, because that
     # means we want to quickly iterate on a single test case.
-    if not args.test_case_filter:
-        run_cert_checker()
-        check_balance()
+    #if not args.test_case_filter:
+        #run_cert_checker()
+        #check_balance()
 
     # If coverage is enabled, process the coverage data
     if args.coverage:

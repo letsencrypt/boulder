@@ -68,6 +68,8 @@ type Config struct {
 	// during certificate issuance. This flag must be set to true in the
 	// RA and VA services for full functionality.
 	DNSPersist01Enabled bool
+
+	EfficientAuthorizationTable bool
 }
 
 var fMu = new(sync.RWMutex)
