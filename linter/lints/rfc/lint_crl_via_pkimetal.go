@@ -4,10 +4,12 @@ import (
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
+
+	"github.com/letsencrypt/boulder/linter/pkimetal"
 )
 
 type crlViaPKIMetal struct {
-	PKIMetalConfig
+	pkimetal.Client
 }
 
 func init() {
@@ -28,17 +30,17 @@ func NewCrlViaPKIMetal() lint.RevocationListLintInterface {
 }
 
 func (l *crlViaPKIMetal) Configure() any {
-	return l
+	return &l.Config
 }
 
 func (l *crlViaPKIMetal) CheckApplies(c *x509.RevocationList) bool {
 	// This lint applies to all CRLs issued by Boulder, as long as it has
 	// been configured with a socket to reach out to. If not, skip it.
-	return l.Socket != ""
+	return l.Enabled()
 }
 
 func (l *crlViaPKIMetal) Execute(c *x509.RevocationList) *lint.LintResult {
-	res, err := l.execute("lintcrl", c.Raw)
+	res, err := l.Client.Execute("lintcrl", c.Raw)
 	if err != nil {
 		return &lint.LintResult{
 			Status:  lint.Error,
