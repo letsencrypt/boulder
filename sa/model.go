@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/letsencrypt/boulder/features"
 	"google.golang.org/protobuf/proto"
 	"math"
 	"net/netip"
@@ -833,7 +834,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	return nil
 }
 
-func authorizationModelToAuthzPB(input authorizationModel, validationRecord, validationError []byte) (*corepb.Authorization, error) {
+func authorizationModelToAuthzPB(input *authorizationModel, validationRecord, validationError []byte) (*corepb.Authorization, error) {
 	return modelToAuthzPB(authzModel{
 		ID:                     input.ID,
 		IdentifierType:         input.IdentifierType,
@@ -1151,10 +1152,8 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 	// objects than the order's slice of authorization IDs something has gone
 	// wrong worth raising an internal error about.
 	if len(authzValidityInfo) != len(order.V2Authorizations) {
-		return "", berrors.InternalServerError(
-			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
-				"(%d vs expected %d) for order %d",
-			len(authzValidityInfo), len(order.V2Authorizations), order.Id)
+		return "", fmt.Errorf("statusForOrder got validity info for %d authorizations, but order %d has %d",
+			len(authzValidityInfo), order.Id, (order.V2Authorizations))
 	}
 
 	// Keep a count of the authorizations seen
@@ -1257,7 +1256,24 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 	if err != nil {
 		return nil, err
 	}
+	if features.Get().EfficientAuthorizationTable {
+		var additionalValidities []authzValidity
+		_, err := s.Select(
+			ctx,
+			&additionalValidities,
+			fmt.Sprintf("SELECT identifierType, identifierValue, status, expires FROM authorizations WHERE id IN (%s)",
+				db.QuestionMarks(len(ids))),
+			params...,
+		)
+		if err != nil {
+			return nil, err
+		}
+		validities = append(validities, additionalValidities...)
+	}
 
+	if len(validities) != len(ids) {
+		return nil, fmt.Errorf("getAuthorizationStatuses got %d results, expected %d", len(validities), len(ids))
+	}
 	return validities, nil
 }
 

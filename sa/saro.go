@@ -530,7 +530,7 @@ func (ssa *SQLStorageAuthorityRO) getAuthorizationsByID(ctx context.Context, ids
 	return &sapb.Authorizations{Authzs: ret}, nil
 }
 
-// GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.
+// GetAuthorization2 returns the authorization identified by the provided ID or an error.
 // If no authorization is found matching the ID a berrors.NotFound type error is returned.
 func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
 	if req.Id == 0 {
@@ -586,7 +586,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 			return nil, berrors.NotFoundError("authorization %d not found", req.Id)
 		}
 
-		am, ok := obj.(authorizationModel)
+		am, ok := obj.(*authorizationModel)
 		if !ok {
 			return nil, fmt.Errorf("type assertion error in GetAuthorization2")
 		}

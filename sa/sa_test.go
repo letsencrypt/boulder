@@ -93,6 +93,9 @@ func (s *fakeServerStream[T]) Context() context.Context {
 func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 	t.Helper()
 	features.Reset()
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		features.Set(features.Config{EfficientAuthorizationTable: true})
+	}
 
 	dbMap, err := DBMapForTest(vars.DBConnSA)
 	if err != nil {
@@ -152,20 +155,35 @@ func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, regID int
 	token, err := base64.RawURLEncoding.DecodeString(tokenStr)
 	test.AssertNotError(t, err, "computing test authorization challenge token")
 
-	am := authzModel{
-		IdentifierType:  identifierTypeToUint[string(ident.Type)],
-		IdentifierValue: ident.Value,
-		RegistrationID:  regID,
-		Status:          statusToUint[core.StatusPending],
-		Expires:         exp,
-		Challenges:      1 << challTypeToUint[string(core.ChallengeTypeHTTP01)],
-		Token:           token,
+	if features.Get().EfficientAuthorizationTable {
+		am := authorizationModel{
+			IdentifierType:  identifierTypeToUint[string(ident.Type)],
+			IdentifierValue: ident.Value,
+			RegistrationID:  regID,
+			Status:          statusToUint[core.StatusPending],
+			Expires:         exp,
+			Challenges:      1 << challTypeToUint[string(core.ChallengeTypeHTTP01)],
+			Token:           token,
+		}
+
+		err = sa.dbMap.Insert(context.Background(), &am)
+		test.AssertNotError(t, err, "creating test authorization")
+		return am.ID
+	} else {
+		am := authzModel{
+			IdentifierType:  identifierTypeToUint[string(ident.Type)],
+			IdentifierValue: ident.Value,
+			RegistrationID:  regID,
+			Status:          statusToUint[core.StatusPending],
+			Expires:         exp,
+			Challenges:      1 << challTypeToUint[string(core.ChallengeTypeHTTP01)],
+			Token:           token,
+		}
+
+		err = sa.dbMap.Insert(context.Background(), &am)
+		test.AssertNotError(t, err, "creating test authorization")
+		return am.ID
 	}
-
-	err = sa.dbMap.Insert(context.Background(), &am)
-	test.AssertNotError(t, err, "creating test authorization")
-
-	return am.ID
 }
 
 func createFinalizedAuthorization(t *testing.T, sa *SQLStorageAuthority, regID int64, ident identifier.ACMEIdentifier, exp time.Time,
@@ -1168,28 +1186,55 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
-	// Safely get the authz for the order we created above.
-	obj, err := sa.dbReadOnlyMap.Get(ctx, authzModel{}, order.V2Authorizations[0])
-	test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
+	if !features.Get().EfficientAuthorizationTable {
+		// Safely get the authz for the order we created above.
+		obj, err := sa.dbReadOnlyMap.Get(ctx, authzModel{}, order.V2Authorizations[0])
+		test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
 
-	// To access the data stored in obj at compile time, we type assert obj
-	// into a pointer to an authzModel.
-	am, ok := obj.(*authzModel)
-	test.Assert(t, ok, "Could not type assert obj into authzModel")
+		// To access the data stored in obj at compile time, we type assert obj
+		// into a pointer to an authzModel.
+		am, ok := obj.(*authzModel)
+		test.Assert(t, ok, "Could not type assert obj into authzModel")
 
-	// If we're making a brand new authz, it should have the pending status
-	// regardless of what incorrect status value was passed in during construction.
-	test.AssertEquals(t, am.Status, statusUint(core.StatusPending))
+		// If we're making a brand new authz, it should have the pending status
+		// regardless of what incorrect status value was passed in during construction.
+		if am.Status != statusUint(core.StatusPending) {
+			t.Errorf("am.Status: got %d, want %d (pending)", am.Status, statusUint(core.StatusPending))
+		}
 
-	// Testing for the existence of these boxed nils is a definite break from
-	// our paradigm of avoiding passing around boxed nils whenever possible.
-	// However, the existence of these boxed nils in relation to this test is
-	// actually expected. If these tests fail, then a possible SA refactor or RA
-	// bug placed incorrect data into brand new authz input fields.
-	test.AssertBoxedNil(t, am.Attempted, "am.Attempted should be nil")
-	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
-	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
-	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
+		if am.Attempted != nil {
+			t.Errorf("am.Attempted: got %v, want nil", am.Attempted)
+		}
+		if am.AttemptedAt != nil {
+			t.Errorf("am.AttemptedAt: got %v, want nil", am.AttemptedAt)
+		}
+		if am.ValidationRecord != nil {
+			t.Errorf("am.ValidationRecord: got %v, want nil", am.ValidationRecord)
+		}
+		if am.ValidationError != nil {
+			t.Errorf("am.ValidationError: got %v, want nil", am.ValidationError)
+		}
+	} else {
+		// Safely get the authz for the order we created above.
+		obj, err := sa.dbReadOnlyMap.Get(ctx, authorizationModel{}, order.V2Authorizations[0])
+		test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
+
+		// To access the data stored in obj at compile time, we type assert obj
+		// into a pointer to an authzModel.
+		am, ok := obj.(*authorizationModel)
+		test.Assert(t, ok, "Could not type assert obj into authzModel")
+
+		if am.Status != statusUint(core.StatusPending) {
+			t.Errorf("am.Status: got %d, want %d (pending)", am.Status, statusUint(core.StatusPending))
+		}
+
+		if am.Attempted != nil {
+			t.Errorf("am.Attempted: got %v, want nil", am.Attempted)
+		}
+		if am.AttemptedAt != nil {
+			t.Errorf("am.AttemptedAt: got %v, want nil", am.AttemptedAt)
+		}
+	}
 }
 
 func TestNewOrderAndAuthzs_Profile(t *testing.T) {
