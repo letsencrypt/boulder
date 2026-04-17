@@ -1542,6 +1542,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			AttemptedAt:       timestamppb.New(vStart),
 			ValidationRecords: records,
 			ValidationError:   prob,
+			RegistrationID:    authz.RegistrationID,
 		})
 		if err != nil {
 			if errors.Is(err, berrors.NotFound) {
