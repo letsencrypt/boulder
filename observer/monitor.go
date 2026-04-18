@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/observer/probers"
 )
 

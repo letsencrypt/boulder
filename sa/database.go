@@ -10,10 +10,10 @@ import (
 
 	"github.com/letsencrypt/borp"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 // DbSettings contains settings for the database/sql driver. The zero

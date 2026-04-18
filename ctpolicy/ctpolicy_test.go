@@ -12,10 +12,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"

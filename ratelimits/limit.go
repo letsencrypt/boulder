@@ -15,10 +15,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 

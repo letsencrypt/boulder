@@ -13,12 +13,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bcrl "github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 type crlImpl struct {

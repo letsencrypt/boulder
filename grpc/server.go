@@ -21,9 +21,9 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 // CodedError is a alias required to appease go vet

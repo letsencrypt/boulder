@@ -25,9 +25,9 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"

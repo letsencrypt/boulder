@@ -10,8 +10,8 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 // createSlot initializes a SoftHSM slot and token. SoftHSM chooses the highest empty

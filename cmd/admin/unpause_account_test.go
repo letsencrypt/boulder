@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"

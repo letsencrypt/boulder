@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 )
 
 type errorWriter struct {

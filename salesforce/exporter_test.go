@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/metrics"
 	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 	"github.com/letsencrypt/boulder/test"

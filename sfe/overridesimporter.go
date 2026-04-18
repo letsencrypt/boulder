@@ -12,8 +12,8 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/identifier"
-	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/zendesk"

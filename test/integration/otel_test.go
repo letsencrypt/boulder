@@ -22,8 +22,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 

@@ -22,7 +22,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )

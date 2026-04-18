@@ -21,7 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 

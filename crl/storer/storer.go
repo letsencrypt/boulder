@@ -22,11 +22,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow

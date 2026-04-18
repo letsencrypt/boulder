@@ -12,13 +12,13 @@ import (
 	awsl "github.com/aws/smithy-go/logging"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/crl/storer"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 type Config struct {

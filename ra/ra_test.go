@@ -37,6 +37,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/allowlist"
+	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -49,7 +50,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"

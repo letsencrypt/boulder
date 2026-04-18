@@ -23,6 +23,7 @@ import (
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -33,7 +34,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/linter"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/precert"
 	"github.com/letsencrypt/boulder/sa"

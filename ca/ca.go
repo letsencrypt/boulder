@@ -29,6 +29,7 @@ import (
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -37,7 +38,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
-	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )

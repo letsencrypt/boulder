@@ -12,13 +12,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 

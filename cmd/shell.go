@@ -35,9 +35,9 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.30.0"
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/validator/v10"
 )

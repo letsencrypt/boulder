@@ -10,9 +10,9 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	blog "github.com/letsencrypt/boulder/log"
 	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 )
 

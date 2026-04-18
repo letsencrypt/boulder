@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/features"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 

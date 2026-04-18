@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"

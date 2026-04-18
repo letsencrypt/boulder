@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 type userAgentContextKey struct{}

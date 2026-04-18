@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/redis/go-redis/v9"
