@@ -576,7 +576,7 @@ type Config struct {
 		Features features.Config
 	}
 	PA     cmd.PAConfig
-	Syslog cmd.SyslogConfig
+	Syslog blog.Config
 }
 
 func main() {

@@ -8,6 +8,7 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/salesforce"
@@ -60,7 +61,7 @@ type Config struct {
 		// of memory. If left unset, no caching is performed.
 		EmailCacheSize int `validate:"omitempty,min=1"`
 	}
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

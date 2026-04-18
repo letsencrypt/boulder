@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -104,7 +105,7 @@ type Config struct {
 		Features             features.Config
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 
 	// OpenTelemetryHTTPConfig configures tracing on incoming HTTP requests
