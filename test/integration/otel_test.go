@@ -262,10 +262,11 @@ func TestTraces(t *testing.T) {
 
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
 	// Configure this integration test to trace to jaeger:4317 like Boulder will
+	logger, _ := blog.New(blog.Config{StdoutLevel: 6})
 	shutdown := cmd.NewOpenTelemetry(cmd.OpenTelemetryConfig{
 		Endpoint:    "bjaeger:4317",
 		SampleRatio: 1,
-	}, blog.Get())
+	}, logger)
 	defer shutdown(context.Background())
 
 	tracer := otel.GetTracerProvider().Tracer("TraceTest")

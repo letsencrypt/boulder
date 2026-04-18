@@ -10,7 +10,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 )
 
@@ -78,7 +77,6 @@ func runCeremony(path string) error {
 }
 
 func main() {
-	_ = blog.Set(blog.StdoutLogger(6))
 	defer cmd.AuditPanic()
 
 	// Create SoftHSM slots for the root signing keys
