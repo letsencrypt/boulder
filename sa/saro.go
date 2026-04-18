@@ -891,7 +891,10 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 		if errors.Is(err, berrors.NotFound) {
 			// The existing replacement order has been deleted. This should
 			// never happen.
-			ssa.log.Errf("replacement order %d for serial %q not found", replacement.OrderID, req.Serial)
+			ssa.log.Error(ctx, "replacement order not found", err,
+				blog.Order(replacement.OrderID),
+				blog.Serial(req.Serial),
+			)
 			return &sapb.Exists{Exists: false}, nil
 		}
 	}

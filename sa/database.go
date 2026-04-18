@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -231,7 +232,7 @@ type SQLLogger struct {
 
 // Printf adapts the Logger to borp's interface
 func (log *SQLLogger) Printf(format string, v ...any) {
-	log.Debugf(format, v...)
+	log.Debug(context.Background(), fmt.Sprintf(format, v...))
 }
 
 // initTables constructs the table map for the ORM.
