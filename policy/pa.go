@@ -1,10 +1,12 @@
 package policy
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"net/netip"
 	"os"
@@ -83,7 +85,7 @@ func (pa *AuthorityImpl) LoadIdentPolicyFile(f string) error {
 		return err
 	}
 	hash := sha256.Sum256(configBytes)
-	pa.log.Infof("loading identifier policy, sha256: %s", hex.EncodeToString(hash[:]))
+	pa.log.Info(context.Background(), "Loading identifier policy", slog.String("sha256", hex.EncodeToString(hash[:])))
 	var policy blockedIdentsPolicy
 	err = strictyaml.Unmarshal(configBytes, &policy)
 	if err != nil {
