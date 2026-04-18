@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	mrand "math/rand/v2"
 	"slices"
@@ -48,28 +49,6 @@ const (
 	precertType = certificateType("precertificate")
 	certType    = certificateType("certificate")
 )
-
-// issuanceEvent is logged before and after issuance of precertificates and certificates.
-// The `omitempty` fields are not always present.
-// CSR, Precertificate, and Certificate are hex-encoded DER bytes to make it easier to
-// ad-hoc search for sequences or OIDs in logs. Other data, like public key within CSR,
-// is logged as base64 because it doesn't have interesting DER structure.
-type issuanceEvent struct {
-	Requester       int64
-	OrderID         int64
-	Profile         string
-	Issuer          string
-	IssuanceRequest *issuance.IssuanceRequest
-	CSR             string `json:",omitempty"`
-	Result          issuanceEventResult
-}
-
-// issuanceEventResult exists just to lend some extra structure to the
-// issuanceEvent struct above.
-type issuanceEventResult struct {
-	Precertificate string `json:",omitempty"`
-	Certificate    string `json:",omitempty"`
-}
 
 // caMetrics holds various metrics which are shared between caImpl and crlImpl.
 type caMetrics struct {
@@ -223,6 +202,12 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
 
+	ctx = blog.ContextWith(ctx,
+		blog.Acct(req.RegistrationID),
+		blog.Order(req.OrderID),
+		slog.String("profile", req.CertProfileName),
+	)
+
 	if ca.sctClient == nil {
 		return nil, errors.New("IssueCertificate called with a nil SCT service")
 	}
@@ -269,11 +254,16 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		ipStrings = append(ipStrings, ip.String())
 	}
 
-	serialBigInt, err := ca.generateSerialNumber()
+	serialBigInt, err := ca.generateSerialNumber(ctx)
 	if err != nil {
 		return nil, err
 	}
 	serialHex := core.SerialToString(serialBigInt)
+
+	ctx = blog.ContextWith(ctx,
+		slog.String("issuer", issuer.Name()),
+		blog.Serial(serialHex),
+	)
 
 	// Step 2: Persist the serial and minimal metadata, to ensure that we never
 	// duplicate a serial.
@@ -312,7 +302,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 
 	lintPrecertDER, issuanceToken, err := issuer.Prepare(profile, precertReq)
 	if err != nil {
-		ca.log.AuditErr("Preparing precert failed", err, map[string]any{"serial": serialHex})
+		ca.log.AuditError(ctx, "Preparing precert failed", err)
 		if errors.Is(err, linter.ErrLinting) {
 			ca.metrics.lintErrorCount.Inc()
 		}
@@ -334,31 +324,23 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, fmt.Errorf("persisting linting precert to database: %w", err)
 	}
 
-	ca.log.AuditInfo("Signing precert", issuanceEvent{
-		Requester:       req.RegistrationID,
-		OrderID:         req.OrderID,
-		Profile:         req.CertProfileName,
-		Issuer:          issuer.Name(),
-		IssuanceRequest: precertReq,
-		CSR:             hex.EncodeToString(csr.Raw),
-	})
+	ca.log.AuditInfo(ctx, "Signing precert",
+		slog.Any("issuanceRequest", precertReq),
+		slog.String("csr", hex.EncodeToString(csr.Raw)),
+	)
 
 	precertDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
-		ca.log.AuditErr("Signing precert failed", err, map[string]any{"serial": serialHex})
+		ca.log.AuditError(ctx, "Signing precert failed", err)
 		return nil, fmt.Errorf("failed to sign precertificate: %w", err)
 	}
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 
-	ca.log.AuditInfo("Signing precert success", issuanceEvent{
-		Requester:       req.RegistrationID,
-		OrderID:         req.OrderID,
-		Profile:         req.CertProfileName,
-		Issuer:          issuer.Name(),
-		IssuanceRequest: precertReq,
-		Result:          issuanceEventResult{Precertificate: hex.EncodeToString(precertDER)},
-	})
+	ca.log.AuditInfo(ctx, "Signing precert success",
+		slog.Any("issuanceRequest", precertReq),
+		slog.Group("result", slog.String("precertificate", hex.EncodeToString(precertDER))),
+	)
 
 	err = tbsCertIsDeterministic(lintPrecertDER, precertDER)
 	if err != nil {
@@ -408,35 +390,27 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 
 	lintCertDER, issuanceToken, err := issuer.Prepare(profile, certReq)
 	if err != nil {
-		ca.log.AuditErr("Preparing cert failed", err, map[string]any{"serial": serialHex})
+		ca.log.AuditError(ctx, "Preparing cert failed", err)
 		return nil, fmt.Errorf("failed to prepare certificate signing: %w", err)
 	}
 
-	ca.log.AuditInfo("Signing cert", issuanceEvent{
-		Requester:       req.RegistrationID,
-		OrderID:         req.OrderID,
-		Profile:         req.CertProfileName,
-		Issuer:          issuer.Name(),
-		IssuanceRequest: certReq,
-	})
+	ca.log.AuditInfo(ctx, "Signing cert",
+		slog.Any("issuanceRequest", certReq),
+	)
 
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
-		ca.log.AuditErr("Signing cert failed", err, map[string]any{"serial": serialHex})
+		ca.log.AuditError(ctx, "Signing cert failed", err)
 		return nil, fmt.Errorf("failed to sign certificate: %w", err)
 	}
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.metrics.certificates.With(prometheus.Labels{"profile": req.CertProfileName}).Inc()
 
-	ca.log.AuditInfo("Signing cert success", issuanceEvent{
-		Requester:       req.RegistrationID,
-		OrderID:         req.OrderID,
-		Profile:         req.CertProfileName,
-		Issuer:          issuer.Name(),
-		IssuanceRequest: certReq,
-		Result:          issuanceEventResult{Certificate: hex.EncodeToString(certDER)},
-	})
+	ca.log.AuditInfo(ctx, "Signing cert success",
+		slog.Any("issuanceRequest", certReq),
+		slog.Group("result", slog.String("certificate", hex.EncodeToString(certDER))),
+	)
 
 	err = tbsCertIsDeterministic(lintCertDER, certDER)
 	if err != nil {
@@ -449,7 +423,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		Issued: timestamppb.New(ca.clk.Now()),
 	})
 	if err != nil {
-		ca.log.AuditErr("Storing cert failed", err, map[string]any{"serial": serialHex})
+		ca.log.AuditError(ctx, "Storing cert failed", err)
 		return nil, fmt.Errorf("persisting cert to database: %w", err)
 	}
 
@@ -483,7 +457,7 @@ func (ca *certificateAuthorityImpl) pickIssuer(profileName string, keyAlg x509.P
 
 // generateSerialNumber produces a big.Int which has more than 64 bits of
 // entropy and has the CA's configured one-byte prefix.
-func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
+func (ca *certificateAuthorityImpl) generateSerialNumber(ctx context.Context) (*big.Int, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
@@ -491,7 +465,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
-		ca.log.AuditErr("Serial randomness failed", err, nil)
+		ca.log.AuditError(ctx, "Serial randomness failed", err)
 		return nil, err
 	}
 	serialBigInt := big.NewInt(0)
