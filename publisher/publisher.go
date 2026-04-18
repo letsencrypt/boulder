@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -253,6 +254,12 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, fmt.Errorf("adding CT log to internal cache: %s", err)
 	}
 
+	ctx = blog.ContextWith(ctx,
+		slog.String("log", ctLog.uri),
+		slog.String("issuer", cert.Issuer.CommonName),
+		blog.Serial(cert.SerialNumber.String()),
+	)
+
 	sct, err := pub.singleLogSubmit(ctx, chain, req.Kind, ctLog)
 	if err != nil {
 		if core.IsCanceled(err) {
@@ -263,15 +270,11 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		if errors.As(err, &rspErr) && rspErr.StatusCode < 500 {
 			body = string(rspErr.Body)
 		}
-		pub.log.InfoObject("Failed to submit certificate to CT log", struct {
-			LogURL string
-			Error  string
-			Body   string
-		}{
-			LogURL: ctLog.uri,
-			Error:  err.Error(),
-			Body:   body,
-		})
+		pub.log.Info(ctx, "Failed to submit certificate to CT log",
+			slog.String("body", body),
+			blog.Error(err),
+		)
+
 		return nil, err
 	}
 
