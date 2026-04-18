@@ -93,7 +93,7 @@ func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core
 			Validationrecords: nil,
 		},
 		Authz: &vapb.AuthzMeta{
-			Id:    "",
+			Id:    "123",
 			RegID: 1,
 		},
 		ExpectedKeyAuthorization: expectedKeyAuthorization,
@@ -540,8 +540,7 @@ func TestInternalErrorLogged(t *testing.T) {
 	req := createValidationRequest(identifier.NewDNS("nonexistent.com"), core.ChallengeTypeHTTP01)
 	_, err := va.DoDCV(ctx, req)
 	test.AssertNotError(t, err, "failed validation should not be an error")
-	matchingLogs := mockLog.GetAllMatching(
-		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
+	matchingLogs := mockLog.GetAllMatching(`Validation result.*internalErr=".*: connection refused"`)
 	test.AssertEquals(t, len(matchingLogs), 1)
 }
 
@@ -566,7 +565,7 @@ func TestPerformValidationValid(t *testing.T) {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
 
-	if !strings.Contains(resultLog[0], `"Identifier":{"type":"dns","value":"good-dns01.com"}`) {
+	if !strings.Contains(resultLog[0], `{Type:dns Value:good-dns01.com}`) {
 		t.Error("PerformValidation didn't log validation identifier.")
 	}
 }
@@ -596,12 +595,12 @@ func TestPerformValidationWildcard(t *testing.T) {
 	}
 
 	// We expect that the top level Identifier reflect the wildcard name
-	if !strings.Contains(resultLog[0], `"Identifier":{"type":"dns","value":"*.good-dns01.com"}`) {
+	if !strings.Contains(resultLog[0], `{Type:dns Value:*.good-dns01.com}`) {
 		t.Errorf("PerformValidation didn't log correct validation identifier.")
 	}
 	// We expect that the ValidationRecord contain the correct non-wildcard
 	// hostname that was validated
-	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
+	if !strings.Contains(resultLog[0], `Hostname:good-dns01.com`) {
 		t.Errorf("PerformValidation didn't log correct validation record hostname.")
 	}
 }

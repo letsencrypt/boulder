@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math/rand/v2"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -330,17 +332,17 @@ func (va *ValidationAuthorityImpl) runExperiment(
 	}
 	va.metrics.experimentConcurrence.WithLabelValues(operation, "false").Inc()
 
-	logArgs := map[string]any{
-		"operation":                   operation,
-		"primaryProblem":              primaryProblem,
-		"primaryValidationRecords":    primaryValidationRecords,
-		"experimentProblem":           experimentProblem,
-		"experimentValidationRecords": experimentValidationRecords,
+	expAttrs := []slog.Attr{
+		slog.String("operation", operation),
+		slog.String("primaryProblem", primaryProblem.String()),
+		slog.Any("primaryValidationRecords", primaryValidationRecords),
+		slog.String("experimentProblem", experimentProblem.String()),
+		slog.Any("experimentValidationRecords", experimentValidationRecords),
 	}
 	if err != nil {
-		logArgs["experimentErr"] = err.Error()
+		expAttrs = append(expAttrs, blog.Error(err))
 	}
-	va.log.AuditInfo("Primary VA disagreed with experimental VA", logArgs)
+	va.log.AuditInfo(ctx, "Primary VA disagreed with experimental VA", expAttrs...)
 }
 
 // maxAllowedFailures returns the maximum number of allowed failures
@@ -666,7 +668,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			if core.IsCanceled(resp.err) {
 				currProb = probs.ServerInternal("Secondary validation RPC canceled")
 			} else {
-				va.log.Errf("Operation on remote VA (%s) failed: %s", resp.addr, resp.err)
+				va.log.Error(ctx, "Operation on remote VA failed", resp.err, slog.String("addr", resp.addr))
 				currProb = probs.ServerInternal("Secondary validation RPC failed")
 			}
 		} else if resp.result.GetProblem() != nil {
@@ -676,7 +678,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.GetProblem())
 			if err != nil {
-				va.log.Errf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
+				va.log.Error(ctx, "Operation on Remote VA returned malformed problem", err, slog.String("addr", resp.addr))
 				currProb = probs.ServerInternal("Secondary validation RPC returned malformed result")
 			}
 		} else {
@@ -719,19 +721,6 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 	return summarizeMPIC(passed, failed, passedRIRs), firstProb
 }
 
-// validationLogEvent is a struct that contains the information needed to log
-// the results of DoCAA and DoDCV.
-type validationLogEvent struct {
-	AuthzID       string
-	Requester     int64
-	Identifier    identifier.ACMEIdentifier
-	Challenge     core.Challenge
-	Error         string `json:",omitempty"`
-	InternalError string `json:",omitempty"`
-	Latency       float64
-	Summary       *mpicSummary `json:",omitempty"`
-}
-
 // DoDCV conducts a local Domain Control Validation (DCV) for the specified
 // challenge. When invoked on the primary Validation Authority (VA) and the
 // local validation succeeds, it also performs DCV validations using the
@@ -747,6 +736,11 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
+	authzID, err := strconv.ParseInt(req.Authz.Id, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("non-integer authz ID %q", req.Authz.Id)
+	}
+
 	ident := identifier.FromProto(req.Identifier)
 
 	chall, err := bgrpc.PBToChallenge(req.Challenge)
@@ -759,30 +753,39 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
 	}
 
+	// Set the log attributes that we want to appear on all subsequent log lines
+	ctx = blog.ContextWith(ctx,
+		blog.Acct(req.Authz.RegID),
+		blog.Authz(authzID),
+		blog.Idents(ident),
+		slog.String("method", string(chall.Type)),
+		slog.String("token", chall.Token),
+	)
+
 	// Initialize variables and a deferred function to handle validation latency
 	// metrics, log validation errors, and log an MPIC summary. Avoid using :=
-	// to redeclare `prob`, `localLatency`, or `summary` below this point.
+	// to redeclare any of these variables below this point.
 	var prob *probs.ProblemDetails
-	var summary *mpicSummary
 	var localLatency time.Duration
+	var logAttrs []slog.Attr
 	start := va.clk.Now()
-	logEvent := validationLogEvent{
-		AuthzID:    req.Authz.Id,
-		Requester:  req.Authz.RegID,
-		Identifier: ident,
-		Challenge:  chall,
-	}
 	defer func() {
+		logAttrs = append(logAttrs,
+			slog.Duration("localLatency", localLatency),
+			slog.Duration("totalLatency", va.clk.Since(start).Round(time.Millisecond)),
+		)
+
 		probType := ""
 		outcome := fail
 		if prob != nil {
 			probType = string(prob.Type)
-			logEvent.Error = prob.String()
-			logEvent.Challenge.Error = prob
-			logEvent.Challenge.Status = core.StatusInvalid
+			logAttrs = append(logAttrs,
+				slog.String("status", string(core.StatusInvalid)),
+				slog.String("error", prob.String()),
+			)
 		} else {
-			logEvent.Challenge.Status = core.StatusValid
 			outcome = pass
+			logAttrs = append(logAttrs, slog.String("status", string(core.StatusValid)))
 		}
 
 		// Observe local validation latency (primary|remote).
@@ -790,12 +793,9 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		if va.isPrimaryVA() {
 			// Observe total validation latency (primary+remote).
 			va.observeLatency(opDCV, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
-			logEvent.Summary = summary
 		}
 
-		// Log the total validation latency.
-		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
-		va.log.AuditInfo("Validation result", logEvent)
+		va.log.AuditInfo(ctx, "Validation result", logAttrs...)
 	}()
 
 	// For dns-account-01 and dns-persist-01 challenges, construct the account URI
@@ -821,15 +821,16 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 
 	// Stop the clock for local validation latency.
 	localLatency = va.clk.Since(start)
+	logAttrs = append(logAttrs, slog.Any("validationRecords", records))
 
 	// Check for malformed ValidationRecords
-	logEvent.Challenge.ValidationRecord = records
-	if err == nil && !logEvent.Challenge.RecordsSane() {
+	chall.ValidationRecord = records
+	if err == nil && !chall.RecordsSane() {
 		err = errors.New("records from local validation failed sanity check")
 	}
 
 	if err != nil {
-		logEvent.InternalError = err.Error()
+		logAttrs = append(logAttrs, slog.String("internalErr", err.Error()))
 		prob = detailedError(err)
 	}
 
@@ -880,7 +881,9 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 			}
 			return remoteva.DoDCV(ctx, validationRequest)
 		}
+		var summary *mpicSummary
 		summary, prob = va.doRemoteOperation(ctx, op, req)
+		logAttrs = append(logAttrs, slog.Any("mpicSummary", summary))
 	}
 
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
