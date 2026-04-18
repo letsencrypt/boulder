@@ -2,6 +2,7 @@ package observer
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -23,6 +24,11 @@ func (m monitor) start(logger blog.Logger) {
 			ctx, cancel := context.WithTimeout(context.Background(), m.period/2)
 			defer cancel()
 
+			ctx = blog.ContextWith(ctx,
+				slog.String("kind", m.prober.Kind()),
+				slog.String("name", m.prober.Name()),
+			)
+
 			// Attempt to probe the configured target.
 			start := time.Now()
 			err := m.prober.Probe(ctx)
@@ -35,11 +41,15 @@ func (m monitor) start(logger blog.Logger) {
 
 			// Log the outcome of the probe attempt.
 			if err != nil {
-				logger.Errf("kind=[%s] success=[%t] duration=[%f] name=[%s] error=[%s]",
-					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name(), err)
+				logger.Error(ctx, "Probe complete", err,
+					slog.Bool("success", false),
+					slog.Duration("duration", dur),
+				)
 			} else {
-				logger.Infof("kind=[%s] success=[%t] duration=[%f] name=[%s]",
-					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name())
+				logger.Info(ctx, "Probe complete",
+					slog.Bool("success", true),
+					slog.Duration("duration", dur),
+				)
 			}
 		}()
 		<-ticker.C
