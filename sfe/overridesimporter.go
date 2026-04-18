@@ -3,6 +3,7 @@ package sfe
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -77,9 +78,9 @@ func (im *OverridesImporter) Start(ctx context.Context) {
 // tick performs a single import pass, serially processing all tickets in the
 // configured mode that have been marked "open" and "approved".
 func (im *OverridesImporter) tick(ctx context.Context) {
-	tickets, err := im.zendesk.FindTickets(map[string]string{ReviewStatusFieldName: reviewStatusApproved}, "open")
+	tickets, err := im.zendesk.FindTickets(ctx, map[string]string{ReviewStatusFieldName: reviewStatusApproved}, "open")
 	if err != nil {
-		im.log.Errf("while searching zendesk for solved and approved tickets: %s", err)
+		im.log.Error(ctx, "while searching zendesk for solved and approved tickets", err)
 		return
 	}
 
@@ -99,13 +100,16 @@ func (im *OverridesImporter) tick(ctx context.Context) {
 
 		err = im.processTicket(ctx, id, fields)
 		if err != nil {
-			im.log.Errf("while processing ticket %d: %s", id, err)
+			im.log.Error(ctx, "while processing ticket", err, slog.Int64("ticket", id))
 			failures++
 			continue
 		}
 		processed++
 	}
-	im.log.Infof("overrides importer processed %d tickets with %d failures", processed, failures)
+	im.log.Info(ctx, "overrides importer tick complete",
+		slog.Int("processed", processed),
+		slog.Int("failures", failures),
+	)
 }
 
 func accountURIToID(s string) (int64, error) {
@@ -120,16 +124,16 @@ func accountURIToID(s string) (int64, error) {
 // transitionToPendingWithComment sets the status of the given ticket to
 // "pending" and adds a private comment with the given cause. If updating the
 // ticket fails, the error is logged.
-func (im *OverridesImporter) transitionToPendingWithComment(ticketID int64, cause string) {
+func (im *OverridesImporter) transitionToPendingWithComment(ctx context.Context, ticketID int64, cause string) {
 	privateBody := fmt.Sprintf(
 		"A failure occurred while importing this override:\n\n%s\n\n"+
 			"This ticket's status has been set to pending.\n\n"+
 			"Once the error has been corrected, change the status back to \"open\" to retry.\n",
 		cause,
 	)
-	err := im.zendesk.UpdateTicketStatus(ticketID, "pending", privateBody, false)
+	err := im.zendesk.UpdateTicketStatus(ctx, ticketID, "pending", privateBody, false)
 	if err != nil {
-		im.log.Errf("failed to update ticket %d: %s", ticketID, err)
+		im.log.Error(ctx, "failed to update ticket", err, slog.Int64("ticket", ticketID))
 	}
 }
 
@@ -246,7 +250,7 @@ func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, 
 	req, accountDomainOrIP, err := makeAddOverrideRequest(fields[RateLimitFieldName], fields)
 	if err != nil {
 		// Move to "pending" so the next tick won't comment again.
-		im.transitionToPendingWithComment(ticketID, err.Error())
+		im.transitionToPendingWithComment(ctx, ticketID, err.Error())
 		return fmt.Errorf("preparing override request: %w", err)
 	}
 
@@ -277,12 +281,12 @@ ignore the request entirely.`,
 				resp.Existing.Period.AsDuration(),
 				resp.Existing.Comment,
 			)
-			im.transitionToPendingWithComment(ticketID, privateBody)
+			im.transitionToPendingWithComment(ctx, ticketID, privateBody)
 			return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is lower than existing override", rateLimit, accountDomainOrIP)
 		}
 
 		// Move to "pending" so the next tick won't comment again.
-		im.transitionToPendingWithComment(ticketID, "An existing override for this limit and requester is currently administratively disabled.")
+		im.transitionToPendingWithComment(ctx, ticketID, "An existing override for this limit and requester is currently administratively disabled.")
 		return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is administratively disabled", rateLimit, accountDomainOrIP)
 	}
 
@@ -297,7 +301,7 @@ ignore the request entirely.`,
 		rateLimit, accountDomainOrIP, req.Override.Count,
 	)
 
-	err = im.zendesk.UpdateTicketStatus(ticketID, "solved", successCommentBody, true)
+	err = im.zendesk.UpdateTicketStatus(ctx, ticketID, "solved", successCommentBody, true)
 	if err != nil {
 		return fmt.Errorf("transitioning ticket %d to solved with a comment: %w", ticketID, err)
 	}

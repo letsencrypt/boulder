@@ -306,7 +306,7 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 				t.Errorf("Unexpected status=%d, expected status=202", rec.Code)
 			}
 
-			got, err := client.FindTickets(tt.zendeskMatch, "")
+			got, err := client.FindTickets(t.Context(), tt.zendeskMatch, "")
 			if err != nil {
 				t.Errorf("FindTickets(%+v) returned error: %s", tt.zendeskMatch, err)
 			}

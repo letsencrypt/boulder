@@ -2,6 +2,7 @@ package zendesk
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -156,12 +157,12 @@ type ticket struct {
 //
 // https://developer.zendesk.com/api-reference/introduction/requests/#request-format
 // https://developer.zendesk.com/api-reference/introduction/security-and-auth/#api-token
-func (c *Client) doJSONRequest(method, reqURL string, body []byte) ([]byte, error) {
+func (c *Client) doJSONRequest(ctx context.Context, method, reqURL string, body []byte) ([]byte, error) {
 	var reader io.Reader
 	if len(body) > 0 {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, reqURL, reader)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create zendesk request: %w", err)
 	}
@@ -196,7 +197,7 @@ func (c *Client) doJSONRequest(method, reqURL string, body []byte) ([]byte, erro
 // convert the display names to their corresponding field IDs using the
 // nameToFieldID map provided when creating the Client. If a custom field name
 // is unknown, an error will be returned.
-func (c *Client) CreateTicket(requesterEmail, subject, commentBody string, fields map[string]string) (int64, error) {
+func (c *Client) CreateTicket(ctx context.Context, requesterEmail, subject, commentBody string, fields map[string]string) (int64, error) {
 	ticketContents := ticket{
 		Requester: requester{
 			// Here we use the requesterEmail as both the email and name. This
@@ -235,7 +236,7 @@ func (c *Client) CreateTicket(requesterEmail, subject, commentBody string, field
 		return 0, fmt.Errorf("failed to marshal zendesk ticket: %w", err)
 	}
 
-	body, err = c.doJSONRequest(http.MethodPost, c.ticketsURL, body)
+	body, err = c.doJSONRequest(ctx, http.MethodPost, c.ticketsURL, body)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create zendesk ticket: %w", err)
 	}
@@ -263,7 +264,7 @@ func (c *Client) CreateTicket(requesterEmail, subject, commentBody string, field
 // The method returns a map where the keys are ticket IDs and the values are
 // maps of custom field names to their values. If no matchFields are supplied,
 // an error is returned. If a custom field name is unknown, an error is returned.
-func (c *Client) FindTickets(matchFields map[string]string, status string) (map[int64]map[string]string, error) {
+func (c *Client) FindTickets(ctx context.Context, matchFields map[string]string, status string) (map[int64]map[string]string, error) {
 	if len(matchFields) == 0 {
 		return nil, fmt.Errorf("no match fields supplied")
 	}
@@ -302,7 +303,7 @@ func (c *Client) FindTickets(matchFields map[string]string, status string) (map[
 	out := make(map[int64]map[string]string)
 
 	for searchURL != "" {
-		body, err := c.doJSONRequest(http.MethodGet, searchURL, nil)
+		body, err := c.doJSONRequest(ctx, http.MethodGet, searchURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to search zendesk tickets: %w", err)
 		}
@@ -343,7 +344,7 @@ func (c *Client) FindTickets(matchFields map[string]string, status string) (map[
 // AddComment posts the comment body to the specified ticket. The comment is
 // added as a public or private comment based on the provided boolean value. An
 // error is returned if the request fails.
-func (c *Client) AddComment(ticketID int64, commentBody string, public bool) error {
+func (c *Client) AddComment(ctx context.Context, ticketID int64, commentBody string, public bool) error {
 	endpoint, err := url.JoinPath(c.updateURL, fmt.Sprintf("%d.json", ticketID))
 	if err != nil {
 		return fmt.Errorf("failed to join ticket path: %w", err)
@@ -363,7 +364,7 @@ func (c *Client) AddComment(ticketID int64, commentBody string, public bool) err
 		return fmt.Errorf("failed to marshal zendesk comment: %w", err)
 	}
 
-	_, err = c.doJSONRequest(http.MethodPut, endpoint, body)
+	_, err = c.doJSONRequest(ctx, http.MethodPut, endpoint, body)
 	if err != nil {
 		return fmt.Errorf("failed to add comment to zendesk ticket %d: %w", ticketID, err)
 	}
@@ -374,7 +375,7 @@ func (c *Client) AddComment(ticketID int64, commentBody string, public bool) err
 // status and adds a comment with the provided body. The comment is added as a
 // public or private comment based on the provided boolean value. An error is
 // returned if the request fails or if the provided status is invalid.
-func (c *Client) UpdateTicketStatus(ticketID int64, status string, commentBody string, public bool) error {
+func (c *Client) UpdateTicketStatus(ctx context.Context, ticketID int64, status string, commentBody string, public bool) error {
 	if !slices.Contains(validStatuses, status) {
 		return fmt.Errorf("invalid status %q, must be one of %s", status, validStatuses)
 	}
@@ -400,7 +401,7 @@ func (c *Client) UpdateTicketStatus(ticketID int64, status string, commentBody s
 		return fmt.Errorf("failed to marshal zendesk status update: %w", err)
 	}
 
-	_, err = c.doJSONRequest(http.MethodPut, endpoint, body)
+	_, err = c.doJSONRequest(ctx, http.MethodPut, endpoint, body)
 	if err != nil {
 		return fmt.Errorf("failed to update zendesk ticket %d: %w", ticketID, err)
 	}
