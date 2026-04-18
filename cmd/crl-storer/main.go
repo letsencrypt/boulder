@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -55,6 +56,8 @@ type Config struct {
 }
 
 // awsLogger implements the github.com/aws/smithy-go/logging.Logger interface.
+// It is defined here, instead of in //blog/adapters.go, because it is only
+// used locally rather than set as a package-level default.
 type awsLogger struct {
 	blog.Logger
 }
@@ -62,9 +65,9 @@ type awsLogger struct {
 func (log awsLogger) Logf(c awsl.Classification, format string, v ...any) {
 	switch c {
 	case awsl.Debug:
-		log.Debugf(format, v...)
+		log.Debug(context.Background(), fmt.Sprintf(format, v...))
 	case awsl.Warn:
-		log.Warningf(format, v...)
+		log.Warn(context.Background(), fmt.Sprintf(format, v...))
 	}
 }
 

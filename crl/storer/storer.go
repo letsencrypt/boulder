@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"slices"
 	"time"
@@ -147,6 +148,12 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		return errors.New("got no metadata message")
 	}
 
+	ctx := blog.ContextWith(stream.Context(),
+		slog.String("issuer", issuer.Subject.CommonName),
+		slog.Int64("shard", shardIdx),
+		slog.String("number", crlNumber.String()),
+	)
+
 	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
 
 	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
@@ -180,7 +187,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		if !errors.As(err, &smithyErr) || smithyErr.HTTPStatusCode() != 404 {
 			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
 		}
-		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)
+		cs.log.Info(ctx, "Proceeding because no previous CRL found")
 	} else {
 		defer prevObj.Body.Close()
 		prevBytes, err := io.ReadAll(prevObj.Body)
@@ -242,18 +249,18 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 
 	if err != nil {
 		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
-		cs.log.AuditErr("CRL upload failed", err, map[string]any{"id": crlId})
+		cs.log.AuditError(ctx, "CRL upload failed", err)
 		return fmt.Errorf("uploading to S3: %w", err)
 	}
 
 	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
-	cs.log.AuditInfo("CRL uploaded", map[string]any{
-		"id":         crlId,
-		"issuerCN":   issuer.Subject.CommonName,
-		"thisUpdate": crl.ThisUpdate.Format(time.RFC3339),
-		"nextUpdate": crl.NextUpdate.Format(time.RFC3339),
-		"numEntries": len(crl.RevokedCertificateEntries),
-	})
+	cs.log.AuditInfo(ctx, "CRL uploaded",
+		slog.Time("thisUpdate", crl.ThisUpdate),
+		slog.Time("nextUpdate", crl.NextUpdate),
+		slog.Int("numEntries", len(crl.RevokedCertificateEntries)),
+		slog.Int("size", len(crlBytes)),
+		slog.String("sha256", fmt.Sprintf("%x", checksum)),
+	)
 
 	return stream.SendAndClose(&emptypb.Empty{})
 }
