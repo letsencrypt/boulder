@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -239,7 +240,10 @@ func (ctp *CTPolicy) submitAllBestEffort(ctx context.Context, blob core.CertDER,
 				},
 			)
 			if err != nil {
-				ctp.log.Warningf("ct submission of cert to log %q failed: %s", log.Url, err)
+				ctp.log.Warn(ctx, "Submission of cert to CT log failed",
+					slog.String("log", log.Url),
+					blog.Error(err),
+				)
 			}
 		}(log)
 	}
