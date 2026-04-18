@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -305,7 +304,7 @@ func TestLoadOverrides(t *testing.T) {
 		return Limits{}, nil
 	}
 	err = tb.limitRegistry.loadOverrides(context.Background())
-	test.AssertEquals(t, mockLog.GetAll()[0], "WARNING: loading overrides: no valid overrides")
+	test.AssertContains(t, mockLog.GetAll()[0], `level=WARN msg="loading overrides: no valid overrides"`)
 	test.AssertNotError(t, err, "load empty overrides")
 	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
 }
@@ -314,8 +313,8 @@ func TestNewRefresher(t *testing.T) {
 	mockLog := blog.NewMock()
 
 	reg := &limitRegistry{
-		refreshOverrides: func(_ context.Context, _ prometheus.Gauge, logger blog.Logger) (Limits, error) {
-			logger.Info("refreshed")
+		refreshOverrides: func(ctx context.Context, _ prometheus.Gauge, logger blog.Logger) (Limits, error) {
+			logger.Info(ctx, "refreshed")
 			return nil, nil
 		},
 		logger: mockLog,
@@ -326,18 +325,20 @@ func TestNewRefresher(t *testing.T) {
 	time.Sleep(time.Millisecond * 20)
 	// The refresher should have run once, but then been cancelled before the
 	// first tick.
-	test.AssertDeepEquals(t, mockLog.GetAll(), []string{"INFO: refreshed", "WARNING: loading overrides: no valid overrides"})
+	logs := mockLog.GetAll()
+	test.AssertEquals(t, len(logs), 2)
+	test.AssertContains(t, logs[0], "level=INFO msg=refreshed")
+	test.AssertContains(t, logs[1], `level=WARN msg="loading overrides: no valid overrides"`)
 
-	reg.NewRefresher(time.Nanosecond)
+	reg.NewRefresher(time.Millisecond)
 	retries := 0
 	for retries < 5 {
-		if slices.Contains(mockLog.GetAll(), "INFO: refreshed") {
+		if len(mockLog.GetAllMatching("refreshed")) >= 1 {
 			break
 		}
 		retries++
 		time.Sleep(core.RetryBackoff(retries, time.Millisecond*2, time.Millisecond*50, 2))
 	}
-	test.AssertSliceContains(t, mockLog.GetAll(), "INFO: refreshed")
 	test.Assert(t, len(mockLog.GetAll()) > 1, "refresher didn't run more than once")
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/netip"
 	"strconv"
 	"time"
@@ -235,7 +236,10 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 
 			err = ValidateLimit(override)
 			if err != nil {
-				logger.Errf("hydrating %s override with key %q: %s", override.Name.String(), resp.Override.BucketKey, err)
+				logger.Error(ctx, "Hydrating override", err,
+					slog.String("limit", override.Name.String()),
+					slog.String("bucketKey", resp.Override.BucketKey),
+				)
 				errorCount++
 				continue
 			}
