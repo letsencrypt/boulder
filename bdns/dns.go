@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -226,7 +227,12 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		}).Observe(rtt.Seconds())
 
 		if err != nil {
-			c.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]", chosenServer, hostname, qtypeStr, err)
+			c.log.Info(ctx, "logDNSError",
+				slog.String("chosenServer", chosenServer),
+				slog.String("hostname", hostname),
+				slog.String("qtype", qtypeStr),
+				blog.Error(err),
+			)
 
 			// Check if the error is a network timeout, rather than a local context
 			// timeout. If it is, retry instead of giving up.
