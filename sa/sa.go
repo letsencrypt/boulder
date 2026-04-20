@@ -803,11 +803,17 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 				validationID = sv.ID
 
 				reusableAuthz := reusableAuthorizationModel{
-					RegistrationID: req.
-
-
+					RegistrationID:         req.Authz.RegistrationID,
+					IdentifierType:         req.Authz.IdentifierType,
+					IdentifierValue:        req.Authz.IdentifierValue,
+					CertificateProfileName: req.Authz.CertificateProfileName,
+					AuthorizationID:        req.Authz.ID,
+					Expires:                req.Authz.Expires,
 				}
-				// now insert into reusableAuthorizations
+				err = tx.Insert(ctx, &reusableAuthz)
+				if err != nil {
+					return nil, err
+				}
 			} else if req.Status == string(core.StatusInvalid) {
 				fv := failedValidationModel{
 					ValidationRecord: vrJSON,

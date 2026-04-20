@@ -306,7 +306,7 @@ message RevokeCertificateRequest {
 }
 
 message FinalizeAuthorizationRequest {
-  // Next unused field number: 10
+  // Next unused field number: 11
   int64 id = 1;
   string status = 2;
   reserved 3; // Previously
@@ -316,6 +316,7 @@ message FinalizeAuthorizationRequest {
   core.ProblemDetails validationError = 6;
   reserved 7; // Previously attemptedAtNS
   google.protobuf.Timestamp attemptedAt = 9;
+  core.Authorization authz = 10;
 }
 
 message AddBlockedKeyRequest {
