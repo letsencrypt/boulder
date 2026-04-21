@@ -140,6 +140,11 @@ type WebFrontEndImpl struct {
 	// `LegacyKeyIDPrefix` for more information.
 	LegacyKeyIDPrefix string
 
+	// AccountURIPrefix is required to set the "accounturi" field of
+	// dns-persist-01 challenges. MUST match the first entry of the VA's
+	// AccountURIPrefixes field.
+	AccountURIPrefix string
+
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
 
@@ -1245,19 +1250,26 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	}
 
 	if challenge.Type == core.ChallengeTypeDNSPersist01 {
-		// draft-ietf-acme-dns-persist-00 section 3.1 states, "Servers MUST NOT
+		// draft-ietf-acme-dns-persist-01 section 3.1 states, "Servers MUST NOT
 		// send more than 10 issuer domain names." Be aware of this if we ever
 		// support configuration of multiple CAA identities.
 		challenge.IssuerDomainNames = []string{wfe.DirectoryCAAIdentity}
+
+		// TODO(#8724): Once the configuration of AccountURIPrefix is required
+		// to be non-empty, this conditional can be removed.
+		if wfe.AccountURIPrefix != "" {
+			challenge.AccountURI = fmt.Sprintf("%s%d", wfe.AccountURIPrefix, authz.RegistrationID)
+		}
 
 		// dns-persist-01 does not use a token, but authorizations store a
 		// single token which gets unconditionally assigned to all challenge
 		// types during deserialization.
 		challenge.Token = ""
 	} else {
-		// Belt and suspenders: we don't expect this to ever be populated
+		// Belt and suspenders: we don't expect these to ever be populated
 		// outside of this function, but just in case.
 		challenge.IssuerDomainNames = nil
+		challenge.AccountURI = ""
 	}
 }
 
