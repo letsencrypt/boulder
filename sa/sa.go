@@ -477,18 +477,23 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0, len(req.NewAuthzs))
+		fmt.Println("inserting new authzs", len(req.NewAuthzs))
 		for _, authz := range req.NewAuthzs {
 			if features.Get().EfficientAuthorizationTable {
+				fmt.Println("new")
 				am, err := newAuthzReqToAuthorizationModel(authz, req.NewOrder.CertificateProfileName)
 				if err != nil {
 					return nil, err
 				}
+				fmt.Println("inserting authorization")
 				err = tx.Insert(ctx, am)
 				if err != nil {
 					return nil, err
 				}
+				fmt.Println("inserted authorization", am.ID)
 				newAuthzIDs = append(newAuthzIDs, am.ID)
 			} else {
+				fmt.Println("old")
 				am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
 				if err != nil {
 					return nil, err
@@ -715,55 +720,64 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		return nil, errIncompleteRequest
 	}
 
-	if req.Status != string(core.StatusValid) && req.Status != string(core.StatusInvalid) {
-		return nil, berrors.InternalServerError("authorization must have status valid or invalid")
+	switch req.Status {
+	case string(core.StatusInvalid):
+		if req.ValidationError == nil {
+			return nil, fmt.Errorf("validationError must be set when moving authorization to invalid status")
+		}
+	case string(core.StatusValid):
+		if len(req.ValidationRecords) == 0 {
+			return nil, fmt.Errorf("validationRecords must be set when moving authorization to valid status")
+		}
+		if req.Expires == nil {
+			return nil, fmt.Errorf("expires must be set when moving authorization to valid status")
+		}
+	default:
+		return nil, fmt.Errorf("authorization must have status valid or invalid")
 	}
 
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
-		if id > ssa.authorizationsTableMinId {
-		}
-		var validationRecords []core.ValidationRecord
-		for _, recordPB := range req.ValidationRecords {
-			record, err := bgrpc.PBToValidationRecord(recordPB)
-			if err != nil {
-				return nil, err
-			}
-			if req.Attempted == string(core.ChallengeTypeHTTP01) {
-				// Remove these fields because they can be rehydrated later
-				// on from the URL field.
-				record.Hostname = ""
-				record.Port = ""
-			}
-			validationRecords = append(validationRecords, record)
-		}
-		vrJSON, err := json.Marshal(validationRecords)
+	var validationRecords []core.ValidationRecord
+	for _, recordPB := range req.ValidationRecords {
+		record, err := bgrpc.PBToValidationRecord(recordPB)
 		if err != nil {
 			return nil, err
 		}
-		var veJSON []byte
-		if req.ValidationError != nil {
-			validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
-			if err != nil {
-				return nil, err
-			}
-			j, err := json.Marshal(validationError)
-			if err != nil {
-				return nil, err
-			}
-			veJSON = j
+		if req.Attempted == string(core.ChallengeTypeHTTP01) {
+			// Remove these fields because they can be rehydrated later
+			// on from the URL field.
+			record.Hostname = ""
+			record.Port = ""
 		}
-		// Check to see if the AttemptedAt time is non zero and convert to
-		// *time.Time if so. If it is zero, leave nil and don't convert. Keep the
-		// database attemptedAt field Null instead of 1970-01-01 00:00:00.
-		var attemptedTime *time.Time
-		if !core.IsAnyNilOrZero(req.AttemptedAt) {
-			val := req.AttemptedAt.AsTime()
-			attemptedTime = &val
+		validationRecords = append(validationRecords, record)
+	}
+	vrJSON, err := json.Marshal(validationRecords)
+	if err != nil {
+		return nil, err
+	}
+	var veJSON []byte
+	if req.ValidationError != nil {
+		validationError, err := bgrpc.PBToProblemDetails(req.ValidationError)
+		if err != nil {
+			return nil, err
 		}
+		j, err := json.Marshal(validationError)
+		if err != nil {
+			return nil, err
+		}
+		veJSON = j
+	}
+	// Check to see if the AttemptedAt time is non zero and convert to
+	// *time.Time if so. If it is zero, leave nil and don't convert. Keep the
+	// database attemptedAt field Null instead of 1970-01-01 00:00:00.
+	var attemptedTime *time.Time
+	if !core.IsAnyNilOrZero(req.AttemptedAt) {
+		val := req.AttemptedAt.AsTime()
+		attemptedTime = &val
+	}
 
-		var res sql.Result
-		if req.Id < ssa.authorizationsTableMinId {
-			res, err = ssa.dbMap.ExecContext(ctx, `UPDATE authz2 SET
+	var res sql.Result
+	if req.Id < ssa.authorizationsTableMinId {
+		res, err = ssa.dbMap.ExecContext(ctx, `UPDATE authz2 SET
 				status = :status,
 				attempted = :attempted,
 				attemptedAt = :attemptedAt,
@@ -771,66 +785,65 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 				validationError = :validationError,
 				expires = :expires
 				WHERE id = :id AND status = :pending`,
-				map[string]any{
-					"status":           statusToUint[core.AcmeStatus(req.Status)],
-					"attempted":        challTypeToUint[req.Attempted],
-					"attemptedAt":      attemptedTime,
-					"validationRecord": vrJSON,
-					"id":               req.Id,
-					"pending":          statusUint(core.StatusPending),
-					"expires":          req.Expires.AsTime(),
-					// if req.ValidationError is nil veJSON should also be nil
-					// which should result in a NULL field
-					"validationError": veJSON,
-				})
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			//// if req.ValidationError is nil veJSON should also be nil
-			//// which should result in a NULL field
-			//"validationRecord": vrJSON,
-			//	"validationError": veJSON,
+			map[string]any{
+				"status":           statusToUint[core.AcmeStatus(req.Status)],
+				"attempted":        challTypeToUint[req.Attempted],
+				"attemptedAt":      attemptedTime,
+				"validationRecord": vrJSON,
+				"id":               req.Id,
+				"pending":          statusUint(core.StatusPending),
+				"expires":          req.Expires.AsTime(),
+				// if req.ValidationError is nil veJSON should also be nil
+				// which should result in a NULL field
+				"validationError": veJSON,
+			})
+		if err != nil {
+			return nil, err
+		}
+
+		// Whether we used the `authz2` table or the `authorizations` table, check that we actually changed something.
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if rows == 0 {
+			return nil, berrors.NotFoundError("no pending authorization with id %d", req.Id)
+		} else if rows > 1 {
+			return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
+		}
+	} else {
+		// req.Id > ssa.authorizationsTableMinId
+		// Since rehydrating an authorizations row requires a join against successfulValidations or failedValidations,
+		// create those rows in a transaction along with the UPDATE to ensure our replicas see a consistent view.
+		_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 			var validationID int64
 			if req.Status == string(core.StatusValid) {
+				// req.Id > ssa.authorizationsTableMinId
 				sv := successfulValidationModel{
-					ValidationRecord: vrJSON,
+					SuccessfulValidationRecord: vrJSON,
 				}
 				err := tx.Insert(ctx, &sv)
 				if err != nil {
 					return nil, err
 				}
-				validationID = sv.ID
-
-				reusableAuthz := reusableAuthorizationModel{
-					RegistrationID:         req.Authz.RegistrationID,
-					IdentifierType:         req.Authz.IdentifierType,
-					IdentifierValue:        req.Authz.IdentifierValue,
-					CertificateProfileName: req.Authz.CertificateProfileName,
-					AuthorizationID:        req.Authz.ID,
-					Expires:                req.Authz.Expires,
-				}
-				err = tx.Insert(ctx, &reusableAuthz)
-				if err != nil {
-					return nil, err
-				}
+				validationID = sv.SuccessfulValidationID
 			} else if req.Status == string(core.StatusInvalid) {
 				fv := failedValidationModel{
-					ValidationRecord: vrJSON,
-					ValidationError:  veJSON,
+					FailedValidationRecord: vrJSON,
+					FailedValidationError:  veJSON,
 				}
 				err := tx.Insert(ctx, &fv)
 				if err != nil {
 					return nil, err
 				}
-				validationID = fv.ID
+				validationID = fv.FailedValidationID
 			}
 			res, err = ssa.dbMap.ExecContext(ctx, `UPDATE authorizations SET
 				status = :status,
 				attempted = :attempted,
 				attemptedAt = :attemptedAt,
-				expires = :expires
-				validationID = :validationID,
+				expires = :expires,
+				validationID = :validationID
 				WHERE id = :id AND status = :pending`,
 				map[string]any{
 					"status":       statusToUint[core.AcmeStatus(req.Status)],
@@ -844,18 +857,41 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 			if err != nil {
 				return nil, err
 			}
-		}
-		rows, err := res.RowsAffected()
+
+			rows, err := res.RowsAffected()
+			if err != nil {
+				return nil, err
+			}
+			if rows == 0 {
+				return nil, berrors.NotFoundError("no pending authorization with id %d", req.Id)
+			} else if rows > 1 {
+				return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
+			}
+
+			return nil, nil
+		})
 		if err != nil {
 			return nil, err
 		}
-		if rows == 0 {
-			return nil, berrors.NotFoundError("no pending authorization with id %d", req.Id)
-		} else if rows > 1 {
-			return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
+	}
+
+	// Set up an entry in the reusableAuthorizations table for reuse.
+	if req.Id >= ssa.authorizationsTableMinId {
+		_, err = ssa.dbMap.ExecContext(ctx, `
+					INSERT INTO reusableAuthorizations (
+						   registrationID, identifierType, identifierValue, certificateProfileName, expires, authorizationID)
+					SELECT registrationID, identifierType, identifierValue, certificateProfileName, expires, id
+					FROM authorizations
+					WHERE id = :id AND status = :valid`,
+			map[string]any{
+				"id":    req.Id,
+				"valid": statusUint(core.StatusValid),
+			})
+		if err != nil {
+			return nil, err
 		}
-		return nil, nil
-	})
+	}
+
 	return &emptypb.Empty{}, err
 }
 

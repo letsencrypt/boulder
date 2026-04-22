@@ -593,20 +593,28 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 
 		var validationRecord, validationError []byte
 		if am.Status == statusUint(core.StatusValid) {
-			result, err := db.Get[successfulValidationModel](ctx, ssa.dbReadOnlyMap, req.Id)
+			// get validationRecord from successfulValidations
+			result, err := ssa.dbReadOnlyMap.Get(ctx, new(successfulValidationModel), am.ValidationID)
 			if err != nil {
 				return nil, err
 			}
-			validationRecord = result.ValidationRecord
-			// get validationRecord from successfulValidations
+			sv, ok := result.(*successfulValidationModel)
+			if !ok {
+				return nil, fmt.Errorf("type assertion error in GetAuthorization2")
+			}
+			validationRecord = sv.SuccessfulValidationRecord
 		} else if am.Status == statusUint(core.StatusInvalid) {
 			// get validationRecord, validationError from failedValidations
-			result, err := db.Get[failedValidationModel](ctx, ssa.dbReadOnlyMap, req.Id)
+			result, err := ssa.dbReadOnlyMap.Get(ctx, new(failedValidationModel), am.ValidationID)
 			if err != nil {
 				return nil, err
 			}
-			validationRecord = result.ValidationRecord
-			validationError = result.ValidationError
+			fv, ok := result.(*failedValidationModel)
+			if !ok {
+				return nil, fmt.Errorf("type assertion error in GetAuthorization2")
+			}
+			validationRecord = fv.FailedValidationRecord
+			validationError = fv.FailedValidationError
 		}
 
 		return authorizationModelToAuthzPB(am, validationRecord, validationError)

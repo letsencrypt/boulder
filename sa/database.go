@@ -246,9 +246,9 @@ func initTables(dbMap *borp.DbMap) {
 	regTable.ColMap("Key").SetNotNull(true)
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
 	dbMap.AddTableWithName(authorizationModel{}, "authorizations").SetKeys(true, "ID")
-	dbMap.AddTableWithName(reusableAuthorizationModel{}, "reusableAuthorizations").SetKeys(true, "ID")
-	dbMap.AddTableWithName(successfulValidationModel{}, "successfulValidations").SetKeys(true, "ID")
-	dbMap.AddTableWithName(failedValidationModel{}, "failedValidations").SetKeys(true, "ID")
+	dbMap.AddTableWithName(reusableAuthorizationModel{}, "reusableAuthorizations").SetKeys(true, "reusableAuthorizationID")
+	dbMap.AddTableWithName(successfulValidationModel{}, "successfulValidations").SetKeys(true, "successfulValidationID")
+	dbMap.AddTableWithName(failedValidationModel{}, "failedValidations").SetKeys(true, "failedValidationID")
 
 	dbMap.AddTableWithName(issuedNameModel{}, "issuedNames").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(true, "ID")

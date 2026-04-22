@@ -191,12 +191,26 @@ func createFinalizedAuthorization(t *testing.T, sa *SQLStorageAuthority, regID i
 	t.Helper()
 	pendingID := createPendingAuthorization(t, sa, regID, ident, exp)
 	attempted := string(core.ChallengeTypeHTTP01)
+
+	var prob *corepb.ProblemDetails
+	if status == string(core.StatusInvalid) {
+		prob = &corepb.ProblemDetails{
+			ProblemType: "example",
+			Detail:      "this was a problem",
+		}
+	}
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:          pendingID,
 		Status:      status,
 		Expires:     timestamppb.New(exp),
 		Attempted:   attempted,
 		AttemptedAt: timestamppb.New(attemptedAt),
+		ValidationRecords: []*corepb.ValidationRecord{
+			&corepb.ValidationRecord{
+				Url: "http://example.com/",
+			},
+		},
+		ValidationError: prob,
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
@@ -2270,7 +2284,7 @@ func TestFinalizeAuthorization2_Race(t *testing.T) {
 		AttemptedAt: timestamppb.New(fc.Now()),
 	})
 	if err != nil {
-		t.Fatalf("FinalizeAuthorization2() = %#v, but want success", err)
+		t.Fatalf("FinalizeAuthorization2() = %s, but want success", err)
 	}
 
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -2284,10 +2298,11 @@ func TestFinalizeAuthorization2_Race(t *testing.T) {
 				ResolverAddrs: []string{"resolver:5354"},
 			},
 		},
-		Status:      string(core.StatusInvalid),
-		Expires:     timestamppb.New(fc.Now().Add(time.Hour * 2)),
-		Attempted:   string(core.ChallengeTypeTLSALPN01),
-		AttemptedAt: timestamppb.New(fc.Now()),
+		Status:          string(core.StatusInvalid),
+		Expires:         timestamppb.New(fc.Now().Add(time.Hour * 2)),
+		Attempted:       string(core.ChallengeTypeTLSALPN01),
+		AttemptedAt:     timestamppb.New(fc.Now()),
+		ValidationError: bgrpc.ProblemDetailsToPB(probs.Connection("it went bad captain")),
 	})
 	if !errors.Is(err, berrors.NotFound) {
 		t.Fatalf("FinalizeAuthorization2(repeat ID) = %s, but want NotFound error", err)

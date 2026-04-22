@@ -316,7 +316,6 @@ message FinalizeAuthorizationRequest {
   core.ProblemDetails validationError = 6;
   reserved 7; // Previously attemptedAtNS
   google.protobuf.Timestamp attemptedAt = 9;
-  core.Authorization authz = 10;
 }
 
 message AddBlockedKeyRequest {

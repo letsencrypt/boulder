@@ -479,24 +479,24 @@ type authorizationModel struct {
 }
 
 type reusableAuthorizationModel struct {
-	ID                     int64     `db:"id"`
-	RegistrationID         int64     `db:"registrationID"`
-	IdentifierType         uint8     `db:"identifierType"`
-	IdentifierValue        string    `db:"identifierValue"`
-	CertificateProfileName *string   `db:"certificateProfileName"`
-	AuthorizationID        int64     `db:"authorizationID"`
-	Expires                time.Time `db:"expires"`
+	ReusableAuthorizationID int64     `db:"reusableAuthorizationID"`
+	RegistrationID          int64     `db:"registrationID"`
+	IdentifierType          uint8     `db:"identifierType"`
+	IdentifierValue         string    `db:"identifierValue"`
+	CertificateProfileName  *string   `db:"certificateProfileName"`
+	AuthorizationID         int64     `db:"authorizationID"`
+	Expires                 time.Time `db:"expires"`
 }
 
 type successfulValidationModel struct {
-	ID               int64  `db:"id"`
-	ValidationRecord []byte `db:"validationRecord"`
+	SuccessfulValidationID     int64  `db:"successfulValidationID"`
+	SuccessfulValidationRecord []byte `db:"successfulValidationRecord"`
 }
 
 type failedValidationModel struct {
-	ID               int64  `db:"id"`
-	ValidationError  []byte `db:"validationError"`
-	ValidationRecord []byte `db:"validationRecord"`
+	FailedValidationID     int64  `db:"failedValidationID"`
+	FailedValidationError  []byte `db:"failedValidationError"`
+	FailedValidationRecord []byte `db:"failedvalidationRecord"`
 }
 
 // rehydrateHostPort mutates a validation record. If the URL in the validation
