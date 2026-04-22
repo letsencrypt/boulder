@@ -14,6 +14,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -130,20 +131,21 @@ func main() {
 	a, err := newAdmin(*configFile, *dryRun)
 	cmd.FailOnError(err, "creating admin object")
 
+	ctx := context.Background()
+
 	// Finally, run the selected subcommand.
 	if *dryRun {
-		a.log.Infof("admin tool executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
+		a.log.Info(ctx, "admin tool executing a dry-run", slog.String("cmd", strings.Join(os.Args, " ")))
 	} else {
-		a.log.AuditInfo("admin tool beginning execution", map[string]any{"cmd": strings.Join(os.Args, " ")})
+		a.log.AuditInfo(ctx, "admin tool beginning execution", slog.String("cmd", strings.Join(os.Args, " ")))
 	}
 
-	err = subcommand.Run(context.Background(), a)
+	err = subcommand.Run(ctx, a)
 	cmd.FailOnError(err, "executing subcommand")
 
 	if *dryRun {
-		a.log.Infof("admin tool has successfully completed executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
-		a.log.Info("Dry run complete. Pass -dry-run=false to mutate the database.")
+		a.log.Info(ctx, "admin tool completed a dry-run; pass -dry-run=false to mutate the database", slog.String("cmd", strings.Join(os.Args, " ")))
 	} else {
-		a.log.AuditInfo("admin tool completed successfully", map[string]any{"cmd": strings.Join(os.Args, " ")})
+		a.log.AuditInfo(ctx, "admin tool completed successfully", slog.String("cmd", strings.Join(os.Args, " ")))
 	}
 }

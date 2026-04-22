@@ -234,7 +234,7 @@ func TestRevokeSerials(t *testing.T) {
 	t.Logf("error: %s", err)
 	t.Logf("logs: %s", strings.Join(log.GetAll(), ""))
 	test.AssertError(t, err, "already-revoked should result in error")
-	test.AssertEquals(t, len(log.GetAllMatching("not revoking")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("cert already revoked")), 1)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 0, false)
 

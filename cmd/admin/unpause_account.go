@@ -6,12 +6,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
 
+	"github.com/letsencrypt/boulder/blog"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/unpause"
 )
@@ -53,7 +55,7 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 	case "-account":
 		regIDs = []int64{u.accountID}
 	case "-batch-file":
-		regIDs, err = a.readUnpauseAccountFile(u.batchFile)
+		regIDs, err = a.readUnpauseAccountFile(ctx, u.batchFile)
 	default:
 		return errors.New("no recognized input method flag set (this shouldn't happen)")
 	}
@@ -97,7 +99,7 @@ func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, paralle
 					response, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: accountID})
 					if err != nil {
 						errCount.Add(1)
-						a.log.Errf("error unpausing accountID %d: %v", accountID, err)
+						a.log.Error(ctx, "error unpausing account", err, blog.Acct(accountID))
 						break
 					}
 					totalCount += response.Count
@@ -138,12 +140,14 @@ func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, paralle
 // readUnpauseAccountFile parses the contents of a file containing one account
 // ID per into a slice of int64s. It will skip malformed records and continue
 // processing until the end of file marker.
-func (a *admin) readUnpauseAccountFile(filePath string) ([]int64, error) {
+func (a *admin) readUnpauseAccountFile(ctx context.Context, filePath string) ([]int64, error) {
 	fp, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("opening paused account data file: %w", err)
 	}
 	defer fp.Close()
+
+	ctx = blog.ContextWith(ctx, slog.String("file", filePath))
 
 	var unpauseAccounts []int64
 	lineCounter := 0
@@ -152,7 +156,7 @@ func (a *admin) readUnpauseAccountFile(filePath string) ([]int64, error) {
 		lineCounter++
 		regID, err := strconv.ParseInt(scanner.Text(), 10, 64)
 		if err != nil {
-			a.log.Infof("skipping: malformed account ID entry on line %d\n", lineCounter)
+			a.log.Info(ctx, "skipping malformed account ID entry", slog.Int("line", lineCounter))
 			continue
 		}
 		unpauseAccounts = append(unpauseAccounts, regID)
