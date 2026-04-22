@@ -1173,6 +1173,10 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 		return nil, err
 	}
 
+	if len(validities) != len(ids) {
+		return nil, fmt.Errorf("getAuthorizationStatuses got %d results, expected %d", len(validities), len(ids))
+	}
+
 	return validities, nil
 }
 
