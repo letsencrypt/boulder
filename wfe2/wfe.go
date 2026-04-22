@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"math/rand/v2"
 	"net/http"
@@ -356,7 +357,7 @@ func marshalIndent(v any) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
-func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *web.RequestEvent, status int, v any) error {
+func (wfe *WebFrontEndImpl) writeJsonResponse(ctx context.Context, response http.ResponseWriter, logEvent *web.RequestEvent, status int, v any) error {
 	jsonReply, err := marshalIndent(v)
 	if err != nil {
 		return err // All callers are responsible for handling this error
@@ -368,7 +369,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	if err != nil {
 		// Don't worry about returning this error because the caller will
 		// never handle it.
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 		logEvent.AddError("failed to write response: %s", err)
 	}
 	return nil
@@ -736,7 +737,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip netip.
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Warningf("refunding new account limits: %s", err)
+			wfe.log.Warn(ctx, "refunding new account limits", blog.Error(err))
 		}
 	}, nil
 }
@@ -790,7 +791,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			return
 		}
 
-		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
+		err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, acct)
 		if err != nil {
 			// ServerInternal because we just created this account, and it
 			// should be OK.
@@ -915,7 +916,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusCreated, acct)
 	if err != nil {
 		// ServerInternal because we just created this account, and it
 		// should be OK.
@@ -995,13 +996,6 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	return parsedCertificate, reason, nil
 }
 
-type revocationEvidence struct {
-	Serial    string
-	Reason    revocation.Reason
-	Requester int64
-	Method    string
-}
-
 // revokeCertBySubscriberKey processes an outer JWS as a revocation request that
 // is authenticated by a KeyID and the associated account.
 func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
@@ -1021,12 +1015,12 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 		return err
 	}
 
-	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
-		Serial:    core.SerialToString(cert.SerialNumber),
-		Reason:    reason,
-		Requester: acct.ID,
-		Method:    "applicant",
-	})
+	wfe.log.AuditInfo(ctx, "Authenticated revocation",
+		blog.Acct(acct.ID),
+		blog.Serial(core.SerialToString(cert.SerialNumber)),
+		slog.Int64("reason", int64(reason)),
+		slog.String("method", "applicant"),
+	)
 
 	// The RA will confirm that the authenticated account either originally
 	// issued the certificate, or has demonstrated control over all identifiers
@@ -1074,12 +1068,11 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 	}
 
-	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
-		Serial:    core.SerialToString(cert.SerialNumber),
-		Reason:    reason,
-		Requester: 0,
-		Method:    "privkey",
-	})
+	wfe.log.AuditInfo(ctx, "Authenticated revocation",
+		blog.Serial(core.SerialToString(cert.SerialNumber)),
+		slog.Int64("reason", int64(reason)),
+		slog.String("method", "privkey"),
+	)
 
 	// The RA assumes here that the WFE2 has validated the JWS as proving
 	// control of the private key corresponding to this certificate.
@@ -1299,7 +1292,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err := wfe.writeJsonResponse(request.Context(), response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
@@ -1393,7 +1386,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
@@ -1448,7 +1441,7 @@ func (wfe *WebFrontEndImpl) Account(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, acct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal account"), err)
 		return
@@ -1635,7 +1628,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, authz)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal authz"), err)
@@ -1664,7 +1657,7 @@ func (wfe *WebFrontEndImpl) CertificateInfo(ctx context.Context, logEvent *web.R
 	}{
 		NotAfter: metadata.Expires.AsTime(),
 	}
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, certInfoStruct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, certInfoStruct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling certInfoStruct"), err)
 		return
@@ -1824,7 +1817,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 	}
 }
 
@@ -1834,7 +1827,7 @@ func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEv
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 	}
 }
 
@@ -1854,12 +1847,12 @@ func (wfe *WebFrontEndImpl) Healthz(ctx context.Context, logEvent *web.RequestEv
 
 	jsonResponse, err := json.Marshal(WfeHealthzResponse{Details: details})
 	if err != nil {
-		wfe.log.Warningf("Could not marshal healthz response: %s", err)
+		wfe.log.Warn(ctx, "Could not marshal healthz response", blog.Error(err))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, status, jsonResponse)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, status, jsonResponse)
 	if err != nil {
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 	}
 }
 
@@ -2034,7 +2027,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal updated account"), err)
 	}
@@ -2071,11 +2064,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	if order.Error != nil {
 		prob, err := bgrpc.PBToProblemDetails(order.Error)
 		if err != nil {
-			wfe.log.AuditErr("Failed to serialize order problem details", err, map[string]any{
-				"requester": order.RegistrationID,
-				"order":     order.Id,
-				"prob":      order.Error.String(),
-			})
+			wfe.log.AuditError(request.Context(), "Failed to serialize order problem details", err,
+				blog.Acct(order.RegistrationID),
+				blog.Order(order.Id),
+				slog.String("prob", order.Error.String()),
+			)
 		}
 		respObj.Error = prob
 		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type
@@ -2120,7 +2113,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Warningf("refunding new order limits: %s", err)
+			wfe.log.Warn(ctx, "refunding new order limits", blog.Error(err))
 		}
 	}, nil
 }
@@ -2485,7 +2478,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	response.Header().Set("Location", orderURL)
 
 	respObj := wfe.orderToOrderJSON(request, order)
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusCreated, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
@@ -2563,7 +2556,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		fmt.Sprintf("%d", acctID), fmt.Sprintf("%d", order.Id))
 	response.Header().Set("Location", orderURL)
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
@@ -2698,7 +2691,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
 		return
@@ -2770,7 +2763,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	}
 
 	response.Header().Set(headerRetryAfter, jitterRetryHeader(6*time.Hour))
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, renewalInfo)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, renewalInfo)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
