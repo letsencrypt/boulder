@@ -2747,10 +2747,18 @@ func TestGetOrderExpired(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   reg.Id,
-			Expires:          timestamppb.New(now.Add(-time.Hour)),
-			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
-			V2Authorizations: []int64{666},
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(now.Add(-time.Hour)),
+			Identifiers:    []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "example.com"},
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(now.Add(time.Hour)),
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
+			},
 		},
 	})
 	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
