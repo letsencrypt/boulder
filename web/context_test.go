@@ -25,17 +25,17 @@ func (m myHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Req
 }
 
 func TestLogCode(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, myHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
-	expected := `INFO: GET /endpoint 0 201 0 0.0.0.0 JSON={}`
+	expected := `level=INFO msg="" method=GET endpoint=/endpoint ip=0.0.0.0 ua="" origin="" code=201`
 	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
-			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+			expected, strings.Join(mockLog.GetAll(), "\n"))
 	}
 }
 
@@ -47,22 +47,22 @@ func (ch codeHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.
 }
 
 func TestStatusCodeLogging(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, codeHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
-	expected := `INFO: GET /endpoint 0 200 0 0.0.0.0 JSON={}`
+	expected := `level=INFO .* code=200`
 	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
-			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+			expected, strings.Join(mockLog.GetAll(), "\n"))
 	}
 }
 
 func TestOrigin(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, myHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
@@ -70,10 +70,10 @@ func TestOrigin(t *testing.T) {
 	}
 	req.Header.Add("Origin", "https://example.com")
 	th.ServeHTTP(httptest.NewRecorder(), req)
-	expected := `INFO: GET /endpoint 0 201 0 0.0.0.0 JSON={.*"Origin":"https://example.com"}`
+	expected := `level=INFO .* origin=https://example.com`
 	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
-			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+			expected, strings.Join(mockLog.GetAll(), "\n"))
 	}
 }
 
@@ -86,7 +86,7 @@ func (hhh hostHeaderHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r
 }
 
 func TestHostHeaderRewrite(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	hhh := hostHeaderHandler{f: func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
 		t.Helper()
 		test.AssertEquals(t, r.Host, "localhost")
@@ -135,7 +135,7 @@ func (ch cancelHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *htt
 }
 
 func TestPropagateCancel(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	res := make(chan string)
 	features.Set(features.Config{PropagateCancels: true})
 	th := NewTopHandler(mockLog, cancelHandler{res})
