@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"os"
 	"regexp"
@@ -172,11 +173,11 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 			},
 		)
 		if err != nil {
-			c.logger.AuditErr("finding starting certificate", err, map[string]any{
-				"begin":   queryBegin.Format(time.RFC3339),
-				"end":     queryEnd.Format(time.RFC3339),
-				"attempt": retries + 1,
-			})
+			c.logger.AuditError(ctx, "finding starting certificate", err,
+				slog.Time("begin", queryBegin),
+				slog.Time("end", queryEnd),
+				slog.Int("attempt", retries+1),
+			)
 			retries++
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
@@ -238,12 +239,12 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 			},
 		)
 		if err != nil {
-			c.logger.AuditErr("selecting certificates", err, map[string]any{
-				"begin":        c.issuedReport.begin.Format(time.RFC3339),
-				"end":          c.issuedReport.end.Format(time.RFC3339),
-				"batchStartID": batchStartID,
-				"attempt":      retries + 1,
-			})
+			c.logger.AuditError(ctx, "selecting certificates", err,
+				slog.Time("begin", c.issuedReport.begin),
+				slog.Time("end", c.issuedReport.end),
+				slog.Int64("batchStartID", batchStartID),
+				slog.Int("attempt", retries+1),
+			)
 			retries++
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
@@ -346,6 +347,7 @@ func (c *certChecker) checkValidations(ctx context.Context, cert *corepb.Certifi
 
 // checkCert returns a list of Subject Alternative Names in the certificate and a list of problems with the certificate.
 func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) ([]string, []string) {
+	ctx = blog.ContextWith(ctx, blog.Serial(cert.Serial))
 	var problems []string
 
 	// Check that the digests match.
@@ -508,7 +510,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 	if err != nil {
 		// Log and continue, since we want the problems slice to only contains
 		// problems with the cert itself.
-		c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
+		c.logger.Error(ctx, "fetching linting precertificate", err)
 		atomic.AddInt64(&c.issuedReport.DbErrs, 1)
 	} else {
 		err = precert.Correspond(precertDER, cert.Der)
@@ -524,11 +526,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 			if features.Get().CertCheckerRequiresValidations {
 				problems = append(problems, err.Error())
 			} else {
-				var identValues []string
-				for _, ident := range idents {
-					identValues = append(identValues, ident.Value)
-				}
-				c.logger.Warningf("Certificate %s %s: %s", cert.Serial, identValues, err)
+				c.logger.Warn(ctx, "Certificate validation check failed", blog.Idents(idents...), blog.Error(err))
 			}
 		}
 	}
