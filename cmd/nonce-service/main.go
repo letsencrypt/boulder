@@ -98,8 +98,6 @@ func main() {
 		&noncepb.NonceService_ServiceDesc, ns).Build(tlsConfig, scope, clock.New())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
 
-	logger.Infof("Nonce server listening on %s with prefix %q", c.NonceService.GRPC.Address, noncePrefix)
-
 	cmd.FailOnError(start(), "Nonce service gRPC server failed")
 }
 
