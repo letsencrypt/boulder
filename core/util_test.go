@@ -28,7 +28,6 @@ import (
 // challenges.go
 func TestNewToken(t *testing.T) {
 	token := NewToken()
-	fmt.Println(token)
 	tokenLength := int(math.Ceil(32 * 8 / 6.0)) // 32 bytes, b64 encoded
 	if len(token) != tokenLength {
 		t.Fatalf("Expected token of length %d, got %d", tokenLength, len(token))

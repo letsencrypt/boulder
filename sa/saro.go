@@ -494,40 +494,38 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 }
 
 func (ssa *SQLStorageAuthorityRO) getAuthorizationsByID(ctx context.Context, ids []int64) (*sapb.Authorizations, error) {
-	selector, err := db.NewMappedSelector[authorizationModel](ssa.dbReadOnlyMap)
-	if err != nil {
-		return nil, fmt.Errorf("initializing db map: %w", err)
-	}
-
-	clauses := fmt.Sprintf(`
-		LEFT OUTER JOIN successfulValidations sv ON sv.successfulValidationID = authorizations.validationID
-		LEFT OUTER JOIN failedValidations fv ON fv.failedValidationID = authorizations.validationID
-		WHERE authorizations.id in (%s)`,
-		db.QuestionMarks(len(ids)))
-
 	var sliceOfAny []any
 	for _, id := range ids {
 		sliceOfAny = append(sliceOfAny, id)
 	}
-	rows, err := selector.QueryContext(ctx, clauses, sliceOfAny...)
+
+	var output []authzModel
+	_, err := ssa.dbReadOnlyMap.Select(ctx,
+		&output,
+		fmt.Sprintf(`
+		SELECT id, identifierType, identifierValue, registrationID, certificateProfileName,
+		       status, expires, challenges, attempted, attemptedAt, token,
+			   COALESCE(successfulValidationRecord, failedValidationRecord) as validationRecord,
+			   fv.failedValidationError as validationError
+		FROM authorizations
+		LEFT OUTER JOIN successfulValidations sv ON sv.successfulValidationID = authorizations.validationID
+		LEFT OUTER JOIN failedValidations fv ON fv.failedValidationID = authorizations.validationID
+		WHERE authorizations.id in (%s)`,
+			db.QuestionMarks(len(ids))),
+		sliceOfAny...)
 	if err != nil {
 		return nil, fmt.Errorf("reading db: %w", err)
 	}
 
-	var ret []*corepb.Authorization
-	err = rows.ForEach(func(row *authorizationModel) error {
-		fmt.Printf("row: %#v\n", row)
-		//authz, err := authorizationModelToAuthzPB(*row)
-		//if err != nil {
-		//	return err
-		//}
-		//ret = append(ret, authz)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("reading db: %w", err)
+	var authorizations []*corepb.Authorization
+	for _, r := range output {
+		authzPB, err := modelToAuthzPB(r)
+		if err != nil {
+			return nil, err
+		}
+		authorizations = append(authorizations, authzPB)
 	}
-	return &sapb.Authorizations{Authzs: ret}, nil
+	return &sapb.Authorizations{Authzs: authorizations}, nil
 }
 
 // GetAuthorization2 returns the authorization identified by the provided ID or an error.

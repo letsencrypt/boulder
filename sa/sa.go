@@ -437,17 +437,32 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 		return nil, errIncompleteRequest
 	}
 
-	_, err := ssa.dbMap.ExecContext(ctx,
-		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
-		map[string]any{
-			"deactivated": statusUint(core.StatusDeactivated),
-			"id":          req.Id,
-			"valid":       statusUint(core.StatusValid),
-			"pending":     statusUint(core.StatusPending),
-		},
-	)
-	if err != nil {
-		return nil, err
+	if req.Id < ssa.authorizationsTableMinId {
+		_, err := ssa.dbMap.ExecContext(ctx,
+			`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
+			map[string]any{
+				"deactivated": statusUint(core.StatusDeactivated),
+				"id":          req.Id,
+				"valid":       statusUint(core.StatusValid),
+				"pending":     statusUint(core.StatusPending),
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		_, err := ssa.dbMap.ExecContext(ctx,
+			`UPDATE authorizations SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
+			map[string]any{
+				"deactivated": statusUint(core.StatusDeactivated),
+				"id":          req.Id,
+				"valid":       statusUint(core.StatusValid),
+				"pending":     statusUint(core.StatusPending),
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -477,23 +492,18 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0, len(req.NewAuthzs))
-		fmt.Println("inserting new authzs", len(req.NewAuthzs))
 		for _, authz := range req.NewAuthzs {
 			if features.Get().EfficientAuthorizationTable {
-				fmt.Println("new")
 				am, err := newAuthzReqToAuthorizationModel(authz, req.NewOrder.CertificateProfileName)
 				if err != nil {
 					return nil, err
 				}
-				fmt.Println("inserting authorization")
 				err = tx.Insert(ctx, am)
 				if err != nil {
 					return nil, err
 				}
-				fmt.Println("inserted authorization", am.ID)
 				newAuthzIDs = append(newAuthzIDs, am.ID)
 			} else {
-				fmt.Println("old")
 				am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
 				if err != nil {
 					return nil, err
