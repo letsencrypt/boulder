@@ -48,8 +48,8 @@ var levelName = map[syslog.Priority]string{
 	syslog.LOG_DEBUG:   "DEBUG",
 }
 
-func (w *mockWriter) logAtLevel(p syslog.Priority, msg string, a ...any) {
-	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
+func (w *mockWriter) logAtLevel(p syslog.Priority, msg string) {
+	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], msg)
 }
 
 // newMockWriter returns a new mockWriter

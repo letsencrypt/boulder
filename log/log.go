@@ -25,6 +25,7 @@ import (
 // NewMock(). Any additions to this interface with format strings should be
 // added to the govet configuration in .golangci.yml
 type Logger interface {
+	Err(msg string)
 	Errf(format string, a ...any)
 	Warning(msg string)
 	Warningf(format string, a ...any)
@@ -133,7 +134,7 @@ func Get() Logger {
 }
 
 type writer interface {
-	logAtLevel(syslog.Priority, string, ...any)
+	logAtLevel(syslog.Priority, string)
 }
 
 // bothWriter implements writer and writes to both syslog and stdout.
@@ -173,13 +174,8 @@ func checkSummed(msg string) string {
 
 // logAtLevel logs the provided message at the appropriate level, writing to
 // both stdout and the Logger
-func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
+func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	var err error
-
-	// Apply conditional formatting for f functions
-	if a != nil {
-		msg = fmt.Sprintf(msg, a...)
-	}
 
 	// Since messages are delimited by newlines, we have to escape any internal or
 	// trailing newlines before generating the checksum or outputting the message.
@@ -217,16 +213,11 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
 }
 
 // logAtLevel logs the provided message to stdout, or stderr if it is at Warning or Error level.
-func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...any) {
+func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 	if int(level) <= w.level {
 		output := w.stdout
 		if int(level) <= int(syslog.LOG_WARNING) {
 			output = w.stderr
-		}
-
-		// Apply conditional formatting for f functions
-		if a != nil {
-			msg = fmt.Sprintf(msg, a...)
 		}
 
 		msg = strings.ReplaceAll(msg, "\n", "\\n")
@@ -269,30 +260,36 @@ func (log *impl) auditAtLevel(level syslog.Priority, msg string) {
 	log.w.logAtLevel(level, msg)
 }
 
+// Err level messages are always marked with the audit tag, for special handling
+// at the upstream system logger.
+func (log *impl) Err(msg string) {
+	log.w.logAtLevel(syslog.LOG_ERR, msg)
+}
+
 // Errf level messages are always marked with the audit tag, for special handling
 // at the upstream system logger.
 func (log *impl) Errf(format string, a ...any) {
-	log.w.logAtLevel(syslog.LOG_ERR, format, a...)
+	log.w.logAtLevel(syslog.LOG_ERR, fmt.Sprintf(format, a...))
 }
 
 // Warning level messages pass through normally.
 func (log *impl) Warning(msg string) {
-	log.Warningf(msg)
+	log.w.logAtLevel(syslog.LOG_WARNING, msg)
 }
 
 // Warningf level messages pass through normally.
 func (log *impl) Warningf(format string, a ...any) {
-	log.w.logAtLevel(syslog.LOG_WARNING, format, a...)
+	log.w.logAtLevel(syslog.LOG_WARNING, fmt.Sprintf(format, a...))
 }
 
 // Info level messages pass through normally.
 func (log *impl) Info(msg string) {
-	log.Infof(msg)
+	log.w.logAtLevel(syslog.LOG_INFO, msg)
 }
 
 // Infof level messages pass through normally.
 func (log *impl) Infof(format string, a ...any) {
-	log.w.logAtLevel(syslog.LOG_INFO, format, a...)
+	log.w.logAtLevel(syslog.LOG_INFO, fmt.Sprintf(format, a...))
 }
 
 // InfoObject logs an INFO level JSON-serialized object message.
@@ -308,13 +305,12 @@ func (log *impl) InfoObject(msg string, obj any) {
 
 // Debug level messages pass through normally.
 func (log *impl) Debug(msg string) {
-	log.Debugf(msg)
-
+	log.w.logAtLevel(syslog.LOG_DEBUG, msg)
 }
 
 // Debugf level messages pass through normally.
 func (log *impl) Debugf(format string, a ...any) {
-	log.w.logAtLevel(syslog.LOG_DEBUG, format, a...)
+	log.w.logAtLevel(syslog.LOG_DEBUG, fmt.Sprintf(format, a...))
 }
 
 // AuditInfo sends an INFO-severity JSON-serialized object message that is prefixed
