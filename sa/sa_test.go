@@ -206,9 +206,7 @@ func createFinalizedAuthorization(t *testing.T, sa *SQLStorageAuthority, regID i
 		Attempted:   attempted,
 		AttemptedAt: timestamppb.New(attemptedAt),
 		ValidationRecords: []*corepb.ValidationRecord{
-			&corepb.ValidationRecord{
-				Url: "http://example.com/",
-			},
+			{Url: "http://example.com/"},
 		},
 		ValidationError: prob,
 	})

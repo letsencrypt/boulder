@@ -1536,7 +1536,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 		_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 			Id:                authzID,
-			Authz:             req.Authz,
 			Status:            string(status),
 			Expires:           timestamppb.New(expires),
 			Attempted:         string(ch.Type),
