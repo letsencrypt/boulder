@@ -24,7 +24,7 @@ type Config struct {
 
 		Features features.Config
 
-		// Max simultaneous SQL queries caused by a single RPC.
+		// Deprecated and unused.
 		ParallelismPerRPC int `validate:"omitempty,min=1"`
 		// LagFactor is how long to sleep before retrying a read request that may
 		// have failed solely due to replication lag.
@@ -79,13 +79,11 @@ func main() {
 
 	clk := clock.New()
 
-	parallel := max(c.SA.ParallelismPerRPC, 1)
-
 	tls, err := c.SA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	saroi, err := sa.NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.Duration, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, scope, c.SA.LagFactor.Duration, clk, logger)
 	cmd.FailOnError(err, "Failed to create read-only SA impl")
 
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)

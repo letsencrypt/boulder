@@ -37,11 +37,6 @@ type SQLStorageAuthorityRO struct {
 	dbReadOnlyMap  *db.WrappedMap
 	dbIncidentsMap *db.WrappedMap
 
-	// For RPCs that generate multiple, parallelizable SQL queries, this is the
-	// max parallelism they will use (to avoid consuming too many MariaDB
-	// threads).
-	parallelismPerRPC int
-
 	// lagFactor is the amount of time we're willing to delay before retrying a
 	// request that may have failed due to replication lag. For example, a user
 	// might create a new account and then immediately create a new order, but
@@ -70,7 +65,6 @@ func NewSQLStorageAuthorityRO(
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
 	stats prometheus.Registerer,
-	parallelismPerRPC int,
 	lagFactor time.Duration,
 	clk clock.Clock,
 	logger blog.Logger,
@@ -81,13 +75,12 @@ func NewSQLStorageAuthorityRO(
 	}, []string{"method", "result"})
 
 	ssaro := &SQLStorageAuthorityRO{
-		dbReadOnlyMap:     dbReadOnlyMap,
-		dbIncidentsMap:    dbIncidentsMap,
-		parallelismPerRPC: parallelismPerRPC,
-		lagFactor:         lagFactor,
-		clk:               clk,
-		log:               logger,
-		lagFactorCounter:  lagFactorCounter,
+		dbReadOnlyMap:    dbReadOnlyMap,
+		dbIncidentsMap:   dbIncidentsMap,
+		lagFactor:        lagFactor,
+		clk:              clk,
+		log:              logger,
+		lagFactorCounter: lagFactorCounter,
 	}
 
 	return ssaro, nil
