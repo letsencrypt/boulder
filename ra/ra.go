@@ -770,6 +770,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
+				AuthzID:          authz.ID,
 			})
 			if err != nil {
 				ra.log.AuditErr("Rechecking CAA", err, map[string]any{
