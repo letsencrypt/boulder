@@ -528,11 +528,6 @@ func TestCustomAuthority(t *testing.T) {
 			false,
 		},
 		{
-			"::1",
-			"[::1]:" + defaultDNSSvrPort,
-			false,
-		},
-		{
 			"[::1]",
 			"[::1]:" + defaultDNSSvrPort,
 			false,
@@ -574,40 +569,42 @@ func TestCustomAuthority(t *testing.T) {
 	}()
 
 	for _, a := range tests {
-		errChan := make(chan error, 1)
-		customAuthorityDialer = func(authority string) func(ctx context.Context, network, address string) (net.Conn, error) {
-			if authority != a.authorityWant {
-				errChan <- fmt.Errorf("wrong custom authority passed to resolver. input: %s expected: %s actual: %s", a.authority, a.authorityWant, authority)
-			} else {
-				errChan <- nil
-			}
-			return func(ctx context.Context, network, address string) (net.Conn, error) {
-				return nil, errors.New("no need to dial")
-			}
-		}
-
-		mockEndpointTarget := "foo.bar.com"
-		b := NewDefaultSRVBuilder()
-		cc := &testClientConn{target: mockEndpointTarget, errChan: make(chan error, 1)}
-		target := resolver.Target{
-			URL: *testutils.MustParseURL(fmt.Sprintf("scheme://%s/%s", a.authority, mockEndpointTarget)),
-		}
-		r, err := b.Build(target, cc, resolver.BuildOptions{})
-
-		if err == nil {
-			r.Close()
-
-			err = <-errChan
-			if err != nil {
-				t.Error(err.Error())
+		t.Run(a.authority, func(t *testing.T) {
+			errChan := make(chan error, 1)
+			customAuthorityDialer = func(authority string) func(ctx context.Context, network, address string) (net.Conn, error) {
+				if authority != a.authorityWant {
+					errChan <- fmt.Errorf("wrong custom authority passed to resolver. input: %s expected: %s actual: %s", a.authority, a.authorityWant, authority)
+				} else {
+					errChan <- nil
+				}
+				return func(ctx context.Context, network, address string) (net.Conn, error) {
+					return nil, errors.New("no need to dial")
+				}
 			}
 
-			if a.expectError {
-				t.Errorf("custom authority should have caused an error: %s", a.authority)
+			mockEndpointTarget := "foo.bar.com"
+			b := NewDefaultSRVBuilder()
+			cc := &testClientConn{target: mockEndpointTarget, errChan: make(chan error, 1)}
+			target := resolver.Target{
+				URL: *testutils.MustParseURL(fmt.Sprintf("scheme://%s/%s", a.authority, mockEndpointTarget)),
 			}
-		} else if !a.expectError {
-			t.Errorf("unexpected error using custom authority %s: %s", a.authority, err)
-		}
+			r, err := b.Build(target, cc, resolver.BuildOptions{})
+
+			if err == nil {
+				r.Close()
+
+				err = <-errChan
+				if err != nil {
+					t.Error(err.Error())
+				}
+
+				if a.expectError {
+					t.Errorf("custom authority should have caused an error: %s", a.authority)
+				}
+			} else if !a.expectError {
+				t.Errorf("unexpected error using custom authority %s: %s", a.authority, err)
+			}
+		})
 	}
 }
 

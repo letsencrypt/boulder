@@ -282,7 +282,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		}, nil
 	}
 
-	return nil, berrors.NotFoundError("no authorization found with id %q", in.Id)
+	return nil, berrors.NotFoundError("no authorization found with id %d", in.Id)
 }
 
 func (ra *MockRegistrationAuthority) DeactivateAuthorization(context.Context, *corepb.Authorization, ...grpc.CallOption) (*emptypb.Empty, error) {

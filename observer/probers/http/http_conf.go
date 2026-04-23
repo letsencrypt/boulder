@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/letsencrypt/boulder/strictyaml"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // HTTPConf is exported to receive YAML configuration.
@@ -49,7 +50,7 @@ func (c HTTPConf) validateURL() error {
 func (c HTTPConf) validateRCodes() error {
 	if len(c.RCodes) == 0 {
 		return fmt.Errorf(
-			"invalid 'rcodes', got: %q, please specify at least one", c.RCodes)
+			"invalid 'rcodes', got: %v, please specify at least one", c.RCodes)
 	}
 	for _, c := range c.RCodes {
 		// ensure rcode entry is in range 100-599
