@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 )
 
 var errInvalidChecksum = errors.New("invalid checksum length")
@@ -34,11 +35,11 @@ type Validator struct {
 	monitorCancel context.CancelFunc
 
 	lineCounter *prometheus.CounterVec
-	log         log.Logger
+	log         blog.Logger
 }
 
 // New Validator monitoring paths, which is a list of file globs.
-func New(patterns []string, logger log.Logger, stats prometheus.Registerer) *Validator {
+func New(patterns []string, logger blog.Logger, stats prometheus.Registerer) *Validator {
 	lineCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",
@@ -60,13 +61,13 @@ func New(patterns []string, logger log.Logger, stats prometheus.Registerer) *Val
 }
 
 // pollPaths expands v.patterns and calls v.tailValidateFile on each resulting file
-func (v *Validator) pollPaths() {
+func (v *Validator) pollPaths(ctx context.Context) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	for _, pattern := range v.patterns {
 		paths, err := filepath.Glob(pattern)
 		if err != nil {
-			v.log.Errf("expanding file glob: %s", err)
+			v.log.Error(ctx, "expanding file glob", err)
 		}
 
 		for _, path := range paths {
@@ -74,6 +75,8 @@ func (v *Validator) pollPaths() {
 				// We are already tailing this file
 				continue
 			}
+
+			ctx := blog.ContextWith(ctx, slog.String("file", path))
 
 			t, err := tail.TailFile(path, tail.Config{
 				ReOpen:        true,
@@ -84,10 +87,10 @@ func (v *Validator) pollPaths() {
 			})
 			if err != nil {
 				// TailFile shouldn't error when MustExist is false
-				v.log.Errf("unexpected error from TailFile: %v", err)
+				v.log.Error(ctx, "unexpected error from TailFile", err)
 			}
 
-			go v.tailValidate(path, t.Lines)
+			go v.tailValidate(ctx, path, t.Lines)
 
 			v.tailers[path] = t
 		}
@@ -97,7 +100,7 @@ func (v *Validator) pollPaths() {
 // Monitor calls v.pollPaths every minute until its context is cancelled
 func (v *Validator) monitor(ctx context.Context) {
 	for {
-		v.pollPaths()
+		v.pollPaths(ctx)
 
 		// Wait a minute, unless cancelled
 		timer := time.NewTimer(time.Minute)
@@ -109,7 +112,7 @@ func (v *Validator) monitor(ctx context.Context) {
 	}
 }
 
-func (v *Validator) tailValidate(filename string, lines chan *tail.Line) {
+func (v *Validator) tailValidate(ctx context.Context, filename string, lines chan *tail.Line) {
 	// Emit no more than 1 error line per second. This prevents consuming large
 	// amounts of disk space in case there is problem that causes all log lines to
 	// be invalid.
@@ -118,9 +121,10 @@ func (v *Validator) tailValidate(filename string, lines chan *tail.Line) {
 
 	for line := range lines {
 		if line.Err != nil {
-			v.log.Errf("error while tailing %s: %s", filename, line.Err)
+			v.log.Error(ctx, "error while tailing", line.Err)
 			continue
 		}
+		ctx := blog.ContextWith(ctx, slog.Int("line", line.Num))
 		err := lineValid(line.Text)
 		if err != nil {
 			if errors.Is(err, errInvalidChecksum) {
@@ -130,7 +134,7 @@ func (v *Validator) tailValidate(filename string, lines chan *tail.Line) {
 			}
 			select {
 			case <-outputLimiter.C:
-				v.log.Errf("%s: %s %q", filename, err, line.Text)
+				v.log.Error(ctx, "invalid log line", err, slog.String("text", line.Text))
 			default:
 			}
 		} else {
@@ -204,7 +208,7 @@ func lineValid(text string) error {
 		return nil
 	}
 	// Check the extracted checksum against the computed checksum
-	computedChecksum := log.LogLineChecksum(line)
+	computedChecksum := blog.LogLineChecksum(line)
 	if checksum != computedChecksum {
 		return fmt.Errorf("%s invalid checksum (expected %q, got %q)", errorPrefix, computedChecksum, checksum)
 	}

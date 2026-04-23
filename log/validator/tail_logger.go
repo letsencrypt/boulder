@@ -1,40 +1,54 @@
 package validator
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
 
-	"github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 )
 
-// tailLogger is an adapter to the nxadm/tail module's logging interface.
+// tailLogger is an adapter to the nxadm/tail module's logging interface. It is
+// defined here instead of in //blog/adapters.go because it is only used locally,
+// not set as a package-level default.
 type tailLogger struct {
-	log.Logger
+	blog.Logger
 }
 
 func (tl tailLogger) Fatal(v ...any) {
-	tl.Err(fmt.Sprint(v...))
+	tl.Logger.Error(context.Background(), "tail fatal", errors.New(fmt.Sprint(v...)))
+	os.Exit(1)
 }
 func (tl tailLogger) Fatalf(format string, v ...any) {
-	tl.Errf(format, v...)
+	tl.Logger.Error(context.Background(), "tail fatal", fmt.Errorf(format, v...))
+	os.Exit(1)
 }
 func (tl tailLogger) Fatalln(v ...any) {
-	tl.Err(fmt.Sprint(v...) + "\n")
+	tl.Logger.Error(context.Background(), "tail fatal", errors.New(fmt.Sprint(v...)))
+	os.Exit(1)
 }
 func (tl tailLogger) Panic(v ...any) {
-	tl.Err(fmt.Sprint(v...))
+	msg := fmt.Sprint(v...)
+	tl.Logger.Error(context.Background(), "tail panic", errors.New(msg))
+	panic(msg)
 }
 func (tl tailLogger) Panicf(format string, v ...any) {
-	tl.Errf(format, v...)
+	err := fmt.Errorf(format, v...)
+	tl.Logger.Error(context.Background(), "tail panic", err)
+	panic(err)
 }
 func (tl tailLogger) Panicln(v ...any) {
-	tl.Err(fmt.Sprint(v...) + "\n")
+	msg := fmt.Sprint(v...)
+	tl.Logger.Error(context.Background(), "tail panic", errors.New(msg))
+	panic(msg)
 }
 func (tl tailLogger) Print(v ...any) {
-	tl.Info(fmt.Sprint(v...))
+	tl.Logger.Info(context.Background(), fmt.Sprint(v...))
 }
 func (tl tailLogger) Printf(format string, v ...any) {
-	tl.Infof(format, v...)
+	tl.Logger.Info(context.Background(), fmt.Sprintf(format, v...))
 }
 func (tl tailLogger) Println(v ...any) {
-	tl.Info(fmt.Sprint(v...) + "\n")
+	tl.Logger.Info(context.Background(), fmt.Sprint(v...))
 }
