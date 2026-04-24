@@ -9,10 +9,8 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"database/sql"
 	"encoding/asn1"
 	"encoding/pem"
-	"errors"
 	"log"
 	"math/big"
 	mrand "math/rand/v2"
@@ -389,25 +387,20 @@ func TestGetAndProcessCerts(t *testing.T) {
 // asked for the actual rows.
 type mismatchedCountDB struct{}
 
-// `getCerts` calls `SelectInt` first to determine how many rows there are
-// matching the `getCertsCountQuery` criteria. For this mock we return
-// a non-zero number
-func (db mismatchedCountDB) SelectNullInt(_ context.Context, _ string, _ ...any) (sql.NullInt64, error) {
-	return sql.NullInt64{
-			Int64: 99999,
-			Valid: true,
-		},
-		nil
-}
-
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
 // a dastardly switch-a-roo here and return an empty set
 func (db mismatchedCountDB) Select(_ context.Context, output any, _ string, _ ...any) ([]any, error) {
 	return nil, nil
 }
 
-func (db mismatchedCountDB) SelectOne(_ context.Context, _ any, _ string, _ ...any) error {
-	return errors.New("unimplemented")
+// `getCerts` calls `SelectOne` first to determine how many rows there are
+// matching the `getCertsCountQuery` criteria. For this mock we return
+// a non-zero number
+func (db mismatchedCountDB) SelectOne(_ context.Context, holder any, _ string, _ ...any) error {
+	h := holder.(**int64)
+	var nines int64 = 99999
+	*h = &nines
+	return nil
 }
 
 /*
@@ -445,11 +438,12 @@ type emptyDB struct {
 	certDB
 }
 
-// SelectNullInt is a method that returns a false sql.NullInt64 struct to
-// mock a null DB response
-func (db emptyDB) SelectNullInt(_ context.Context, _ string, _ ...any) (sql.NullInt64, error) {
-	return sql.NullInt64{Valid: false},
-		nil
+// SelectOne is a method that stores `nil` in the passed int64 holder.
+// It's used to mock a null DB response (i.e. MIN across now rows).
+func (db emptyDB) SelectOne(_ context.Context, holder any, _ string, _ ...any) error {
+	h := holder.(**int64)
+	*h = nil
+	return nil
 }
 
 // TestGetCertsNullResults tests that a null response from the database will
@@ -473,16 +467,22 @@ type lateDB struct {
 	selectedACert bool
 }
 
-// SelectNullInt is a method that returns a false sql.NullInt64 struct to
-// mock a null DB response
-func (db *lateDB) SelectNullInt(_ context.Context, _ string, args ...any) (sql.NullInt64, error) {
+// SelectOne is a method that stores `nil` in the passed int64 holder.
+// It's used to mock a null DB response (i.e. MIN across now rows).
+func (db lateDB) SelectOne(_ context.Context, holder any, _ string, args ...any) error {
+	h := holder.(**int64)
+
 	args2 := args[0].(map[string]any)
 	begin := args2["begin"].(time.Time)
 	end := args2["end"].(time.Time)
 	if begin.Compare(db.issuedTime) < 0 && end.Compare(db.issuedTime) > 0 {
-		return sql.NullInt64{Int64: 23, Valid: true}, nil
+		var twentythree int64 = 23
+		*h = &twentythree
+		return nil
 	}
-	return sql.NullInt64{Valid: false}, nil
+
+	*h = nil
+	return nil
 }
 
 func (db *lateDB) Select(_ context.Context, output any, _ string, args ...any) ([]any, error) {
@@ -490,10 +490,6 @@ func (db *lateDB) Select(_ context.Context, output any, _ string, args ...any) (
 	// For expediency we respond with an empty list of certificates; the checker will treat this as if it's
 	// reached the end of the list of certificates to process.
 	return nil, nil
-}
-
-func (db *lateDB) SelectOne(_ context.Context, _ any, _ string, _ ...any) error {
-	return nil
 }
 
 // TestGetCertsLate checks for correct behavior when certificates exist only late in the provided window.
