@@ -153,6 +153,14 @@ loop:
 			if res.err != nil {
 				errs = append(errs, res.err.Error())
 				ctp.winnerCounter.WithLabelValues(res.log.Url, failed).Inc()
+
+				// Replace the errored submission with another attempt
+				if nextLog < len(logs) {
+					go ctp.getOne(subCtx, cert, logs[nextLog], resChan)
+					nextLog++
+					// Reset the ticker so we wait the correct stagger interval
+					staggerTicker.Reset(ctp.stagger)
+				}
 			} else {
 				results = append(results, res)
 				ctp.winnerCounter.WithLabelValues(res.log.Url, succeeded).Inc()
