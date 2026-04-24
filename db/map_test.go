@@ -49,39 +49,6 @@ func TestErrDatabaseOpError(t *testing.T) {
 	}
 }
 
-func TestIsNoRows(t *testing.T) {
-	testCases := []struct {
-		name           string
-		err            ErrDatabaseOp
-		expectedNoRows bool
-	}{
-		{
-			name: "underlying err is sql.ErrNoRows",
-			err: ErrDatabaseOp{
-				Op:    "test",
-				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", sql.ErrNoRows),
-			},
-			expectedNoRows: true,
-		},
-		{
-			name: "underlying err is not sql.ErrNoRows",
-			err: ErrDatabaseOp{
-				Op:    "test",
-				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", errors.New("lots of rows. too many rows.")),
-			},
-			expectedNoRows: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			test.AssertEquals(t, IsNoRows(tc.err), tc.expectedNoRows)
-		})
-	}
-}
-
 func TestIsDuplicate(t *testing.T) {
 	testCases := []struct {
 		name            string

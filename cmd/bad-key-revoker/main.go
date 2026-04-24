@@ -2,6 +2,8 @@ package notmain
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -222,7 +224,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	// select a row to process
 	unchecked, err := bkr.selectUncheckedKey(ctx)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return true, nil
 		}
 		return false, err
