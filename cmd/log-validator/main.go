@@ -5,8 +5,8 @@ import (
 	"flag"
 
 	"github.com/letsencrypt/boulder/blog"
+	"github.com/letsencrypt/boulder/blog/validator"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/log/validator"
 )
 
 type Config struct {
