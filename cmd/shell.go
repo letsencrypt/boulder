@@ -8,6 +8,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net/http"
 	"net/http/pprof"
@@ -20,16 +21,20 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-logr/stdr"
+	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.30.0"
+	"google.golang.org/grpc/grpclog"
 
 	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
@@ -50,15 +55,119 @@ func init() {
 	}
 }
 
-// promLogger implements the promhttp.Logger interface. This adapter is here
-// instead of in blog/adapters.go because it is used at the individual handler
-// level, rather than at the package-global level.
+// mysqlLogger implements the mysql.Logger interface.
+type mysqlLogger struct {
+	blog.Logger
+}
+
+func (m mysqlLogger) Print(v ...any) {
+	m.Error(context.Background(), "mysql error", errors.New(fmt.Sprint(v...)))
+}
+
+// grpcLogger implements the grpclog.LoggerV2 interface.
+type grpcLogger struct {
+	blog.Logger
+}
+
+// Ensure that fatal logs exit, because we use neither the gRPC default logger
+// nor the stdlib default logger, both of which would call os.Exit(1) for us.
+func (log grpcLogger) Fatal(args ...any) {
+	log.Error(args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalf(format string, args ...any) {
+	log.Errorf(format, args...)
+	os.Exit(1)
+}
+func (log grpcLogger) Fatalln(args ...any) {
+	log.Errorln(args...)
+	os.Exit(1)
+}
+
+// Pass through all Error level logs.
+func (log grpcLogger) Error(args ...any) {
+	log.Logger.Error(context.Background(), "grpc error", errors.New(fmt.Sprint(args...)))
+}
+func (log grpcLogger) Errorf(format string, args ...any) {
+	log.Logger.Error(context.Background(), "grpc error", fmt.Errorf(format, args...))
+}
+func (log grpcLogger) Errorln(args ...any) {
+	log.Logger.Error(context.Background(), "grpc error", errors.New(fmt.Sprintln(args...)))
+}
+
+// Pass through most Warnings, but filter out a few noisy ones.
+func (log grpcLogger) Warning(args ...any) {
+	log.Logger.Warn(context.Background(), fmt.Sprint(args...))
+}
+func (log grpcLogger) Warningf(format string, args ...any) {
+	log.Logger.Warn(context.Background(), fmt.Sprintf(format, args...))
+}
+func (log grpcLogger) Warningln(args ...any) {
+	msg := fmt.Sprintln(args...)
+	// See https://github.com/letsencrypt/boulder/issues/4628
+	if strings.Contains(msg, `ccResolverWrapper: error parsing service config: no JSON service config provided`) {
+		return
+	}
+	// See https://github.com/letsencrypt/boulder/issues/4379
+	if strings.Contains(msg, `Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"`) {
+		return
+	}
+	// Since we've already formatted the message, just pass through to .Warning()
+	log.Logger.Warn(context.Background(), msg)
+}
+
+// Don't log any INFO-level gRPC stuff. In practice this is all noise, like
+// failed TXT lookups for service discovery (we only use A records).
+func (log grpcLogger) Info(args ...any)                 {}
+func (log grpcLogger) Infof(format string, args ...any) {}
+func (log grpcLogger) Infoln(args ...any)               {}
+
+// V returns true if the verbosity level l is less than the verbosity we want to
+// log at.
+func (log grpcLogger) V(l int) bool {
+	// We always return false. This causes gRPC to not log some things which are
+	// only logged conditionally if the logLevel is set below a certain value.
+	// TODO: Use the wrapped log.Logger.stdoutLevel and log.Logger.syslogLevel
+	// to determine a correct return value here.
+	return false
+}
+
+// promLogger implements the promhttp.Logger interface.
 type promLogger struct {
 	blog.Logger
 }
 
-func (l promLogger) Println(args ...any) {
-	l.Error(context.Background(), "Prometheus error", errors.New(fmt.Sprint(args...)))
+func (log promLogger) Println(args ...any) {
+	log.Error(context.Background(), "Prometheus error", errors.New(fmt.Sprint(args...)))
+}
+
+type redisLogger struct {
+	blog.Logger
+}
+
+func (rl redisLogger) Printf(ctx context.Context, format string, v ...any) {
+	rl.Info(ctx, fmt.Sprintf(format, v...))
+}
+
+// logWriter implements the io.Writer interface.
+type logWriter struct {
+	blog.Logger
+}
+
+func (lw logWriter) Write(p []byte) (n int, err error) {
+	// Lines received by logWriter will always have a trailing newline.
+	lw.Logger.Info(context.Background(), strings.TrimSuffix(string(p), "\n"))
+	return
+}
+
+// logOutput implements the log.Logger interface's Output method for use with logr
+type logOutput struct {
+	blog.Logger
+}
+
+func (l logOutput) Output(calldepth int, logline string) error {
+	l.Logger.Info(context.Background(), logline)
+	return nil
 }
 
 // singletonLogger can only be initialized once, then never overwritten.
@@ -99,22 +208,27 @@ func StatsAndLogging(logConf blog.Config, otConf OpenTelemetryConfig, addr strin
 	return newStatsRegistry(addr, logger), logger, shutdown
 }
 
-// NewLogger creates a LogContext with the provided settings and returns it. It
-// also installs this logger as the default logger for third-party packages,
-// and sets up a periodic log event for the current timestamp.
+// NewLogger creates a logger object with the provided settings, sets it as
+// the global logger, and returns it.
+//
+// It also sets the logging systems for various packages we use to go through
+// the created logger, and sets up a periodic log event for the current timestamp.
 func NewLogger(logConf blog.Config) blog.Logger {
 	logger, err := blog.New(logConf)
 	FailOnError(err, "While constructing logger")
 
-	blog.InitAdapters(logger)
 	backupLogger.init(logger)
+	_ = mysql.SetLogger(mysqlLogger{logger})
+	grpclog.SetLoggerV2(grpcLogger{logger})
+	log.SetOutput(logWriter{logger})
+	redis.SetLogger(redisLogger{logger})
 
 	// Periodically log the current timestamp, to ensure syslog timestamps match
 	// Boulder's conception of time.
 	go func() {
 		for {
 			time.Sleep(time.Hour)
-			logger.Info(context.Background(), "heartbeat")
+			logger.Info(context.Background(), "heartbeat", slog.Time("time", time.Now()))
 		}
 	}()
 	return logger
@@ -201,9 +315,10 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 
 // NewOpenTelemetry sets up our OpenTelemetry tracing
 // It returns a graceful shutdown function to be deferred.
-func NewOpenTelemetry(config OpenTelemetryConfig, log blog.Logger) func(ctx context.Context) {
+func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx context.Context) {
+	otel.SetLogger(stdr.New(logOutput{logger}))
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
-		log.Error(context.Background(), "OpenTelemetry error", err)
+		logger.Error(context.Background(), "OpenTelemetry error", err)
 	}))
 
 	resources := resource.NewWithAttributes(
@@ -239,7 +354,7 @@ func NewOpenTelemetry(config OpenTelemetryConfig, log blog.Logger) func(ctx cont
 	return func(ctx context.Context) {
 		err := tracerProvider.Shutdown(ctx)
 		if err != nil {
-			log.Error(ctx, "Failed to shut down OpenTelemetry", err)
+			logger.Error(ctx, "Failed to shut down OpenTelemetry", err)
 		}
 	}
 }
@@ -260,6 +375,7 @@ func AuditPanic() {
 		logger.AuditInfo(context.Background(), "Process exiting normally", info()...)
 		return
 	}
+
 	// For the special type `failure`, audit log the message and exit quietly
 	fail, ok := err.(failure)
 	if ok {
@@ -427,6 +543,7 @@ func info() []slog.Attr {
 		slog.String("buildTime", core.GetBuildTime()),
 		slog.String("buildID", core.GetBuildID()),
 		slog.String("goVersion", runtime.Version()),
+		slog.String("command", core.Command()),
 	}
 }
 

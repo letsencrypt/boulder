@@ -1,9 +1,9 @@
+package blog
+
 // This file implements our ability to prepend a checksum to the beginning of
 // every log line. Since we want to be using the built-in TextHandler and
 // JSONHandler, we have to do this at the level of an io.Writer which we pass
 // to those Handlers.
-
-package blog
 
 import (
 	"bytes"
@@ -42,9 +42,8 @@ func (w *checksumWriter) Write(in []byte) (int, error) {
 	out.WriteString(" ")
 	out.Write(in)
 	_, err := out.WriteTo(w.inner)
-	// Return len(in), rather than the length returned from WriteTo, to avoid
-	// freaking out any callers which expect Write to never report a size larger
-	// than the input buffer.
+	// Return len(in), rather than the length returned from WriteTo, because the
+	// io.Writer contract is to return how many bytes *of the input* you wrote.
 	return len(in), err
 }
 

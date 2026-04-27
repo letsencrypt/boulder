@@ -1,5 +1,8 @@
 package blog
 
+// This file specifies the format used to configure our loggers. It is
+// embedded in almost every Config struct in //cmd/*/main.go.
+
 import (
 	"log/slog"
 )

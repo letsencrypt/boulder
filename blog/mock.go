@@ -1,5 +1,10 @@
 package blog
 
+// This file provides an alternate constructor whose return value satisfies the
+// blog.Logger interface, but which stores all logged lines in memory. Tests
+// can also cast the logger to a blog.Mock, and then gain access to a suite of
+// methods useful for making test assertions about the contents of those logs.
+
 import (
 	"fmt"
 	"log/slog"
@@ -36,7 +41,7 @@ type Mock struct {
 // to it. It always uses the text (i.e. not json) format, and always logs at
 // level 7 (debug).
 func NewMock() *Mock {
-	w := &inmemWriter{out: make([]string, 0)}
+	w := &inmemWriter{}
 	l := slog.New(&contextHandler{inner: newAuditHandler(
 		newChecksumWriter(w),
 		&slog.HandlerOptions{Level: configToSlogLevel(7)},
@@ -84,5 +89,5 @@ func (ml *Mock) ExpectMatch(reString string) error {
 func (ml *Mock) Clear() {
 	ml.iw.Lock()
 	defer ml.iw.Unlock()
-	ml.iw.out = make([]string, 0)
+	ml.iw.out = nil
 }

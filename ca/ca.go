@@ -254,10 +254,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		ipStrings = append(ipStrings, ip.String())
 	}
 
-	serialBigInt, err := ca.generateSerialNumber(ctx)
-	if err != nil {
-		return nil, err
-	}
+	serialBigInt := ca.generateSerialNumber()
 	serialHex := core.SerialToString(serialBigInt)
 
 	ctx = blog.ContextWith(ctx,
@@ -457,21 +454,16 @@ func (ca *certificateAuthorityImpl) pickIssuer(profileName string, keyAlg x509.P
 
 // generateSerialNumber produces a big.Int which has more than 64 bits of
 // entropy and has the CA's configured one-byte prefix.
-func (ca *certificateAuthorityImpl) generateSerialNumber(ctx context.Context) (*big.Int, error) {
+func (ca *certificateAuthorityImpl) generateSerialNumber() *big.Int {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
 	serialBytes[0] = ca.prefix
-	_, err := rand.Read(serialBytes[1:])
-	if err != nil {
-		err = berrors.InternalServerError("failed to generate serial: %s", err)
-		ca.log.AuditError(ctx, "Serial randomness failed", err)
-		return nil, err
-	}
+	rand.Read(serialBytes[1:]) //nolint:errcheck // rand.Read is documented to never return an error.
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
-	return serialBigInt, nil
+	return serialBigInt
 }
 
 // generateSKID computes the Subject Key Identifier using one of the methods in

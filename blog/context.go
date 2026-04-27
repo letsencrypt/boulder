@@ -1,11 +1,11 @@
-// This file provides an exported utility for attaching slog.Attrs to a context object,
-// so that they will be included in all subsequent log output.
+package blog
+
+// This file provides an exported utility for attaching slog.Attrs to a context
+// object, so that they will be included in all subsequent log output.
 //
 // It also implements a slog.Handler which extracts stored attrs from a context
 // and includes them in the resulting log line. This handler is always included
 // as part of the handler chain in blog.New().
-
-package blog
 
 import (
 	"context"
@@ -52,14 +52,12 @@ func (c *contextHandler) Enabled(ctx context.Context, l slog.Level) bool {
 // Handle extracts the attributes attached to the context object, attaches them
 // to the Record, and then passes it through to the underlying Handler.
 //
-// Note that nearly *all* attributes in each log line are attached to this
-// context object, because the methods on blog.logger take all the attributes
-// which are specified in that call and attach them to the context, for
-// retrieval here. This is to preserve ordering: if we passed those attributes
-// directly through, but then extracted context attributes here, the context
-// attributes would come *after* the attributes specified at the call site,
-// which is unexpected. Specifically, this allows us to keep the error= attr as
-// the last item in the log line.
+// Order matters. Attributes from the Context will be emitted after any
+// attributes already present in the Record. Callers that want a given attribute
+// to be emitted last in log lines (e.g. an error) should ensure that attribute
+// is (a) provided in the Context and (b) the last in the Context's list of
+// attributes. See the logger.Error() implementation in this package for an
+// example.
 func (c *contextHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = r.Clone()
 	r.AddAttrs(fromContext(ctx)...)

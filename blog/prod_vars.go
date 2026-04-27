@@ -2,6 +2,8 @@
 
 package blog
 
+// This file is used by production code and unit tests.
+
 import (
 	"io"
 	"log/slog"

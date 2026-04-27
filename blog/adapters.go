@@ -1,5 +1,6 @@
-// This file contains adapters which can be used
 package blog
+
+// This file contains adapters which can be used
 
 import (
 	"context"

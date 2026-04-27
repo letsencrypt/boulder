@@ -1,9 +1,12 @@
-// This file contains all of the helper functions for emitting log messages. It
-// is the primary public interface of this package. Each function extracts the
-// logger from the context and uses it to log the given message and additional
-// attrs.
-
 package blog
+
+// This file defines the core interface of the blog package: blog.Logger, and
+// its constructor, blog.New. This type has methods for emitting logs at each
+// level, and for emitting audit logs at the info and error levels. It is
+// expected that users of this package will create a single top-level logger,
+// store it on a persistent object (such as a gRPC or HTTP handler struct),
+// attach relevant attributes to a context.Context which flows through methods
+// on that struct, and pass the context to the stored logger at each call site.
 
 import (
 	"context"
@@ -82,6 +85,9 @@ func New(conf Config) (*logger, error) {
 // Error logs the given message, error, and other key-value pairs at error
 // level. The error will be included in the attrs under the key "error".
 func (l *logger) Error(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
+	// We attach these attrs to the context, rather than passing them directly to
+	// LogAttrs, to ensure that they come last in the log line. See
+	// contextHandler.Handle() for more information.
 	ctx = ContextWith(ctx, append(attrs, Error(err))...)
 	l.inner.LogAttrs(ctx, slog.LevelError, msg)
 }

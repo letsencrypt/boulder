@@ -2,6 +2,8 @@
 
 package blog
 
+// This file is used by the integration tests.
+
 import (
 	"io"
 	"log/slog"

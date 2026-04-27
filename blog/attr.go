@@ -1,3 +1,5 @@
+package blog
+
 // This file contains helper functions that can be used throughout the boulder
 // code base to ensure that certain commonly-logged values always have the same
 // key name and value type. This prevents situations like sometimes calling the
@@ -14,8 +16,6 @@
 //   - "source": used by the slog package
 //   - "error": used by our blog.Error and blog.AuditError helpers
 //   - "audit": used by our blog.AuditError and blog.AuditInfo helpers
-
-package blog
 
 import (
 	"log/slog"
@@ -41,14 +41,21 @@ func Authz(authzID int64) slog.Attr {
 	return slog.Int64("authz", authzID)
 }
 
+// Serial returns a slog.Attr whose key is "serial" and whose value is the
+// given string. The argument should be hex-encoded.
 func Serial(serial string) slog.Attr {
 	return slog.String("serial", serial)
 }
 
+// Idents returns a slog.Attr whose key is "idents" and whose value is a list
+// of the given identifiers.
 func Idents(idents ...identifier.ACMEIdentifier) slog.Attr {
 	return slog.Any("idents", idents)
 }
 
+// Error returns a slog.Attr whose key is "error" and whose value is the value
+// from err.Error(). This attribute is used automatically by methods that log
+// at the error level, like blog.Logger.AuditError().
 func Error(err error) slog.Attr {
 	return slog.String("error", err.Error())
 }

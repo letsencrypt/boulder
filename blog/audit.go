@@ -1,8 +1,10 @@
+package blog
+
 // This file provides the scaffolding necessary to differentiate audit logs from
 // non-audit logs. This consists of four parts:
 //
 // 1. A singleton slog.Attr which can be attached to audit records by the
-//    AuditLevel helper functions.
+//    AuditLevel methods.
 // 2. A Handler which contains two different sub-handlers, and which dispatches
 //    each Record to one of those handlers depending on whether that Record
 //    contains the singleton audit Attr.
@@ -11,8 +13,6 @@
 // 4. Finally, a constructor which accepts the same arguments as slog's
 //    NewTextHandler and NewJSONHandler and builds two copies of the handler,
 //    one of which has its writer wrapped in the auditWriter.
-
-package blog
 
 import (
 	"bytes"
@@ -48,11 +48,9 @@ func (w *auditWriter) Write(in []byte) (int, error) {
 	out := bytes.Buffer{}
 	out.WriteString("[AUDIT] ")
 	out.Write(in)
-
 	_, err := out.WriteTo(w.inner)
-	// Return len(in), rather than the length returned from WriteTo, to avoid
-	// freaking out any callers which expect Write to never report a size larger
-	// than the input buffer.
+	// Return len(in), rather than the length returned from WriteTo, because the
+	// io.Writer contract is to return how many bytes *of the input* you wrote.
 	return len(in), err
 }
 
