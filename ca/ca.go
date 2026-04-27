@@ -270,9 +270,6 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	}
 
 	serialBigInt := ca.generateSerialNumber()
-	if err != nil {
-		return nil, err
-	}
 	serialHex := core.SerialToString(serialBigInt)
 
 	// Step 2: Persist the serial and minimal metadata, to ensure that we never
@@ -491,7 +488,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() *big.Int {
 	// rand.Read is guaranteed since Go 1.24 not to return error (it crashes the program instead)
 	// https://tip.golang.org/doc/go1.24#cryptorandpkgcryptorand
 	// https://pkg.go.dev/crypto/rand@master#Read
-	rand.Read(serialBytes[1:])
+	rand.Read(serialBytes[1:]) //nolint:errcheck //rand.Read is infallible
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
