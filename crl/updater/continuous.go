@@ -45,7 +45,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 
 			atTime := cu.clk.Now()
 			var num *big.Int = crl.Number(atTime)
-			ctx = blog.ContextWith(ctx, slog.String("number", num.String()))
+			ctx := blog.ContextWith(ctx, slog.String("number", num.String()))
 			err := cu.updateShardWithRetry(ctx, atTime, issuerNameID, shardIdx)
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can

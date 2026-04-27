@@ -334,9 +334,9 @@ func (va *ValidationAuthorityImpl) runExperiment(
 
 	expAttrs := []slog.Attr{
 		slog.String("operation", operation),
-		slog.String("primaryProblem", primaryProblem.String()),
+		slog.Any("primaryProblem", primaryProblem),
 		slog.Any("primaryValidationRecords", primaryValidationRecords),
-		slog.String("experimentProblem", experimentProblem.String()),
+		slog.Any("experimentProblem", experimentProblem),
 		slog.Any("experimentValidationRecords", experimentValidationRecords),
 	}
 	if err != nil {

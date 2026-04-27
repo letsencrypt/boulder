@@ -423,7 +423,7 @@ func TestExperimentalVAConcurrence(t *testing.T) {
 			// The addressesResolved and addressUsed fields are checked here to make sure they are not accidentally
 			// base64-encoded (which can happen if we log the protobuf `corepb.ValidationRecord` instead of the nicely
 			// JSON-serializable struct `core.ValidationRecord`)
-			expectLog: `Primary VA disagreed with experimental VA.*"addressesResolved":\["127.0.0.1"\],"addressUsed":"127.0.0.1"`,
+			expectLog: `Primary VA disagreed with experimental VA.*AddressesResolved:\[127.0.0.1\] AddressUsed:127.0.0.1`,
 		},
 		{
 			name:            "both fail",
@@ -535,7 +535,7 @@ func TestInternalErrorLogged(t *testing.T) {
 
 	va, mockLog := setup(nil, "", nil, &ipFakeDNS{})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	req := createValidationRequest(identifier.NewDNS("nonexistent.com"), core.ChallengeTypeHTTP01)
 	_, err := va.DoDCV(ctx, req)

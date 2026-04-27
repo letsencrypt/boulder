@@ -39,7 +39,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 					return
 				}
 
-				ctx = blog.ContextWith(ctx,
+				ctx := blog.ContextWith(ctx,
 					slog.String("issuer", work.issuer.Subject.CommonName),
 					slog.Int("shard", work.shardIdx),
 					slog.String("number", crlNumber.String()),
