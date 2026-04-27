@@ -3,6 +3,8 @@ package notmain
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -76,7 +78,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 	_, err = bkr.selectUncheckedKey(ctx)
 	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
-	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
+	test.Assert(t, errors.Is(err, sql.ErrNoRows), "returned error is not sql.ErrNoRows")
 
 	// insert a blocked key that's due to be checked
 	insertBlockedRow(t, dbMap, fcBeforeRepLag(fc, bkr), hashB, 1, false)
@@ -211,7 +213,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 		maxExpectedReplicationLag: time.Second * 22,
 	}
 	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
-	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
+	test.Assert(t, errors.Is(err, sql.ErrNoRows), "expected NoRows error")
 }
 
 func TestFindUnrevoked(t *testing.T) {

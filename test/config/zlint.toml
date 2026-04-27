@@ -15,6 +15,9 @@ ignore_lints = [
   # issued under the "classic" profile, but have removed it from our "tlsserver"
   # and "shortlived" profiles.
   "pkilint:cabf.serverauth.subscriber_rsa_digitalsignature_and_keyencipherment_present",
+  # ctlint requires CCADB data to verify SCT signatures; our test issuers are
+  # not in CCADB so this warning fires for every issued certificate.
+  "ctlint:cannot_verify_sct_signature_without_issuer_spki,_which_could_not_be_found_in_the_available_ccadb_data",
 ]
 
 [e_pkimetal_lint_cabf_serverauth_crl]
