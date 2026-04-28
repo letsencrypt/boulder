@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -39,8 +40,10 @@ type crlUpdater struct {
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
 
-	tickHistogram  *prometheus.HistogramVec
-	updatedCounter *prometheus.CounterVec
+	tickHistogram    *prometheus.HistogramVec
+	updatedCounter   *prometheus.CounterVec
+	sizeBytesGauge   *prometheus.GaugeVec
+	sizeEntriesGauge *prometheus.GaugeVec
 
 	log blog.Logger
 	clk clock.Clock
@@ -104,6 +107,16 @@ func NewUpdater(
 		Help: "A counter of CRL generation calls labeled by result",
 	}, []string{"issuer", "result"})
 
+	sizeBytesGauge := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crl_updater_crl_size_bytes",
+		Help: "The size in bytes of each CRL, labeled by issuer and shard",
+	}, []string{"issuer", "shard"})
+
+	sizeEntriesGauge := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crl_updater_crl_size_entries",
+		Help: "The number of entries in each CRL, labeled by issuer and shard",
+	}, []string{"issuer", "shard"})
+
 	return &crlUpdater{
 		issuersByNameID,
 		numShards,
@@ -120,6 +133,8 @@ func NewUpdater(
 		cs,
 		tickHistogram,
 		updatedCounter,
+		sizeBytesGauge,
+		sizeEntriesGauge,
 		log,
 		clk,
 	}, nil
@@ -324,6 +339,8 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
 		crlID, crlLen, crlHash.Sum(nil))
+	cu.sizeBytesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(crlLen))
+	cu.sizeEntriesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(len(crlEntries)))
 
 	return nil
 }
