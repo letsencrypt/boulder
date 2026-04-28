@@ -15,7 +15,7 @@ require (
 	github.com/google/certificate-transparency-go v1.3.2-0.20250507091337-0eddb39e94f8
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
 	github.com/jmhodges/clock v1.2.0
-	github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae
+	github.com/letsencrypt/borp v0.0.0-20260428182343-7962eada420f
 	github.com/letsencrypt/challtestsrv v1.4.2
 	github.com/letsencrypt/pkcs11key/v4 v4.0.1
 	github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158

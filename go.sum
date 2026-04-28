@@ -155,6 +155,8 @@ github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae h1:yFuF5yRIwaandc
 github.com/letsencrypt/borp v0.0.0-20251118150929-89c6927051ae/go.mod h1:gMSMCNKhxox/ccR923EJsIvHeVVYfCABGbirqa0EwuM=
 github.com/letsencrypt/borp v0.0.0-20260424001515-6bb8cbf6855b h1:UJJDdqMDdNdMlIiE+B6yDw0Hh0uo4yNyPcqrZfAEeN4=
 github.com/letsencrypt/borp v0.0.0-20260424001515-6bb8cbf6855b/go.mod h1:gMSMCNKhxox/ccR923EJsIvHeVVYfCABGbirqa0EwuM=
+github.com/letsencrypt/borp v0.0.0-20260428182343-7962eada420f h1:ka12vhO0JLDmdER25Wrzdp3fHNi2SpCoIEGOELIR2I0=
+github.com/letsencrypt/borp v0.0.0-20260428182343-7962eada420f/go.mod h1:gMSMCNKhxox/ccR923EJsIvHeVVYfCABGbirqa0EwuM=
 github.com/letsencrypt/challtestsrv v1.4.2 h1:0ON3ldMhZyWlfVNYYpFuWRTmZNnyfiL9Hh5YzC3JVwU=
 github.com/letsencrypt/challtestsrv v1.4.2/go.mod h1:GhqMqcSoeGpYd5zX5TgwA6er/1MbWzx/o7yuuVya+Wk=
 github.com/letsencrypt/pkcs11key/v4 v4.0.1 h1:XIXFxOnQJS5QYBlMnHhnlOBVcfylh7m3fjOJmVcEV88=
