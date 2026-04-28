@@ -275,7 +275,7 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 			return next
 		}
 
-		ctx := blog.ContextWith(shutdownCtx, slog.String("prev", last.String()), slog.String("next", next.String()))
+		ctx := blog.ContextWith(shutdownCtx, slog.String("old", last.String()), slog.String("new", next.String()))
 		if next != healthpb.HealthCheckResponse_SERVING {
 			sb.logger.Warn(ctx, "transitioning overall health", blog.Error(err))
 			sb.logger.Warn(ctx, "transitioning service health", slog.String("service", service), blog.Error(err))

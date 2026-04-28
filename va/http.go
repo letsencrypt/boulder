@@ -16,7 +16,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
@@ -668,7 +667,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
-		va.log.Error(ctx, "Identifier type for HTTP-01 challenge was not DNS or IP", berrors.MalformedError("bad ident type"), blog.Idents(ident))
 		return nil, berrors.MalformedError("Identifier type for HTTP-01 challenge was not DNS or IP")
 	}
 

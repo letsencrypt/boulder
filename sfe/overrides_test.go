@@ -11,12 +11,13 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc"
+
 	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/test/zendeskfake"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -306,7 +307,7 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 				t.Errorf("Unexpected status=%d, expected status=202", rec.Code)
 			}
 
-			got, err := client.FindTickets(t.Context(), tt.zendeskMatch, "")
+			got, err := client.FindTickets(tt.zendeskMatch, "")
 			if err != nil {
 				t.Errorf("FindTickets(%+v) returned error: %s", tt.zendeskMatch, err)
 			}

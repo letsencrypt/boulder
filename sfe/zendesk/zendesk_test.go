@@ -73,7 +73,7 @@ func TestCreateTicketOK(t *testing.T) {
 
 	c, srv := startMockClient(t)
 
-	id, err := c.CreateTicket(t.Context(), "alice@example.com", "Subject", "Body text", map[string]string{
+	id, err := c.CreateTicket("alice@example.com", "Subject", "Body text", map[string]string{
 		"reviewStatus": "pending",
 		"organization": "Acme",
 	})
@@ -114,7 +114,7 @@ func TestCreateTicketHTTPError(t *testing.T) {
 		t.Errorf("NewClient(%q): %s", ts.URL, err)
 	}
 
-	_, err = c.CreateTicket(t.Context(), "bob@example.com", "cause500", "x", nil)
+	_, err = c.CreateTicket("bob@example.com", "cause500", "x", nil)
 	if err == nil || !strings.Contains(err.Error(), "status 500") {
 		t.Errorf("expected HTTP 500 error creating ticket, got: %s", err)
 	}
@@ -125,7 +125,7 @@ func TestCreateTicketUnknownField(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	_, err := c.CreateTicket(t.Context(), "x@example.com", "s", "b", map[string]string{"nope": "v"})
+	_, err := c.CreateTicket("x@example.com", "s", "b", map[string]string{"nope": "v"})
 	if err == nil || !strings.Contains(err.Error(), "unknown custom field") {
 		t.Errorf("expected unknown custom field error, got: %s", err)
 	}
@@ -136,7 +136,7 @@ func TestCreateTicketSetsRequesterNameToEmail(t *testing.T) {
 
 	c, srv := startMockClient(t)
 
-	id, err := c.CreateTicket(t.Context(), "alice@example.com", "S", "B", nil)
+	id, err := c.CreateTicket("alice@example.com", "S", "B", nil)
 	if err != nil {
 		t.Errorf("CreateTicket(alice@example.com): %s", err)
 	}
@@ -156,12 +156,12 @@ func TestAddCommentOK(t *testing.T) {
 
 	c, srv := startMockClient(t)
 
-	id, err := c.CreateTicket(t.Context(), "a@example.com", "s", "first", nil)
+	id, err := c.CreateTicket("a@example.com", "s", "first", nil)
 	if err != nil {
 		t.Errorf("CreateTicket(a@example.com): %s", err)
 	}
 
-	err = c.AddComment(t.Context(), id, "second-private", false)
+	err = c.AddComment(id, "second-private", false)
 	if err != nil {
 		t.Errorf("AddComment(id=%d): %s", id, err)
 	}
@@ -183,7 +183,7 @@ func TestAddComment404(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	err := c.AddComment(t.Context(), 99999, "x", true)
+	err := c.AddComment(99999, "x", true)
 	if err == nil || !strings.Contains(err.Error(), "status 404") {
 		t.Errorf("expected HTTP 404 when adding comment to unknown ticket, got: %s", err)
 	}
@@ -194,12 +194,12 @@ func TestAddCommentEmptyBody422(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	id, err := c.CreateTicket(t.Context(), "a@example.com", "s", "init", nil)
+	id, err := c.CreateTicket("a@example.com", "s", "init", nil)
 	if err != nil {
 		t.Errorf("CreateTicket(a@example.com): %s", err)
 	}
 
-	err = c.AddComment(t.Context(), id, "", true)
+	err = c.AddComment(id, "", true)
 	if err == nil || !strings.Contains(err.Error(), "status 422") {
 		t.Errorf("expected HTTP 422 for empty comment body on ticket %d, got: %s", id, err)
 	}
@@ -264,7 +264,7 @@ func TestUpdateTicketStatus(t *testing.T) {
 				t.Errorf("Failed to join update URL: %s", err)
 			}
 
-			id, err := client.CreateTicket(t.Context(), "foo@bar.co", "Some subject", "Some comment", nil)
+			id, err := client.CreateTicket("foo@bar.co", "Some subject", "Some comment", nil)
 			if err != nil {
 				t.Errorf("Unexpected error from CreateTicket: %s", err)
 			}
@@ -280,7 +280,7 @@ func TestUpdateTicketStatus(t *testing.T) {
 				commentBody = tc.comment.Body
 				public = tc.comment.Public
 			}
-			err = client.UpdateTicketStatus(t.Context(), updateID, tc.status, commentBody, public)
+			err = client.UpdateTicketStatus(updateID, tc.status, commentBody, public)
 			if tc.expectErr {
 				if err == nil {
 					t.Errorf("Expected error for status %q, got nil", tc.status)
@@ -322,20 +322,20 @@ func TestFindTicketsSimple(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	_, err := c.CreateTicket(t.Context(), "u1@example.com", "s1", "b", map[string]string{"reviewStatus": "pending", "organization": "Acme"})
+	_, err := c.CreateTicket("u1@example.com", "s1", "b", map[string]string{"reviewStatus": "pending", "organization": "Acme"})
 	if err != nil {
 		t.Errorf("creating ticket 1: %s", err)
 	}
-	_, err = c.CreateTicket(t.Context(), "u2@example.com", "s2", "b", map[string]string{"reviewStatus": "approved", "organization": "Acme"})
+	_, err = c.CreateTicket("u2@example.com", "s2", "b", map[string]string{"reviewStatus": "approved", "organization": "Acme"})
 	if err != nil {
 		t.Errorf("creating ticket 2: %s", err)
 	}
-	id3, err := c.CreateTicket(t.Context(), "u3@example.com", "s3", "b", map[string]string{"reviewStatus": "pending", "organization": "Beta"})
+	id3, err := c.CreateTicket("u3@example.com", "s3", "b", map[string]string{"reviewStatus": "pending", "organization": "Beta"})
 	if err != nil {
 		t.Errorf("creating ticket 3: %s", err)
 	}
 
-	got, err := c.FindTickets(t.Context(), map[string]string{"reviewStatus": "pending"}, "new")
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "pending"}, "new")
 	if err != nil {
 		t.Errorf("FindTickets(reviewStatus=pending): %s", err)
 	}
@@ -356,14 +356,14 @@ func TestFindTicketsQuotedValueReturnsAll(t *testing.T) {
 	c, _ := startMockClient(t)
 
 	for i := range 5 {
-		_, err := c.CreateTicket(t.Context(), "x@example.com", fmt.Sprintf("s%d", i), "b",
+		_, err := c.CreateTicket("x@example.com", fmt.Sprintf("s%d", i), "b",
 			map[string]string{"reviewStatus": "needs review"})
 		if err != nil {
 			t.Errorf("create ticket %d: %s", i, err)
 		}
 	}
 
-	got, err := c.FindTickets(t.Context(), map[string]string{"reviewStatus": "needs review"}, "new")
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "new")
 	if err != nil {
 		t.Errorf("FindTickets(needs review): %s", err)
 	}
@@ -377,7 +377,7 @@ func TestFindTicketsNoMatchFieldsError(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	_, err := c.FindTickets(t.Context(), map[string]string{}, "new")
+	_, err := c.FindTickets(map[string]string{}, "new")
 	if err == nil || !strings.Contains(err.Error(), "no match fields") {
 		t.Errorf("expected error for empty match fields, got: %s", err)
 	}
@@ -388,7 +388,7 @@ func TestFindTicketsUnknownFieldName(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	_, err := c.FindTickets(t.Context(), map[string]string{"unknown": "v"}, "new")
+	_, err := c.FindTickets(map[string]string{"unknown": "v"}, "new")
 	if err == nil || !strings.Contains(err.Error(), "unknown custom field") {
 		t.Errorf("expected unknown custom field error, got: %s", err)
 	}
@@ -399,11 +399,11 @@ func TestFindTicketsNoResults(t *testing.T) {
 
 	c, _ := startMockClient(t)
 
-	_, err := c.CreateTicket(t.Context(), "u@example.com", "s", "b", map[string]string{"reviewStatus": "approved"})
+	_, err := c.CreateTicket("u@example.com", "s", "b", map[string]string{"reviewStatus": "approved"})
 	if err != nil {
 		t.Errorf("creating ticket with reviewStatus=approved: %s", err)
 	}
-	got, err := c.FindTickets(t.Context(), map[string]string{"reviewStatus": "pending"}, "new")
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "pending"}, "new")
 	if err != nil {
 		t.Errorf("FindTickets(reviewStatus=pending): %s", err)
 	}
@@ -439,7 +439,6 @@ func TestFindTicketsPaginationFollowed(t *testing.T) {
 
 	for i := range 5 {
 		if _, err := c.CreateTicket(
-			t.Context(),
 			fmt.Sprintf("u%d@example.com", i),
 			fmt.Sprintf("s%d", i),
 			"body",
@@ -449,7 +448,7 @@ func TestFindTicketsPaginationFollowed(t *testing.T) {
 		}
 	}
 
-	got, err := c.FindTickets(t.Context(), map[string]string{"reviewStatus": "needs review"}, "")
+	got, err := c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "")
 	if err != nil {
 		t.Errorf("FindTickets(needs review): %s", err)
 	}
@@ -476,7 +475,7 @@ func TestFindTicketsHTTP400(t *testing.T) {
 	if err != nil {
 		t.Errorf("NewClient(%q): %s", ts.URL, err)
 	}
-	_, err = c.FindTickets(t.Context(), map[string]string{"reviewStatus": "needs review"}, "new")
+	_, err = c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "new")
 	if err == nil || !strings.Contains(err.Error(), "status 400") {
 		t.Errorf("expected HTTP 400 from search, got: %s", err)
 	}
@@ -496,7 +495,7 @@ func TestFindTicketsHTTP500(t *testing.T) {
 	if err != nil {
 		t.Errorf("NewClient(%q): %s", ts.URL, err)
 	}
-	_, err = c.FindTickets(t.Context(), map[string]string{"reviewStatus": "needs review"}, "new")
+	_, err = c.FindTickets(map[string]string{"reviewStatus": "needs review"}, "new")
 	if err == nil || !strings.Contains(err.Error(), "status 500") {
 		t.Errorf("expected HTTP 500 from search, got: %s", err)
 	}

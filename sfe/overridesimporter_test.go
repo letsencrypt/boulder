@@ -130,11 +130,11 @@ func createApprovedTicket(t *testing.T, c *zendesk.Client) int64 {
 		ReviewStatusFieldName: reviewStatusApproved,
 	}
 
-	id, err := c.CreateTicket(t.Context(), "foo@bar.biz", "Test Ticket", "Test Body", fields)
+	id, err := c.CreateTicket("foo@bar.biz", "Test Ticket", "Test Body", fields)
 	if err != nil {
 		t.Errorf("while creating test ticket: %s", err)
 	}
-	err = c.UpdateTicketStatus(t.Context(), id, "open", "", false)
+	err = c.UpdateTicketStatus(id, "open", "", false)
 	if err != nil {
 		t.Errorf("while updating ticket %d to open: %s", id, err)
 	}

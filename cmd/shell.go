@@ -209,7 +209,7 @@ func StatsAndLogging(logConf blog.Config, otConf OpenTelemetryConfig, addr strin
 }
 
 // NewLogger creates a logger object with the provided settings, sets it as
-// the global logger, and returns it.
+// the backup logger, and returns it.
 //
 // It also sets the logging systems for various packages we use to go through
 // the created logger, and sets up a periodic log event for the current timestamp.

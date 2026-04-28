@@ -277,7 +277,7 @@ func makeInitialComment(organization, useCase, tier string) string {
 // createOverrideRequestZendeskTicket creates a new Zendesk ticket for manual
 // review of a rate limit override request. It returns the ID of the created
 // ticket or an error.
-func createOverrideRequestZendeskTicket(ctx context.Context, client *zendesk.Client, rateLimit, requesterEmail, useCase, organization, tier, accountURI, registeredDomain, ipAddress string) (int64, error) {
+func createOverrideRequestZendeskTicket(client *zendesk.Client, rateLimit, requesterEmail, useCase, organization, tier, accountURI, registeredDomain, ipAddress string) (int64, error) {
 	// Some rateLimitField values include suffixes to indicate whether an
 	// accountURI, registeredDomain, or ipAddress is expected.
 	limitStr := strings.TrimSuffix(strings.TrimSuffix(rateLimit, perDNSNameSuffix), perIPSuffix)
@@ -293,7 +293,6 @@ func createOverrideRequestZendeskTicket(ctx context.Context, client *zendesk.Cli
 	}
 
 	return client.CreateTicket(
-		ctx,
 		requesterEmail,
 		// The stripped form of the rateLimitField value must be used here.
 		makeSubject(limit, organization),
@@ -757,7 +756,6 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	}
 
 	ticketID, err := createOverrideRequestZendeskTicket(
-		ctx,
 		sfe.zendeskClient,
 		req.RateLimit,
 		validFields[emailAddressFieldName],
@@ -800,7 +798,7 @@ Requester-provided email: %s`,
 			existingOverride.Comment,
 			validFields[emailAddressFieldName],
 		)
-		err := sfe.zendeskClient.AddComment(ctx, ticketID, privateBody, false)
+		err := sfe.zendeskClient.AddComment(ticketID, privateBody, false)
 		if err != nil {
 			sfe.log.Error(ctx, "failed to add Zendesk comment to ticket", err)
 		}

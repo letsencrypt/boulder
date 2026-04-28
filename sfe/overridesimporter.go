@@ -78,7 +78,7 @@ func (im *OverridesImporter) Start(ctx context.Context) {
 // tick performs a single import pass, serially processing all tickets in the
 // configured mode that have been marked "open" and "approved".
 func (im *OverridesImporter) tick(ctx context.Context) {
-	tickets, err := im.zendesk.FindTickets(ctx, map[string]string{ReviewStatusFieldName: reviewStatusApproved}, "open")
+	tickets, err := im.zendesk.FindTickets(map[string]string{ReviewStatusFieldName: reviewStatusApproved}, "open")
 	if err != nil {
 		im.log.Error(ctx, "while searching zendesk for solved and approved tickets", err)
 		return
@@ -131,7 +131,7 @@ func (im *OverridesImporter) transitionToPendingWithComment(ctx context.Context,
 			"Once the error has been corrected, change the status back to \"open\" to retry.\n",
 		cause,
 	)
-	err := im.zendesk.UpdateTicketStatus(ctx, ticketID, "pending", privateBody, false)
+	err := im.zendesk.UpdateTicketStatus(ticketID, "pending", privateBody, false)
 	if err != nil {
 		im.log.Error(ctx, "failed to update ticket", err, slog.Int64("ticket", ticketID))
 	}
@@ -301,7 +301,7 @@ ignore the request entirely.`,
 		rateLimit, accountDomainOrIP, req.Override.Count,
 	)
 
-	err = im.zendesk.UpdateTicketStatus(ctx, ticketID, "solved", successCommentBody, true)
+	err = im.zendesk.UpdateTicketStatus(ticketID, "solved", successCommentBody, true)
 	if err != nil {
 		return fmt.Errorf("transitioning ticket %d to solved with a comment: %w", ticketID, err)
 	}

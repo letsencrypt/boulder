@@ -124,7 +124,7 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 	challengePrefix := fmt.Sprintf("_%s.%s", prefixLabel, core.DNSPrefix)
 	va.log.Debug(ctx, "Querying TXT",
 		slog.String("accountURI", accountURI),
-		slog.String("vdn", fmt.Sprintf("%s.%s", challengePrefix, ident.Value)))
+		slog.String("validationDomainName", fmt.Sprintf("%s.%s", challengePrefix, ident.Value)))
 
 	// Call the common validation logic
 	records, err := va.validateDNS(ctx, ident, challengePrefix, keyAuthorization)
