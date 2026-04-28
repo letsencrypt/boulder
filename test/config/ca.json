@@ -181,7 +181,6 @@
 			]
 		},
 		"serialPrefixHex": "6e",
-		"maxNames": 100,
 		"goodkey": {},
 		"ocspLogMaxLength": 4000,
 		"ctLogListFile": "test/ct-test-srv/log_list.json",

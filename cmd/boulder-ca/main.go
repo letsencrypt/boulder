@@ -67,13 +67,6 @@ type Config struct {
 		// TODO(#7213): Replace `required_without` with `required` when SerialPrefix is removed.
 		SerialPrefixHex string `validate:"required_without=SerialPrefix,omitempty,hexadecimal,len=2"`
 
-		// MaxNames is the maximum number of subjectAltNames in a single cert.
-		// The value supplied MUST be greater than 0 and no more than 100. These
-		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
-		// Subscriber Certificate". The value must match the RA and WFE
-		// configurations.
-		MaxNames int `validate:"required,min=1,max=100"`
-
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
@@ -137,10 +130,6 @@ func main() {
 		parsedSerialPrefix, err := strconv.ParseUint(c.CA.SerialPrefixHex, 16, 8)
 		cmd.FailOnError(err, "Couldn't convert SerialPrefixHex to int")
 		serialPrefix = byte(parsedSerialPrefix)
-	}
-
-	if c.CA.MaxNames == 0 {
-		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
@@ -244,7 +233,6 @@ func main() {
 			issuers,
 			profiles,
 			serialPrefix,
-			c.CA.MaxNames,
 			kp,
 			logger,
 			metrics,
