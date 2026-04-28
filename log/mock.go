@@ -122,3 +122,9 @@ func (m *Mock) Clear() {
 	w := m.w.(*mockWriter)
 	w.clearChan <- struct{}{}
 }
+
+// Close shuts down the mock's background goroutine.
+func (m *Mock) Close() {
+	w := m.w.(*mockWriter)
+	close(w.closeChan)
+}
