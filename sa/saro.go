@@ -350,11 +350,11 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 
 	txn := func(tx db.Executor) (any, error) {
 		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		}
 		if err != nil {
 			return nil, err
-		}
-		if omObj == nil {
-			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
 		order, err := modelToOrder(omObj.(*orderModel))
@@ -537,11 +537,11 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 			ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "found").Inc()
 		}
 	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
+	}
 	if err != nil {
 		return nil, err
-	}
-	if obj == nil {
-		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
 	}
 	return modelToAuthzPB(*(obj.(*authzModel)))
 }
@@ -583,12 +583,12 @@ func (ssa *SQLStorageAuthorityRO) GetOrderAuthorizations(ctx context.Context, re
 	}
 
 	om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModel{}, req.Id)
+	// Nonexistent orders should return no error, with an empty list of authorizations
+	if errors.Is(err, sql.ErrNoRows) {
+		return &sapb.Authorizations{}, nil
+	}
 	if err != nil {
 		return nil, err
-	}
-	// Nonexistent orders should return no error, with an empty list of authorizations
-	if om == nil {
-		return &sapb.Authorizations{}, nil
 	}
 
 	order, err := modelToOrder(om.(*orderModel))

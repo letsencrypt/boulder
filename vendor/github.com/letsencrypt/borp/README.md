@@ -293,8 +293,7 @@ count, err := dbmap.Delete(inv1)
 
 ### Select by Key
 
-Use the `Get` method to fetch a single row by primary key.  It returns
-nil if no row is found.
+Use the `Get` method to fetch a single row by primary key.
 
 ```go
 // fetch Invoice with Id=99
