@@ -128,7 +128,7 @@ func (mp *mockFailOnePub) SubmitToSingleCTWithResult(_ context.Context, req *pub
 }
 
 func TestGetSCTsNoStaggerOnError(t *testing.T) {
-	// We shouldn't wait for the stagger (1h, here) if 
+	// We shouldn't wait for the stagger (1h, here) because all the submissions should fail
 	synctest.Test(t, func(t *testing.T) {
 		mockLog := blog.NewMock()
 		defer mockLog.Close()
