@@ -95,21 +95,23 @@ func TestGetSCTs(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		synctest.Test(t, func(t *testing.T) {
-			mockLog := blog.NewMock()
-			defer mockLog.Close()
-			ctp := New(tc.mock, tc.logs, nil, nil, time.Second, mockLog, metrics.NoopRegisterer)
-			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
-			if tc.result != nil {
-				test.AssertDeepEquals(t, ret, tc.result)
-			} else if tc.expectErr != "" {
-				if !strings.Contains(err.Error(), tc.expectErr) {
-					t.Errorf("Error %q did not match expected %q", err, tc.expectErr)
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockLog := blog.NewMock()
+				defer mockLog.Close()
+				ctp := New(tc.mock, tc.logs, nil, nil, time.Second, mockLog, metrics.NoopRegisterer)
+				ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
+				if tc.result != nil {
+					test.AssertDeepEquals(t, ret, tc.result)
+				} else if tc.expectErr != "" {
+					if !strings.Contains(err.Error(), tc.expectErr) {
+						t.Errorf("Error %q did not match expected %q", err, tc.expectErr)
+					}
+					if tc.berrorType != nil {
+						test.AssertErrorIs(t, err, *tc.berrorType)
+					}
 				}
-				if tc.berrorType != nil {
-					test.AssertErrorIs(t, err, *tc.berrorType)
-				}
-			}
+			})
 		})
 	}
 }
