@@ -180,7 +180,11 @@ func TestLoggerChecksum(t *testing.T) {
 	if len(parts) != 2 {
 		t.Fatalf("expected log line to have a space-separated checksum prefix, got %q", got[0])
 	}
-	if want := LogLineChecksum(parts[1]); parts[0] != want {
+	// The trailing newline is a line terminator, not part of the line, so
+	// strip it before computing the expected checksum.
+	body := strings.TrimSuffix(parts[1], "\n")
+	want := LogLineChecksum(body)
+	if parts[0] != want {
 		t.Errorf("checksum prefix %q does not match LogLineChecksum of remainder %q", parts[0], want)
 	}
 }

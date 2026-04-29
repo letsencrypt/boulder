@@ -37,8 +37,16 @@ var _ io.Writer = (*checksumWriter)(nil)
 // results in a single call to the wrapped io.Writer.Write. This means that we
 // are computing writing exactly one checksum per call to slog.Logger.Handle.
 func (w *checksumWriter) Write(in []byte) (int, error) {
+	// slog handlers terminate each record with a trailing newline. rsyslog
+	// strips that newline before writing the line to disk, and the log-validator
+	// computes its checksum over the stripped line. Strip it here too so the
+	// checksum we emit covers exactly the bytes the validator will see.
+	body := in
+	if len(body) > 0 && body[len(body)-1] == '\n' {
+		body = body[:len(body)-1]
+	}
 	out := bytes.Buffer{}
-	out.WriteString(LogLineChecksum(string(in)))
+	out.WriteString(LogLineChecksum(string(body)))
 	out.WriteString(" ")
 	out.Write(in)
 	_, err := out.WriteTo(w.inner)

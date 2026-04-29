@@ -22,8 +22,14 @@ func TestLogLineChecksum(t *testing.T) {
 		{
 			name: "simple",
 			line: "hello, world",
-			// Deterministic base64url(CRC32("hello, world"))
+			// Deterministic base64url(CRC32("hello, world")).
 			want: "OnKr_w",
+		},
+		{
+			name: "newline",
+			line: "hello, world\n",
+			// LogLineChecksum hashes every byte, so the trailing newline changes it.
+			want: "U3Qk9A",
 		},
 	}
 
@@ -66,11 +72,12 @@ func TestChecksumWriter(t *testing.T) {
 			want: "OnKr_w hello, world",
 		},
 		{
-			name: "complex",
-			in: `level=INFO msg="he said \"hi\"\nthen" trail=actual
-`,
-			want: `R3t8pA level=INFO msg="he said \"hi\"\nthen" trail=actual
-`,
+			name: "newline",
+			in:   "hello, world\n",
+			// The checksumWriter knows that trailing newlines are actually line
+			// terminators, not part of the line itself, so it discards them before
+			// computing the checksum. Therefore the checksum should be the same.
+			want: "OnKr_w hello, world\n",
 		},
 	}
 
