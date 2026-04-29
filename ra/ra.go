@@ -1023,7 +1023,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		)
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, profile.maxNames, &ra.keyPolicy, ra.PA)
+	err = csrlib.VerifyCSR(ctx, csr, &ra.keyPolicy, ra.PA)
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
@@ -1033,6 +1033,10 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrIdents := identifier.FromCSR(csr)
+	// Check that the CSR identifiers count meets our CP/CPS requirements
+	if len(csrIdents) > profile.maxNames || len(csrIdents) < 1 {
+		return nil, nil, berrors.UnauthorizedError("CSR identifier count is not at minimum 1 or at maximum %d", profile.maxNames)
+	}
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
 		return nil, nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")

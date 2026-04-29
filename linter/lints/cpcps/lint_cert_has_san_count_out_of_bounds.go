@@ -17,7 +17,7 @@ func init() {
 			Description:   "Let's Encrypt Subscriber Certificates subjectAlternativeName must be a sequence of 1 to 100 dNSNames or ipAddresses",
 			Citation:      "CPS: 7.1",
 			Source:        lints.LetsEncryptCPS,
-			EffectiveDate: lints.CPSV33Date, // TODO: probably earlier?
+			EffectiveDate: lints.CPSV20Date,
 		},
 		Lint: CertNamesCountOutOfBounds,
 	})
