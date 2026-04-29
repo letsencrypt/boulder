@@ -459,7 +459,10 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() *big.Int {
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
 	serialBytes[0] = ca.prefix
-	rand.Read(serialBytes[1:]) //nolint:errcheck // rand.Read is documented to never return an error.
+	// rand.Read is guaranteed since Go 1.24 not to return error (it crashes the program instead)
+	// https://tip.golang.org/doc/go1.24#cryptorandpkgcryptorand
+	// https://pkg.go.dev/crypto/rand@master#Read
+	rand.Read(serialBytes[1:]) //nolint:errcheck //rand.Read is infallible
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 

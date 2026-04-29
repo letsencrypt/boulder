@@ -106,7 +106,7 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 	fc := clock.NewFake()
 	fc.Set(mustTime("2015-03-04 05:00"))
 
-	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 1, 0, fc, blog.NewMock())
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 0, fc, blog.NewMock())
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
