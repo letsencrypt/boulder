@@ -1037,6 +1037,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	if len(csrIdents) > profile.maxNames || len(csrIdents) < 1 {
 		return nil, nil, berrors.UnauthorizedError("CSR identifier count is not at minimum 1 or at maximum %d", profile.maxNames)
 	}
+
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
 		return nil, nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
