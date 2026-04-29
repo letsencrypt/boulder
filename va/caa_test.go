@@ -439,55 +439,55 @@ func TestCAALogging(t *testing.T) {
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=reserved.com challenge=http-01 present=true foundAt=reserved.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:reserved.com}]" method=http-01 present=true foundAt=reserved.com valid=false response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=reserved.com challenge=dns-01 present=true foundAt=reserved.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:reserved.com}]" method=dns-01 present=true foundAt=reserved.com valid=false response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=mixedcase.com challenge=http-01 present=true foundAt=mixedcase.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:mixedcase.com}]" method=http-01 present=true foundAt=mixedcase.com valid=false response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=critical.com challenge=http-01 present=true foundAt=critical.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:critical.com}]" method=http-01 present=true foundAt=critical.com valid=false response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=present.com challenge=http-01 present=true foundAt=present.com valid=true response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:present.com}]" method=http-01 present=true foundAt=present.com valid=true response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "not.here.but.still.present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=not.here.but.still.present.com challenge=http-01 present=true foundAt=present.com valid=true response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:not.here.but.still.present.com}]" method=http-01 present=true foundAt=present.com valid=true response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=multi-crit-present.com challenge=http-01 present=true foundAt=multi-crit-present.com valid=true response="<nil> MsgHdr`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:multi-crit-present.com}]" method=http-01 present=true foundAt=multi-crit-present.com valid=true response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=present-with-parameter.com challenge=http-01 present=true foundAt=present-with-parameter.com valid=true response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:present-with-parameter.com}]" method=http-01 present=true foundAt=present-with-parameter.com valid=true response="<nil> MsgHdr"`,
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 identifier=satisfiable-wildcard-override.com challenge=http-01 present=true foundAt=satisfiable-wildcard-override.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:satisfiable-wildcard-override.com}]" method=http-01 present=true foundAt=satisfiable-wildcard-override.com valid=false response="<nil> MsgHdr"`,
 		},
 	}
 
@@ -496,11 +496,12 @@ func TestCAALogging(t *testing.T) {
 			mockLog := va.log.(*blog.Mock)
 			defer mockLog.Clear()
 
-			params := &caaParams{
-				accountURIID:     tc.AccountURIID,
-				validationMethod: tc.ChallengeType,
-			}
-			_ = va.checkCAA(ctx, identifier.NewDNS(tc.Domain), params)
+			_, _ = va.DoCAA(t.Context(), &vapb.IsCAAValidRequest{
+				Identifier:       identifier.NewDNS(tc.Domain).ToProto(),
+				ValidationMethod: string(tc.ChallengeType),
+				AccountURIID:     tc.AccountURIID,
+				AuthzID:          "123",
+			})
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records`)
 			if len(caaLogLines) != 1 {

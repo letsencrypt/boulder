@@ -64,6 +64,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		validationMethod: challType,
 	}
 
+	// Set the log attributes that we want to appear on all subsequent log lines
 	ctx = blog.ContextWith(ctx,
 		blog.Acct(req.AccountURIID),
 		blog.Authz(authzID),
@@ -176,9 +177,6 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	}
 
 	va.log.AuditInfo(ctx, "Checked CAA records",
-		blog.Acct(params.accountURIID),
-		slog.String("identifier", ident.Value),
-		slog.String("challenge", string(params.validationMethod)),
 		slog.Bool("present", foundAt != ""),
 		slog.String("foundAt", foundAt),
 		slog.Bool("valid", valid),

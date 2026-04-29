@@ -39,11 +39,14 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 					return
 				}
 
+				// Attach log attributes for use here and inside updateShardWithRetry.
 				ctx := blog.ContextWith(ctx,
 					slog.String("issuer", work.issuer.Subject.CommonName),
+					slog.Int("issuerNameID", int(work.issuer.NameID())),
 					slog.Int("shard", work.shardIdx),
 					slog.String("number", crlNumber.String()),
 				)
+
 				err := cu.updateShardWithRetry(ctx, atTime, work.issuer.NameID(), work.shardIdx)
 				if err != nil {
 					cu.log.AuditError(ctx, "Generating CRL failed", err)

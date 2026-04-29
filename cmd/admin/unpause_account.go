@@ -147,8 +147,6 @@ func (a *admin) readUnpauseAccountFile(ctx context.Context, filePath string) ([]
 	}
 	defer fp.Close()
 
-	ctx = blog.ContextWith(ctx, slog.String("file", filePath))
-
 	var unpauseAccounts []int64
 	lineCounter := 0
 	scanner := bufio.NewScanner(fp)
@@ -156,7 +154,10 @@ func (a *admin) readUnpauseAccountFile(ctx context.Context, filePath string) ([]
 		lineCounter++
 		regID, err := strconv.ParseInt(scanner.Text(), 10, 64)
 		if err != nil {
-			a.log.Info(ctx, "skipping malformed account ID entry", slog.Int("line", lineCounter))
+			a.log.Info(ctx, "skipping malformed account ID entry",
+				slog.String("file", filePath),
+				slog.Int("line", lineCounter),
+			)
 			continue
 		}
 		unpauseAccounts = append(unpauseAccounts, regID)

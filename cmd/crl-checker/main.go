@@ -85,6 +85,7 @@ func main() {
 	oldestTimestamp := time.Time{}
 	for _, u := range urls {
 		ctx := blog.ContextWith(ctx, slog.String("url", u))
+
 		crl, err := downloadShard(u)
 		if err != nil {
 			errCount += 1

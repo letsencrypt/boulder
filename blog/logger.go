@@ -54,6 +54,9 @@ func New(conf Config) (*logger, error) {
 	}
 
 	var syslogHandler slog.Handler
+	if conf.SyslogLevel == 0 {
+		conf.SyslogLevel = 6
+	}
 	if conf.SyslogLevel >= 0 {
 		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO, core.Command())
 		if err != nil {

@@ -76,8 +76,6 @@ func (v *Validator) pollPaths(ctx context.Context) {
 				continue
 			}
 
-			ctx := blog.ContextWith(ctx, slog.String("file", path))
-
 			t, err := tail.TailFile(path, tail.Config{
 				ReOpen:        true,
 				MustExist:     false, // sometimes files won't exist, so we must tolerate that
@@ -87,7 +85,7 @@ func (v *Validator) pollPaths(ctx context.Context) {
 			})
 			if err != nil {
 				// TailFile shouldn't error when MustExist is false
-				v.log.Error(ctx, "unexpected error from TailFile", err)
+				v.log.Error(ctx, "unexpected error from TailFile", err, slog.String("file", path))
 			}
 
 			go v.tailValidate(ctx, path, t.Lines)
@@ -121,10 +119,9 @@ func (v *Validator) tailValidate(ctx context.Context, filename string, lines cha
 
 	for line := range lines {
 		if line.Err != nil {
-			v.log.Error(ctx, "error while tailing", line.Err)
+			v.log.Error(ctx, "error while tailing", line.Err, slog.String("file", filename))
 			continue
 		}
-		ctx := blog.ContextWith(ctx, slog.Int("line", line.Num))
 		err := lineValid(line.Text)
 		if err != nil {
 			if errors.Is(err, errInvalidChecksum) {
@@ -134,7 +131,11 @@ func (v *Validator) tailValidate(ctx context.Context, filename string, lines cha
 			}
 			select {
 			case <-outputLimiter.C:
-				v.log.Error(ctx, "invalid log line", err, slog.String("text", line.Text))
+				v.log.Error(ctx, "invalid log line", err,
+					slog.String("file", filename),
+					slog.Int("line", line.Num),
+					slog.String("text", line.Text),
+				)
 			default:
 			}
 		} else {

@@ -254,12 +254,6 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, fmt.Errorf("adding CT log to internal cache: %s", err)
 	}
 
-	ctx = blog.ContextWith(ctx,
-		slog.String("log", ctLog.uri),
-		slog.String("issuer", cert.Issuer.CommonName),
-		blog.Serial(cert.SerialNumber.String()),
-	)
-
 	sct, err := pub.singleLogSubmit(ctx, chain, req.Kind, ctLog)
 	if err != nil {
 		if core.IsCanceled(err) {
@@ -271,6 +265,9 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 			body = string(rspErr.Body)
 		}
 		pub.log.Info(ctx, "Failed to submit certificate to CT log",
+			blog.Serial(cert.SerialNumber.String()),
+			slog.String("issuer", cert.Issuer.CommonName),
+			slog.String("log", ctLog.uri),
 			slog.String("body", body),
 			blog.Error(err),
 		)

@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/blog"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/policy"
@@ -774,7 +773,6 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		http.Error(w, "failed to create support ticket", http.StatusInternalServerError)
 		return
 	}
-	ctx = blog.ContextWith(ctx, slog.Int64("ticketID", ticketID))
 
 	if existingOverride != nil {
 		privateBody := fmt.Sprintf(
@@ -800,13 +798,13 @@ Requester-provided email: %s`,
 		)
 		err := sfe.zendeskClient.AddComment(ticketID, privateBody, false)
 		if err != nil {
-			sfe.log.Error(ctx, "failed to add Zendesk comment to ticket", err)
+			sfe.log.Error(ctx, "failed to add Zendesk comment to ticket", err, slog.Int64("ticketID", ticketID))
 		}
 	}
 
 	// If we got here the request has either been auto-approved or a Zendesk
 	// ticket has been created for manual review, so a refund is not needed.
 	requestHandled = true
-	sfe.log.Info(ctx, "created override request Zendesk ticket")
+	sfe.log.Info(ctx, "created override request Zendesk ticket", slog.Int64("ticketID", ticketID))
 	w.WriteHeader(http.StatusAccepted)
 }

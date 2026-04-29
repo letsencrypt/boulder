@@ -19,7 +19,7 @@ import (
 func (cu *crlUpdater) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 
-	shardWorker := func(ctx context.Context, issuerNameID issuance.NameID, shardIdx int) {
+	shardWorker := func(ctx context.Context, issuer *issuance.Certificate, shardIdx int) {
 		defer wg.Done()
 
 		// Wait for a random number of nanoseconds less than the updatePeriod, so
@@ -44,9 +44,17 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 			}
 
 			atTime := cu.clk.Now()
-			var num *big.Int = crl.Number(atTime)
-			ctx := blog.ContextWith(ctx, slog.String("number", num.String()))
-			err := cu.updateShardWithRetry(ctx, atTime, issuerNameID, shardIdx)
+			var crlNumber *big.Int = crl.Number(atTime)
+
+			// Attach log attributes for use here and inside updateShardWithRetry.
+			ctx := blog.ContextWith(ctx,
+				slog.String("issuer", issuer.Subject.CommonName),
+				slog.Int("issuerNameID", int(issuer.NameID())),
+				slog.Int("shard", shardIdx),
+				slog.String("number", crlNumber.String()),
+			)
+
+			err := cu.updateShardWithRetry(ctx, atTime, issuer.NameID(), shardIdx)
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
@@ -66,11 +74,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 	for _, issuer := range cu.issuers {
 		for i := 1; i <= cu.numShards; i++ {
 			wg.Add(1)
-			ctx = blog.ContextWith(ctx,
-				slog.String("issuer", issuer.Subject.CommonName),
-				slog.Int("shard", i),
-			)
-			go shardWorker(ctx, issuer.NameID(), i)
+			go shardWorker(ctx, issuer, i)
 		}
 	}
 

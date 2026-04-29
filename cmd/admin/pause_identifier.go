@@ -81,17 +81,16 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 	for range parallelism {
 		wg.Go(func() {
 			for data := range work {
-				ctx := blog.ContextWith(ctx,
-					blog.Acct(data.accountID),
-					blog.Idents(identifier.FromProtoSlice(data.idents)...),
-				)
 				response, err := a.sac.PauseIdentifiers(ctx, &sapb.PauseRequest{
 					RegistrationID: data.accountID,
 					Identifiers:    data.idents,
 				})
 				if err != nil {
 					errCount.Add(1)
-					a.log.Error(ctx, "failed to pause identifiers", err)
+					a.log.Error(ctx, "failed to pause identifiers", err,
+						blog.Acct(data.accountID),
+						blog.Idents(identifier.FromProtoSlice(data.idents)...),
+					)
 				} else {
 					respChan <- response
 				}
@@ -149,8 +148,6 @@ func (a *admin) readPausedAccountFile(ctx context.Context, filePath string) ([]p
 	var parsedRecords []pauseCSVData
 	lineCounter := 0
 
-	ctx = blog.ContextWith(ctx, slog.String("file", filePath))
-
 	// Process contents of the CSV file
 	for {
 		record, err := reader.Read()
@@ -161,7 +158,6 @@ func (a *admin) readPausedAccountFile(ctx context.Context, filePath string) ([]p
 		}
 
 		lineCounter++
-		ctx := blog.ContextWith(ctx, slog.Int("line", lineCounter))
 
 		// We should have strictly 3 fields, note that just commas is considered
 		// a valid CSV line.
@@ -179,12 +175,18 @@ func (a *admin) readPausedAccountFile(ctx context.Context, filePath string) ([]p
 
 		// Ensure that an identifier type is present, otherwise skip the line.
 		if len(record[1]) == 0 {
-			a.log.Info(ctx, "skipping malformed identifierType entry")
+			a.log.Info(ctx, "skipping malformed identifierType entry",
+				slog.String("file", filePath),
+				slog.Int("line", lineCounter),
+			)
 			continue
 		}
 
 		if len(record[2]) == 0 {
-			a.log.Info(ctx, "skipping malformed identifierValue entry")
+			a.log.Info(ctx, "skipping malformed identifierValue entry",
+				slog.String("file", filePath),
+				slog.Int("line", lineCounter),
+			)
 			continue
 		}
 
@@ -195,7 +197,10 @@ func (a *admin) readPausedAccountFile(ctx context.Context, filePath string) ([]p
 		}
 		parsedRecords = append(parsedRecords, parsedRecord)
 	}
-	a.log.Debug(ctx, "Loaded input from file", slog.Int("count", len(parsedRecords)))
+	a.log.Debug(ctx, "Loaded input from file",
+		slog.String("file", filePath),
+		slog.Int("count", len(parsedRecords)),
+	)
 
 	return parsedRecords, nil
 }

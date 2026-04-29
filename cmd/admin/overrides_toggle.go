@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 	rl "github.com/letsencrypt/boulder/ratelimits"
@@ -80,11 +79,6 @@ func (c *subcommandToggleOverride) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("building bucket key for limit %s: %s", name, err)
 	}
 
-	ctx = blog.ContextWith(ctx,
-		slog.String("limit", name.String()),
-		slog.String("bucketKey", bucketKey),
-	)
-
 	if c.enabled {
 		_, err := a.sac.EnableRateLimitOverride(ctx, &sapb.EnableRateLimitOverrideRequest{
 			LimitEnum: int64(name),
@@ -93,7 +87,10 @@ func (c *subcommandToggleOverride) Run(ctx context.Context, a *admin) error {
 		if err != nil {
 			return fmt.Errorf("enabling override for limit %s key %q: %s", name, bucketKey, err)
 		}
-		a.log.Info(ctx, "Enabled override")
+		a.log.Info(ctx, "Enabled override",
+			slog.String("limit", name.String()),
+			slog.String("bucketKey", bucketKey),
+		)
 		return nil
 	}
 
@@ -104,6 +101,9 @@ func (c *subcommandToggleOverride) Run(ctx context.Context, a *admin) error {
 	if err != nil {
 		return fmt.Errorf("disabling override for limit %s key %q: %s", name, bucketKey, err)
 	}
-	a.log.Info(ctx, "Disabled override")
+	a.log.Info(ctx, "Disabled override",
+		slog.String("limit", name.String()),
+		slog.String("bucketKey", bucketKey),
+	)
 	return nil
 }

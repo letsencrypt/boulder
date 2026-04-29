@@ -10,7 +10,6 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -75,17 +74,18 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	var errorCount int
 	for range overrideCount {
 		result := <-results
-		ctx := blog.ContextWith(ctx,
-			slog.Int64("limit", result.ov.LimitEnum),
-			slog.String("bucketKey", result.ov.BucketKey),
-		)
 		if result.err != nil {
-			a.log.Error(ctx, "failed to add override", err)
+			a.log.Error(ctx, "failed to add override", err,
+				slog.Int64("limit", result.ov.LimitEnum),
+				slog.String("bucketKey", result.ov.BucketKey),
+			)
 			errorCount++
 			continue
 		}
 		if result.resp != nil && result.resp.Existing != nil {
 			a.log.Error(ctx, "refused to update override", errors.New("new override is lower than existing override"),
+				slog.Int64("limit", result.ov.LimitEnum),
+				slog.String("bucketKey", result.ov.BucketKey),
 				slog.Group("old",
 					slog.Duration("period", result.resp.Existing.Period.AsDuration()),
 					slog.Int64("count", result.resp.Existing.Count),

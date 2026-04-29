@@ -12,7 +12,6 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
@@ -120,11 +119,6 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("building bucket key for limit %s: %s", name, err)
 	}
 
-	ctx = blog.ContextWith(ctx,
-		slog.String("limit", name.String()),
-		slog.String("bucketKey", bucketKey),
-	)
-
 	err = rl.ValidateLimit(&rl.Limit{
 		Name:   name,
 		Count:  c.count,
@@ -167,9 +161,15 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 	}
 
 	if resp.Inserted {
-		a.log.Info(ctx, "Added new override", slog.String("status", status))
+		a.log.Info(ctx, "Added new override",
+			slog.String("limit", name.String()),
+			slog.String("bucketKey", bucketKey),
+			slog.String("status", status))
 	} else {
-		a.log.Info(ctx, "Updated existing override", slog.String("status", status))
+		a.log.Info(ctx, "Updated existing override",
+			slog.String("limit", name.String()),
+			slog.String("bucketKey", bucketKey),
+			slog.String("status", status))
 	}
 	return nil
 }
