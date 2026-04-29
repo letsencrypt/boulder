@@ -2212,7 +2212,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 
 		// Never reuse dns-persist-01 authorizations:
-		// draft-ietf-acme-dns-persist-00 section 7.8 caps the reuse period to
+		// draft-ietf-acme-dns-persist-01 section 7.8 caps the reuse period to
 		// the TXT record's TTL and BRs section 3.2.2.4.22 caps it at 10 days.
 		// Since TTLs are typically seconds to minutes, the TTL cap is likely to
 		// be the binding constraint; re-validating every order is simpler.

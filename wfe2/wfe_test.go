@@ -448,6 +448,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
+	wfe.AccountURIPrefix = "http://localhost/acme/acct/"
 
 	return wfe, fc, requestSigner{t, inmemNonceService.AsSource()}
 }
@@ -3657,9 +3658,11 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		if chall.Type == core.ChallengeTypeDNSPersist01 {
 			test.Assert(t, chall.Token == "", fmt.Sprintf("expected %s to have no token", chall.Type))
 			test.AssertDeepEquals(t, chall.IssuerDomainNames, []string{"letsencrypt.org"})
+			test.AssertEquals(t, chall.AccountURI, "http://localhost/acme/acct/1")
 		} else {
 			test.Assert(t, chall.Token != "", fmt.Sprintf("expected %s to have a token", chall.Type))
 			test.Assert(t, chall.IssuerDomainNames == nil, fmt.Sprintf("expected %s to have no issuer domain names", chall.Type))
+			test.AssertEquals(t, chall.AccountURI, "")
 		}
 	}
 }
