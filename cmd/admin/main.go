@@ -74,6 +74,10 @@ func main() {
 		"dump-limit-overrides":   &subcommandDumpEnabledOverrides{},
 		"toggle-limit-override":  &subcommandToggleOverride{},
 		"add-limit-override":     &subcommandAddOverride{},
+		"create-incident":        &subcommandCreateIncident{},
+		"list-incidents":         &subcommandListIncidents{},
+		"update-incident":        &subcommandUpdateIncident{},
+		"load-incident-serials":  &subcommandLoadIncidentSerials{},
 	}
 
 	defaultUsage := flag.Usage

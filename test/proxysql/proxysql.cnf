@@ -100,6 +100,9 @@ mysql_users =
 	},
 	{
 		username = "incidents_sa";
+	},
+	{
+		username = "incidents_sa_admin";
 	}
 );
 mysql_query_rules =

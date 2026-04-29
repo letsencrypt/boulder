@@ -18,9 +18,10 @@ import (
 type Config struct {
 	SA struct {
 		cmd.ServiceConfig
-		DB          cmd.DBConfig
-		ReadOnlyDB  cmd.DBConfig `validate:"-"`
-		IncidentsDB cmd.DBConfig `validate:"-"`
+		DB               cmd.DBConfig
+		ReadOnlyDB       cmd.DBConfig `validate:"-"`
+		IncidentsDB      cmd.DBConfig `validate:"-"`
+		IncidentsWriteDB cmd.DBConfig `validate:"-"`
 
 		Features features.Config
 
@@ -77,6 +78,12 @@ func main() {
 		cmd.FailOnError(err, "While initializing dbIncidentsMap")
 	}
 
+	dbIncidentsWriteMap := dbIncidentsMap
+	if c.SA.IncidentsWriteDB != (cmd.DBConfig{}) {
+		dbIncidentsWriteMap, err = sa.InitWrappedDb(c.SA.IncidentsWriteDB, scope, logger)
+		cmd.FailOnError(err, "While initializing dbIncidentsWriteMap")
+	}
+
 	clk := clock.New()
 
 	tls, err := c.SA.TLS.Load(scope)
@@ -89,9 +96,13 @@ func main() {
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
+	saai, err := sa.NewSQLStorageAuthorityAdmin(dbMap, dbIncidentsWriteMap, logger)
+	cmd.FailOnError(err, "Failed to create SA admin impl")
+
 	start, err := bgrpc.NewServer(c.SA.GRPC, logger).WithCheckInterval(c.SA.HealthCheckInterval.Duration).Add(
 		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
-		&sapb.StorageAuthority_ServiceDesc, sai).Build(
+		&sapb.StorageAuthority_ServiceDesc, sai).Add(
+		&sapb.StorageAuthorityAdmin_ServiceDesc, saai).Build(
 		tls, scope, clk)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 
