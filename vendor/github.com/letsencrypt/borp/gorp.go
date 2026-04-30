@@ -70,12 +70,6 @@ type SqlExecutor interface {
 	Update(ctx context.Context, list ...interface{}) (int64, error)
 	Delete(ctx context.Context, list ...interface{}) (int64, error)
 	Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectInt(ctx context.Context, query string, args ...interface{}) (int64, error)
-	SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error)
-	SelectFloat(ctx context.Context, query string, args ...interface{}) (float64, error)
-	SelectNullFloat(ctx context.Context, query string, args ...interface{}) (sql.NullFloat64, error)
-	SelectStr(ctx context.Context, query string, args ...interface{}) (string, error)
-	SelectNullStr(ctx context.Context, query string, args ...interface{}) (sql.NullString, error)
 	SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error
 
 	// These method signatures are shared with *sql.DB.
