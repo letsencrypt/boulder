@@ -73,12 +73,12 @@ func initSAAdmin(t *testing.T) (*SQLStorageAuthorityAdmin, *db.WrappedMap, *db.W
 	if err != nil {
 		t.Fatalf("Failed to create dbIncidentsMap: %s", err)
 	}
-	dbIncidentsWriteMap, err := DBMapForTest(vars.DBConnIncidentsAdmin)
+	dbIncidentsAdminMap, err := DBMapForTest(vars.DBConnIncidentsAdmin)
 	if err != nil {
-		t.Fatalf("Failed to create dbIncidentsWriteMap: %s", err)
+		t.Fatalf("Failed to create dbIncidentsAdminMap: %s", err)
 	}
 
-	saa, err := NewSQLStorageAuthorityAdmin(dbMap, dbIncidentsWriteMap, log)
+	saa, err := NewSQLStorageAuthorityAdmin(dbMap, dbIncidentsAdminMap, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA admin impl: %s", err)
 	}
@@ -116,7 +116,12 @@ func TestCreateIncident(t *testing.T) {
 
 	stream := &fakeClientStreamingServer[sapb.AddSerialsToIncidentRequest, emptypb.Empty]{
 		input: []*sapb.AddSerialsToIncidentRequest{
-			{SerialTable: serialTable, Serial: []string{"aa11"}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Metadata{
+				Metadata: &sapb.AddSerialsToIncidentMetadata{SerialTable: serialTable},
+			}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Batch{
+				Batch: &sapb.AddSerialsToIncidentBatch{Serials: []string{"aa11"}},
+			}},
 		},
 	}
 	err = saa.AddSerialsToIncident(stream)
@@ -204,7 +209,12 @@ func TestAddSerialsToIncident(t *testing.T) {
 	// can't be reproduced with a single handler.
 	stream := &fakeClientStreamingServer[sapb.AddSerialsToIncidentRequest, emptypb.Empty]{
 		input: []*sapb.AddSerialsToIncidentRequest{
-			{SerialTable: serialTable, Serial: []string{"aa11", "bb22", "aa11", "cc33"}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Metadata{
+				Metadata: &sapb.AddSerialsToIncidentMetadata{SerialTable: serialTable},
+			}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Batch{
+				Batch: &sapb.AddSerialsToIncidentBatch{Serials: []string{"aa11", "bb22", "aa11", "cc33"}},
+			}},
 		},
 	}
 	err = saa.AddSerialsToIncident(stream)
@@ -214,7 +224,12 @@ func TestAddSerialsToIncident(t *testing.T) {
 	// skips the already-present rows.
 	rerun := &fakeClientStreamingServer[sapb.AddSerialsToIncidentRequest, emptypb.Empty]{
 		input: []*sapb.AddSerialsToIncidentRequest{
-			{SerialTable: serialTable, Serial: []string{"aa11", "bb22", "cc33"}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Metadata{
+				Metadata: &sapb.AddSerialsToIncidentMetadata{SerialTable: serialTable},
+			}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Batch{
+				Batch: &sapb.AddSerialsToIncidentBatch{Serials: []string{"aa11", "bb22", "cc33"}},
+			}},
 		},
 	}
 	err = saa.AddSerialsToIncident(rerun)
@@ -234,7 +249,7 @@ func TestAddSerialsToIncident(t *testing.T) {
 }
 
 func TestUpdateIncident(t *testing.T) {
-	saa, dbMap, _ := initSAAdmin(t)
+	saa, _, _ := initSAAdmin(t)
 	t.Cleanup(test.ResetIncidentsTestDatabase(t))
 
 	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
@@ -256,50 +271,42 @@ func TestUpdateIncident(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "CreateIncident")
 
-	_, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
+	got, err := saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
 		SerialTable: serialTable,
 		Url:         "https://example.com/v2",
 	})
 	test.AssertNotError(t, err, "UpdateIncident url-only")
-
-	var got incidentModel
-	err = dbMap.SelectOne(ctx, &got, `SELECT id, serialTable, url, renewBy, enabled FROM incidents WHERE serialTable = ?`, serialTable)
-	test.AssertNotError(t, err, "reading back row")
-	test.AssertEquals(t, got.URL, "https://example.com/v2")
-	test.Assert(t, got.RenewBy.Equal(originalRenewBy), "renewBy should be unchanged")
+	test.AssertEquals(t, got.SerialTable, serialTable)
+	test.AssertEquals(t, got.Url, "https://example.com/v2")
+	test.Assert(t, got.RenewBy.AsTime().Equal(originalRenewBy), "renewBy should be unchanged")
+	test.AssertEquals(t, got.Enabled, false)
 
 	newRenewBy := time.Date(2031, 6, 1, 0, 0, 0, 0, time.UTC)
-	_, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
+	got, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
 		SerialTable: serialTable,
 		RenewBy:     timestamppb.New(newRenewBy),
 	})
 	test.AssertNotError(t, err, "UpdateIncident renewBy-only")
-	err = dbMap.SelectOne(ctx, &got, `SELECT id, serialTable, url, renewBy, enabled FROM incidents WHERE serialTable = ?`, serialTable)
-	test.AssertNotError(t, err, "reading back row")
-	test.AssertEquals(t, got.URL, "https://example.com/v2")
-	test.Assert(t, got.RenewBy.Equal(newRenewBy), "renewBy should be updated")
+	test.AssertEquals(t, got.Url, "https://example.com/v2")
+	test.Assert(t, got.RenewBy.AsTime().Equal(newRenewBy), "renewBy should be updated")
 	test.AssertEquals(t, got.Enabled, false)
 
 	enableTrue := true
-	_, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
+	got, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
 		SerialTable: serialTable,
 		Enabled:     &enableTrue,
 	})
 	test.AssertNotError(t, err, "UpdateIncident enabled=true")
-	err = dbMap.SelectOne(ctx, &got, `SELECT id, serialTable, url, renewBy, enabled FROM incidents WHERE serialTable = ?`, serialTable)
-	test.AssertNotError(t, err, "reading back row")
-	test.AssertEquals(t, got.URL, "https://example.com/v2")
-	test.Assert(t, got.RenewBy.Equal(newRenewBy), "renewBy should be unchanged")
+	test.AssertEquals(t, got.Url, "https://example.com/v2")
+	test.Assert(t, got.RenewBy.AsTime().Equal(newRenewBy), "renewBy should be unchanged")
 	test.AssertEquals(t, got.Enabled, true)
 
 	enableFalse := false
-	_, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
+	got, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{
 		SerialTable: serialTable,
 		Enabled:     &enableFalse,
 	})
 	test.AssertNotError(t, err, "UpdateIncident enabled=false")
-	err = dbMap.SelectOne(ctx, &got, `SELECT id, serialTable, url, renewBy, enabled FROM incidents WHERE serialTable = ?`, serialTable)
-	test.AssertNotError(t, err, "reading back row")
 	test.AssertEquals(t, got.Enabled, false)
 
 	_, err = saa.UpdateIncident(ctx, &sapb.UpdateIncidentRequest{SerialTable: serialTable})
@@ -316,22 +323,44 @@ func TestAddSerialsToIncidentMalformedName(t *testing.T) {
 	saa, _, _ := initSAAdmin(t)
 	stream := &fakeClientStreamingServer[sapb.AddSerialsToIncidentRequest, emptypb.Empty]{
 		input: []*sapb.AddSerialsToIncidentRequest{
-			{SerialTable: "not_an_incident_table", Serial: []string{"aa"}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Metadata{
+				Metadata: &sapb.AddSerialsToIncidentMetadata{SerialTable: "not_an_incident_table"},
+			}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Batch{
+				Batch: &sapb.AddSerialsToIncidentBatch{Serials: []string{"aa"}},
+			}},
 		},
 	}
 	err := saa.AddSerialsToIncident(stream)
 	test.AssertError(t, err, "expected error for malformed incident")
 }
 
-func TestAddSerialsToIncidentMidStreamRetargeting(t *testing.T) {
+func TestAddSerialsToIncidentBatchBeforeMetadata(t *testing.T) {
 	saa, _, _ := initSAAdmin(t)
 	stream := &fakeClientStreamingServer[sapb.AddSerialsToIncidentRequest, emptypb.Empty]{
 		input: []*sapb.AddSerialsToIncidentRequest{
-			{SerialTable: "incident_one", Serial: []string{"aa11"}},
-			{SerialTable: "incident_two", Serial: []string{"bb22"}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Batch{
+				Batch: &sapb.AddSerialsToIncidentBatch{Serials: []string{"aa11"}},
+			}},
 		},
 	}
 	err := saa.AddSerialsToIncident(stream)
-	test.AssertError(t, err, "expected error for mid-stream serialTable change")
-	test.AssertContains(t, err.Error(), "serialTable changed mid-stream")
+	test.AssertError(t, err, "expected error for batch before metadata")
+}
+
+func TestAddSerialsToIncidentSecondMetadata(t *testing.T) {
+	saa, _, _ := initSAAdmin(t)
+	stream := &fakeClientStreamingServer[sapb.AddSerialsToIncidentRequest, emptypb.Empty]{
+		input: []*sapb.AddSerialsToIncidentRequest{
+			{Payload: &sapb.AddSerialsToIncidentRequest_Metadata{
+				Metadata: &sapb.AddSerialsToIncidentMetadata{SerialTable: "incident_one"},
+			}},
+			{Payload: &sapb.AddSerialsToIncidentRequest_Metadata{
+				Metadata: &sapb.AddSerialsToIncidentMetadata{SerialTable: "incident_two"},
+			}},
+		},
+	}
+	err := saa.AddSerialsToIncident(stream)
+	test.AssertError(t, err, "expected error for second metadata message")
+	test.AssertContains(t, err.Error(), "second metadata message")
 }

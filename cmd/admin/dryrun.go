@@ -74,9 +74,13 @@ func (d dryRunSAAdmin) CreateIncident(_ context.Context, req *sapb.CreateInciden
 	return &sapb.Incident{SerialTable: req.SerialTable, Url: req.Url, RenewBy: req.RenewBy, Enabled: false}, nil
 }
 
-func (d dryRunSAAdmin) UpdateIncident(_ context.Context, req *sapb.UpdateIncidentRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	d.log.Infof("dry-run: Update incident %q url=%q renewBy=%v enabled=%v", req.SerialTable, req.Url, req.RenewBy, req.Enabled)
-	return &emptypb.Empty{}, nil
+func (d dryRunSAAdmin) UpdateIncident(_ context.Context, req *sapb.UpdateIncidentRequest, _ ...grpc.CallOption) (*sapb.Incident, error) {
+	d.log.Infof("dry-run: Update incident %q url=%q renewBy=%v enabled=%v", req.SerialTable, req.Url, req.RenewBy, req.GetEnabled())
+	out := &sapb.Incident{SerialTable: req.SerialTable, Url: req.Url, RenewBy: req.RenewBy}
+	if req.Enabled != nil {
+		out.Enabled = *req.Enabled
+	}
+	return out, nil
 }
 
 func (d dryRunSAAdmin) AddSerialsToIncident(_ context.Context, _ ...grpc.CallOption) (grpc.ClientStreamingClient[sapb.AddSerialsToIncidentRequest, emptypb.Empty], error) {
@@ -91,8 +95,12 @@ type dryRunAddSerialsStream struct {
 }
 
 func (d *dryRunAddSerialsStream) Send(req *sapb.AddSerialsToIncidentRequest) error {
-	d.incident = req.SerialTable
-	d.count += len(req.Serial)
+	switch payload := req.Payload.(type) {
+	case *sapb.AddSerialsToIncidentRequest_Metadata:
+		d.incident = payload.Metadata.SerialTable
+	case *sapb.AddSerialsToIncidentRequest_Batch:
+		d.count += len(payload.Batch.Serials)
+	}
 	return nil
 }
 

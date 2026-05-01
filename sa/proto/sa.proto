@@ -98,7 +98,7 @@ service StorageAuthority {
 // StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
 service StorageAuthorityAdmin {
   rpc CreateIncident(CreateIncidentRequest) returns (Incident) {}
-  rpc UpdateIncident(UpdateIncidentRequest) returns (google.protobuf.Empty) {}
+  rpc UpdateIncident(UpdateIncidentRequest) returns (Incident) {}
   rpc AddSerialsToIncident(stream AddSerialsToIncidentRequest) returns (google.protobuf.Empty) {}
 }
 
@@ -377,8 +377,18 @@ message UpdateIncidentRequest {
 }
 
 message AddSerialsToIncidentRequest {
+  oneof payload {
+    AddSerialsToIncidentMetadata metadata = 1;
+    AddSerialsToIncidentBatch batch = 2;
+  }
+}
+
+message AddSerialsToIncidentMetadata {
   string serialTable = 1;
-  repeated string serial = 2;
+}
+
+message AddSerialsToIncidentBatch {
+  repeated string serials = 1;
 }
 
 message IncidentSerial {

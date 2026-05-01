@@ -3094,7 +3094,7 @@ const (
 // StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
 type StorageAuthorityAdminClient interface {
 	CreateIncident(ctx context.Context, in *CreateIncidentRequest, opts ...grpc.CallOption) (*Incident, error)
-	UpdateIncident(ctx context.Context, in *UpdateIncidentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UpdateIncident(ctx context.Context, in *UpdateIncidentRequest, opts ...grpc.CallOption) (*Incident, error)
 	AddSerialsToIncident(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[AddSerialsToIncidentRequest, emptypb.Empty], error)
 }
 
@@ -3116,9 +3116,9 @@ func (c *storageAuthorityAdminClient) CreateIncident(ctx context.Context, in *Cr
 	return out, nil
 }
 
-func (c *storageAuthorityAdminClient) UpdateIncident(ctx context.Context, in *UpdateIncidentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityAdminClient) UpdateIncident(ctx context.Context, in *UpdateIncidentRequest, opts ...grpc.CallOption) (*Incident, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(Incident)
 	err := c.cc.Invoke(ctx, StorageAuthorityAdmin_UpdateIncident_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -3146,7 +3146,7 @@ type StorageAuthorityAdmin_AddSerialsToIncidentClient = grpc.ClientStreamingClie
 // StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
 type StorageAuthorityAdminServer interface {
 	CreateIncident(context.Context, *CreateIncidentRequest) (*Incident, error)
-	UpdateIncident(context.Context, *UpdateIncidentRequest) (*emptypb.Empty, error)
+	UpdateIncident(context.Context, *UpdateIncidentRequest) (*Incident, error)
 	AddSerialsToIncident(grpc.ClientStreamingServer[AddSerialsToIncidentRequest, emptypb.Empty]) error
 	mustEmbedUnimplementedStorageAuthorityAdminServer()
 }
@@ -3161,7 +3161,7 @@ type UnimplementedStorageAuthorityAdminServer struct{}
 func (UnimplementedStorageAuthorityAdminServer) CreateIncident(context.Context, *CreateIncidentRequest) (*Incident, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateIncident not implemented")
 }
-func (UnimplementedStorageAuthorityAdminServer) UpdateIncident(context.Context, *UpdateIncidentRequest) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityAdminServer) UpdateIncident(context.Context, *UpdateIncidentRequest) (*Incident, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateIncident not implemented")
 }
 func (UnimplementedStorageAuthorityAdminServer) AddSerialsToIncident(grpc.ClientStreamingServer[AddSerialsToIncidentRequest, emptypb.Empty]) error {

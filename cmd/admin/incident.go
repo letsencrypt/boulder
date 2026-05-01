@@ -138,7 +138,17 @@ func (s *subcommandUpdateIncident) Run(ctx context.Context, a *admin) error {
 	if err != nil {
 		return fmt.Errorf("updating incident %q: %w", s.incident, err)
 	}
-	a.log.Infof("Updated incident %q", s.incident)
+	var changes []string
+	if req.Url != "" {
+		changes = append(changes, fmt.Sprintf("url=%q", req.Url))
+	}
+	if req.RenewBy != nil {
+		changes = append(changes, fmt.Sprintf("renewBy=%s", req.RenewBy.AsTime()))
+	}
+	if req.Enabled != nil {
+		changes = append(changes, fmt.Sprintf("enabled=%t", *req.Enabled))
+	}
+	a.log.Infof("Updated incident %q: %s", s.incident, strings.Join(changes, " "))
 	return nil
 }
 
@@ -146,6 +156,7 @@ type subcommandLoadIncidentSerials struct {
 	incident    string
 	serialsFile string
 	parallelism uint
+	batchSize   uint
 }
 
 var _ subcommand = (*subcommandLoadIncidentSerials)(nil)
@@ -158,14 +169,8 @@ func (s *subcommandLoadIncidentSerials) Flags(f *flag.FlagSet) {
 	f.StringVar(&s.incident, "incident", "", "Incident name (must start with 'incident_'; required)")
 	f.StringVar(&s.serialsFile, "serials-file", "", "File of hex serials, one per line (required)")
 	f.UintVar(&s.parallelism, "parallelism", 10, "Parallel workers, each with its own stream to the SA")
+	f.UintVar(&s.batchSize, "batch-size", 10000, "Number of serials per gRPC message (and per SA INSERT)")
 }
-
-// serialsBatchMax is the number of serials each worker accumulates before
-// emitting one Send on its gRPC stream. Sized to match the SA's flush batch so
-// each Recv on the server roughly maps to one transaction. Each message is
-// ~320KB at full batch (10000 × ~32-byte serials), well under the gRPC default
-// 4MB max.
-const serialsBatchMax = 10000
 
 func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error {
 	if s.incident == "" || s.serialsFile == "" {
@@ -177,6 +182,9 @@ func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error
 	if s.parallelism == 0 {
 		return errors.New("-parallelism must be > 0")
 	}
+	if s.batchSize == 0 {
+		return errors.New("-batch-size must be > 0")
+	}
 
 	file, err := os.Open(s.serialsFile)
 	if err != nil {
@@ -184,32 +192,56 @@ func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error
 	}
 	defer file.Close()
 
-	a.log.Infof("Loading serials from %q into incident %q with parallelism=%d.",
-		s.serialsFile, s.incident, s.parallelism)
+	a.log.Infof("Loading serials from %q into incident %q with parallelism=%d batch-size=%d.",
+		s.serialsFile, s.incident, s.parallelism, s.batchSize)
 
 	var totalSent atomic.Uint64
-	work := make(chan string, s.parallelism)
+	work := make(chan []string, s.parallelism)
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		defer close(work)
 		scanner := bufio.NewScanner(file)
+		batch := make([]string, 0, s.batchSize)
+		batchStart := 1
 		lineNum := 0
+
+		flush := func() error {
+			if len(batch) == 0 {
+				return nil
+			}
+			cleaned, err := cleanSerials(batch)
+			if err != nil {
+				return fmt.Errorf("malformed serial near lines %d-%d: %w", batchStart, lineNum, err)
+			}
+			select {
+			case work <- cleaned:
+			case <-gctx.Done():
+				return gctx.Err()
+			}
+			batch = make([]string, 0, s.batchSize)
+			batchStart = lineNum + 1
+			return nil
+		}
+
 		for scanner.Scan() {
 			lineNum++
 			raw := scanner.Text()
 			if strings.TrimSpace(raw) == "" {
 				continue
 			}
-			cleaned, err := cleanSerials([]string{raw})
-			if err != nil {
-				return fmt.Errorf("line %d: %w", lineNum, err)
+			batch = append(batch, raw)
+			if uint(len(batch)) >= s.batchSize {
+				err := flush()
+				if err != nil {
+					return err
+				}
 			}
-			select {
-			case work <- cleaned[0]:
-			case <-gctx.Done():
-				return gctx.Err()
-			}
+		}
+
+		err := flush()
+		if err != nil {
+			return err
 		}
 		return scanner.Err()
 	})
@@ -220,44 +252,41 @@ func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error
 			if err != nil {
 				return fmt.Errorf("opening stream: %w", err)
 			}
-			var buf []string
-			flushSerials := func() error {
-				if len(buf) == 0 {
-					return nil
-				}
+
+			err = stream.Send(&sapb.AddSerialsToIncidentRequest{
+				Payload: &sapb.AddSerialsToIncidentRequest_Metadata{
+					Metadata: &sapb.AddSerialsToIncidentMetadata{SerialTable: s.incident},
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("sending metadata: %w", err)
+			}
+
+			for chunk := range work {
 				err := stream.Send(&sapb.AddSerialsToIncidentRequest{
-					SerialTable: s.incident,
-					Serial:      buf,
+					Payload: &sapb.AddSerialsToIncidentRequest_Batch{
+						Batch: &sapb.AddSerialsToIncidentBatch{Serials: chunk},
+					},
 				})
 				if err != nil {
-					buf = buf[:0]
-					return err
+					return fmt.Errorf("sending batch: %w", err)
 				}
-				n := totalSent.Add(uint64(len(buf)))
-				prev := n - uint64(len(buf))
+
+				// Log once per 100k serials. Add returns post-increment, so the
+				// segment [prev, n) is owned by this worker and any given
+				// multiple of 100k falls in exactly one worker's segment.
+				n := totalSent.Add(uint64(len(chunk)))
+				prev := n - uint64(len(chunk))
 				if prev/100000 != n/100000 {
 					a.log.Infof("Sent %d serials total", n)
 				}
-				buf = buf[:0]
-				return nil
 			}
-			for serial := range work {
-				buf = append(buf, serial)
-				if len(buf) >= serialsBatchMax {
-					err := flushSerials()
-					if err != nil {
-						return fmt.Errorf("sending batch: %w", err)
-					}
-				}
-			}
-			err = flushSerials()
-			if err != nil {
-				return fmt.Errorf("sending final batch: %w", err)
-			}
+
 			_, err = stream.CloseAndRecv()
 			if err != nil {
 				return fmt.Errorf("closing stream: %w", err)
 			}
+
 			return nil
 		})
 	}
@@ -266,7 +295,7 @@ func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error
 	if err != nil {
 		return fmt.Errorf("loading serials: %w", err)
 	}
-	a.log.Infof("Done. Sent %d serials from %q into incident %q.",
-		totalSent.Load(), s.serialsFile, s.incident)
+
+	a.log.Infof("Done. Sent %d serials from %q into incident %q.", totalSent.Load(), s.serialsFile, s.incident)
 	return nil
 }

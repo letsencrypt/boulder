@@ -12,8 +12,8 @@
 			"dbConnectFile": "test/secrets/incidents_dburl",
 			"maxOpenConns": 100
 		},
-		"incidentsWriteDB": {
-			"dbConnectFile": "test/secrets/admin_dburl",
+		"incidentsAdminDB": {
+			"dbConnectFile": "test/secrets/incidents_admin_dburl",
 			"maxOpenConns": 100
 		},
 		"lagFactor": "200ms",

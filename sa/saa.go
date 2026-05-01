@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -16,26 +17,22 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-// incidentSerialsBatchSize is the number of rows accumulated before flushing a
-// single INSERT transaction during AddSerialsToIncident.
-const incidentSerialsBatchSize = 10000
-
 // SQLStorageAuthorityAdmin implements the StorageAuthorityAdmin service.
 type SQLStorageAuthorityAdmin struct {
 	sapb.UnsafeStorageAuthorityAdminServer
 
 	dbMap               *db.WrappedMap
-	dbIncidentsWriteMap *db.WrappedMap
+	dbIncidentsAdminMap *db.WrappedMap
 	log                 blog.Logger
 }
 
 var _ sapb.StorageAuthorityAdminServer = (*SQLStorageAuthorityAdmin)(nil)
 
 // NewSQLStorageAuthorityAdmin constructs an *SQLStorageAuthorityAdmin.
-func NewSQLStorageAuthorityAdmin(dbMap *db.WrappedMap, dbIncidentsWriteMap *db.WrappedMap, logger blog.Logger) (*SQLStorageAuthorityAdmin, error) {
+func NewSQLStorageAuthorityAdmin(dbMap *db.WrappedMap, dbIncidentsAdminMap *db.WrappedMap, logger blog.Logger) (*SQLStorageAuthorityAdmin, error) {
 	return &SQLStorageAuthorityAdmin{
 		dbMap:               dbMap,
-		dbIncidentsWriteMap: dbIncidentsWriteMap,
+		dbIncidentsAdminMap: dbIncidentsAdminMap,
 		log:                 logger,
 	}, nil
 }
@@ -69,7 +66,7 @@ func (ssa *SQLStorageAuthorityAdmin) CreateIncident(ctx context.Context, req *sa
 	// cannot be parameterized in MySQL. The regex check above restricts it to
 	// [a-zA-Z0-9_]. IF NOT EXISTS makes this step idempotent so that a crash
 	// between DDL and the metadata INSERT below can be recovered by rerunning.
-	_, err = ssa.dbIncidentsWriteMap.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+	_, err = ssa.dbIncidentsAdminMap.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		serial varchar(255) NOT NULL,
 		registrationID bigint(20) unsigned NULL,
 		orderID bigint(20) unsigned NULL,
@@ -99,10 +96,10 @@ func (ssa *SQLStorageAuthorityAdmin) CreateIncident(ctx context.Context, req *sa
 }
 
 // UpdateIncident updates the url, renewBy, and/or enabled fields on the
-// incidents metadata row identified by serialTable. An empty req.Url, nil
-// req.RenewBy, and nil req.Enabled all leave their respective fields
-// unchanged. At least one of them must be set.
-func (ssa *SQLStorageAuthorityAdmin) UpdateIncident(ctx context.Context, req *sapb.UpdateIncidentRequest) (*emptypb.Empty, error) {
+// incidents metadata row identified by serialTable and returns the resulting
+// row. An empty req.Url, nil req.RenewBy, and nil req.Enabled all leave their
+// respective fields unchanged. At least one of them must be set.
+func (ssa *SQLStorageAuthorityAdmin) UpdateIncident(ctx context.Context, req *sapb.UpdateIncidentRequest) (*sapb.Incident, error) {
 	if core.IsAnyNilOrZero(req.SerialTable) {
 		return nil, errIncompleteRequest
 	}
@@ -140,31 +137,39 @@ func (ssa *SQLStorageAuthorityAdmin) UpdateIncident(ctx context.Context, req *sa
 		return nil, berrors.NotFoundError("no incident found with serialTable %q", req.SerialTable)
 	}
 
-	return &emptypb.Empty{}, nil
+	var updated incidentModel
+	err = ssa.dbMap.SelectOne(ctx, &updated,
+		`SELECT id, serialTable, url, renewBy, enabled FROM incidents WHERE serialTable = ?`,
+		req.SerialTable)
+	if err != nil {
+		return nil, fmt.Errorf("reading back updated incident %q: %w", req.SerialTable, err)
+	}
+	pb := incidentModelToPB(updated)
+	return &pb, nil
 }
 
 // AddSerialsToIncident streams serials into an existing per-incident table. The
-// client sends a batch of serials per message. The server accumulates up to
-// incidentSerialsBatchSize across messages and inserts each batch in a single
-// transaction. Only the serial field is populated; other metadata is left NULL.
+// client sends one Metadata message naming the target table, then any number of
+// Batch messages each carrying a slice of serials. Each Batch is inserted in
+// its own transaction; the client picks the batch size. Only the serial column
+// is populated; other metadata columns are left NULL.
 func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAuthorityAdmin_AddSerialsToIncidentServer) error {
 	ctx := stream.Context()
 
 	var incidentTable string
-	var buf []string
 
-	flush := func() error {
-		if len(buf) == 0 {
+	flush := func(serials []string) error {
+		if len(serials) == 0 {
 			return nil
 		}
 
 		// Safety note: incidentTable is interpolated directly into the query
 		// text, which cannot be parameterized for an identifier. It was
-		// validated against ValidIncidentTableRegexp when the first message
+		// validated against ValidIncidentTableRegexp when the metadata message
 		// arrived, so it contains only [a-zA-Z0-9_].
-		valuesPlaceholders := strings.TrimRight(strings.Repeat("(?, NULL, NULL, NULL),", len(buf)), ",")
-		insertArgs := make([]any, len(buf))
-		for i, s := range buf {
+		valuesPlaceholders := strings.TrimRight(strings.Repeat("(?, NULL, NULL, NULL),", len(serials)), ",")
+		insertArgs := make([]any, len(serials))
+		for i, s := range serials {
 			insertArgs[i] = s
 		}
 
@@ -177,7 +182,7 @@ func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAut
 			incidentTable, valuesPlaceholders,
 		)
 		var inserted int64
-		_, err := db.WithTransaction(ctx, ssa.dbIncidentsWriteMap, func(tx db.Executor) (any, error) {
+		_, err := db.WithTransaction(ctx, ssa.dbIncidentsAdminMap, func(tx db.Executor) (any, error) {
 			res, err := tx.ExecContext(ctx, query, insertArgs...)
 			if err != nil {
 				return nil, err
@@ -188,8 +193,7 @@ func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAut
 		if err != nil {
 			return fmt.Errorf("inserting batch into %q: %w", incidentTable, err)
 		}
-		ssa.log.Infof("AddSerialsToIncident %q: batch of %d, %d inserted", incidentTable, len(buf), inserted)
-		buf = nil
+		ssa.log.Infof("AddSerialsToIncident %q: batch of %d, %d inserted", incidentTable, len(serials), inserted)
 		return nil
 	}
 
@@ -202,33 +206,31 @@ func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAut
 			return err
 		}
 
-		if incidentTable == "" {
-			if !ValidIncidentTableRegexp.MatchString(req.SerialTable) {
-				return fmt.Errorf("malformed incident %q", req.SerialTable)
+		switch payload := req.Payload.(type) {
+		case *sapb.AddSerialsToIncidentRequest_Metadata:
+			if incidentTable != "" {
+				return errors.New("received a second metadata message; only one is allowed per stream")
 			}
-			incidentTable = req.SerialTable
-		} else if req.SerialTable != incidentTable {
-			return fmt.Errorf("serialTable changed mid-stream: %q -> %q", incidentTable, req.SerialTable)
-		}
+			if !ValidIncidentTableRegexp.MatchString(payload.Metadata.SerialTable) {
+				return fmt.Errorf("malformed incident %q", payload.Metadata.SerialTable)
+			}
+			incidentTable = payload.Metadata.SerialTable
 
-		for _, serial := range req.Serial {
-			if serial == "" {
+		case *sapb.AddSerialsToIncidentRequest_Batch:
+			if incidentTable == "" {
+				return errors.New("received a batch message before any metadata")
+			}
+			if slices.Contains(payload.Batch.Serials, "") {
 				return errors.New("empty serial in stream")
 			}
-			buf = append(buf, serial)
-
-			if len(buf) >= incidentSerialsBatchSize {
-				err := flush()
-				if err != nil {
-					return err
-				}
+			err := flush(payload.Batch.Serials)
+			if err != nil {
+				return err
 			}
-		}
-	}
 
-	err := flush()
-	if err != nil {
-		return err
+		default:
+			return fmt.Errorf("unexpected payload type %T", payload)
+		}
 	}
 
 	return stream.SendAndClose(&emptypb.Empty{})

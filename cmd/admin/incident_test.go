@@ -53,9 +53,13 @@ type mockSAAdmin struct {
 	addStream  *fakeAddSerialsStream
 }
 
-func (m *mockSAAdmin) UpdateIncident(_ context.Context, req *sapb.UpdateIncidentRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (m *mockSAAdmin) UpdateIncident(_ context.Context, req *sapb.UpdateIncidentRequest, _ ...grpc.CallOption) (*sapb.Incident, error) {
 	m.updateReqs = append(m.updateReqs, req)
-	return &emptypb.Empty{}, nil
+	out := &sapb.Incident{SerialTable: req.SerialTable, Url: req.Url, RenewBy: req.RenewBy}
+	if req.Enabled != nil {
+		out.Enabled = *req.Enabled
+	}
+	return out, nil
 }
 
 func (m *mockSAAdmin) CreateIncident(_ context.Context, req *sapb.CreateIncidentRequest, _ ...grpc.CallOption) (*sapb.Incident, error) {
@@ -198,15 +202,19 @@ func TestLoadIncidentSerialsSubcommand(t *testing.T) {
 		incident:    "incident_bulk",
 		serialsFile: serialsFile,
 		parallelism: 1,
+		batchSize:   10,
 	}
 	err = s.Run(context.Background(), a)
 	test.AssertNotError(t, err, "load-incident-serials")
-	// Three serials all fit in one wire batch, so we expect a single Send.
-	test.AssertEquals(t, len(msa.addStream.sent), 1)
-	test.AssertEquals(t, msa.addStream.sent[0].SerialTable, "incident_bulk")
+	test.AssertEquals(t, len(msa.addStream.sent), 2)
+	meta := msa.addStream.sent[0].GetMetadata()
+	test.Assert(t, meta != nil, "first message should be metadata")
+	test.AssertEquals(t, meta.SerialTable, "incident_bulk")
+	batch := msa.addStream.sent[1].GetBatch()
+	test.Assert(t, batch != nil, "second message should be a batch")
 
 	got := map[string]bool{}
-	for _, s := range msa.addStream.sent[0].Serial {
+	for _, s := range batch.Serials {
 		got[s] = true
 	}
 	test.Assert(t, got[a1], "expected "+a1)

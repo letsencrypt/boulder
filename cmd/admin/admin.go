@@ -45,12 +45,11 @@ type adminSAClient interface {
 }
 
 // saAdminClient defines the StorageAuthorityAdmin methods that the admin tool
-// relies on. This is a separate gRPC service so that admin authorization for
-// admin-only methods does not also grant the broader StorageAuthority surface.
+// relies on.
 type saAdminClient interface {
 	AddSerialsToIncident(context.Context, ...grpc.CallOption) (grpc.ClientStreamingClient[sapb.AddSerialsToIncidentRequest, emptypb.Empty], error)
 	CreateIncident(context.Context, *sapb.CreateIncidentRequest, ...grpc.CallOption) (*sapb.Incident, error)
-	UpdateIncident(context.Context, *sapb.UpdateIncidentRequest, ...grpc.CallOption) (*emptypb.Empty, error)
+	UpdateIncident(context.Context, *sapb.UpdateIncidentRequest, ...grpc.CallOption) (*sapb.Incident, error)
 }
 
 // newAdmin constructs a new admin object on the heap and returns a pointer to

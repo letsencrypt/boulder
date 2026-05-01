@@ -90,7 +90,7 @@ CREATE USER IF NOT EXISTS 'test_setup'@'%';
 
 -- Storage Authority
 GRANT SELECT ON * TO 'incidents_sa'@'%';
-GRANT SELECT,CREATE,INSERT ON * TO 'incidents_sa_admin'@'%';
+GRANT CREATE,SELECT,INSERT ON * TO 'incidents_sa_admin'@'%';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';
