@@ -81,6 +81,8 @@ var boulderUsage = fmt.Sprintf(`Usage: %s <subcommand> [flags]
 func main() {
 	defer cmd.AuditPanic()
 
+	go memoryMonitor()
+
 	if len(os.Args) <= 1 {
 		// No arguments passed.
 		fmt.Fprint(os.Stderr, boulderUsage)
