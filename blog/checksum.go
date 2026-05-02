@@ -41,10 +41,7 @@ func (w *checksumWriter) Write(in []byte) (int, error) {
 	// strips that newline before writing the line to disk, and the log-validator
 	// computes its checksum over the stripped line. Strip it here too so the
 	// checksum we emit covers exactly the bytes the validator will see.
-	body := in
-	if len(body) > 0 && body[len(body)-1] == '\n' {
-		body = body[:len(body)-1]
-	}
+	body := bytes.TrimSuffix(in, []byte{'\n'})
 	out := bytes.Buffer{}
 	out.WriteString(LogLineChecksum(string(body)))
 	out.WriteString(" ")
