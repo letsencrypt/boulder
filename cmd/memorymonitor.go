@@ -30,21 +30,14 @@ func MemoryMonitor() {
 	}
 	memLimitU64 := uint64(memLimit) //nolint:gosec // G115: memLimit is not negative
 
-	var lastDump time.Time
 	var memStats runtime.MemStats
 	ticker := time.NewTicker(memoryCheckPeriod)
 	for {
 		<-ticker.C
 
-		if time.Since(lastDump) < profileDumpPeriod {
-			continue
-		}
-
 		runtime.ReadMemStats(&memStats)
 
 		if memStats.Sys-memStats.HeapReleased > memLimitU64 {
-			lastDump = time.Now()
-
 			logger := blog.Get()
 			err := writeProfile(logger, "heap")
 			if err != nil {
@@ -54,6 +47,8 @@ func MemoryMonitor() {
 			if err != nil {
 				logger.Errf("writing goroutine profile: %s", err)
 			}
+
+			time.Sleep(profileDumpPeriod)
 		}
 	}
 }
