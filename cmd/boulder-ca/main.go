@@ -67,6 +67,15 @@ type Config struct {
 		// TODO(#7213): Replace `required_without` with `required` when SerialPrefix is removed.
 		SerialPrefixHex string `validate:"required_without=SerialPrefix,omitempty,hexadecimal,len=2"`
 
+		// MaxNames is the maximum number of subjectAltNames in a single cert.
+		// The value supplied MUST be greater than 0 and no more than 100. These
+		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
+		// Subscriber Certificate". The value must match the RA and WFE
+		// configurations.
+		//
+		// Deprecated: configure maxNames per-profile in the RA
+		MaxNames int `validate:"omitempty,min=1,max=100"`
+
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
