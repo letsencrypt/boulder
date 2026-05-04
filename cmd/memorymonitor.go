@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -18,13 +18,12 @@ const memoryCheckPeriod = 10 * time.Second
 // profileDumpPeriod limits how frequently we will dump profiles to disk.
 const profileDumpPeriod = 1 * time.Hour
 
-// memoryMonitor runs in a loop, checking every 10 seconds if memory use is greater
+// MemoryMonitor runs a loop, checking every 10 seconds if memory use is greater
 // than GOMEMLIMIT. If so, it dumps memory and goroutine profiles to temporary files
 // created by os.CreateTemp, at most once per hour.
 //
 // If GOMEMLIMIT is unset, returns immediately.
-func memoryMonitor() {
-	logger := blog.Get()
+func MemoryMonitor() {
 	memLimit := debug.SetMemoryLimit(-1)
 	if memLimit == math.MaxInt64 {
 		return
@@ -46,6 +45,7 @@ func memoryMonitor() {
 		if memStats.Sys-memStats.HeapReleased > memLimitU64 {
 			lastDump = time.Now()
 
+			logger := blog.Get()
 			err := writeProfile(logger, "heap")
 			if err != nil {
 				logger.Errf("writing heap profile: %s", err)
@@ -60,7 +60,7 @@ func memoryMonitor() {
 
 func writeProfile(logger blog.Logger, typ string) error {
 	datestamp := time.Now().Format("20060102T150405")
-	profileFile, err := os.CreateTemp("", fmt.Sprintf("boulder-profile-%s-%s", typ, datestamp))
+	profileFile, err := os.CreateTemp("", fmt.Sprintf("boulder-profile-%s-%s.pprof", typ, datestamp))
 	if err != nil {
 		return fmt.Errorf("creating profile file: %s", err)
 	}
