@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -90,7 +89,6 @@ type reportEntry struct {
 type certDB interface {
 	Select(ctx context.Context, i any, query string, args ...any) ([]any, error)
 	SelectOne(ctx context.Context, i any, query string, args ...any) error
-	SelectNullInt(ctx context.Context, query string, args ...any) (sql.NullInt64, error)
 }
 
 // A function that looks up a precertificate by serial and returns its DER bytes. Used for
@@ -147,8 +145,6 @@ func newChecker(saDbMap certDB,
 // findStartingID returns the lowest `id` in the certificates table within the
 // time window specified. The time window is a half-open interval [begin, end).
 func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) (int64, error) {
-	var output sql.NullInt64
-	var err error
 	var retries int
 
 	// Rather than querying `MIN(id)` across that whole window, we query it across the first
@@ -161,8 +157,10 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 	queryEnd := begin.Add(time.Hour)
 
 	for queryBegin.Compare(end) < 0 {
-		output, err = c.dbMap.SelectNullInt(
+		var output *int64
+		err := c.dbMap.SelectOne(
 			ctx,
+			&output,
 			`SELECT MIN(id) FROM certificates
 				WHERE issued >= :begin AND
 					  issued < :end`,
@@ -185,7 +183,7 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 		// MIN() returns NULL if there were no matching rows
 		// https://pkg.go.dev/database/sql#NullInt64
 		// Valid is true if Int64 is not NULL
-		if !output.Valid {
+		if output == nil {
 			// No matching rows, try the next hour
 			queryBegin = queryBegin.Add(time.Hour)
 			queryEnd = queryEnd.Add(time.Hour)
@@ -195,7 +193,7 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 			continue
 		}
 
-		return output.Int64, nil
+		return *output, nil
 	}
 
 	// Fell through the loop without finding a valid ID
