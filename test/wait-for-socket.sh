@@ -6,8 +6,8 @@ socket="${1}"
 max_tries=40
 
 for n in $(seq 1 "${max_tries}"); do
-  if [ -S "${socket}" ]; then
-    echo "Socket ${socket} is ready"
+  if curl --silent --output /dev/null --unix-socket "${socket}" http://pkimetal/; then
+    echo "Socket ${socket} is ready and serving HTTP"
     exit 0
   fi
   echo "$(date) - still waiting for socket ${socket}"
