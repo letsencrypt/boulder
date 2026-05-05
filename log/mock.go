@@ -48,8 +48,8 @@ var levelName = map[syslog.Priority]string{
 	syslog.LOG_DEBUG:   "DEBUG",
 }
 
-func (w *mockWriter) logAtLevel(p syslog.Priority, msg string, a ...any) {
-	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
+func (w *mockWriter) logAtLevel(p syslog.Priority, msg string) {
+	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], msg)
 }
 
 // newMockWriter returns a new mockWriter
@@ -121,4 +121,10 @@ func (m *Mock) ExpectMatch(reString string) error {
 func (m *Mock) Clear() {
 	w := m.w.(*mockWriter)
 	w.clearChan <- struct{}{}
+}
+
+// Close shuts down the mock's background goroutine.
+func (m *Mock) Close() {
+	w := m.w.(*mockWriter)
+	close(w.closeChan)
 }

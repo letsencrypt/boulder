@@ -12,7 +12,6 @@
 			"dbConnectFile": "test/secrets/incidents_dburl",
 			"maxOpenConns": 100
 		},
-		"ParallelismPerRPC": 20,
 		"lagFactor": "200ms",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",

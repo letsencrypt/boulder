@@ -38,7 +38,7 @@ jobs:
 
       - name: Comment PR
         if: ${{ steps.newflags.outputs.flagnames != '' }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo, number: issue_number } = context.issue;

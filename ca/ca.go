@@ -121,7 +121,6 @@ type certificateAuthorityImpl struct {
 
 	// The prefix is prepended to the serial number.
 	prefix    byte
-	maxNames  int
 	keyPolicy goodkey.KeyPolicy
 	clk       clock.Clock
 	log       blog.Logger
@@ -140,7 +139,6 @@ func NewCertificateAuthorityImpl(
 	issuers []*issuance.Issuer,
 	profiles map[string]*issuance.Profile,
 	serialPrefix byte,
-	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 	metrics *caMetrics,
@@ -195,7 +193,6 @@ func NewCertificateAuthorityImpl(
 		issuers:   issuers,
 		profiles:  profiles,
 		prefix:    serialPrefix,
-		maxNames:  maxNames,
 		keyPolicy: keyPolicy,
 		log:       logger,
 		metrics:   metrics,
@@ -239,7 +236,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, err
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
+	err = csrlib.VerifyCSR(ctx, csr, &ca.keyPolicy, ca.pa)
 	if err != nil {
 		return nil, err
 	}
@@ -269,10 +266,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		ipStrings = append(ipStrings, ip.String())
 	}
 
-	serialBigInt, err := ca.generateSerialNumber()
-	if err != nil {
-		return nil, err
-	}
+	serialBigInt := ca.generateSerialNumber()
 	serialHex := core.SerialToString(serialBigInt)
 
 	// Step 2: Persist the serial and minimal metadata, to ensure that we never
@@ -483,21 +477,19 @@ func (ca *certificateAuthorityImpl) pickIssuer(profileName string, keyAlg x509.P
 
 // generateSerialNumber produces a big.Int which has more than 64 bits of
 // entropy and has the CA's configured one-byte prefix.
-func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
+func (ca *certificateAuthorityImpl) generateSerialNumber() *big.Int {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
 	serialBytes[0] = ca.prefix
-	_, err := rand.Read(serialBytes[1:])
-	if err != nil {
-		err = berrors.InternalServerError("failed to generate serial: %s", err)
-		ca.log.AuditErr("Serial randomness failed", err, nil)
-		return nil, err
-	}
+	// rand.Read is guaranteed since Go 1.24 not to return error (it crashes the program instead)
+	// https://tip.golang.org/doc/go1.24#cryptorandpkgcryptorand
+	// https://pkg.go.dev/crypto/rand@master#Read
+	rand.Read(serialBytes[1:]) //nolint:errcheck //rand.Read is infallible
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
-	return serialBigInt, nil
+	return serialBigInt
 }
 
 // generateSKID computes the Subject Key Identifier using one of the methods in

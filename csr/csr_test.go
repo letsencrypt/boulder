@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
@@ -55,9 +54,6 @@ func TestVerifyCSR(t *testing.T) {
 	brokenSignedReq := new(x509.CertificateRequest)
 	*brokenSignedReq = *signedReq
 	brokenSignedReq.Signature = []byte{1, 1, 1, 1}
-	signedReqWithHosts := new(x509.CertificateRequest)
-	*signedReqWithHosts = *signedReq
-	signedReqWithHosts.DNSNames = []string{"a.com", "b.com"}
 	signedReqWithLongCN := new(x509.CertificateRequest)
 	*signedReqWithLongCN = *signedReq
 	signedReqWithLongCN.Subject.CommonName = strings.Repeat("a", maxCNLength+1)
@@ -86,86 +82,68 @@ func TestVerifyCSR(t *testing.T) {
 
 	cases := []struct {
 		csr           *x509.CertificateRequest
-		maxNames      int
 		pa            core.PolicyAuthority
 		expectedError error
 	}{
 		{
 			&x509.CertificateRequest{},
-			100,
 			&mockPA{},
 			invalidPubKey,
 		},
 		{
 			&x509.CertificateRequest{PublicKey: &private.PublicKey},
-			100,
 			&mockPA{},
 			unsupportedSigAlg,
 		},
 		{
 			brokenSignedReq,
-			100,
 			&mockPA{},
 			invalidSig,
 		},
 		{
 			signedReq,
-			100,
 			&mockPA{},
 			invalidNoIdent,
 		},
 		{
 			signedReqWithLongCN,
-			100,
 			&mockPA{},
 			nil,
 		},
 		{
-			signedReqWithHosts,
-			1,
-			&mockPA{},
-			berrors.BadCSRError("CSR contains more than 1 identifiers"),
-		},
-		{
 			signedReqWithBadNames,
-			100,
 			&mockPA{},
 			errors.New("policy forbids issuing for identifier"),
 		},
 		{
 			signedReqWithEmailAddress,
-			100,
 			&mockPA{},
 			invalidEmailPresent,
 		},
 		{
 			signedReqWithIPAddress,
-			100,
 			&mockPA{},
 			nil,
 		},
 		{
 			signedReqWithIPCN,
-			100,
 			&mockPA{},
 			invalidIPCN,
 		},
 		{
 			signedReqWithURI,
-			100,
 			&mockPA{},
 			invalidURIPresent,
 		},
 		{
 			signedReqWithAllLongSANs,
-			100,
 			&mockPA{},
 			nil,
 		},
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(context.Background(), c.csr, c.maxNames, &keyPolicy, c.pa)
+		err := VerifyCSR(context.Background(), c.csr, &keyPolicy, c.pa)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }
@@ -294,7 +272,7 @@ func TestSHA1Deprecation(t *testing.T) {
 		csr, err := x509.ParseCertificateRequest(csrBytes)
 		test.AssertNotError(t, err, "parsing test CSR")
 
-		return VerifyCSR(context.Background(), csr, 100, &keyPolicy, &mockPA{})
+		return VerifyCSR(context.Background(), csr, &keyPolicy, &mockPA{})
 	}
 
 	err = makeAndVerifyCsr(x509.SHA256WithRSA)

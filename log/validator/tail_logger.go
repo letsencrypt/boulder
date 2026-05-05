@@ -12,22 +12,22 @@ type tailLogger struct {
 }
 
 func (tl tailLogger) Fatal(v ...any) {
-	tl.Errf(fmt.Sprint(v...)) //nolint: govet // just passing through
+	tl.Err(fmt.Sprint(v...))
 }
 func (tl tailLogger) Fatalf(format string, v ...any) {
 	tl.Errf(format, v...)
 }
 func (tl tailLogger) Fatalln(v ...any) {
-	tl.Errf(fmt.Sprint(v...) + "\n") //nolint: govet // just passing through
+	tl.Err(fmt.Sprint(v...) + "\n")
 }
 func (tl tailLogger) Panic(v ...any) {
-	tl.Errf(fmt.Sprint(v...)) //nolint: govet // just passing through
+	tl.Err(fmt.Sprint(v...))
 }
 func (tl tailLogger) Panicf(format string, v ...any) {
 	tl.Errf(format, v...)
 }
 func (tl tailLogger) Panicln(v ...any) {
-	tl.Errf(fmt.Sprint(v...) + "\n") //nolint: govet // just passing through
+	tl.Err(fmt.Sprint(v...) + "\n")
 }
 func (tl tailLogger) Print(v ...any) {
 	tl.Info(fmt.Sprint(v...))

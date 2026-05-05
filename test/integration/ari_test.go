@@ -6,8 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/x509/pkix"
-	"math/big"
 	"testing"
 	"time"
 
@@ -15,14 +13,6 @@ import (
 
 	"github.com/letsencrypt/boulder/test"
 )
-
-// certID matches the ASN.1 structure of the CertID sequence defined by RFC6960.
-type certID struct {
-	HashAlgorithm  pkix.AlgorithmIdentifier
-	IssuerNameHash []byte
-	IssuerKeyHash  []byte
-	SerialNumber   *big.Int
-}
 
 func TestARIAndReplacement(t *testing.T) {
 	t.Parallel()

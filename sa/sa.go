@@ -86,14 +86,13 @@ func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
-	parallelismPerRPC int,
 	lagFactor time.Duration,
 	clk clock.Clock,
 	logger blog.Logger,
 	stats prometheus.Registerer,
 ) (*SQLStorageAuthority, error) {
 	ssaro, err := NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, stats, parallelismPerRPC, lagFactor, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, stats, lagFactor, clk, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +166,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 
 		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
 		if err != nil {
-			if db.IsNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil, berrors.NotFoundError("registration with ID '%d' not found", req.RegistrationID)
 			}
 			return nil, err
@@ -405,7 +404,7 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 
 		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.Id)
 		if err != nil {
-			if db.IsNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil, berrors.NotFoundError("fetching account %d: no rows found", req.Id)
 			}
 			return nil, fmt.Errorf("fetching account %d: %w", req.Id, err)
@@ -1138,7 +1137,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 			req.IssuerNameID,
 			req.MinShardIdx,
 		)
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			needToInsert = true
 		} else if err != nil {
 			return nil, fmt.Errorf("selecting requested shard: %w", err)
@@ -1455,7 +1454,7 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 		)
 
 		switch {
-		case err != nil && !db.IsNoRows(err):
+		case err != nil && !errors.Is(err, sql.ErrNoRows):
 			// Error querying the database.
 			return nil, fmt.Errorf("querying override for rate limit %d and bucket key %s: %w",
 				req.Override.LimitEnum,
@@ -1463,7 +1462,7 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 				err,
 			)
 
-		case db.IsNoRows(err):
+		case errors.Is(err, sql.ErrNoRows):
 			// Insert a new overrides row.
 			new := overrideModelForPB(req.Override, now, true)
 			err = tx.Insert(ctx, &new)
@@ -1532,7 +1531,7 @@ func (ssa *SQLStorageAuthority) setRateLimitOverride(ctx context.Context, limitE
 			bucketKey,
 		)
 		if err != nil {
-			if db.IsNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil, berrors.NotFoundError(
 					"no rate limit override found for limit %d and bucket key %s",
 					limitEnum,

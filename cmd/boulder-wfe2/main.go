@@ -120,6 +120,14 @@ type Config struct {
 		// will differ in configuration for production and staging.
 		LegacyKeyIDPrefix string `validate:"required,url"`
 
+		// AccountURIPrefix is used to construct the "accounturi" field of
+		// dns-persist-01 challenges (e.g. "https://acme-v02.api.letsencrypt.org/acme/acct/").
+		// MUST match the first entry of the VA's AccountURIPrefixes field.
+		//
+		// TODO(#8724): Once this field has been set in Production we can make
+		// it required.
+		AccountURIPrefix string `validate:"omitempty,url,endswith=/"`
+
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
@@ -414,6 +422,7 @@ func main() {
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
+	wfe.AccountURIPrefix = c.WFE.AccountURIPrefix
 
 	if c.WFE.ListenAddress == "" {
 		cmd.Fail("HTTP listen address is not configured")

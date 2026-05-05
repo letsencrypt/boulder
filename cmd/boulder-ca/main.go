@@ -72,7 +72,9 @@ type Config struct {
 		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
 		// Subscriber Certificate". The value must match the RA and WFE
 		// configurations.
-		MaxNames int `validate:"required,min=1,max=100"`
+		//
+		// Deprecated: configure maxNames per-profile in the RA
+		MaxNames int `validate:"omitempty,min=1,max=100"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -137,10 +139,6 @@ func main() {
 		parsedSerialPrefix, err := strconv.ParseUint(c.CA.SerialPrefixHex, 16, 8)
 		cmd.FailOnError(err, "Couldn't convert SerialPrefixHex to int")
 		serialPrefix = byte(parsedSerialPrefix)
-	}
-
-	if c.CA.MaxNames == 0 {
-		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
@@ -244,7 +242,6 @@ func main() {
 			issuers,
 			profiles,
 			serialPrefix,
-			c.CA.MaxNames,
 			kp,
 			logger,
 			metrics,

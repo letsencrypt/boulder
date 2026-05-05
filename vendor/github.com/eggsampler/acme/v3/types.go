@@ -202,10 +202,16 @@ type Challenge struct {
 	Token            string `json:"token"`
 	KeyAuthorization string `json:"keyAuthorization"`
 
+	// AccountURI is specific to the dns-persist-01 challenge type. It is the
+	// URI that the client must include in the accounturi parameter of the DNS
+	// TXT record when completing the challenge. For more information see:
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-dns-persist-01#section-3.1
+	AccountURI string `json:"accounturi,omitempty"`
+
 	// IssuerDomainNames is specific to the dns-persist-01 challenge type. It
 	// contains the list of issuer domain names accepted by the CA. For more
 	// information see:
-	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-dns-persist-00#section-3.1
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-dns-persist-01#section-3.1
 	IssuerDomainNames []string `json:"issuer-domain-names,omitempty"`
 
 	// Authorization url provided by the rel="up" Link http header

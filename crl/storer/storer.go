@@ -42,7 +42,6 @@ type crlStorer struct {
 	s3Bucket         string
 	issuers          map[issuance.NameID]*issuance.Certificate
 	uploadCount      *prometheus.CounterVec
-	sizeHistogram    *prometheus.HistogramVec
 	latencyHistogram *prometheus.HistogramVec
 	log              blog.Logger
 	clk              clock.Clock
@@ -68,12 +67,6 @@ func New(
 		Help: "A counter of the number of CRLs uploaded by crl-storer",
 	}, []string{"issuer", "result"})
 
-	sizeHistogram := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "crl_storer_sizes",
-		Help:    "A histogram of the sizes (in bytes) of CRLs uploaded by crl-storer",
-		Buckets: []float64{0, 256, 1024, 4096, 16384, 65536},
-	}, []string{"issuer"})
-
 	latencyHistogram := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_storer_upload_times",
 		Help:    "A histogram of the time (in seconds) it took crl-storer to upload CRLs",
@@ -85,7 +78,6 @@ func New(
 		s3Client:         s3Client,
 		s3Bucket:         s3Bucket,
 		uploadCount:      uploadCount,
-		sizeHistogram:    sizeHistogram,
 		latencyHistogram: latencyHistogram,
 		log:              log,
 		clk:              clk,
@@ -148,8 +140,6 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	}
 
 	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
-
-	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
 
 	crl, err := x509.ParseRevocationList(crlBytes)
 	if err != nil {
