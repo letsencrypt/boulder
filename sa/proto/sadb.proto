@@ -4,6 +4,7 @@ package sa;
 option go_package = "github.com/letsencrypt/boulder/sa/proto";
 
 // Used internally for storage in the DB, not for RPCs.
+// Invariant maintained by sa.NewOrderAndAuthzs: does not contain duplicates.
 message Authzs {
   repeated int64 authzIDs = 1;
 }

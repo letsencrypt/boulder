@@ -335,19 +335,22 @@ func (model certificateStatusModel) toPb() *corepb.CertificateStatus {
 	}
 }
 
-// orderModel represents one row in the orders table. The CertificateProfileName
-// column is a pointer because the column is NULL-able.
+// orderModel represents one row in the orders table.
 type orderModel struct {
-	ID                     int64
-	RegistrationID         int64
-	Expires                time.Time
-	Created                time.Time
-	Error                  []byte
-	CertificateSerial      string
-	BeganProcessing        bool
+	ID                int64
+	RegistrationID    int64
+	Expires           time.Time
+	Created           time.Time
+	Error             []byte
+	CertificateSerial string
+	BeganProcessing   bool
+	// CertificateProfileName is a pointer because the column is NULL-able.
 	CertificateProfileName *string
-	Replaces               *string
-	Authzs                 []byte
+	// Replaces is a pointer because the column is NULL-able.
+	Replaces *string
+	// Contains protobuf-encoded list of authorization IDs without duplicates.
+	// See sa/proto/sadb.proto
+	Authzs []byte
 }
 
 func modelToOrder(om *orderModel) (*corepb.Order, error) {
@@ -1154,7 +1157,7 @@ type authzValidity struct {
 	Expires         time.Time `db:"expires"`
 }
 
-// getAuthorizationStatuses takes a sequence of authz IDs, and returns the
+// getAuthorizationStatuses takes a sequence of distinct authz IDs, and returns the
 // status and expiration date of each of them.
 func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) ([]authzValidity, error) {
 	var params []any
@@ -1174,7 +1177,8 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 	}
 
 	if len(validities) != len(ids) {
-		return nil, fmt.Errorf("getAuthorizationStatuses got %d results, expected %d", len(validities), len(ids))
+		return nil, fmt.Errorf("getAuthorizationStatuses got %d results for for %d ids: %v",
+			len(validities), len(ids), ids)
 	}
 
 	return validities, nil
