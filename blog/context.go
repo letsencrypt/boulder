@@ -10,6 +10,7 @@ package blog
 import (
 	"context"
 	"log/slog"
+	"slices"
 )
 
 // sloggerCtxKeyType exists to ensure that sloggerCtxKey is a wholly unique
@@ -20,14 +21,15 @@ type sloggerCtxKeyType struct{}
 // the slog.Attrs stored on a context.Context.
 var sloggerCtxKey = sloggerCtxKeyType{}
 
-// fromContext retrieves the slog.Attrs from the context. It returns nil if
-// no attributes are attached.
+// fromContext retrieves the slog.Attrs from the context. It returns a copy to
+// prevent callers from accidentally modifying the context's attrs in place. It
+// returns nil if no attributes are attached.
 func fromContext(ctx context.Context) []slog.Attr {
 	attrs, ok := ctx.Value(sloggerCtxKey).([]slog.Attr)
 	if attrs == nil || !ok {
 		return nil
 	}
-	return attrs
+	return slices.Clone(attrs)
 }
 
 // ContextWith returns a new context with the given attributes attached, in

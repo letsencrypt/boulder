@@ -11,17 +11,15 @@ import (
 // level meanings are as follows:
 //
 //	-1: suppress all output
-//	0: default, which is 6
-//	1: meaningless
-//	2: meaningless
-//	3: log errors
+//	0: default, which is -1 for stdout and 6 for syslog
+//	3: log only errors
 //	4: log warnings and above
-//	5: meaningless
 //	6: log info and above
 //	7: log debug and above
 //
-// The structure of this config object is a superset of cmd.SyslogConfig, so
-// that the same existing json objects can be parsed into it.
+// Values less than -1 or greater than 7 are invalid. Values in between the
+// numbers documented above (e.g. 1) have the same effect as the next larger
+// value (e.g. 3).
 type Config struct {
 	// When absent or zero, this causes no logs to be emitted on stdout/stderr.
 	// Errors and warnings will be emitted on stderr if the configured level

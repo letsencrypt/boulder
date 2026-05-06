@@ -47,7 +47,7 @@ type logger struct {
 // Cannot error if only the stdout logger is enabled (has a non-negative level).
 func New(conf Config) (*logger, error) {
 	var stdoutHandler slog.Handler
-	if conf.StdoutLevel >= 0 {
+	if conf.StdoutLevel > 0 {
 		writer := newChecksumWriter(os.Stdout)
 		opts := &slog.HandlerOptions{Level: configToSlogLevel(conf.StdoutLevel)}
 		stdoutHandler = &contextHandler{inner: newAuditHandler(writer, opts)}
@@ -57,7 +57,7 @@ func New(conf Config) (*logger, error) {
 	if conf.SyslogLevel == 0 {
 		conf.SyslogLevel = 6
 	}
-	if conf.SyslogLevel >= 0 {
+	if conf.SyslogLevel > 0 {
 		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO, core.Command())
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to syslog: %w", err)
