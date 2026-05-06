@@ -98,7 +98,6 @@ func TestGetSCTs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				mockLog := blog.NewMock()
-				defer mockLog.Close()
 				ctp := New(tc.mock, tc.logs, nil, nil, time.Second, mockLog, metrics.NoopRegisterer)
 				ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 				if tc.result != nil {
@@ -131,7 +130,6 @@ func TestGetSCTsNoStaggerOnError(t *testing.T) {
 	// We shouldn't wait for the stagger (1h, here) because all the submissions should fail
 	synctest.Test(t, func(t *testing.T) {
 		mockLog := blog.NewMock()
-		defer mockLog.Close()
 		ctp := New(&mockFailPub{}, loglist.List{
 			{Name: "LogA1", Operator: "OperA", Url: "UrlA1", Key: []byte("KeyA1")},
 			{Name: "LogA2", Operator: "OperA", Url: "UrlA2", Key: []byte("KeyA2")},
