@@ -141,9 +141,6 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 
 // IssuerConfig describes the constraints on and URLs used by a single issuer.
 type IssuerConfig struct {
-	// Deprecated: Populate IssuerConfig.Profiles to ensure "Active"
-	Active bool
-
 	// Profiles is the list of profiles for which this issuer is willing to issue.
 	// The names listed here must match the names of configured profiles (see
 	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's

@@ -926,7 +926,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(ctx context.Context
 		)
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, profile.maxNames, &ra.keyPolicy, ra.PA)
+	err = csrlib.VerifyCSR(ctx, csr, &ra.keyPolicy, ra.PA)
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
@@ -936,6 +936,11 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(ctx context.Context
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrIdents := identifier.FromCSR(csr)
+	// Check that the CSR identifiers count meets our CP/CPS requirements
+	if len(csrIdents) > profile.maxNames || len(csrIdents) < 1 {
+		return nil, nil, berrors.UnauthorizedError("CSR identifier count is not at minimum 1 or at maximum %d", profile.maxNames)
+	}
+
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
 		return nil, nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
@@ -2112,7 +2117,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 
 		// Never reuse dns-persist-01 authorizations:
-		// draft-ietf-acme-dns-persist-00 section 7.8 caps the reuse period to
+		// draft-ietf-acme-dns-persist-01 section 7.8 caps the reuse period to
 		// the TXT record's TTL and BRs section 3.2.2.4.22 caps it at 10 days.
 		// Since TTLs are typically seconds to minutes, the TTL cap is likely to
 		// be the binding constraint; re-validating every order is simpler.

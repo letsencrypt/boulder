@@ -100,7 +100,6 @@ type certificateAuthorityImpl struct {
 
 	// The prefix is prepended to the serial number.
 	prefix    byte
-	maxNames  int
 	keyPolicy goodkey.KeyPolicy
 	clk       clock.Clock
 	log       blog.Logger
@@ -119,7 +118,6 @@ func NewCertificateAuthorityImpl(
 	issuers []*issuance.Issuer,
 	profiles map[string]*issuance.Profile,
 	serialPrefix byte,
-	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
 	metrics *caMetrics,
@@ -174,7 +172,6 @@ func NewCertificateAuthorityImpl(
 		issuers:   issuers,
 		profiles:  profiles,
 		prefix:    serialPrefix,
-		maxNames:  maxNames,
 		keyPolicy: keyPolicy,
 		log:       logger,
 		metrics:   metrics,
@@ -224,7 +221,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, err
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
+	err = csrlib.VerifyCSR(ctx, csr, &ca.keyPolicy, ca.pa)
 	if err != nil {
 		return nil, err
 	}

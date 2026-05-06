@@ -114,7 +114,6 @@ type caArgs struct {
 	issuers      []*issuance.Issuer
 	profiles     map[string]*issuance.Profile
 	serialPrefix byte
-	maxNames     int
 	keyPolicy    goodkey.KeyPolicy
 	logger       *blog.Mock
 	metrics      *caMetrics
@@ -201,7 +200,6 @@ func newCAArgs(t *testing.T) *caArgs {
 		issuers:      issuers,
 		profiles:     profiles,
 		serialPrefix: 0x11,
-		maxNames:     2,
 		keyPolicy:    keyPolicy,
 		logger:       blog.NewMock(),
 		metrics:      cametrics,
@@ -214,7 +212,7 @@ func newCAArgs(t *testing.T) *caArgs {
 func (c *caArgs) make() (*certificateAuthorityImpl, error) {
 	return NewCertificateAuthorityImpl(
 		c.sa, c.sctService, c.pa, c.issuers, c.profiles, c.serialPrefix,
-		c.maxNames, c.keyPolicy, c.logger, c.metrics, c.clk)
+		c.keyPolicy, c.logger, c.metrics, c.clk)
 }
 
 type mockSA struct{}
@@ -541,10 +539,6 @@ func TestIssueCertificate_BadCSR(t *testing.T) {
 		{
 			name:    "no names",
 			csrPath: "./testdata/no_names.der.csr",
-		},
-		{
-			name:    "too many names",
-			csrPath: "./testdata/too_many_names.der.csr",
 		},
 		{
 			name:    "short key",

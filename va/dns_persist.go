@@ -109,7 +109,7 @@ func parseDNSPersistRecord(record string) (string, *dnsPersistIssueValueParams, 
 			params.persistUntil = time.Unix(persistUntilVal, 0).UTC()
 
 		default:
-			// Per draft-ietf-acme-dns-persist-00, "the server MUST ignore any
+			// Per draft-ietf-acme-dns-persist-01, "the server MUST ignore any
 			// parameter within the issue-value that has an unrecognized tag."
 			continue
 		}
@@ -125,10 +125,13 @@ func parseDNSPersistRecord(record string) (string, *dnsPersistIssueValueParams, 
 // given time. It returns nil if the record authorizes issuance, or a
 // berrors.Unauthorized error for authorization failures.
 func checkDNSPersistRecord(params *dnsPersistIssueValueParams, validAccountURI string, wildcardName bool, validatedAt time.Time) error {
+	// Per draft-ietf-acme-dns-persist-01 section 4.1, accounturi values are
+	// compared using Simple String Comparison per RFC 3986 section 6.2.1, with
+	// no case-folding or other normalization.
 	if params.accountURI != validAccountURI {
 		return berrors.UnauthorizedError("accounturi mismatch: expected %q, got %q", validAccountURI, params.accountURI)
 	}
-	// Per draft-ietf-acme-dns-persist-00, the policy parameter's tag and
+	// Per draft-ietf-acme-dns-persist-01 section 4.1, the policy parameter's
 	// defined values MUST be treated as case-insensitive. If the policy
 	// parameter's value is anything other than "wildcard", the CA MUST proceed
 	// as if the policy parameter were not present.

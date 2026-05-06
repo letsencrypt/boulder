@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -95,18 +96,22 @@ func TestGetSCTs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp := New(tc.mock, tc.logs, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
-			if tc.result != nil {
-				test.AssertDeepEquals(t, ret, tc.result)
-			} else if tc.expectErr != "" {
-				if !strings.Contains(err.Error(), tc.expectErr) {
-					t.Errorf("Error %q did not match expected %q", err, tc.expectErr)
+			synctest.Test(t, func(t *testing.T) {
+				mockLog := blog.NewMock()
+				defer mockLog.Close()
+				ctp := New(tc.mock, tc.logs, nil, nil, time.Second, mockLog, metrics.NoopRegisterer)
+				ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
+				if tc.result != nil {
+					test.AssertDeepEquals(t, ret, tc.result)
+				} else if tc.expectErr != "" {
+					if !strings.Contains(err.Error(), tc.expectErr) {
+						t.Errorf("Error %q did not match expected %q", err, tc.expectErr)
+					}
+					if tc.berrorType != nil {
+						test.AssertErrorIs(t, err, *tc.berrorType)
+					}
 				}
-				if tc.berrorType != nil {
-					test.AssertErrorIs(t, err, *tc.berrorType)
-				}
-			}
+			})
 		})
 	}
 }
@@ -120,6 +125,29 @@ func (mp *mockFailOnePub) SubmitToSingleCTWithResult(_ context.Context, req *pub
 		return nil, errors.New("BAD")
 	}
 	return &pubpb.Result{Sct: []byte{0}}, nil
+}
+
+func TestGetSCTsNoStaggerOnError(t *testing.T) {
+	// We shouldn't wait for the stagger (1h, here) because all the submissions should fail
+	synctest.Test(t, func(t *testing.T) {
+		mockLog := blog.NewMock()
+		defer mockLog.Close()
+		ctp := New(&mockFailPub{}, loglist.List{
+			{Name: "LogA1", Operator: "OperA", Url: "UrlA1", Key: []byte("KeyA1")},
+			{Name: "LogA2", Operator: "OperA", Url: "UrlA2", Key: []byte("KeyA2")},
+			{Name: "LogB1", Operator: "OperB", Url: "UrlB1", Key: []byte("KeyB1")},
+			{Name: "LogC1", Operator: "OperC", Url: "UrlC1", Key: []byte("KeyC1")},
+		}, nil, nil, time.Hour, mockLog, metrics.NoopRegisterer)
+
+		start := time.Now()
+		_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
+		elapsed := time.Since(start)
+
+		test.AssertError(t, err, "GetSCTs should have failed")
+		if elapsed > 5*time.Second {
+			t.Errorf("GetSCTs took %s with a 1h stagger, instead of failing quickly", elapsed)
+		}
+	})
 }
 
 func TestGetSCTsMetrics(t *testing.T) {
