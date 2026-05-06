@@ -23,7 +23,9 @@ func stdlibHandler(w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 // log lines. It returns []any instead of []slog.Attr because slog doesn't have
 // a Logger.WithAttr() method.
 //
-// Because this is used only in the test environment, it returns a minimal set.
+// Because our test environment does not plumb the log output through a system
+// which tags lines with their source, do that ourselves for the sake
+// of test output readability.
 func universalAttrs() []any {
 	return []any{slog.String("prog", core.Command())}
 }

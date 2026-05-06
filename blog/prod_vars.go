@@ -7,11 +7,7 @@ package blog
 import (
 	"io"
 	"log/slog"
-	"os"
-	"strings"
 	"testing"
-
-	"github.com/letsencrypt/boulder/core"
 )
 
 // stdlibHandler constructs the underlying handler provided by the go
@@ -31,24 +27,8 @@ func stdlibHandler(w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 // log lines. It returns []any instead of []slog.Attr because slog doesn't have
 // a Logger.WithAttr() method.
 //
-// Because this is used in production, it returns a similar set of attributes
-// as syslog would add automatically.
+// Because our production log collector adds dc/host/prog/pid tags itself, we
+// don't add anything here.
 func universalAttrs() []any {
-	shortHostname := "unknown"
-	datacenter := "unknown"
-	hostname, err := os.Hostname()
-	if err == nil {
-		splits := strings.SplitN(hostname, ".", 3)
-		shortHostname = splits[0]
-		if len(splits) > 1 {
-			datacenter = splits[1]
-		}
-	}
-
-	return []any{
-		slog.String("dc", datacenter),
-		slog.String("host", shortHostname),
-		slog.String("prog", core.Command()),
-		slog.Int("pid", os.Getpid()),
-	}
+	return nil
 }
