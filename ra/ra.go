@@ -1594,8 +1594,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	defer func() {
 		if err != nil {
 			ra.log.AuditError(ctx, "Revocation request", err)
+		} else {
+			ra.log.AuditInfo(ctx, "Revocation request")
 		}
-		ra.log.AuditInfo(ctx, "Revocation request")
 	}()
 
 	metadata, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: serialString})
@@ -1736,8 +1737,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	defer func() {
 		if err != nil {
 			ra.log.AuditError(ctx, "Revocation request", err)
+		} else {
+			ra.log.AuditInfo(ctx, "Revocation request")
 		}
-		ra.log.AuditInfo(ctx, "Revocation request")
 	}()
 
 	// We revoke the cert before adding it to the blocked keys list, to avoid a
@@ -1824,8 +1826,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	defer func() {
 		if err != nil {
 			ra.log.AuditError(ctx, "Revocation request", err)
+		} else {
+			ra.log.AuditInfo(ctx, "Revocation request")
 		}
-		ra.log.AuditInfo(ctx, "Revocation request")
 	}()
 
 	var cert *x509.Certificate

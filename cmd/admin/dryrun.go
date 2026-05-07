@@ -79,7 +79,7 @@ func (d dryRunSAC) EnableRateLimitOverride(ctx context.Context, req *sapb.Enable
 }
 
 func (d dryRunSAC) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
-	d.log.Info(ctx, "dry-run: sa.EnableRateLimitOverride",
+	d.log.Info(ctx, "dry-run: sa.PauseIdentifiers",
 		blog.Acct(req.RegistrationID),
 		blog.Idents(identifier.FromProtoSlice(req.Identifiers)...),
 	)

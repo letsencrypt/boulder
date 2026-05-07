@@ -228,7 +228,7 @@ func NewLogger(logConf blog.Config) blog.Logger {
 	go func() {
 		for {
 			time.Sleep(time.Hour)
-			logger.Info(context.Background(), "heartbeat", slog.Time("time", time.Now()))
+			logger.Info(context.Background(), "heartbeat", slog.Time("now", time.Now()))
 		}
 	}()
 	return logger

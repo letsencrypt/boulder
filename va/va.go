@@ -610,6 +610,8 @@ func summarizeMPIC(passed, failed []string, passedRIRSet map[string]struct{}) *m
 // Internal logic errors are logged. If the number of operation failures exceeds
 // va.maxRemoteFailures, the first encountered problem is returned as a
 // *probs.ProblemDetails.
+//
+// It always returns a non-nil summary, whether or not there's also a prob.
 func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) (*mpicSummary, *probs.ProblemDetails) {
 	remoteVACount := len(va.remoteVAs)
 	//  - Mar 15, 2026: MUST implement using at least 3 perspectives
@@ -618,7 +620,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 	// See "Phased Implementation Timeline" in
 	// https://github.com/cabforum/servercert/blob/main/docs/BR.md#3229-multi-perspective-issuance-corroboration
 	if remoteVACount < 3 {
-		return nil, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
+		return summarizeMPIC(nil, nil, nil), probs.ServerInternal("Insufficient remote perspectives: need at least 3")
 	}
 
 	type response struct {
@@ -883,7 +885,12 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		}
 		var summary *mpicSummary
 		summary, prob = va.doRemoteOperation(ctx, op, req)
-		logAttrs = append(logAttrs, slog.Any("mpicSummary", summary))
+		logAttrs = append(logAttrs, slog.Group("mpic",
+			slog.Any("passed", summary.Passed),
+			slog.Any("failed", summary.Failed),
+			slog.Any("passedRIRs", summary.PassedRIRs),
+			slog.String("quorum", summary.QuorumResult),
+		))
 	}
 
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)

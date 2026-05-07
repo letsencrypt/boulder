@@ -75,7 +75,7 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	for range overrideCount {
 		result := <-results
 		if result.err != nil {
-			a.log.Error(ctx, "failed to add override", err,
+			a.log.Error(ctx, "failed to add override", result.err,
 				slog.Int64("limit", result.ov.LimitEnum),
 				slog.String("bucketKey", result.ov.BucketKey),
 			)

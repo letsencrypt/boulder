@@ -101,7 +101,6 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		if va.isPrimaryVA() {
 			// Observe total check latency (primary+remote).
 			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
-			logAttrs = append(logAttrs, slog.String("status", string(core.StatusValid)))
 		}
 
 		va.log.AuditInfo(ctx, "CAA check result", logAttrs...)
