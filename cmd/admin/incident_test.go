@@ -102,11 +102,6 @@ func TestCreateIncidentSubcommandValidation(t *testing.T) {
 			expectErrContains: "required",
 		},
 		{
-			name:              "bad incident",
-			sub:               subcommandCreateIncident{incident: "bad name", url: "u", renewBy: "2030-01-01T00:00:00Z"},
-			expectErrContains: "invalid incident",
-		},
-		{
 			name:              "bad renewBy",
 			sub:               subcommandCreateIncident{incident: "incident_x", url: "u", renewBy: "tomorrow"},
 			expectErrContains: "renew-by",
@@ -179,9 +174,6 @@ func TestUpdateIncidentSubcommand(t *testing.T) {
 
 	err = (&subcommandUpdateIncident{url: "https://example.com/new"}).Run(context.Background(), a)
 	test.AssertError(t, err, "expected error for missing -incident")
-
-	err = (&subcommandUpdateIncident{incident: "bad name", url: "https://example.com/new"}).Run(context.Background(), a)
-	test.AssertError(t, err, "expected error for malformed incident")
 }
 
 func TestLoadIncidentSerialsSubcommand(t *testing.T) {

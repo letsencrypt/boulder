@@ -43,7 +43,7 @@ func (ssa *SQLStorageAuthorityAdmin) CreateIncident(ctx context.Context, req *sa
 	if core.IsAnyNilOrZero(req.SerialTable, req.Url, req.RenewBy) {
 		return nil, errIncompleteRequest
 	}
-	if !ValidIncidentTableRegexp.MatchString(req.SerialTable) {
+	if !validIncidentTableRegexp.MatchString(req.SerialTable) {
 		return nil, fmt.Errorf("malformed incident %q", req.SerialTable)
 	}
 
@@ -158,14 +158,14 @@ func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAut
 
 	var incidentTable string
 
-	flush := func(serials []string) error {
+	insert := func(serials []string) error {
 		if len(serials) == 0 {
 			return nil
 		}
 
 		// Safety note: incidentTable is interpolated directly into the query
 		// text, which cannot be parameterized for an identifier. It was
-		// validated against ValidIncidentTableRegexp when the metadata message
+		// validated against validIncidentTableRegexp when the metadata message
 		// arrived, so it contains only [a-zA-Z0-9_].
 		valuesPlaceholders := strings.TrimRight(strings.Repeat("(?, NULL, NULL, NULL),", len(serials)), ",")
 		insertArgs := make([]any, len(serials))
@@ -211,7 +211,7 @@ func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAut
 			if incidentTable != "" {
 				return errors.New("received a second metadata message; only one is allowed per stream")
 			}
-			if !ValidIncidentTableRegexp.MatchString(payload.Metadata.SerialTable) {
+			if !validIncidentTableRegexp.MatchString(payload.Metadata.SerialTable) {
 				return fmt.Errorf("malformed incident %q", payload.Metadata.SerialTable)
 			}
 			incidentTable = payload.Metadata.SerialTable
@@ -223,7 +223,7 @@ func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAut
 			if slices.Contains(payload.Batch.Serials, "") {
 				return errors.New("empty serial in stream")
 			}
-			err := flush(payload.Batch.Serials)
+			err := insert(payload.Batch.Serials)
 			if err != nil {
 				return err
 			}

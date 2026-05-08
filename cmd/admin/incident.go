@@ -17,7 +17,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -42,9 +41,6 @@ func (s *subcommandCreateIncident) Flags(f *flag.FlagSet) {
 func (s *subcommandCreateIncident) Run(ctx context.Context, a *admin) error {
 	if s.incident == "" || s.url == "" || s.renewBy == "" {
 		return errors.New("-incident, -url, and -renew-by are all required")
-	}
-	if !sa.ValidIncidentTableRegexp.MatchString(s.incident) {
-		return fmt.Errorf("invalid incident %q (must match %s)", s.incident, sa.ValidIncidentTableRegexp)
 	}
 	renewBy, err := time.Parse(time.RFC3339, s.renewBy)
 	if err != nil {
@@ -113,9 +109,6 @@ func (s *subcommandUpdateIncident) Run(ctx context.Context, a *admin) error {
 	if s.incident == "" {
 		return errors.New("-incident is required")
 	}
-	if !sa.ValidIncidentTableRegexp.MatchString(s.incident) {
-		return fmt.Errorf("invalid incident %q (must match %s)", s.incident, sa.ValidIncidentTableRegexp)
-	}
 	if s.url == "" && s.renewBy == "" && s.enable == "" {
 		return errors.New("at least one of -url, -renew-by, or -enable must be set")
 	}
@@ -148,7 +141,7 @@ func (s *subcommandUpdateIncident) Run(ctx context.Context, a *admin) error {
 	if req.Enabled != nil {
 		changes = append(changes, fmt.Sprintf("enabled=%t", *req.Enabled))
 	}
-	a.log.Infof("Updated incident %q: %s", s.incident, strings.Join(changes, " "))
+	a.log.AuditInfo(fmt.Sprintf("Updated incident %q: %s", s.incident, strings.Join(changes, " ")), nil)
 	return nil
 }
 
@@ -167,7 +160,7 @@ func (*subcommandLoadIncidentSerials) Desc() string {
 
 func (s *subcommandLoadIncidentSerials) Flags(f *flag.FlagSet) {
 	f.StringVar(&s.incident, "incident", "", "Incident name (must start with 'incident_'; required)")
-	f.StringVar(&s.serialsFile, "serials-file", "", "File of hex serials, one per line (required)")
+	f.StringVar(&s.serialsFile, "serials-file", "", "File of hex serials, one per line; duplicates (within or across batches, including reruns) are tolerated and skipped (required)")
 	f.UintVar(&s.parallelism, "parallelism", 10, "Parallel workers, each with its own stream to the SA")
 	f.UintVar(&s.batchSize, "batch-size", 10000, "Number of serials per gRPC message (and per SA INSERT)")
 }
@@ -175,9 +168,6 @@ func (s *subcommandLoadIncidentSerials) Flags(f *flag.FlagSet) {
 func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error {
 	if s.incident == "" || s.serialsFile == "" {
 		return errors.New("-incident and -serials-file are required")
-	}
-	if !sa.ValidIncidentTableRegexp.MatchString(s.incident) {
-		return fmt.Errorf("invalid incident %q", s.incident)
 	}
 	if s.parallelism == 0 {
 		return errors.New("-parallelism must be > 0")

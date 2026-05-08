@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	ValidIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
+	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
 // SQLStorageAuthorityRO defines a read-only subset of a Storage Authority
@@ -768,7 +768,7 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 	}
 
 	// Check that `req.IncidentTable` is a valid incident table name.
-	if !ValidIncidentTableRegexp.MatchString(req.IncidentTable) {
+	if !validIncidentTableRegexp.MatchString(req.IncidentTable) {
 		return fmt.Errorf("malformed table name %q", req.IncidentTable)
 	}
 
