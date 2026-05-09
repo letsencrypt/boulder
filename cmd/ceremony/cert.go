@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +57,14 @@ type certProfile struct {
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
+
+	// EKUs must be either "none" (used for self-signed roots), "server" (used
+	// for modern single-purpose hierarchies), or "both" (used for legacy
+	// hierarchies with both id-kp-tlsClientAuth and id-kp-tlsServerAuth). If
+	// empty, defaults to "none" for root ceremonies and to "server" for others.
+	//
+	// TODO: Remove this when we no longer issue any tlsClientAuth CA certs.
+	EKUs string `yaml:"ekus"`
 }
 
 // AllowedSigAlgs contains the allowed signature algorithms
@@ -231,6 +240,32 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		return nil, errors.New("at least one key usage must be set")
 	}
 
+	var ekus []x509.ExtKeyUsage
+	if ct == rootCert {
+		// rootCert does not get EKU or MaxPathZero.
+		// 		BR 7.1.2.1.2 Root CA Extensions
+		// 		Extension 	Presence 	Critical 	Description
+		// 		extKeyUsage 	MUST NOT 	N 	-
+		if profile.EKUs != "" && profile.EKUs != "none" {
+			return nil, fmt.Errorf("root certificates MUST NOT have an EKU extension; profile configured %q", profile.EKUs)
+		}
+	} else {
+		// By default, only include id-kp-tlsServerAuth. This reflects the move
+		// towards single-purpose hierarchies, as required by the Chrome Root
+		// Program, among others.
+		if profile.EKUs == "" || profile.EKUs == "server" {
+			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		} else if profile.EKUs == "both" {
+			// Until June 15, 2026, including both EKUs is acceptable.
+			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+		} else {
+			return nil, fmt.Errorf("unrecognized EKUs %q; must be 'none', 'server', or 'both'", profile.EKUs)
+		}
+	}
+	if len(tbcs.ExtKeyUsage) != 0 && !slices.Equal(ekus, tbcs.ExtKeyUsage) {
+		return nil, fmt.Errorf("existing cert has EKUs %v, but cross-sign profile has EKUs %v", tbcs.ExtKeyUsage, ekus)
+	}
+
 	cert := &x509.Certificate{
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
@@ -239,6 +274,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		KeyUsage:              ku,
+		ExtKeyUsage:           ekus,
 		SubjectKeyId:          subjectKeyID,
 	}
 
@@ -273,19 +309,11 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 	}
 
 	switch ct {
-	// rootCert does not get EKU or MaxPathZero.
-	// 		BR 7.1.2.1.2 Root CA Extensions
-	// 		Extension 	Presence 	Critical 	Description
-	// 		extKeyUsage 	MUST NOT 	N 	-
 	case requestCert, intermediateCert:
-		// id-kp-serverAuth is included in intermediate certificates, as required by
-		// Section 7.1.2.10.6 of the CA/BF Baseline Requirements.
-		// id-kp-clientAuth is excluded, as required by section 3.2.1 of the Chrome
-		// Root Program Requirements.
-		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		// Issuing intermediates must always have MaxPathLen 0.
 		cert.MaxPathLenZero = true
 	case crossCert:
-		cert.ExtKeyUsage = tbcs.ExtKeyUsage
+		// Cross-signs should have the same MaxPathLen as the existing cert.
 		cert.MaxPathLenZero = tbcs.MaxPathLenZero
 		// The SKID needs to match the previous SKID, no matter how it was computed.
 		cert.SubjectKeyId = tbcs.SubjectKeyId
