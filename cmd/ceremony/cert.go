@@ -250,19 +250,20 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 			return nil, fmt.Errorf("root certificates MUST NOT have an EKU extension; profile configured %q", profile.EKUs)
 		}
 	} else {
-		// By default, only include id-kp-tlsServerAuth. This reflects the move
-		// towards single-purpose hierarchies, as required by the Chrome Root
-		// Program, among others.
-		if profile.EKUs == "" || profile.EKUs == "server" {
+		switch profile.EKUs {
+		case "", "server":
+			// By default, only include id-kp-tlsServerAuth. This reflects the move
+			// towards single-purpose hierarchies, as required by the Chrome Root
+			// Program, among others.
 			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
-		} else if profile.EKUs == "both" {
+		case "both":
 			// Until June 15, 2026, including both EKUs is acceptable.
 			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
-		} else {
+		default:
 			return nil, fmt.Errorf("unrecognized EKUs %q; must be 'none', 'server', or 'both'", profile.EKUs)
 		}
 	}
-	if len(tbcs.ExtKeyUsage) != 0 && !slices.Equal(ekus, tbcs.ExtKeyUsage) {
+	if ct == crossCert && len(tbcs.ExtKeyUsage) != 0 && !slices.Equal(ekus, tbcs.ExtKeyUsage) {
 		return nil, fmt.Errorf("existing cert has EKUs %v, but cross-sign profile has EKUs %v", tbcs.ExtKeyUsage, ekus)
 	}
 
