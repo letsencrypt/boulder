@@ -264,7 +264,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		}
 	}
 	if ct == crossCert && len(tbcs.ExtKeyUsage) != 0 && !slices.Equal(ekus, tbcs.ExtKeyUsage) {
-		return nil, fmt.Errorf("existing cert has EKUs %v, but cross-sign profile has EKUs %v", tbcs.ExtKeyUsage, ekus)
+		return nil, fmt.Errorf("existing cert has EKUs %v, but cross-certificate profile has EKUs %v", tbcs.ExtKeyUsage, ekus)
 	}
 
 	cert := &x509.Certificate{
