@@ -268,7 +268,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 			// Note: this safety check uses on notBefore rather than a disclosure date, so it's imperfect but still useful.
 			notBefore, err := time.Parse(time.DateTime, profile.NotBefore)
 			if err != nil {
-				return nil, fmt.Errorf("parsing notAfter: %s", err)
+				return nil, fmt.Errorf("parsing notBefore: %s", err)
 			}
 			if notBefore.Before(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)) {
 				ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
