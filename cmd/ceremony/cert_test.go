@@ -226,7 +226,7 @@ func TestMakeTemplateIntermediateEKUs(t *testing.T) {
 	}
 
 	intermediateProfile.EKUs = "unintelligible"
-	template, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	_, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
 	if err == nil {
 		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"unintelligible\": got nil error, want error")
 	}
