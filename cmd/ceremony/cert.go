@@ -258,6 +258,12 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 		case "both":
 			// Until June 15, 2026, including both EKUs is acceptable.
+			// https://googlechrome.github.io/chromerootprogram/#132-promote-use-of-dedicated-tls-server-authentication-pki-hierarchies
+			// 1.3.2 Promote use of Dedicated TLS Server Authentication PKI Hierarchies
+			// ...
+			// All corresponding unexpired and unrevoked subordinate CA certificates operated beneath an existing root included in the Chrome Root Store MUST:
+			// if disclosed to the CCADB before June 15, 2026: include the extendedKeyUsage extension and (a) only assert an extendedKeyUsage purpose of id-kp-serverAuth or (b) only assert extendedKeyUsage purposes of id-kp-serverAuth and id-kp-clientAuth.
+			// ...
 			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
 		default:
 			return nil, fmt.Errorf("unrecognized EKUs %q; must be 'none', 'server', or 'both'", profile.EKUs)

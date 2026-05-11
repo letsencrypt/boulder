@@ -717,8 +717,8 @@ func crossCertCeremony(configBytes []byte) error {
 	// If the existing cert has Extended Key Usages (i.e. it is an issuing
 	// intermediate), then we need the EKUs of the cross-sign to be identical.
 	// However, if the existing cert has no EKUs (i.e. it is a self-signed root),
-	// then we need the EKUs to be either just tlsServerAuth (a single-purpose
-	// hierarchy) or just tlsServerAuth and tlsClientAuth (allowed by the Chrome
+	// then we need the EKUs to be exactly [serverAuth] (a dedicated
+	// hierarchy) or exactly [serverAuth, clientAuth] (allowed by the Chrome
 	// Root Program only until 2026-06-15).
 	if len(toBeCrossSigned.ExtKeyUsage) == 0 {
 		if !slices.Equal(lintCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) &&
