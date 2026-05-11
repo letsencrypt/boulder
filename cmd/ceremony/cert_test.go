@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"math/big"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,8 +115,8 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 		Subject: pkix.Name{
 			Organization: []string{"While Eek Ayote"},
 		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		NotBefore:             time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC),
+		NotAfter:              time.Date(2026, 5, 12, 0, 0, 0, 0, time.UTC),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -163,6 +164,18 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 	_, err = makeTemplate(randReader, crossCertProfile, pubKey, &liberalTBCS, crossCert)
 	if err != nil {
 		t.Errorf("makeTemplate with \"both\" and liberal to-be-cross-signed certificate: %s", err)
+	}
+
+	// Now check that issuing a "both" cross-sign in 2027 fails.
+	crossCertProfile.EKUs = "both"
+	crossCertProfile.NotBefore = "2027-05-11 00:00:00"
+	crossCertProfile.NotAfter = "2027-05-12 00:00:00"
+	_, err = makeTemplate(randReader, crossCertProfile, pubKey, &liberalTBCS, crossCert)
+	if err == nil {
+		t.Fatalf("makeTemplate with \"both\" and late notBefore: go nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "late for including clientAuth EKU") {
+		t.Errorf("makeTemplate with \"both\" and late notBefore: got error %q, want error with \"late for including clientAuth EKU\"", err)
 	}
 }
 

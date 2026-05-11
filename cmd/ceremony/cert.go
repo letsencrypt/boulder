@@ -264,7 +264,17 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 			// All corresponding unexpired and unrevoked subordinate CA certificates operated beneath an existing root included in the Chrome Root Store MUST:
 			// if disclosed to the CCADB before June 15, 2026: include the extendedKeyUsage extension and (a) only assert an extendedKeyUsage purpose of id-kp-serverAuth or (b) only assert extendedKeyUsage purposes of id-kp-serverAuth and id-kp-clientAuth.
 			// ...
-			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+			//
+			// Note: this safety check uses on notBefore rather than a disclosure date, so it's imperfect but still useful.
+			notBefore, err := time.Parse(time.DateTime, profile.NotBefore)
+			if err != nil {
+				return nil, fmt.Errorf("parsing notAfter: %s", err)
+			}
+			if notBefore.Before(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)) {
+				ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+			} else {
+				return nil, fmt.Errorf("notBefore of %s is too late for including clientAuth EKU", tbcs.NotAfter.Format(time.RFC3339))
+			}
 		default:
 			return nil, fmt.Errorf("unrecognized EKUs %q; must be 'none', 'server', or 'both'", profile.EKUs)
 		}
@@ -293,11 +303,11 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		cert.SignatureAlgorithm = sigAlg
 		notBefore, err := time.Parse(time.DateTime, profile.NotBefore)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing notBefore: %s", err)
 		}
 		notAfter, err := time.Parse(time.DateTime, profile.NotAfter)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing notAfter: %s", err)
 		}
 		validity := notAfter.Add(time.Second).Sub(notBefore)
 		if ct == rootCert && validity >= 9132*24*time.Hour {
