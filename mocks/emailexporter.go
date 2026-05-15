@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/salesforce"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 )
 
 var _ salesforce.SalesforceClient = (*MockSalesforceClientImpl)(nil)
@@ -46,7 +46,7 @@ func (m *MockSalesforceClientImpl) GetCreatedContacts() []string {
 	return slices.Clone(m.CreatedContacts)
 }
 
-var _ salesforcepb.ExporterClient = (*MockExporterClientImpl)(nil)
+var _ emailpb.ExporterClient = (*MockExporterClientImpl)(nil)
 
 // MockExporterClientImpl is a mock implementation of ExporterClient.
 type MockExporterClientImpl struct {
@@ -54,7 +54,7 @@ type MockExporterClientImpl struct {
 }
 
 // NewMockExporterImpl returns a MockExporterClientImpl as an ExporterClient.
-func NewMockExporterImpl(salesforceClient salesforce.SalesforceClient) salesforcepb.ExporterClient {
+func NewMockExporterImpl(salesforceClient salesforce.SalesforceClient) emailpb.ExporterClient {
 	return &MockExporterClientImpl{
 		SalesforceClient: salesforceClient,
 	}
@@ -62,7 +62,7 @@ func NewMockExporterImpl(salesforceClient salesforce.SalesforceClient) salesforc
 
 // SendContacts submits emails to the inner salesforce.SalesforceClient, returning an
 // error if any fail.
-func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *salesforcepb.SendContactsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	for _, e := range req.Emails {
 		err := m.SalesforceClient.SendContact(e)
 		if err != nil {

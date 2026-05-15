@@ -10,7 +10,7 @@ import (
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 	"github.com/letsencrypt/boulder/test"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -75,7 +75,7 @@ func TestSendContacts(t *testing.T) {
 	defer cleanup()
 
 	wantContacts := []string{"test@example.com", "user@example.com"}
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: wantContacts,
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -104,7 +104,7 @@ func TestSendContactsQueueFull(t *testing.T) {
 
 	var err error
 	for range contactsQueueCap * 2 {
-		_, err = exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+		_, err = exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 			Emails: []string{"test@example.com"},
 		})
 		if err != nil {
@@ -125,7 +125,7 @@ func TestSendContactsQueueDrains(t *testing.T) {
 		emails = append(emails, fmt.Sprintf("test@%d.example.com", i))
 	}
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: emails,
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -153,7 +153,7 @@ func TestSendContactsErrorMetrics(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"test@example.com"},
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -176,7 +176,7 @@ func TestSendContactDeduplication(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"duplicate@example.com", "duplicate@example.com"},
 	})
 	test.AssertNotError(t, err, "Error enqueuing contacts")
@@ -208,7 +208,7 @@ func TestSendContactErrorRemovesFromCache(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"error@example.com"},
 	})
 	test.AssertNotError(t, err, "enqueue failed")

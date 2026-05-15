@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 )
 
 // contactsQueueCap limits the queue size to prevent unbounded growth. This
@@ -25,7 +25,7 @@ var ErrQueueFull = errors.New("email-exporter queue is full")
 
 // ExporterImpl implements the gRPC server and processes email exports.
 type ExporterImpl struct {
-	salesforcepb.UnsafeExporterServer
+	emailpb.UnsafeExporterServer
 
 	sync.Mutex
 	drainWG sync.WaitGroup
@@ -47,7 +47,7 @@ type ExporterImpl struct {
 	log                   blog.Logger
 }
 
-var _ salesforcepb.ExporterServer = (*ExporterImpl)(nil)
+var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 
 // NewExporterImpl initializes an ExporterImpl with the given client and
 // configuration. Both perDayLimit and maxConcurrentRequests should be
@@ -97,7 +97,7 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 
 // SendContacts enqueues the provided email addresses. If the queue cannot
 // accommodate the new emails, an ErrQueueFull is returned.
-func (impl *ExporterImpl) SendContacts(ctx context.Context, req *salesforcepb.SendContactsRequest) (*emptypb.Empty, error) {
+func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Emails) {
 		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}

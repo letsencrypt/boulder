@@ -17,7 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/policy"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 	"github.com/letsencrypt/boulder/sfe/forms"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/web"
@@ -695,7 +695,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	}
 
 	if sfe.ee != nil && validFields[mailingListFieldName] == "true" {
-		_, err := sfe.ee.SendContacts(r.Context(), &salesforcepb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
+		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
 			sfe.log.Errf("failed to send contact to email-exporter: %s", err)
 		}
