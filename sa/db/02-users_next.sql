@@ -24,7 +24,7 @@ GRANT INSERT,SELECT ON serials TO 'sa'@'%';
 GRANT SELECT,INSERT ON precertificates TO 'sa'@'%';
 GRANT SELECT,INSERT ON keyHashToSerial TO 'sa'@'%';
 GRANT SELECT,INSERT ON blockedKeys TO 'sa'@'%';
-GRANT SELECT ON incidents TO 'sa'@'%';
+GRANT SELECT,INSERT,UPDATE ON incidents TO 'sa'@'%';
 GRANT SELECT,INSERT,UPDATE ON crlShards TO 'sa'@'%';
 GRANT SELECT,INSERT,UPDATE ON revokedCertificates TO 'sa'@'%';
 GRANT SELECT,INSERT,UPDATE ON replacementOrders TO 'sa'@'%';
@@ -85,10 +85,12 @@ GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';
 USE incidents_sa_next;
 
 CREATE USER IF NOT EXISTS 'incidents_sa'@'%';
+CREATE USER IF NOT EXISTS 'incidents_sa_admin'@'%';
 CREATE USER IF NOT EXISTS 'test_setup'@'%';
 
 -- Storage Authority
 GRANT SELECT ON * TO 'incidents_sa'@'%';
+GRANT CREATE,SELECT,INSERT ON * TO 'incidents_sa_admin'@'%';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';

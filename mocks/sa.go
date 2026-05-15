@@ -374,6 +374,11 @@ func (sa *StorageAuthorityReadOnly) IncidentsForSerial(ctx context.Context, req 
 	return &sapb.Incidents{}, nil
 }
 
+// ListIncidents is a mock.
+func (sa *StorageAuthorityReadOnly) ListIncidents(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*sapb.Incidents, error) {
+	return &sapb.Incidents{}, nil
+}
+
 // ReplacementOrderExists is a mock.
 func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return nil, nil

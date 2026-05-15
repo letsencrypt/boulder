@@ -714,27 +714,30 @@ func crossCertCeremony(configBytes []byte) error {
 		return fmt.Errorf("cross-signed subordinate CA's NotBefore predates the existing CA's NotBefore")
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
-	// We want the Extended Key Usages of our cross-signs to be identical to those
-	// in the cert being cross-signed, for the sake of consistency. However, our
-	// Root CA Certificates do not contain any EKUs, as required by BR 7.1.2.1.2.
-	// Therefore, cross-signs of our roots count as "unrestricted" cross-signs per
-	// the definition in BR 7.1.2.2.3, and are subject to the requirement that
-	// the cross-sign's Issuer and Subject fields must either:
-	// - have identical organizationNames; or
-	// - have orgnaizationNames which are affiliates of each other.
-	// Therefore, we enforce that cross-signs with empty EKUs have identical
-	// Subject Organization Name fields... or allow one special case where the
-	// issuer is "Internet Security Research Group" and the subject is "ISRG" to
-	// allow us to migrate from the longer string to the shorter one.
-	if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
+	// If the existing cert has Extended Key Usages (i.e. it is an issuing
+	// intermediate), then we need the EKUs of the cross-sign to be identical.
+	// However, if the existing cert has no EKUs (i.e. it is a self-signed root),
+	// then we need the EKUs to be exactly [serverAuth] (a dedicated
+	// hierarchy) or exactly [serverAuth, clientAuth] (allowed by the Chrome
+	// Root Program only until 2026-06-15).
+	if len(toBeCrossSigned.ExtKeyUsage) == 0 {
+		if !slices.Equal(lintCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) &&
+			!slices.Equal(lintCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+			return fmt.Errorf("lint cert has unacceptable EKUs for cross-signing a root")
+		}
+	} else if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
-	if len(lintCert.ExtKeyUsage) == 0 {
-		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) &&
-			!(slices.Equal(issuer.Subject.Organization, []string{"Internet Security Research Group"}) && slices.Equal(lintCert.Subject.Organization, []string{"ISRG"})) {
-			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
-		}
+
+	// A lot of additional requirements come into play if we issue a cross-sign to
+	// an external operator. Ensure that we only ever issue cross-signs to certs
+	// with the same Subject Organization field, with one exception for migrating
+	// from the longer "Internet Security Research Group" to the shorter "ISRG".
+	if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) &&
+		!(slices.Equal(issuer.Subject.Organization, []string{"Internet Security Research Group"}) && slices.Equal(lintCert.Subject.Organization, []string{"ISRG"})) {
+		return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
 	}
+
 	// Issue the cross-signed certificate.
 	finalCert, err := signAndWriteCert(template, issuer, lintCert, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {

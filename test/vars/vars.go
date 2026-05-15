@@ -26,6 +26,8 @@ var (
 	DBInfoSchemaRoot = dsn("root", "information_schema")
 	// DBConnIncidents is the incidents database connection.
 	DBConnIncidents = dsn("incidents_sa", "incidents_sa")
+	// DBConnIncidentsAdmin is the incidents database connection with create/insert perms.
+	DBConnIncidentsAdmin = dsn("incidents_sa_admin", "incidents_sa")
 	// DBConnIncidentsFullPerms is the incidents database connection with full perms.
 	DBConnIncidentsFullPerms = dsn("test_setup", "incidents_sa")
 )

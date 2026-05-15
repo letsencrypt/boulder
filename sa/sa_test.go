@@ -2869,6 +2869,40 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertEquals(t, len(result.Incidents), 1)
 }
 
+func TestListIncidents(t *testing.T) {
+	sa, _ := initSA(t)
+
+	testSADbMap, err := DBMapForTest(vars.DBConnSAFullPerms)
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+
+	resp, err := sa.ListIncidents(context.Background(), &emptypb.Empty{})
+	test.AssertNotError(t, err, "ListIncidents on empty incidents table")
+	test.AssertEquals(t, len(resp.Incidents), 0)
+
+	err = testSADbMap.Insert(ctx, &incidentModel{
+		SerialTable: "incident_foo",
+		URL:         "https://example.com/foo",
+		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
+		Enabled:     false,
+	})
+	test.AssertNotError(t, err, "inserting first incident")
+	err = testSADbMap.Insert(ctx, &incidentModel{
+		SerialTable: "incident_bar",
+		URL:         "https://example.com/bar",
+		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 14),
+		Enabled:     true,
+	})
+	test.AssertNotError(t, err, "inserting second incident")
+
+	resp, err = sa.ListIncidents(context.Background(), &emptypb.Empty{})
+	test.AssertNotError(t, err, "ListIncidents")
+	test.AssertEquals(t, len(resp.Incidents), 2)
+	test.AssertEquals(t, resp.Incidents[0].SerialTable, "incident_foo")
+	test.AssertEquals(t, resp.Incidents[0].Enabled, false)
+	test.AssertEquals(t, resp.Incidents[1].SerialTable, "incident_bar")
+	test.AssertEquals(t, resp.Incidents[1].Enabled, true)
+}
+
 func TestSerialsForIncident(t *testing.T) {
 	sa, _ := initSA(t)
 

@@ -23,6 +23,7 @@ type admin struct {
 	rac   adminRAClient
 	sac   adminSAClient
 	saroc sapb.StorageAuthorityReadOnlyClient
+	saac  saAdminClient
 
 	clk clock.Clock
 	log blog.Logger
@@ -41,6 +42,14 @@ type adminSAClient interface {
 	EnableRateLimitOverride(context.Context, *sapb.EnableRateLimitOverrideRequest, ...grpc.CallOption) (*emptypb.Empty, error)
 	PauseIdentifiers(context.Context, *sapb.PauseRequest, ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error)
 	UnpauseAccount(context.Context, *sapb.RegistrationID, ...grpc.CallOption) (*sapb.Count, error)
+}
+
+// saAdminClient defines the StorageAuthorityAdmin methods that the admin tool
+// relies on.
+type saAdminClient interface {
+	AddSerialsToIncident(context.Context, ...grpc.CallOption) (grpc.ClientStreamingClient[sapb.AddSerialsToIncidentRequest, emptypb.Empty], error)
+	CreateIncident(context.Context, *sapb.CreateIncidentRequest, ...grpc.CallOption) (*sapb.Incident, error)
+	UpdateIncident(context.Context, *sapb.UpdateIncidentRequest, ...grpc.CallOption) (*sapb.Incident, error)
 }
 
 // newAdmin constructs a new admin object on the heap and returns a pointer to
@@ -84,13 +93,16 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 	saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	var sac adminSAClient = dryRunSAC{log: logger}
+	var saAdmin saAdminClient = dryRunSAAdmin{log: logger}
 	if !dryRun {
 		sac = sapb.NewStorageAuthorityClient(saConn)
+		saAdmin = sapb.NewStorageAuthorityAdminClient(saConn)
 	}
 
 	return &admin{
 		rac:   rac,
 		sac:   sac,
+		saac:  saAdmin,
 		saroc: saroc,
 		clk:   clk,
 		log:   logger,

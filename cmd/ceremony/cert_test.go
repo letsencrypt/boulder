@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io/fs"
 	"math/big"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +63,173 @@ func TestMakeSubject(t *testing.T) {
 		Country:      []string{"country"},
 	}
 	test.AssertDeepEquals(t, profile.Subject(), expectedSubject)
+}
+
+func TestMakeTemplateEnforcesRootNoEKUs(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKey := samplePubkey()
+	ctx.GenerateRandomFunc = realRand
+
+	workingRootProfile := &certProfile{
+		EKUs:               "",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		SignatureAlgorithm: "ECDSAWithSHA256",
+		NotBefore:          "2026-05-11 00:00:00",
+		NotAfter:           "2026-05-12 00:00:00",
+	}
+	_, err := makeTemplate(randReader, workingRootProfile, pubKey, nil, rootCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with workingRootProfile: %s", err)
+	}
+
+	workingRootProfile.EKUs = "none"
+	_, err = makeTemplate(randReader, workingRootProfile, pubKey, nil, rootCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with workingRootProfile: %s", err)
+	}
+
+	brokenRootProfile := *workingRootProfile
+	brokenRootProfile.EKUs = "both"
+	_, err = makeTemplate(randReader, &brokenRootProfile, pubKey, nil, rootCert)
+	if err == nil {
+		t.Errorf("makeTemplate with brokenRootProfile: got nil error, want error")
+	}
+
+	brokenRootProfile = *workingRootProfile
+	brokenRootProfile.EKUs = "unintelligible"
+	_, err = makeTemplate(randReader, &brokenRootProfile, pubKey, nil, rootCert)
+	if err == nil {
+		t.Errorf("makeTemplate with brokenRootProfile: got nil error, want error")
+	}
+}
+
+func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKey := samplePubkey()
+	ctx.GenerateRandomFunc = realRand
+
+	tbcsCert := &x509.Certificate{
+		SerialNumber: big.NewInt(666),
+		Subject: pkix.Name{
+			Organization: []string{"While Eek Ayote"},
+		},
+		NotBefore:             time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC),
+		NotAfter:              time.Date(2026, 5, 12, 0, 0, 0, 0, time.UTC),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	crossCertProfile := &certProfile{
+		EKUs:               "",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		SignatureAlgorithm: "ECDSAWithSHA256",
+		NotBefore:          "2026-05-11 00:00:00",
+		NotAfter:           "2026-05-12 00:00:00",
+	}
+
+	template, err := makeTemplate(randReader, crossCertProfile, pubKey, tbcsCert, crossCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with crossCertProfile: %s", err)
+	}
+	expected := []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with crossCertProfile: got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	crossCertProfile.EKUs = "server"
+	_, err = makeTemplate(randReader, crossCertProfile, pubKey, tbcsCert, crossCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with crossCertProfile: %s", err)
+	}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with crossCertProfile: got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	// This will error because the tbcsCert has [serverAuth], but "both" means [serverAuth, clientAuth] on the cross sign
+	crossCertProfile.EKUs = "both"
+	_, err = makeTemplate(randReader, crossCertProfile, pubKey, tbcsCert, crossCert)
+	if err == nil {
+		t.Fatalf("makeTemplate with \"both\" and to-be-cross-signed certificate that has \"serverAuth\": got nil error, want error")
+	}
+
+	// Now simulate a to-be-cross-signed certificate that has no EKU constraints.
+	liberalTBCS := *tbcsCert
+	liberalTBCS.ExtKeyUsage = nil
+	crossCertProfile.EKUs = "both"
+	_, err = makeTemplate(randReader, crossCertProfile, pubKey, &liberalTBCS, crossCert)
+	if err != nil {
+		t.Errorf("makeTemplate with \"both\" and liberal to-be-cross-signed certificate: %s", err)
+	}
+
+	// Now check that issuing a "both" cross-sign in 2027 fails.
+	crossCertProfile.EKUs = "both"
+	crossCertProfile.NotBefore = "2027-05-11 00:00:00"
+	crossCertProfile.NotAfter = "2027-05-12 00:00:00"
+	_, err = makeTemplate(randReader, crossCertProfile, pubKey, &liberalTBCS, crossCert)
+	if err == nil {
+		t.Fatalf("makeTemplate with \"both\" and late notBefore: go nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "late for including clientAuth EKU") {
+		t.Errorf("makeTemplate with \"both\" and late notBefore: got error %q, want error with \"late for including clientAuth EKU\"", err)
+	}
+}
+
+func TestMakeTemplateIntermediateEKUs(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKey := samplePubkey()
+	ctx.GenerateRandomFunc = realRand
+
+	intermediateProfile := &certProfile{
+		EKUs:               "",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		SignatureAlgorithm: "ECDSAWithSHA256",
+		NotBefore:          "2026-05-11 00:00:00",
+		NotAfter:           "2026-05-12 00:00:00",
+	}
+
+	template, err := makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with intermediateProfile: %s", err)
+	}
+	expected := []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with intermediateProfile: got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	intermediateProfile.EKUs = "server"
+	template, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"server\": %s", err)
+	}
+	expected = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with intermediateProfile and EKUs: \"server\": got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	intermediateProfile.EKUs = "both"
+	template, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"both\": %s", err)
+	}
+	expected = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with intermediateProfile and EKUs: \"both\": got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	intermediateProfile.EKUs = "unintelligible"
+	_, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	if err == nil {
+		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"unintelligible\": got nil error, want error")
+	}
 }
 
 func TestMakeTemplateRoot(t *testing.T) {
