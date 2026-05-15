@@ -80,22 +80,6 @@ func (s legacyEmailExporterServer) SendContacts(ctx context.Context, req *emailp
 	return s.inner.SendContacts(ctx, &salesforcepb.SendContactsRequest{Emails: req.GetEmails()})
 }
 
-// SendCase is an interface adapter that forwards the request to the same method
-// on the inner salesforce.Exporter server.
-func (s legacyEmailExporterServer) SendCase(ctx context.Context, req *emailpb.SendCaseRequest) (*emptypb.Empty, error) {
-	return s.inner.SendCase(ctx, &salesforcepb.SendCaseRequest{
-		Origin:        req.GetOrigin(),
-		Subject:       req.GetSubject(),
-		Description:   req.GetDescription(),
-		ContactEmail:  req.GetContactEmail(),
-		Organization:  req.GetOrganization(),
-		AccountId:     req.GetAccountId(),
-		RateLimitName: req.GetRateLimitName(),
-		RateLimitTier: req.GetRateLimitTier(),
-		UseCase:       req.GetUseCase(),
-	})
-}
-
 func main() {
 	configFile := flag.String("config", "", "Path to configuration file")
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")

@@ -27,7 +27,6 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	Exporter_SendContacts_FullMethodName = "/email.Exporter/SendContacts"
-	Exporter_SendCase_FullMethodName     = "/email.Exporter/SendCase"
 )
 
 // ExporterClient is the client API for Exporter service.
@@ -35,7 +34,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExporterClient interface {
 	SendContacts(ctx context.Context, in *SendContactsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	SendCase(ctx context.Context, in *SendCaseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type exporterClient struct {
@@ -56,22 +54,11 @@ func (c *exporterClient) SendContacts(ctx context.Context, in *SendContactsReque
 	return out, nil
 }
 
-func (c *exporterClient) SendCase(ctx context.Context, in *SendCaseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, Exporter_SendCase_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // ExporterServer is the server API for Exporter service.
 // All implementations must embed UnimplementedExporterServer
 // for forward compatibility.
 type ExporterServer interface {
 	SendContacts(context.Context, *SendContactsRequest) (*emptypb.Empty, error)
-	SendCase(context.Context, *SendCaseRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedExporterServer()
 }
 
@@ -84,9 +71,6 @@ type UnimplementedExporterServer struct{}
 
 func (UnimplementedExporterServer) SendContacts(context.Context, *SendContactsRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendContacts not implemented")
-}
-func (UnimplementedExporterServer) SendCase(context.Context, *SendCaseRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SendCase not implemented")
 }
 func (UnimplementedExporterServer) mustEmbedUnimplementedExporterServer() {}
 func (UnimplementedExporterServer) testEmbeddedByValue()                  {}
@@ -127,24 +111,6 @@ func _Exporter_SendContacts_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Exporter_SendCase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SendCaseRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ExporterServer).SendCase(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Exporter_SendCase_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ExporterServer).SendCase(ctx, req.(*SendCaseRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // Exporter_ServiceDesc is the grpc.ServiceDesc for Exporter service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -155,10 +121,6 @@ var Exporter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendContacts",
 			Handler:    _Exporter_SendContacts_Handler,
-		},
-		{
-			MethodName: "SendCase",
-			Handler:    _Exporter_SendCase_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

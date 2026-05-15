@@ -18,7 +18,6 @@ var _ salesforce.SalesforceClient = (*MockSalesforceClientImpl)(nil)
 type MockSalesforceClientImpl struct {
 	sync.Mutex
 	CreatedContacts []string
-	CreatedCases    []salesforce.Case
 }
 
 // NewMockSalesforceClientImpl returns a MockSalesforceClientImpl, which implements
@@ -47,25 +46,6 @@ func (m *MockSalesforceClientImpl) GetCreatedContacts() []string {
 	return slices.Clone(m.CreatedContacts)
 }
 
-// SendCase adds a case payload to CreatedCases.
-func (m *MockSalesforceClientImpl) SendCase(payload salesforce.Case) error {
-	m.Lock()
-	defer m.Unlock()
-
-	m.CreatedCases = append(m.CreatedCases, payload)
-	return nil
-}
-
-// GetCreatedCases is used for testing to retrieve the list of created cases in
-// a thread-safe manner.
-func (m *MockSalesforceClientImpl) GetCreatedCases() []salesforce.Case {
-	m.Lock()
-	defer m.Unlock()
-
-	// Return a copy to avoid race conditions.
-	return slices.Clone(m.CreatedCases)
-}
-
 var _ salesforcepb.ExporterClient = (*MockExporterClientImpl)(nil)
 
 // MockExporterClientImpl is a mock implementation of ExporterClient.
@@ -90,19 +70,4 @@ func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *salesfor
 		}
 	}
 	return &emptypb.Empty{}, nil
-}
-
-// SendCase submits a Case using the inner salesforce.SalesforceClient.
-func (m *MockExporterClientImpl) SendCase(ctx context.Context, req *salesforcepb.SendCaseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, m.SalesforceClient.SendCase(salesforce.Case{
-		Origin:        req.Origin,
-		Subject:       req.Subject,
-		Description:   req.Description,
-		ContactEmail:  req.ContactEmail,
-		Organization:  req.Organization,
-		AccountId:     req.AccountId,
-		RateLimitName: req.RateLimitName,
-		RateLimitTier: req.RateLimitTier,
-		UseCase:       req.UseCase,
-	})
 }

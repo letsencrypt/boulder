@@ -43,7 +43,6 @@ const (
 	privacyPolicyFieldName       = "privacyPolicy"
 	emailAddressFieldName        = "emailAddress"
 	useCaseFieldName             = "useCase"
-	fundraisingFieldName         = "fundraising"
 	mailingListFieldName         = "mailingList"
 
 	// reviewStatusDefault is the initial status of a ticket when created.
@@ -94,14 +93,6 @@ var (
 	// the CertificatesPerDomainPerAccount rate limit override requests.
 	certificatesPerDomainPerAccountTierOptions = []string{"300", "1000", "5000", "10000", "25000", "50000", "75000", "100000", "175000", "250000", "500000", "1000000", "1750000", "2500000"}
 
-	fundraisingYesOption = "Yes, email me more information."
-
-	// FundraisingOptions is the list of options for the fundraising field.
-	FundraisingOptions = []string{
-		fundraisingYesOption,
-		"No, not at this time.",
-	}
-
 	// tierOptionsByRateLimit maps rate limit names to their valid tiers.
 	tierOptionsByRateLimit = map[string][]string{
 		rl.NewOrdersPerAccount.String():                      newOrdersPerAccountTierOptions,
@@ -109,19 +100,6 @@ var (
 		rl.CertificatesPerDomain.String() + perIPSuffix:      certificatesPerDomainTierOptions,
 		rl.CertificatesPerDomainPerAccount.String():          certificatesPerDomainPerAccountTierOptions,
 	}
-
-	fundraisingField = forms.NewDropdownField(
-		"Did you know that Let's Encrypt is a non-profit project?",
-		fundraisingFieldName,
-		`Funding for Let's Encrypt comes from contributions from our community 
-of users and advocates. While financially supporting Let's Encrypt is completely 
-optional and not required to use the service, we depend on the generosity of users 
-like you.
-
-Would your organization consider financially supporting Let's Encrypt as a Sponsor?`,
-		FundraisingOptions,
-		true,
-	)
 
 	baseFields = []forms.Field{
 		forms.NewCheckboxField(
@@ -140,9 +118,9 @@ subject to its terms.`,
 will be processed in accordance with <a href="https://letsencrypt.org/privacy" 
 target="_blank">Let's Encrypt's Privacy Policy</a>. I understand that ISRG collects 
 and will process this information to evaluate my rate limit override request and to 
-provide certificate issuance and management services. In addition, depending on my 
-responses to questions below, ISRG may use this information to send me email updates 
-and sponsorship information.`,
+provide certificate issuance and management services. In addition, depending on my
+responses to questions below, ISRG may use this information to send me email
+updates.`,
 			true,
 		),
 		forms.NewCheckboxField(
@@ -176,10 +154,9 @@ contact person if needed.`,
 )
 
 // overridesForm creates a new form with the base fields and the provided custom
-// fields. The custom fields will appear after the baseFields and before the
-// fundraising field.
+// fields. The custom fields will appear after the baseFields.
 func overridesForm(customFields ...forms.Field) *forms.Form {
-	return forms.NewForm(append(append(baseFields, customFields...), fundraisingField)...)
+	return forms.NewForm(append(baseFields, customFields...)...)
 }
 
 var (
@@ -338,12 +315,6 @@ func validateOverrideRequestField(fieldName, fieldValue, rateLimit string) error
 		}
 		if !agreed {
 			return fmt.Errorf("agreement with our subscriber agreement and privacy policy is required")
-		}
-		return nil
-
-	case fundraisingFieldName:
-		if !slices.Contains(FundraisingOptions, fieldValue) {
-			return fmt.Errorf("invalid fundraising option, valid options are: %s", strings.Join(FundraisingOptions, ", "))
 		}
 		return nil
 
@@ -638,7 +609,6 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		subscriberAgreementFieldName,
 		privacyPolicyFieldName,
 		mailingListFieldName,
-		fundraisingFieldName,
 		emailAddressFieldName,
 		OrganizationFieldName,
 		useCaseFieldName,
@@ -728,21 +698,6 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		_, err := sfe.ee.SendContacts(r.Context(), &salesforcepb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
 			sfe.log.Errf("failed to send contact to email-exporter: %s", err)
-		}
-	}
-
-	if sfe.ee != nil && validFields[fundraisingFieldName] == fundraisingYesOption {
-		_, err := sfe.ee.SendCase(r.Context(), &salesforcepb.SendCaseRequest{
-			Origin:        "Web",
-			Subject:       fmt.Sprintf("%s rate limit override request for %s", req.RateLimit, validFields[OrganizationFieldName]),
-			ContactEmail:  validFields[emailAddressFieldName],
-			Organization:  validFields[OrganizationFieldName],
-			RateLimitName: req.RateLimit,
-			RateLimitTier: validFields[TierFieldName],
-			UseCase:       validFields[useCaseFieldName],
-		})
-		if err != nil {
-			sfe.log.Errf("failed to send case to email-exporter: %s", err)
 		}
 	}
 
