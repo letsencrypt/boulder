@@ -157,6 +157,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 
+	is.addSubmission(hostnames)
 
 	if is.flakinessRate != 0 && rand.IntN(100) < is.flakinessRate {
 		time.Sleep(10 * time.Second)
@@ -166,7 +167,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 	w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
 }
 
-func (is *integrationSrv) addSubmission(hostname String) {
+func (is *integrationSrv) addSubmission(hostnames string) {
 	is.Lock()
 	defer is.Unlock()
 
