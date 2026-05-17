@@ -29,7 +29,7 @@ type ctSubmissionRequest struct {
 
 type integrationSrv struct {
 	sync.Mutex
-	submissions map[string]int64
+	submissions    map[string]int64
 	submissionsCap int
 	// Hostnames where we refuse to provide an SCT. This is to exercise the code
 	// path where all CT servers fail.
