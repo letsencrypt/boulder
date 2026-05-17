@@ -30,6 +30,7 @@ type ctSubmissionRequest struct {
 type integrationSrv struct {
 	sync.Mutex
 	submissions map[string]int64
+	submissionsCap int
 	// Hostnames where we refuse to provide an SCT. This is to exercise the code
 	// path where all CT servers fail.
 	rejectHosts map[string]bool
@@ -156,9 +157,6 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 
-	is.Lock()
-	is.submissions[hostnames]++
-	is.Unlock()
 
 	if is.flakinessRate != 0 && rand.IntN(100) < is.flakinessRate {
 		time.Sleep(10 * time.Second)
@@ -166,6 +164,16 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 
 	w.WriteHeader(http.StatusOK)
 	w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
+}
+
+func (is *integrationSrv) addSubmission(hostname String) {
+	is.Lock()
+	defer is.Unlock()
+
+	_, ok := is.submissions[hostnames]
+	if ok || len(is.submissions) < is.submissionsCap {
+		is.submissions[hostnames]++
+	}
 }
 
 func (is *integrationSrv) getSubmissions(w http.ResponseWriter, r *http.Request) {
@@ -199,6 +207,9 @@ type Personality struct {
 	// FlakinessRate is an integer between 0-100 that controls how often the log
 	// "flakes", i.e. fails to respond in a reasonable time frame.
 	FlakinessRate int
+	// SubmissionsCap limits the number of hostnames we track. Defaults to 100.
+	// After that many entries, new hostnames won't be counted in /submissions.
+	SubmissionsCap int
 }
 
 func runPersonality(p Personality) {
@@ -210,12 +221,17 @@ func runPersonality(p Personality) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	cap := p.SubmissionsCap
+	if cap == 0 {
+		cap = 100
+	}
 	is := integrationSrv{
-		key:           key,
-		flakinessRate: p.FlakinessRate,
-		submissions:   make(map[string]int64),
-		rejectHosts:   make(map[string]bool),
-		userAgent:     p.UserAgent,
+		key:            key,
+		flakinessRate:  p.FlakinessRate,
+		submissions:    make(map[string]int64),
+		submissionsCap: cap,
+		rejectHosts:    make(map[string]bool),
+		userAgent:      p.UserAgent,
 	}
 	m := http.NewServeMux()
 	m.HandleFunc("/submissions", is.getSubmissions)
