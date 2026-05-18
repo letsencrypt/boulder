@@ -208,7 +208,7 @@ type Personality struct {
 	// FlakinessRate is an integer between 0-100 that controls how often the log
 	// "flakes", i.e. fails to respond in a reasonable time frame.
 	FlakinessRate int
-	// SubmissionsCap limits the number of hostnames we track. Defaults to 100.
+	// SubmissionsCap limits the number of hostnames we track. Defaults to 1 million.
 	// After that many entries, new hostnames won't be counted in /submissions.
 	SubmissionsCap int
 }
@@ -224,7 +224,7 @@ func runPersonality(p Personality) {
 	}
 	cap := p.SubmissionsCap
 	if cap == 0 {
-		cap = 100
+		cap = 1_000_000
 	}
 	is := integrationSrv{
 		key:            key,
