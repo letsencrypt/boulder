@@ -111,7 +111,8 @@ message JSONWebKey {
 }
 
 message AuthorizationID {
-  string id = 1;
+  string id = 1;   // TODO(#8722): reserve
+  int64 idInt = 2; // TODO(#8722): rename
 }
 
 message GetValidAuthorizationsRequest {
@@ -294,7 +295,8 @@ message Authorizations {
 }
 
 message AuthorizationIDs {
-  repeated string ids = 1;
+  repeated string ids = 1;   // TODO(#8722): reserve
+  repeated int64 idInts = 2; // TODO(#8722): rename
 }
 
 message AuthorizationID2 {

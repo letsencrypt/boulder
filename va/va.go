@@ -14,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -722,7 +723,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 // validationLogEvent is a struct that contains the information needed to log
 // the results of DoCAA and DoDCV.
 type validationLogEvent struct {
-	AuthzID       string
+	AuthzID       int64
 	Requester     int64
 	Identifier    identifier.ACMEIdentifier
 	Challenge     core.Challenge
@@ -747,6 +748,24 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
+	// TODO(#8722): remove this and return req.Authz.Id to isAnyNilOrZero check
+	// above when Authz IDs are int64-only
+	if req.Authz.Id == "" && req.Authz.IdInt == 0 {
+		return nil, berrors.InternalServerError("Incomplete validation request, missing Authz ID")
+	}
+
+	// TODO(#8722): remove this whole thing when req.Authz.Id is int64-only
+	var authzIDInt int64
+	if len(strings.TrimSpace(req.Authz.Id)) > 0 {
+		authzIDInt, err := strconv.ParseInt(req.Authz.Id, 10, 64)
+		if err != nil {
+			return nil, berrors.InternalServerError("failed to parse Authz ID %v as int: %s", authzIDInt, err)
+		}
+	}
+	if req.Authz.IdInt != 0 {
+		authzIDInt = req.Authz.IdInt
+	}
+
 	ident := identifier.FromProto(req.Identifier)
 
 	chall, err := bgrpc.PBToChallenge(req.Challenge)
@@ -767,7 +786,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	var localLatency time.Duration
 	start := va.clk.Now()
 	logEvent := validationLogEvent{
-		AuthzID:    req.Authz.Id,
+		AuthzID:    authzIDInt,
 		Requester:  req.Authz.RegID,
 		Identifier: ident,
 		Challenge:  chall,

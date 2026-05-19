@@ -95,6 +95,7 @@ func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core
 		Authz: &vapb.AuthzMeta{
 			Id:    "",
 			RegID: 1,
+			IdInt: 1,
 		},
 		ExpectedKeyAuthorization: expectedKeyAuthorization,
 	}

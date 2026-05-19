@@ -3634,6 +3634,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 
 	authz := &core.Authorization{
 		ID:             "12345",
+		IDInt:          12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -3673,6 +3674,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 
 	authz := &core.Authorization{
 		ID:             "12345",
+		IDInt:          12345,
 		Status:         core.StatusInvalid,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -3699,6 +3701,7 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 
 	authz := &core.Authorization{
 		ID:             "12345",
+		IDInt:          12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("*.example.com"),
@@ -3722,6 +3725,7 @@ func TestPrepAuthzForDisplayShuffle(t *testing.T) {
 
 	authz := &core.Authorization{
 		ID:             "12345",
+		IDInt:          12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),

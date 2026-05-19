@@ -217,6 +217,7 @@ func TestAuthz(t *testing.T) {
 	}
 	inAuthz := core.Authorization{
 		ID:             "1",
+		IDInt:          1,
 		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
@@ -231,6 +232,7 @@ func TestAuthz(t *testing.T) {
 
 	inAuthzNilExpires := core.Authorization{
 		ID:             "1",
+		IDInt:          1,
 		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,

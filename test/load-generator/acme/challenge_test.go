@@ -66,7 +66,8 @@ func TestPickChallenge(t *testing.T) {
 		Type: "dns-01",
 	}
 	exampleAuthz := &core.Authorization{
-		ID: "1234",
+		ID:    "1234",
+		IDInt: 1234,
 		Challenges: []core.Challenge{
 			{
 				Type: "arm-wrestling",

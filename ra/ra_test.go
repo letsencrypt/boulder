@@ -205,6 +205,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
 		AuthzID:          req.Authz.Id,
+		AuthzIDInt:       req.Authz.IdInt,
 	})
 	if err != nil {
 		return nil, err
@@ -485,6 +486,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	authz := core.Authorization{
 		ID:             "1337",
+		IDInt:          1337,
 		Identifier:     identifier.NewDNS("not-example.com"),
 		RegistrationID: registration.Id,
 		Status:         "valid",
@@ -1078,6 +1080,7 @@ func TestRecheckCAADates(t *testing.T) {
 	twoChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.NewDNS("twochallenges.com"): {
 			ID:         "twochal",
+			IDInt:      1337,
 			Identifier: identifier.NewDNS("twochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
@@ -1099,6 +1102,7 @@ func TestRecheckCAADates(t *testing.T) {
 	noChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.NewDNS("nochallenges.com"): {
 			ID:         "nochal",
+			IDInt:      1337,
 			Identifier: identifier.NewDNS("nochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{},
@@ -1107,6 +1111,7 @@ func TestRecheckCAADates(t *testing.T) {
 	noValidationTime := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.NewDNS("novalidationtime.com"): {
 			ID:         "noval",
+			IDInt:      1337,
 			Identifier: identifier.NewDNS("novalidationtime.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
@@ -1130,15 +1135,15 @@ func TestRecheckCAADates(t *testing.T) {
 
 	// Should error if a authorization has `!= 1` challenge
 	err = ra.checkAuthorizationsCAA(context.Background(), registration.Id, twoChallenges, fc.Now())
-	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id 1337")
 
 	// Should error if a authorization has `!= 1` challenge
 	err = ra.checkAuthorizationsCAA(context.Background(), registration.Id, noChallenges, fc.Now())
-	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id 1337")
 
 	// Should error if authorization's challenge has no validated timestamp
 	err = ra.checkAuthorizationsCAA(context.Background(), registration.Id, noValidationTime, fc.Now())
-	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
+	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id 1337")
 
 	// We expect that "recent.com" is not checked because its mock authorization
 	// isn't expired
@@ -2072,6 +2077,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 				authzs: []*core.Authorization{
 					{
 						ID:             "1",
+						IDInt:          1,
 						Identifier:     identifier.NewDNS("*.zombo.com"),
 						RegistrationID: registration.Id,
 						Status:         core.StatusValid,
@@ -2293,6 +2299,7 @@ func TestNewOrderExpiry(t *testing.T) {
 			{
 				// A static fake ID we can check for in a unit test
 				ID:             "1",
+				IDInt:          1,
 				Identifier:     identifier.NewDNS("zombo.com"),
 				RegistrationID: registration.Id,
 				Expires:        &fakeAuthzExpires,
@@ -3050,7 +3057,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		for _, entry := range event.Identifiers {
 			if entry.Ident.Value == name {
 				// The authz entry should have the correct authz ID
-				test.AssertEquals(t, entry.Authz, fmt.Sprintf("%d", authzIDs[i]))
+				test.AssertEquals(t, entry.Authz, authzIDs[i])
 				// The authz entry should have the correct challenge type
 				test.AssertEquals(t, entry.Challenge, challs[i])
 			}
@@ -3174,6 +3181,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 	exp := fc.Now().Add(10 * time.Hour)
 	authz := core.Authorization{
 		ID:             "1337",
+		IDInt:          1337,
 		Identifier:     identifier.NewDNS("not-example.com"),
 		RegistrationID: 1,
 		Status:         "valid",
@@ -3942,6 +3950,7 @@ func TestGetAuthorization(t *testing.T) {
 		authzs: []*core.Authorization{
 			{
 				ID:         "1",
+				IDInt:      1,
 				Identifier: identifier.NewDNS("example.com"),
 				Status:     "valid",
 				Challenges: []core.Challenge{

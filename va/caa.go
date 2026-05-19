@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	corepb "github.com/letsencrypt/boulder/core/proto"
 
 	"github.com/miekg/dns"
 	"google.golang.org/protobuf/proto"
@@ -41,6 +43,18 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
+	// TODO(#8722): remove this whole thing when Authz IDs are int64-only
+	var authzID int64
+	if len(strings.TrimSpace(req.AuthzID)) > 0 {
+		authzID, err := strconv.ParseInt(req.AuthzID, 10, 64)
+		if err != nil {
+			return nil, berrors.MalformedError("eze Int64-ify err: %v", authzID)
+		}
+	}
+	if req.AuthzIDInt != 0 {
+		authzID = req.AuthzIDInt
+	}
+
 	ident := identifier.FromProto(req.Identifier)
 	if ident.Type != identifier.TypeDNS {
 		return nil, berrors.MalformedError("Identifier type for CAA check was not DNS")
@@ -64,7 +78,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	var localLatency time.Duration
 	start := va.clk.Now()
 	logEvent := validationLogEvent{
-		AuthzID:    req.AuthzID,
+		AuthzID:    authzID,
 		Requester:  req.AccountURIID,
 		Identifier: ident,
 	}
