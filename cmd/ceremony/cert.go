@@ -6,9 +6,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"slices"
 	"strconv"
@@ -367,4 +369,42 @@ func generateCSR(profile *certProfile, signer crypto.Signer) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create and sign CSR: %s", err)
 	}
 	return csrDER, nil
+}
+
+func signAndWriteCert(tbs, issuer *x509.Certificate, lintCert lintCert, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
+	if lintCert == nil {
+		return nil, fmt.Errorf("linting was not performed prior to issuance")
+	}
+	// x509.CreateCertificate uses a io.Reader here for signing methods that require
+	// a source of randomness. Since PKCS#11 based signing generates needed randomness
+	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
+	// we use one that always returns errors in case the internal usage of this reader
+	// changes.
+	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, subjectPubKey, signer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %s", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	log.Printf("Signed certificate PEM:\n%s", pemBytes)
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse signed certificate: %s", err)
+	}
+	if tbs == issuer {
+		// If cert is self-signed we need to populate the issuer subject key to
+		// verify the signature
+		issuer.PublicKey = cert.PublicKey
+		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
+	}
+	err = cert.CheckSignatureFrom(issuer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify certificate signature: %s", err)
+	}
+	err = writeFile(certPath, pemBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
+	}
+	log.Printf("Certificate written to %q\n", certPath)
+
+	return cert, nil
 }

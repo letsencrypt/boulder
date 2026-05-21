@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"io/fs"
 	"math/big"
 	"os"
@@ -1204,12 +1203,6 @@ func TestCRLConfig(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestSignAndWriteNoLintCert(t *testing.T) {
-	_, err := signAndWriteCert(nil, nil, nil, nil, nil, "")
-	test.AssertError(t, err, "should have failed because no lintCert was provided")
-	test.AssertDeepEquals(t, err, fmt.Errorf("linting was not performed prior to issuance"))
 }
 
 func TestPostIssuanceLinting(t *testing.T) {

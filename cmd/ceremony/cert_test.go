@@ -562,3 +562,9 @@ func TestGenerateSKID(t *testing.T) {
 	test.AssertEquals(t, len(sha256skid), 20)
 	test.AssertEquals(t, cap(sha256skid), 20)
 }
+
+func TestSignAndWriteNoLintCert(t *testing.T) {
+	_, err := signAndWriteCert(nil, nil, nil, nil, nil, "")
+	test.AssertError(t, err, "should have failed because no lintCert was provided")
+	test.AssertDeepEquals(t, err, fmt.Errorf("linting was not performed prior to issuance"))
+}
