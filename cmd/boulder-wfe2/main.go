@@ -26,7 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/letsencrypt/boulder/wfe2"
@@ -310,11 +310,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	var eec salesforcepb.ExporterClient
+	var eec emailpb.ExporterClient
 	if c.WFE.EmailExporter != nil {
 		emailExporterConn, err := bgrpc.ClientSetup(c.WFE.EmailExporter, tlsConfig, stats, clk)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to email-exporter")
-		eec = salesforcepb.NewExporterClient(emailExporterConn)
+		eec = emailpb.NewExporterClient(emailExporterConn)
 	}
 
 	if c.WFE.RedeemNonceService == nil {
