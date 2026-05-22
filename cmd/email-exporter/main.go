@@ -6,13 +6,11 @@ import (
 	"os"
 
 	"github.com/jmhodges/clock"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/salesforce"
 	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
 )
 
 // Config holds the configuration for the email-exporter service.
@@ -62,38 +60,6 @@ type Config struct {
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
-}
-
-// legacyEmailExporterServer is an adapter that implements the email.Exporter
-// gRPC interface by delegating to an inner salesforce.Exporter server.
-//
-// TODO(#8410): Remove legacyEmailExporterServer once fully migrated to
-// salesforcepb.Exporter.
-type legacyEmailExporterServer struct {
-	emailpb.UnimplementedExporterServer
-	inner salesforcepb.ExporterServer
-}
-
-// SendContacts is an interface adapter that forwards the request to the same
-// method on the inner salesforce.Exporter server.
-func (s legacyEmailExporterServer) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
-	return s.inner.SendContacts(ctx, &salesforcepb.SendContactsRequest{Emails: req.GetEmails()})
-}
-
-// SendCase is an interface adapter that forwards the request to the same method
-// on the inner salesforce.Exporter server.
-func (s legacyEmailExporterServer) SendCase(ctx context.Context, req *emailpb.SendCaseRequest) (*emptypb.Empty, error) {
-	return s.inner.SendCase(ctx, &salesforcepb.SendCaseRequest{
-		Origin:        req.GetOrigin(),
-		Subject:       req.GetSubject(),
-		Description:   req.GetDescription(),
-		ContactEmail:  req.GetContactEmail(),
-		Organization:  req.GetOrganization(),
-		AccountId:     req.GetAccountId(),
-		RateLimitName: req.GetRateLimitName(),
-		RateLimitTier: req.GetRateLimitTier(),
-		UseCase:       req.GetUseCase(),
-	})
 }
 
 func main() {
@@ -152,10 +118,7 @@ func main() {
 	go server.Start(daemonCtx)
 
 	start, err := bgrpc.NewServer(c.EmailExporter.GRPC, logger).Add(
-		&salesforcepb.Exporter_ServiceDesc, server).Add(
-		// TODO(#8410): Remove emailpb.Exporter once fully migrated to
-		// salesforcepb.Exporter.
-		&emailpb.Exporter_ServiceDesc, legacyEmailExporterServer{inner: server}).Build(
+		&emailpb.Exporter_ServiceDesc, server).Build(
 		tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Configuring email-exporter gRPC server")
 
