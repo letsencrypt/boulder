@@ -4,6 +4,7 @@
 			"dbConnectFile": "test/secrets/cert_checker_dburl",
 			"maxOpenConns": 10
 		},
+		"pushgatewayURL": "",
 		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"workers": 16,
 		"unexpiredOnly": true,
