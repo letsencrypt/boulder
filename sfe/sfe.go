@@ -23,7 +23,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/unpause"
 )
@@ -57,7 +57,7 @@ var (
 type SelfServiceFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
-	ee salesforcepb.ExporterClient
+	ee emailpb.ExporterClient
 
 	log blog.Logger
 	clk clock.Clock
@@ -87,7 +87,7 @@ func NewSelfServiceFrontEndImpl(
 	requestTimeout time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	eec salesforcepb.ExporterClient,
+	eec emailpb.ExporterClient,
 	unpauseHMACKey []byte,
 	zendeskClient *zendesk.Client,
 	limiter *rl.Limiter,

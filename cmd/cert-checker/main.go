@@ -703,6 +703,9 @@ func main() {
 		} else {
 			logger.Infof("pushed metrics to pushgateway at %s", config.CertChecker.PushgatewayURL)
 		}
+  
+  if checker.issuedReport.BadCerts > 0 {
+		os.Exit(1)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 	"github.com/letsencrypt/boulder/test"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,7 +26,6 @@ type mockSalesforceClientImpl struct {
 
 	sync.Mutex
 	CreatedContacts []string
-	CreatedCases    []Case
 }
 
 // newMockSalesforceClientImpl returns a mockSalesforceClientImpl, which implements
@@ -50,21 +49,6 @@ func (m *mockSalesforceClientImpl) getCreatedContacts() []string {
 
 	// Return a copy to avoid race conditions.
 	return slices.Clone(m.CreatedContacts)
-}
-
-func (m *mockSalesforceClientImpl) SendCase(payload Case) error {
-	m.Lock()
-	defer m.Unlock()
-	m.CreatedCases = append(m.CreatedCases, payload)
-	return nil
-}
-
-func (m *mockSalesforceClientImpl) getCreatedCases() []Case {
-	m.Lock()
-	defer m.Unlock()
-
-	// Return a copy to avoid race conditions.
-	return slices.Clone(m.CreatedCases)
 }
 
 // setup creates a new ExporterImpl, a mockSalesForceClientImpl, and the start and
@@ -91,7 +75,7 @@ func TestSendContacts(t *testing.T) {
 	defer cleanup()
 
 	wantContacts := []string{"test@example.com", "user@example.com"}
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: wantContacts,
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -120,7 +104,7 @@ func TestSendContactsQueueFull(t *testing.T) {
 
 	var err error
 	for range contactsQueueCap * 2 {
-		_, err = exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+		_, err = exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 			Emails: []string{"test@example.com"},
 		})
 		if err != nil {
@@ -141,7 +125,7 @@ func TestSendContactsQueueDrains(t *testing.T) {
 		emails = append(emails, fmt.Sprintf("test@%d.example.com", i))
 	}
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: emails,
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -169,7 +153,7 @@ func TestSendContactsErrorMetrics(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"test@example.com"},
 	})
 	test.AssertNotError(t, err, "Error creating contacts")
@@ -192,7 +176,7 @@ func TestSendContactDeduplication(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"duplicate@example.com", "duplicate@example.com"},
 	})
 	test.AssertNotError(t, err, "Error enqueuing contacts")
@@ -224,7 +208,7 @@ func TestSendContactErrorRemovesFromCache(t *testing.T) {
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
 
-	_, err := exporter.SendContacts(ctx, &salesforcepb.SendContactsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"error@example.com"},
 	})
 	test.AssertNotError(t, err, "enqueue failed")
@@ -241,69 +225,4 @@ func TestSendContactErrorRemovesFromCache(t *testing.T) {
 
 	// Check that the error counter was incremented.
 	test.AssertMetricWithLabelsEquals(t, exporter.pardotErrorCounter, prometheus.Labels{}, 1)
-}
-
-func TestSendCase(t *testing.T) {
-	t.Parallel()
-
-	clientImpl := newMockSalesforceClientImpl()
-	exporter := NewExporterImpl(clientImpl, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
-
-	_, err := exporter.SendCase(ctx, &salesforcepb.SendCaseRequest{
-		Origin:       "Web",
-		Subject:      "Some Override",
-		Description:  "Please review",
-		ContactEmail: "foo@example.com",
-	})
-	test.AssertNotError(t, err, "SendCase should succeed")
-
-	got := clientImpl.getCreatedCases()
-	if len(got) != 1 {
-		t.Fatalf("expected 1 case, got %d", len(got))
-	}
-	test.AssertEquals(t, got[0].Origin, "Web")
-	test.AssertEquals(t, got[0].Subject, "Some Override")
-	test.AssertEquals(t, got[0].Description, "Please review")
-	test.AssertEquals(t, got[0].ContactEmail, "foo@example.com")
-	test.AssertMetricWithLabelsEquals(t, exporter.caseErrorCounter, prometheus.Labels{}, 0)
-}
-
-type mockAlwaysFailCaseClient struct {
-	mockSalesforceClientImpl
-}
-
-func (m *mockAlwaysFailCaseClient) SendCase(payload Case) error {
-	return fmt.Errorf("oops, lol")
-}
-
-func TestSendCaseClientErrorIncrementsMetric(t *testing.T) {
-	t.Parallel()
-
-	mockClient := &mockAlwaysFailCaseClient{}
-	exporter := NewExporterImpl(mockClient, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
-
-	_, err := exporter.SendCase(ctx, &salesforcepb.SendCaseRequest{
-		Origin:       "Web",
-		Subject:      "Some Override",
-		Description:  "Please review",
-		ContactEmail: "foo@bar.baz",
-	})
-	test.AssertError(t, err, "SendCase should return error on client failure")
-	test.AssertMetricWithLabelsEquals(t, exporter.caseErrorCounter, prometheus.Labels{}, 1)
-}
-
-func TestSendCaseMissingOriginValidation(t *testing.T) {
-	t.Parallel()
-
-	clientImpl := newMockSalesforceClientImpl()
-	exporter := NewExporterImpl(clientImpl, nil, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
-
-	_, err := exporter.SendCase(ctx, &salesforcepb.SendCaseRequest{Subject: "No origin in this one, d00d"})
-	test.AssertError(t, err, "SendCase should fail validation when Origin is missing")
-
-	got := clientImpl.getCreatedCases()
-	if len(got) != 0 {
-		t.Errorf("expected 0 cases due to validation error, got %d", len(got))
-	}
-	test.AssertMetricWithLabelsEquals(t, exporter.caseErrorCounter, prometheus.Labels{}, 0)
 }

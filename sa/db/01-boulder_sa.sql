@@ -149,6 +149,8 @@ CREATE TABLE `orders` (
   `created` datetime NOT NULL,
   `certificateProfileName` varchar(32) DEFAULT NULL,
   `replaces` varchar(255) DEFAULT NULL,
+  -- Contains protobuf-encoded list of authorization IDs without duplicates.
+  -- See sa/proto/sadb.proto
   `authzs` blob DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `reg_expires` (`registrationID`,`expires`),

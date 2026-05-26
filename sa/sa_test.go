@@ -1005,6 +1005,33 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.Assert(t, newAuthzIDs[0] != newAuthzIDs[1], "expected distinct new authz IDs")
 }
 
+func TestNewOrderAndAuthzsRejectsDuplicates(t *testing.T) {
+	sa, fc := initSA(t)
+
+	reg := createWorkingRegistration(t, sa)
+
+	idA := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(fc.Now().Add(2 * time.Hour)),
+			Identifiers: []*corepb.Identifier{
+				identifier.NewDNS("a.com").ToProto(),
+				identifier.NewDNS("b.com").ToProto(),
+			},
+			V2Authorizations: []int64{idA, idA},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("sa.NewOrderAndAuthzs with duplicate authorizations: got nil error, want error")
+	}
+	expected := "cannot add duplicate authorizations to order"
+	if err.Error() != expected {
+		t.Errorf("sa.NewOrderAndAuthzs with duplicate authorizations: got error %q, want error %q", err, expected)
+	}
+}
+
 func TestNewOrderAndAuthzs_ReuseOnly(t *testing.T) {
 	sa, fc := initSA(t)
 
@@ -2685,12 +2712,21 @@ func TestGetOrderExpired(t *testing.T) {
 	fc.Add(time.Hour * 5)
 	now := fc.Now()
 	reg := createWorkingRegistration(t, sa)
+	exampleDotCom := identifier.NewDNS("example.com").ToProto()
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   reg.Id,
-			Expires:          timestamppb.New(now.Add(-time.Hour)),
-			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
-			V2Authorizations: []int64{666},
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(now.Add(-time.Hour)),
+			Identifiers:    []*corepb.Identifier{exampleDotCom},
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     exampleDotCom,
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(now.Add(time.Hour)),
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
+			},
 		},
 	})
 	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")

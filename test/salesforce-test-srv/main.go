@@ -48,17 +48,11 @@ type contacts struct {
 	created []string
 }
 
-type cases struct {
-	sync.Mutex
-	created []map[string]any
-}
-
 type testServer struct {
 	expectedClientID     string
 	expectedClientSecret string
 	token                string
 	contacts             contacts
-	cases                cases
 }
 
 func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -160,54 +154,6 @@ func (ts *testServer) queryContactsHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (ts *testServer) createCaseHandler(w http.ResponseWriter, r *http.Request) {
-	ts.checkToken(w, r)
-
-	var payload map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	_, ok := payload["Origin"]
-	if !ok {
-		http.Error(w, "Missing required field: Origin", http.StatusBadRequest)
-		return
-	}
-
-	ts.cases.Lock()
-	ts.cases.created = append(ts.cases.created, payload)
-	ts.cases.Unlock()
-
-	resp := map[string]any{
-		"id":      fmt.Sprintf("500xx00000%06dAAA", len(ts.cases.created)+1),
-		"success": true,
-		"errors":  []string{},
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	err := json.NewEncoder(w).Encode(resp)
-	if err != nil {
-		log.Printf("Failed to encode case creation response: %s", err)
-		http.Error(w, "Failed to encode case creation response", http.StatusInternalServerError)
-	}
-}
-
-func (ts *testServer) queryCasesHandler(w http.ResponseWriter, r *http.Request) {
-	ts.checkToken(w, r)
-
-	ts.cases.Lock()
-	respCases := slices.Clone(ts.cases.created)
-	ts.cases.Unlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(map[string]any{"cases": respCases})
-	if err != nil {
-		log.Printf("Failed to encode cases query response: %v", err)
-		http.Error(w, "Failed to encode cases query response", http.StatusInternalServerError)
-	}
-}
-
 func main() {
 	// TODO(#8410): Remove the oauthAddr flag.
 	oauthAddr := flag.String("oauth-addr", "", "Salesforce REST API and OAuth server listen address override (deprecated: use --salesforce-addr instead)")
@@ -255,14 +201,11 @@ func main() {
 		expectedClientSecret: c.ExpectedClientSecret,
 		token:                fmt.Sprintf("%x", tokenBytes),
 		contacts:             contacts{created: make([]string, 0, contactsCap)},
-		cases:                cases{created: make([]map[string]any, 0)},
 	}
 
 	// Salesforce REST API and OAuth Server
 	oauthMux := http.NewServeMux()
 	oauthMux.HandleFunc("/services/oauth2/token", ts.getTokenHandler)
-	oauthMux.HandleFunc("/services/data/v64.0/sobjects/Case", ts.createCaseHandler)
-	oauthMux.HandleFunc("/cases", ts.queryCasesHandler)
 	salesforceServer := &http.Server{
 		Addr:        c.SalesforceAddr,
 		Handler:     oauthMux,
