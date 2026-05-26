@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -574,4 +575,16 @@ func WaitForSignal() {
 	signal.Notify(sigChan, syscall.SIGINT)
 	signal.Notify(sigChan, syscall.SIGHUP)
 	<-sigChan
+}
+
+func PushMetrics(jobname, pushgatewayURL string, gatherer prometheus.Gatherer, logger blog.Logger) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		logger.Warningf("error getting hostname: %s", err)
+		hostname = "unknown"
+	}
+	return push.New(pushgatewayURL, jobname).
+		Gatherer(gatherer).
+		Grouping("instance", hostname).
+		Push()
 }

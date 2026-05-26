@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"net/netip"
@@ -38,6 +37,36 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+type certCheckerMetrics struct {
+	checkerLatency   prometheus.Histogram
+	checkerTimestamp prometheus.Gauge
+	checkerGoodCount prometheus.Gauge
+	checkerBadCount  prometheus.Gauge
+}
+
+func NewCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
+	checkerLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
+		Name: "cert_checker_latency",
+		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
+	})
+
+	checkerTimestamp := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_last_run_timestamp",
+		Help: "Timestamp of cert-checker's last run",
+	})
+
+	checkerGoodCount := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_good_count",
+		Help: "Cert-checker count of good certificates",
+	})
+
+	checkerBadCount := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_bad_count",
+		Help: "Cert-checker count of bad certificates",
+	})
+	return &certCheckerMetrics{checkerLatency, checkerTimestamp, checkerGoodCount, checkerBadCount}
+}
+
 // For defense-in-depth in addition to using the PA & its identPolicy to check
 // domain names we also perform a check against the regex's from the
 // forbiddenDomains array
@@ -62,19 +91,10 @@ var batchSize = 1000
 type report struct {
 	begin     time.Time
 	end       time.Time
-	GoodCerts int64                  `json:"good-certs"`
-	BadCerts  int64                  `json:"bad-certs"`
-	DbErrs    int64                  `json:"db-errs"`
-	Entries   map[string]reportEntry `json:"entries"`
-}
-
-func (r *report) dump() error {
-	content, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(os.Stdout, string(content))
-	return nil
+	GoodCerts int64 `json:"good-certs"`
+	BadCerts  int64 `json:"bad-certs"`
+	DbErrs    int64 `json:"db-errs"`
+	entries   map[string]reportEntry
 }
 
 type reportEntry struct {
@@ -134,7 +154,7 @@ func newChecker(saDbMap certDB,
 		certs:                       make(chan *corepb.Certificate, batchSize),
 		rMu:                         new(sync.Mutex),
 		clock:                       clk,
-		issuedReport:                report{Entries: make(map[string]reportEntry)},
+		issuedReport:                report{entries: make(map[string]reportEntry)},
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
 		lints:                       lints,
@@ -265,13 +285,13 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
+func (c *certChecker) processCerts(ctx context.Context, badResultsOnly bool) {
 	for cert := range c.certs {
 		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
-			c.issuedReport.Entries[cert.Serial] = reportEntry{
+			c.issuedReport.entries[cert.Serial] = reportEntry{
 				Valid:    valid,
 				SANs:     sans,
 				Problems: problems,
@@ -280,11 +300,11 @@ func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badR
 		c.rMu.Unlock()
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
+			c.logger.AuditErr("certificate error found", nil, map[string]any{"serial": cert.Serial, "sans": sans, "problems": problems})
 		} else {
 			atomic.AddInt64(&c.issuedReport.GoodCerts, 1)
 		}
 	}
-	wg.Done()
 }
 
 // Extensions that we allow in certificates
@@ -536,7 +556,8 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 
 type Config struct {
 	CertChecker struct {
-		DB cmd.DBConfig
+		DB             cmd.DBConfig
+		PushgatewayURL string `validate:"omitempty,url"`
 		cmd.HostnamePolicyConfig
 
 		Workers int `validate:"required,min=1"`
@@ -594,6 +615,9 @@ func main() {
 	logger := cmd.NewLogger(config.Syslog)
 	cmd.LogStartup(logger)
 
+	reg := prometheus.NewRegistry()
+	metrics := NewCertCheckerMetrics(reg)
+
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
 		for _, entry := range config.CertChecker.AcceptableValidityDurations {
@@ -615,11 +639,6 @@ func main() {
 
 	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
-
-	checkerLatency := promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "cert_checker_latency",
-		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
-	})
 
 	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
@@ -665,21 +684,26 @@ func main() {
 	for range config.CertChecker.Workers {
 		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			s := checker.clock.Now()
-			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly)
-			checkerLatency.Observe(checker.clock.Since(s).Seconds())
+			checker.processCerts(context.TODO(), config.CertChecker.BadResultsOnly)
+			metrics.checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		}()
 	}
 	wg.Wait()
-	fmt.Fprintf(
-		os.Stderr,
-		"# Finished processing certificates, report length: %d, good: %d, bad: %d\n",
-		len(checker.issuedReport.Entries),
-		checker.issuedReport.GoodCerts,
-		checker.issuedReport.BadCerts,
-	)
-	err = checker.issuedReport.dump()
-	cmd.FailOnError(err, "Failed to dump results: %s\n")
+	logger.AuditInfo("Finished processing certificates", checker.issuedReport)
+
+	metrics.checkerTimestamp.SetToCurrentTime()
+	metrics.checkerGoodCount.Set(float64(checker.issuedReport.GoodCerts))
+	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
+
+	if config.CertChecker.PushgatewayURL != "" {
+		if err = cmd.PushMetrics("cert-checker", config.CertChecker.PushgatewayURL, reg, logger); err != nil {
+			logger.Warningf("failed to push metrics to pushgateway: %s", err)
+		} else {
+			logger.Infof("pushed metrics to pushgateway at %s", config.CertChecker.PushgatewayURL)
+		}
+	}
 }
 
 func init() {

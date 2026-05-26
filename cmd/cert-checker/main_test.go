@@ -17,7 +17,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -336,7 +335,8 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(fc.Now().Add(time.Hour))
 
-	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	mocklog := blog.NewMock()
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, mocklog)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, 0, fc, blog.NewMock(), metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetBoulderTestDatabase(t)
@@ -375,11 +375,10 @@ func TestGetAndProcessCerts(t *testing.T) {
 	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	checker.processCerts(context.Background(), wg, false)
+	checker.processCerts(context.Background(), false)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
-	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
+	test.AssertEquals(t, len(checker.issuedReport.entries), 5)
+	test.AssertEquals(t, len(mocklog.GetAllMatching("certificate error found")), 5)
 }
 
 // mismatchedCountDB is a certDB implementation for `getCerts` that returns one
@@ -505,30 +504,6 @@ func TestGetCertsLate(t *testing.T) {
 	if !db.selectedACert {
 		t.Errorf("checker never selected a certificate after getting a MIN(id)")
 	}
-}
-
-func TestSaveReport(t *testing.T) {
-	r := report{
-		begin:     time.Time{},
-		end:       time.Time{},
-		GoodCerts: 2,
-		BadCerts:  1,
-		Entries: map[string]reportEntry{
-			"020000000000004b475da49b91da5c17": {
-				Valid: true,
-			},
-			"020000000000004d1613e581432cba7e": {
-				Valid: true,
-			},
-			"020000000000004e402bc21035c6634a": {
-				Valid:    false,
-				Problems: []string{"None really..."},
-			},
-		},
-	}
-
-	err := r.dump()
-	test.AssertNotError(t, err, "Failed to dump results")
 }
 
 func TestIsForbiddenDomain(t *testing.T) {
