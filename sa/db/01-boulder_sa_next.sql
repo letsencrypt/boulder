@@ -1,7 +1,7 @@
 -- For easy diffability, the main part of this schema
 -- should be identical with 01-boulder_sa.sql. Any differences
 -- for the "next" schema should be expressed as ALTER TABLE
--- commands at the end of the file.
+-- or CREATE TABLE commands at the end of the file.
 USE boulder_sa_next;
 
 CREATE TABLE `authz2` (
@@ -247,3 +247,81 @@ CREATE TABLE `serials` (
 ALTER TABLE `certificateStatus` DROP COLUMN `subscriberApproved`;
 ALTER TABLE `certificateStatus` DROP COLUMN `LockCol`;
 ALTER TABLE `revokedCertificates` ADD KEY `serial` (`serial`);
+
+CREATE TABLE `checkpoints` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    -- ASCII-format OID relative to 1.3.6.1.4.1
+    -- https://tlswg.org/tls-trust-anchor-ids/draft-ietf-tls-trust-anchor-ids.html#name-trust-anchor-identifiers
+    -- https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#ca-ids
+    `mtcaID` varchar(255) NOT NULL,
+    `mtcaSignature` mediumblob NOT NULL,
+    -- For simplicity we start out with a hardcoded assumption of one mirror signature,
+    -- the planned CQRP requirement. If requirements increase we can add more fields.
+    -- `mirrorID` is an ASCII-format OID relative to 1.3.6.1.4.1.
+    -- Note: these two fields start empty and are filled later.
+    `mirrorID` varchar(255),
+    `mirrorSignature` mediumblob,
+
+    -- Signed-over data: https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
+    -- Note that `log_origin` and `cosigner_name` in the link above are derived from `mtcaID` and `mirrorID` respectively.
+    -- Also, for checkpoint signatures start == 0 and end == tree size.
+    `treeSize` bigint(20) unsigned NOT NULL,
+    `rootHash` binary(32) NOT NULL,
+
+    `created` datetime DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`),
+    KEY `mtcaID_treeSize` (`mtcaID`, `treeSize`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
+
+-- Represents the subtrees signed every checkpoint, to put into standalone certificates.
+-- The subtrees used for landmark-relative certificates are not represented explicitly
+-- in the database.
+--
+-- Note: standalone certificates are assigned to a specific checkpoint subtree at issuance.
+-- We don't look these up dynamically by serial number, so we don't have indexes on
+-- `subtreeStart` or `subtreeEnd`. Note that if we do later add an index, we'd have to pick
+-- either `subtreeStart` or `subtreeEnd`, since indexes are hierarchical. An index on
+-- (`subtreeStart`, `subtreeEnd`) isn't better than an index on (`subtreeEnd`) for answering
+-- the question "which checkpoint subtrees include N?".
+CREATE TABLE `checkpointSubtrees` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    -- ASCII-format OID relative to 1.3.6.1.4.1
+    -- https://tlswg.org/tls-trust-anchor-ids/draft-ietf-tls-trust-anchor-ids.html#name-trust-anchor-identifiers
+    -- https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#ca-ids
+    `mtcaID` varchar(255) NOT NULL,
+    `mtcaSignature` mediumblob NOT NULL,
+    -- `mirrorID` is an ASCII-format OID relative to 1.3.6.1.4.1.
+    -- Note: these two fields start empty and are filled later.
+    `mirrorID` varchar(255),
+    `mirrorSignature` mediumblob,
+
+    -- Signed-over data: https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
+    -- Note that `log_origin` and `cosigner_name` in the link above are derived from `mtcaID` and `mirrorID` respectively.
+    `subtreeStart` bigint(20) unsigned NOT NULL,
+    `subtreeEnd` bigint(20) unsigned NOT NULL,
+    `subtreeHash` binary(32) NOT NULL,
+
+    -- Reverse lookup to find a checkpoint given a subtree ID.
+    `checkpointID` bigint(20) NOT NULL,
+
+    `created` datetime DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`),
+    KEY `checkpointID` (`checkpointID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
+
+CREATE TABLE `landmarks` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `mtcaID` varchar(255) NOT NULL,
+    `landmarkNumber` bigint(20) unsigned NOT NULL,
+    `treeSize` bigint(20) unsigned NOT NULL,
+    `created` datetime DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`),
+    KEY `mtcaID_landmarkNumber` (`mtcaID`, `landmarkNumber`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
+
+ALTER TABLE `orders`
+  ADD COLUMN `isMTC` bool NOT NULL DEFAULT FALSE,
+  ADD COLUMN `mtcaID` varchar(255) DEFAULT NULL,
+  ADD COLUMN `mtcSerialNumber` bigint(20) unsigned DEFAULT NULL,
+  -- checkpointSubtreeID is a reference to the `checkpointSubtrees` table
+  ADD COLUMN `checkpointSubtreeID` bigint(20) DEFAULT NULL;
