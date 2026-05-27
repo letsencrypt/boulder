@@ -1004,6 +1004,33 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.Assert(t, newAuthzIDs[0] != newAuthzIDs[1], "expected distinct new authz IDs")
 }
 
+func TestNewOrderAndAuthzsRejectsDuplicates(t *testing.T) {
+	sa, fc := initSA(t)
+
+	reg := createWorkingRegistration(t, sa)
+
+	idA := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(fc.Now().Add(2 * time.Hour)),
+			Identifiers: []*corepb.Identifier{
+				identifier.NewDNS("a.com").ToProto(),
+				identifier.NewDNS("b.com").ToProto(),
+			},
+			V2Authorizations: []int64{idA, idA},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("sa.NewOrderAndAuthzs with duplicate authorizations: got nil error, want error")
+	}
+	expected := "cannot add duplicate authorizations to order"
+	if err.Error() != expected {
+		t.Errorf("sa.NewOrderAndAuthzs with duplicate authorizations: got error %q, want error %q", err, expected)
+	}
+}
+
 func TestNewOrderAndAuthzs_ReuseOnly(t *testing.T) {
 	sa, fc := initSA(t)
 
@@ -2684,12 +2711,21 @@ func TestGetOrderExpired(t *testing.T) {
 	fc.Add(time.Hour * 5)
 	now := fc.Now()
 	reg := createWorkingRegistration(t, sa)
+	exampleDotCom := identifier.NewDNS("example.com").ToProto()
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   reg.Id,
-			Expires:          timestamppb.New(now.Add(-time.Hour)),
-			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
-			V2Authorizations: []int64{666},
+			RegistrationID: reg.Id,
+			Expires:        timestamppb.New(now.Add(-time.Hour)),
+			Identifiers:    []*corepb.Identifier{exampleDotCom},
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     exampleDotCom,
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(now.Add(time.Hour)),
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
+			},
 		},
 	})
 	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
@@ -2866,6 +2902,40 @@ func TestIncidentsForSerial(t *testing.T) {
 	result, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
 	test.AssertNotError(t, err, "Failed to retrieve incidents for serial")
 	test.AssertEquals(t, len(result.Incidents), 1)
+}
+
+func TestListIncidents(t *testing.T) {
+	sa, _ := initSA(t)
+
+	testSADbMap, err := DBMapForTest(vars.DBConnSAFullPerms)
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+
+	resp, err := sa.ListIncidents(context.Background(), &emptypb.Empty{})
+	test.AssertNotError(t, err, "ListIncidents on empty incidents table")
+	test.AssertEquals(t, len(resp.Incidents), 0)
+
+	err = testSADbMap.Insert(ctx, &incidentModel{
+		SerialTable: "incident_foo",
+		URL:         "https://example.com/foo",
+		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
+		Enabled:     false,
+	})
+	test.AssertNotError(t, err, "inserting first incident")
+	err = testSADbMap.Insert(ctx, &incidentModel{
+		SerialTable: "incident_bar",
+		URL:         "https://example.com/bar",
+		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 14),
+		Enabled:     true,
+	})
+	test.AssertNotError(t, err, "inserting second incident")
+
+	resp, err = sa.ListIncidents(context.Background(), &emptypb.Empty{})
+	test.AssertNotError(t, err, "ListIncidents")
+	test.AssertEquals(t, len(resp.Incidents), 2)
+	test.AssertEquals(t, resp.Incidents[0].SerialTable, "incident_foo")
+	test.AssertEquals(t, resp.Incidents[0].Enabled, false)
+	test.AssertEquals(t, resp.Incidents[1].SerialTable, "incident_bar")
+	test.AssertEquals(t, resp.Incidents[1].Enabled, true)
 }
 
 func TestSerialsForIncident(t *testing.T) {

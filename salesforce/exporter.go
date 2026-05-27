@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 )
 
 // contactsQueueCap limits the queue size to prevent unbounded growth. This
@@ -25,7 +25,7 @@ var ErrQueueFull = errors.New("email-exporter queue is full")
 
 // ExporterImpl implements the gRPC server and processes email exports.
 type ExporterImpl struct {
-	salesforcepb.UnsafeExporterServer
+	emailpb.UnsafeExporterServer
 
 	sync.Mutex
 	drainWG sync.WaitGroup
@@ -44,11 +44,10 @@ type ExporterImpl struct {
 	emailCache            *EmailCache
 	emailsHandledCounter  prometheus.Counter
 	pardotErrorCounter    prometheus.Counter
-	caseErrorCounter      prometheus.Counter
 	log                   blog.Logger
 }
 
-var _ salesforcepb.ExporterServer = (*ExporterImpl)(nil)
+var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 
 // NewExporterImpl initializes an ExporterImpl with the given client and
 // configuration. Both perDayLimit and maxConcurrentRequests should be
@@ -70,11 +69,6 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 		Help: "Total number of Pardot API errors encountered by the email exporter",
 	})
 
-	caseErrorCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
-		Name: "email_exporter_case_errors",
-		Help: "Total number of errors encountered when sending Cases to the Salesforce REST API",
-	})
-
 	impl := &ExporterImpl{
 		maxConcurrentRequests: maxConcurrentRequests,
 		limiter:               limiter,
@@ -83,7 +77,6 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 		emailCache:            cache,
 		emailsHandledCounter:  emailsHandledCounter,
 		pardotErrorCounter:    pardotErrorCounter,
-		caseErrorCounter:      caseErrorCounter,
 		log:                   logger,
 	}
 	impl.wake = sync.NewCond(&impl.Mutex)
@@ -104,7 +97,7 @@ func NewExporterImpl(client SalesforceClient, cache *EmailCache, perDayLimit flo
 
 // SendContacts enqueues the provided email addresses. If the queue cannot
 // accommodate the new emails, an ErrQueueFull is returned.
-func (impl *ExporterImpl) SendContacts(ctx context.Context, req *salesforcepb.SendContactsRequest) (*emptypb.Empty, error) {
+func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Emails) {
 		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}
@@ -119,33 +112,6 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *salesforcepb.Se
 	impl.toSend = append(impl.toSend, req.Emails...)
 	// Wake waiting workers to process the new emails.
 	impl.wake.Broadcast()
-
-	return &emptypb.Empty{}, nil
-}
-
-// SendCase immediately submits a new Case to the Salesforce REST API using the
-// provided details. Any retries are handled internally by the SalesforceClient.
-// The following fields are required: Origin, Subject, ContactEmail.
-func (impl *ExporterImpl) SendCase(ctx context.Context, req *salesforcepb.SendCaseRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.Origin, req.Subject, req.ContactEmail) {
-		return nil, berrors.InternalServerError("incomplete gRPC request message")
-	}
-
-	err := impl.client.SendCase(Case{
-		Origin:        req.Origin,
-		Subject:       req.Subject,
-		Description:   req.Description,
-		ContactEmail:  req.ContactEmail,
-		Organization:  req.Organization,
-		AccountId:     req.AccountId,
-		RateLimitName: req.RateLimitName,
-		RateLimitTier: req.RateLimitTier,
-		UseCase:       req.UseCase,
-	})
-	if err != nil {
-		impl.caseErrorCounter.Inc()
-		return nil, berrors.InternalServerError("sending Case to the Salesforce REST API: %s", err)
-	}
 
 	return &emptypb.Empty{}, nil
 }

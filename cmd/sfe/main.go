@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	salesforcepb "github.com/letsencrypt/boulder/salesforce/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 	"github.com/letsencrypt/boulder/sfe"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/web"
@@ -158,11 +158,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	var eec salesforcepb.ExporterClient
+	var eec emailpb.ExporterClient
 	if c.SFE.EmailExporter != nil {
 		emailExporterConn, err := bgrpc.ClientSetup(c.SFE.EmailExporter, tlsConfig, stats, clk)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to email-exporter")
-		eec = salesforcepb.NewExporterClient(emailExporterConn)
+		eec = emailpb.NewExporterClient(emailExporterConn)
 	}
 
 	var zendeskClient *zendesk.Client

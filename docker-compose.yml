@@ -8,7 +8,7 @@ services:
       context: test/boulder-tools/
       # Should match one of the GO_CI_VERSIONS in test/boulder-tools/tag_and_upload.sh.
       args:
-        GO_VERSION: 1.26.2
+        GO_VERSION: 1.26.3
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening. This is
@@ -21,6 +21,7 @@ services:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
       - ./test/certs/.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
+      - pkimetal-socket:/var/run/pkimetal
     networks:
       bouldernet:
         ipv4_address: 10.77.77.77
@@ -145,8 +146,10 @@ services:
 
   bpkimetal:
     image: ghcr.io/pkimetal/pkimetal:v1.41.0
-    networks:
-      - bouldernet
+    volumes:
+      - pkimetal-socket:/var/run/pkimetal
+      - ./test/pkimetal-config.yaml:/config/config.yaml:ro
+    network_mode: none
 
   bvitess:
     # The `letsencrypt/boulder-vtcomboserver:latest` tag is automatically built
@@ -180,6 +183,17 @@ services:
       bouldernet:
         aliases:
           - boulder-vitess
+
+volumes:
+  # Shared between bpkimetal (which listens on a unix socket here) and any
+  # boulder container that needs to reach pkimetal. Owned by uid 1001 so
+  # the default pkimetal user in the container can create the socket.
+  pkimetal-socket:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=1001,gid=1001,mode=0755"
 
 networks:
   # This network represents the data-center internal network. It is used for

@@ -11,6 +11,7 @@
 		"checkPeriod": "72h",
 		"acceptableValidityDurations": [
 			"7776000s",
+			"583200s",
 			"160h"
 		],
 		"ignoredLints": [

@@ -22,6 +22,7 @@ const (
 )
 
 // Used internally for storage in the DB, not for RPCs.
+// Invariant maintained by sa.NewOrderAndAuthzs: does not contain duplicates.
 type Authzs struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AuthzIDs      []int64                `protobuf:"varint,1,rep,packed,name=authzIDs,proto3" json:"authzIDs,omitempty"`

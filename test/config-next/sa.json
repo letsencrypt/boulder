@@ -12,6 +12,10 @@
 			"dbConnectFile": "test/secrets/incidents_dburl",
 			"maxOpenConns": 100
 		},
+		"incidentsAdminDB": {
+			"dbConnectFile": "test/secrets/incidents_admin_dburl",
+			"maxOpenConns": 100
+		},
 		"lagFactor": "200ms",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
@@ -35,6 +39,11 @@
 						"wfe.boulder",
 						"sfe.boulder",
 						"ra.boulder"
+					]
+				},
+				"sa.StorageAuthorityAdmin": {
+					"clientNames": [
+						"admin.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {

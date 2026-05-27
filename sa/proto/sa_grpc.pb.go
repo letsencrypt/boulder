@@ -41,6 +41,7 @@ const (
 	StorageAuthorityReadOnly_GetOrderAuthorizations_FullMethodName       = "/sa.StorageAuthorityReadOnly/GetOrderAuthorizations"
 	StorageAuthorityReadOnly_IncidentsForSerial_FullMethodName           = "/sa.StorageAuthorityReadOnly/IncidentsForSerial"
 	StorageAuthorityReadOnly_KeyBlocked_FullMethodName                   = "/sa.StorageAuthorityReadOnly/KeyBlocked"
+	StorageAuthorityReadOnly_ListIncidents_FullMethodName                = "/sa.StorageAuthorityReadOnly/ListIncidents"
 	StorageAuthorityReadOnly_ReplacementOrderExists_FullMethodName       = "/sa.StorageAuthorityReadOnly/ReplacementOrderExists"
 	StorageAuthorityReadOnly_SerialsForIncident_FullMethodName           = "/sa.StorageAuthorityReadOnly/SerialsForIncident"
 	StorageAuthorityReadOnly_CheckIdentifiersPaused_FullMethodName       = "/sa.StorageAuthorityReadOnly/CheckIdentifiersPaused"
@@ -75,6 +76,7 @@ type StorageAuthorityReadOnlyClient interface {
 	GetOrderAuthorizations(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
+	ListIncidents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Incidents, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
 	CheckIdentifiersPaused(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*Identifiers, error)
@@ -318,6 +320,16 @@ func (c *storageAuthorityReadOnlyClient) KeyBlocked(ctx context.Context, in *SPK
 	return out, nil
 }
 
+func (c *storageAuthorityReadOnlyClient) ListIncidents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Incidents, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Incidents)
+	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_ListIncidents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityReadOnlyClient) ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Exists)
@@ -422,6 +434,7 @@ type StorageAuthorityReadOnlyServer interface {
 	GetOrderAuthorizations(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
+	ListIncidents(context.Context, *emptypb.Empty) (*Incidents, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
 	CheckIdentifiersPaused(context.Context, *PauseRequest) (*Identifiers, error)
@@ -497,6 +510,9 @@ func (UnimplementedStorageAuthorityReadOnlyServer) IncidentsForSerial(context.Co
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) KeyBlocked(context.Context, *SPKIHash) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KeyBlocked not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) ListIncidents(context.Context, *emptypb.Empty) (*Incidents, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListIncidents not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) ReplacementOrderExists(context.Context, *Serial) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplacementOrderExists not implemented")
@@ -877,6 +893,24 @@ func _StorageAuthorityReadOnly_KeyBlocked_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthorityReadOnly_ListIncidents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityReadOnlyServer).ListIncidents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthorityReadOnly_ListIncidents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityReadOnlyServer).ListIncidents(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthorityReadOnly_ReplacementOrderExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
 	if err := dec(in); err != nil {
@@ -1047,6 +1081,10 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_KeyBlocked_Handler,
 		},
 		{
+			MethodName: "ListIncidents",
+			Handler:    _StorageAuthorityReadOnly_ListIncidents_Handler,
+		},
+		{
 			MethodName: "ReplacementOrderExists",
 			Handler:    _StorageAuthorityReadOnly_ReplacementOrderExists_Handler,
 		},
@@ -1114,6 +1152,7 @@ const (
 	StorageAuthority_GetOrderAuthorizations_FullMethodName       = "/sa.StorageAuthority/GetOrderAuthorizations"
 	StorageAuthority_IncidentsForSerial_FullMethodName           = "/sa.StorageAuthority/IncidentsForSerial"
 	StorageAuthority_KeyBlocked_FullMethodName                   = "/sa.StorageAuthority/KeyBlocked"
+	StorageAuthority_ListIncidents_FullMethodName                = "/sa.StorageAuthority/ListIncidents"
 	StorageAuthority_ReplacementOrderExists_FullMethodName       = "/sa.StorageAuthority/ReplacementOrderExists"
 	StorageAuthority_SerialsForIncident_FullMethodName           = "/sa.StorageAuthority/SerialsForIncident"
 	StorageAuthority_CheckIdentifiersPaused_FullMethodName       = "/sa.StorageAuthority/CheckIdentifiersPaused"
@@ -1171,6 +1210,7 @@ type StorageAuthorityClient interface {
 	GetOrderAuthorizations(ctx context.Context, in *GetOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
+	ListIncidents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Incidents, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
 	CheckIdentifiersPaused(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*Identifiers, error)
@@ -1431,6 +1471,16 @@ func (c *storageAuthorityClient) KeyBlocked(ctx context.Context, in *SPKIHash, o
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, StorageAuthority_KeyBlocked_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) ListIncidents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Incidents, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Incidents)
+	err := c.cc.Invoke(ctx, StorageAuthority_ListIncidents_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1762,6 +1812,7 @@ type StorageAuthorityServer interface {
 	GetOrderAuthorizations(context.Context, *GetOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
+	ListIncidents(context.Context, *emptypb.Empty) (*Incidents, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
 	CheckIdentifiersPaused(context.Context, *PauseRequest) (*Identifiers, error)
@@ -1860,6 +1911,9 @@ func (UnimplementedStorageAuthorityServer) IncidentsForSerial(context.Context, *
 }
 func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *SPKIHash) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KeyBlocked not implemented")
+}
+func (UnimplementedStorageAuthorityServer) ListIncidents(context.Context, *emptypb.Empty) (*Incidents, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListIncidents not implemented")
 }
 func (UnimplementedStorageAuthorityServer) ReplacementOrderExists(context.Context, *Serial) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplacementOrderExists not implemented")
@@ -2301,6 +2355,24 @@ func _StorageAuthority_KeyBlocked_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).KeyBlocked(ctx, req.(*SPKIHash))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_ListIncidents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).ListIncidents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_ListIncidents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).ListIncidents(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2871,6 +2943,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_KeyBlocked_Handler,
 		},
 		{
+			MethodName: "ListIncidents",
+			Handler:    _StorageAuthority_ListIncidents_Handler,
+		},
+		{
 			MethodName: "ReplacementOrderExists",
 			Handler:    _StorageAuthority_ReplacementOrderExists_Handler,
 		},
@@ -3000,6 +3076,182 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "GetEnabledRateLimitOverrides",
 			Handler:       _StorageAuthority_GetEnabledRateLimitOverrides_Handler,
 			ServerStreams: true,
+		},
+	},
+	Metadata: "sa.proto",
+}
+
+const (
+	StorageAuthorityAdmin_CreateIncident_FullMethodName       = "/sa.StorageAuthorityAdmin/CreateIncident"
+	StorageAuthorityAdmin_UpdateIncident_FullMethodName       = "/sa.StorageAuthorityAdmin/UpdateIncident"
+	StorageAuthorityAdmin_AddSerialsToIncident_FullMethodName = "/sa.StorageAuthorityAdmin/AddSerialsToIncident"
+)
+
+// StorageAuthorityAdminClient is the client API for StorageAuthorityAdmin service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
+type StorageAuthorityAdminClient interface {
+	CreateIncident(ctx context.Context, in *CreateIncidentRequest, opts ...grpc.CallOption) (*Incident, error)
+	UpdateIncident(ctx context.Context, in *UpdateIncidentRequest, opts ...grpc.CallOption) (*Incident, error)
+	AddSerialsToIncident(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[AddSerialsToIncidentRequest, emptypb.Empty], error)
+}
+
+type storageAuthorityAdminClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewStorageAuthorityAdminClient(cc grpc.ClientConnInterface) StorageAuthorityAdminClient {
+	return &storageAuthorityAdminClient{cc}
+}
+
+func (c *storageAuthorityAdminClient) CreateIncident(ctx context.Context, in *CreateIncidentRequest, opts ...grpc.CallOption) (*Incident, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Incident)
+	err := c.cc.Invoke(ctx, StorageAuthorityAdmin_CreateIncident_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityAdminClient) UpdateIncident(ctx context.Context, in *UpdateIncidentRequest, opts ...grpc.CallOption) (*Incident, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Incident)
+	err := c.cc.Invoke(ctx, StorageAuthorityAdmin_UpdateIncident_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityAdminClient) AddSerialsToIncident(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[AddSerialsToIncidentRequest, emptypb.Empty], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityAdmin_ServiceDesc.Streams[0], StorageAuthorityAdmin_AddSerialsToIncident_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[AddSerialsToIncidentRequest, emptypb.Empty]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityAdmin_AddSerialsToIncidentClient = grpc.ClientStreamingClient[AddSerialsToIncidentRequest, emptypb.Empty]
+
+// StorageAuthorityAdminServer is the server API for StorageAuthorityAdmin service.
+// All implementations must embed UnimplementedStorageAuthorityAdminServer
+// for forward compatibility.
+//
+// StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
+type StorageAuthorityAdminServer interface {
+	CreateIncident(context.Context, *CreateIncidentRequest) (*Incident, error)
+	UpdateIncident(context.Context, *UpdateIncidentRequest) (*Incident, error)
+	AddSerialsToIncident(grpc.ClientStreamingServer[AddSerialsToIncidentRequest, emptypb.Empty]) error
+	mustEmbedUnimplementedStorageAuthorityAdminServer()
+}
+
+// UnimplementedStorageAuthorityAdminServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedStorageAuthorityAdminServer struct{}
+
+func (UnimplementedStorageAuthorityAdminServer) CreateIncident(context.Context, *CreateIncidentRequest) (*Incident, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateIncident not implemented")
+}
+func (UnimplementedStorageAuthorityAdminServer) UpdateIncident(context.Context, *UpdateIncidentRequest) (*Incident, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateIncident not implemented")
+}
+func (UnimplementedStorageAuthorityAdminServer) AddSerialsToIncident(grpc.ClientStreamingServer[AddSerialsToIncidentRequest, emptypb.Empty]) error {
+	return status.Errorf(codes.Unimplemented, "method AddSerialsToIncident not implemented")
+}
+func (UnimplementedStorageAuthorityAdminServer) mustEmbedUnimplementedStorageAuthorityAdminServer() {}
+func (UnimplementedStorageAuthorityAdminServer) testEmbeddedByValue()                               {}
+
+// UnsafeStorageAuthorityAdminServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to StorageAuthorityAdminServer will
+// result in compilation errors.
+type UnsafeStorageAuthorityAdminServer interface {
+	mustEmbedUnimplementedStorageAuthorityAdminServer()
+}
+
+func RegisterStorageAuthorityAdminServer(s grpc.ServiceRegistrar, srv StorageAuthorityAdminServer) {
+	// If the following call pancis, it indicates UnimplementedStorageAuthorityAdminServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&StorageAuthorityAdmin_ServiceDesc, srv)
+}
+
+func _StorageAuthorityAdmin_CreateIncident_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateIncidentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityAdminServer).CreateIncident(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthorityAdmin_CreateIncident_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityAdminServer).CreateIncident(ctx, req.(*CreateIncidentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthorityAdmin_UpdateIncident_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateIncidentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityAdminServer).UpdateIncident(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthorityAdmin_UpdateIncident_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityAdminServer).UpdateIncident(ctx, req.(*UpdateIncidentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthorityAdmin_AddSerialsToIncident_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(StorageAuthorityAdminServer).AddSerialsToIncident(&grpc.GenericServerStream[AddSerialsToIncidentRequest, emptypb.Empty]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityAdmin_AddSerialsToIncidentServer = grpc.ClientStreamingServer[AddSerialsToIncidentRequest, emptypb.Empty]
+
+// StorageAuthorityAdmin_ServiceDesc is the grpc.ServiceDesc for StorageAuthorityAdmin service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var StorageAuthorityAdmin_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "sa.StorageAuthorityAdmin",
+	HandlerType: (*StorageAuthorityAdminServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateIncident",
+			Handler:    _StorageAuthorityAdmin_CreateIncident_Handler,
+		},
+		{
+			MethodName: "UpdateIncident",
+			Handler:    _StorageAuthorityAdmin_UpdateIncident_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "AddSerialsToIncident",
+			Handler:       _StorageAuthorityAdmin_AddSerialsToIncident_Handler,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "sa.proto",

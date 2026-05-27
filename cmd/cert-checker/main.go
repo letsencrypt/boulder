@@ -678,6 +678,10 @@ func main() {
 	)
 	err = checker.issuedReport.dump()
 	cmd.FailOnError(err, "Failed to dump results: %s\n")
+
+	if checker.issuedReport.BadCerts > 0 {
+		os.Exit(1)
+	}
 }
 
 func init() {

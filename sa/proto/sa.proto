@@ -30,6 +30,7 @@ service StorageAuthorityReadOnly {
   rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
+  rpc ListIncidents(google.protobuf.Empty) returns (Incidents) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
@@ -61,6 +62,7 @@ service StorageAuthority {
   rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
+  rpc ListIncidents(google.protobuf.Empty) returns (Incidents) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
@@ -91,6 +93,13 @@ service StorageAuthority {
   rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
   rpc DisableRateLimitOverride(DisableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
   rpc EnableRateLimitOverride(EnableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
+}
+
+// StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
+service StorageAuthorityAdmin {
+  rpc CreateIncident(CreateIncidentRequest) returns (Incident) {}
+  rpc UpdateIncident(UpdateIncidentRequest) returns (Incident) {}
+  rpc AddSerialsToIncident(stream AddSerialsToIncidentRequest) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {
@@ -348,6 +357,38 @@ message Incidents {
 
 message SerialsForIncidentRequest {
   string incidentTable = 1;
+}
+
+message CreateIncidentRequest {
+  string serialTable = 1;
+  string url = 2;
+  google.protobuf.Timestamp renewBy = 3;
+}
+
+// UpdateIncidentRequest updates a subset of the metadata fields on the
+// incidents row identified by serialTable. An empty url, nil renewBy, and
+// nil enabled all mean "leave that field alone"; at least one of them must
+// be set.
+message UpdateIncidentRequest {
+  string serialTable = 1;
+  string url = 2;
+  google.protobuf.Timestamp renewBy = 3;
+  optional bool enabled = 4;
+}
+
+message AddSerialsToIncidentRequest {
+  oneof payload {
+    AddSerialsToIncidentMetadata metadata = 1;
+    AddSerialsToIncidentBatch batch = 2;
+  }
+}
+
+message AddSerialsToIncidentMetadata {
+  string serialTable = 1;
+}
+
+message AddSerialsToIncidentBatch {
+  repeated string serials = 1;
 }
 
 message IncidentSerial {

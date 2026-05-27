@@ -167,7 +167,6 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 			subscriberAgreementFieldName: "true",
 			privacyPolicyFieldName:       "true",
 			mailingListFieldName:         "false",
-			fundraisingFieldName:         FundraisingOptions[0],
 			emailAddressFieldName:        "foo@bar.co",
 			OrganizationFieldName:        "Big Host Inc.",
 			useCaseFieldName:             strings.Repeat("x", 60),
@@ -188,9 +187,6 @@ func TestSubmitOverrideRequestHandlerErrors(t *testing.T) {
 	if len(mockImpl.GetCreatedContacts()) != 0 {
 		t.Errorf("PardotClient.SendContact called unexpectedly")
 	}
-	if len(mockImpl.GetCreatedCases()) != 0 {
-		t.Errorf("PardotClient.SendCase called unexpectedly")
-	}
 }
 
 func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
@@ -206,7 +202,6 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 		subscriberAgreementFieldName: "true",
 		privacyPolicyFieldName:       "true",
 		mailingListFieldName:         "true",
-		fundraisingFieldName:         FundraisingOptions[0],
 		emailAddressFieldName:        "foo@bar.co",
 		OrganizationFieldName:        "Big Host Inc.",
 		useCaseFieldName:             strings.Repeat("x", 60),
@@ -329,9 +324,6 @@ func TestSubmitOverrideRequestHandlerSuccess(t *testing.T) {
 			if len(mockImpl.GetCreatedContacts()) != 1 {
 				t.Errorf("PardotClient.SendContact not called exactly once")
 			}
-			if len(mockImpl.GetCreatedCases()) != 1 {
-				t.Errorf("PardotClient.SendCase not called exactly once")
-			}
 		})
 	}
 }
@@ -368,11 +360,6 @@ func TestValidateOverrideRequestField(t *testing.T) {
 			testCase{fieldName + " yep", fieldName, "yep", "", true, "true or false"},
 		)
 	}
-	// FundraisingFieldName
-	cases = append(cases,
-		testCase{"Fundraising valid", fundraisingFieldName, FundraisingOptions[0], "", false, ""},
-		testCase{"Fundraising invalid", fundraisingFieldName, "explicitly not an option", "", true, "valid options are"},
-	)
 	// EmailAddressFieldName
 	cases = append(cases,
 		testCase{"EmailAddress valid email", emailAddressFieldName, "foo@bar.co", "", false, ""},
@@ -450,7 +437,6 @@ func TestSubmitOverrideRequestHandlerRateLimited(t *testing.T) {
 				subscriberAgreementFieldName: "true",
 				privacyPolicyFieldName:       "true",
 				mailingListFieldName:         "false",
-				fundraisingFieldName:         FundraisingOptions[0],
 				emailAddressFieldName:        "foo@bar.co",
 				OrganizationFieldName:        "Big Host Inc.",
 				useCaseFieldName:             strings.Repeat("x", 60),
@@ -528,7 +514,6 @@ func TestSubmitOverrideRequestHandlerAutoApproved(t *testing.T) {
 			subscriberAgreementFieldName: "true",
 			privacyPolicyFieldName:       "true",
 			mailingListFieldName:         "false",
-			fundraisingFieldName:         FundraisingOptions[0],
 			emailAddressFieldName:        "foo@bar.co",
 			OrganizationFieldName:        "Big Host Inc.",
 			useCaseFieldName:             strings.Repeat("x", 60),

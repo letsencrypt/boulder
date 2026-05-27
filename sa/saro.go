@@ -738,6 +738,24 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 	return &sapb.Incidents{Incidents: incidentsForSerial}, nil
 }
 
+// ListIncidents returns every incidents row (enabled or disabled), ordered by id.
+func (ssa *SQLStorageAuthorityRO) ListIncidents(ctx context.Context, _ *emptypb.Empty) (*sapb.Incidents, error) {
+	var incidents []incidentModel
+	_, err := ssa.dbReadOnlyMap.Select(ctx, &incidents, `SELECT * FROM incidents ORDER BY id`)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &sapb.Incidents{}, nil
+		}
+		return nil, err
+	}
+	pbs := make([]*sapb.Incident, len(incidents))
+	for i, inc := range incidents {
+		pb := incidentModelToPB(inc)
+		pbs[i] = &pb
+	}
+	return &sapb.Incidents{Incidents: pbs}, nil
+}
+
 // SerialsForIncident queries the provided incident table and returns the
 // resulting rows as a stream of `*sapb.IncidentSerial`s. An `io.EOF` error
 // signals that there are no more serials to send. If the incident table in
