@@ -80,5 +80,5 @@ fi
 if ! [ -d mtpki ]; then
   echo "Generating mtpki/..."
   mkdir mtpki
-  go run ./genmtpki.go
+  go run ./genmtpki/genmtpki.go
 fi
