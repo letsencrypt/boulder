@@ -38,7 +38,10 @@ func main2() error {
 	}
 	defer keyFile.Close()
 
-	pem.Encode(keyFile, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
+	err = pem.Encode(keyFile, &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
+	if err != nil {
+		return err
+	}
 
 	extn, err := mtcaExtension()
 	if err != nil {
@@ -73,7 +76,10 @@ func main2() error {
 	}
 	defer certFile.Close()
 
-	pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
