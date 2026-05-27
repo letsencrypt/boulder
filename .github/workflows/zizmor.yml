@@ -1,0 +1,46 @@
+name:  Lint GitHub Actions
+
+on:
+  push:
+    branches:
+      - main
+      - release-branch-*
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      # Used by zizmor's online audits to query workflow run metadata.
+      # See https://docs.zizmor.sh/audits/
+      actions: read
+
+    env:
+      ZIZMOR_VERSION: 1.25.2
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download and verify zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          curl --fail --location --show-error --silent --output zizmor.tar.gz "${url}"
+          gh attestation verify zizmor.tar.gz --repo zizmorcore/zizmor
+          tar -xzf zizmor.tar.gz zizmor
+          ./zizmor --version | grep -Fq "zizmor ${ZIZMOR_VERSION}"
+
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./zizmor .
