@@ -21,6 +21,8 @@ func main() {
 	}
 }
 
+const basename = "test/certs/mtpki/mtca1"
+
 func main2() error {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
@@ -32,7 +34,7 @@ func main2() error {
 		return err
 	}
 
-	keyFile, err := os.OpenFile("mtpki/mtca1.key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyFile, err := os.OpenFile(basename+".key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
@@ -70,7 +72,7 @@ func main2() error {
 		return err
 	}
 
-	certFile, err := os.OpenFile("mtpki/mtca1.cert.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	certFile, err := os.OpenFile(basename+".cert.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
