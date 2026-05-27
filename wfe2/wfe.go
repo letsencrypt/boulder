@@ -1934,7 +1934,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	// is an allowed header. See MDN for more details:
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
 	response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location, Retry-After")
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
