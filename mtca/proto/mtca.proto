@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package mtca;
+option go_package = "github.com/letsencrypt/boulder/mtca/proto";
+
+// MTCA issues MTC certificates.
+service MTCA {
+  // Submit requests that the CA start the process of creating a standalone certificate
+  // for the given request. It returns once a checkpoint has been signed that includes
+  // that certificate's TBSCertificateLogEntry, but does not wait for cosignatures.
+  rpc Issue(IssueRequest) returns (IssueResponse) {}
+}
+
+message IssueRequest {
+  // Next unused field number: 4
+  bytes csr = 1;
+  int64 registrationID = 2;
+  int64 orderID = 3;
+}
+
+message IssueResponse {
+  // Next unused field number: 4
+  string mtcLogID = 1;
+  int64 mtcSerialNumber = 2;
+  int64 checkpointSubtreeID = 3;
+}

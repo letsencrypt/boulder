@@ -46,6 +46,14 @@ services {
 }
 
 services {
+  id      = "mtca1"
+  name    = "mtca"
+  address = "10.77.77.77"
+  port    = 9396
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+services {
   id      = "ca-a"
   name    = "ca"
   address = "10.77.77.77"
