@@ -51,12 +51,17 @@ func main2() error {
 	}
 
 	template := &x509.Certificate{
+		// TODO: decide how to generate serial number for MTCA certificates; presumably random?
 		SerialNumber: big.NewInt(123),
 		Subject:      mtcaSubject(),
 		// CA ID, encoded
-		SubjectKeyId:          []byte{0x82, 0xdf, 0x13, 1, 2, 1},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
+		// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-representing-certification-
+		// The subject key identifier extension, if present, SHOULD be set to the CA ID (Section 5.1).
+		// The CA ID is encoded in its binary representation, as defined in Section 3 of [I-D.ietf-tls-trust-anchor-ids].
+		SubjectKeyId: []byte{0x82, 0xdf, 0x13, 1, 2, 1},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour),
+		// The key usage extension (Section 4.2.1.3 of [RFC5280]) MUST be present and assert at least the keyCertSign bit.
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		IsCA:                  true,
 		BasicConstraintsValid: true,
