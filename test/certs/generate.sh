@@ -76,3 +76,9 @@ if ! [ -d webpki ]; then
   echo "Generating webpki/..."
   webpki
 fi
+
+if ! [ -d mtpki ]; then
+  echo "Generating mtpki/..."
+  mkdir mtpki
+  go run ./genmtpki.go
+fi

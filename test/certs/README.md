@@ -38,6 +38,14 @@ This PKI is loaded by the CA, RA, and other components. It is used as the
 issuance hierarchy for all end-entity certificates issued as part of the
 integration tests.
 
+### mtpki
+
+The "mtpki" PKI emulates our experimental MTC issuer. It has a single issuer and
+key. It doesn't use SoftHSM. It's loaded by the MTCA component.
+
+Note: for now we are using an ECDSA signing key for our experimental MTC issuer.
+We plan to change that to ML-DSA for our staging deployment goals.
+
 ### ipki
 
 The "ipki" PKI emulates our internal PKI that the various Boulder services use
