@@ -41,7 +41,8 @@ integration tests.
 ### mtpki
 
 The "mtpki" PKI emulates our experimental MTC issuer. It has a single issuer and
-key. It doesn't use SoftHSM. It's loaded by the MTCA component.
+key. It doesn't use SoftHSM because we expect to deploy this to Staging
+before SoftHSM gets support for ML-DSA keys. It's loaded by the MTCA component.
 
 For now we are using an ECDSA signing key for our experimental MTC issuer.
 TODO: change that to ML-DSA for our staging deployment goals.
