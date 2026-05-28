@@ -696,7 +696,8 @@ func main() {
 	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
 
 	if config.CertChecker.PushgatewayURL != "" {
-		if err = cmd.PushMetrics("cert-checker", config.CertChecker.PushgatewayURL, reg, logger); err != nil {
+		err = cmd.PushMetrics("cert-checker", config.CertChecker.PushgatewayURL, reg, logger)
+		if err != nil {
 			logger.Warningf("failed to push metrics to pushgateway: %s", err)
 		} else {
 			logger.Infof("pushed metrics to pushgateway at %s", config.CertChecker.PushgatewayURL)
