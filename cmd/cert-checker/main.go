@@ -94,7 +94,6 @@ type report struct {
 	GoodCerts int64 `json:"good-certs"`
 	BadCerts  int64 `json:"bad-certs"`
 	DbErrs    int64 `json:"db-errs"`
-	entries   map[string]reportEntry
 }
 
 type reportEntry struct {
@@ -154,7 +153,6 @@ func newChecker(saDbMap certDB,
 		certs:                       make(chan *corepb.Certificate, batchSize),
 		rMu:                         new(sync.Mutex),
 		clock:                       clk,
-		issuedReport:                report{entries: make(map[string]reportEntry)},
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
 		lints:                       lints,
@@ -290,13 +288,6 @@ func (c *certChecker) processCerts(ctx context.Context, badResultsOnly bool) {
 		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
-		if !badResultsOnly || (badResultsOnly && !valid) {
-			c.issuedReport.entries[cert.Serial] = reportEntry{
-				Valid:    valid,
-				SANs:     sans,
-				Problems: problems,
-			}
-		}
 		c.rMu.Unlock()
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
@@ -561,7 +552,7 @@ type Config struct {
 
 		Workers        int    `validate:"required,min=1"`
 		PushgatewayURL string `validate:"omitempty,url"`
-		// Deprecated: this is ignored, and cert checker always checks both expired and unexpired.
+		// Deprecated: cert-checker only logs bad results anyway.
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
 
