@@ -96,12 +96,6 @@ type report struct {
 	DbErrs    int64 `json:"db-errs"`
 }
 
-type reportEntry struct {
-	Valid    bool     `json:"valid"`
-	SANs     []string `json:"sans"`
-	Problems []string `json:"problems,omitempty"`
-}
-
 // certDB is an interface collecting the borp.DbMap functions that the various
 // parts of cert-checker rely on. Using this adapter shim allows tests to swap
 // out the saDbMap implementation.
