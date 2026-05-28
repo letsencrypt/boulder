@@ -277,7 +277,7 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(ctx context.Context, badResultsOnly bool) {
+func (c *certChecker) processCerts(ctx context.Context) {
 	for cert := range c.certs {
 		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
@@ -668,7 +668,7 @@ func main() {
 	for range config.CertChecker.Workers {
 		wg.Go(func() {
 			s := checker.clock.Now()
-			checker.processCerts(context.TODO(), config.CertChecker.BadResultsOnly)
+			checker.processCerts(context.TODO())
 			metrics.checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		})
 	}
