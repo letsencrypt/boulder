@@ -682,9 +682,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "# Processing certificates using %d workers\n", config.CertChecker.Workers)
 	wg := new(sync.WaitGroup)
 	for range config.CertChecker.Workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			s := checker.clock.Now()
 			checker.processCerts(context.TODO(), config.CertChecker.BadResultsOnly)
 			metrics.checkerLatency.Observe(checker.clock.Since(s).Seconds())
