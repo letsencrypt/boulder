@@ -37,14 +37,14 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-type certCheckerMetrics struct {
+type metrics struct {
 	checkerLatency   prometheus.Histogram
 	checkerTimestamp prometheus.Gauge
 	checkerGoodCount prometheus.Gauge
 	checkerBadCount  prometheus.Gauge
 }
 
-func NewCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
+func NewCertCheckerMetrics(stats prometheus.Registerer) *metrics {
 	checkerLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
@@ -64,7 +64,7 @@ func NewCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
 		Name: "cert_checker_bad_count",
 		Help: "Cert-checker count of bad certificates",
 	})
-	return &certCheckerMetrics{checkerLatency, checkerTimestamp, checkerGoodCount, checkerBadCount}
+	return &metrics{checkerLatency, checkerTimestamp, checkerGoodCount, checkerBadCount}
 }
 
 // For defense-in-depth in addition to using the PA & its identPolicy to check
@@ -556,13 +556,12 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 
 type Config struct {
 	CertChecker struct {
-		DB             cmd.DBConfig
-		PushgatewayURL string `validate:"omitempty,url"`
+		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		Workers int `validate:"required,min=1"`
+		Workers        int    `validate:"required,min=1"`
+		PushgatewayURL string `validate:"omitempty,url"`
 		// Deprecated: this is ignored, and cert checker always checks both expired and unexpired.
-		UnexpiredOnly  bool
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
 
@@ -686,7 +685,7 @@ func main() {
 			s := checker.clock.Now()
 			checker.processCerts(context.TODO(), config.CertChecker.BadResultsOnly)
 			metrics.checkerLatency.Observe(checker.clock.Since(s).Seconds())
-		}()
+		})
 	}
 	wg.Wait()
 	logger.AuditInfo("Finished processing certificates", checker.issuedReport)
@@ -698,9 +697,9 @@ func main() {
 	if config.CertChecker.PushgatewayURL != "" {
 		err = cmd.PushMetrics("cert-checker", config.CertChecker.PushgatewayURL, reg, logger)
 		if err != nil {
-			logger.Warningf("failed to push metrics to pushgateway: %s", err)
+			logger.Errf("failed to push metrics to pushgateway: %s", err)
 		} else {
-			logger.Infof("pushed metrics to pushgateway at %s", config.CertChecker.PushgatewayURL)
+			logger.Debugf("pushed metrics to pushgateway at %s", config.CertChecker.PushgatewayURL)
 		}
 	}
 
