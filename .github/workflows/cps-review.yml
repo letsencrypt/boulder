@@ -39,6 +39,8 @@ jobs:
       - name: Comment PR
         if: ${{ steps.newflags.outputs.flagnames != '' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          NEW_FLAGS: ${{ steps.newflags.outputs.flagnames }}
         with:
           script: |
             const { owner, repo, number: issue_number } = context.issue;
@@ -62,7 +64,7 @@ jobs:
 
             // No existing review or comment found, post the comment.
             const prAuthor = context.payload.pull_request.user.login;
-            const flagNames = '${{ steps.newflags.outputs.flagnames }}';
+            const flagNames = process.env.NEW_FLAGS;
             const commentBody = `${commentMarker}\n@${prAuthor}, this PR adds one or more new feature flags: ${flagNames}. As such, this PR must be accompanied by a review of the Let's Encrypt CP/CPS to ensure that our behavior both before and after this flag is flipped is compliant with that document.\n\nPlease conduct such a review, then add your findings to the PR description in a paragraph beginning with "CPS Compliance Review:".`;
             await github.rest.issues.createComment({
               owner,
