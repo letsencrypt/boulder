@@ -375,7 +375,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
-	checker.processCerts(context.Background(), false)
+	checker.processCerts(context.Background())
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(mocklog.GetAllMatching("certificate error found")), 5)
 }
