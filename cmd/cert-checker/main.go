@@ -281,8 +281,6 @@ func (c *certChecker) processCerts(ctx context.Context) {
 	for cert := range c.certs {
 		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
-		c.rMu.Lock()
-		c.rMu.Unlock()
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
 			c.logger.AuditErr("certificate error found", nil, map[string]any{"serial": cert.Serial, "sans": sans, "problems": problems})
