@@ -550,14 +550,14 @@ type Config struct {
 		// of pushgateway backends. If the address contains a hostname it will be resolved
 		// using system DNS. If the address contains a port, the client will use it
 		// directly, otherwise port 53 is used.
-		LookupDNSAuthority string `validate:"required_with=PushgatewayService,ip|hostname|hostname_port"`
+		LookupDNSAuthority string `validate:"required_with=PushgatewayService,omitempty,ip|hostname|hostname_port"`
 		// PushgatewayService entry contains a service and domain name that will be used
 		// to construct a SRV DNS query to lookup pushgateway backends. For example: if
 		// the resource record is 'foo.service.consul', then the 'Service' is 'foo'
 		// and the 'Domain' is 'service.consul'. The expected dNSName to be
 		// authenticated in the server certificate would be 'foo.service.consul'.
-		PushgatewayService cmd.ServiceDomain `validate:"required_with=LookupDNSAuthority"`
-		PushgatewayScheme  string            `validate:"required_with=PushgatewayService,oneof=http https"`
+		PushgatewayService *cmd.ServiceDomain `validate:"required_with=LookupDNSAuthority"`
+		PushgatewayScheme  string             `validate:"required_with=PushgatewayService,omitempty,oneof=http https"`
 		// Deprecated: cert-checker only logs bad results anyway.
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
@@ -725,7 +725,7 @@ func main() {
 	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
 
 	if config.CertChecker.PushgatewayService.Service != "" {
-		pushgatewayURL, err := getPushgatewayURL(config.CertChecker.LookupDNSAuthority, config.CertChecker.PushgatewayScheme, config.CertChecker.PushgatewayService)
+		pushgatewayURL, err := getPushgatewayURL(config.CertChecker.LookupDNSAuthority, config.CertChecker.PushgatewayScheme, *config.CertChecker.PushgatewayService)
 		if err != nil {
 			logger.Errf("failed to get pushgateway URL: %s", err)
 		} else {
