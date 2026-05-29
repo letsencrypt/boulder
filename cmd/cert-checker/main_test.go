@@ -14,6 +14,8 @@ import (
 	"log"
 	"math/big"
 	mrand "math/rand/v2"
+	"net"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -23,6 +25,7 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -671,4 +674,43 @@ func TestPrecertCorrespond(t *testing.T) {
 		}
 	}
 	t.Fatalf("expected precert correspondence problem, but got: %v", problems)
+}
+
+func TestGetPushgatewayURL(t *testing.T) {
+	ctx := context.Background()
+	t.Run("happy path", func(t *testing.T) {
+		gotURL, err := getPushgatewayURL(ctx, "consul.service.consul:52",
+			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
+		test.AssertNotError(t, err, "")
+
+		parsed, err := url.Parse(gotURL)
+		test.AssertNotError(t, err, "returned URL should be parseable")
+		test.AssertEquals(t, parsed.Scheme, "http")
+
+		host, port, err := net.SplitHostPort(parsed.Host)
+		test.AssertNotError(t, err, "URL host should contain a port")
+		test.AssertNotNil(t, net.ParseIP(host), "host should be an IP, not a hostname (LookupHost flatten step)")
+		test.AssertEquals(t, port, "52")
+	})
+	t.Run("DNS authority no port specified", func(t *testing.T) {
+		gotURL, err := getPushgatewayURL(ctx, "consul.service.consul",
+			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
+		test.AssertError(t, err, "")
+
+		parsed, err := url.Parse(gotURL)
+		test.AssertNotError(t, err, "returned URL should be parseable")
+		_, port, err := net.SplitHostPort(parsed.Host)
+		test.AssertNotError(t, err, "URL host should contain a port")
+		test.AssertEquals(t, port, "53")
+	})
+	t.Run("SRV not found", func(t *testing.T) {
+		_, err := getPushgatewayURL(ctx, "consul.service.consul:53",
+			cmd.ServiceDomain{Service: "doesnotexist", Domain: "service.consul"})
+		test.AssertError(t, err, "")
+	})
+	t.Run("DNS authority unreachable", func(t *testing.T) {
+		_, err := getPushgatewayURL(ctx, "doesnotexist.invalid:53",
+			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
+		test.AssertError(t, err, "")
+	})
 }

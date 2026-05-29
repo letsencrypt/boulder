@@ -593,6 +593,13 @@ type Config struct {
 	Syslog cmd.SyslogConfig
 }
 
+// getPushgatewayURL resolves svc via SRV+A lookups against dnsAuthority and
+// returns an http:// URL whose host is an IP address. Both lookups go through
+// dnsAuthority (typically Consul DNS) because the system resolver can't answer
+// queries for the .consul domain. The SRV target is then flattened to an IP
+// because the returned URL is consumed by net/http via cmd.PushMetrics, which
+// resolves hostnames using the system resolver. Scheme is fixed to http:
+// pushgateway is assumed to be on an internal network
 func getPushgatewayURL(ctx context.Context, dnsAuthority string, svc cmd.ServiceDomain) (string, error) {
 	host, port, err := net.SplitHostPort(dnsAuthority)
 	if err != nil {
@@ -613,6 +620,9 @@ func getPushgatewayURL(ctx context.Context, dnsAuthority string, svc cmd.Service
 	if len(targets) == 0 {
 		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s returned 0 results", svc.Service, svc.Domain)
 	}
+	// Flatten the SRV target to an IP using the same Consul authority; net/http
+	// (used downstream) would otherwise try to resolve names like
+	// *.addr.dc1.consul via the system resolver and fail.
 	target := strings.TrimSuffix(targets[0].Target, ".")
 	addrs, err := r.LookupHost(ctx, target)
 	if err != nil {
