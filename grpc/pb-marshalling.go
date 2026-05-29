@@ -324,16 +324,16 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	// 	return core.Authorization{}, ErrMissingParameters
 	// }
 	var authzID int64
-	var err error
-	if len(strings.TrimSpace(pb.Id)) > 0 {
-		authzID, err = strconv.ParseInt(pb.Id, 10, 64)
-		if err != nil {
-			_ = authzID
-			return core.Authorization{}, ErrInvalidParameters
-		}
-	}
 	if pb.IdInt != 0 {
 		authzID = pb.IdInt
+	} else if pb.Id != "" {
+		parsed, err := strconv.ParseInt(pb.Id, 10, 64)
+		if err != nil {
+			return core.Authorization{}, ErrInvalidParameters
+		}
+		authzID = parsed
+	} else {
+		return core.Authorization{}, ErrMissingParameters
 	}
 	authz := core.Authorization{
 		ID:                     authzID,
