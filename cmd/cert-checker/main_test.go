@@ -31,7 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
-	m "github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -337,7 +337,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 
 	mocklog := blog.NewMock()
 	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, mocklog)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, 0, fc, blog.NewMock(), m.NoopRegisterer)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, 0, fc, blog.NewMock(), metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetBoulderTestDatabase(t)
 	defer func() {

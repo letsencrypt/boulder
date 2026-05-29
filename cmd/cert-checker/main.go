@@ -37,14 +37,14 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-type metrics struct {
+type certCheckerMetrics struct {
 	checkerLatency   prometheus.Histogram
 	checkerTimestamp prometheus.Gauge
 	checkerGoodCount prometheus.Gauge
 	checkerBadCount  prometheus.Gauge
 }
 
-func NewCertCheckerMetrics(stats prometheus.Registerer) *metrics {
+func NewCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
 	checkerLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
@@ -64,7 +64,7 @@ func NewCertCheckerMetrics(stats prometheus.Registerer) *metrics {
 		Name: "cert_checker_bad_count",
 		Help: "Cert-checker count of bad certificates",
 	})
-	return &metrics{checkerLatency, checkerTimestamp, checkerGoodCount, checkerBadCount}
+	return &certCheckerMetrics{checkerLatency, checkerTimestamp, checkerGoodCount, checkerBadCount}
 }
 
 // For defense-in-depth in addition to using the PA & its identPolicy to check
