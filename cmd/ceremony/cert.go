@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"regexp"
 	"slices"
 	"time"
 )
@@ -20,6 +21,12 @@ type policyInfoConfig struct {
 
 // certProfile contains the information required to generate a certificate
 type certProfile struct {
+	// PolicyURL is *not* included in the certificate. It is a mandoary pointer
+	// to the profile documented in our CPS with which this profile complies.
+	// It must point to a specific subsection of a specific version of the
+	// markdown source of our CPS.
+	PolicyURL string `yaml:"policy-url"`
+
 	// SignatureAlgorithm should contain one of the allowed signature algorithms
 	// in AllowedSigAlgs
 	SignatureAlgorithm string `yaml:"signature-algorithm"`
@@ -94,6 +101,15 @@ func (profile *certProfile) Subject() pkix.Name {
 }
 
 func (profile *certProfile) verifyProfile(ct certType) error {
+	if profile.PolicyURL == "" {
+		return errors.New("PolicyURL must be provided")
+	}
+	policyURLRegex := regexp.MustCompile(
+		`^https://github\.com/letsencrypt/cp-cps/blob/v[0-9.]+/CP-CPS.md#[0-9a-zA-Z-]+$`)
+	if !policyURLRegex.MatchString(profile.PolicyURL) {
+		return errors.New("PolicyURL must point to a specific subsection of a specific version of our markdown CPS")
+	}
+
 	if ct == requestCert {
 		if profile.NotBefore != "" {
 			return errors.New("not-before cannot be set for a CSR")
