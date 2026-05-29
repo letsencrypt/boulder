@@ -594,7 +594,7 @@ type Config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func getPushgatewayURL(dnsAuthority, scheme string, svc cmd.ServiceDomain) (string, error) {
+func getPushgatewayURL(ctx context.Context, dnsAuthority, scheme string, svc cmd.ServiceDomain) (string, error) {
 	host, port, err := net.SplitHostPort(dnsAuthority)
 	if err != nil {
 		// Assume only hostname or IPv4 address was specified.
@@ -607,9 +607,7 @@ func getPushgatewayURL(dnsAuthority, scheme string, svc cmd.ServiceDomain) (stri
 			return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(host, port))
 		},
 	}
-	lookupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, targets, err := r.LookupSRV(lookupCtx, svc.Service, "tcp", svc.Domain)
+	_, targets, err := r.LookupSRV(ctx, svc.Service, "tcp", svc.Domain)
 	if err != nil {
 		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s failed: %w", svc.Service, svc.Domain, err)
 	}
@@ -617,7 +615,7 @@ func getPushgatewayURL(dnsAuthority, scheme string, svc cmd.ServiceDomain) (stri
 		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s returned 0 results", svc.Service, svc.Domain)
 	}
 	target := strings.TrimSuffix(targets[0].Target, ".")
-	addrs, err := r.LookupHost(lookupCtx, target)
+	addrs, err := r.LookupHost(ctx, target)
 	if err != nil {
 		return "", fmt.Errorf("A/AAAA lookup of %q failed: %w", target, err)
 	}
@@ -725,7 +723,9 @@ func main() {
 	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
 
 	if config.CertChecker.PushgatewayService != nil {
-		pushgatewayURL, err := getPushgatewayURL(config.CertChecker.LookupDNSAuthority, config.CertChecker.PushgatewayScheme, *config.CertChecker.PushgatewayService)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		pushgatewayURL, err := getPushgatewayURL(ctx, config.CertChecker.LookupDNSAuthority, config.CertChecker.PushgatewayScheme, *config.CertChecker.PushgatewayService)
 		if err != nil {
 			logger.Errf("failed to get pushgateway URL: %s", err)
 		} else {
