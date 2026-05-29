@@ -760,7 +760,8 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	if len(strings.TrimSpace(req.Authz.Id)) > 0 {
 		authzIDInt, err = strconv.ParseInt(req.Authz.Id, 10, 64)
 		if err != nil {
-			return nil, berrors.InternalServerError("failed to parse Authz ID %v as int: %s", authzIDInt, err)
+			_ = authzIDInt
+			return nil, berrors.InternalServerError("failed to parse Authz ID %q as int: %s", req.Authz.Id, err)
 		}
 	}
 	if req.Authz.IdInt != 0 {
