@@ -667,10 +667,10 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool, error) {
 	numChallenges := len(authz.Challenges)
 	if numChallenges != 1 {
-		return false, berrors.InternalServerError("authorization has incorrect number of challenges. 1 expected, %d found for: id %d", numChallenges, authz.IDInt)
+		return false, berrors.InternalServerError("authorization has incorrect number of challenges. 1 expected, %d found for: id %d", numChallenges, authz.ID)
 	}
 	if authz.Challenges[0].Validated == nil {
-		return false, berrors.InternalServerError("authorization's challenge has no validated timestamp for: id %d", authz.IDInt)
+		return false, berrors.InternalServerError("authorization's challenge has no validated timestamp for: id %d", authz.ID)
 	}
 	return authz.Challenges[0].Validated.Before(caaRecheckTime), nil
 }
@@ -760,7 +760,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 					authz: authz,
 					err: berrors.InternalServerError(
 						"Internal error determining validation method for authorization ID %v (%v)",
-						authz.IDInt, authz.Identifier.Value),
+						authz.ID, authz.Identifier.Value),
 				}
 				return
 			}
@@ -770,8 +770,8 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
-				AuthzID:          authz.ID,
-				AuthzIDInt:       authz.IDInt,
+				AuthzID:          fmt.Sprintf("%d", authz.ID),
+				AuthzIDInt:       authz.ID,
 			})
 			if err != nil {
 				ra.log.AuditErr("Rechecking CAA", err, map[string]any{
@@ -781,7 +781,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				})
 				err = berrors.InternalServerError(
 					"Internal error rechecking CAA with authorization ID %v (%v)",
-					authz.IDInt, authz.Identifier.Value,
+					authz.ID, authz.Identifier.Value,
 				)
 			} else if resp.Problem != nil {
 				err = berrors.CAAError("rechecking caa: %s", resp.Problem.Detail)
@@ -1083,17 +1083,9 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 				break
 			}
 		}
-		// TODO(#8722): Cleanup following TWO blocks when authz ids are int64-only
-		authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-		if err != nil {
-			return nil, nil, err
-		}
-		if authz.IDInt != 0 {
-			authzID = authz.IDInt
-		}
 		logIdents = append(logIdents, identifierLog{
 			Ident:     ident,
-			Authz:     authzID,
+			Authz:     authz.ID,
 			Challenge: solvedChall.Type,
 			Validated: *solvedChall.Validated,
 		})
@@ -1457,14 +1449,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if err != nil {
 		return nil, err
 	}
-	// TODO(#8722): cleanup following TWO checks when authz.ID is int64-only
-	authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	if authz.IDInt != 0 {
-		authzID = authz.IDInt
-	}
 
 	// Refuse to update expired authorizations
 	if authz.Expires == nil || authz.Expires.Before(ra.clk.Now()) {
@@ -1528,15 +1512,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
-				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID, IdInt: authz.IDInt},
+				Authz:                    &vapb.AuthzMeta{Id: fmt.Sprintf("%d", authz.ID), RegID: authz.RegistrationID, IdInt: authz.ID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: string(ch.Type),
 				AccountURIID:     authz.RegistrationID,
-				AuthzID:          authz.ID,
-				AuthzIDInt:       authz.IDInt,
+				AuthzID:          fmt.Sprintf("%d", authz.ID),
+				AuthzIDInt:       authz.ID,
 			},
 		)
 		if err != nil {
@@ -1562,7 +1546,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		}
 
 		_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-			Id:                authzID,
+			Id:                authz.ID,
 			Status:            string(status),
 			Expires:           timestamppb.New(expires),
 			Attempted:         string(ch.Type),
@@ -1578,13 +1562,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// given ID to update.
 				ra.log.InfoObject("Failed to record validation (likely parallel validation race)", map[string]any{
 					"requester": authz.RegistrationID,
-					"authz":     authzID,
+					"authz":     authz.ID,
 					"error":     err.Error(),
 				})
 			} else {
 				ra.log.AuditErr("Failed to record validation (likely parallel validation race)", err, map[string]any{
 					"requester": authz.RegistrationID,
-					"authz":     authzID,
+					"authz":     authz.ID,
 				})
 			}
 		}
@@ -2057,10 +2041,18 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
-	// TODO(#8722): Re-add req.ID to IsAnyNilOrZero check above, and cleanup following TWO blocks when authz ids are int64-only
-	authzID, err := strconv.ParseInt(req.Id, 10, 64)
-	if err != nil {
-		return nil, err
+	// TODO(#8722): Re-add req.Id to IsAnyNilOrZero check above, and cleanup following blocks when authz ids are int64-only
+	if req.Id == "" && req.IdInt == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+	var authzID int64
+	var err error
+	if len(strings.TrimSpace(req.Id)) > 0 {
+		authzID, err = strconv.ParseInt(req.Id, 10, 64)
+		if err != nil {
+			_ = authzID
+			return nil, err
+		}
 	}
 	if req.IdInt != 0 {
 		authzID = req.IdInt
@@ -2235,7 +2227,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 					!(features.Get().DNSPersist01Enabled && chall.Type == core.ChallengeTypeDNSPersist01) {
 					return nil, berrors.InternalServerError(
 						"SA.GetAuthorizations returned a DNS wildcard authz (%d) with invalid challenge(s)",
-						authz.IDInt,
+						authz.ID,
 					)
 				}
 			}
@@ -2251,7 +2243,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			// This should never happen.
 			return nil, berrors.InternalServerError(
 				"SA.GetAuthorizations returned a DNS wildcard authz (%d) with invalid challenge(s)",
-				authz.IDInt,
+				authz.ID,
 			)
 		}
 		if solvedBy == core.ChallengeTypeDNSPersist01 {
@@ -2263,11 +2255,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 		// If we reached this point then the existing authz was acceptable for
 		// reuse.
-		authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		newOrderAuthzs = append(newOrderAuthzs, authzID)
+		newOrderAuthzs = append(newOrderAuthzs, authz.ID)
 		ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 	}
 
@@ -2307,7 +2295,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if core.IsAnyNilOrZero(authz.Expires) {
 			return nil, berrors.InternalServerError(
 				"SA.GetAuthorizations returned an authz (%d) with zero expiry",
-				authz.IDInt)
+				authz.ID)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry
 		// is the new minExpiry.

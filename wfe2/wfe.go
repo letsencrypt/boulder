@@ -1229,7 +1229,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	challenge *core.Challenge,
 ) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, challengePath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID, challenge.StringID())
+	challenge.URL = web.RelativeEndpoint(request, challengePath, fmt.Sprintf("%d", authz.RegistrationID), fmt.Sprintf("%d", authz.ID), challenge.StringID())
 
 	// Internally, we store challenge error problems with just the short form
 	// (e.g. "CAA") of the problem type. But for external display, we need to
@@ -2790,7 +2790,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	return web.RelativeEndpoint(request, authzPath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID)
+	return web.RelativeEndpoint(request, authzPath, fmt.Sprintf("%d", authz.RegistrationID), fmt.Sprintf("%d", authz.ID))
 }
 
 // jitterRetryHeader will return a string formatted random integer of seconds within a 20% window of the

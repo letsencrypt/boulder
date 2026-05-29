@@ -16,6 +16,7 @@ import (
 	"io"
 	mrand "math/rand/v2"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -254,9 +255,13 @@ func getAuthorization(s *State, c *acmeCache, url string) (*core.Authorization, 
 	if err != nil {
 		return nil, fmt.Errorf("%s response: %s", url, body)
 	}
-	// The Authorization ID is not set in the response so we populate it using the
-	// URL
-	authz.ID = url
+	// The Authorization ID is not set in the response so we populate it using
+	// the URL
+	urlID, err := strconv.ParseInt(url, 10, 64) // TODO(#8722): this will not work and is incomplete
+	if err != nil {
+		return nil, fmt.Errorf("%s response: %s, error: %v", url, body, err)
+	}
+	authz.ID = urlID
 	return &authz, nil
 }
 
@@ -347,16 +352,16 @@ func completeAuthorization(authz *core.Authorization, s *State, c *acmeCache) er
 // correct authorization state an error is returned. If no error is returned
 // then the authorization is valid and ready.
 func pollAuthorization(authz *core.Authorization, s *State, c *acmeCache) error {
-	authzURL := authz.ID
+	authzURL := authz.ID // TODO(#8722): this ultimately will not work and is incomplete
 	for range 3 {
 		// Fetch the authz by its URL
-		authz, err := getAuthorization(s, c, authzURL)
+		authz, err := getAuthorization(s, c, fmt.Sprintf("%d", authzURL)) // TODO(#8722): this certainly will not produce anything like a URL
 		if err != nil {
 			return nil
 		}
 		// If the authz is invalid, abort with an error
 		if authz.Status == "invalid" {
-			return fmt.Errorf("Authorization %q failed challenge and is status invalid", authzURL)
+			return fmt.Errorf("Authorization %d failed challenge and is status invalid", authzURL)
 		}
 		// If the authz is valid, return with no error - the authz is ready to go!
 		if authz.Status == "valid" {
@@ -365,7 +370,7 @@ func pollAuthorization(authz *core.Authorization, s *State, c *acmeCache) error 
 		// Otherwise sleep and try again
 		time.Sleep(3 * time.Second)
 	}
-	return fmt.Errorf("Timed out polling authorization %q", authzURL)
+	return fmt.Errorf("Timed out polling authorization %d", authzURL)
 }
 
 // fulfillOrder processes a pending order from the context, completing each

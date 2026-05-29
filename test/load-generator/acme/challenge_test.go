@@ -66,8 +66,7 @@ func TestPickChallenge(t *testing.T) {
 		Type: "dns-01",
 	}
 	exampleAuthz := &core.Authorization{
-		ID:    "1234",
-		IDInt: 1234,
+		ID: 1234,
 		Challenges: []core.Challenge{
 			{
 				Type: "arm-wrestling",
@@ -112,7 +111,7 @@ func TestPickChallenge(t *testing.T) {
 			Name:          "Preferred type strategy, no challenge of type",
 			StratName:     "tls-alpn-01",
 			InputAuthz:    exampleAuthz,
-			ExpectedError: `authorization (ID "1234") had no "tls-alpn-01" type challenge`,
+			ExpectedError: `authorization (ID 1234) had no "tls-alpn-01" type challenge`,
 		},
 		{
 			Name:              "Preferred type strategy, challenge of type present",

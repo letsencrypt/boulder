@@ -294,6 +294,7 @@ message Authorizations {
   repeated core.Authorization authzs = 2;
 }
 
+// TODO(#8722): There are no more references to AuthorizationIDs, remove?
 message AuthorizationIDs {
   repeated string ids = 1;   // TODO(#8722): reserve
   repeated int64 idInts = 2; // TODO(#8722): rename

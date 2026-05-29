@@ -756,8 +756,9 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 
 	// TODO(#8722): remove this whole thing when req.Authz.Id is int64-only
 	var authzIDInt int64
+	var err error
 	if len(strings.TrimSpace(req.Authz.Id)) > 0 {
-		authzIDInt, err := strconv.ParseInt(req.Authz.Id, 10, 64)
+		authzIDInt, err = strconv.ParseInt(req.Authz.Id, 10, 64)
 		if err != nil {
 			return nil, berrors.InternalServerError("failed to parse Authz ID %v as int: %s", authzIDInt, err)
 		}

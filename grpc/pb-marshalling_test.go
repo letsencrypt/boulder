@@ -216,8 +216,7 @@ func TestAuthz(t *testing.T) {
 		Token:  "asd2",
 	}
 	inAuthz := core.Authorization{
-		ID:             "1",
-		IDInt:          1,
+		ID:             1,
 		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
@@ -231,8 +230,7 @@ func TestAuthz(t *testing.T) {
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
 
 	inAuthzNilExpires := core.Authorization{
-		ID:             "1",
-		IDInt:          1,
+		ID:             1,
 		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,

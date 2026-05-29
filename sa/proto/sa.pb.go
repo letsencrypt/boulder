@@ -1433,6 +1433,7 @@ func (x *Authorizations) GetAuthzs() []*proto.Authorization {
 	return nil
 }
 
+// TODO(#8722): There are no more references to AuthorizationIDs, remove?
 type AuthorizationIDs struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ids           []string               `protobuf:"bytes,1,rep,name=ids,proto3" json:"ids,omitempty"`               // TODO(#8722): reserve

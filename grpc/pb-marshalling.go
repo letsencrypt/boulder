@@ -8,6 +8,8 @@ package grpc
 import (
 	"fmt"
 	"net/netip"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -291,8 +293,8 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	}
 
 	return &corepb.Authorization{
-		Id:                     authz.ID,
-		IdInt:                  authz.IDInt,
+		Id:                     fmt.Sprintf("%d", authz.ID),
+		IdInt:                  authz.ID,
 		Identifier:             authz.Identifier.ToProto(),
 		RegistrationID:         authz.RegistrationID,
 		Status:                 string(authz.Status),
@@ -316,9 +318,25 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		c := pb.Expires.AsTime()
 		expires = &c
 	}
+
+	// TODO(#8722): remove this series of checks when pb.Id is int64-only
+	// if pb.Id == "" && pb.IdInt == 0 {
+	// 	return core.Authorization{}, ErrMissingParameters
+	// }
+	var authzID int64
+	var err error
+	if len(strings.TrimSpace(pb.Id)) > 0 {
+		authzID, err = strconv.ParseInt(pb.Id, 10, 64)
+		if err != nil {
+			_ = authzID
+			return core.Authorization{}, ErrInvalidParameters
+		}
+	}
+	if pb.IdInt != 0 {
+		authzID = pb.IdInt
+	}
 	authz := core.Authorization{
-		ID:                     pb.Id,
-		IDInt:                  pb.IdInt,
+		ID:                     authzID,
 		Identifier:             identifier.FromProto(pb.Identifier),
 		RegistrationID:         pb.RegistrationID,
 		Status:                 core.AcmeStatus(pb.Status),
