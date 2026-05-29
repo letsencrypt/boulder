@@ -724,7 +724,7 @@ func main() {
 	metrics.checkerGoodCount.Set(float64(checker.issuedReport.GoodCerts))
 	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
 
-	if config.CertChecker.PushgatewayService.Service != "" {
+	if config.CertChecker.PushgatewayService != nil {
 		pushgatewayURL, err := getPushgatewayURL(config.CertChecker.LookupDNSAuthority, config.CertChecker.PushgatewayScheme, *config.CertChecker.PushgatewayService)
 		if err != nil {
 			logger.Errf("failed to get pushgateway URL: %s", err)
