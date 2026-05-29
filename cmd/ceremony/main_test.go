@@ -220,7 +220,7 @@ func TestRootConfigValidate(t *testing.T) {
 			expectedError: "outputs.certificate-path is required",
 		},
 		{
-			name: "bad certificate-profile",
+			name: "no certificate-profile",
 			config: rootConfig{
 				PKCS11: PKCS11KeyGenConfig{
 					Module:     "module",
@@ -238,7 +238,7 @@ func TestRootConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 			},
-			expectedError: "not-before is required",
+			expectedError: "policyURL is required",
 		},
 		{
 			name: "good config",
@@ -259,6 +259,7 @@ func TestRootConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					NotBefore:          "a",
 					NotAfter:           "b",
 					SignatureAlgorithm: "c",
@@ -356,7 +357,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			expectedError: "outputs.certificate-path is required",
 		},
 		{
-			name: "bad certificate-profile",
+			name: "no certificate-profile",
 			config: intermediateConfig{
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
@@ -375,7 +376,41 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 			},
-			expectedError: "not-before is required",
+			expectedError: "policyURL is required",
+		},
+		{
+			name: "no policy url",
+			config: intermediateConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policyURL is required",
 		},
 		{
 			name: "too many policy OIDs",
@@ -397,6 +432,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					NotBefore:          "a",
 					NotAfter:           "b",
 					SignatureAlgorithm: "c",
@@ -431,6 +467,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					NotBefore:          "a",
 					NotAfter:           "b",
 					SignatureAlgorithm: "c",
@@ -465,6 +502,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					NotBefore:          "a",
 					NotAfter:           "b",
 					SignatureAlgorithm: "c",
@@ -577,7 +615,7 @@ func TestCrossCertConfigValidate(t *testing.T) {
 			expectedError: "outputs.certificate-path is required",
 		},
 		{
-			name: "bad certificate-profile",
+			name: "no certificate-profile",
 			config: crossCertConfig{
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
@@ -598,7 +636,43 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 			},
-			expectedError: "not-before is required",
+			expectedError: "policyURL is required",
+		},
+		{
+			name: "no policy url",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policyURL is required",
 		},
 		{
 			name: "too many policy OIDs",
@@ -622,6 +696,7 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					NotBefore:          "a",
 					NotAfter:           "b",
 					SignatureAlgorithm: "c",
@@ -658,6 +733,7 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					NotBefore:          "a",
 					NotAfter:           "b",
 					SignatureAlgorithm: "c",
@@ -694,6 +770,7 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					NotBefore:          "a",
 					NotAfter:           "b",
 					SignatureAlgorithm: "c",
@@ -766,7 +843,7 @@ func TestCSRConfigValidate(t *testing.T) {
 			expectedError: "outputs.csr-path is required",
 		},
 		{
-			name: "bad certificate-profile",
+			name: "no certificate-profile",
 			config: csrConfig{
 				PKCS11: PKCS11SigningConfig{
 					Module:       "module",
@@ -783,7 +860,7 @@ func TestCSRConfigValidate(t *testing.T) {
 					CSRPath: "path",
 				},
 			},
-			expectedError: "common-name is required",
+			expectedError: "policyURL is required",
 		},
 		{
 			name: "good config",
@@ -803,6 +880,7 @@ func TestCSRConfigValidate(t *testing.T) {
 					CSRPath: "path",
 				},
 				CertProfile: certProfile{
+					PolicyURL:    "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 					CommonName:   "d",
 					Organization: "e",
 					Country:      "f",

@@ -326,7 +326,7 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 }
 
 func TestVerifyProfile(t *testing.T) {
-	for _, tc := range []struct {
+	for i, tc := range []struct {
 		profile     certProfile
 		certType    []certType
 		expectedErr string
@@ -334,10 +334,18 @@ func TestVerifyProfile(t *testing.T) {
 		{
 			profile:     certProfile{},
 			certType:    []certType{intermediateCert, crossCert},
+			expectedErr: "policyURL is required",
+		},
+		{
+			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+			},
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "not-before is required",
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore: "a",
 			},
 			certType:    []certType{intermediateCert, crossCert},
@@ -345,6 +353,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore: "a",
 				NotAfter:  "b",
 			},
@@ -353,6 +362,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -362,6 +372,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -372,6 +383,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -383,6 +395,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -395,6 +408,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -408,6 +422,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -422,6 +437,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -437,6 +453,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -448,6 +465,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore: "a",
 			},
 			certType:    []certType{requestCert},
@@ -455,13 +473,15 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
-				NotAfter: "a",
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+				NotAfter:  "a",
 			},
 			certType:    []certType{requestCert},
 			expectedErr: "not-after cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				SignatureAlgorithm: "a",
 			},
 			certType:    []certType{requestCert},
@@ -469,13 +489,15 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
-				CRLURL: "a",
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+				CRLURL:    "a",
 			},
 			certType:    []certType{requestCert},
 			expectedErr: "crl-url cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				IssuerURL: "a",
 			},
 			certType:    []certType{requestCert},
@@ -483,13 +505,15 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
-				Policies: []policyInfoConfig{{OID: "1.2.3"}},
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+				Policies:  []policyInfoConfig{{OID: "1.2.3"}},
 			},
 			certType:    []certType{requestCert},
 			expectedErr: "policies cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				KeyUsages: []string{"a"},
 			},
 			certType:    []certType{requestCert},
@@ -497,14 +521,16 @@ func TestVerifyProfile(t *testing.T) {
 		},
 	} {
 		for _, ct := range tc.certType {
-			err := tc.profile.verifyProfile(ct)
-			if err != nil {
-				if tc.expectedErr != err.Error() {
-					t.Fatalf("Expected %q, got %q", tc.expectedErr, err.Error())
+			t.Run(fmt.Sprintf("%d/%d", i, ct), func(t *testing.T) {
+				err := tc.profile.verifyProfile(ct)
+				if err != nil {
+					if tc.expectedErr != err.Error() {
+						t.Errorf("Expected %q, got %q", tc.expectedErr, err.Error())
+					}
+				} else if tc.expectedErr != "" {
+					t.Errorf("verifyProfile didn't fail, expected %q", tc.expectedErr)
 				}
-			} else if tc.expectedErr != "" {
-				t.Fatalf("verifyProfile didn't fail, expected %q", tc.expectedErr)
-			}
+			})
 		}
 	}
 }

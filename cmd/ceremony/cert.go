@@ -102,7 +102,7 @@ func (profile *certProfile) Subject() pkix.Name {
 
 func (profile *certProfile) verifyProfile(ct certType) error {
 	if profile.PolicyURL == "" {
-		return errors.New("PolicyURL must be provided")
+		return errors.New("policyURL is required")
 	}
 	policyURLRegex := regexp.MustCompile(
 		`^https://github\.com/letsencrypt/cp-cps/blob/v[0-9.]+/CP-CPS.md#[0-9a-zA-Z-]+$`)
