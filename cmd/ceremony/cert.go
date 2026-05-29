@@ -21,7 +21,7 @@ type policyInfoConfig struct {
 
 // certProfile contains the information required to generate a certificate
 type certProfile struct {
-	// PolicyURL is *not* included in the certificate. It is a mandoary pointer
+	// PolicyURL is *not* included in the certificate. It is a mandatory pointer
 	// to the profile documented in our CPS with which this profile complies.
 	// It must point to a specific subsection of a specific version of the
 	// markdown source of our CPS.
