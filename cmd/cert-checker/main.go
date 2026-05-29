@@ -6,10 +6,12 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -542,8 +544,20 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		Workers        int    `validate:"required,min=1"`
-		PushgatewayURL string `validate:"omitempty,url"`
+		Workers int `validate:"required,min=1"`
+		// LookupDNSAuthority can only be specified with PushgatewayService. It's a single
+		// <hostname|IPv4|[IPv6]>:<port> of the DNS server to be used for resolution
+		// of pushgateway backends. If the address contains a hostname it will be resolved
+		// using system DNS. If the address contains a port, the client will use it
+		// directly, otherwise port 53 is used.
+		LookupDNSAuthority string `validate:"required_with=PushgatewayService,ip|hostname|hostname_port"`
+		// PushgatewayService entry contains a service and domain name that will be used
+		// to construct a SRV DNS query to lookup pushgateway backends. For example: if
+		// the resource record is 'foo.service.consul', then the 'Service' is 'foo'
+		// and the 'Domain' is 'service.consul'. The expected dNSName to be
+		// authenticated in the server certificate would be 'foo.service.consul'.
+		PushgatewayService cmd.ServiceDomain `validate:"required_with=LookupDNSAuthority"`
+		PushgatewayScheme  string            `validate:"required_with=PushgatewayService,oneof=http https"`
 		// Deprecated: cert-checker only logs bad results anyway.
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
@@ -578,6 +592,39 @@ type Config struct {
 	}
 	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig
+}
+
+func getPushgatewayURL(dnsAuthority, scheme string, svc cmd.ServiceDomain) (string, error) {
+	host, port, err := net.SplitHostPort(dnsAuthority)
+	if err != nil {
+		// Assume only hostname or IPv4 address was specified.
+		host = dnsAuthority
+		port = "53"
+	}
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(host, port))
+		},
+	}
+	lookupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, targets, err := r.LookupSRV(lookupCtx, svc.Service, "tcp", svc.Domain)
+	if err != nil {
+		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s failed: %w", svc.Service, svc.Domain, err)
+	}
+	if len(targets) == 0 {
+		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s returned 0 results", svc.Service, svc.Domain)
+	}
+	target := strings.TrimSuffix(targets[0].Target, ".")
+	addrs, err := r.LookupHost(lookupCtx, target)
+	if err != nil {
+		return "", fmt.Errorf("A/AAAA lookup of %q failed: %w", target, err)
+	}
+	if len(addrs) == 0 {
+		return "", fmt.Errorf("A/AAAA lookup of %q returned 0 results", target)
+	}
+	return fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(addrs[0], fmt.Sprint(targets[0].Port))), nil
 }
 
 func main() {
@@ -677,12 +724,17 @@ func main() {
 	metrics.checkerGoodCount.Set(float64(checker.issuedReport.GoodCerts))
 	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
 
-	if config.CertChecker.PushgatewayURL != "" {
-		err = cmd.PushMetrics("cert-checker", config.CertChecker.PushgatewayURL, reg, logger)
+	if config.CertChecker.PushgatewayService.Service != "" {
+		pushgatewayURL, err := getPushgatewayURL(config.CertChecker.LookupDNSAuthority, config.CertChecker.PushgatewayScheme, config.CertChecker.PushgatewayService)
 		if err != nil {
-			logger.Errf("failed to push metrics to pushgateway: %s", err)
+			logger.Errf("failed to get pushgateway URL: %s", err)
 		} else {
-			logger.Debugf("pushed metrics to pushgateway at %s", config.CertChecker.PushgatewayURL)
+			err = cmd.PushMetrics("cert-checker", pushgatewayURL, reg, logger)
+			if err != nil {
+				logger.Errf("failed to push metrics to pushgateway: %s", err)
+			} else {
+				logger.Debugf("pushed metrics to pushgateway at %s", pushgatewayURL)
+			}
 		}
 	}
 
