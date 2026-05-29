@@ -557,7 +557,6 @@ type Config struct {
 		// and the 'Domain' is 'service.consul'. The expected dNSName to be
 		// authenticated in the server certificate would be 'foo.service.consul'.
 		PushgatewayService *cmd.ServiceDomain `validate:"required_with=LookupDNSAuthority"`
-		PushgatewayScheme  string             `validate:"excluded_without=PushgatewayService,required_with=PushgatewayService,omitempty,oneof=http https"`
 		// Deprecated: cert-checker only logs bad results anyway.
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
@@ -594,7 +593,7 @@ type Config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func getPushgatewayURL(ctx context.Context, dnsAuthority, scheme string, svc cmd.ServiceDomain) (string, error) {
+func getPushgatewayURL(ctx context.Context, dnsAuthority string, svc cmd.ServiceDomain) (string, error) {
 	host, port, err := net.SplitHostPort(dnsAuthority)
 	if err != nil {
 		// Assume only hostname or IPv4 address was specified.
@@ -622,7 +621,7 @@ func getPushgatewayURL(ctx context.Context, dnsAuthority, scheme string, svc cmd
 	if len(addrs) == 0 {
 		return "", fmt.Errorf("A/AAAA lookup of %q returned 0 results", target)
 	}
-	return fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(addrs[0], fmt.Sprint(targets[0].Port))), nil
+	return fmt.Sprintf("http://%s", net.JoinHostPort(addrs[0], fmt.Sprint(targets[0].Port))), nil
 }
 
 func main() {
@@ -725,7 +724,7 @@ func main() {
 	if config.CertChecker.PushgatewayService != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		pushgatewayURL, err := getPushgatewayURL(ctx, config.CertChecker.LookupDNSAuthority, config.CertChecker.PushgatewayScheme, *config.CertChecker.PushgatewayService)
+		pushgatewayURL, err := getPushgatewayURL(ctx, config.CertChecker.LookupDNSAuthority, *config.CertChecker.PushgatewayService)
 		if err != nil {
 			logger.Errf("failed to get pushgateway URL: %s", err)
 		} else {
