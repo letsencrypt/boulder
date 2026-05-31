@@ -3812,6 +3812,32 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	})
 }
 
+func TestOrderToOrderJSONExpires(t *testing.T) {
+	wfe, _, _ := setupWFE(t)
+
+	expires := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	withExpiry := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
+		Id:             1,
+		RegistrationID: 1,
+		Identifiers:    []*corepb.Identifier{identifier.NewDNS("a").ToProto()},
+		Status:         string(core.StatusPending),
+		Expires:        timestamppb.New(expires),
+	})
+	got, err := json.Marshal(withExpiry)
+	test.AssertNotError(t, err, "marshaling order with an expiry")
+	test.AssertContains(t, string(got), `"expires":"2024-01-02T03:04:05Z"`)
+
+	withoutExpiry := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
+		Id:             1,
+		RegistrationID: 1,
+		Identifiers:    []*corepb.Identifier{identifier.NewDNS("a").ToProto()},
+		Status:         string(core.StatusPending),
+	})
+	got, err = json.Marshal(withoutExpiry)
+	test.AssertNotError(t, err, "marshaling order without an expiry")
+	test.AssertNotContains(t, string(got), "expires")
+}
+
 func TestAccountMarshaling(t *testing.T) {
 	acct := &core.Registration{
 		ID:        1987,

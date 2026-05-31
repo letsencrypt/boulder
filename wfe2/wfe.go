@@ -2054,7 +2054,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 
 type orderJSON struct {
 	Status         core.AcmeStatus            `json:"status"`
-	Expires        time.Time                  `json:"expires"`
+	Expires        *time.Time                 `json:"expires,omitempty"`
 	Identifiers    identifier.ACMEIdentifiers `json:"identifiers"`
 	Authorizations []string                   `json:"authorizations"`
 	Finalize       string                     `json:"finalize"`
@@ -2073,11 +2073,15 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		fmt.Sprintf("%d", order.RegistrationID), fmt.Sprintf("%d", order.Id))
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
-		Expires:     order.Expires.AsTime(),
 		Identifiers: identifier.FromProtoSlice(order.Identifiers),
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
 		Replaces:    order.Replaces,
+	}
+	// Omit expires when unset rather than serialize a zero-value timestamp.
+	if !core.IsAnyNilOrZero(order.Expires) {
+		expires := order.Expires.AsTime()
+		respObj.Expires = &expires
 	}
 	// If there is an order error, prefix its type with the V2 namespace
 	if order.Error != nil {
