@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/netip"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -320,23 +319,18 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	}
 
 	// TODO(#8722): remove this series of checks when pb.Id is int64-only
-	// if pb.Id == "" && pb.IdInt == 0 {
-	// 	return core.Authorization{}, ErrMissingParameters
-	// }
-	var authzID int64
+	var authzIDInt int64
 	if pb.IdInt != 0 {
-		authzID = pb.IdInt
+		authzIDInt = pb.IdInt
 	} else if pb.Id != "" {
 		parsed, err := strconv.ParseInt(pb.Id, 10, 64)
 		if err != nil {
 			return core.Authorization{}, ErrInvalidParameters
 		}
-		authzID = parsed
-	} else {
-		return core.Authorization{}, ErrMissingParameters
+		authzIDInt = parsed
 	}
 	authz := core.Authorization{
-		ID:                     authzID,
+		ID:                     authzIDInt,
 		Identifier:             identifier.FromProto(pb.Identifier),
 		RegistrationID:         pb.RegistrationID,
 		Status:                 core.AcmeStatus(pb.Status),

@@ -750,22 +750,17 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 
 	// TODO(#8722): remove this and return req.Authz.Id to isAnyNilOrZero check
 	// above when Authz IDs are int64-only
-	if req.Authz.Id == "" && req.Authz.IdInt == 0 {
-		return nil, berrors.InternalServerError("Incomplete validation request, missing Authz ID")
-	}
-
-	// TODO(#8722): remove this whole thing when req.Authz.Id is int64-only
 	var authzIDInt int64
-	var err error
-	if len(strings.TrimSpace(req.Authz.Id)) > 0 {
-		authzIDInt, err = strconv.ParseInt(req.Authz.Id, 10, 64)
-		if err != nil {
-			_ = authzIDInt
-			return nil, berrors.InternalServerError("failed to parse Authz ID %q as int: %s", req.Authz.Id, err)
-		}
-	}
 	if req.Authz.IdInt != 0 {
 		authzIDInt = req.Authz.IdInt
+	} else if req.Authz.Id != "" {
+		parsed, err := strconv.ParseInt(req.Authz.Id, 10, 64)
+		if err != nil {
+			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.Authz.Id, err)
+		}
+		authzIDInt = parsed
+	} else {
+		return nil, berrors.InternalServerError("incomplete validation request")
 	}
 
 	ident := identifier.FromProto(req.Identifier)

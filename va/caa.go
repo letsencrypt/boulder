@@ -44,17 +44,15 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	}
 
 	// TODO(#8722): remove this whole thing when Authz IDs are int64-only
-	var authzID int64
-	var err error
-	if len(strings.TrimSpace(req.AuthzID)) > 0 {
-		authzID, err = strconv.ParseInt(req.AuthzID, 10, 64)
+	var authzIDInt int64
+	if req.AuthzIDInt != 0 {
+		authzIDInt = req.AuthzIDInt
+	} else if req.AuthzID != "" {
+		parsed, err := strconv.ParseInt(req.AuthzID, 10, 64)
 		if err != nil {
-			_ = authzID
 			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.AuthzID, err)
 		}
-	}
-	if req.AuthzIDInt != 0 {
-		authzID = req.AuthzIDInt
+		authzIDInt = parsed
 	}
 
 	ident := identifier.FromProto(req.Identifier)
@@ -80,7 +78,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	var localLatency time.Duration
 	start := va.clk.Now()
 	logEvent := validationLogEvent{
-		AuthzID:    authzID,
+		AuthzID:    authzIDInt,
 		Requester:  req.AccountURIID,
 		Identifier: ident,
 	}
@@ -111,7 +109,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 
 	// Do the local checks. We do these before kicking off the remote checks to
 	// ensure that we don't waste effort on remote checks if the local ones fail.
-	err = va.checkCAA(ctx, ident, params)
+	err := va.checkCAA(ctx, ident, params)
 
 	// Stop the clock for local check latency.
 	localLatency = va.clk.Since(start)

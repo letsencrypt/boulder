@@ -110,11 +110,6 @@ message JSONWebKey {
   bytes jwk = 1;
 }
 
-message AuthorizationID {
-  string id = 1;   // TODO(#8722): reserve
-  int64 idInt = 2; // TODO(#8722): rename
-}
-
 message GetValidAuthorizationsRequest {
   // Next unused field number: 7
   int64 registrationID = 1;
@@ -292,12 +287,6 @@ message GetAuthorizationsRequest {
 
 message Authorizations {
   repeated core.Authorization authzs = 2;
-}
-
-// TODO(#8722): There are no more references to AuthorizationIDs, remove?
-message AuthorizationIDs {
-  repeated string ids = 1;   // TODO(#8722): reserve
-  repeated int64 idInts = 2; // TODO(#8722): rename
 }
 
 message AuthorizationID2 {

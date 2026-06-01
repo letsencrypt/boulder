@@ -573,22 +573,19 @@ func TestPerformValidationSuccess(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// TODO(#8722): Remove this when Authz ID is int64-only
-		if authzPB.Id == "" && authzPB.IdInt == 0 {
-			t.Fatalf("authzPB missing parameters")
-		}
-		var authzID int64
-		if len(strings.TrimSpace(authzPB.Id)) > 0 {
-			authzID, err = strconv.ParseInt(authzPB.Id, 10, 64)
+		var authzIDInt int64
+		if authzPB.IdInt != 0 {
+			authzIDInt = authzPB.IdInt
+		} else if authzPB.Id != "" {
+			parsed, err := strconv.ParseInt(authzPB.Id, 10, 64)
 			if err != nil {
-				_ = authzID
 				t.Fatalf("Failed to parse Authz ID as int64: %v", err)
 			}
+			authzIDInt = parsed
+		} else {
+			t.Fatalf("authzPB missing parameters")
 		}
-		if authzPB.IdInt != 0 {
-			authzID = authzPB.IdInt
-		}
-		t.Log("authzPB:", authzPB)
-		dbAuthzPB := getAuthorization(t, authzID, sa)
+		dbAuthzPB := getAuthorization(t, authzIDInt, sa)
 		t.Log("dbAuthz:", dbAuthzPB)
 
 		// Verify that the responses are reflected
@@ -804,23 +801,20 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	// TODO(#8722): Remove this when Authz is int64-only
-	if authzPB.Id == "" && authzPB.IdInt == 0 {
-		t.Fatalf("authzPB missing parameters")
-	}
-	var authzID int64
-	if len(strings.TrimSpace(authzPB.Id)) > 0 {
-		authzID, err = strconv.ParseInt(authzPB.Id, 10, 64)
+	// TODO(#8722): Remove this when Authz ID is int64-only
+	var authzIDInt int64
+	if authzPB.IdInt != 0 {
+		authzIDInt = authzPB.IdInt
+	} else if authzPB.Id != "" {
+		parsed, err := strconv.ParseInt(authzPB.Id, 10, 64)
 		if err != nil {
-			_ = authzID
 			t.Fatalf("Failed to parse Authz ID as int64: %v", err)
 		}
+		authzIDInt = parsed
+	} else {
+		t.Fatalf("authzPB missing parameters")
 	}
-	if authzPB.IdInt != 0 {
-		authzID = authzPB.IdInt
-	}
-	t.Log("authzPB:", authzPB)
-	dbAuthzPB := getAuthorization(t, authzID, sa)
+	dbAuthzPB := getAuthorization(t, authzIDInt, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected

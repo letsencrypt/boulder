@@ -55,6 +55,7 @@ import (
 var (
 	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
 	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+	errMalformedGRPCRequest   = errors.New("malformed gRPC request message field")
 
 	// caaRecheckDuration is the amount of time after a CAA check that we will
 	// recheck the CAA records for a domain. Per Baseline Requirements, we must
@@ -2042,22 +2043,19 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		return nil, errIncompleteGRPCRequest
 	}
 	// TODO(#8722): Re-add req.Id to IsAnyNilOrZero check above, and cleanup following blocks when authz ids are int64-only
-	if req.Id == "" && req.IdInt == 0 {
+	var authzIDInt int64
+	if req.IdInt != 0 {
+		authzIDInt = req.IdInt
+	} else if req.Id != "" {
+		parsed, err := strconv.ParseInt(req.Id, 10, 64)
+		if err != nil {
+			return nil, errMalformedGRPCRequest
+		}
+		authzIDInt = parsed
+	} else {
 		return nil, errIncompleteGRPCRequest
 	}
-	var authzID int64
-	var err error
-	if len(strings.TrimSpace(req.Id)) > 0 {
-		authzID, err = strconv.ParseInt(req.Id, 10, 64)
-		if err != nil {
-			_ = authzID
-			return nil, err
-		}
-	}
-	if req.IdInt != 0 {
-		authzID = req.IdInt
-	}
-	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID}); err != nil {
+	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzIDInt}); err != nil {
 		return nil, err
 	}
 	if req.Status == string(core.StatusPending) {
@@ -2066,7 +2064,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
-		err = ra.countFailedValidations(ctx, req.RegistrationID, ident)
+		err := ra.countFailedValidations(ctx, req.RegistrationID, ident)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}
