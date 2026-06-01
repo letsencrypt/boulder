@@ -781,7 +781,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 					"method":     method,
 				})
 				err = berrors.InternalServerError(
-					"Internal error rechecking CAA with authorization ID %v (%v)",
+					"Internal error rechecking CAA for authorization ID %v (%v)",
 					authz.ID, authz.Identifier.Value,
 				)
 			} else if resp.Problem != nil {
