@@ -19,6 +19,9 @@ CREATE TABLE `checkpoints` (
     -- Signed-over data: https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
     -- Note that `log_origin` and `cosigner_name` in the link above are derived from `mtcLogID` and `mirrorID` respectively.
     -- Also, for checkpoint signatures start == 0 and end == tree size.
+    -- `treeSize` will be strictly increasing over time, enforced by the application.
+    -- Appending to this table will involve a check (in a transaction) that the treeSize and root hash of the
+    -- highest-sized checkpoint match what the CA expects.
     `treeSize` bigint(20) unsigned NOT NULL,
     `rootHash` binary(32) NOT NULL,
 
@@ -31,6 +34,9 @@ CREATE TABLE `landmarks` (
     `id` bigint(20) NOT NULL AUTO_INCREMENT,
     -- ASCII-format OID relative to 1.3.6.1.4.1
     `mtcLogID` varchar(255) NOT NULL,
+    -- Each newly added landmark must have a strictly larger landmarkNumber
+    -- than the previous one. We'll enforce this at the application level,
+    -- not the database level.
     `landmarkNumber` bigint(20) unsigned NOT NULL,
     `treeSize` bigint(20) unsigned NOT NULL,
     `created` datetime DEFAULT current_timestamp(),
