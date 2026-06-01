@@ -1074,7 +1074,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Collect up identifierLogs to log validation information for each identifier.
 	logIdents := make([]identifierLog, 0)
 	for ident, authz := range authzs {
-
 		// We know that at least one challenge is valid, because this was just
 		// confirmed by ra.checkOrderAuthorizations.
 		var solvedChall core.Challenge
