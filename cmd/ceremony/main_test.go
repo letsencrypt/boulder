@@ -238,7 +238,7 @@ func TestRootConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 			},
-			expectedError: "policyURL is required",
+			expectedError: "policy-url is required",
 		},
 		{
 			name: "good config",
@@ -376,7 +376,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 			},
-			expectedError: "policyURL is required",
+			expectedError: "policy-url is required",
 		},
 		{
 			name: "no policy url",
@@ -410,7 +410,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 				},
 				SkipLints: []string{},
 			},
-			expectedError: "policyURL is required",
+			expectedError: "policy-url is required",
 		},
 		{
 			name: "too many policy OIDs",
@@ -636,7 +636,7 @@ func TestCrossCertConfigValidate(t *testing.T) {
 					CertificatePath: "path",
 				},
 			},
-			expectedError: "policyURL is required",
+			expectedError: "policy-url is required",
 		},
 		{
 			name: "no policy url",
@@ -672,7 +672,7 @@ func TestCrossCertConfigValidate(t *testing.T) {
 				},
 				SkipLints: []string{},
 			},
-			expectedError: "policyURL is required",
+			expectedError: "policy-url is required",
 		},
 		{
 			name: "too many policy OIDs",
@@ -860,7 +860,7 @@ func TestCSRConfigValidate(t *testing.T) {
 					CSRPath: "path",
 				},
 			},
-			expectedError: "policyURL is required",
+			expectedError: "policy-url is required",
 		},
 		{
 			name: "good config",

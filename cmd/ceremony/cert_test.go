@@ -334,7 +334,14 @@ func TestVerifyProfile(t *testing.T) {
 		{
 			profile:     certProfile{},
 			certType:    []certType{intermediateCert, crossCert},
-			expectedErr: "policyURL is required",
+			expectedErr: "policy-url is required",
+		},
+		{
+			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md",
+			},
+			certType:    []certType{intermediateCert, crossCert},
+			expectedErr: "policy-url must point to a specific subsection of a specific version of our CPS",
 		},
 		{
 			profile: certProfile{
@@ -524,7 +531,7 @@ func TestVerifyProfile(t *testing.T) {
 			t.Run(fmt.Sprintf("%d/%d", i, ct), func(t *testing.T) {
 				err := tc.profile.verifyProfile(ct)
 				if err != nil {
-					if tc.expectedErr != err.Error() {
+					if !strings.Contains(err.Error(), tc.expectedErr) {
 						t.Errorf("Expected %q, got %q", tc.expectedErr, err.Error())
 					}
 				} else if tc.expectedErr != "" {

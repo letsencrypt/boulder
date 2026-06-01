@@ -91,6 +91,12 @@ const (
 	requestCert
 )
 
+// policyURLRegex matches URLs which point to a specific subsection (see
+// trailing fragment) of a specific version (following /blob/) of our markdown
+// CPS (which we host at github.com/letsencrypt/cp-cps).
+var policyURLRegex = regexp.MustCompile(
+	`^https://github\.com/letsencrypt/cp-cps/blob/v[0-9]+(\.[0-9]+)+/CP-CPS\.md#[0-9a-zA-Z-]+$`)
+
 // Subject returns a pkix.Name from the appropriate certProfile fields
 func (profile *certProfile) Subject() pkix.Name {
 	return pkix.Name{
@@ -102,12 +108,10 @@ func (profile *certProfile) Subject() pkix.Name {
 
 func (profile *certProfile) verifyProfile(ct certType) error {
 	if profile.PolicyURL == "" {
-		return errors.New("policyURL is required")
+		return errors.New("policy-url is required")
 	}
-	policyURLRegex := regexp.MustCompile(
-		`^https://github\.com/letsencrypt/cp-cps/blob/v[0-9.]+/CP-CPS.md#[0-9a-zA-Z-]+$`)
 	if !policyURLRegex.MatchString(profile.PolicyURL) {
-		return errors.New("PolicyURL must point to a specific subsection of a specific version of our markdown CPS")
+		return fmt.Errorf("policy-url must point to a specific subsection of a specific version of our CPS: %s", policyURLRegex.String())
 	}
 
 	if ct == requestCert {
