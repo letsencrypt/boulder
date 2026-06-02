@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: '0' # Needed for verify-release-ancestry.sh to see origin/main
@@ -41,7 +41,7 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: '0' # Needed for verify-release-ancestry.sh to see origin/main
@@ -87,7 +87,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
