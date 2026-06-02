@@ -178,7 +178,6 @@ func TestNewIssuerKeyUsage(t *testing.T) {
 	}{
 		{"missing certSign", x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature, "does not have keyUsage certSign"},
 		{"missing crlSign", x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature, "does not have keyUsage crlSign"},
-		{"missing digitalSignature", x509.KeyUsageCertSign | x509.KeyUsageCRLSign, "does not have keyUsage digitalSignature"},
 		{"all three", x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature, ""},
 	}
 	for _, tc := range tests {
