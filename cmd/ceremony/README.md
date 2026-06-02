@@ -356,6 +356,7 @@ The certificate profile defines a restricted set of fields that are used to gene
 
 | Field | Description |
 | --- | --- |
+| `policy-url` | Required. The URL of a specific subsection of a specific version of our markdown CPS, e.g. `https://github.com/letsencrypt/cp-cps/blob/v6.1/CP-CPS.md#root-ca-certificate-profile`. |
 | `signature-algorithm` | Specifies the signing algorithm to use, one of `SHA256WithRSA`, `SHA384WithRSA`, `SHA512WithRSA`, `ECDSAWithSHA256`, `ECDSAWithSHA384`, `ECDSAWithSHA512` |
 | `common-name` | Specifies the subject commonName |
 | `organization` | Specifies the subject organization |
