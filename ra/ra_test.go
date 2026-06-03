@@ -52,6 +52,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -379,10 +380,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	})
 	test.AssertNotError(t, err, "making validation profiles")
 
+	profileToMTCA := make(map[string]mtcapb.MTCAClient)
+
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder,
-		profiles, nil, 5*time.Minute, ctp, nil)
+		profiles, nil, 5*time.Minute, ctp, nil, profileToMTCA)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca

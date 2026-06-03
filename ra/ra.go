@@ -40,6 +40,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -70,11 +71,12 @@ var (
 type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
 	rapb.UnsafeSCTProviderServer
-	CA        capb.CertificateAuthorityClient
-	VA        va.RemoteClients
-	SA        sapb.StorageAuthorityClient
-	PA        core.PolicyAuthority
-	publisher pubpb.PublisherClient
+	CA            capb.CertificateAuthorityClient
+	VA            va.RemoteClients
+	SA            sapb.StorageAuthorityClient
+	PA            core.PolicyAuthority
+	publisher     pubpb.PublisherClient
+	profileToMTCA map[string]mtcapb.MTCAClient
 
 	clk               clock.Clock
 	log               blog.Logger
@@ -126,6 +128,7 @@ func NewRegistrationAuthorityImpl(
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
 	issuers []*issuance.Certificate,
+	profileToMTCA map[string]mtcapb.MTCAClient,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := promauto.With(stats).NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -215,6 +218,7 @@ func NewRegistrationAuthorityImpl(
 		limiter:                 limiter,
 		txnBuilder:              txnBuilder,
 		publisher:               pubc,
+		profileToMTCA:           profileToMTCA,
 		finalizeTimeout:         finalizeTimeout,
 		ctpolicy:                ctp,
 		ctpolicyResults:         ctpolicyResults,
@@ -262,6 +266,9 @@ type ValidationProfileConfig struct {
 	// specified, the profile is open to all accounts. If the file
 	// exists but is empty, the profile is closed to all accounts.
 	AllowList string `validate:"omitempty"`
+	// MTC indicates that orders with this profile should be sent to an
+	// MTCA instance for issuance.
+	MTC bool `validate:"omitempty"`
 	// IdentifierTypes is a list of identifier types that may be issued under
 	// this profile.
 	IdentifierTypes []identifier.IdentifierType `validate:"required,dive,oneof=dns ip"`
@@ -292,6 +299,9 @@ type validationProfile struct {
 	// identifierTypes is a list of identifier types that may be issued under
 	// this profile.
 	identifierTypes []identifier.IdentifierType
+	// MTC indicates that orders with this profile should be sent to an
+	// MTCA instance for issuance.
+	mtc bool
 }
 
 // validationProfiles provides access to the set of configured profiles,
@@ -359,6 +369,7 @@ func NewValidationProfiles(defaultName string, configs map[string]*ValidationPro
 			maxNames:             config.MaxNames,
 			allowList:            allowList,
 			identifierTypes:      config.IdentifierTypes,
+			mtc:                  config.MTC,
 		}
 	}
 
@@ -923,7 +934,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Steps 3 (issuance) and 4 (cleanup) are done inside a helper function so
 	// that we can control whether or not that work happens asynchronously.
-	if features.Get().AsyncFinalize {
+	// For MTC issuance we don't immediately go async: we wait on the MTCA
+	// sequencing an entry. This allows us to quickly return errors if sequencing
+	// is unavailable for any reason.
+	if features.Get().AsyncFinalize && !ra.isMTC(order) {
 		// We do this work in a goroutine so that we can better handle latency from
 		// getting SCTs and writing the (pre)certificate to the database. This lets
 		// us return the order in the Processing state to the client immediately,
@@ -952,6 +966,31 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	} else {
 		return ra.issueCertificateOuter(ctx, order, csr, authzs, logEvent)
 	}
+}
+
+func (ra *RegistrationAuthorityImpl) issueMTC(
+	ctx context.Context,
+	order *corepb.Order,
+	subjectPublicKeyInfo []byte,
+) error {
+	profileName := ra.profileName(order)
+	mtca := ra.profileToMTCA[profileName]
+	if mtca == nil {
+		return fmt.Errorf("no MTCA configured for MTC profile %q", profileName)
+	}
+
+	resp, err := mtca.Issue(ctx, &mtcapb.IssueRequest{
+		Pubkey:      subjectPublicKeyInfo,
+		Identifiers: order.Identifiers,
+		Profile:     profileName,
+	})
+
+	if err != nil {
+		return fmt.Errorf("issuing MTC: %s", err)
+	}
+
+	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcEntryIndex)
+	return nil
 }
 
 // containsMustStaple returns true if the provided set of extensions includes
@@ -1128,12 +1167,19 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
 	}
 
-	profileName := order.CertificateProfileName
-	if profileName == "" {
-		profileName = ra.profiles.defaultName
+	if ra.isMTC(order) {
+		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
+		if err != nil {
+			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
+			return nil, err
+		}
+
+		ra.countCertificateIssued(ctx, order.RegistrationID, idents, isRenewal)
+		return order, nil
 	}
 
 	// Step 3: Issue the Certificate
+	profileName := ra.profileName(order)
 	cert, err := ra.issueCertificateInner(
 		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
@@ -1174,6 +1220,19 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.log.AuditInfo(fmt.Sprintf("Certificate request - %s", result), logEvent)
 
 	return order, err
+}
+
+func (ra *RegistrationAuthorityImpl) profileName(order *corepb.Order) string {
+	if order.CertificateProfileName == "" {
+		return ra.profiles.defaultName
+	}
+	return order.CertificateProfileName
+}
+
+func (ra *RegistrationAuthorityImpl) isMTC(order *corepb.Order) bool {
+	profileName := ra.profileName(order)
+	profile := ra.profiles.byName[profileName]
+	return profile != nil && profile.mtc
 }
 
 // countCertificateIssued increments the certificates (per domain and per
