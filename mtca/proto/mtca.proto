@@ -23,6 +23,5 @@ message IssueRequest {
 message IssueResponse {
   // Next unused field number: 4
   string mtcLogID = 1;
-  int64 mtcSerialNumber = 2;
-  int64 checkpointSubtreeID = 3;
+  int64 mtcEntryIndex = 2;
 }
