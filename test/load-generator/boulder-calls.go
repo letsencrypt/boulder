@@ -16,7 +16,6 @@ import (
 	"io"
 	mrand "math/rand/v2"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -154,7 +153,7 @@ func randDomain(base string) string {
 	// limits annoying!
 	var bytes [3]byte
 	_, _ = rand.Read(bytes[:])
-	return hex.EncodeToString(bytes[:]) + base
+	return hex.EncodeToString(bytes[:]) + "." + base
 }
 
 // newOrder creates a new pending order object for a random set of domains using
@@ -255,13 +254,6 @@ func getAuthorization(s *State, c *acmeCache, url string) (*core.Authorization, 
 	if err != nil {
 		return nil, fmt.Errorf("%s response: %s", url, body)
 	}
-	// The Authorization ID is not set in the response so we populate it using
-	// the URL
-	urlID, err := strconv.ParseInt(url, 10, 64) // TODO(#8722): this will not work and is incomplete
-	if err != nil {
-		return nil, fmt.Errorf("%s response: %s, error: %v", url, body, err)
-	}
-	authz.ID = urlID
 	return &authz, nil
 }
 
@@ -269,7 +261,7 @@ func getAuthorization(s *State, c *acmeCache, url string) (*core.Authorization, 
 // HTTP-01 challenge using the context's account and the state's challenge
 // server. Aftering POSTing the authorization's HTTP-01 challenge the
 // authorization will be polled waiting for a state change.
-func completeAuthorization(authz *core.Authorization, s *State, c *acmeCache) error {
+func completeAuthorization(authz *core.Authorization, url string, s *State, c *acmeCache) error {
 	// Skip if the authz isn't pending
 	if authz.Status != core.StatusPending {
 		return nil
@@ -337,7 +329,7 @@ func completeAuthorization(authz *core.Authorization, s *State, c *acmeCache) er
 
 	// Poll the authorization waiting for the challenge response to be recorded in
 	// a change of state. The polling may sleep and retry a few times if required
-	err = pollAuthorization(authz, s, c)
+	err = pollAuthorization(url, s, c)
 	if err != nil {
 		return err
 	}
@@ -351,17 +343,16 @@ func completeAuthorization(authz *core.Authorization, s *State, c *acmeCache) er
 // be valid. If the status is invalid, or if three GETs do not produce the
 // correct authorization state an error is returned. If no error is returned
 // then the authorization is valid and ready.
-func pollAuthorization(authz *core.Authorization, s *State, c *acmeCache) error {
-	authzURL := authz.ID // TODO(#8722): this ultimately will not work and is incomplete
+func pollAuthorization(url string, s *State, c *acmeCache) error {
 	for range 3 {
 		// Fetch the authz by its URL
-		authz, err := getAuthorization(s, c, fmt.Sprintf("%d", authzURL)) // TODO(#8722): this certainly will not produce anything like a URL
+		authz, err := getAuthorization(s, c, url)
 		if err != nil {
 			return nil
 		}
 		// If the authz is invalid, abort with an error
 		if authz.Status == "invalid" {
-			return fmt.Errorf("Authorization %d failed challenge and is status invalid", authzURL)
+			return fmt.Errorf("Authorization %q failed challenge and is status invalid", url)
 		}
 		// If the authz is valid, return with no error - the authz is ready to go!
 		if authz.Status == "valid" {
@@ -370,7 +361,7 @@ func pollAuthorization(authz *core.Authorization, s *State, c *acmeCache) error 
 		// Otherwise sleep and try again
 		time.Sleep(3 * time.Second)
 	}
-	return fmt.Errorf("Timed out polling authorization %d", authzURL)
+	return fmt.Errorf("Timed out polling authorization %q", url)
 }
 
 // fulfillOrder processes a pending order from the context, completing each
@@ -395,7 +386,7 @@ func fulfillOrder(s *State, c *acmeCache) error {
 		}
 
 		// Complete the authorization by solving a challenge
-		err = completeAuthorization(authz, s, c)
+		err = completeAuthorization(authz, url, s, c)
 		if err != nil {
 			return err
 		}
