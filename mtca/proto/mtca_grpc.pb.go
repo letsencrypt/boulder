@@ -28,7 +28,7 @@ const (
 //
 // MTCA issues MTC certificates.
 type MTCAClient interface {
-	// Submit requests that the CA start the process of creating a standalone certificate
+	// Issue requests that the CA start the process of creating a standalone certificate
 	// for the given request. It returns once a checkpoint has been signed that includes
 	// that certificate's TBSCertificateLogEntry, but does not wait for cosignatures.
 	Issue(ctx context.Context, in *IssueRequest, opts ...grpc.CallOption) (*IssueResponse, error)
@@ -58,7 +58,7 @@ func (c *mTCAClient) Issue(ctx context.Context, in *IssueRequest, opts ...grpc.C
 //
 // MTCA issues MTC certificates.
 type MTCAServer interface {
-	// Submit requests that the CA start the process of creating a standalone certificate
+	// Issue requests that the CA start the process of creating a standalone certificate
 	// for the given request. It returns once a checkpoint has been signed that includes
 	// that certificate's TBSCertificateLogEntry, but does not wait for cosignatures.
 	Issue(context.Context, *IssueRequest) (*IssueResponse, error)
