@@ -142,6 +142,10 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userAgent := r.Header.Get("User-Agent")
+	// If someone sends a very long User-Agent we're only interested in logging the beginning.
+	if len(userAgent) > 100 {
+		userAgent = userAgent[:100] + "..."
+	}
 
 	logEvent := &RequestEvent{
 		RealIP:    realIP,

@@ -10,6 +10,7 @@ inputs:
 outputs:
     certificate-path: test/certs/webpki/{{ .FileName }}.cert.pem
 certificate-profile:
+    policy-url: https://github.com/letsencrypt/cp-cps/blob/v6.1/CP-CPS.md#tls-subordinate-ca-certificate-profile
     signature-algorithm: ECDSAWithSHA384
     common-name: {{ .CommonName }}
     organization: good guys

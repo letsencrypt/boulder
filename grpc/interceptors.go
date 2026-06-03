@@ -26,6 +26,10 @@ const (
 	meaningfulWorkOverhead = 100 * time.Millisecond
 	clientRequestTimeKey   = "client-request-time"
 	userAgentKey           = "acme-client-user-agent"
+	// We use the "-bin" suffix to tell grpc's metadata package not to require the user-agent
+	// be printable ASCII. It's rare, but ACME clients can send non-ASCII user-agents.
+	// Remove `userAgentKey` once this has been deployed.
+	userAgentKey2 = "acme-client-user-agent-bin"
 )
 
 type serverInterceptor interface {
@@ -91,7 +95,9 @@ func (smi *serverMetadataInterceptor) Unary(
 				return nil, err
 			}
 		}
-		if len(md[userAgentKey]) > 0 {
+		if len(md[userAgentKey2]) > 0 {
+			ctx = web.WithUserAgent(ctx, md[userAgentKey2][0])
+		} else if len(md[userAgentKey]) > 0 {
 			ctx = web.WithUserAgent(ctx, md[userAgentKey][0])
 		}
 	}
@@ -276,6 +282,7 @@ func (cmi *clientMetadataInterceptor) Unary(
 	reqMD := metadata.New(map[string]string{
 		clientRequestTimeKey: nowTS,
 		userAgentKey:         web.UserAgent(ctx),
+		userAgentKey2:        web.UserAgent(ctx),
 	})
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
@@ -384,6 +391,7 @@ func (cmi *clientMetadataInterceptor) Stream(
 	reqMD := metadata.New(map[string]string{
 		clientRequestTimeKey: nowTS,
 		userAgentKey:         web.UserAgent(ctx),
+		userAgentKey2:        web.UserAgent(ctx),
 	})
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
