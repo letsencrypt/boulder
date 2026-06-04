@@ -85,7 +85,7 @@ function run_unit_tests() {
   # Sleep 50ms instead of 1000ms at the end of each package's unittests.
   # Speeds up running lots of small unittests.
   # https://go.dev/doc/articles/race_detector#Options
-  export atexit_sleep_ms=50
+  export GORACE="atexit_sleep_ms=50"
   # If unit test packages are not specified: set flags to run unit tests
   # for all boulder packages
   if [ -z "${UNIT_PACKAGES[@]+x}" ]
@@ -93,12 +93,19 @@ function run_unit_tests() {
     # The ra and sa unittests conflict because they both mutate the database.
     # Exclude the ra from our first test run, then run on its own.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go test "${UNIT_FLAGS[@]}" $(go list ./... | grep -v boulder/ra)
-    go test ./ra
+    go_test $(go list ./... | grep -v boulder/ra)
+    go_test ./ra
   else
-    go test "${UNIT_FLAGS[@]}" "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
+    go_test "${UNIT_PACKAGES[@]}"
   fi
 
+}
+
+#
+# Run `go test` on a given set of packages.
+#
+function go_test() {
+  go test "${UNIT_FLAGS[@]}" "${FILTER[@]}" "$@"
 }
 
 #
