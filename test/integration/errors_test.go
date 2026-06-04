@@ -276,8 +276,7 @@ func TestOrderFinalizeEarly(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected finalize to fail, but got success")
 	}
-	var prob acme.Problem
-	ok := errors.As(err, &prob)
+	prob, ok := errors.AsType[acme.Problem](err)
 	if !ok {
 		t.Fatalf("expected error to be of type acme.Problem, got: %T", err)
 	}

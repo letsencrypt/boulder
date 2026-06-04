@@ -230,8 +230,8 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 
 			// Check if the error is a network timeout, rather than a local context
 			// timeout. If it is, retry instead of giving up.
-			var netErr net.Error
-			isRetryable := ctx.Err() == nil && errors.As(err, &netErr) && netErr.Timeout()
+			netErr, isNetError := errors.AsType[net.Error](err)
+			isRetryable := ctx.Err() == nil && isNetError && netErr.Timeout()
 			hasRetriesLeft := tries < c.maxTries
 			if isRetryable && hasRetriesLeft {
 				continue

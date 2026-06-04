@@ -557,8 +557,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 
 		err = d.Result(sfe.clk.Now())
 		if err != nil {
-			var bErr *berrors.BoulderError
-			if errors.As(err, &bErr) && bErr.Type == berrors.RateLimit {
+			if bErr, ok := errors.AsType[*berrors.BoulderError](err); ok && bErr.Type == berrors.RateLimit {
 				http.Error(w, bErr.Detail, http.StatusTooManyRequests)
 				return
 			}

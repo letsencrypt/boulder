@@ -2980,8 +2980,7 @@ func TestSerialsForIncident(t *testing.T) {
 	test.AssertError(t, err, "Expected error for nonexistent table name")
 
 	// Assert that the error is a MySQL error so we can inspect the error code.
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) {
+	if mysqlErr, ok := errors.AsType[*mysql.MySQLError](err); ok {
 		// We expect the error code to be 1146 (ER_NO_SUCH_TABLE):
 		// https://mariadb.com/kb/en/mariadb-error-codes/
 		test.AssertEquals(t, mysqlErr.Number, uint16(1146))

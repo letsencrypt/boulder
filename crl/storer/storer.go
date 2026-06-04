@@ -166,8 +166,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		Key:    &filename,
 	})
 	if err != nil {
-		var smithyErr *smithyhttp.ResponseError
-		if !errors.As(err, &smithyErr) || smithyErr.HTTPStatusCode() != 404 {
+		if smithyErr, ok := errors.AsType[*smithyhttp.ResponseError](err); !ok || smithyErr.HTTPStatusCode() != 404 {
 			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
 		}
 		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)

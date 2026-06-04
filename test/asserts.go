@@ -86,7 +86,7 @@ func AssertError(t *testing.T, err error, message string) {
 // NOTE: Has the side effect of actually performing that unwrapping.
 func AssertErrorWraps(t *testing.T, err error, target any) {
 	t.Helper()
-	if !errors.As(err, target) {
+	if !errors.As(err, target) { // TODO(#8541): do we have to reflect target to use errors.AsType?
 		t.Fatalf("error does not wrap an error of the expected type: %q !> %+T", err.Error(), target)
 	}
 }

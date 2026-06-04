@@ -98,9 +98,7 @@ var extendedErrorCodeToString = map[uint16]string{
 func (d Error) Error() string {
 	var detail, additional string
 	if d.underlying != nil {
-		var netErr *net.OpError
-		var urlErr *url.Error
-		if errors.As(d.underlying, &netErr) {
+		if netErr, ok := errors.AsType[*net.OpError](d.underlying); ok {
 			if netErr.Timeout() {
 				detail = detailDNSTimeout
 			} else {
@@ -108,7 +106,7 @@ func (d Error) Error() string {
 			}
 			// Note: we check d.underlying here even though `Timeout()` does this because the call to `netErr.Timeout()` above only
 			// happens for `*net.OpError` underlying types!
-		} else if errors.As(d.underlying, &urlErr) && urlErr.Timeout() {
+		} else if urlErr, ok := errors.AsType[*url.Error](d.underlying); ok && urlErr.Timeout() {
 			// For DOH queries, we can get back a `*url.Error` that wraps the unexported type
 			// `http.httpError`. Unfortunately `http.httpError` doesn't wrap any errors (like
 			// context.DeadlineExceeded), we can't check for that; instead we need to call Timeout().

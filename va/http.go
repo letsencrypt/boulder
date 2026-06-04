@@ -423,9 +423,11 @@ func fallbackErr(err error) bool {
 		return false
 	}
 	// Net OpErrors are fallback errs only if the operation was a "dial"
+	if netOpError, ok := errors.AsType[*net.OpError](err); ok && netOpError.Op == "dial" {
+		return true
+	}
 	// All other errs are not fallback errs
-	var netOpError *net.OpError
-	return errors.As(err, &netOpError) && netOpError.Op == "dial"
+	return false
 }
 
 // processHTTPValidation performs an HTTP validation for the given host, port

@@ -1188,8 +1188,7 @@ func TestLookupJWK(t *testing.T) {
 				test.AssertMarshaledEquals(t, gotAcct, tc.WantAccount)
 				test.AssertEquals(t, inputLogEvent.Requester, gotAcct.ID)
 			} else {
-				var berr *berrors.BoulderError
-				ok := errors.As(gotErr, &berr)
+				berr, ok := errors.AsType[*berrors.BoulderError](gotErr)
 				if !ok {
 					t.Fatalf("lookupJWK(%#v) returned %T, want BoulderError", in, gotErr)
 				}

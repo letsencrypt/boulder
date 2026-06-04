@@ -118,8 +118,7 @@ func newLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 func (look *lookup) updateNow(ctx context.Context) (tempError, nonTempError error) {
 	var tempErrs []error
 	handleDNSError := func(err error, srv cmd.ServiceDomain) {
-		var dnsErr *net.DNSError
-		if errors.As(err, &dnsErr) && (dnsErr.IsTimeout || dnsErr.IsTemporary) {
+		if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && (dnsErr.IsTimeout || dnsErr.IsTemporary) {
 			tempErrs = append(tempErrs, err)
 			return
 		}
