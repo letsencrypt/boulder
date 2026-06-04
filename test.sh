@@ -82,6 +82,10 @@ function run_and_expect_silence() {
 # Testing Helpers
 #
 function run_unit_tests() {
+  # Sleep 50ms instead of 1000ms at the end of each package's unittests.
+  # Speeds up running lots of small unittests.
+  # https://go.dev/doc/articles/race_detector#Options
+  export atexit_sleep_ms=50
   # If unit test packages are not specified: set flags to run unit tests
   # for all boulder packages
   if [ -z "${UNIT_PACKAGES[@]+x}" ]
