@@ -56,7 +56,7 @@ SERVICES = (
     Service('boulder-mtca-1',
         8010, 9396, 'mtca.boulder',
         ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010'),
-        ('boulder-sa-1', 'boulder-sa-2', 'boulder-ra-sct-provider-1', 'boulder-ra-sct-provider-2')),
+        None),
     Service('boulder-ca-1',
         8001, 9393, 'ca.boulder',
         ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', ':9393', '--debug-addr', ':8001'),
