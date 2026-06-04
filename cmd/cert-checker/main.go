@@ -117,7 +117,6 @@ type certChecker struct {
 	getPrecert                  precertGetter
 	certs                       chan *corepb.Certificate
 	clock                       clock.Clock
-	rMu                         *sync.Mutex
 	issuedReport                report
 	checkPeriod                 time.Duration
 	acceptableValidityDurations map[time.Duration]bool
@@ -147,7 +146,6 @@ func newChecker(saDbMap certDB,
 		dbMap:                       saDbMap,
 		getPrecert:                  precertGetter,
 		certs:                       make(chan *corepb.Certificate, batchSize),
-		rMu:                         new(sync.Mutex),
 		clock:                       clk,
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
