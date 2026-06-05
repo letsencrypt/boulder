@@ -37,8 +37,8 @@ func TestTooBigOrderError(t *testing.T) {
 	_, err := authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "authAndIssue failed")
 
-	var prob acme.Problem
-	test.AssertErrorWraps(t, err, &prob)
+	test.AssertErrorWraps[acme.Problem](t, err)
+	prob, _ := errors.AsType[acme.Problem](err)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
 	test.AssertContains(t, prob.Detail, "Order cannot contain more than 100 identifiers")
 }
@@ -113,10 +113,10 @@ func TestAccountEmailError(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			var prob acme.Problem
 			_, err := makeClient(tc.contacts...)
 			if err != nil {
-				test.AssertErrorWraps(t, err, &prob)
+				test.AssertErrorWraps[acme.Problem](t, err)
+				prob, _ := errors.AsType[acme.Problem](err)
 				test.AssertEquals(t, prob.Type, tc.expectedProbType)
 				test.AssertContains(t, prob.Detail, "Error validating contact(s)")
 				test.AssertContains(t, prob.Detail, tc.expectedProbDetail)
@@ -137,8 +137,8 @@ func TestRejectedIdentifier(t *testing.T) {
 	}
 	_, err := authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "issuance should fail for one malformed name")
-	var prob acme.Problem
-	test.AssertErrorWraps(t, err, &prob)
+	test.AssertErrorWraps[acme.Problem](t, err)
+	prob, _ := errors.AsType[acme.Problem](err)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
 	test.AssertContains(t, prob.Detail, "Domain name contains an invalid character")
 
@@ -155,7 +155,8 @@ func TestRejectedIdentifier(t *testing.T) {
 	}
 	_, err = authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "issuance should fail for multiple malformed names")
-	test.AssertErrorWraps(t, err, &prob)
+	test.AssertErrorWraps[acme.Problem](t, err)
+	prob, _ = errors.AsType[acme.Problem](err)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
 	test.AssertContains(t, prob.Detail, "Domain name contains an invalid character")
 	test.AssertContains(t, prob.Detail, "and 4 more problems")

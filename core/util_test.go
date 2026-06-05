@@ -269,14 +269,13 @@ func TestValidSerial(t *testing.T) {
 }
 
 func TestLoadCert(t *testing.T) {
-	var osPathErr *os.PathError
 	_, err := LoadCert("")
 	test.AssertError(t, err, "Loading empty path did not error")
-	test.AssertErrorWraps(t, err, &osPathErr)
+	test.AssertErrorWraps[*os.PathError](t, err)
 
 	_, err = LoadCert("totally/fake/path")
 	test.AssertError(t, err, "Loading nonexistent path did not error")
-	test.AssertErrorWraps(t, err, &osPathErr)
+	test.AssertErrorWraps[*os.PathError](t, err)
 
 	_, err = LoadCert("../test/hierarchy/README.md")
 	test.AssertError(t, err, "Loading non-PEM file did not error")

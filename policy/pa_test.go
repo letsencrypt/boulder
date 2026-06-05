@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -167,8 +168,8 @@ func TestWellFormedIdentifiers(t *testing.T) {
 			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for %q identifier %q, got %s", tc.ident.Type, tc.ident.Value, err))
 		} else {
 			test.AssertError(t, err, fmt.Sprintf("Expected error for %q identifier %q, but got none", tc.ident.Type, tc.ident.Value))
-			var berr *berrors.BoulderError
-			test.AssertErrorWraps(t, err, &berr)
+			test.AssertErrorWraps[*berrors.BoulderError](t, err)
+			berr, _ := errors.AsType[*berrors.BoulderError](err)
 			test.AssertContains(t, berr.Error(), tc.err.Error())
 		}
 	}
@@ -263,9 +264,9 @@ func TestWillingToIssue(t *testing.T) {
 	for _, ident := range shouldBeBlocked {
 		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
 		test.AssertError(t, err, "identifier was not correctly forbidden")
-		var berr *berrors.BoulderError
-		test.AssertErrorWraps(t, err, &berr)
-		test.AssertContains(t, berr.Detail, errPolicyForbidden.Error())
+		test.AssertErrorWraps[*berrors.BoulderError](t, err)
+		berr, _ := errors.AsType[*berrors.BoulderError](err)
+		test.AssertContains(t, berr.Error(), errPolicyForbidden.Error())
 	}
 
 	// Test acceptance of good identifiers
@@ -361,8 +362,8 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 				test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.Domain, err))
 			} else {
 				test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.Domain))
-				var berr *berrors.BoulderError
-				test.AssertErrorWraps(t, err, &berr)
+				test.AssertErrorWraps[*berrors.BoulderError](t, err)
+				berr, _ := errors.AsType[*berrors.BoulderError](err)
 				test.AssertContains(t, berr.Error(), tc.ExpectedErr.Error())
 			}
 		})

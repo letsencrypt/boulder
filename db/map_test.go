@@ -202,8 +202,8 @@ func testDbMap(t *testing.T) *WrappedMap {
 func TestWrappedMap(t *testing.T) {
 	mustDbErr := func(err error) ErrDatabaseOp {
 		t.Helper()
-		var dbOpErr ErrDatabaseOp
-		test.AssertErrorWraps(t, err, &dbOpErr)
+		test.AssertErrorWraps[ErrDatabaseOp](t, err)
+		dbOpErr, _ := errors.AsType[ErrDatabaseOp](err)
 		return dbOpErr
 	}
 

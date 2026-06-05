@@ -57,8 +57,7 @@ func TestServerTransportCredentials(t *testing.T) {
 	err = bcreds.validateClient(tls.ConnectionState{
 		PeerCertificates: []*x509.Certificate{badCert},
 	})
-	var errSANNotAccepted ErrSANNotAccepted
-	test.AssertErrorWraps(t, err, &errSANNotAccepted)
+	test.AssertErrorWraps[ErrSANNotAccepted](t, err)
 
 	// A creds should accept peers that have a leaf certificate with a SAN
 	// that is on the accepted list
@@ -195,6 +194,5 @@ func TestClientReset(t *testing.T) {
 	tc := NewClientCredentials(nil, []tls.Certificate{}, "")
 	_, _, err := tc.ClientHandshake(context.Background(), "T:1010", &brokenConn{})
 	test.AssertError(t, err, "ClientHandshake succeeded with brokenConn")
-	var netErr net.Error
-	test.AssertErrorWraps(t, err, &netErr)
+	test.AssertErrorWraps[net.Error](t, err)
 }
