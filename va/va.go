@@ -390,7 +390,8 @@ func (i ipError) Error() string {
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
 func detailedError(err error) *probs.ProblemDetails {
-	if ipErr, ok := errors.AsType[ipError](err); ok {
+	ipErr, ok := errors.AsType[ipError](err)
+	if ok {
 		detailedErr := detailedError(ipErr.err)
 		if (ipErr.ip == netip.Addr{}) {
 			// This should never happen.
@@ -401,17 +402,20 @@ func detailedError(err error) *probs.ProblemDetails {
 		return detailedErr
 	}
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
-	if urlErr, ok := errors.AsType[*url.Error](err); ok {
+	urlErr, ok := errors.AsType[*url.Error](err)
+	if ok {
 		prob := detailedError(urlErr.Err)
 		prob.Detail = fmt.Sprintf("Fetching %s: %s", urlErr.URL, prob.Detail)
 		return prob
 	}
 
-	if tlsErr, ok := errors.AsType[tls.RecordHeaderError](err); ok && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
+	tlsErr, ok := errors.AsType[tls.RecordHeaderError](err)
+	if ok && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
 		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
-	if netOpErr, ok := errors.AsType[*net.OpError](err); ok {
+	netOpErr, ok := errors.AsType[*net.OpError](err)
+	if ok {
 		if fmt.Sprintf("%T", netOpErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
@@ -422,7 +426,8 @@ func detailedError(err error) *probs.ProblemDetails {
 			return probs.Connection(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
 		}
 	}
-	if syscallErr, ok := errors.AsType[*os.SyscallError](err); ok {
+	syscallErr, ok := errors.AsType[*os.SyscallError](err)
+	if ok {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
 			return probs.Connection("Connection refused")
@@ -432,7 +437,8 @@ func detailedError(err error) *probs.ProblemDetails {
 			return probs.Connection("Connection reset by peer")
 		}
 	}
-	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
+	netErr, ok := errors.AsType[net.Error](err)
+	if ok && netErr.Timeout() {
 		return probs.Connection("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {

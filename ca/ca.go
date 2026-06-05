@@ -104,7 +104,8 @@ func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
 }
 
 func (m *caMetrics) noteSignError(err error) {
-	if _, ok := errors.AsType[pkcs11.Error](err); ok {
+	_, ok := errors.AsType[pkcs11.Error](err)
+	if ok {
 		m.signErrorCount.WithLabelValues("HSM").Inc()
 	}
 }

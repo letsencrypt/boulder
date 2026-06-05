@@ -259,7 +259,8 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 			return nil, err
 		}
 		var body string
-		if rspErr, ok := errors.AsType[jsonclient.RspError](err); ok && rspErr.StatusCode < 500 {
+		rspErr, ok := errors.AsType[jsonclient.RspError](err)
+		if ok && rspErr.StatusCode < 500 {
 			body = string(rspErr.Body)
 		}
 		pub.log.InfoObject("Failed to submit certificate to CT log", struct {
@@ -301,7 +302,8 @@ func (pub *Impl) singleLogSubmit(
 			status = "canceled"
 		}
 		httpStatus := ""
-		if rspError, ok := errors.AsType[ctClient.RspError](err); ok && rspError.StatusCode != 0 {
+		rspError, ok := errors.AsType[ctClient.RspError](err)
+		if ok && rspError.StatusCode != 0 {
 			httpStatus = fmt.Sprintf("%d", rspError.StatusCode)
 		}
 		pub.metrics.submissionLatency.With(prometheus.Labels{

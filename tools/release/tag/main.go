@@ -68,7 +68,8 @@ func show(output string) {
 func main() {
 	err := tag(os.Args[1:])
 	if err != nil {
-		if cmdErr, ok := errors.AsType[cmdError](err); ok {
+		cmdErr, ok := errors.AsType[cmdError](err)
+		if ok {
 			show(cmdErr.output)
 		}
 		fmt.Println(err.Error())

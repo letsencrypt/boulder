@@ -25,7 +25,8 @@ func wrapError(ctx context.Context, appErr error) error {
 		return nil
 	}
 
-	if berr, ok := errors.AsType[*berrors.BoulderError](appErr); ok {
+	berr, ok := errors.AsType[*berrors.BoulderError](appErr)
+	if ok {
 		pairs := []string{
 			"errortype", strconv.Itoa(int(berr.Type)),
 		}

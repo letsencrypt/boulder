@@ -47,7 +47,8 @@ func (e ErrDatabaseOp) Unwrap() error {
 // Error 1062: Duplicate entry. This error is returned when inserting a row
 // would violate a unique key constraint.
 func IsDuplicate(err error) bool {
-	if dbErr, ok := errors.AsType[*mysql.MySQLError](err); ok && dbErr.Number == 1062 {
+	dbErr, ok := errors.AsType[*mysql.MySQLError](err)
+	if ok && dbErr.Number == 1062 {
 		return true
 	}
 	return false

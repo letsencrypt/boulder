@@ -178,7 +178,8 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		[]string{"serial"})
 	err = scope.Register(tlsNotBefore)
 	if err != nil {
-		if are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			return nil, err
@@ -193,7 +194,8 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		[]string{"serial"})
 	err = scope.Register(tlsNotAfter)
 	if err != nil {
-		if are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			return nil, err

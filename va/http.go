@@ -423,7 +423,8 @@ func fallbackErr(err error) bool {
 		return false
 	}
 	// Net OpErrors are fallback errs only if the operation was a "dial"
-	if netOpError, ok := errors.AsType[*net.OpError](err); ok && netOpError.Op == "dial" {
+	netOpError, ok := errors.AsType[*net.OpError](err)
+	if ok && netOpError.Op == "dial" {
 		return true
 	}
 	// All other errs are not fallback errs

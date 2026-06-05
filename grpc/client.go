@@ -106,7 +106,8 @@ func newClientMetrics(stats prometheus.Registerer) (clientMetrics, error) {
 	)
 	err := stats.Register(grpcMetrics)
 	if err != nil {
-		if are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			grpcMetrics = are.ExistingCollector.(*grpc_prometheus.ClientMetrics)
 		} else {
 			return clientMetrics{}, err
@@ -120,7 +121,8 @@ func newClientMetrics(stats prometheus.Registerer) (clientMetrics, error) {
 	}, []string{"method", "service"})
 	err = stats.Register(inFlightGauge)
 	if err != nil {
-		if are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); ok {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			inFlightGauge = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			return clientMetrics{}, err
