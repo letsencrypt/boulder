@@ -1098,16 +1098,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	return csr, authzs, nil
 }
 
-func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
-	scts, err := ra.getSCTs(ctx, sctRequest.PrecertDER)
-	if err != nil {
-		return nil, err
-	}
-	return &rapb.SCTResponse{
-		SctDER: scts,
-	}, nil
-}
-
 // issueCertificateOuter exists solely to ensure that all calls to
 // issueCertificateInner have their result handled uniformly, no matter what
 // return path that inner function takes. It takes ownership of the logEvent,
@@ -1215,23 +1205,8 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 	}
 }
 
-// issueCertificateInner is part of the [issuance cycle].
-//
-// It gets a precertificate from the CA, submits it to CT logs to get SCTs,
-// then sends the precertificate and the SCTs to the CA to get a final certificate.
-//
-// This function is responsible for ensuring that we never try to issue a final
-// certificate twice for the same precertificate, because that has the potential
-// to create certificates with duplicate serials. For instance, this could
-// happen if final certificates were created with different sets of SCTs. This
-// function accomplishes that by bailing on issuance if there is any error in
-// IssueCertificateForPrecertificate; there are no retries, and serials are
-// generated in IssuePrecertificate, so serials with errors are dropped and
-// never have final certificates issued for them (because there is a possibility
-// that the certificate was actually issued but there was an error returning
-// it).
-//
-// [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
+// issueCertificateInner rechecks CAA, gets a certificate from the CA,
+// and finalizes the order with the certificate serial.
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
@@ -1299,14 +1274,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	return parsedCertificate, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []byte) (core.SCTDERs, error) {
+func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
 	started := ra.clk.Now()
-	precert, err := x509.ParseCertificate(precertDER)
+	precert, err := x509.ParseCertificate(sctRequest.PrecertDER)
 	if err != nil {
 		return nil, fmt.Errorf("parsing precertificate: %w", err)
 	}
 
-	scts, err := ra.ctpolicy.GetSCTs(ctx, precertDER, precert.NotAfter)
+	scts, err := ra.ctpolicy.GetSCTs(ctx, precert.Raw, precert.NotAfter)
 	took := ra.clk.Since(started)
 	if err != nil {
 		state := "failure"
@@ -1321,7 +1296,9 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []b
 		return nil, err
 	}
 	ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Observe(took.Seconds())
-	return scts, nil
+	return &rapb.SCTResponse{
+		SctDER: scts,
+	}, nil
 }
 
 // UpdateRegistrationKey updates an existing Registration's key.
