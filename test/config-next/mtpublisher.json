@@ -1,0 +1,19 @@
+{
+	"mtPublisher": {
+		"db": {
+			"dbConnectFile": "test/secrets/mtpublisher_dburl",
+			"maxOpenConns": 10
+		},
+		"pollInterval": "1s",
+		"mtcLogID": "44947.4.1.0.44",
+		"mirrorID": "32473.9"
+	},
+	"syslog": {
+		"stdoutlevel": 6,
+		"sysloglevel": 6
+	},
+	"openTelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
+	}
+}
