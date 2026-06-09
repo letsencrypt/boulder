@@ -705,7 +705,12 @@ func TestGetPushgatewayURL(t *testing.T) {
 	t.Run("SRV not found", func(t *testing.T) {
 		_, err := getPushgatewayURL(ctx, "consul.service.consul:53",
 			cmd.ServiceDomain{Service: "doesnotexist", Domain: "service.consul"})
-		test.AssertError(t, err, "")
+		if err != nil {
+			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
+		}
+		if !strings.Contains(err.Error(), "SRV lookup of doesnotexist._tcp.service.consul failed") {
+			t.Errorf("getPushgatewayURL(doesnotexist) = %q, but want 'SRV lookup failed'"), err)
+		}
 	})
 	t.Run("DNS authority unreachable", func(t *testing.T) {
 		_, err := getPushgatewayURL(ctx, "doesnotexist.invalid:53",
