@@ -712,7 +712,7 @@ func TestGetPushgatewayURL(t *testing.T) {
 	t.Run("DNS authority no port specified", func(t *testing.T) {
 		_, err := getPushgatewayURL(t.Context(), "consul.service.consul",
 			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
-		if err == nil {
+		if err != nil {
 			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
 		}
 	})
