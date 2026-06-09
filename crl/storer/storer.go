@@ -212,6 +212,13 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	// Finally actually upload the new CRL.
 	start := cs.clk.Now()
 
+	var prevEtag *string
+	if prevObj != nil {
+		// This ensures that no other new versions have been updated since we
+		// downloaded the previous CRL above. Prevents races against another storer.
+		prevEtag = prevObj.ETag
+	}
+
 	checksum := sha256.Sum256(crlBytes)
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
@@ -225,6 +232,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
 		Expires:           &expires,
 		CacheControl:      &cacheControl,
+		IfMatch:           prevEtag,
 	})
 
 	latency := cs.clk.Now().Sub(start)
