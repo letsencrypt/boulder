@@ -30,10 +30,6 @@ function flush_redis() {
   go run ./test/boulder-tools/flushredis/main.go
 }
 
-function flush_tiles() {
-  go run ./test/boulder-tools/flushtiles/main.go
-}
-
 #
 # Print Functions
 #
@@ -251,7 +247,6 @@ STAGE="unit"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
   flush_redis
-  flush_tiles
 
 
   if [ "${COVERAGE}" == "true" ]; then
@@ -269,7 +264,6 @@ STAGE="integration"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
   flush_redis
-  flush_tiles
 
 
   # Set up test parameters
