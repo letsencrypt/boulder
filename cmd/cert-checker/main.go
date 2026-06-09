@@ -718,7 +718,7 @@ func main() {
 	for range config.CertChecker.Workers {
 		wg.Go(func() {
 			s := checker.clock.Now()
-			checker.processCerts(context.TODO())
+			checker.processCerts(context.Background())
 			metrics.checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		})
 	}
