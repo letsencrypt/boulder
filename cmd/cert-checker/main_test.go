@@ -706,7 +706,7 @@ func TestGetPushgatewayURL(t *testing.T) {
 			t.Errorf("port should be numeric: %s", err)
 		}
 		if portNum < 0 || portNum > 65536 {
-			t.Errorf("port should be in a valid range but got %s", portNum)
+			t.Errorf("port should be in a valid range but got %d", portNum)
 		}
 	})
 	t.Run("DNS authority no port specified", func(t *testing.T) {
