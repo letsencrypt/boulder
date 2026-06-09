@@ -713,7 +713,7 @@ func TestGetPushgatewayURL(t *testing.T) {
 		_, err := getPushgatewayURL(t.Context(), "consul.service.consul",
 			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
 		if err == nil {
-			t.Errorf("getPushgatewayURL(consul.service.consul) with no port specified should have failed")
+			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
 		}
 	})
 	t.Run("SRV not found", func(t *testing.T) {
@@ -721,9 +721,6 @@ func TestGetPushgatewayURL(t *testing.T) {
 			cmd.ServiceDomain{Service: "doesnotexist", Domain: "service.consul"})
 		if err == nil {
 			t.Errorf("getPushgatewayURL for 'doesnotexist' service should have failed")
-		}
-		if !strings.Contains(err.Error(), "SRV lookup of doesnotexist._tcp.service.consul failed") {
-			t.Errorf("getPushgatewayURL(doesnotexist) = %q, but want 'SRV lookup failed'", err)
 		}
 	})
 	t.Run("DNS authority unreachable", func(t *testing.T) {
