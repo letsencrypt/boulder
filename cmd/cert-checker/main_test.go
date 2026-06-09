@@ -682,7 +682,9 @@ func TestGetPushgatewayURL(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
 		gotURL, err := getPushgatewayURL(ctx, "consul.service.consul:53",
 			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
-		test.AssertNotError(t, err, "")
+		if err != nil {
+			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
+		}
 
 		parsed, err := url.Parse(gotURL)
 		test.AssertNotError(t, err, "returned URL should be parseable")
