@@ -46,7 +46,7 @@ type certCheckerMetrics struct {
 	checkerBadCount  prometheus.Gauge
 }
 
-func NewCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
+func newCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
 	checkerLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
