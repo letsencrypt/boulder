@@ -650,7 +650,7 @@ func main() {
 	cmd.LogStartup(logger)
 
 	reg := prometheus.NewRegistry()
-	metrics := NewCertCheckerMetrics(reg)
+	metrics := newCertCheckerMetrics(reg)
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {

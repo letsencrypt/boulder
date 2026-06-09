@@ -678,43 +678,59 @@ func TestPrecertCorrespond(t *testing.T) {
 }
 
 func TestGetPushgatewayURL(t *testing.T) {
-	ctx := context.Background()
 	t.Run("happy path", func(t *testing.T) {
-		gotURL, err := getPushgatewayURL(ctx, "consul.service.consul:53",
+		gotURL, err := getPushgatewayURL(t.Context(), "consul.service.consul:53",
 			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
 		if err != nil {
 			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
 		}
 
 		parsed, err := url.Parse(gotURL)
-		test.AssertNotError(t, err, "returned URL should be parseable")
-		test.AssertEquals(t, parsed.Scheme, "http")
+		if err != nil {
+			t.Fatalf("returned URL should be parseable: %s", err)
+		}
+		if parsed.Scheme != "http" {
+			t.Errorf("expected http scheme but got %s", parsed.Scheme)
+		}
 
 		host, port, err := net.SplitHostPort(parsed.Host)
-		test.AssertNotError(t, err, "URL host should contain a port")
-		test.AssertNotNil(t, net.ParseIP(host), "host should be an IP (LookupHost flatten step)")
+		if err != nil {
+			t.Errorf("URL host should contain a port: %s", err)
+		}
+		if net.ParseIP(host) == nil {
+			t.Errorf("host should be an IP (LookupHost flatten step)")
+		}
+
 		portNum, err := strconv.Atoi(port)
-		test.AssertNotError(t, err, "port should be numeric")
-		test.Assert(t, portNum > 0 && portNum < 65536, "port should be in valid range")
+		if err != nil {
+			t.Errorf("port should be numeric: %s", err)
+		}
+		if portNum < 0 || portNum > 65536 {
+			t.Errorf("port should be in a valid range but got %s", portNum)
+		}
 	})
 	t.Run("DNS authority no port specified", func(t *testing.T) {
-		_, err := getPushgatewayURL(ctx, "consul.service.consul",
+		_, err := getPushgatewayURL(t.Context(), "consul.service.consul",
 			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
-		test.AssertNotError(t, err, "")
+		if err != nil {
+			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
+		}
 	})
 	t.Run("SRV not found", func(t *testing.T) {
-		_, err := getPushgatewayURL(ctx, "consul.service.consul:53",
+		_, err := getPushgatewayURL(t.Context(), "consul.service.consul:53",
 			cmd.ServiceDomain{Service: "doesnotexist", Domain: "service.consul"})
 		if err != nil {
 			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
 		}
 		if !strings.Contains(err.Error(), "SRV lookup of doesnotexist._tcp.service.consul failed") {
-			t.Errorf("getPushgatewayURL(doesnotexist) = %q, but want 'SRV lookup failed'"), err)
+			t.Errorf("getPushgatewayURL(doesnotexist) = %q, but want 'SRV lookup failed'", err)
 		}
 	})
 	t.Run("DNS authority unreachable", func(t *testing.T) {
-		_, err := getPushgatewayURL(ctx, "doesnotexist.invalid:53",
+		_, err := getPushgatewayURL(t.Context(), "doesnotexist.invalid:53",
 			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
-		test.AssertError(t, err, "")
+		if err != nil {
+			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
+		}
 	})
 }
