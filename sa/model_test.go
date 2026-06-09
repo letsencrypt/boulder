@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/netip"
@@ -220,8 +221,8 @@ func TestModelToOrderBadJSON(t *testing.T) {
 		Error: badJSON,
 	})
 	test.AssertError(t, err, "expected error from modelToOrderv2")
-	var badJSONErr errBadJSON
-	test.AssertErrorWraps(t, err, &badJSONErr)
+	test.AssertErrorWraps[errBadJSON](t, err)
+	badJSONErr, _ := errors.AsType[errBadJSON](err)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
@@ -288,8 +289,8 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			err := populateAttemptedFields(*tc.Model, &corepb.Challenge{})
 			test.AssertError(t, err, "expected error from populateAttemptedFields")
-			var badJSONErr errBadJSON
-			test.AssertErrorWraps(t, err, &badJSONErr)
+			test.AssertErrorWraps[errBadJSON](t, err)
+			badJSONErr, _ := errors.AsType[errBadJSON](err)
 			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 		})
 	}

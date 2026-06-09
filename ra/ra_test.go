@@ -1257,8 +1257,8 @@ func TestRecheckCAAFail(t *testing.T) {
 	err := ra.recheckCAA(context.Background(), authzs)
 
 	test.AssertError(t, err, "expected err, got nil")
-	var berr *berrors.BoulderError
-	test.AssertErrorWraps(t, err, &berr)
+	test.AssertErrorWraps[*berrors.BoulderError](t, err)
+	berr, _ := errors.AsType[*berrors.BoulderError](err)
 	test.AssertErrorIs(t, berr, berrors.CAA)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 
@@ -1291,7 +1291,9 @@ func TestRecheckCAAFail(t *testing.T) {
 	// It should error
 	test.AssertError(t, err, "expected err from recheckCAA")
 	// It should be a berror
-	test.AssertErrorWraps(t, err, &berr)
+	test.AssertErrorWraps[*berrors.BoulderError](t, err)
+	// Unwrap this err
+	berr, _ = errors.AsType[*berrors.BoulderError](err)
 	// There should be *no* suberrors because there was only one overall error
 	test.AssertEquals(t, len(berr.SubErrors), 0)
 }

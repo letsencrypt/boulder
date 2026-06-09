@@ -799,8 +799,8 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 		// identifier from the authorization that was checked.
 		err := recheckResult.err
 		if err != nil {
-			var bErr *berrors.BoulderError
-			if errors.As(err, &bErr) && bErr.Type == berrors.CAA {
+			bErr, ok := errors.AsType[*berrors.BoulderError](err)
+			if ok && bErr.Type == berrors.CAA {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   recheckResult.authz.Identifier,
 					BoulderError: bErr})

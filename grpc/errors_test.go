@@ -58,8 +58,7 @@ func TestErrorWrapping(t *testing.T) {
 	_, err = client.Chill(context.Background(), &test_proto.Time{})
 	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
 	test.AssertDeepEquals(t, err, es.err)
-	var bErr *berrors.BoulderError
-	ok := errors.As(err, &bErr)
+	bErr, ok := errors.AsType[*berrors.BoulderError](err)
 	test.Assert(t, ok, "asserting error as boulder error")
 	// Ensure we got a RateLimitError
 	test.AssertErrorIs(t, bErr, berrors.RateLimit)
