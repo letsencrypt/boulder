@@ -2,6 +2,7 @@ package mtca
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/letsencrypt/boulder/issuance"
@@ -13,27 +14,37 @@ var _ mtcapb.MTCAServer = &mtca{}
 func New(issuer *issuance.Issuer) *mtca {
 	return &mtca{
 		issuer: issuer,
-		logID:  issuer.Cert.Subject.String(),
+		mtcaID: issuer.Cert.Subject.String(),
+		// TODO: collect this from config
+		logNumber:        0,
+		latestEntryIndex: 0,
 	}
 }
 
 type mtca struct {
 	mtcapb.UnimplementedMTCAServer
 
-	issuer     *issuance.Issuer
-	logID      string
-	entryIndex int64
+	issuer    *issuance.Issuer
+	mtcaID    string
+	logNumber uint16
+
+	// This is just a dummy for testing; in reality this will come from the DB.
+	latestEntryIndex int64
 
 	sequencing sync.Mutex
+}
+
+func (m *mtca) mtcLogID() string {
+	return fmt.Sprintf("%s.0.%d", m.mtcaID, m.logNumber)
 }
 
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
 	m.sequencing.Lock()
 	defer m.sequencing.Unlock()
-	m.entryIndex++
+	m.latestEntryIndex++
 
 	return &mtcapb.IssueResponse{
-		MtcLogID:      m.logID,
-		MtcEntryIndex: m.entryIndex,
+		MtcLogID:      m.mtcLogID(),
+		MtcEntryIndex: m.latestEntryIndex,
 	}, nil
 }
