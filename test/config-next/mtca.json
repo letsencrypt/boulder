@@ -1,5 +1,9 @@
 {
 	"mtca": {
+		"sequencingPeriod": "100ms",
+		"db": {
+			"dbConnectFile": "test/secrets/mtca1_dburl"
+		},
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/mtca.boulder/cert.pem",
@@ -31,7 +35,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 4,
+		"stdoutlevel": 7,
 		"sysloglevel": -1
 	},
 	"openTelemetry": {

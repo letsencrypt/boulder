@@ -98,9 +98,14 @@ GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';
 USE mtcmeta_44947_4_1_0_44;
 
 CREATE USER IF NOT EXISTS 'mtpublisher'@'%';
+CREATE USER IF NOT EXISTS 'mtca'@'%';
 
 -- MTPublisher stub: reads checkpoints awaiting a cosignature and writes one.
 GRANT SELECT,UPDATE ON checkpoints TO 'mtpublisher'@'%';
+
+-- MTCA
+GRANT SELECT,INSERT,UPDATE ON checkpoints TO 'mtca'@'%';
+GRANT SELECT,INSERT,UPDATE ON latestCheckpoint TO 'mtca'@'%';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';

@@ -1,12 +1,13 @@
 {
-  "sharded":true,
+  "sharded": true,
   "vindexes": {
     "xxhash": {
       "type": "xxhash"
     }
   },
   "tables": {
-    "checkpoints": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
-    "landmarks": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] }
+    "checkpoints": { "column_vindexes": [ { "column": "mtcLogID", "name": "xxhash" } ] },
+    "latestCheckpoint": { "column_vindexes": [ { "column": "mtcLogID", "name": "xxhash" } ] },
+    "landmarks": { "column_vindexes": [ { "column": "mtcLogID", "name": "xxhash" } ] }
   }
 }
