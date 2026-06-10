@@ -55,7 +55,6 @@ import (
 var (
 	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
 	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
-	errMalformedGRPCRequest   = errors.New("malformed gRPC request message field")
 
 	// caaRecheckDuration is the amount of time after a CAA check that we will
 	// recheck the CAA records for a domain. Per Baseline Requirements, we must
@@ -1412,13 +1411,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
+	// TODO(#8722): Re-add req.Authz.Id to this check once int64-only
 	if core.IsAnyNilOrZero(req.Authz, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
-		return nil, errIncompleteGRPCRequest
-	}
-
-	// TODO(#8722): Re-add req.Authz.Id in IsAnyNilOrZero check above, and remove the following check once
-	// int64-only
-	if req.Authz.Id == "" && req.Authz.IdInt == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2025,7 +2019,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	} else if req.Id != "" {
 		parsed, err := strconv.ParseInt(req.Id, 10, 64)
 		if err != nil {
-			return nil, errMalformedGRPCRequest
+			return nil, fmt.Errorf("malformed gRPC request message field: %w", err)
 		}
 		authzIDInt = parsed
 	} else {

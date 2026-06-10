@@ -11,13 +11,12 @@ import (
 	"sync"
 	"time"
 
-	corepb "github.com/letsencrypt/boulder/core/proto"
-
 	"github.com/miekg/dns"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
@@ -53,6 +52,8 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.AuthzID, err)
 		}
 		authzIDInt = parsed
+	} else {
+		return nil, berrors.MalformedError("No Authz ID value supplied in gRPC message")
 	}
 
 	ident := identifier.FromProto(req.Identifier)

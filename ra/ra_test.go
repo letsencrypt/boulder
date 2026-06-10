@@ -202,7 +202,6 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		Identifier:       req.Identifier,
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
-		AuthzID:          req.Authz.Id,
 		AuthzIDInt:       req.Authz.IdInt,
 	})
 	if err != nil {
@@ -572,20 +571,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		// Sleep so the RA has a chance to write to the SA
 		time.Sleep(100 * time.Millisecond)
 
-		// TODO(#8722): Remove this when Authz ID is int64-only
-		var authzIDInt int64
-		if authzPB.IdInt != 0 {
-			authzIDInt = authzPB.IdInt
-		} else if authzPB.Id != "" {
-			parsed, err := strconv.ParseInt(authzPB.Id, 10, 64)
-			if err != nil {
-				t.Fatalf("Failed to parse Authz ID as int64: %v", err)
-			}
-			authzIDInt = parsed
-		} else {
-			t.Fatalf("authzPB missing parameters")
-		}
-		dbAuthzPB := getAuthorization(t, authzIDInt, sa)
+		dbAuthzPB := getAuthorization(t, authzPB.IdInt, sa)
 		t.Log("dbAuthz:", dbAuthzPB)
 
 		// Verify that the responses are reflected
@@ -801,20 +787,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	// TODO(#8722): Remove this when Authz ID is int64-only
-	var authzIDInt int64
-	if authzPB.IdInt != 0 {
-		authzIDInt = authzPB.IdInt
-	} else if authzPB.Id != "" {
-		parsed, err := strconv.ParseInt(authzPB.Id, 10, 64)
-		if err != nil {
-			t.Fatalf("Failed to parse Authz ID as int64: %v", err)
-		}
-		authzIDInt = parsed
-	} else {
-		t.Fatalf("authzPB missing parameters")
-	}
-	dbAuthzPB := getAuthorization(t, authzIDInt, sa)
+	dbAuthzPB := getAuthorization(t, authzPB.IdInt, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
@@ -880,6 +853,15 @@ func TestDeactivateAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPB.Id)
+	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
+
+	dbAuthzPBIdChecks := dbAuthzPB
+	dbAuthzPBIdChecks.Id = fmt.Sprintf("%d", authzID)
+	dbAuthzPBIdChecks.IdInt = authzID
+	_, err = ra.DeactivateAuthorization(ctx, dbAuthzPBIdChecks)
+	test.AssertNotError(t, err, "Could not deactivate authorization")
+	deact, err = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPBIdChecks.Id)
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 }
 
@@ -3638,7 +3620,10 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 	}
 
 	for _, ident := range req.Identifiers {
-		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{Identifier: ident})
+		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{
+			IdInt:      mrand.Int64(),
+			Identifier: ident,
+		})
 	}
 
 	return authzs, nil

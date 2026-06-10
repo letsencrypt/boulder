@@ -328,6 +328,8 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 			return core.Authorization{}, ErrInvalidParameters
 		}
 		authzIDInt = parsed
+	} else {
+		return core.Authorization{}, ErrMissingParameters
 	}
 	authz := core.Authorization{
 		ID:                     authzIDInt,
