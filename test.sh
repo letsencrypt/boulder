@@ -248,7 +248,6 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
   flush_redis
 
-
   if [ "${COVERAGE}" == "true" ]; then
     UNIT_CSV=$(IFS=,; echo "${UNIT_PACKAGES[*]}")
     UNIT_FLAGS+=("-cover" "-covermode=atomic" "-coverprofile=${COVERAGE_DIR}/unit.coverprofile" "-coverpkg=${UNIT_CSV}")
@@ -264,7 +263,6 @@ STAGE="integration"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
   flush_redis
-
 
   # Set up test parameters
   INTEGRATION_ARGS=("--chisel")
