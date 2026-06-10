@@ -95,7 +95,19 @@ jobs:
 
       # Run the test matrix. This will run
       - name: "Run Test: ${{ matrix.tests }}"
+        id: test
         run: ${{ matrix.tests }}
+
+      - name: "Emit combined docker logs"
+        if: failure() && steps.test.outcome == 'failure'
+        run: docker compose logs > containers.log
+
+      - name: "Upload combined docker logs on error"
+        if: failure() && steps.test.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-logs
+          path: ${{ github.workspace }}/containers.log
 
   govulncheck:
     runs-on: ubuntu-24.04

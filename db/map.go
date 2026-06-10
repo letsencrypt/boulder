@@ -47,8 +47,11 @@ func (e ErrDatabaseOp) Unwrap() error {
 // Error 1062: Duplicate entry. This error is returned when inserting a row
 // would violate a unique key constraint.
 func IsDuplicate(err error) bool {
-	var dbErr *mysql.MySQLError
-	return errors.As(err, &dbErr) && dbErr.Number == 1062
+	dbErr, ok := errors.AsType[*mysql.MySQLError](err)
+	if ok && dbErr.Number == 1062 {
+		return true
+	}
+	return false
 }
 
 // WrappedMap wraps a *borp.DbMap such that its major functions wrap error

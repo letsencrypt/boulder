@@ -1016,13 +1016,8 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 			errorSubstr:   "mismatch between",
 		},
 		{
-			// Take this with a grain of salt since this test is not actually
-			// creating a linting certificate and performing two
-			// x509.CreateCertificate() calls like
-			// ca.IssueCertificateForPrecertificate and
-			// ca.issuePrecertificateInner do. However, we're still going to
-			// verify the equality.
-			name:          "Valid",
+			// If the inputs are identical, return success.
+			name:          "identical inputs succeed",
 			lintCertBytes: certDer1,
 			leafCertBytes: certDer1,
 		},

@@ -41,7 +41,7 @@ ipki() (
 
   # Used by Boulder gRPC services as both server and client mTLS certificates.
   for SERVICE in admin consul wfe bad-key-revoker \
-    crl-updater crl-storer health-checker sfe email-exporter; do
+    crl-updater crl-storer health-checker sfe email-exporter mtca; do
     minica -domains "${SERVICE}.boulder" &
   done
 

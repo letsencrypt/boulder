@@ -62,8 +62,8 @@ func show(output string) {
 func main() {
 	err := branch(os.Args[1:])
 	if err != nil {
-		var cmdErr cmdError
-		if errors.As(err, &cmdErr) {
+		cmdErr, ok := errors.AsType[cmdError](err)
+		if ok {
 			show(cmdErr.output)
 		}
 		fmt.Println(err.Error())

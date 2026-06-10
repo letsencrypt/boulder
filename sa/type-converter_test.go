@@ -2,6 +2,7 @@ package sa
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -47,8 +48,8 @@ func TestAcmeIdentifierBadJSON(t *testing.T) {
 	scanner, _ := tc.FromDb(&out)
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
-	var badJSONErr errBadJSON
-	test.AssertErrorWraps(t, err, &badJSONErr)
+	test.AssertErrorWraps[errBadJSON](t, err)
+	badJSONErr, _ := errors.AsType[errBadJSON](err)
 	test.AssertEquals(t, string(badJSONErr.json), badJSON)
 }
 
@@ -84,8 +85,8 @@ func TestJSONWebKeyBadJSON(t *testing.T) {
 	scanner, _ := tc.FromDb(&out)
 	err := scanner.Binder(&badJSON, &out)
 	test.AssertError(t, err, "expected error from scanner.Binder")
-	var badJSONErr errBadJSON
-	test.AssertErrorWraps(t, err, &badJSONErr)
+	test.AssertErrorWraps[errBadJSON](t, err)
+	badJSONErr, _ := errors.AsType[errBadJSON](err)
 	test.AssertEquals(t, string(badJSONErr.json), badJSON)
 }
 

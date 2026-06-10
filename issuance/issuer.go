@@ -246,15 +246,12 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	}
 
 	// We require that all of our issuers be capable of both issuing certs and
-	// providing revocation information.
+	// providing CRL revocation information.
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
 	}
 	if cert.KeyUsage&x509.KeyUsageCRLSign == 0 {
 		return nil, errors.New("end-entity signing cert does not have keyUsage crlSign")
-	}
-	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
-		return nil, errors.New("end-entity signing cert does not have keyUsage digitalSignature")
 	}
 
 	lintSigner, err := linter.New(cert.Certificate, signer)

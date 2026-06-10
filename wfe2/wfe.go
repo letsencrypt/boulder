@@ -643,8 +643,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 		prob.Algorithms = getSupportedAlgs()
 	}
 
-	var bErr *berrors.BoulderError
-	if errors.As(ierr, &bErr) {
+	bErr, ok := errors.AsType[*berrors.BoulderError](ierr)
+	if ok {
 		retryAfterSeconds := int(bErr.RetryAfter.Round(time.Second).Seconds())
 		if retryAfterSeconds > 0 {
 			response.Header().Add(headerRetryAfter, strconv.Itoa(retryAfterSeconds))
