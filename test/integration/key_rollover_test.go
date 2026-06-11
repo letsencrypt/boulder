@@ -41,7 +41,7 @@ func TestAccountKeyChange(t *testing.T) {
 	key3, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	test.AssertNotError(t, err, "creating P-384 account key")
 
-	acct3, err := c.AccountKeyChange(acct1, key3)
+	acct3, err := c.AccountKeyChange(acct2, key3)
 	test.AssertNotError(t, err, "rolling over account key")
 	test.AssertEquals(t, acct3.URL, acct1.URL)
 }

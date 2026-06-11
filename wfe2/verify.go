@@ -652,7 +652,12 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
 	ctx context.Context,
 	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, error) {
-	return wfe.validPOSTForAccountUsing(request, ctx, logEvent, wfe.accountGetter)
+	// Parse the JWS from the POST request
+	jws, err := wfe.parseJWSRequest(request)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
 }
 
 // validPOSTForCurrentAccount checks a POST request against current SA account
