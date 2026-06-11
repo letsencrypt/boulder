@@ -98,6 +98,12 @@ func (ac *accountCache) GetRegistration(ctx context.Context, regID *sapb.Registr
 	return copied, nil
 }
 
+func (ac *accountCache) purgeRegistration(regID int64) {
+	ac.Lock()
+	ac.cache.Remove(regID)
+	ac.Unlock()
+}
+
 func (ac *accountCache) queryAndStore(ctx context.Context, regID *sapb.RegistrationID) (*corepb.Registration, error) {
 	account, err := ac.under.GetRegistration(ctx, regID)
 	if err != nil {

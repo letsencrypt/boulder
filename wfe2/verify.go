@@ -300,9 +300,9 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 func (wfe *WebFrontEndImpl) matchJWSURLs(outer, inner jose.Header) error {
 	// Verify that the outer JWS has a non-empty URL header. This is strictly
 	// defensive since the expectation is that endpoints using `matchJWSURLs`
-	// have received at least one of their JWS from calling validPOSTForAccount(),
-	// which checks the outer JWS has the expected URL header before processing
-	// the inner JWS.
+	// have received at least one of their JWS from an account-authenticated
+	// verifier, which checks the outer JWS has the expected URL header before
+	// processing the inner JWS.
 	outerURL, ok := outer.ExtraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(outerURL) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverOuterJWSNoURL"}).Inc()
@@ -493,6 +493,15 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	ctx context.Context,
 	request *http.Request,
 	logEvent *web.RequestEvent) (*jose.JSONWebKey, *core.Registration, error) {
+	return wfe.lookupJWKUsing(header, ctx, request, logEvent, wfe.accountGetter)
+}
+
+func (wfe *WebFrontEndImpl) lookupJWKUsing(
+	header jose.Header,
+	ctx context.Context,
+	request *http.Request,
+	logEvent *web.RequestEvent,
+	accountGetter AccountGetter) (*jose.JSONWebKey, *core.Registration, error) {
 	// We expect the request to be using an embedded Key ID auth type and to not
 	// contain the mutually exclusive embedded JWK.
 	if err := wfe.enforceJWSAuthType(header, embeddedKeyID); err != nil {
@@ -506,8 +515,8 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		return nil, nil, err
 	}
 
-	// Try to find the account for this account ID
-	account, err := wfe.accountGetter.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
+	// Try to find the account for this account ID.
+	account, err := accountGetter.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
 	if err != nil {
 		// If the account isn't found, return a suitable error
 		if errors.Is(err, berrors.NotFound) {
@@ -605,8 +614,23 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	request *http.Request,
 	ctx context.Context,
 	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, error) {
+	return wfe.validJWSForAccountUsing(jws, request, ctx, logEvent, wfe.accountGetter)
+}
+
+func (wfe *WebFrontEndImpl) validJWSForAccountUsing(
+	jws *bJSONWebSignature,
+	request *http.Request,
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	accountGetter AccountGetter) ([]byte, *bJSONWebSignature, *core.Registration, error) {
 	// Lookup the account and JWK for the key ID that authenticated the JWS
-	pubKey, account, err := wfe.lookupJWK(jws.Signatures[0].Header, ctx, request, logEvent)
+	pubKey, account, err := wfe.lookupJWKUsing(
+		jws.Signatures[0].Header,
+		ctx,
+		request,
+		logEvent,
+		accountGetter,
+	)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -620,35 +644,52 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	return payload, jws, account, nil
 }
 
-// validPOSTForAccount checks that a given POST request has a valid JWS
-// using `validJWSForAccount`. If valid, the authenticated JWS body and the
-// registration that authenticated the body are returned. Otherwise a error is
-// returned. The returned JWS body may be empty if the request is a POST-as-GET
-// request.
+// validPOSTForAccount checks a POST request against the configured account
+// getter, which may be the WFE-local account cache. Use
+// validPOSTForCurrentAccount before account-authenticated requests cross
+// issuance or account mutation boundaries.
 func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
 	ctx context.Context,
 	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, error) {
+	return wfe.validPOSTForAccountUsing(request, ctx, logEvent, wfe.accountGetter)
+}
+
+// validPOSTForCurrentAccount checks a POST request against current SA account
+// state, bypassing the WFE-local account cache. Use it before account-authenticated
+// requests cross issuance or account mutation boundaries.
+func (wfe *WebFrontEndImpl) validPOSTForCurrentAccount(
+	request *http.Request,
+	ctx context.Context,
+	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, error) {
+	return wfe.validPOSTForAccountUsing(request, ctx, logEvent, wfe.sa)
+}
+
+func (wfe *WebFrontEndImpl) validPOSTForAccountUsing(
+	request *http.Request,
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	accountGetter AccountGetter) ([]byte, *bJSONWebSignature, *core.Registration, error) {
 	// Parse the JWS from the POST request
 	jws, err := wfe.parseJWSRequest(request)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
+	return wfe.validJWSForAccountUsing(jws, request, ctx, logEvent, accountGetter)
 }
 
 // validPOSTAsGETForAccount checks that a given POST request is valid using
-// `validPOSTForAccount`. It additionally validates that the JWS request payload
-// is empty, indicating that it is a POST-as-GET request per ACME draft 15+
-// section 6.3 "GET and POST-as-GET requests". If a non empty payload is
-// provided in the JWS the invalidPOSTAsGETErr error is returned. This
-// function is useful only for endpoints that do not need to handle both POSTs
-// with a body and POST-as-GET requests (e.g. Order, Certificate).
+// the configured account getter, which may be the WFE-local account cache. It
+// additionally validates that the JWS request payload is empty, indicating
+// that it is a POST-as-GET request per ACME draft 15+ section 6.3 "GET and
+// POST-as-GET requests". If a non empty payload is provided in the JWS the
+// invalidPOSTAsGETErr error is returned. This function is useful only for
+// endpoints that do not need to handle both POSTs with a body and POST-as-GET
+// requests (e.g. Order, Certificate).
 func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 	request *http.Request,
 	ctx context.Context,
 	logEvent *web.RequestEvent) (*core.Registration, error) {
-	// Call validPOSTForAccount to verify the JWS and extract the body.
 	body, _, reg, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 	if err != nil {
 		return nil, err
@@ -747,9 +788,9 @@ type rolloverOperation struct {
 
 // validKeyRollover checks if the innerJWS is a valid key rollover operation
 // given the outer JWS that carried it. It is assumed that the outerJWS has
-// already been validated per the normal ACME process using `validPOSTForAccount`.
-// It is *critical* this is the case since `validKeyRollover` does not check the
-// outerJWS signature. This function checks that:
+// already been validated per the normal ACME process. It is *critical* this is
+// the case since `validKeyRollover` does not check the outerJWS signature. This
+// function checks that:
 // 1) the inner JWS is valid and well formed
 // 2) the inner JWS has the same "url" header as the outer JWS
 // 3) the inner JWS is self-authenticated with an embedded JWK
@@ -798,8 +839,8 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 		return nil, berrors.MalformedError("Inner JWS does not verify with embedded JWK")
 	}
 	// NOTE(@cpu): we do not stomp the web.RequestEvent's payload here since that is set
-	// from the outerJWS in validPOSTForAccount and contains the inner JWS and inner
-	// payload already.
+	// from the outerJWS by the account-authenticated verifier and contains the
+	// inner JWS and inner payload already.
 
 	// Verify that the outer and inner JWS protected URL headers match
 	if err := wfe.matchJWSURLs(outerJWS.Signatures[0].Header, innerJWS.Signatures[0].Header); err != nil {
