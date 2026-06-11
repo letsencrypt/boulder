@@ -351,10 +351,14 @@ func loadSigner(location IssuerLoc, pubkey crypto.PublicKey) (crypto.Signer, err
 		pkcs11Config = location.PKCS11
 	}
 
-	if pkcs11Config.Module == "" ||
-		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" {
-		return nil, fmt.Errorf("missing a field in pkcs11Config %#v", pkcs11Config)
+	if pkcs11Config.Module == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: Module")
+	}
+	if pkcs11Config.TokenLabel == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: TokenLabel")
+	}
+	if pkcs11Config.PIN == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: PIN")
 	}
 
 	numSessions := location.NumSessions
