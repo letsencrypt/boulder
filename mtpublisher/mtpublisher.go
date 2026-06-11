@@ -3,6 +3,7 @@ package mtpublisher
 import (
 	"context"
 	"crypto/ed25519"
+	"database/sql"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,9 +15,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// MTPublisher polls the MTC issuance log for checkpoints that still lack a
-// mirror cosignature, and adds a dummy cosignature to them. It is a stub for
-// the real MTPublisher.
+// MTPublisher polls the MTC issuance log and adds a dummy cosignature to the
+// latest checkpoint if it lacks one. It is a stub for the real MTPublisher.
 type MTPublisher struct {
 	db       *db.WrappedMap
 	interval time.Duration
@@ -26,7 +26,7 @@ type MTPublisher struct {
 	log      blog.Logger
 }
 
-// New returns a new *Publisher.
+// New returns a new *MTPublisher.
 func New(dbMap *db.WrappedMap, interval time.Duration, mtcLogID, mirrorID string, clk clock.Clock, log blog.Logger) (*MTPublisher, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("interval must be positive, got %s", interval)
@@ -47,10 +47,11 @@ func New(dbMap *db.WrappedMap, interval time.Duration, mtcLogID, mirrorID string
 	}, nil
 }
 
-type pendingCheckpoint struct {
-	ID       int64  `db:"id"`
-	MTCLogID string `db:"mtcLogID"`
-	TreeSize int64  `db:"treeSize"`
+type checkpointEntry struct {
+	ID              int64  `db:"id"`
+	MTCLogID        string `db:"mtcLogID"`
+	TreeSize        int64  `db:"treeSize"`
+	MirrorSignature []byte `db:"mirrorSignature"`
 }
 
 // dummyCosignature returns a dummy Ed25519 tlog-cosignature: a big-endian
@@ -61,35 +62,38 @@ func (p *MTPublisher) dummyCosignature() []byte {
 	return out
 }
 
-func (p *MTPublisher) cosignPending(ctx context.Context) error {
-	var pending []pendingCheckpoint
-	_, err := p.db.Select(ctx, &pending,
-		"SELECT id, mtcLogID, treeSize FROM checkpoints WHERE mtcLogID = ? AND mirrorSignature IS NULL",
+func (p *MTPublisher) publish(ctx context.Context) error {
+	var latest checkpointEntry
+	err := p.db.SelectOne(ctx, &latest,
+		"SELECT id, mtcLogID, treeSize, mirrorSignature FROM checkpoints WHERE mtcLogID = ? ORDER BY treeSize DESC LIMIT 1",
 		p.mtcLogID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("selecting checkpoints awaiting a cosignature: %w", err)
+		return fmt.Errorf("selecting the latest checkpoint: %w", err)
+	}
+	if latest.MirrorSignature != nil {
+		return nil
 	}
 
-	for _, cp := range pending {
-		_, err := p.db.ExecContext(ctx,
-			"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
-			p.mirrorID, p.dummyCosignature(), cp.ID, p.mtcLogID)
-		if err != nil {
-			p.log.Errf("Failed to cosign checkpoint %d (%s size %d): %s", cp.ID, cp.MTCLogID, cp.TreeSize, err)
-			continue
-		}
-		p.log.Infof("Cosigned checkpoint %d (%s size %d)", cp.ID, cp.MTCLogID, cp.TreeSize)
+	_, err = p.db.ExecContext(ctx,
+		"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
+		p.mirrorID, p.dummyCosignature(), latest.ID, p.mtcLogID)
+	if err != nil {
+		return fmt.Errorf("cosigning checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
+	p.log.Infof("Cosigned checkpoint %d (%s size %d)", latest.ID, latest.MTCLogID, latest.TreeSize)
 	return nil
 }
 
-// Start attempts to cosign pending checkpoints at each interval until ctx is
+// Start attempts to cosign the latest checkpoint at each interval until ctx is
 // cancelled.
 func (p *MTPublisher) Start(ctx context.Context) {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
-		err := p.cosignPending(ctx)
+		err := p.publish(ctx)
 		if err != nil {
 			p.log.Errf("Cosigning pass failed: %s", err)
 		}
