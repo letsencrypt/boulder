@@ -8,6 +8,7 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/bad-key-revoker"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-ca"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-mtca"
+	_ "github.com/letsencrypt/boulder/cmd/boulder-mtpublisher"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-observer"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-publisher"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-ra"
