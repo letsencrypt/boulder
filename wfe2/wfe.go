@@ -179,15 +179,19 @@ type WebFrontEndImpl struct {
 	// given request counts as a renewal or not.
 	blockedOnDemandLabels []string `validate:"omitempty"`
 
-	// blockedAccounts is the set of account (registration) IDs which have been
-	// administratively blocked from requesting issuance of new certificates,
-	// loaded once at process startup from a YAML file.
-	blockedAccounts map[int64]bool
+	// accountBlocker checks whether accounts are blocked and returns errors if so.
+	accountBlocker AccountBlocker
 
 	// certProfiles is a map of acceptable certificate profile names to
 	// descriptions (perhaps including URLs) of those profiles. NewOrder
 	// Requests with a profile name not present in this map will be rejected.
 	certProfiles map[string]string
+}
+
+// AccountBlocker defines an interface that can check whether a given ID is
+// blocked, and return an error if so.
+type AccountBlocker interface {
+	CheckAccountID(id int64) error
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -215,7 +219,7 @@ func NewWebFrontEndImpl(
 	unpauseJWTLifetime time.Duration,
 	unpauseURL string,
 	blockedOnDemandLabels []string,
-	blockedAccounts map[int64]bool,
+	accountBlocker AccountBlocker,
 	caaIdentity string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -268,7 +272,7 @@ func NewWebFrontEndImpl(
 		unpauseJWTLifetime:    unpauseJWTLifetime,
 		unpauseURL:            unpauseURL,
 		blockedOnDemandLabels: blockedLabels,
-		blockedAccounts:       blockedAccounts,
+		accountBlocker:        accountBlocker,
 		DirectoryCAAIdentity:  normalizedCAAIdentity,
 	}
 
@@ -2332,12 +2336,6 @@ func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIde
 	return pausedValues, nil
 }
 
-// checkAccountPaused returns true if the given account ID is in the WFE's
-// administratively-configured set of blocked accounts.
-func (wfe *WebFrontEndImpl) checkAccountPaused(regID int64) bool {
-	return wfe.blockedAccounts[regID]
-}
-
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2403,12 +2401,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	if features.Get().CheckIdentifiersPaused {
-		if wfe.checkAccountPaused(acct.ID) {
-			wfe.sendError(response, logEvent, probs.Unauthorized("Your account is prevented from requesting certificates due to abusive request patterns."), nil)
+	if wfe.accountBlocker != nil {
+		err = wfe.accountBlocker.CheckAccountID(acct.ID)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Account blocked"), err)
 			return
 		}
+	}
 
+	if features.Get().CheckIdentifiersPaused {
 		pausedValues, err := wfe.checkIdentifiersPaused(ctx, idents, acct.ID)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Failure while checking pause status of identifiers"), err)
