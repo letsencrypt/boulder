@@ -443,6 +443,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		unpauseLifetime,
 		unpauseURL,
 		[]string{"asdf"},
+		nil,
 		"letsencrypt.org",
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")

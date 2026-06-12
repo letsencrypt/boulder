@@ -21,12 +21,14 @@ import (
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	noncebalancerv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/letsencrypt/boulder/wfe2"
@@ -210,6 +212,11 @@ type Config struct {
 		// repeats. We don't want to issue certs for names that look like they
 		// result from this process.
 		BlockedOnDemandLabels []string `validate:"omitempty"`
+
+		// BlockedAccountsFile is the path to a YAML file listing regIDs which are
+		// blocked from requesting issuance of new certificates. If empty, no
+		// accounts are blocked.
+		BlockedAccountsFile string `validate:"omitempty"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -222,6 +229,36 @@ type Config struct {
 type CacheConfig struct {
 	Size int
 	TTL  config.Duration
+}
+
+type blockedAccountsPolicy struct {
+	BlockedAccountIDs []int64 `yaml:"BlockedAccountIDs"`
+}
+
+// loadBlockedAccountsFile parses the YAML file at the given path and returns
+// the set of blocked account IDs it contains.
+// TODO: Update the schema etc to handle multiple lists each with their own
+// message string, so we don't have to hardcode the message in the WFE.
+func loadBlockedAccountsFile(f string, logger blog.Logger) (map[int64]bool, error) {
+	configBytes, err := os.ReadFile(f)
+	if err != nil {
+		return nil, err
+	}
+
+	var policy blockedAccountsPolicy
+	err = strictyaml.Unmarshal(configBytes, &policy)
+	if err != nil {
+		return nil, err
+	}
+
+	blocked := make(map[int64]bool, 0)
+	for _, id := range policy.BlockedAccountIDs {
+		if id <= 0 {
+			return nil, fmt.Errorf("malformed BlockedAccountIDs entry, not a positive integer: %d", id)
+		}
+		blocked[id] = true
+	}
+	return blocked, nil
 }
 
 // loadChain takes a list of filenames containing pem-formatted certificates,
@@ -380,6 +417,12 @@ func main() {
 		overridesRefresherShutdown = txnBuilder.NewRefresher(30 * time.Minute)
 	}
 
+	var blockedAccounts map[int64]bool
+	if c.WFE.BlockedAccountsFile != "" {
+		blockedAccounts, err = loadBlockedAccountsFile(c.WFE.BlockedAccountsFile, logger)
+		cmd.FailOnError(err, "Couldn't load blocked accounts file")
+	}
+
 	var accountGetter wfe2.AccountGetter
 	if c.WFE.AccountCache != nil {
 		accountGetter = wfe2.NewAccountCache(sac,
@@ -414,6 +457,7 @@ func main() {
 		c.WFE.Unpause.JWTLifetime.Duration,
 		c.WFE.Unpause.URL,
 		c.WFE.BlockedOnDemandLabels,
+		blockedAccounts,
 		c.WFE.DirectoryCAAIdentity,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
