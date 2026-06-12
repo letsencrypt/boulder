@@ -75,6 +75,11 @@ func main() {
 	start, err := srv.Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup MTCA gRPC server")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd.CatchSignals(cancel)
+	defer mtcaImpl.Drain()
+	go mtcaImpl.Loop(ctx)
+
 	cmd.FailOnError(start(), "MTCA gRPC service failed")
 }
 
