@@ -585,6 +585,7 @@ func PushMetrics(jobname, pushgatewayURL string, gatherer prometheus.Gatherer, l
 		hostname = "unknown"
 	}
 	return push.New(pushgatewayURL, jobname).
+		Client(&http.Client{Timeout: 10 * time.Second}).
 		Gatherer(gatherer).
 		Grouping("instance", hostname).
 		Push()
