@@ -81,5 +81,5 @@ fi
 if ! [ -d test/certs/mtpki ]; then
   echo "Generating mtpki/..."
   mkdir -p test/certs/mtpki
-  go run ./test/certs/genmtpki/genmtpki.go
+  gotip run ./test/certs/genmtpki/genmtpki.go
 fi
