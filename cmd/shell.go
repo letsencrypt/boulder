@@ -576,6 +576,7 @@ func WaitForSignal() {
 	signal.Notify(sigChan, syscall.SIGHUP)
 	<-sigChan
 }
+
 // PushMetrics pushes the provided Prometheus metrics to the provided
 // Pushgateway URL with the provided job name.
 func PushMetrics(jobname, pushgatewayURL string, gatherer prometheus.Gatherer, logger blog.Logger) error {
