@@ -240,10 +240,6 @@ github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/zmap/zcrypto v0.0.0-20260514033604-a1159eb3cad9 h1:k0GSZUpunq/xV9TchM0Y8WGQn2wzpeF0uTBMNN5up+o=
 github.com/zmap/zcrypto v0.0.0-20260514033604-a1159eb3cad9/go.mod h1:fFnCx1pWvIjLONMF4Qkmp3LlwomUZ4VG4aUDYhMDstU=
-github.com/zmap/zlint/v3 v3.7.0 h1:PRYgDwCR5BcWUTJj14/J9TuWyf5y9PQ7zorqaYERcv0=
-github.com/zmap/zlint/v3 v3.7.0/go.mod h1:SKuErTVnD0Io5KWkOLQVAEUf2y9PkBExURiVTBesqE8=
-github.com/zmap/zlint/v3 v3.7.1 h1:Pu4Ptqe88DtI1dJIU6DIbRHiTMBa73/QXLBSgQHVi3w=
-github.com/zmap/zlint/v3 v3.7.1/go.mod h1:wg6hm/hqXUXHI0Eksegftj/a1bH2Zl6wpgcB4yeUy/o=
 github.com/zmap/zlint/v3 v3.7.2-0.20260531191521-b88ecfaefc52 h1:9y0S/ltWhWdGtChZd6NWjH4c7eAEmkVixtP5SuLpSJg=
 github.com/zmap/zlint/v3 v3.7.2-0.20260531191521-b88ecfaefc52/go.mod h1:wg6hm/hqXUXHI0Eksegftj/a1bH2Zl6wpgcB4yeUy/o=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
