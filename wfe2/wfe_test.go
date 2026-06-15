@@ -443,6 +443,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		unpauseLifetime,
 		unpauseURL,
 		[]string{"asdf"},
+		nil,
 		"letsencrypt.org",
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
@@ -4516,5 +4517,43 @@ func TestLooksLikeRecursiveOnDemandRequest(t *testing.T) {
 				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = nil, but want error", tc.idents, tc.blocked)
 			}
 		})
+	}
+}
+
+type acctBlock struct{}
+
+func (ab *acctBlock) CheckAccountID(id int64) error {
+	return berrors.UnauthorizedError("oh no")
+}
+
+func TestAccountBlocker(t *testing.T) {
+	t.Parallel()
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	wfe.accountBlocker = new(acctBlock)
+
+	// Test that the newOrder endpoint returns no error if the valid profile is specified.
+	responseWriter := httptest.NewRecorder()
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		]
+	}`)
+	mux.ServeHTTP(responseWriter, r)
+	if responseWriter.Code != http.StatusForbidden {
+		t.Fatalf("newOrder with blocked account: got %d, want %d; %s", responseWriter.Code, http.StatusForbidden,
+			responseWriter.Body.String())
+	}
+	var errorResp1 map[string]any
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
+	if err != nil {
+		t.Fatalf("newOrder with blocked account: got error unmarshaling response: %s", err)
+	}
+	detail := errorResp1["detail"]
+	expected := "Account blocked :: oh no"
+	if detail != expected {
+		t.Errorf("newOrder with blocked account: got %q, want %q", detail, expected)
 	}
 }

@@ -179,10 +179,19 @@ type WebFrontEndImpl struct {
 	// given request counts as a renewal or not.
 	blockedOnDemandLabels []string `validate:"omitempty"`
 
+	// accountBlocker checks whether accounts are blocked and returns errors if so.
+	accountBlocker AccountBlocker
+
 	// certProfiles is a map of acceptable certificate profile names to
 	// descriptions (perhaps including URLs) of those profiles. NewOrder
 	// Requests with a profile name not present in this map will be rejected.
 	certProfiles map[string]string
+}
+
+// AccountBlocker defines an interface that can check whether a given ID is
+// blocked, and return an error if so.
+type AccountBlocker interface {
+	CheckAccountID(id int64) error
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -210,6 +219,7 @@ func NewWebFrontEndImpl(
 	unpauseJWTLifetime time.Duration,
 	unpauseURL string,
 	blockedOnDemandLabels []string,
+	accountBlocker AccountBlocker,
 	caaIdentity string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -262,6 +272,7 @@ func NewWebFrontEndImpl(
 		unpauseJWTLifetime:    unpauseJWTLifetime,
 		unpauseURL:            unpauseURL,
 		blockedOnDemandLabels: blockedLabels,
+		accountBlocker:        accountBlocker,
 		DirectoryCAAIdentity:  normalizedCAAIdentity,
 	}
 
@@ -2388,6 +2399,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
+	}
+
+	if wfe.accountBlocker != nil {
+		err = wfe.accountBlocker.CheckAccountID(acct.ID)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Account blocked"), err)
+			return
+		}
 	}
 
 	if features.Get().CheckIdentifiersPaused {
