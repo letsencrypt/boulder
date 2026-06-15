@@ -286,23 +286,24 @@ github.com/redis/go-redis/v9/internal/util
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 ## explicit
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.50.3
+# github.com/weppos/publicsuffix-go v0.50.4-0.20260507075217-1bd47f85b3da
 ## explicit; go 1.24.0
 github.com/weppos/publicsuffix-go/publicsuffix
-# github.com/zmap/zcrypto v0.0.0-20250129210703-03c45d0bae98
-## explicit; go 1.16
+# github.com/zmap/zcrypto v0.0.0-20260514033604-a1159eb3cad9
+## explicit; go 1.25.0
 github.com/zmap/zcrypto/cryptobyte
 github.com/zmap/zcrypto/cryptobyte/asn1
 github.com/zmap/zcrypto/dsa
 github.com/zmap/zcrypto/encoding/asn1
 github.com/zmap/zcrypto/internal/randutil
 github.com/zmap/zcrypto/json
+github.com/zmap/zcrypto/rsa
 github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint/v3 v3.6.6
-## explicit; go 1.23.0
+# github.com/zmap/zlint/v3 v3.7.1
+## explicit; go 1.25.0
 github.com/zmap/zlint/v3
 github.com/zmap/zlint/v3/lint
 github.com/zmap/zlint/v3/lints/apple
@@ -310,6 +311,7 @@ github.com/zmap/zlint/v3/lints/cabf_br
 github.com/zmap/zlint/v3/lints/cabf_cs_br
 github.com/zmap/zlint/v3/lints/cabf_ev
 github.com/zmap/zlint/v3/lints/cabf_smime_br
+github.com/zmap/zlint/v3/lints/chrome
 github.com/zmap/zlint/v3/lints/community
 github.com/zmap/zlint/v3/lints/etsi
 github.com/zmap/zlint/v3/lints/mozilla

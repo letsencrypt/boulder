@@ -162,7 +162,7 @@ func ParseQcStatem(extVal []byte, sought asn1.ObjectIdentifier) EtsiQcStmtIf {
 			if len(statem.Any.FullBytes) != 0 {
 				return etsiBase{errorInfo: "internal error, default optional content len is not zero"}
 			}
-		} else if 0 != len(rest) {
+		} else if len(rest) != 0 {
 			return etsiBase{errorInfo: parseErrorString, isPresent: false}
 		}
 

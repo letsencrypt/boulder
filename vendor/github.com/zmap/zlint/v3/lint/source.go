@@ -41,6 +41,7 @@ const (
 	CABFEVGuidelines              LintSource = "CABF_EV"
 	MozillaRootStorePolicy        LintSource = "Mozilla"
 	AppleRootStorePolicy          LintSource = "Apple"
+	ChromeRootStorePolicy         LintSource = "Chrome"
 	Community                     LintSource = "Community"
 	EtsiEsi                       LintSource = "ETSI_ESI"
 )
@@ -67,6 +68,7 @@ func (s *LintSource) UnmarshalJSON(data []byte) error {
 		CABFEVGuidelines,
 		MozillaRootStorePolicy,
 		AppleRootStorePolicy,
+		ChromeRootStorePolicy,
 		Community,
 		EtsiEsi:
 		*s = LintSource(throwAway)
@@ -110,6 +112,8 @@ func (s *LintSource) FromString(src string) {
 		*s = MozillaRootStorePolicy
 	case AppleRootStorePolicy:
 		*s = AppleRootStorePolicy
+	case ChromeRootStorePolicy:
+		*s = ChromeRootStorePolicy
 	case Community:
 		*s = Community
 	case EtsiEsi:

@@ -66,9 +66,11 @@ func (r RFC5891Config) namespace() string {
 // CABFBaselineRequirementsConfig is the higher scoped configuration which services as the deserialization target for...
 //
 // [CABFBaselineRequirementsConfig]
+// CrossSignedCa = false # Used to indicate that the certificate is a Cross-Certified Subordinate CA
 // ...
-// ...
-type CABFBaselineRequirementsConfig struct{}
+type CABFBaselineRequirementsConfig struct {
+	CrossSignedCa bool
+}
 
 func (c CABFBaselineRequirementsConfig) namespace() string {
 	return "CABFBaselineRequirementsConfig"
@@ -143,7 +145,6 @@ type GlobalConfiguration interface {
 // out a TOML document that is the full default configuration for ZLint.
 var defaultGlobals = []GlobalConfiguration{
 	&Global{},
-	&CABFBaselineRequirementsConfig{},
 	&RFC5280Config{},
 	&RFC5480Config{},
 	&RFC5891Config{},
