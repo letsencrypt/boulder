@@ -437,9 +437,9 @@ func main() {
 		overridesRefresherShutdown = txnBuilder.NewRefresher(30 * time.Minute)
 	}
 
-	var accountBlocker wfe2.AccountBlocker
+	var acctBlocker wfe2.AccountBlocker
 	if c.WFE.BlockedAccountsFile != "" {
-		accountBlocker, err = loadBlockedAccountsFile(c.WFE.BlockedAccountsFile)
+		acctBlocker, err = loadBlockedAccountsFile(c.WFE.BlockedAccountsFile)
 		cmd.FailOnError(err, "Couldn't load blocked accounts file")
 	}
 
@@ -477,7 +477,7 @@ func main() {
 		c.WFE.Unpause.JWTLifetime.Duration,
 		c.WFE.Unpause.URL,
 		c.WFE.BlockedOnDemandLabels,
-		accountBlocker,
+		acctBlocker,
 		c.WFE.DirectoryCAAIdentity,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
