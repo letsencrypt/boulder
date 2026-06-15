@@ -4533,7 +4533,6 @@ func TestAccountBlocker(t *testing.T) {
 
 	wfe.accountBlocker = new(acctBlock)
 
-	// Test that the newOrder endpoint returns no error if the valid profile is specified.
 	responseWriter := httptest.NewRecorder()
 	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, `
 	{
