@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,41 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+type certCheckerMetrics struct {
+	checkerLatency   prometheus.Histogram
+	checkerTimestamp prometheus.Gauge
+	checkerGoodCount prometheus.Gauge
+	checkerBadCount  prometheus.Gauge
+}
+
+func newCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
+	checkerLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
+		Name: "cert_checker_latency",
+		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
+	})
+
+	checkerTimestamp := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_last_run_timestamp",
+		Help: "Timestamp of cert-checker's last run",
+	})
+
+	checkerGoodCount := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_good_count",
+		Help: "Cert-checker count of good certificates",
+	})
+
+	checkerBadCount := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_bad_count",
+		Help: "Cert-checker count of bad certificates",
+	})
+	return &certCheckerMetrics{
+		checkerLatency:   checkerLatency,
+		checkerTimestamp: checkerTimestamp,
+		checkerGoodCount: checkerGoodCount,
+		checkerBadCount:  checkerBadCount,
+	}
+}
+
 // For defense-in-depth in addition to using the PA & its identPolicy to check
 // domain names we also perform a check against the regex's from the
 // forbiddenDomains array
@@ -62,25 +98,9 @@ var batchSize = 1000
 type report struct {
 	begin     time.Time
 	end       time.Time
-	GoodCerts int64                  `json:"good-certs"`
-	BadCerts  int64                  `json:"bad-certs"`
-	DbErrs    int64                  `json:"db-errs"`
-	Entries   map[string]reportEntry `json:"entries"`
-}
-
-func (r *report) dump() error {
-	content, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(os.Stdout, string(content))
-	return nil
-}
-
-type reportEntry struct {
-	Valid    bool     `json:"valid"`
-	SANs     []string `json:"sans"`
-	Problems []string `json:"problems,omitempty"`
+	GoodCerts int64 `json:"good-certs"`
+	BadCerts  int64 `json:"bad-certs"`
+	DbErrs    int64 `json:"db-errs"`
 }
 
 // certDB is an interface collecting the borp.DbMap functions that the various
@@ -102,7 +122,6 @@ type certChecker struct {
 	getPrecert                  precertGetter
 	certs                       chan *corepb.Certificate
 	clock                       clock.Clock
-	rMu                         *sync.Mutex
 	issuedReport                report
 	checkPeriod                 time.Duration
 	acceptableValidityDurations map[time.Duration]bool
@@ -132,9 +151,7 @@ func newChecker(saDbMap certDB,
 		dbMap:                       saDbMap,
 		getPrecert:                  precertGetter,
 		certs:                       make(chan *corepb.Certificate, batchSize),
-		rMu:                         new(sync.Mutex),
 		clock:                       clk,
-		issuedReport:                report{Entries: make(map[string]reportEntry)},
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
 		lints:                       lints,
@@ -265,26 +282,17 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
+func (c *certChecker) processCerts(ctx context.Context) {
 	for cert := range c.certs {
 		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
-		c.rMu.Lock()
-		if !badResultsOnly || (badResultsOnly && !valid) {
-			c.issuedReport.Entries[cert.Serial] = reportEntry{
-				Valid:    valid,
-				SANs:     sans,
-				Problems: problems,
-			}
-		}
-		c.rMu.Unlock()
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
+			c.logger.AuditErr("certificate error found", nil, map[string]any{"serial": cert.Serial, "sans": sans, "problems": problems})
 		} else {
 			atomic.AddInt64(&c.issuedReport.GoodCerts, 1)
 		}
 	}
-	wg.Done()
 }
 
 // Extensions that we allow in certificates
@@ -540,8 +548,19 @@ type Config struct {
 		cmd.HostnamePolicyConfig
 
 		Workers int `validate:"required,min=1"`
-		// Deprecated: this is ignored, and cert checker always checks both expired and unexpired.
-		UnexpiredOnly  bool
+		// LookupDNSAuthority can only be specified with PushgatewayService. It's a single
+		// <hostname|IPv4|[IPv6]>:<port> of the DNS server to be used for resolution
+		// of pushgateway backends. If the address contains a hostname it will be resolved
+		// using system DNS. If the address contains a port, the client will use it
+		// directly, otherwise port 53 is used.
+		LookupDNSAuthority string `validate:"excluded_without=PushgatewayService,required_with=PushgatewayService,omitempty,ip|hostname|hostname_port"`
+		// PushgatewayService entry contains a service and domain name that will be used
+		// to construct a SRV DNS query to lookup pushgateway backends. For example: if
+		// the resource record is 'foo.service.consul', then the 'Service' is 'foo'
+		// and the 'Domain' is 'service.consul'. The expected dNSName to be
+		// authenticated in the server certificate would be 'foo.service.consul'.
+		PushgatewayService *cmd.ServiceDomain `validate:"required_with=LookupDNSAuthority"`
+		// Deprecated: cert-checker only logs bad results anyway.
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
 
@@ -577,6 +596,47 @@ type Config struct {
 	Syslog cmd.SyslogConfig
 }
 
+// getPushgatewayURL resolves svc via SRV+A lookups against dnsAuthority and
+// returns an http:// URL whose host is an IP address. Both lookups go through
+// dnsAuthority (typically Consul DNS) because the system resolver can't answer
+// queries for the .consul domain. The SRV target is then flattened to an IP
+// because the returned URL is consumed by net/http via cmd.PushMetrics, which
+// resolves hostnames using the system resolver. Scheme is fixed to http:
+// pushgateway is assumed to be on an internal network
+func getPushgatewayURL(ctx context.Context, dnsAuthority string, svc cmd.ServiceDomain) (string, error) {
+	host, port, err := net.SplitHostPort(dnsAuthority)
+	if err != nil {
+		// Assume only hostname or IPv4 address was specified.
+		host = dnsAuthority
+		port = "53"
+	}
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(host, port))
+		},
+	}
+	_, targets, err := r.LookupSRV(ctx, svc.Service, "tcp", svc.Domain)
+	if err != nil {
+		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s failed: %w", svc.Service, svc.Domain, err)
+	}
+	if len(targets) == 0 {
+		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s returned 0 results", svc.Service, svc.Domain)
+	}
+	// Flatten the SRV target to an IP using the same Consul authority; net/http
+	// (used downstream) would otherwise try to resolve names like
+	// *.addr.dc1.consul via the system resolver and fail.
+	target := strings.TrimSuffix(targets[0].Target, ".")
+	addrs, err := r.LookupHost(ctx, target)
+	if err != nil {
+		return "", fmt.Errorf("A/AAAA lookup of %q failed: %w", target, err)
+	}
+	if len(addrs) == 0 {
+		return "", fmt.Errorf("A/AAAA lookup of %q returned 0 results", target)
+	}
+	return fmt.Sprintf("http://%s", net.JoinHostPort(addrs[0], fmt.Sprint(targets[0].Port))), nil
+}
+
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -593,6 +653,9 @@ func main() {
 
 	logger := cmd.NewLogger(config.Syslog)
 	cmd.LogStartup(logger)
+
+	reg := prometheus.NewRegistry()
+	metrics := newCertCheckerMetrics(reg)
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
@@ -615,11 +678,6 @@ func main() {
 
 	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
-
-	checkerLatency := promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "cert_checker_latency",
-		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
-	})
 
 	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
@@ -663,23 +721,34 @@ func main() {
 	fmt.Fprintf(os.Stderr, "# Processing certificates using %d workers\n", config.CertChecker.Workers)
 	wg := new(sync.WaitGroup)
 	for range config.CertChecker.Workers {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			s := checker.clock.Now()
-			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly)
-			checkerLatency.Observe(checker.clock.Since(s).Seconds())
-		}()
+			checker.processCerts(context.Background())
+			metrics.checkerLatency.Observe(checker.clock.Since(s).Seconds())
+		})
 	}
 	wg.Wait()
-	fmt.Fprintf(
-		os.Stderr,
-		"# Finished processing certificates, report length: %d, good: %d, bad: %d\n",
-		len(checker.issuedReport.Entries),
-		checker.issuedReport.GoodCerts,
-		checker.issuedReport.BadCerts,
-	)
-	err = checker.issuedReport.dump()
-	cmd.FailOnError(err, "Failed to dump results: %s\n")
+	logger.AuditInfo("Finished processing certificates", checker.issuedReport)
+
+	metrics.checkerTimestamp.SetToCurrentTime()
+	metrics.checkerGoodCount.Set(float64(checker.issuedReport.GoodCerts))
+	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
+
+	if config.CertChecker.PushgatewayService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		pushgatewayURL, err := getPushgatewayURL(ctx, config.CertChecker.LookupDNSAuthority, *config.CertChecker.PushgatewayService)
+		if err != nil {
+			logger.Errf("failed to get pushgateway URL: %s", err)
+		} else {
+			err = cmd.PushMetrics("cert-checker", pushgatewayURL, reg, logger)
+			if err != nil {
+				logger.Errf("failed to push metrics to pushgateway: %s", err)
+			} else {
+				logger.Debugf("pushed metrics to pushgateway at %s", pushgatewayURL)
+			}
+		}
+	}
 
 	if checker.issuedReport.BadCerts > 0 {
 		os.Exit(1)
