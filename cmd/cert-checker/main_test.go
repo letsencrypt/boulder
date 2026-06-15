@@ -595,6 +595,7 @@ func TestIgnoredLint(t *testing.T) {
 	template.DNSNames = []string{"zombo.com"}
 	template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	template.CRLDistributionPoints = []string{"http://crl.example.org"}
 	template.IsCA = false
 
 	subjectCertDer, err := x509.CreateCertificate(rand.Reader, template, issuerCert, testKey.Public(), testKey)
