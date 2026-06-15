@@ -20,6 +20,7 @@ import (
 	"reflect"
 
 	"github.com/zmap/zcrypto/encoding/asn1"
+	"github.com/zmap/zcrypto/x509"
 )
 
 type anyContent struct {
@@ -251,4 +252,44 @@ func ParseQcStatem(extVal []byte, sought asn1.ObjectIdentifier) EtsiQcStmtIf {
 
 	return etsiBase{errorInfo: "", isPresent: false}
 
+}
+
+/************************************************
+
+https://www.etsi.org/deliver/etsi_en/319400_319499/31941102/02.06.01_60/en_31941102v020601p.pdf
+
+3.3 Abbreviations
+For the purposes of the present document, the abbreviations given in ETSI EN 319 401 [1], ETSI EN 319 411-1 [2] and
+the following apply:
+QCP-l Policy for EU Qualified Certificate issued to a legal person
+QCP-l-qscd Policy for EU Qualified Certificate issued to a legal person where the private key and the related
+certificate reside on a QSCD
+QCP-n Policy for EU Qualified Certificate issued to a natural person
+QCP-n-qscd Policy for EU Qualified Certificate issued to a natural person where the private key and the related
+certificate reside on a QSCD
+QEVCP-w Policy for EU qualified website certificate issued to a legal person and linking the website to that
+person based on the EVCG
+NOTE: Previous versions of the present document used the abbreviation QCP-w.
+QNCP-w Policy for EU qualified website certificate issued to a natural or a legal person and linking the
+website to that person based on the BRG
+QNCP-w-gen Policy for EU qualified website certificate issued to a natural or a legal person and linking the
+website to that person, applicable for general purpose certificate for qualified website
+authentication
+QSCD Qualified electronic Signature/Seal Creation Device
+************************************************/
+
+func IsEtsiQcNaturalPerson(cert *x509.Certificate) bool {
+	for _, policyIds := range cert.PolicyIdentifiers {
+		if policyIds.Equal(QCPnPolicyOID) {
+			return true
+		}
+		if policyIds.Equal(QCPnqscdPolicyOID) {
+			return true
+		}
+		if policyIds.Equal(QEVCPwPolicyOID) || policyIds.Equal(QNCPwPolicyOID) || policyIds.Equal(QNCPwgenPolicyOID) {
+			// a natural person has one of these properties, whereas a legal person does not have any of them
+			return TypeInName(&cert.Subject, GivenNameOID) || TypeInName(&cert.Subject, SurnameOID) || TypeInName(&cert.Subject, PseudonameOID)
+		}
+	}
+	return false
 }

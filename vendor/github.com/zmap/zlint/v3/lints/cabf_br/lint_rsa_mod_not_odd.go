@@ -15,9 +15,9 @@ package cabf_br
  */
 
 import (
-	"crypto/rsa"
 	"math/big"
 
+	"github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"

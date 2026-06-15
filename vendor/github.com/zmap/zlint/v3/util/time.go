@@ -62,6 +62,7 @@ var (
 	SubCert39Month                                   = time.Date(2016, time.July, 2, 0, 0, 0, 0, time.UTC)
 	SubCert825Days                                   = time.Date(2018, time.March, 2, 0, 0, 0, 0, time.UTC)
 	CABV148Date                                      = time.Date(2017, time.June, 8, 0, 0, 0, 0, time.UTC)
+	EtsiEn319_412_2_V2_2_1_Date                      = time.Date(2020, time.July, 1, 0, 0, 0, 0, time.UTC)
 	EtsiEn319_412_4_V1_3_0_Date                      = time.Date(2023, time.June, 1, 0, 0, 0, 0, time.UTC)
 	EtsiEn319_412_5_V2_2_1_Date                      = time.Date(2017, time.November, 1, 0, 0, 0, 0, time.UTC)
 	EtsiEn319_412_5_V2_4_1_Date                      = time.Date(2023, time.September, 1, 0, 0, 0, 0, time.UTC)
