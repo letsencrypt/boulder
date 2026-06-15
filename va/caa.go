@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
@@ -41,6 +42,20 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
+	// TODO(#8722): remove this whole thing when Authz IDs are int64-only
+	var authzIDInt int64
+	if req.AuthzIDInt != 0 {
+		authzIDInt = req.AuthzIDInt
+	} else if req.AuthzID != "" {
+		parsed, err := strconv.ParseInt(req.AuthzID, 10, 64)
+		if err != nil {
+			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.AuthzID, err)
+		}
+		authzIDInt = parsed
+	} else {
+		return nil, berrors.MalformedError("No Authz ID value supplied in gRPC message")
+	}
+
 	ident := identifier.FromProto(req.Identifier)
 	if ident.Type != identifier.TypeDNS {
 		return nil, berrors.MalformedError("Identifier type for CAA check was not DNS")
@@ -64,7 +79,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	var localLatency time.Duration
 	start := va.clk.Now()
 	logEvent := validationLogEvent{
-		AuthzID:    req.AuthzID,
+		AuthzID:    authzIDInt,
 		Requester:  req.AccountURIID,
 		Identifier: ident,
 	}

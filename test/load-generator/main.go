@@ -28,6 +28,9 @@ type Config struct {
 	HTTPOneAddrs      []string // addresses to listen for http-01 validation requests on
 	TLSALPNOneAddrs   []string // addresses to listen for tls-alpn-01 validation requests on
 	DNSAddrs          []string // addresses to listen for DNS requests on
+	DOHAddrs          []string // addresses to listen for DOH DNS requests on
+	DOHCert           string   // path to DOH Cert file
+	DOHCertKey        string   // path to DOH Key file
 	FakeDNS           string   // IPv6 address to use for all DNS A requests
 	RealIP            string   // value of the Real-IP header to use when bypassing CDN
 	RegEmail          string   // email to use in registrations
@@ -127,6 +130,9 @@ func main() {
 		config.HTTPOneAddrs,
 		config.TLSALPNOneAddrs,
 		config.DNSAddrs,
+		config.DOHAddrs,
+		config.DOHCert,
+		config.DOHCertKey,
 		config.FakeDNS,
 		Plan{
 			Runtime: runtime,

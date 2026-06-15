@@ -529,6 +529,7 @@ func TestDoCAAErrMessage(t *testing.T) {
 		Identifier:       identifier.NewDNS(domain).ToProto(),
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 		AccountURIID:     12345,
+		AuthzIDInt:       678910,
 	})
 
 	// The lookup itself should not return an error
@@ -552,6 +553,7 @@ func TestDoCAAParams(t *testing.T) {
 	_, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
 		Identifier:   identifier.NewDNS("present.com").ToProto(),
 		AccountURIID: 12345,
+		AuthzIDInt:   678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
 
@@ -560,6 +562,7 @@ func TestDoCAAParams(t *testing.T) {
 		Identifier:       identifier.NewDNS("present.com").ToProto(),
 		ValidationMethod: "tls-sni-01",
 		AccountURIID:     12345,
+		AuthzIDInt:       678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
 
@@ -567,6 +570,7 @@ func TestDoCAAParams(t *testing.T) {
 	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
 		Identifier:       identifier.NewDNS("present.com").ToProto(),
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AuthzIDInt:       678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
 
@@ -575,8 +579,17 @@ func TestDoCAAParams(t *testing.T) {
 		Identifier:       identifier.NewIP(netip.MustParseAddr("127.0.0.1")).ToProto(),
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 		AccountURIID:     12345,
+		AuthzIDInt:       678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid with a non-DNS identifier type")
+
+	// Calling IsCAAValid without an AuthzID should fail.
+	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Identifier:       identifier.NewDNS("present.com").ToProto(),
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     12345,
+	})
+	test.AssertError(t, err, "calling isCAAValid without an Authz ID")
 }
 
 var errCAABrokenDNSClient = errors.New("dnsClient is broken")
@@ -1059,6 +1072,7 @@ func TestMultiCAARechecking(t *testing.T) {
 				Identifier:       tc.ident.ToProto(),
 				ValidationMethod: string(core.ChallengeTypeDNS01),
 				AccountURIID:     1,
+				AuthzIDInt:       3,
 			})
 			test.AssertNotError(t, err, "Should not have errored, but did")
 
