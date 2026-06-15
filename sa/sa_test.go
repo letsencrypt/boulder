@@ -856,6 +856,54 @@ func TestDeactivateAuthorization2(t *testing.T) {
 	authzID = createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
+
+	// test error case with zero-value authzID
+	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: 0})
+	test.AssertError(t, err, "sa.DeactivateAuthorization2 unexpectedly succeeded")
+}
+
+func TestRevokeAuthorization(t *testing.T) {
+	sa, fc := initSA(t)
+
+	reg := createWorkingRegistration(t, sa)
+
+	expires := fc.Now().Add(time.Hour).UTC()
+	attemptedAt := fc.Now()
+
+	// revoke a pending authorization
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires)
+	_, err := sa.RevokeAuthorization(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+	authz, _ := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusRevoked)
+
+	// revoke a valid authorization
+	authzID = createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
+	_, err = sa.RevokeAuthorization(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusRevoked)
+
+	// revoke an invalid authorization
+	authzID = createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "invalid", attemptedAt)
+	_, err = sa.RevokeAuthorization(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	// revocation does NOT change invalid to revoked
+	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusInvalid)
+
+	// revoke an expired authorization
+	expires = fc.Now().Add(-time.Hour).UTC()
+	authzID = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires)
+	_, err = sa.RevokeAuthorization(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	// revocation does NOT modify an expired authorization
+	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusPending)
+
+	// test error case with zero-value authzID
+	_, err = sa.RevokeAuthorization(context.Background(), &sapb.AuthorizationID2{Id: 0})
+	test.AssertError(t, err, "sa.RevokeAuthorization unexpectedly succeeded")
 }
 
 func TestDeactivateAccount(t *testing.T) {

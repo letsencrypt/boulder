@@ -450,6 +450,28 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	return &emptypb.Empty{}, nil
 }
 
+// RevokeAuthorization revokes a currently unexpired authorization that is valid or pending
+func (ssa *SQLStorageAuthority) RevokeAuthorization(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
+	_, err := ssa.dbMap.ExecContext(ctx,
+		`UPDATE authz2 SET status = :revoked WHERE id = :id AND :expirenow < expires AND status IN (:valid,:pending)`,
+		map[string]any{
+			"revoked":   statusUint(core.StatusRevoked),
+			"id":        req.Id,
+			"expirenow": ssa.clk.Now(),
+			"valid":     statusUint(core.StatusValid),
+			"pending":   statusUint(core.StatusPending),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
 // NewOrderAndAuthzs creates an order in the database.
 //
 // The order will include reused authorization IDs from the V2Authorizations slice
