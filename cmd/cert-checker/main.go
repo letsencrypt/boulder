@@ -66,7 +66,12 @@ func newCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
 		Name: "cert_checker_bad_count",
 		Help: "Cert-checker count of bad certificates",
 	})
-	return &certCheckerMetrics{checkerLatency, checkerTimestamp, checkerGoodCount, checkerBadCount}
+	return &certCheckerMetrics{
+		checkerLatency:   checkerLatency,
+		checkerTimestamp: checkerTimestamp,
+		checkerGoodCount: checkerGoodCount,
+		checkerBadCount:  checkerBadCount,
+	}
 }
 
 // For defense-in-depth in addition to using the PA & its identPolicy to check
