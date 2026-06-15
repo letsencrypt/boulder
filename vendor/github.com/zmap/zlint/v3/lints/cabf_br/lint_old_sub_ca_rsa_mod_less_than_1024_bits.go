@@ -17,7 +17,8 @@ package cabf_br
 // CHANGE THIS COMMENT TO MATCH SOURCE TEXT
 
 import (
-	"github.com/zmap/zcrypto/rsa"
+	"crypto/rsa"
+
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"

@@ -302,7 +302,7 @@ github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint/v3 v3.7.1
+# github.com/zmap/zlint/v3 v3.7.0
 ## explicit; go 1.25.0
 github.com/zmap/zlint/v3
 github.com/zmap/zlint/v3/lint
