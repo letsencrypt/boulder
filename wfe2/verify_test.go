@@ -24,9 +24,12 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
+	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
+	inmemnonce "github.com/letsencrypt/boulder/test/inmem/nonce"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -1420,8 +1423,103 @@ func TestValidPOSTForAccount(t *testing.T) {
 	}
 }
 
+type staticRegistrationGetter struct {
+	sapb.StorageAuthorityReadOnlyClient
+	registration *corepb.Registration
+	calls        int
+}
+
+func (getter *staticRegistrationGetter) GetRegistration(
+	_ context.Context,
+	in *sapb.RegistrationID,
+	_ ...grpc.CallOption,
+) (*corepb.Registration, error) {
+	getter.calls++
+	if in.Id == getter.registration.Id {
+		return getter.registration, nil
+	}
+	return nil, berrors.NotFound
+}
+
+type rejectingRegistrationGetter struct {
+	sapb.StorageAuthorityReadOnlyClient
+	t *testing.T
+}
+
+func (getter rejectingRegistrationGetter) GetRegistration(
+	_ context.Context,
+	_ *sapb.RegistrationID,
+	_ ...grpc.CallOption,
+) (*corepb.Registration, error) {
+	getter.t.Fatal("validPOSTForCurrentAccount used cached account getter")
+	return nil, nil
+}
+
+func registrationForAuthTest(key []byte, status core.AcmeStatus) *corepb.Registration {
+	return &corepb.Registration{
+		Id:        1,
+		Key:       key,
+		Agreement: agreementURL,
+		Status:    string(status),
+	}
+}
+
+func setupAuthOnlyWFE(
+	t *testing.T,
+	freshAccount *corepb.Registration,
+) (WebFrontEndImpl, requestSigner, *staticRegistrationGetter) {
+	t.Helper()
+
+	rncKey := []byte("b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
+	noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", rncKey)
+	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
+	test.AssertNotError(t, err, "making nonceService")
+
+	inmemNonceService := &inmemnonce.NonceService{Impl: nonceService}
+	freshGetter := &staticRegistrationGetter{registration: freshAccount}
+	wfe := WebFrontEndImpl{
+		sa:            freshGetter,
+		rnc:           inmemNonceService,
+		rncKey:        rncKey,
+		accountGetter: rejectingRegistrationGetter{t: t},
+		stats:         initStats(metrics.NoopRegisterer),
+	}
+
+	return wfe, requestSigner{t, inmemNonceService.AsSource()}, freshGetter
+}
+
+func TestValidPOSTForCurrentAccountRejectsCachedDeactivatedAccount(t *testing.T) {
+	wfe, signer, freshGetter := setupAuthOnlyWFE(
+		t,
+		registrationForAuthTest([]byte(test1KeyPublicJSON), core.StatusDeactivated),
+	)
+
+	_, _, body := signer.byKeyID(1, nil, "http://localhost/test", "{}")
+	request := makePostRequestWithPath("test", body)
+
+	_, _, _, err := wfe.validPOSTForCurrentAccount(request, ctx, newRequestEvent())
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
+	test.AssertContains(t, err.Error(), `Account is not valid, has status "deactivated"`)
+	test.AssertEquals(t, freshGetter.calls, 1)
+}
+
+func TestValidPOSTForCurrentAccountRejectsCachedPreRolloverKey(t *testing.T) {
+	wfe, signer, freshGetter := setupAuthOnlyWFE(
+		t,
+		registrationForAuthTest([]byte(test2KeyPublicJSON), core.StatusValid),
+	)
+
+	_, _, body := signer.byKeyID(1, nil, "http://localhost/test", "{}")
+	request := makePostRequestWithPath("test", body)
+
+	_, _, _, err := wfe.validPOSTForCurrentAccount(request, ctx, newRequestEvent())
+	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.AssertContains(t, err.Error(), "JWS verification error")
+	test.AssertEquals(t, freshGetter.calls, 1)
+}
+
 // TestValidPOSTAsGETForAccount tests POST-as-GET processing. Because
-// wfe.validPOSTAsGETForAccount calls `wfe.validPOSTForAccount` to do all
+// wfe.validPOSTAsGETForAccount uses the configured account getter for all
 // processing except the empty body test we do not duplicate the
 // `TestValidPOSTForAccount` testcases here.
 func TestValidPOSTAsGETForAccount(t *testing.T) {
