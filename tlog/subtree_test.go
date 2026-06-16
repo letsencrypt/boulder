@@ -1,0 +1,467 @@
+package tlog
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"math"
+	"slices"
+	"testing"
+
+	xtlog "golang.org/x/mod/sumdb/tlog"
+)
+
+func TestValidSubtree(t *testing.T) {
+	cases := []struct {
+		name   string
+		start  int64
+		end    int64
+		expect bool
+	}{
+		// Valid
+		{"Single leaf", 0, 1, true},
+		{"Start 0 aligns to any size", 0, 14, true},
+		{"Aligned size-2 block", 2, 4, true},
+		{"Single leaf at an odd offset", 3, 4, true},
+		{"Aligned size-4 block", 4, 8, true},
+		{"Aligned size-4 block, start a higher multiple of size", 8, 12, true},
+		{"Non-power-of-two size, start aligned to BIT_CEIL", 8, 13, true},
+		{"Start 0 aligns to the 2^63 ceiling", 0, math.MaxInt64, true},
+		// Invalid
+		{"Misaligned start", 1, 3, false},
+		{"Misaligned start, higher offset", 7, 9, false},
+		{"Empty", 4, 4, false},
+		{"Inverted", 5, 4, false},
+		{"Nonzero start can't align to the 2^63 ceiling", 1, math.MaxInt64, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ValidSubtree(tc.start, tc.end)
+			if got != tc.expect {
+				t.Errorf("ValidSubtree(%d, %d) = %v, want %v", tc.start, tc.end, got, tc.expect)
+			}
+		})
+	}
+}
+
+// TestSubtreeHashVectors tests SubtreeHash against the published RFC 6962
+// reference roots for sizes 0-8.
+func TestSubtreeHashVectors(t *testing.T) {
+	entryHexes := []string{
+		"",
+		"00",
+		"10",
+		"2021",
+		"3031",
+		"40414243",
+		"5051525354555657",
+		"606162636465666768696a6b6c6d6e6f",
+	}
+	entries := make([][]byte, len(entryHexes))
+	for i, h := range entryHexes {
+		var err error
+		entries[i], err = hex.DecodeString(h)
+		if err != nil {
+			t.Fatalf("decoding entry %q: %s", h, err)
+		}
+	}
+	leaves := leafHashes(entries)
+	expect := []string{
+		"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		"6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+		"fac54203e7cc696cf0dfcb42c92a1d9dbaf70ad9e621f4bd8d98662f00e3c125",
+		"aeb6bcfe274b70a14fb067a5e5578264db0fa9b51af5e0ba159158f329e06e77",
+		"d37ee418976dd95753c1c73862b9398fa2a2cf9b4ff0fdfe8b30cd95209614b7",
+		"4e3bbb1f7b478dcfe71fb631631519a3bca12c9aefca1612bfce4c13a86264d4",
+		"76e67dadbcdf1e10e1b74ddc608abd2f98dfb16fbce75277b5232a127f2087ef",
+		"ddb89be403809e325750d3d263cd78929c2942b7942a34b77e122c9594a74c8c",
+		"5dc9da79a70659a9ad559cb701ded9a2ab9d823aad2f4960cfe370eff4604328",
+	}
+	for size := 0; size <= 8; size++ {
+		got := SubtreeHash(leaves[:size])
+		if hex.EncodeToString(got[:]) != expect[size] {
+			t.Errorf("SubtreeHash(size %d) = %x, want %s", size, got, expect[size])
+		}
+	}
+}
+
+// TestSubtreeHashAppendixVector pins SubtreeHash to the accumulated digest in
+// the MTC draft appendix C.1 Subtree Hashes for every valid subtree up to size
+// 130, which the draft's reference implementation also reproduces.
+func TestSubtreeHashAppendixVector(t *testing.T) {
+	want := "94a95384a8c69acea9b50d035a58285b3a777cb7a724005faa5e1f1e1190007f"
+	entries := make([][]byte, 130)
+	for i := range entries {
+		entries[i] = []byte{byte(i)}
+	}
+	leaves := leafHashes(entries)
+
+	h := sha256.New()
+	for end := int64(1); end <= 130; end++ {
+		for start := int64(0); start < end; start++ {
+			if !ValidSubtree(start, end) {
+				continue
+			}
+			subtree := SubtreeHash(leaves[start:end])
+			fmt.Fprintf(h, "[%d, %d) %s\n", start, end, hex.EncodeToString(subtree[:]))
+		}
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if got != want {
+		t.Errorf("subtree hash accumulator:\n got  %s\n want %s", got, want)
+	}
+}
+
+// TestTreeHashMatchesOracle checks SubtreeHash against x/mod/sumdb/tlog's
+// TreeHash. It also validates the in-memory HashReader the proof tests rely on.
+func TestTreeHashMatchesOracle(t *testing.T) {
+	for n := 1; n <= 32; n++ {
+		entries := seqLeaves(n)
+		got, err := xtlog.TreeHash(int64(n), buildHashReader(t, entries))
+		if err != nil {
+			t.Fatalf("TreeHash(%d): %s", n, err)
+		}
+		want := SubtreeHash(leafHashes(entries))
+		if got != want {
+			t.Errorf("TreeHash(%d) = %x, want %x", n, got, want)
+		}
+	}
+}
+
+// TestSubtreeProofExamples covers the generate and verify round trip for the
+// two worked examples in the MTC draft, which are small enough to be
+// human-readable and have published expected proofs.
+func TestSubtreeProofExamples(t *testing.T) {
+	leaves := leafHashes(seqLeaves(14))
+	reader := buildHashReader(t, seqLeaves(14))
+	root := SubtreeHash(leaves)
+	mth := func(start, end int64) xtlog.Hash {
+		return SubtreeHash(leaves[start:end])
+	}
+
+	cases := []struct {
+		start  int64
+		end    int64
+		expect []xtlog.Hash
+	}{
+		{4, 8, []xtlog.Hash{mth(0, 4), mth(8, 14)}},
+		{8, 13, []xtlog.Hash{mth(12, 13), mth(13, 14), mth(8, 12), mth(0, 8)}},
+	}
+	for _, tc := range cases {
+		proof, err := SubtreeConsistencyProof(tc.start, tc.end, 14, reader)
+		if err != nil {
+			t.Fatalf("SubtreeConsistencyProof(%d, %d, 14): %s", tc.start, tc.end, err)
+		}
+		if !slices.Equal(proof, tc.expect) {
+			t.Errorf("SubtreeConsistencyProof(%d, %d, 14) = %x, want %x", tc.start, tc.end, proof, tc.expect)
+		}
+		if !VerifySubtreeConsistency(tc.start, tc.end, 14, proof, mth(tc.start, tc.end), root) {
+			t.Errorf("VerifySubtreeConsistency(%d, %d, 14) rejected a valid proof", tc.start, tc.end)
+		}
+	}
+}
+
+// TestSubtreeConsistencyProofAppendixVector pins SubtreeConsistencyProof to the
+// accumulated digest in MTC draft appendix C.3 Subtree Consistency Proofs,
+// covering every valid subtree of every tree up to size 130. It also runs each
+// generated proof through VerifySubtreeConsistency, pinning the verifier's
+// accept path across the full range, including the start > 0 proofs that
+// x/mod/sumdb/tlog's CheckTree (prefix-only) cannot oracle.
+func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
+	want := "c586ebbb73a5621baf2140095d87dde934e3b6503a562a1a5215b8209edd083d"
+	entries := make([][]byte, 130)
+	for i := range entries {
+		entries[i] = []byte{byte(i)}
+	}
+	leaves := leafHashes(entries)
+	reader := buildHashReader(t, entries)
+
+	h := sha256.New()
+	for n := int64(0); n <= 130; n++ {
+		root := SubtreeHash(leaves[:n])
+		for end := int64(1); end <= n; end++ {
+			for start := int64(0); start < end; start++ {
+				if !ValidSubtree(start, end) {
+					continue
+				}
+				proof, err := SubtreeConsistencyProof(start, end, n, reader)
+				if err != nil {
+					t.Fatalf("SubtreeConsistencyProof(%d, %d, %d): %s", start, end, n, err)
+				}
+				node := SubtreeHash(leaves[start:end])
+				if !VerifySubtreeConsistency(start, end, n, proof, node, root) {
+					t.Errorf("VerifySubtreeConsistency(%d, %d, %d) rejected a valid proof", start, end, n)
+				}
+				fmt.Fprintf(h, "[%d, %d) %d", start, end, n)
+				for _, p := range proof {
+					fmt.Fprintf(h, " %s", hex.EncodeToString(p[:]))
+				}
+				h.Write([]byte{'\n'})
+			}
+		}
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if got != want {
+		t.Errorf("subtree consistency proof accumulator:\n got  %s\n want %s", got, want)
+	}
+}
+
+func TestSubtreeConsistencyProofRejectsBadInput(t *testing.T) {
+	reader := buildHashReader(t, seqLeaves(14))
+	cases := []struct {
+		name  string
+		start int64
+		end   int64
+		size  int64
+	}{
+		{"Misaligned subtree", 1, 3, 14},
+		{"End past tree size", 0, 5, 4},
+		{"Empty interval", 4, 4, 14},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := SubtreeConsistencyProof(tc.start, tc.end, tc.size, reader)
+			if err == nil {
+				t.Errorf("SubtreeConsistencyProof(%s) = nil error, want error", tc.name)
+			}
+		})
+	}
+}
+
+// failingHashReader fails every read.
+type failingHashReader struct{}
+
+func (failingHashReader) ReadHashes([]int64) ([]xtlog.Hash, error) {
+	return nil, errors.New("read failed")
+}
+
+func TestSubtreeConsistencyProofPropagatesReadError(t *testing.T) {
+	_, err := SubtreeConsistencyProof(4, 8, 14, failingHashReader{})
+	if err == nil {
+		t.Error("SubtreeConsistencyProof with a failing reader = nil error, want error")
+	}
+}
+
+// shortHashReader returns one fewer hash than was requested.
+type shortHashReader struct {
+	inner xtlog.HashReader
+}
+
+func (s shortHashReader) ReadHashes(indexes []int64) ([]xtlog.Hash, error) {
+	hashes, err := s.inner.ReadHashes(indexes)
+	if err != nil || len(hashes) == 0 {
+		return hashes, err
+	}
+	return hashes[:len(hashes)-1], nil
+}
+
+func TestSubtreeConsistencyProofShortReader(t *testing.T) {
+	reader := shortHashReader{inner: buildHashReader(t, seqLeaves(7))}
+	_, err := SubtreeConsistencyProof(0, 4, 7, reader)
+	if err == nil {
+		t.Error("SubtreeConsistencyProof with a short HashReader = nil error, want error")
+	}
+}
+
+// countingHashReader counts ReadHashes calls, to check read batching.
+type countingHashReader struct {
+	inner xtlog.HashReader
+	calls int
+}
+
+func (c *countingHashReader) ReadHashes(indexes []int64) ([]xtlog.Hash, error) {
+	c.calls++
+	return c.inner.ReadHashes(indexes)
+}
+
+// TestSubtreeConsistencyProofBatchesReads checks that each emitted proof hash
+// costs at most one ReadHashes call.
+func TestSubtreeConsistencyProofBatchesReads(t *testing.T) {
+	reader := &countingHashReader{inner: buildHashReader(t, seqLeaves(14))}
+
+	// 	SubtreeConsistencyProof(4, 8, 14) emits two proof hashes: MTH(0, 4), a
+	// 	perfect sibling, and MTH(8, 14), a ragged sibling that requires two
+	// 	stored hashes, [8,12) + [12,14), to compute.
+	proof, err := SubtreeConsistencyProof(4, 8, 14, reader)
+	if err != nil {
+		t.Fatalf("SubtreeConsistencyProof(4, 8, 14): %s", err)
+	}
+
+	// Batching should fold each emitted hash's reads into one ReadHashes, so
+	// the call count stays at or below len(proof). Without it, MTH(8, 14)'s two
+	// stored hashes would cost an extra call.
+	if reader.calls > len(proof) {
+		t.Errorf("ReadHashes calls = %d, want at most %d (one per emitted hash)", reader.calls, len(proof))
+	}
+}
+
+func TestVerifySubtreeConsistencyRejectsBadInput(t *testing.T) {
+	leaves := leafHashes(seqLeaves(14))
+	reader := buildHashReader(t, seqLeaves(14))
+	root := SubtreeHash(leaves)
+	node := SubtreeHash(leaves[8:13])
+	proof, err := SubtreeConsistencyProof(8, 13, 14, reader)
+	if err != nil {
+		t.Fatalf("SubtreeConsistencyProof(8, 13, 14): %s", err)
+	}
+
+	cases := []struct {
+		name  string
+		start int64
+		end   int64
+		n     int64
+		proof []xtlog.Hash
+	}{
+		{"Misaligned subtree", 1, 3, 14, proof},
+		{"End past tree size", 8, 13, 12, proof},
+		{"Empty proof where one is required", 8, 13, 14, nil},
+		{"Over-long proof", 8, 13, 14, append(slices.Clone(proof), proof...)},
+		{"Corrupted proof", 8, 13, 14, append(slices.Clone(proof), node)},
+		{"Too short proof", 8, 13, 14, proof[:len(proof)-1]},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if VerifySubtreeConsistency(tc.start, tc.end, tc.n, tc.proof, node, root) {
+				t.Errorf("VerifySubtreeConsistency accepted inconsistent input: %s", tc.name)
+			}
+		})
+	}
+}
+
+// TestVerifySubtreeConsistencyMatchesXtlogCheckTree independently verifies
+// VerifySubtreeConsistency against x/mod/sumdb/tlog's CheckTree, which
+// implements the same algorithm but only for prefix subtrees [0, end).
+func TestVerifySubtreeConsistencyMatchesXtlogCheckTree(t *testing.T) {
+	agree := func(t *testing.T, end, n int64, proof []xtlog.Hash, subRoot, root xtlog.Hash, label string) bool {
+		t.Helper()
+
+		ours := VerifySubtreeConsistency(0, end, n, proof, subRoot, root)
+		theirs := xtlog.CheckTree(proof, n, root, end, subRoot) == nil
+		if ours != theirs {
+			t.Errorf("(0, %d, %d) %s: VerifySubtreeConsistency=%v, CheckTree=%v", end, n, label, ours, theirs)
+		}
+		return ours
+	}
+
+	for n := int64(2); n <= 33; n++ {
+		entries := seqLeaves(int(n))
+		reader := buildHashReader(t, entries)
+		leaves := leafHashes(entries)
+		root := SubtreeHash(leaves)
+		for end := int64(1); end < n; end++ {
+			subRoot := SubtreeHash(leaves[:end])
+			proof, err := SubtreeConsistencyProof(0, end, n, reader)
+			if err != nil {
+				t.Fatalf("SubtreeConsistencyProof(0, %d, %d): %s", end, n, err)
+			}
+
+			if !agree(t, end, n, proof, subRoot, root, "valid") {
+				t.Errorf("(0, %d, %d) both verifiers rejected a valid proof", end, n)
+			}
+
+			for i := range proof {
+				bad := slices.Clone(proof)
+				bad[i][0] ^= 0xff
+				agree(t, end, n, bad, subRoot, root, fmt.Sprintf("corrupt proof[%d]", i))
+			}
+			badSub := subRoot
+			badSub[0] ^= 0xff
+			agree(t, end, n, proof, badSub, root, "corrupt subtree root")
+			badRoot := root
+			badRoot[0] ^= 0xff
+			agree(t, end, n, proof, subRoot, badRoot, "corrupt tree root")
+		}
+	}
+}
+
+func TestVerifySubtreeConsistencyRejectsMismatchedProof(t *testing.T) {
+	leaves := leafHashes(seqLeaves(14))
+	reader := buildHashReader(t, seqLeaves(14))
+	root := SubtreeHash(leaves)
+	mth := func(start, end int64) xtlog.Hash {
+		return SubtreeHash(leaves[start:end])
+	}
+
+	proof, err := SubtreeConsistencyProof(8, 13, 14, reader)
+	if err != nil {
+		t.Fatalf("SubtreeConsistencyProof(8, 13, 14): %s", err)
+	}
+	if !VerifySubtreeConsistency(8, 13, 14, proof, mth(8, 13), root) {
+		t.Fatal("valid proof for [8, 13) of size-14 tree was rejected")
+	}
+
+	otherEntries := make([][]byte, 14)
+	for i := range otherEntries {
+		otherEntries[i] = []byte{0xa1, byte(i)}
+	}
+	rootAt13 := SubtreeHash(leafHashes(seqLeaves(13)))
+	otherRoot := SubtreeHash(leafHashes(otherEntries))
+
+	cases := []struct {
+		name           string
+		start          int64
+		end            int64
+		n              int64
+		node, treeRoot xtlog.Hash
+	}{
+		{"Incorrect subtree coordinates", 4, 8, 14, mth(4, 8), root},
+		{"Incorrect tree size (smaller)", 8, 13, 13, mth(8, 13), rootAt13},
+		{"Incorrect tree root", 8, 13, 14, mth(8, 13), otherRoot},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if VerifySubtreeConsistency(tc.start, tc.end, tc.n, proof, tc.node, tc.treeRoot) {
+				t.Errorf("incorrectly verified the [8,13)/size-14 proof against %s", tc.name)
+			}
+		})
+	}
+}
+
+// TestSubtreeRoundTrip covers the generate and verify round trip and checks
+// that the verifier rejects tampering.
+func TestSubtreeRoundTrip(t *testing.T) {
+	for n := int64(1); n <= 48; n++ {
+		entries := seqLeaves(int(n))
+		leaves := leafHashes(entries)
+		reader := buildHashReader(t, entries)
+		root := SubtreeHash(leaves)
+
+		for start := int64(0); start < n; start++ {
+			for end := start + 1; end <= n; end++ {
+				if !ValidSubtree(start, end) {
+					continue
+				}
+				node := SubtreeHash(leaves[start:end])
+				proof, err := SubtreeConsistencyProof(start, end, n, reader)
+				if err != nil {
+					t.Fatalf("SubtreeConsistencyProof(%d, %d, %d): %s", start, end, n, err)
+				}
+				if !VerifySubtreeConsistency(start, end, n, proof, node, root) {
+					t.Errorf("(%d, %d, %d) rejected the valid proof", start, end, n)
+				}
+
+				// Flipping a byte in any proof hash must result in a rejection.
+				for i := range proof {
+					bad := slices.Clone(proof)
+					bad[i][0] ^= 0xff
+					if VerifySubtreeConsistency(start, end, n, bad, node, root) {
+						t.Errorf("(%d, %d, %d) accepted a proof with hash %d corrupted", start, end, n, i)
+					}
+				}
+				// Flipping a byte in the node hash must result in a rejection.
+				badNode := node
+				badNode[0] ^= 0xff
+				if VerifySubtreeConsistency(start, end, n, proof, badNode, root) {
+					t.Errorf("(%d, %d, %d) accepted a corrupted node hash", start, end, n)
+				}
+				// Flipping a byte in the root hash must result in a rejection.
+				badRoot := root
+				badRoot[0] ^= 0xff
+				if VerifySubtreeConsistency(start, end, n, proof, node, badRoot) {
+					t.Errorf("(%d, %d, %d) accepted a corrupted root hash", start, end, n)
+				}
+			}
+		}
+	}
+}
