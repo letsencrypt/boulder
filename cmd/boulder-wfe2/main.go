@@ -149,6 +149,10 @@ type Config struct {
 		// contacts than this are rejected. Default: 10.
 		MaxContactsPerRegistration int `validate:"omitempty,min=1"`
 
+		// MaxCumulativeIdentifierLength rejects new-order requests if the cumulative length of all identifiers
+		// is greater than its value.
+		MaxCumulativeIdentifierLength int `validate:"omitempty,min=1"`
+
 		AccountCache *CacheConfig
 
 		Limiter struct {
@@ -463,6 +467,7 @@ func main() {
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
 		c.WFE.MaxContactsPerRegistration,
+		c.WFE.MaxCumulativeIdentifierLength,
 		rac,
 		sac,
 		eec,
