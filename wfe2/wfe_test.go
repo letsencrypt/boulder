@@ -4594,11 +4594,11 @@ func TestMaxCumulativeIdentifierLength(t *testing.T) {
 	var errorResp1 map[string]any
 	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
 	if err != nil {
-		t.Fatalf("newOrder with blocked account: got error unmarshaling response: %s", err)
+		t.Fatalf("newOrder with too long identifiers: got error unmarshaling response: %s", err)
 	}
 	detail := errorResp1["detail"]
-	expected := "Cumulative length of all identifiers was greater than 1000"
+	expected := "Cumulative length of all identifier values was greater than 1000 bytes"
 	if detail != expected {
-		t.Errorf("newOrder with blocked account: got %q, want %q", detail, expected)
+		t.Errorf("newOrder with too long identifiers: got %q, want %q", detail, expected)
 	}
 }

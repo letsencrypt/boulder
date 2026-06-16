@@ -2401,8 +2401,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		totalIdentifierLen += len(ident.Value)
 		if wfe.maxCumulativeIdentifierLength != 0 && totalIdentifierLen > wfe.maxCumulativeIdentifierLength {
 			wfe.sendError(response, logEvent,
-				probs.Malformed("Cumulative length of all identifiers was greater than %d", wfe.maxCumulativeIdentifierLength),
-				nil)
+				probs.Malformed("Cumulative length of all identifier values was greater than %d bytes",
+					wfe.maxCumulativeIdentifierLength), nil)
 			return
 		}
 	}
