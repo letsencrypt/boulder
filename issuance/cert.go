@@ -46,6 +46,14 @@ type ProfileConfig struct {
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
 
+	// MaxCertificateSize causes rejection at the linting stage of any certificate
+	// that would be bigger than this many bytes. This should be considered a backstop
+	// and should be set higher than the corresponding limits at the WFE
+	// (MaxCumulativeIdentifierLength) and the RA (MaxNames * 253, per-profile),
+	// plus the longest possible signature size, plus some extra for certificate
+	// fields.
+	MaxCertificateSize int
+
 	// LintConfig is a path to a zlint config file, which can be used to control
 	// the behavior of zlint's "customizable lints".
 	LintConfig string
@@ -63,6 +71,8 @@ type Profile struct {
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
+
+	maxCertificateSize int
 
 	lints lint.Registry
 }
@@ -96,6 +106,7 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		omitSKID:            profileConfig.OmitSKID,
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
+		maxCertificateSize:  profileConfig.MaxCertificateSize,
 		lints:               lints,
 	}
 
@@ -359,6 +370,10 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
+	}
+
+	if prof.maxCertificateSize > 0 && len(lintCertBytes) > prof.maxCertificateSize {
+		return nil, nil, fmt.Errorf("linting certificate too big (%d > %d)", len(lintCertBytes), prof.maxCertificateSize)
 	}
 
 	if len(req.precertDER) > 0 {
