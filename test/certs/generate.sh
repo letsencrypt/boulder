@@ -61,9 +61,7 @@ ipki() (
 webpki() (
   # Because it invokes the ceremony tool, webpki.go expects to be invoked with
   # the root of the boulder repo as the current working directory.
-  # This function executes in a subshell, so this cd does not affect the parent
-  # script.
-  make build
+  GOBIN=$PWD/bin/ go install ./cmd/ceremony
   mkdir -p ./test/certs/webpki
   go run ./test/certs/webpki.go
 )
