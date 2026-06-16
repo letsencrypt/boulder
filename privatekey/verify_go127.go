@@ -38,16 +38,16 @@ func verify(privateKey crypto.Signer) (crypto.Signer, crypto.PublicKey, error) {
 	}
 }
 
-// verifyMLDSA verifies MLDSA private keys.
+// verifyMLDSA verifies ML-DSA private keys.
 func verifyMLDSA(privKey *mldsa.PrivateKey, pubKey *mldsa.PublicKey, msgHash hash.Hash) (crypto.Signer, crypto.PublicKey, error) {
 	sig, err := privKey.Sign(nil, msgHash.Sum(nil), nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to sign using the provided MLDSA private key: %s", err)
+		return nil, nil, fmt.Errorf("failed to sign using the provided ML-DSA private key: %s", err)
 	}
 
 	err = mldsa.Verify(pubKey, msgHash.Sum(nil), sig, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("the provided MLDSA private key failed signature verification: %s", err)
+		return nil, nil, fmt.Errorf("the provided ML-DSA private key failed signature verification: %s", err)
 	}
 	return privKey, privKey.Public(), nil
 }

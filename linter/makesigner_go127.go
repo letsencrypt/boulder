@@ -28,7 +28,7 @@ func makeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
 	case *mldsa.PublicKey:
 		lintSigner, err = mldsa.GenerateKey(k.Parameters())
 		if err != nil {
-			return nil, fmt.Errorf("failed to create MLDSA lint signer: %w", err)
+			return nil, fmt.Errorf("failed to create ML-DSA lint signer: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported lint signer type: %T", k)
