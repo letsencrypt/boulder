@@ -212,7 +212,7 @@ services:
                 "-e", "SELECT 1 FROM serials"]
       interval: 2s
       timeout: 30s
-      retries: 3
+      retries: 10
       start_period: 10s
       start_interval: 2s
     networks:
