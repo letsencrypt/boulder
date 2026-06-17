@@ -154,6 +154,10 @@ type WebFrontEndImpl struct {
 	// How many contacts to allow in a single NewAccount request.
 	maxContactsPerReg int
 
+	// maxCumulativeIdentifierLength rejects new-order requests if the cumulative length of all identifiers
+	// is greater than its value.
+	maxCumulativeIdentifierLength int
+
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
@@ -205,6 +209,7 @@ func NewWebFrontEndImpl(
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
 	maxContactsPerReg int,
+	maxCumulativeIdentifierLength int,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	eec emailpb.ExporterClient,
@@ -249,31 +254,32 @@ func NewWebFrontEndImpl(
 	}
 
 	wfe := WebFrontEndImpl{
-		log:                   logger,
-		clk:                   clk,
-		keyPolicy:             keyPolicy,
-		certificateChains:     certificateChains,
-		issuerCertificates:    issuerCertificates,
-		stats:                 initStats(stats),
-		requestTimeout:        requestTimeout,
-		staleTimeout:          staleTimeout,
-		maxContactsPerReg:     maxContactsPerReg,
-		ra:                    rac,
-		sa:                    sac,
-		ee:                    eec,
-		gnc:                   gnc,
-		rnc:                   rnc,
-		rncKey:                rncKey,
-		accountGetter:         accountGetter,
-		limiter:               limiter,
-		txnBuilder:            txnBuilder,
-		certProfiles:          certProfiles,
-		unpauseSigner:         unpauseSigner,
-		unpauseJWTLifetime:    unpauseJWTLifetime,
-		unpauseURL:            unpauseURL,
-		blockedOnDemandLabels: blockedLabels,
-		accountBlocker:        accountBlocker,
-		DirectoryCAAIdentity:  normalizedCAAIdentity,
+		log:                           logger,
+		clk:                           clk,
+		keyPolicy:                     keyPolicy,
+		certificateChains:             certificateChains,
+		issuerCertificates:            issuerCertificates,
+		stats:                         initStats(stats),
+		requestTimeout:                requestTimeout,
+		staleTimeout:                  staleTimeout,
+		maxContactsPerReg:             maxContactsPerReg,
+		maxCumulativeIdentifierLength: maxCumulativeIdentifierLength,
+		ra:                            rac,
+		sa:                            sac,
+		ee:                            eec,
+		gnc:                           gnc,
+		rnc:                           rnc,
+		rncKey:                        rncKey,
+		accountGetter:                 accountGetter,
+		limiter:                       limiter,
+		txnBuilder:                    txnBuilder,
+		certProfiles:                  certProfiles,
+		unpauseSigner:                 unpauseSigner,
+		unpauseJWTLifetime:            unpauseJWTLifetime,
+		unpauseURL:                    unpauseURL,
+		blockedOnDemandLabels:         blockedLabels,
+		accountBlocker:                accountBlocker,
+		DirectoryCAAIdentity:          normalizedCAAIdentity,
 	}
 
 	return wfe, nil
@@ -2379,6 +2385,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	idents := newOrderRequest.Identifiers
+	var totalIdentifierLen int
 	for _, ident := range idents {
 		if !ident.Type.IsValid() {
 			wfe.sendError(response, logEvent,
@@ -2391,7 +2398,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			wfe.sendError(response, logEvent, probs.Malformed("NewOrder request included empty identifier"), nil)
 			return
 		}
+		totalIdentifierLen += len(ident.Value)
+		if wfe.maxCumulativeIdentifierLength != 0 && totalIdentifierLen > wfe.maxCumulativeIdentifierLength {
+			wfe.sendError(response, logEvent,
+				probs.Malformed("Cumulative length of all identifier values was greater than %d bytes",
+					wfe.maxCumulativeIdentifierLength), nil)
+			return
+		}
 	}
+
 	idents = identifier.Normalize(idents)
 	logEvent.Identifiers = idents
 

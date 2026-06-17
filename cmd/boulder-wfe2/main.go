@@ -149,6 +149,10 @@ type Config struct {
 		// contacts than this are rejected. Default: 10.
 		MaxContactsPerRegistration int `validate:"omitempty,min=1"`
 
+		// MaxCumulativeIdentifierLength is the maximum allowed total bytes of
+		// all identifier values in a new-order request. Default (0) means no limit.
+		MaxCumulativeIdentifierLength int `validate:"omitempty,min=1"`
+
 		AccountCache *CacheConfig
 
 		Limiter struct {
@@ -463,6 +467,7 @@ func main() {
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
 		c.WFE.MaxContactsPerRegistration,
+		c.WFE.MaxCumulativeIdentifierLength,
 		rac,
 		sac,
 		eec,
