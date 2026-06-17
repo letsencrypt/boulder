@@ -9,8 +9,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -32,7 +32,7 @@ func main2() error {
 	flag.Parse()
 
 	if *outputDir == "" {
-		return fmt.Errorf("-output-dir flag required")
+		return errors.New("-output-dir flag required")
 	}
 
 	basepath := path.Join(*outputDir, basename)

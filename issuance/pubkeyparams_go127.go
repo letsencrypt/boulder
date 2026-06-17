@@ -12,6 +12,8 @@ import (
 	"fmt"
 )
 
+// pubkeyParams returns a PublicKeyAlgorithm and SignatureAlgorithm for the input pubkey.
+// TODO(#8812): Move this back to issuer.go.
 func pubkeyParams(pubkey any) (x509.PublicKeyAlgorithm, x509.SignatureAlgorithm, error) {
 	switch k := pubkey.(type) {
 	case *mldsa.PublicKey:

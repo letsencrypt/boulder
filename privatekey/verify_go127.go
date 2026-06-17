@@ -16,6 +16,8 @@ import (
 // actually a match for the private key. For an example of private keys
 // embedding a mismatched public key, see:
 // https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
+//
+// TODO(#8812): move this back to privatekey.go, above Load().
 func verify(privateKey crypto.Signer) (crypto.Signer, crypto.PublicKey, error) {
 	verifyHash, err := makeVerifyHash()
 	if err != nil {
@@ -34,7 +36,7 @@ func verify(privateKey crypto.Signer) (crypto.Signer, crypto.PublicKey, error) {
 
 	default:
 		// This should never happen.
-		return nil, nil, errors.New("the provided private key could not be asserted to ECDSA or RSA")
+		return nil, nil, errors.New("the provided private key was not *rsa.PrivateKey, *ecdsa.PrivateKey, or *mldsa.PrivateKey")
 	}
 }
 

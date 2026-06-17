@@ -11,6 +11,9 @@ import (
 	"fmt"
 )
 
+// makeSigner makes a signer with a throwaway key that matches `realSigner`'s type.
+//
+// TODO(#8812): Move this back to linter.go, above makeIssuer.
 func makeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
 	var lintSigner crypto.Signer
 	var err error
