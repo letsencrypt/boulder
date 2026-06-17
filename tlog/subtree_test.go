@@ -399,11 +399,12 @@ func TestVerifySubtreeConsistencyRejectsMismatchedProof(t *testing.T) {
 	otherRoot := SubtreeHash(leafHashes(otherEntries))
 
 	cases := []struct {
-		name           string
-		start          int64
-		end            int64
-		n              int64
-		node, treeRoot xtlog.Hash
+		name     string
+		start    int64
+		end      int64
+		n        int64
+		node     xtlog.Hash
+		treeRoot xtlog.Hash
 	}{
 		{"Incorrect subtree coordinates", 4, 8, 14, mth(4, 8), root},
 		{"Incorrect tree size (smaller)", 8, 13, 13, mth(8, 13), rootAt13},

@@ -146,25 +146,29 @@ func subtreeSubProof(start, end, base, n int64, known bool, reader xtlog.HashRea
 	// and names the other child as the sibling the shared tail appends.
 	k := largestPowerOfTwoSmallerThan(n)
 	var err error
-	var siblingLo, siblingHi int64
+	var siblingLo int64
+	var siblingHi int64
 	switch {
 	case end <= k:
 		// The subtree fits in the left child. Recurse there, with the right
 		// child [k, n) as the sibling.
 		proof, err = subtreeSubProof(start, end, base, k, known, reader, proof)
-		siblingLo, siblingHi = base+k, base+n
+		siblingLo = base + k
+		siblingHi = base + n
 	case k <= start:
 		// The subtree fits in the right child. Recurse there (shifting
 		// coordinates by k), with the left child [0, k) as the sibling.
 		proof, err = subtreeSubProof(start-k, end-k, base+k, n-k, known, reader, proof)
-		siblingLo, siblingHi = base, base+k
+		siblingLo = base
+		siblingHi = base + k
 	default:
 		// The subtree straddles the split (start < k < end), which a valid
 		// subtree only does when start == 0. Recurse on the right child's
 		// prefix [0, end-k), no longer a node the verifier knows (known =
 		// false), with the left child [0, k) as the sibling.
 		proof, err = subtreeSubProof(0, end-k, base+k, n-k, false, reader, proof)
-		siblingLo, siblingHi = base, base+k
+		siblingLo = base
+		siblingHi = base + k
 	}
 	if err != nil {
 		return nil, err
