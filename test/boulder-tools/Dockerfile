@@ -10,6 +10,12 @@ ENV PATH=/usr/local/go/bin:/usr/local/protoc/bin:$PATH
 ENV GOBIN=/usr/local/bin/
 RUN curl "https://dl.google.com/go/go${GO_VERSION}.$(echo $TARGETPLATFORM | sed 's|\/|-|').tar.gz" |\
     tar -C /usr/local -xz
+# Regardless of GO_VERSION, also install gotip from the latest main.
+# This is temporary until Go 1.27 is released, to give us access to the
+# crypto/mldsa package. See startservers.py and test/certs/generate.sh
+# for uses of gotip.
+RUN /usr/local/go/bin/go install golang.org/dl/gotip@latest
+RUN gotip download
 RUN go install github.com/rubenv/sql-migrate/sql-migrate@v1.1.2
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
@@ -46,6 +52,8 @@ RUN sed -i '/$RepeatedMsgReduction on/s/^/#/' /etc/rsyslog.conf
 
 COPY --from=godeps /usr/local/bin/* /usr/local/bin/
 COPY --from=godeps /usr/local/go/ /usr/local/go/
+# Downloaded packages from gotip
+COPY --from=godeps /root/sdk/ /root/sdk/
 COPY --from=rustdeps /usr/local/cargo/bin/typos /usr/local/bin/typos
 
 ENV PATH=/usr/local/go/bin:/usr/local/protoc/bin:$PATH
