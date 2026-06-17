@@ -30,7 +30,7 @@ updates:
       day: "wednesday"
     open-pull-requests-limit: 1
     cooldown:
-      default-days: 1
+      default-days: 7
     allow:
       - dependency-name: "ghcr.io/pkimetal/pkimetal"
       - dependency-name: "jaegertracing/all-in-one"
