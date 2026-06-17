@@ -3,16 +3,18 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
+	"flag"
 	"log"
 	"math/big"
 	"os"
+	"path"
 	"time"
 )
 
@@ -23,10 +25,19 @@ func main() {
 	}
 }
 
-const basename = "test/certs/mtpki/mtca1"
+const basename = "mtca1"
 
 func main2() error {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	outputDir := flag.String("output-dir", "", "Directory to write outputs to")
+	flag.Parse()
+
+	if *outputDir == "" {
+		return errors.New("-output-dir flag required")
+	}
+
+	basepath := path.Join(*outputDir, basename)
+
+	key, err := mldsa.GenerateKey(mldsa.MLDSA44())
 	if err != nil {
 		return err
 	}
@@ -36,7 +47,7 @@ func main2() error {
 		return err
 	}
 
-	keyFile, err := os.OpenFile(basename+".key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyFile, err := os.OpenFile(basepath+".key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
@@ -79,7 +90,7 @@ func main2() error {
 		return err
 	}
 
-	certFile, err := os.OpenFile(basename+".cert.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	certFile, err := os.OpenFile(basepath+".cert.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
@@ -124,7 +135,8 @@ func mtcaExtension() (pkix.Extension, error) {
 
 	// Copied from https://cs.opensource.google/go/go/+/refs/tags/go1.26.3:src/crypto/x509/x509.go;l=345-350
 	oidSHA256 := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
-	oidSignatureECDSAWithSHA256 := asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
+	// https://www.rfc-editor.org/info/rfc9881/
+	oidSignatureMLDSA44 := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 17}
 
 	extnMarshaled, err := asn1.Marshal(struct {
 		LogHash   pkix.AlgorithmIdentifier
@@ -132,7 +144,7 @@ func mtcaExtension() (pkix.Extension, error) {
 		MinSerial int64
 	}{
 		LogHash: pkix.AlgorithmIdentifier{Algorithm: oidSHA256},
-		SigAlg:  pkix.AlgorithmIdentifier{Algorithm: oidSignatureECDSAWithSHA256},
+		SigAlg:  pkix.AlgorithmIdentifier{Algorithm: oidSignatureMLDSA44},
 		// Just for fun, exercise MinSerial functionality.
 		MinSerial: 999,
 	})
