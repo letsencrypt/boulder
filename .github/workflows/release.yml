@@ -4,6 +4,7 @@
 # Keep the GO_VERSION matrix and the container-building steps in sync with
 # try-release.yml.
 name: Build release
+
 on:
   push:
     tags:

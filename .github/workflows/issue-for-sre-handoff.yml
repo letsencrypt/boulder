@@ -7,9 +7,8 @@ on:
     - 'test/config-next/*.json'
     - 'test/config-next/*.yaml'
     - 'test/config-next/*.yml'
-    - 'sa/db-users/*.sql'
-    - 'sa/db-next/**/*.sql'
-    - 'sa/db/**/*.sql'
+    - 'sa/db/*.sql'
+    - 'sa/vtschema/*/.json'
 
 jobs:
   check-changes:

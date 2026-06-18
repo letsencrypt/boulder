@@ -2,37 +2,60 @@ version: 2
 
 updates:
   - package-ecosystem: "gomod"
+    # Update a select few Go dependencies (mostly those we maintain, and ones
+    # that are important to keep up-to-date like zlint and psl) regularly.
+    # Group the updates so that one package can't starve out the others.
+    # No cooldown because of the very limited set of deps we're updating.
+    # Note that this also disables security updates for all other go deps:
+    # that's okay because we run govulncheck (which is more granular than
+    # dependabot) regularly and can handle those security updates manually.
     directory: "/"
+    allow:
+      - dependency-name: "github.com/go-jose/*"
+      - dependency-name: "github.com/letsencrypt/*"
+      - dependency-name: "github.com/weppos/publicsuffix-go"
+      - dependency-name: "github.com/zmap/*"
     groups:
-      aws:
+      go:
         patterns:
-          - "github.com/aws/*"
-      otel:
-        patterns:
-          - "go.opentelemetry.io/*"
-    open-pull-requests-limit: 1
+          - "*"
     schedule:
       interval: "weekly"
       day: "wednesday"
-    cooldown:
-      default-days: 30
+    open-pull-requests-limit: 1
+
   - package-ecosystem: "github-actions"
+    # Keep all github actions up to date on a monthly basis, but group the
+    # updates because they're generally easy to review.
     directory: "/"
+    groups:
+      gha:
+        patterns:
+          - "*"
     schedule:
       interval: monthly
     open-pull-requests-limit: 1
     cooldown:
       default-days: 7
+
   - package-ecosystem: "docker-compose"
+    # Keep a select few Docker images (those which are only used in our CI,
+    # and don't have to match production image versions) up to date. Group the
+    # updates to prevent review fatigue and to ensure pkimetal doesn't get
+    # starved.
     directory: "/"
+    allow:
+      - dependency-name: "ghcr.io/pkimetal/pkimetal"
+      - dependency-name: "jaegertracing/all-in-one"
+      - dependency-name: "minio/minio"
+      - dependency-name: "minio/mc"
+    groups:
+      docker-compose:
+        patterns:
+          - "*"
     schedule:
       interval: "weekly"
       day: "wednesday"
     open-pull-requests-limit: 1
     cooldown:
       default-days: 7
-    allow:
-      - dependency-name: "ghcr.io/pkimetal/pkimetal"
-      - dependency-name: "jaegertracing/all-in-one"
-      - dependency-name: "minio/minio"
-      - dependency-name: "minio/mc"

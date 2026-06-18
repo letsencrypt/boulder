@@ -4,11 +4,15 @@
 # Keep the GO_VERSION matrix and the container-building steps in sync with
 # release.yml.
 name: Try release
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - v0.
   pull_request:
-    branches: [main]
+    branches:
+      - '**'
   workflow_dispatch:
 
 permissions:
