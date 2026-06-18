@@ -31,6 +31,10 @@ updates:
     open-pull-requests-limit: 1
     cooldown:
       default-days: 7
+    groups:
+      docker-compose:
+        patterns:
+          - "*"
     allow:
       - dependency-name: "ghcr.io/pkimetal/pkimetal"
       - dependency-name: "jaegertracing/all-in-one"
