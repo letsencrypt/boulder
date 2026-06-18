@@ -91,6 +91,26 @@ type LintMetadata struct {
 	// true but with NotBefore >= IneffectiveDate. This check is bypassed if
 	// IneffectiveDate is zero. Please see CheckEffective for more information.
 	IneffectiveDate time.Time `json:"-"`
+
+	// The ZLint linting framework performs a kind of pre-flight "CheckApplies"
+	// for every lint that gets ran. For example, if that lint in question
+	// is targeting a CABF baseline requirement, then the framework will
+	// assert that the certificate in question is a server auth certificate.
+	// Doing so allows for nearly universal "CheckApplies" logic to be hoisted
+	// out of each individual lint and into the framework itself.
+	//
+	// However, there are rare occasions wherein a lint disagrees with the
+	// framework's pre-flight "CheckApplies" logic. For example, CABF 4.9.9
+	// places a constraint on OCSP signing certificates. However, since an
+	// OCSP signing certificate is not a server auth certificate, this lint
+	// never gets ran due to the framework filtering CABF lints to only
+	// apply to server auth certificates.
+	//
+	// If a lint declares OverrideFrameworkFilter to be true, then the framework
+	// will perform no pre-flight check. This means that the lint in question
+	// is entirely responsible for accurately encoding all applicability rules
+	// in its own CheckApplies method.
+	OverrideFrameworkFilter bool `json:"overrideFrameworkFilter,omitempty"`
 }
 
 // A Lint struct represents a single lint, e.g.
@@ -244,14 +264,16 @@ func (l *CertificateLint) Execute(cert *x509.Certificate, config Configuration) 
 // CheckEffective()
 // Execute()
 func (l *CertificateLint) execute(cert *x509.Certificate, config Configuration) *LintResult {
-	if l.Source == CABFBaselineRequirements && !util.IsServerAuthCert(cert) {
-		return &LintResult{Status: NA}
-	}
-	if l.Source == CABFSMIMEBaselineRequirements && !util.IsEmailProtectionCert(cert) {
-		return &LintResult{Status: NA}
-	}
-	if l.Source == CABFCSBaselineRequirements && !util.IsCodeSigning(cert.PolicyIdentifiers) {
-		return &LintResult{Status: NA}
+	if !l.OverrideFrameworkFilter {
+		if l.Source == CABFBaselineRequirements && !util.IsServerAuthCert(cert) {
+			return &LintResult{Status: NA}
+		}
+		if l.Source == CABFSMIMEBaselineRequirements && !util.IsEmailProtectionCert(cert) {
+			return &LintResult{Status: NA}
+		}
+		if l.Source == CABFCSBaselineRequirements && !util.IsCodeSigning(cert.PolicyIdentifiers) {
+			return &LintResult{Status: NA}
+		}
 	}
 	lint := l.Lint()
 	err := config.MaybeConfigure(lint, l.Name)

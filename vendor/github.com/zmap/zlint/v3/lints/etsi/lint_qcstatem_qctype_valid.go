@@ -1,5 +1,5 @@
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -28,11 +28,12 @@ type qcStatemQctypeValid struct{}
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_qcstatem_qctype_valid",
-			Description:   "Checks that a QC Statement of the type Id-etsi-qcs-QcType features a non-empty list of only the allowed QcType OIDs",
-			Citation:      "ETSI EN 319 412 - 5 V2.2.1 (2017 - 11) / Section 4.2.3",
-			Source:        lint.EtsiEsi,
-			EffectiveDate: util.EtsiEn319_412_5_V2_2_1_Date,
+			Name:            "e_qcstatem_qctype_valid",
+			Description:     "Checks that a QC Statement of the type Id-etsi-qcs-QcType features a non-empty list of only the allowed QcType OIDs",
+			Citation:        "ETSI EN 319 412 - 5 V2.2.1 (2017 - 11) / Section 4.2.3",
+			Source:          lint.EtsiEsi,
+			EffectiveDate:   util.EtsiEn319_412_5_V2_2_1_Date,
+			IneffectiveDate: util.EtsiEn319_411_2_V2_5_0_Date,
 		},
 		Lint: NewQcStatemQctypeValid,
 	})
