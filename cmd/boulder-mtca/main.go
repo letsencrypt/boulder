@@ -4,11 +4,13 @@ package notmain
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"os"
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/borp"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
@@ -21,6 +23,8 @@ type Config struct {
 		cmd.ServiceConfig
 
 		GRPCMTCA *cmd.GRPCServerConfig
+
+		DB cmd.DBConfig
 
 		// Issuer holds the configuration for a single MTCA instance with a single mtcaID.
 		// We run a separate process for each issuer.
@@ -38,6 +42,8 @@ func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	initLog := flag.Bool("init-log", false, "Initialize log metadata in the database and exit")
+
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -67,7 +73,21 @@ func main() {
 	issuer, err := issuance.LoadIssuer(c.MTCA.Issuer, clk)
 	cmd.FailOnError(err, "Loading issuer")
 
-	mtcaImpl := mtca.New(issuer)
+	url, err := c.MTCA.DB.URL()
+	cmd.FailOnError(err, "Reading DB URL")
+	db, err := sql.Open("mysql", url)
+	cmd.FailOnError(err, "Opening DB")
+	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
+
+	mtcaImpl := mtca.New(issuer, dbMap)
+
+	if *initLog {
+		logger.Info("initializing database for MTC issuance log")
+		err = mtcaImpl.InitLog(context.TODO())
+		cmd.FailOnError(err, "Initializing log")
+		logger.Info("done initializing database")
+		return
+	}
 
 	srv := bgrpc.NewServer(c.MTCA.GRPCMTCA, logger).Add(
 		&mtcapb.MTCA_ServiceDesc, mtcaImpl)
@@ -76,9 +96,8 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup MTCA gRPC server")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd.CatchSignals(cancel)
-	defer mtcaImpl.Drain()
 	go mtcaImpl.Loop(ctx)
+	go cmd.CatchSignals(cancel)
 
 	cmd.FailOnError(start(), "MTCA gRPC service failed")
 }

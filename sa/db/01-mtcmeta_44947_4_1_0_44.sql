@@ -1,5 +1,14 @@
 USE mtcmeta_44947_4_1_0_44;
 
+-- latestCheckpoint is a single-row table pointing to the id of the latest checkpoints.
+-- Its single row is locked with SELECT ... FOR UPDATE before signing happens, and then
+-- updated after signing happens.
+CREATE TABLE `latestCheckpoint` (
+    `id` bigint(20) NOT NULL,
+    -- ASCII-format OID relative to 1.3.6.1.4.1
+    `mtcLogID` varchar(255) NOT NULL
+);
+
 CREATE TABLE `checkpoints` (
     `id` bigint(20) NOT NULL AUTO_INCREMENT,
     -- ASCII-format OID relative to 1.3.6.1.4.1
@@ -8,7 +17,7 @@ CREATE TABLE `checkpoints` (
     -- This is redundant with the database/keyspace name and will be used for extra checks to ensure
     -- configuration errors can't result in using the wrong database/keyspace.
     `mtcLogID` varchar(255) NOT NULL,
-    `mtcaSignature` mediumblob NOT NULL,
+    `mtcaSignature` mediumblob,
     -- For simplicity we start out with a hardcoded assumption of one mirror signature,
     -- the planned CQRP requirement. If requirements increase we can add more fields.
     -- `mirrorID` is an ASCII-format OID relative to 1.3.6.1.4.1.
