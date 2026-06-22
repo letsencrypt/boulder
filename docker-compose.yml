@@ -142,7 +142,7 @@ services:
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
   bjaeger:
-    image: jaegertracing/all-in-one:1.50
+    image: jaegertracing/all-in-one:1.76.0
     networks:
       - bouldernet
 
