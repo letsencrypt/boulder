@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strings"
 
 	"github.com/jmhodges/clock"
 
@@ -31,6 +32,24 @@ type Config struct {
 		// MirrorID identifies the cosigner this publisher writes alongside each
 		// cosignature (e.g. "32473.9").
 		MirrorID string `validate:"required"`
+
+		// Mirror configures the tlog-mirror this publisher submits to and the
+		// on-disk source log it mirrors to obtain the mirror's cosignature.
+		Mirror struct {
+			// BaseURL is the mirror's tlog-mirror submission base URL.
+			BaseURL string `validate:"required,url"`
+			// Name is the mirror cosigner's key name.
+			Name string `validate:"required"`
+			// VerifierKeyFile is the path to a file holding the base64 of the
+			// mirror's ML-DSA-44 public key, used to validate its cosignatures
+			// (configured out of band; there is no endpoint to fetch it).
+			VerifierKeyFile string `validate:"required"`
+			// SourceDir is the root of the on-disk tlog-tiles store holding the
+			// log to mirror.
+			SourceDir string `validate:"required"`
+			// SourceOrigin is the origin of the source log.
+			SourceOrigin string `validate:"required"`
+		}
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
@@ -61,8 +80,19 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(c.MTPublisher.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.MTCLogID, c.MTPublisher.MirrorID, clk, logger)
-	cmd.FailOnError(err, "Failed to create MTPublisher stub")
+	verifierKey, err := os.ReadFile(c.MTPublisher.Mirror.VerifierKeyFile)
+	cmd.FailOnError(err, "Reading mirror verifier key file")
+
+	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.MTCLogID, c.MTPublisher.MirrorID,
+		mtpublisher.MirrorConfig{
+			BaseURL:      c.MTPublisher.Mirror.BaseURL,
+			Name:         c.MTPublisher.Mirror.Name,
+			VerifierKey:  strings.TrimSpace(string(verifierKey)),
+			SourceDir:    c.MTPublisher.Mirror.SourceDir,
+			SourceOrigin: c.MTPublisher.Mirror.SourceOrigin,
+		},
+		clk, logger)
+	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go cmd.CatchSignals(cancel)

@@ -6,7 +6,14 @@
 		},
 		"pollInterval": "1s",
 		"mtcLogID": "44947.4.1.0.44",
-		"mirrorID": "32473.9"
+		"mirrorID": "32473.9",
+		"mirror": {
+			"baseURL": "http://localhost:4700",
+			"name": "mirror.test/m1",
+			"verifierKeyFile": "test/secrets/mtpublisher_mirror_verifier_key",
+			"sourceDir": "data/mtpublisher-srclog",
+			"sourceOrigin": "example.com/log"
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

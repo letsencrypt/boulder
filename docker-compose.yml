@@ -22,6 +22,10 @@ services:
       - ./.gocache:/root/.cache/go-build:cached
       - ./test/certs/.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
       - pkimetal-socket:/var/run/pkimetal
+      # tlog-mirror-test-srv's on-disk tlog-tiles store, in a named volume so
+      # the whole mirrored tree can be reset with `docker compose down -v` (or
+      # `docker volume rm boulder_mtc-tiles`) without touching the repo tree.
+      - mtc-tiles:/boulder/data/tlog-mirror-test-srv
     networks:
       bouldernet:
         ipv4_address: 10.77.77.77
@@ -230,6 +234,11 @@ volumes:
       type: tmpfs
       device: tmpfs
       o: "uid=1001,gid=1001,mode=0755"
+
+  # tlog-mirror-test-srv's on-disk tlog-tiles store. A named volume so the whole
+  # mirrored tree can be discarded with `docker compose down -v` or
+  # `docker volume rm boulder_mtc-tiles`, independent of the repo bind mount.
+  mtc-tiles:
 
 networks:
   # This network represents the data-center internal network. It is used for

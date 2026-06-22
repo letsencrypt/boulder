@@ -43,6 +43,9 @@ tags
 # ProxySQL log files
 test/proxysql/*.log*
 
+# tlog-mirror-test-srv on-disk store
+/data/tlog-mirror-test-srv/
+
 # Coverage files
 test/coverage
 
