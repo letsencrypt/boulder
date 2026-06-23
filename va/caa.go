@@ -40,7 +40,7 @@ type caaParams struct {
 // implements the CAA portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	if core.IsAnyNilOrZero(req.Identifier, req.ValidationMethod, req.AccountURIID, req.AuthzID) {
+	if core.IsAnyNilOrZero(req.Identifier, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
