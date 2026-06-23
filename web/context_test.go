@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +42,7 @@ func TestLogCode(t *testing.T) {
 
 // TestLogUA tests that user-agents are truncated before logging, and faithfully pass along non-ASCII.
 func TestLogUA(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, myHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
@@ -52,26 +51,18 @@ func TestLogUA(t *testing.T) {
 	req.Header.Add("User-Agent", "🪨"+strings.Repeat("a", 200))
 	th.ServeHTTP(httptest.NewRecorder(), req)
 
-	matching := mockLog.GetAllMatching("JSON=")
+	matching := mockLog.GetAllMatching("endpoint=/endpoint")
 	if len(matching) != 1 {
-		t.Errorf("Expected exactly one log line. Got: %s",
-			strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+		t.Errorf("Expected exactly one log line, got: %s", strings.Join(mockLog.GetAll(), "\n"))
 	}
-	re := regexp.MustCompile(`JSON=({.*})$`)
-	m := re.FindStringSubmatch(matching[0])
-	if len(m) < 2 {
-		t.Fatalf("logging user-agent: no regexp match")
+	re := regexp.MustCompile(`ua=(\S*)`)
+	got := re.FindStringSubmatch(matching[0])
+	if len(got) != 2 {
+		t.Fatalf("logging user-agent: got %d regexp matches but want 2 (1 overall and 1 capture group)", len(got))
 	}
-	var ua struct {
-		UA string
-	}
-	err = json.Unmarshal([]byte(m[1]), &ua)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected := "🪨aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..."
-	if ua.UA != expected {
-		t.Errorf("logging user-agent: got %x, want %x", ua.UA, expected)
+	want := "🪨aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..."
+	if got[1] != want {
+		t.Errorf("logging user-agent: got %x, want %x", got[1], want)
 	}
 }
 
