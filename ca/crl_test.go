@@ -1,6 +1,7 @@
 package ca
 
 import (
+	"context"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 type mockGenerateCRLBidiStream struct {
 	grpc.ServerStream
+	ctx    context.Context
 	input  <-chan *capb.GenerateCRLRequest
 	output chan<- *capb.GenerateCRLResponse
 }
@@ -34,6 +36,10 @@ func (s mockGenerateCRLBidiStream) Recv() (*capb.GenerateCRLRequest, error) {
 func (s mockGenerateCRLBidiStream) Send(entry *capb.GenerateCRLResponse) error {
 	s.output <- entry
 	return nil
+}
+
+func (s mockGenerateCRLBidiStream) Context() context.Context {
+	return s.ctx
 }
 
 func TestGenerateCRL(t *testing.T) {
@@ -55,7 +61,7 @@ func TestGenerateCRL(t *testing.T) {
 	// Test that we get an error when no metadata is sent.
 	ins := make(chan *capb.GenerateCRLRequest)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: nil})
 	}()
 	close(ins)
 	err = <-errs
@@ -65,7 +71,7 @@ func TestGenerateCRL(t *testing.T) {
 	// Test that we get an error when incomplete metadata is sent.
 	ins = make(chan *capb.GenerateCRLRequest)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: nil})
 	}()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
@@ -80,7 +86,7 @@ func TestGenerateCRL(t *testing.T) {
 	// Test that we get an error when unrecognized metadata is sent.
 	ins = make(chan *capb.GenerateCRLRequest)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: nil})
 	}()
 	now := cargs.clk.Now()
 	ins <- &capb.GenerateCRLRequest{
@@ -100,7 +106,7 @@ func TestGenerateCRL(t *testing.T) {
 	// Test that we get an error when two metadata are sent.
 	ins = make(chan *capb.GenerateCRLRequest)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: nil})
 	}()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
@@ -129,7 +135,7 @@ func TestGenerateCRL(t *testing.T) {
 	// Test that we get an error when an entry has a bad serial.
 	ins = make(chan *capb.GenerateCRLRequest)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: nil})
 	}()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
@@ -148,7 +154,7 @@ func TestGenerateCRL(t *testing.T) {
 	// Test that we get an error when an entry has a bad revocation time.
 	ins = make(chan *capb.GenerateCRLRequest)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: nil})
 	}()
 
 	ins <- &capb.GenerateCRLRequest{
@@ -169,7 +175,7 @@ func TestGenerateCRL(t *testing.T) {
 	ins = make(chan *capb.GenerateCRLRequest)
 	outs := make(chan *capb.GenerateCRLResponse)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: outs})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: outs})
 		close(outs)
 	}()
 	crlBytes := make([]byte, 0)
@@ -206,7 +212,7 @@ func TestGenerateCRL(t *testing.T) {
 	ins = make(chan *capb.GenerateCRLRequest)
 	outs = make(chan *capb.GenerateCRLResponse)
 	go func() {
-		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: outs})
+		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{ctx: t.Context(), input: ins, output: outs})
 		close(outs)
 	}()
 	crlBytes = make([]byte, 0)

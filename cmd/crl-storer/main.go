@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -12,13 +13,13 @@ import (
 	awsl "github.com/aws/smithy-go/logging"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/crl/storer"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 type Config struct {
@@ -50,11 +51,13 @@ type Config struct {
 		Features features.Config
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // awsLogger implements the github.com/aws/smithy-go/logging.Logger interface.
+// It is defined here, instead of in //blog/adapters.go, because it is only
+// used locally rather than set as a package-level default.
 type awsLogger struct {
 	blog.Logger
 }
@@ -62,9 +65,9 @@ type awsLogger struct {
 func (log awsLogger) Logf(c awsl.Classification, format string, v ...any) {
 	switch c {
 	case awsl.Debug:
-		log.Debugf(format, v...)
+		log.Debug(context.Background(), fmt.Sprintf(format, v...))
 	case awsl.Warn:
-		log.Warningf(format, v...)
+		log.Warn(context.Background(), fmt.Sprintf(format, v...))
 	}
 }
 
