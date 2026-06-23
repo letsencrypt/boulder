@@ -3017,7 +3017,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	test.AssertNotError(t, err, "Error finalizing test order")
 
 	// Get the logged lines from the audit logger
-	loglines := mockLog.GetAllMatching("Certificate request complete")
+	loglines := mockLog.GetAllMatching("Certificate request - ")
 
 	// There should be exactly 1 matching log line
 	test.AssertEquals(t, len(loglines), 1)

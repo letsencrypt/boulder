@@ -1108,7 +1108,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
 		order.Status = string(core.StatusInvalid)
 
-		ra.log.AuditInfo(ctx, "Certificate request complete",
+		ra.log.AuditInfo(ctx, "Certificate request - error",
 			slog.String("result", "error"),
 			slog.Time("responseTime", ra.clk.Now()),
 			blog.Error(err),
@@ -1123,7 +1123,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 		ra.newCertCounter.Inc()
 
-		ra.log.AuditInfo(ctx, "Certificate request complete",
+		ra.log.AuditInfo(ctx, "Certificate request - successful",
 			slog.String("result", "success"),
 			blog.Serial(core.SerialToString(cert.SerialNumber)),
 			slog.String("profile", profileName),
