@@ -15,6 +15,7 @@ import (
 	"math/big"
 	mrand "math/rand/v2"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"slices"
@@ -172,8 +173,12 @@ func TestCheckCertReturnsSANs(t *testing.T) {
 	}
 
 	names, problems := checker.checkCert(context.Background(), cert)
-	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com", "127.0.0.1"}) {
-		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
+	if !slices.Equal(names, identifier.ACMEIdentifiers{
+		identifier.NewDNS("al--so--wr--ong.com"),
+		identifier.NewDNS("quite_invalid.com"),
+		identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
+	}) {
+		t.Errorf("didn't get expected DNS names (got = %#v). other problems: %s", names, strings.Join(problems, "\n"))
 	}
 }
 

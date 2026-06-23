@@ -286,10 +286,14 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 func (c *certChecker) processCerts(ctx context.Context) {
 	for cert := range c.certs {
 		sans, problems := c.checkCert(ctx, cert)
-		valid := len(problems) == 0
-		if !valid {
+		if len(problems) != 0 {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
-			c.logger.AuditErr("certificate error found", nil, map[string]any{"serial": cert.Serial, "sans": sans, "problems": problems})
+			c.logger.Error(ctx, "certificate error found",
+				fmt.Errorf("detected %d problems", len(problems)),
+				blog.Serial(cert.Serial),
+				blog.Idents(sans...),
+				slog.String("probs", strings.Join(problems, "; ")),
+			)
 		} else {
 			atomic.AddInt64(&c.issuedReport.GoodCerts, 1)
 		}
@@ -352,7 +356,7 @@ func (c *certChecker) checkValidations(ctx context.Context, cert *corepb.Certifi
 }
 
 // checkCert returns a list of Subject Alternative Names in the certificate and a list of problems with the certificate.
-func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) ([]string, []string) {
+func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (identifier.ACMEIdentifiers, []string) {
 	ctx = blog.ContextWith(ctx, blog.Serial(cert.Serial))
 	var problems []string
 
@@ -367,12 +371,6 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 		// This is a fatal error, we can't do any further processing.
 		return nil, problems
-	}
-
-	// Now that it's parsed, we can extract the SANs.
-	sans := slices.Clone(parsedCert.DNSNames)
-	for _, ip := range parsedCert.IPAddresses {
-		sans = append(sans, ip.String())
 	}
 
 	// Run zlint checks.
@@ -440,7 +438,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 		}
 
 		// Check that the CommonName is included in the SANs.
-		if !slices.Contains(sans, parsedCert.Subject.CommonName) {
+		if !slices.Contains(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Names: %q !< %v",
 				parsedCert.Subject.CommonName, parsedCert.DNSNames))
 		}
@@ -537,7 +535,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 		}
 	}
 
-	return sans, problems
+	return identifier.FromCert(p), problems
 }
 
 type Config struct {
@@ -708,11 +706,14 @@ func main() {
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
 
+	// No timeout, since cert-checker can take several hours to run.
+	ctx := context.Background()
+
 	// Since we grab certificates in batches we don't want this to block, when it
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err := checker.getCerts(context.TODO())
+		err := checker.getCerts(ctx)
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 
@@ -726,7 +727,13 @@ func main() {
 		})
 	}
 	wg.Wait()
-	logger.AuditInfo("Finished processing certificates", checker.issuedReport)
+	logger.Info(ctx, "Finished processing certificates",
+		slog.Time("begin", checker.issuedReport.begin),
+		slog.Time("end", checker.issuedReport.end),
+		slog.Int64("goodCerts", checker.issuedReport.GoodCerts),
+		slog.Int64("badCerts", checker.issuedReport.BadCerts),
+		slog.Int64("dbErrs", checker.issuedReport.DbErrs),
+	)
 
 	metrics.checkerTimestamp.SetToCurrentTime()
 	metrics.checkerGoodCount.Set(float64(checker.issuedReport.GoodCerts))
@@ -737,13 +744,13 @@ func main() {
 		defer cancel()
 		pushgatewayURL, err := getPushgatewayURL(ctx, config.CertChecker.LookupDNSAuthority, *config.CertChecker.PushgatewayService)
 		if err != nil {
-			logger.Errf("failed to get pushgateway URL: %s", err)
+			logger.Error(ctx, "failed to get pushgateway URL", err)
 		} else {
 			err = cmd.PushMetrics("cert-checker", pushgatewayURL, reg, logger)
 			if err != nil {
-				logger.Errf("failed to push metrics to pushgateway: %s", err)
+				logger.Error(ctx, "failed to push metrics to pushgateway", err, slog.String("url", pushgatewayURL))
 			} else {
-				logger.Debugf("pushed metrics to pushgateway at %s", pushgatewayURL)
+				logger.Debug(ctx, "pushed metrics to pushgateway", slog.String("url", pushgatewayURL))
 			}
 		}
 	}
