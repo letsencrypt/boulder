@@ -581,7 +581,6 @@ func WaitForSignal() {
 func PushMetrics(jobname, pushgatewayURL string, gatherer prometheus.Gatherer, logger blog.Logger) error {
 	hostname, err := os.Hostname()
 	if err != nil {
-		logger.Warningf("error getting hostname: %s", err)
 		hostname = "unknown"
 	}
 	return push.New(pushgatewayURL, jobname).
