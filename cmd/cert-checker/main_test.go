@@ -14,10 +14,12 @@ import (
 	"log"
 	"math/big"
 	mrand "math/rand/v2"
+	"net"
+	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/blog"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -336,7 +339,8 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(fc.Now().Add(time.Hour))
 
-	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	mocklog := blog.NewMock()
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, mocklog)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, 0, fc, blog.NewMock(), metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetBoulderTestDatabase(t)
@@ -375,11 +379,9 @@ func TestGetAndProcessCerts(t *testing.T) {
 	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	checker.processCerts(context.Background(), wg, false)
+	checker.processCerts(t.Context())
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
-	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
+	test.AssertEquals(t, len(mocklog.GetAllMatching("certificate error found")), 5)
 }
 
 // mismatchedCountDB is a certDB implementation for `getCerts` that returns one
@@ -507,30 +509,6 @@ func TestGetCertsLate(t *testing.T) {
 	}
 }
 
-func TestSaveReport(t *testing.T) {
-	r := report{
-		begin:     time.Time{},
-		end:       time.Time{},
-		GoodCerts: 2,
-		BadCerts:  1,
-		Entries: map[string]reportEntry{
-			"020000000000004b475da49b91da5c17": {
-				Valid: true,
-			},
-			"020000000000004d1613e581432cba7e": {
-				Valid: true,
-			},
-			"020000000000004e402bc21035c6634a": {
-				Valid:    false,
-				Problems: []string{"None really..."},
-			},
-		},
-	}
-
-	err := r.dump()
-	test.AssertNotError(t, err, "Failed to dump results")
-}
-
 func TestIsForbiddenDomain(t *testing.T) {
 	// Note: These testcases are not an exhaustive representation of domains
 	// Boulder won't issue for, but are instead testing the defense-in-depth
@@ -617,6 +595,7 @@ func TestIgnoredLint(t *testing.T) {
 	template.DNSNames = []string{"zombo.com"}
 	template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	template.CRLDistributionPoints = []string{"http://crl.example.org"}
 	template.IsCA = false
 
 	subjectCertDer, err := x509.CreateCertificate(rand.Reader, template, issuerCert, testKey.Public(), testKey)
@@ -697,4 +676,59 @@ func TestPrecertCorrespond(t *testing.T) {
 		}
 	}
 	t.Fatalf("expected precert correspondence problem, but got: %v", problems)
+}
+
+func TestGetPushgatewayURL(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		gotURL, err := getPushgatewayURL(t.Context(), "consul.service.consul:53",
+			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
+		if err != nil {
+			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
+		}
+
+		parsed, err := url.Parse(gotURL)
+		if err != nil {
+			t.Fatalf("returned URL should be parseable: %s", err)
+		}
+		if parsed.Scheme != "http" {
+			t.Errorf("expected http scheme but got %s", parsed.Scheme)
+		}
+
+		host, port, err := net.SplitHostPort(parsed.Host)
+		if err != nil {
+			t.Errorf("URL host should contain a port: %s", err)
+		}
+		if net.ParseIP(host) == nil {
+			t.Errorf("host should be an IP (LookupHost flatten step)")
+		}
+
+		portNum, err := strconv.Atoi(port)
+		if err != nil {
+			t.Errorf("port should be numeric: %s", err)
+		}
+		if portNum < 0 || portNum > 65536 {
+			t.Errorf("port should be in a valid range but got %d", portNum)
+		}
+	})
+	t.Run("DNS authority no port specified", func(t *testing.T) {
+		_, err := getPushgatewayURL(t.Context(), "consul.service.consul",
+			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
+		if err != nil {
+			t.Fatalf("getPushgatewayURL(consul.service.consul:53) = %s, but want success", err)
+		}
+	})
+	t.Run("SRV not found", func(t *testing.T) {
+		_, err := getPushgatewayURL(t.Context(), "consul.service.consul:53",
+			cmd.ServiceDomain{Service: "doesnotexist", Domain: "service.consul"})
+		if err == nil {
+			t.Errorf("getPushgatewayURL for 'doesnotexist' service should have failed")
+		}
+	})
+	t.Run("DNS authority unreachable", func(t *testing.T) {
+		_, err := getPushgatewayURL(t.Context(), "doesnotexist.invalid:53",
+			cmd.ServiceDomain{Service: "redisratelimits", Domain: "service.consul"})
+		if err == nil {
+			t.Fatalf("getPushgatewayURL(doesnotexist.invalid:53) should have failed")
+		}
+	})
 }

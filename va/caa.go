@@ -44,9 +44,18 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
-	authzID, err := strconv.ParseInt(req.AuthzID, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("non-integer authz ID %q", req.AuthzID)
+	// TODO(#8722): remove this whole thing when Authz IDs are int64-only
+	var authzIDInt int64
+	if req.AuthzIDInt != 0 {
+		authzIDInt = req.AuthzIDInt
+	} else if req.AuthzID != "" {
+		parsed, err := strconv.ParseInt(req.AuthzID, 10, 64)
+		if err != nil {
+			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.AuthzID, err)
+		}
+		authzIDInt = parsed
+	} else {
+		return nil, berrors.MalformedError("No Authz ID value supplied in gRPC message")
 	}
 
 	ident := identifier.FromProto(req.Identifier)
@@ -67,7 +76,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	// Set the log attributes that we want to appear on all subsequent log lines
 	ctx = blog.ContextWith(ctx,
 		blog.Acct(req.AccountURIID),
-		blog.Authz(authzID),
+		blog.Authz(authzIDInt),
 		blog.Idents(ident),
 		slog.String("method", string(challType)),
 	)
@@ -108,7 +117,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 
 	// Do the local checks. We do these before kicking off the remote checks to
 	// ensure that we don't waste effort on remote checks if the local ones fail.
-	err = va.checkCAA(ctx, ident, params)
+	err := va.checkCAA(ctx, ident, params)
 
 	// Stop the clock for local check latency.
 	localLatency = va.clk.Since(start)

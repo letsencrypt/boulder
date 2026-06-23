@@ -110,10 +110,6 @@ message JSONWebKey {
   bytes jwk = 1;
 }
 
-message AuthorizationID {
-  string id = 1;
-}
-
 message GetValidAuthorizationsRequest {
   // Next unused field number: 7
   int64 registrationID = 1;
@@ -291,10 +287,6 @@ message GetAuthorizationsRequest {
 
 message Authorizations {
   repeated core.Authorization authzs = 2;
-}
-
-message AuthorizationIDs {
-  repeated string ids = 1;
 }
 
 message AuthorizationID2 {

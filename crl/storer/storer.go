@@ -167,14 +167,15 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	// additional safety check against clock skew and potential races, if multiple
 	// crl-updaters are working on the same shard at the same time. We only run
 	// these checks if we found a CRL, so we don't block uploading brand new CRLs.
+	var prevEtag *string
 	filename := fmt.Sprintf("%d/%d.crl", issuer.NameID(), shardIdx)
 	prevObj, err := cs.s3Client.GetObject(stream.Context(), &s3.GetObjectInput{
 		Bucket: &cs.s3Bucket,
 		Key:    &filename,
 	})
 	if err != nil {
-		var smithyErr *smithyhttp.ResponseError
-		if !errors.As(err, &smithyErr) || smithyErr.HTTPStatusCode() != 404 {
+		smithyErr, ok := errors.AsType[*smithyhttp.ResponseError](err)
+		if !ok || smithyErr.HTTPStatusCode() != 404 {
 			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
 		}
 		cs.log.Info(ctx, "Proceeding because no previous CRL found")
@@ -214,6 +215,10 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		if !uriMatch {
 			return fmt.Errorf("IDP does not match previous: %v !∩ %v", idpURIs, prevURIs)
 		}
+
+		// This ensures that the CRL object hasn't been replaced since we downloaded
+		// it above. Prevents races against another storer.
+		prevEtag = prevObj.ETag
 	}
 
 	// Finally actually upload the new CRL.
@@ -232,6 +237,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
 		Expires:           &expires,
 		CacheControl:      &cacheControl,
+		IfMatch:           prevEtag,
 	})
 
 	latency := cs.clk.Now().Sub(start)

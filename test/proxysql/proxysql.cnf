@@ -78,9 +78,6 @@ mysql_users =
 		username = "sa_ro";
 	},
 	{
-		username = "ocsp_resp";
-	},
-	{
 		username = "revoker";
 	},
 	{
@@ -103,6 +100,9 @@ mysql_users =
 	},
 	{
 		username = "incidents_sa_admin";
+	},
+	{
+		username = "mtpublisher";
 	}
 );
 mysql_query_rules =
@@ -133,11 +133,6 @@ mysql_query_rules =
 		rule_id = 17;
 		username = "mailer";
 		timeout = 1800000;
-	},
-	{
-		rule_id = 18;
-		username = "ocsp_resp";
-		timeout = 4900;
 	}
 );
 scheduler =

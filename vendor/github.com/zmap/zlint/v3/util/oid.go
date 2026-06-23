@@ -55,6 +55,7 @@ var (
 	SubjectKeyIdentityOID        = asn1.ObjectIdentifier{2, 5, 29, 14}                     // Subject Key Identifier
 	ReasonCodeOID                = asn1.ObjectIdentifier{2, 5, 29, 21}                     // CRL Reason Code
 	CRLNumberOID                 = asn1.ObjectIdentifier{2, 5, 29, 20}                     // CRL Number
+	IssuingDistOID               = asn1.ObjectIdentifier{2, 5, 29, 28}                     // Issuing Distribution Point
 	// Extended Key Usage OIDs
 	PreCertificateSigningCertificateEKU = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 4}
 	// CA/B Reserved Certificate Policy Identifiers
@@ -89,6 +90,8 @@ var (
 	BusinessOID               = asn1.ObjectIdentifier{2, 5, 4, 15}
 	PostalCodeOID             = asn1.ObjectIdentifier{2, 5, 4, 17}
 	GivenNameOID              = asn1.ObjectIdentifier{2, 5, 4, 42}
+	PseudonameOID             = asn1.ObjectIdentifier{2, 5, 4, 65}
+	EmailAddressOID           = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}
 	// SAN otherNames
 	OidIdOnSmtpUtf8Mailbox = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 8, 9}
 	// Hash algorithms - see https://golang.org/src/crypto/x509/x509.go
@@ -117,6 +120,13 @@ var (
 	IdEtsiQcsQctEsign          = asn1.ObjectIdentifier{0, 4, 0, 1862, 1, 6, 1}
 	IdEtsiQcsQctEseal          = asn1.ObjectIdentifier{0, 4, 0, 1862, 1, 6, 2}
 	IdEtsiQcsQctWeb            = asn1.ObjectIdentifier{0, 4, 0, 1862, 1, 6, 3}
+	QCPnPolicyOID              = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 0}
+	QCPlPolicyOID              = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 1}
+	QCPnqscdPolicyOID          = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 2}
+	QCPlqscdPolicyOID          = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 3}
+	QEVCPwPolicyOID            = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 4}
+	QNCPwPolicyOID             = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 5}
+	QNCPwgenPolicyOID          = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 6}
 )
 
 const (

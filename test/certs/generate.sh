@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-cd "$(realpath -- $(dirname -- "$0"))"
+cd "$(realpath -- $(dirname -- "$0"))/../.."
 
 # Check that `minica` is installed
 command -v minica >/dev/null 2>&1 || {
@@ -14,8 +14,8 @@ ipki() (
   # Minica generates everything in-place, so we need to cd into the subdirectory.
   # This function executes in a subshell, so this cd does not affect the parent
   # script.
-  mkdir ipki
-  cd ipki
+  mkdir -p test/certs/ipki
+  pushd test/certs/ipki
 
   # Create a generic cert which can be used by our test-only services that
   # aren't sophisticated enough to present a different name. This first
@@ -41,7 +41,7 @@ ipki() (
 
   # Used by Boulder gRPC services as both server and client mTLS certificates.
   for SERVICE in admin consul wfe bad-key-revoker \
-    crl-updater crl-storer health-checker sfe email-exporter; do
+    crl-updater crl-storer health-checker sfe email-exporter mtca; do
     minica -domains "${SERVICE}.boulder" &
   done
 
@@ -54,25 +54,30 @@ ipki() (
 
   # minica sets restrictive directory permissions, but we don't want that
   chmod -R go+rX .
+
+  popd
 )
 
 webpki() (
   # Because it invokes the ceremony tool, webpki.go expects to be invoked with
   # the root of the boulder repo as the current working directory.
-  # This function executes in a subshell, so this cd does not affect the parent
-  # script.
-  cd ../..
-  make build
-  mkdir ./test/certs/webpki
+  GOBIN=$PWD/bin/ go install ./cmd/ceremony
+  mkdir -p ./test/certs/webpki
   go run ./test/certs/webpki.go
 )
 
-if ! [ -d ipki ]; then
+if ! [ -d test/certs/ipki ]; then
   echo "Generating ipki/..."
   ipki
 fi
 
-if ! [ -d webpki ]; then
+if ! [ -d test/certs/webpki ]; then
   echo "Generating webpki/..."
   webpki
+fi
+
+if ! [ -d test/certs/mtpki ]; then
+  echo "Generating mtpki/..."
+  mkdir -p test/certs/mtpki
+  gotip run ./test/certs/genmtpki/genmtpki.go -output-dir test/certs/mtpki
 fi

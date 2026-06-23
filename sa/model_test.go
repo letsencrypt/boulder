@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/netip"
@@ -63,7 +64,7 @@ func TestAuthzModel(t *testing.T) {
 	// customize them after calling this.
 	newTestAuthzPB := func(validated time.Time) *corepb.Authorization {
 		return &corepb.Authorization{
-			Id:             "1",
+			IdInt:          1,
 			Identifier:     identifier.NewDNS("example.com").ToProto(),
 			RegistrationID: 1,
 			Status:         string(core.StatusValid),
@@ -112,6 +113,42 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 	test.AssertEquals(t, authzPBOut.CertificateProfileName, authzPB.CertificateProfileName)
+
+	// Manipulate authzPB to test marshalling between corepb.Authorization and
+	// the SA authz model
+	// TODO(#8722): clean up these tests when authz IDs are int-only
+	authzPB = newTestAuthzPB(clk.Now())
+	authzPB.Id = ""
+	authzPB.IdInt = 0
+	_, err = authzPBToModel(authzPB)
+	test.AssertError(t, err, "authzPBToModel with empty Id and empty IdInt unexpectedly succeeded")
+
+	authzPB = newTestAuthzPB(clk.Now())
+	authzPB.Id = "1"
+	authzPB.IdInt = 0
+	model, err = authzPBToModel(authzPB)
+	test.AssertNotError(t, err, "authzPBToModel with a value for string Id and empty IdInt failed")
+	authzPBOut, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	test.AssertEquals(t, fmt.Sprintf("%d", authzPBOut.IdInt), authzPBOut.Id)
+
+	authzPB = newTestAuthzPB(clk.Now())
+	authzPB.Id = ""
+	authzPB.IdInt = 1
+	model, err = authzPBToModel(authzPB)
+	test.AssertNotError(t, err, "authzPBToModel with empty Id and an int value for IdInt failed")
+	authzPBOut, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	test.AssertEquals(t, fmt.Sprintf("%d", authzPBOut.IdInt), authzPBOut.Id)
+
+	authzPB = newTestAuthzPB(clk.Now())
+	authzPB.Id = "1"
+	authzPB.IdInt = 1
+	model, err = authzPBToModel(authzPB)
+	test.AssertNotError(t, err, "authzPBToModel with values for both string Id and int IdInt failed")
+	authzPBOut, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	test.AssertEquals(t, fmt.Sprintf("%d", authzPBOut.IdInt), authzPBOut.Id)
 
 	authzPB = newTestAuthzPB(clk.Now())
 
@@ -220,8 +257,8 @@ func TestModelToOrderBadJSON(t *testing.T) {
 		Error: badJSON,
 	})
 	test.AssertError(t, err, "expected error from modelToOrderv2")
-	var badJSONErr errBadJSON
-	test.AssertErrorWraps(t, err, &badJSONErr)
+	test.AssertErrorWraps[errBadJSON](t, err)
+	badJSONErr, _ := errors.AsType[errBadJSON](err)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
@@ -288,8 +325,8 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			err := populateAttemptedFields(*tc.Model, &corepb.Challenge{})
 			test.AssertError(t, err, "expected error from populateAttemptedFields")
-			var badJSONErr errBadJSON
-			test.AssertErrorWraps(t, err, &badJSONErr)
+			test.AssertErrorWraps[errBadJSON](t, err)
+			badJSONErr, _ := errors.AsType[errBadJSON](err)
 			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 		})
 	}

@@ -329,8 +329,8 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	)
 	err := stats.Register(grpcMetrics)
 	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			grpcMetrics = are.ExistingCollector.(*grpc_prometheus.ServerMetrics)
 		} else {
 			return serverMetrics{}, err
@@ -347,8 +347,8 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 		})
 	err = stats.Register(rpcLag)
 	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			rpcLag = are.ExistingCollector.(prometheus.Histogram)
 		} else {
 			return serverMetrics{}, err

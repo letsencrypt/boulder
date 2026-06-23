@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
@@ -42,14 +44,12 @@ type Config struct {
 
 		MaxContactsPerRegistration int
 
+		ProfileToMTCA map[string]*cmd.GRPCClientConfig
+
 		SAService        *cmd.GRPCClientConfig
 		VAService        *cmd.GRPCClientConfig
 		CAService        *cmd.GRPCClientConfig
 		PublisherService *cmd.GRPCClientConfig
-
-		// Deprecated: TODO(#8349): Remove this when removing the corresponding
-		// service from the CA.
-		OCSPService *cmd.GRPCClientConfig
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
@@ -84,8 +84,7 @@ type Config struct {
 
 		// ValidationProfiles is a map of validation profiles to their
 		// respective issuance allow lists. If a profile is not included in this
-		// mapping, it cannot be used by any account. If this field is left
-		// empty, all profiles are open to all accounts.
+		// mapping, it cannot be used by any account.
 		ValidationProfiles map[string]*ra.ValidationProfileConfig `validate:"required"`
 
 		// DefaultProfileName sets the profile to use if one wasn't provided by the
@@ -187,6 +186,14 @@ func main() {
 	vac := vapb.NewVAClient(vaConn)
 	caaClient := vapb.NewCAAClient(vaConn)
 
+	profileToMTCA := make(map[string]mtcapb.MTCAClient)
+	for profile, clientConfig := range c.RA.ProfileToMTCA {
+		mtcaConn, err := bgrpc.ClientSetup(clientConfig, tlsConfig, scope, clk)
+		cmd.FailOnError(err, fmt.Sprintf("Unable to create MTCA client for profile %s", profile))
+		mtcaClient := mtcapb.NewMTCAClient(mtcaConn)
+		profileToMTCA[profile] = mtcaClient
+	}
+
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
@@ -233,6 +240,11 @@ func main() {
 		cmd.Fail("At least one profile must be configured")
 	}
 
+	for name, profile := range c.RA.ValidationProfiles {
+		if profile.MTC && c.RA.ProfileToMTCA[name] == nil {
+			cmd.Fail(fmt.Sprintf("profile %q is configured for MTC but has no MTCA backend", name))
+		}
+	}
 	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)
 	cmd.FailOnError(err, "Failed to load validation profiles")
 
@@ -284,6 +296,7 @@ func main() {
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		issuerCerts,
+		profileToMTCA,
 	)
 	defer rai.Drain()
 

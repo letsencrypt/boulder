@@ -15,6 +15,7 @@ DB_URL_FILES=(
   cert_checker_dburl
   incidents_dburl
   incidents_admin_dburl
+  mtpublisher_dburl
   revoker_dburl
   sa_dburl
   sa_ro_dburl

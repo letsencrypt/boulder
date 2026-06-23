@@ -57,8 +57,8 @@ func resultForError(err error) string {
 		// Caller canceled the operation.
 		return "canceled"
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
+	netErr, ok := errors.AsType[net.Error](err)
+	if ok && netErr.Timeout() {
 		// Dialer timed out connecting to Redis.
 		return "timeout"
 	}

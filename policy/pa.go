@@ -406,8 +406,8 @@ func ValidEmail(address string) error {
 
 // subError returns an appropriately typed error based on the input error
 func subError(ident identifier.ACMEIdentifier, err error) berrors.SubBoulderError {
-	var bErr *berrors.BoulderError
-	if errors.As(err, &bErr) {
+	bErr, ok := errors.AsType[*berrors.BoulderError](err)
+	if ok {
 		return berrors.SubBoulderError{
 			Identifier:   ident,
 			BoulderError: bErr,

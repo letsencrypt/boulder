@@ -92,7 +92,7 @@ func (strategy preferredTypeChallengeStrategy) PickChallenge(authz *core.Authori
 			return &chall, nil
 		}
 	}
-	return nil, fmt.Errorf("authorization (ID %q) had no %q type challenge",
+	return nil, fmt.Errorf("authorization (ID %d) had no %q type challenge",
 		authz.ID,
 		strategy.preferredType)
 }

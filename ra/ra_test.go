@@ -51,6 +51,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -125,7 +126,7 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, re
 	)
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
-	return getAuthorization(t, fmt.Sprint(res.V2Authorizations[0]), sa)
+	return getAuthorization(t, res.V2Authorizations[0], sa)
 }
 
 func createFinalizedAuthorization(t *testing.T, saClient sapb.StorageAuthorityClient, regID int64, ident identifier.ACMEIdentifier, exp time.Time, chall core.AcmeChallenge, attemptedAt time.Time) int64 {
@@ -144,11 +145,9 @@ func createFinalizedAuthorization(t *testing.T, saClient sapb.StorageAuthorityCl
 	return pendingID
 }
 
-func getAuthorization(t *testing.T, id string, sa sapb.StorageAuthorityClient) *corepb.Authorization {
+func getAuthorization(t *testing.T, id int64, sa sapb.StorageAuthorityClient) *corepb.Authorization {
 	t.Helper()
-	idInt, err := strconv.ParseInt(id, 10, 64)
-	test.AssertNotError(t, err, "strconv.ParseInt failed")
-	dbAuthz, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: idInt})
+	dbAuthz, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: id})
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	return dbAuthz
 }
@@ -203,7 +202,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		Identifier:       req.Identifier,
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
-		AuthzID:          req.Authz.Id,
+		AuthzIDInt:       req.Authz.IdInt,
 	})
 	if err != nil {
 		return nil, err
@@ -378,10 +377,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	})
 	test.AssertNotError(t, err, "making validation profiles")
 
+	profileToMTCA := make(map[string]mtcapb.MTCAClient)
+
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder,
-		profiles, nil, 5*time.Minute, ctp, nil)
+		profiles, nil, 5*time.Minute, ctp, nil, profileToMTCA)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
@@ -483,7 +484,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	// Create a finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	authz := core.Authorization{
-		ID:             "1337",
+		ID:             1337,
 		Identifier:     identifier.NewDNS("not-example.com"),
 		RegistrationID: registration.Id,
 		Status:         "valid",
@@ -572,7 +573,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		// Sleep so the RA has a chance to write to the SA
 		time.Sleep(100 * time.Millisecond)
 
-		dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+		dbAuthzPB := getAuthorization(t, authzPB.IdInt, sa)
 		t.Log("dbAuthz:", dbAuthzPB)
 
 		// Verify that the responses are reflected
@@ -788,7 +789,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	dbAuthzPB := getAuthorization(t, authzPB.IdInt, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
@@ -849,11 +850,20 @@ func TestDeactivateAuthorization(t *testing.T) {
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	authzID := createFinalizedAuthorization(t, sa, registration.Id, identifier.NewDNS("not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
-	dbAuthzPB := getAuthorization(t, fmt.Sprint(authzID), sa)
+	dbAuthzPB := getAuthorization(t, authzID, sa)
 	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPB.Id)
+	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
+
+	dbAuthzPBIdChecks := dbAuthzPB
+	dbAuthzPBIdChecks.Id = fmt.Sprintf("%d", authzID)
+	dbAuthzPBIdChecks.IdInt = authzID
+	_, err = ra.DeactivateAuthorization(ctx, dbAuthzPBIdChecks)
+	test.AssertNotError(t, err, "Could not deactivate authorization")
+	deact, err = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPBIdChecks.Id)
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 }
 
@@ -1076,7 +1086,7 @@ func TestRecheckCAADates(t *testing.T) {
 	}
 	twoChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.NewDNS("twochallenges.com"): {
-			ID:         "twochal",
+			ID:         13372,
 			Identifier: identifier.NewDNS("twochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
@@ -1097,7 +1107,7 @@ func TestRecheckCAADates(t *testing.T) {
 	}
 	noChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.NewDNS("nochallenges.com"): {
-			ID:         "nochal",
+			ID:         13370,
 			Identifier: identifier.NewDNS("nochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{},
@@ -1105,7 +1115,7 @@ func TestRecheckCAADates(t *testing.T) {
 	}
 	noValidationTime := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.NewDNS("novalidationtime.com"): {
-			ID:         "noval",
+			ID:         13371,
 			Identifier: identifier.NewDNS("novalidationtime.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
@@ -1129,15 +1139,15 @@ func TestRecheckCAADates(t *testing.T) {
 
 	// Should error if a authorization has `!= 1` challenge
 	err = ra.checkAuthorizationsCAA(context.Background(), twoChallenges, fc.Now())
-	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id 13372")
 
 	// Should error if a authorization has `!= 1` challenge
 	err = ra.checkAuthorizationsCAA(context.Background(), noChallenges, fc.Now())
-	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id 13370")
 
 	// Should error if authorization's challenge has no validated timestamp
 	err = ra.checkAuthorizationsCAA(context.Background(), noValidationTime, fc.Now())
-	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
+	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id 13371")
 
 	// We expect that "recent.com" is not checked because its mock authorization
 	// isn't expired
@@ -1256,8 +1266,8 @@ func TestRecheckCAAFail(t *testing.T) {
 	err := ra.recheckCAA(context.Background(), authzs)
 
 	test.AssertError(t, err, "expected err, got nil")
-	var berr *berrors.BoulderError
-	test.AssertErrorWraps(t, err, &berr)
+	test.AssertErrorWraps[*berrors.BoulderError](t, err)
+	berr, _ := errors.AsType[*berrors.BoulderError](err)
 	test.AssertErrorIs(t, berr, berrors.CAA)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 
@@ -1290,7 +1300,9 @@ func TestRecheckCAAFail(t *testing.T) {
 	// It should error
 	test.AssertError(t, err, "expected err from recheckCAA")
 	// It should be a berror
-	test.AssertErrorWraps(t, err, &berr)
+	test.AssertErrorWraps[*berrors.BoulderError](t, err)
+	// Unwrap this err
+	berr, _ = errors.AsType[*berrors.BoulderError](err)
 	// There should be *no* suberrors because there was only one overall error
 	test.AssertEquals(t, len(berr.SubErrors), 0)
 }
@@ -1951,7 +1963,7 @@ func (msa *mockSAWithAuthzs) GetValidAuthorizations2(ctx context.Context, req *s
 
 func (msa *mockSAWithAuthzs) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	for _, authz := range msa.authzs {
-		if authz.ID == fmt.Sprintf("%d", req.Id) {
+		if authz.ID == req.Id {
 			return bgrpc.AuthzToPB(*authz)
 		}
 	}
@@ -2070,7 +2082,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 			ra.SA = &mockSAWithAuthzs{
 				authzs: []*core.Authorization{
 					{
-						ID:             "1",
+						ID:             1,
 						Identifier:     identifier.NewDNS("*.zombo.com"),
 						RegistrationID: registration.Id,
 						Status:         core.StatusValid,
@@ -2291,7 +2303,7 @@ func TestNewOrderExpiry(t *testing.T) {
 		authzs: []*core.Authorization{
 			{
 				// A static fake ID we can check for in a unit test
-				ID:             "1",
+				ID:             1,
 				Identifier:     identifier.NewDNS("zombo.com"),
 				RegistrationID: registration.Id,
 				Expires:        &fakeAuthzExpires,
@@ -3152,7 +3164,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 
 	exp := fc.Now().Add(10 * time.Hour)
 	authz := core.Authorization{
-		ID:             "1337",
+		ID:             1337,
 		Identifier:     identifier.NewDNS("not-example.com"),
 		RegistrationID: 1,
 		Status:         "valid",
@@ -3590,7 +3602,10 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 	}
 
 	for _, ident := range req.Identifiers {
-		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{Identifier: ident})
+		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{
+			IdInt:      mrand.Int64(),
+			Identifier: ident,
+		})
 	}
 
 	return authzs, nil
@@ -3920,7 +3935,7 @@ func TestGetAuthorization(t *testing.T) {
 	ra.SA = &mockSAWithAuthzs{
 		authzs: []*core.Authorization{
 			{
-				ID:         "1",
+				ID:         1,
 				Identifier: identifier.NewDNS("example.com"),
 				Status:     "valid",
 				Challenges: []core.Challenge{

@@ -392,8 +392,8 @@ func (i ipError) Error() string {
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
 func detailedError(err error) *probs.ProblemDetails {
-	var ipErr ipError
-	if errors.As(err, &ipErr) {
+	ipErr, ok := errors.AsType[ipError](err)
+	if ok {
 		detailedErr := detailedError(ipErr.err)
 		if (ipErr.ip == netip.Addr{}) {
 			// This should never happen.
@@ -404,20 +404,20 @@ func detailedError(err error) *probs.ProblemDetails {
 		return detailedErr
 	}
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	urlErr, ok := errors.AsType[*url.Error](err)
+	if ok {
 		prob := detailedError(urlErr.Err)
 		prob.Detail = fmt.Sprintf("Fetching %s: %s", urlErr.URL, prob.Detail)
 		return prob
 	}
 
-	var tlsErr tls.RecordHeaderError
-	if errors.As(err, &tlsErr) && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
+	tlsErr, ok := errors.AsType[tls.RecordHeaderError](err)
+	if ok && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
 		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
-	var netOpErr *net.OpError
-	if errors.As(err, &netOpErr) {
+	netOpErr, ok := errors.AsType[*net.OpError](err)
+	if ok {
 		if fmt.Sprintf("%T", netOpErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
@@ -428,8 +428,8 @@ func detailedError(err error) *probs.ProblemDetails {
 			return probs.Connection(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
 		}
 	}
-	var syscallErr *os.SyscallError
-	if errors.As(err, &syscallErr) {
+	syscallErr, ok := errors.AsType[*os.SyscallError](err)
+	if ok {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
 			return probs.Connection("Connection refused")
@@ -439,8 +439,8 @@ func detailedError(err error) *probs.ProblemDetails {
 			return probs.Connection("Connection reset by peer")
 		}
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
+	netErr, ok := errors.AsType[net.Error](err)
+	if ok && netErr.Timeout() {
 		return probs.Connection("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {
@@ -738,9 +738,19 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
-	authzID, err := strconv.ParseInt(req.Authz.Id, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("non-integer authz ID %q", req.Authz.Id)
+	// TODO(#8722): remove this and return req.Authz.Id to isAnyNilOrZero check
+	// above when Authz IDs are int64-only
+	var authzIDInt int64
+	if req.Authz.IdInt != 0 {
+		authzIDInt = req.Authz.IdInt
+	} else if req.Authz.Id != "" {
+		parsed, err := strconv.ParseInt(req.Authz.Id, 10, 64)
+		if err != nil {
+			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.Authz.Id, err)
+		}
+		authzIDInt = parsed
+	} else {
+		return nil, berrors.InternalServerError("incomplete validation request")
 	}
 
 	ident := identifier.FromProto(req.Identifier)
@@ -758,7 +768,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// Set the log attributes that we want to appear on all subsequent log lines
 	ctx = blog.ContextWith(ctx,
 		blog.Acct(req.Authz.RegID),
-		blog.Authz(authzID),
+		blog.Authz(authzIDInt),
 		blog.Idents(ident),
 		slog.String("method", string(chall.Type)),
 		slog.String("token", chall.Token),

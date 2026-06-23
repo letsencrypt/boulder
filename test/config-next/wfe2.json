@@ -14,6 +14,7 @@
 		"accountURIPrefix": "http://boulder.service.consul:4001/acme/acct/",
 		"goodkey": {},
 		"maxContactsPerRegistration": 3,
+		"maxCumulativeIdentifierLength": 10000,
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
@@ -141,7 +142,8 @@
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",
 			"modern": "Profile 2: Electric Boogaloo",
-			"shortlived": "Like modern, but smaller"
+			"shortlived": "Like modern, but smaller",
+			"mtcshortlived": "Like shortlived, but MTC"
 		},
 		"unpause": {
 			"hmacKey": {
@@ -150,6 +152,7 @@
 			"jwtLifetime": "336h",
 			"url": "https://boulder.service.consul:4003"
 		},
+		"blockedAccountsFile": "test/config-next/blocked-accounts.yaml",
 		"blockedOnDemandLabels": [
 			"asdf"
 		]

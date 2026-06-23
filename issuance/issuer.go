@@ -2,9 +2,6 @@ package issuance
 
 import (
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -209,24 +206,9 @@ type Issuer struct {
 // newIssuer constructs a new Issuer from the in-memory certificate and signer.
 // It exists as a helper for LoadIssuer to make testing simpler.
 func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk clock.Clock) (*Issuer, error) {
-	var keyAlg x509.PublicKeyAlgorithm
-	var sigAlg x509.SignatureAlgorithm
-	switch k := cert.PublicKey.(type) {
-	case *rsa.PublicKey:
-		keyAlg = x509.RSA
-		sigAlg = x509.SHA256WithRSA
-	case *ecdsa.PublicKey:
-		keyAlg = x509.ECDSA
-		switch k.Curve {
-		case elliptic.P256():
-			sigAlg = x509.ECDSAWithSHA256
-		case elliptic.P384():
-			sigAlg = x509.ECDSAWithSHA384
-		default:
-			return nil, fmt.Errorf("unsupported ECDSA curve: %q", k.Curve.Params().Name)
-		}
-	default:
-		return nil, errors.New("unsupported issuer key type")
+	keyAlg, sigAlg, err := pubkeyParams(cert.PublicKey)
+	if err != nil {
+		return nil, err
 	}
 
 	if config.IssuerURL == "" {
@@ -246,15 +228,12 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	}
 
 	// We require that all of our issuers be capable of both issuing certs and
-	// providing revocation information.
+	// providing CRL revocation information.
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
 	}
 	if cert.KeyUsage&x509.KeyUsageCRLSign == 0 {
 		return nil, errors.New("end-entity signing cert does not have keyUsage crlSign")
-	}
-	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
-		return nil, errors.New("end-entity signing cert does not have keyUsage digitalSignature")
 	}
 
 	lintSigner, err := linter.New(cert.Certificate, signer)
@@ -277,8 +256,8 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	return i, nil
 }
 
-// KeyType returns either x509.RSA or x509.ECDSA, depending on whether the
-// issuer has an RSA or ECDSA keypair. This is useful for determining which
+// KeyType returns x509.RSA, x509.ECDSA, or x509.MLDSA depending on the
+// keypair of the issuer. This is useful for determining which
 // issuance requests should be routed to this issuer.
 func (i *Issuer) KeyType() x509.PublicKeyAlgorithm {
 	return i.keyAlg
@@ -354,10 +333,14 @@ func loadSigner(location IssuerLoc, pubkey crypto.PublicKey) (crypto.Signer, err
 		pkcs11Config = location.PKCS11
 	}
 
-	if pkcs11Config.Module == "" ||
-		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" {
-		return nil, fmt.Errorf("missing a field in pkcs11Config %#v", pkcs11Config)
+	if pkcs11Config.Module == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: Module")
+	}
+	if pkcs11Config.TokenLabel == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: TokenLabel")
+	}
+	if pkcs11Config.PIN == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: PIN")
 	}
 
 	numSessions := location.NumSessions

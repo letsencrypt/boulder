@@ -349,6 +349,9 @@ func (s *State) Run(
 	httpOneAddrs []string,
 	tlsALPNOneAddrs []string,
 	dnsAddrs []string,
+	dohAddrs []string,
+	dohCert string,
+	dohCertKey string,
 	fakeDNS string,
 	p Plan) error {
 	// Create a new challenge server binding the requested addrs.
@@ -356,6 +359,9 @@ func (s *State) Run(
 		HTTPOneAddrs:    httpOneAddrs,
 		TLSALPNOneAddrs: tlsALPNOneAddrs,
 		DNSAddrs:        dnsAddrs,
+		DOHAddrs:        dohAddrs,
+		DOHCert:         dohCert,
+		DOHCertKey:      dohCertKey,
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})

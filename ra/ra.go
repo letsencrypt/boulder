@@ -41,6 +41,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/metrics"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -71,11 +72,12 @@ var (
 type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
 	rapb.UnsafeSCTProviderServer
-	CA        capb.CertificateAuthorityClient
-	VA        va.RemoteClients
-	SA        sapb.StorageAuthorityClient
-	PA        core.PolicyAuthority
-	publisher pubpb.PublisherClient
+	CA            capb.CertificateAuthorityClient
+	VA            va.RemoteClients
+	SA            sapb.StorageAuthorityClient
+	PA            core.PolicyAuthority
+	publisher     pubpb.PublisherClient
+	profileToMTCA map[string]mtcapb.MTCAClient
 
 	clk               clock.Clock
 	log               blog.Logger
@@ -127,6 +129,7 @@ func NewRegistrationAuthorityImpl(
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
 	issuers []*issuance.Certificate,
+	profileToMTCA map[string]mtcapb.MTCAClient,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := promauto.With(stats).NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -216,6 +219,7 @@ func NewRegistrationAuthorityImpl(
 		limiter:                 limiter,
 		txnBuilder:              txnBuilder,
 		publisher:               pubc,
+		profileToMTCA:           profileToMTCA,
 		finalizeTimeout:         finalizeTimeout,
 		ctpolicy:                ctp,
 		ctpolicyResults:         ctpolicyResults,
@@ -263,6 +267,9 @@ type ValidationProfileConfig struct {
 	// specified, the profile is open to all accounts. If the file
 	// exists but is empty, the profile is closed to all accounts.
 	AllowList string `validate:"omitempty"`
+	// MTC indicates that orders with this profile should be sent to an
+	// MTCA instance for issuance.
+	MTC bool `validate:"omitempty"`
 	// IdentifierTypes is a list of identifier types that may be issued under
 	// this profile.
 	IdentifierTypes []identifier.IdentifierType `validate:"required,dive,oneof=dns ip"`
@@ -293,6 +300,9 @@ type validationProfile struct {
 	// identifierTypes is a list of identifier types that may be issued under
 	// this profile.
 	identifierTypes []identifier.IdentifierType
+	// MTC indicates that orders with this profile should be sent to an
+	// MTCA instance for issuance.
+	mtc bool
 }
 
 // validationProfiles provides access to the set of configured profiles,
@@ -360,6 +370,7 @@ func NewValidationProfiles(defaultName string, configs map[string]*ValidationPro
 			maxNames:             config.MaxNames,
 			allowList:            allowList,
 			identifierTypes:      config.IdentifierTypes,
+			mtc:                  config.MTC,
 		}
 	}
 
@@ -578,10 +589,10 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool, error) {
 	numChallenges := len(authz.Challenges)
 	if numChallenges != 1 {
-		return false, berrors.InternalServerError("authorization has incorrect number of challenges. 1 expected, %d found for: id %s", numChallenges, authz.ID)
+		return false, berrors.InternalServerError("authorization has incorrect number of challenges. 1 expected, %d found for: id %d", numChallenges, authz.ID)
 	}
 	if authz.Challenges[0].Validated == nil {
-		return false, berrors.InternalServerError("authorization's challenge has no validated timestamp for: id %s", authz.ID)
+		return false, berrors.InternalServerError("authorization's challenge has no validated timestamp for: id %d", authz.ID)
 	}
 	return authz.Challenges[0].Validated.Before(caaRecheckTime), nil
 }
@@ -678,7 +689,8 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
-				AuthzID:          authz.ID,
+				AuthzID:          fmt.Sprintf("%d", authz.ID),
+				AuthzIDInt:       authz.ID,
 			})
 			if err != nil {
 				ra.log.AuditError(ctx, "Rechecking CAA", err,
@@ -707,8 +719,8 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 		// identifier from the authorization that was checked.
 		err := recheckResult.err
 		if err != nil {
-			var bErr *berrors.BoulderError
-			if errors.As(err, &bErr) && bErr.Type == berrors.CAA {
+			bErr, ok := errors.AsType[*berrors.BoulderError](err)
+			if ok && bErr.Type == berrors.CAA {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   recheckResult.authz.Identifier,
 					BoulderError: bErr})
@@ -832,7 +844,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Steps 3 (issuance) and 4 (cleanup) are done inside a helper function so
 	// that we can control whether or not that work happens asynchronously.
-	if features.Get().AsyncFinalize {
+	// For MTC issuance we don't immediately go async: we wait on the MTCA
+	// sequencing an entry. This allows us to quickly return errors if sequencing
+	// is unavailable for any reason.
+	if features.Get().AsyncFinalize && !ra.isMTC(order) {
 		// We do this work in a goroutine so that we can better handle latency from
 		// getting SCTs and writing the (pre)certificate to the database. This lets
 		// us return the order in the Processing state to the client immediately,
@@ -858,6 +873,31 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	} else {
 		return ra.issueCertificateOuter(ctx, order, csr, authzs)
 	}
+}
+
+func (ra *RegistrationAuthorityImpl) issueMTC(
+	ctx context.Context,
+	order *corepb.Order,
+	subjectPublicKeyInfo []byte,
+) error {
+	profileName := ra.profileName(order)
+	mtca := ra.profileToMTCA[profileName]
+	if mtca == nil {
+		return fmt.Errorf("no MTCA configured for MTC profile %q", profileName)
+	}
+
+	resp, err := mtca.Issue(ctx, &mtcapb.IssueRequest{
+		Pubkey:      subjectPublicKeyInfo,
+		Identifiers: order.Identifiers,
+		Profile:     profileName,
+	})
+
+	if err != nil {
+		return fmt.Errorf("issuing MTC: %s", err)
+	}
+
+	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcEntryIndex)
+	return nil
 }
 
 // containsMustStaple returns true if the provided set of extensions includes
@@ -981,16 +1021,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(ctx context.Context
 	return csr, authzs, nil
 }
 
-func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
-	scts, err := ra.getSCTs(ctx, sctRequest.PrecertDER)
-	if err != nil {
-		return nil, err
-	}
-	return &rapb.SCTResponse{
-		SctDER: scts,
-	}, nil
-}
-
 // issueCertificateOuter exists solely to ensure that all calls to
 // issueCertificateInner have their result handled uniformly, no matter what
 // return path that inner function takes. It takes ownership of the logEvent,
@@ -1016,7 +1046,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		for _, chall := range authz.Challenges {
 			if chall.Status == core.StatusValid {
 				ra.log.AuditInfo(ctx, "Authz used for issuance",
-					slog.String("authz", authz.ID),
+					blog.Authz(authz.ID),
 					blog.Idents(ident),
 					slog.String("method", string(chall.Type)),
 					slog.Time("validated", *chall.Validated),
@@ -1047,12 +1077,19 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		ctx = blog.ContextWith(ctx, slog.Time("prevCertificateIssued", timestamps.Timestamps[0].AsTime()))
 	}
 
-	profileName := order.CertificateProfileName
-	if profileName == "" {
-		profileName = ra.profiles.defaultName
+	if ra.isMTC(order) {
+		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
+		if err != nil {
+			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
+			return nil, err
+		}
+
+		ra.countCertificateIssued(ctx, order.RegistrationID, idents, isRenewal)
+		return order, nil
 	}
 
 	// Step 3: Issue the Certificate
+	profileName := ra.profileName(order)
 	cert, err := ra.issueCertificateInner(
 		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
@@ -1096,6 +1133,19 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	return order, err
 }
 
+func (ra *RegistrationAuthorityImpl) profileName(order *corepb.Order) string {
+	if order.CertificateProfileName == "" {
+		return ra.profiles.defaultName
+	}
+	return order.CertificateProfileName
+}
+
+func (ra *RegistrationAuthorityImpl) isMTC(order *corepb.Order) bool {
+	profileName := ra.profileName(order)
+	profile := ra.profiles.byName[profileName]
+	return profile != nil && profile.mtc
+}
+
 // countCertificateIssued increments the certificates (per domain and per
 // account) and duplicate certificate rate limits. There is no reason to surface
 // errors from this function to the Subscriber, spends against these limit are
@@ -1125,23 +1175,8 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 	}
 }
 
-// issueCertificateInner is part of the [issuance cycle].
-//
-// It gets a precertificate from the CA, submits it to CT logs to get SCTs,
-// then sends the precertificate and the SCTs to the CA to get a final certificate.
-//
-// This function is responsible for ensuring that we never try to issue a final
-// certificate twice for the same precertificate, because that has the potential
-// to create certificates with duplicate serials. For instance, this could
-// happen if final certificates were created with different sets of SCTs. This
-// function accomplishes that by bailing on issuance if there is any error in
-// IssueCertificateForPrecertificate; there are no retries, and serials are
-// generated in IssuePrecertificate, so serials with errors are dropped and
-// never have final certificates issued for them (because there is a possibility
-// that the certificate was actually issued but there was an error returning
-// it).
-//
-// [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
+// issueCertificateInner rechecks CAA, gets a certificate from the CA,
+// and finalizes the order with the certificate serial.
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
@@ -1209,14 +1244,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	return parsedCertificate, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []byte) (core.SCTDERs, error) {
+func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
 	started := ra.clk.Now()
-	precert, err := x509.ParseCertificate(precertDER)
+	precert, err := x509.ParseCertificate(sctRequest.PrecertDER)
 	if err != nil {
 		return nil, fmt.Errorf("parsing precertificate: %w", err)
 	}
 
-	scts, err := ra.ctpolicy.GetSCTs(ctx, precertDER, precert.NotAfter)
+	scts, err := ra.ctpolicy.GetSCTs(ctx, precert.Raw, precert.NotAfter)
 	took := ra.clk.Since(started)
 	if err != nil {
 		state := "failure"
@@ -1231,7 +1266,9 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []b
 		return nil, err
 	}
 	ra.ctpolicyResults.With(prometheus.Labels{"result": "success"}).Observe(took.Seconds())
-	return scts, nil
+	return &rapb.SCTResponse{
+		SctDER: scts,
+	}, nil
 }
 
 // UpdateRegistrationKey updates an existing Registration's key.
@@ -1343,15 +1380,12 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
+	// TODO(#8722): Re-add req.Authz.Id to this check once int64-only
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
 	authz, err := bgrpc.PBToAuthz(req.Authz)
-	if err != nil {
-		return nil, err
-	}
-	authzID, err := strconv.ParseInt(authz.ID, 10, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -1418,14 +1452,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
-				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
+				Authz:                    &vapb.AuthzMeta{Id: fmt.Sprintf("%d", authz.ID), RegID: authz.RegistrationID, IdInt: authz.ID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: string(ch.Type),
 				AccountURIID:     authz.RegistrationID,
-				AuthzID:          authz.ID,
+				AuthzID:          fmt.Sprintf("%d", authz.ID),
+				AuthzIDInt:       authz.ID,
 			},
 		)
 		if err != nil {
@@ -1451,7 +1486,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		}
 
 		_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-			Id:                authzID,
+			Id:                authz.ID,
 			Status:            string(status),
 			Expires:           timestamppb.New(expires),
 			Attempted:         string(ch.Type),
@@ -1467,13 +1502,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// given ID to update.
 				ra.log.Info(ctx, "Failed to record validation (likely parallel validation race)",
 					blog.Acct(authz.RegistrationID),
-					blog.Authz(authzID),
+					blog.Authz(authz.ID),
 					blog.Error(err),
 				)
 			} else {
 				ra.log.AuditError(ctx, "Failed to record validation (likely parallel validation race)", err,
 					blog.Acct(authz.RegistrationID),
-					blog.Authz(authzID),
+					blog.Authz(authz.ID),
 				)
 			}
 		}
@@ -1936,14 +1971,23 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
 	ident := identifier.FromProto(req.Identifier)
 
-	if core.IsAnyNilOrZero(req.Id, ident, req.Status, req.RegistrationID) {
+	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
-	authzID, err := strconv.ParseInt(req.Id, 10, 64)
-	if err != nil {
-		return nil, err
+	// TODO(#8722): Re-add req.Id to IsAnyNilOrZero check above, and cleanup following blocks when authz ids are int64-only
+	var authzIDInt int64
+	if req.IdInt != 0 {
+		authzIDInt = req.IdInt
+	} else if req.Id != "" {
+		parsed, err := strconv.ParseInt(req.Id, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("malformed gRPC request message field: %w", err)
+		}
+		authzIDInt = parsed
+	} else {
+		return nil, errIncompleteGRPCRequest
 	}
-	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID}); err != nil {
+	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzIDInt}); err != nil {
 		return nil, err
 	}
 	if req.Status == string(core.StatusPending) {
@@ -1952,7 +1996,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
-		err = ra.countFailedValidations(ctx, req.RegistrationID, ident)
+		err := ra.countFailedValidations(ctx, req.RegistrationID, ident)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}
@@ -2112,7 +2156,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 					!(features.Get().DNSAccount01Enabled && chall.Type == core.ChallengeTypeDNSAccount01) &&
 					!(features.Get().DNSPersist01Enabled && chall.Type == core.ChallengeTypeDNSPersist01) {
 					return nil, berrors.InternalServerError(
-						"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+						"SA.GetAuthorizations returned a DNS wildcard authz (%d) with invalid challenge(s)",
 						authz.ID,
 					)
 				}
@@ -2128,7 +2172,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if err != nil {
 			// This should never happen.
 			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+				"SA.GetAuthorizations returned a DNS wildcard authz (%d) with invalid challenge(s)",
 				authz.ID,
 			)
 		}
@@ -2141,11 +2185,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 		// If we reached this point then the existing authz was acceptable for
 		// reuse.
-		authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		newOrderAuthzs = append(newOrderAuthzs, authzID)
+		newOrderAuthzs = append(newOrderAuthzs, authz.ID)
 		ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 	}
 
@@ -2184,7 +2224,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// An authz without an expiry is an unexpected internal server event
 		if core.IsAnyNilOrZero(authz.Expires) {
 			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned an authz (%s) with zero expiry",
+				"SA.GetAuthorizations returned an authz (%d) with zero expiry",
 				authz.ID)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry

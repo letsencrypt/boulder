@@ -68,6 +68,8 @@ services:
         condition: service_started
       bpkimetal:
         condition: service_started
+      bminio-init:
+        condition: service_completed_successfully
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -140,7 +142,7 @@ services:
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
   bjaeger:
-    image: jaegertracing/all-in-one:1.50
+    image: jaegertracing/all-in-one:1.76.0
     networks:
       - bouldernet
 
@@ -150,6 +152,40 @@ services:
       - pkimetal-socket:/var/run/pkimetal
       - ./test/pkimetal-config.yaml:/config/config.yaml:ro
     network_mode: none
+
+  bminio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    networks:
+      bouldernet:
+        aliases:
+          - boulder-minio
+
+  bminio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      bminio:
+        condition: service_started
+    networks:
+      - bouldernet
+    # Idempotently create the tile storage bucket, then exit. `mc` is the MinIO
+    # command-line client; it addresses servers by registered aliases not URLs,
+    # so we must register the server as an alias before running `mc mb` (make
+    # bucket).
+    #
+    # `mc alias set` probes the server and exits nonzero if it's unreachable, so
+    # our retry loop also doubles as a readiness check. For more information see:
+    #
+    # - https://docs.min.io/aistor/reference/cli/mc-mb/#alias
+    # - https://docs.min.io/aistor/reference/cli/mc-alias/mc-alias-set/
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://boulder-minio:9000 minioadmin minioadmin >/dev/null 2>&1; do sleep 1; done;
+      mc mb --ignore-existing local/boulder-mtc-tiles
+      "
 
   bvitess:
     # The `letsencrypt/boulder-vtcomboserver:latest` tag is automatically built
@@ -163,8 +199,8 @@ services:
     environment:
       # By specifying KEYSPACES vttestserver will create the corresponding
       # databases on startup.
-      KEYSPACES: boulder_sa,incidents_sa,boulder_sa_next,incidents_sa_next
-      NUM_SHARDS: 1,1,1,1
+      KEYSPACES: boulder_sa,incidents_sa,boulder_sa_next,incidents_sa_next,mtcmeta_44947_4_1_0_44
+      NUM_SHARDS: 1,1,1,1,1
     healthcheck:
       # Make sure the service is up and the tables are created. Use `serials` because it happens
       # to be last in the SQL initialization files, so if it exists the other tables do too.
@@ -176,7 +212,7 @@ services:
                 "-e", "SELECT 1 FROM serials"]
       interval: 2s
       timeout: 30s
-      retries: 3
+      retries: 10
       start_period: 10s
       start_interval: 2s
     networks:

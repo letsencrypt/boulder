@@ -155,6 +155,10 @@ type WebFrontEndImpl struct {
 	// How many contacts to allow in a single NewAccount request.
 	maxContactsPerReg int
 
+	// maxCumulativeIdentifierLength rejects new-order requests if the cumulative length of all identifiers
+	// is greater than its value.
+	maxCumulativeIdentifierLength int
+
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
@@ -180,10 +184,19 @@ type WebFrontEndImpl struct {
 	// given request counts as a renewal or not.
 	blockedOnDemandLabels []string `validate:"omitempty"`
 
+	// accountBlocker checks whether accounts are blocked and returns errors if so.
+	accountBlocker AccountBlocker
+
 	// certProfiles is a map of acceptable certificate profile names to
 	// descriptions (perhaps including URLs) of those profiles. NewOrder
 	// Requests with a profile name not present in this map will be rejected.
 	certProfiles map[string]string
+}
+
+// AccountBlocker defines an interface that can check whether a given ID is
+// blocked, and return an error if so.
+type AccountBlocker interface {
+	CheckAccountID(id int64) error
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -197,6 +210,7 @@ func NewWebFrontEndImpl(
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
 	maxContactsPerReg int,
+	maxCumulativeIdentifierLength int,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	eec emailpb.ExporterClient,
@@ -211,6 +225,7 @@ func NewWebFrontEndImpl(
 	unpauseJWTLifetime time.Duration,
 	unpauseURL string,
 	blockedOnDemandLabels []string,
+	accountBlocker AccountBlocker,
 	caaIdentity string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -240,30 +255,32 @@ func NewWebFrontEndImpl(
 	}
 
 	wfe := WebFrontEndImpl{
-		log:                   logger,
-		clk:                   clk,
-		keyPolicy:             keyPolicy,
-		certificateChains:     certificateChains,
-		issuerCertificates:    issuerCertificates,
-		stats:                 initStats(stats),
-		requestTimeout:        requestTimeout,
-		staleTimeout:          staleTimeout,
-		maxContactsPerReg:     maxContactsPerReg,
-		ra:                    rac,
-		sa:                    sac,
-		ee:                    eec,
-		gnc:                   gnc,
-		rnc:                   rnc,
-		rncKey:                rncKey,
-		accountGetter:         accountGetter,
-		limiter:               limiter,
-		txnBuilder:            txnBuilder,
-		certProfiles:          certProfiles,
-		unpauseSigner:         unpauseSigner,
-		unpauseJWTLifetime:    unpauseJWTLifetime,
-		unpauseURL:            unpauseURL,
-		blockedOnDemandLabels: blockedLabels,
-		DirectoryCAAIdentity:  normalizedCAAIdentity,
+		log:                           logger,
+		clk:                           clk,
+		keyPolicy:                     keyPolicy,
+		certificateChains:             certificateChains,
+		issuerCertificates:            issuerCertificates,
+		stats:                         initStats(stats),
+		requestTimeout:                requestTimeout,
+		staleTimeout:                  staleTimeout,
+		maxContactsPerReg:             maxContactsPerReg,
+		maxCumulativeIdentifierLength: maxCumulativeIdentifierLength,
+		ra:                            rac,
+		sa:                            sac,
+		ee:                            eec,
+		gnc:                           gnc,
+		rnc:                           rnc,
+		rncKey:                        rncKey,
+		accountGetter:                 accountGetter,
+		limiter:                       limiter,
+		txnBuilder:                    txnBuilder,
+		certProfiles:                  certProfiles,
+		unpauseSigner:                 unpauseSigner,
+		unpauseJWTLifetime:            unpauseJWTLifetime,
+		unpauseURL:                    unpauseURL,
+		blockedOnDemandLabels:         blockedLabels,
+		accountBlocker:                accountBlocker,
+		DirectoryCAAIdentity:          normalizedCAAIdentity,
 	}
 
 	return wfe, nil
@@ -644,8 +661,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 		prob.Algorithms = getSupportedAlgs()
 	}
 
-	var bErr *berrors.BoulderError
-	if errors.As(ierr, &bErr) {
+	bErr, ok := errors.AsType[*berrors.BoulderError](ierr)
+	if ok {
 		retryAfterSeconds := int(bErr.RetryAfter.Round(time.Second).Seconds())
 		if retryAfterSeconds > 0 {
 			response.Header().Add(headerRetryAfter, strconv.Itoa(retryAfterSeconds))
@@ -1222,7 +1239,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	challenge *core.Challenge,
 ) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, challengePath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID, challenge.StringID())
+	challenge.URL = web.RelativeEndpoint(request, challengePath, fmt.Sprintf("%d", authz.RegistrationID), fmt.Sprintf("%d", authz.ID), challenge.StringID())
 
 	// Internally, we store challenge error problems with just the short form
 	// (e.g. "CAA") of the problem type. But for external display, we need to
@@ -2361,6 +2378,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	idents := newOrderRequest.Identifiers
+	var totalIdentifierLen int
 	for _, ident := range idents {
 		if !ident.Type.IsValid() {
 			wfe.sendError(response, logEvent,
@@ -2373,7 +2391,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			wfe.sendError(response, logEvent, probs.Malformed("NewOrder request included empty identifier"), nil)
 			return
 		}
+		totalIdentifierLen += len(ident.Value)
+		if wfe.maxCumulativeIdentifierLength != 0 && totalIdentifierLen > wfe.maxCumulativeIdentifierLength {
+			wfe.sendError(response, logEvent,
+				probs.Malformed("Cumulative length of all identifier values was greater than %d bytes",
+					wfe.maxCumulativeIdentifierLength), nil)
+			return
+		}
 	}
+
 	idents = identifier.Normalize(idents)
 	logEvent.Identifiers = idents
 
@@ -2381,6 +2407,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
+	}
+
+	if wfe.accountBlocker != nil {
+		err = wfe.accountBlocker.CheckAccountID(acct.ID)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Account blocked"), err)
+			return
+		}
 	}
 
 	if features.Get().CheckIdentifiersPaused {
@@ -2783,7 +2817,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	return web.RelativeEndpoint(request, authzPath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID)
+	return web.RelativeEndpoint(request, authzPath, fmt.Sprintf("%d", authz.RegistrationID), fmt.Sprintf("%d", authz.ID))
 }
 
 // jitterRetryHeader will return a string formatted random integer of seconds within a 20% window of the

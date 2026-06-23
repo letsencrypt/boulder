@@ -1,7 +1,7 @@
 -- For easy diffability, the main part of this schema
 -- should be identical with 01-boulder_sa.sql. Any differences
 -- for the "next" schema should be expressed as ALTER TABLE
--- commands at the end of the file.
+-- or CREATE TABLE commands at the end of the file.
 USE boulder_sa_next;
 
 CREATE TABLE `authz2` (
@@ -247,3 +247,7 @@ CREATE TABLE `serials` (
 ALTER TABLE `certificateStatus` DROP COLUMN `subscriberApproved`;
 ALTER TABLE `certificateStatus` DROP COLUMN `LockCol`;
 ALTER TABLE `revokedCertificates` ADD KEY `serial` (`serial`);
+
+ALTER TABLE `orders`
+  ADD COLUMN `mtcLogID` varchar(255) DEFAULT NULL,
+  ADD COLUMN `mtcSerialNumber` bigint(20) unsigned DEFAULT NULL;
