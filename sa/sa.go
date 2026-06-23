@@ -450,20 +450,23 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	return &emptypb.Empty{}, nil
 }
 
-// RevokeAuthorization revokes a currently unexpired authorization that is valid or pending
-func (ssa *SQLStorageAuthority) RevokeAuthorization(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
-	if req.Id == 0 {
+// RevokeAuthorizationFor revokes a valid or pending authorization by Registraton ID and Identifier so long as it is currently unexpired
+func (ssa *SQLStorageAuthority) RevokeAuthorizationFor(ctx context.Context, req *sapb.RevokeAuthorizationForRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifier.Type, req.Identifier.Value) {
 		return nil, errIncompleteRequest
 	}
 
+	// Aim to leverage the `regID_identifier_status_expires_idx` index on the Authz2 table
 	_, err := ssa.dbMap.ExecContext(ctx,
-		`UPDATE authz2 SET status = :revoked WHERE id = :id AND :expirenow < expires AND status IN (:valid,:pending)`,
+		`UPDATE authz2 SET status = :revoked WHERE registrationID = :registrationID AND identifierType = :identifierType AND identifierValue = :identifierValue AND status IN (:valid,:pending) AND :expirenow < expires`,
 		map[string]any{
-			"revoked":   statusUint(core.StatusRevoked),
-			"id":        req.Id,
-			"expirenow": ssa.clk.Now(),
-			"valid":     statusUint(core.StatusValid),
-			"pending":   statusUint(core.StatusPending),
+			"revoked":         statusUint(core.StatusRevoked),
+			"registrationID":  req.RegistrationID,
+			"identifierType":  identifierTypeToUint[req.Identifier.Type],
+			"identifierValue": req.Identifier.Value,
+			"expirenow":       ssa.clk.Now(),
+			"valid":           statusUint(core.StatusValid),
+			"pending":         statusUint(core.StatusPending),
 		},
 	)
 	if err != nil {

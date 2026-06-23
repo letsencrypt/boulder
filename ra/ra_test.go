@@ -3525,6 +3525,10 @@ func (msar *mockSARevocation) GetCertificate(_ context.Context, req *sapb.Serial
 	}, nil
 }
 
+func (msar *mockSARevocation) RevokeAuthorizationFor(_ context.Context, req *sapb.RevokeAuthorizationForRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
 func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if _, present := msar.revoked[req.Serial]; present {
 		return nil, berrors.AlreadyRevokedError("already revoked")
@@ -3668,6 +3672,108 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "should have succeeded")
 	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)].RevokedReason, int64(revocation.CessationOfOperation))
+}
+
+func TestRevokeAuthzsUponRevokeCert_FeatureDisabled(t *testing.T) {
+	_, _, ra, _, clk, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Specifically disable the feature which allows authz revocation
+	features.Set(features.Config{RevokeAuthzsUponRevokeCert: false})
+	defer features.Reset()
+
+	// Use the same self-signed cert as both issuer and issuee for revocation.
+	_, cert := test.ThrowAwayCert(t, clk)
+	cert.IsCA = true
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	mockSA := newMockSARevocation(cert)
+	ra.SA = &mockSARevocationWithAuthzs{mockSA, false}
+
+	// Revoking with the correct regID should succeed.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  int64(revocation.Unspecified),
+		RegID: 1,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	// And Authzs should NOT be revoked
+	// TODO(#8673): make assertions about the authorizations
+
+	// Another unrevoked cert
+	ic, err = issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	mockSA = newMockSARevocation(cert)
+	ra.SA = &mockSARevocationWithAuthzs{mockSA, true}
+
+	// Revoking when the account does have valid authzs for the name should succeed,
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  int64(revocation.Unspecified),
+		RegID: 2,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)].RevokedReason, int64(revocation.CessationOfOperation))
+	// And Authzs should NOT be revoked
+	// TODO(#8673): make assertions about the authorizations
+
+}
+
+func TestRevokeAuthzsUponRevokeCert_FeatureEnabled(t *testing.T) {
+	_, _, ra, _, clk, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Enable the feature which allows authz revocation
+	features.Set(features.Config{RevokeAuthzsUponRevokeCert: true})
+	defer features.Reset()
+
+	// Use the same self-signed cert as both issuer and issuee for revocation.
+	_, cert := test.ThrowAwayCert(t, clk)
+	cert.IsCA = true
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	mockSA := newMockSARevocation(cert)
+	ra.SA = &mockSARevocationWithAuthzs{mockSA, false}
+
+	// Revoking with the correct regID should succeed.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  int64(revocation.Unspecified),
+		RegID: 1,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	// And Authzs should NOT be revoked
+	// TODO(#8673): make assertions about the authorizations
+
+	// Another unrevoked cert
+	ic, err = issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	mockSA = newMockSARevocation(cert)
+	ra.SA = &mockSARevocationWithAuthzs{mockSA, true}
+
+	// Revoking when the account does have valid authzs for the name should succeed,
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  int64(revocation.Unspecified),
+		RegID: 2,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)].RevokedReason, int64(revocation.CessationOfOperation))
+	// And Authzs SHOULD be revoked
+	// TODO(#8673): make assertions about the authorizations
+
 }
 
 func TestRevokeCertByKey(t *testing.T) {

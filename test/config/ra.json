@@ -136,7 +136,8 @@
 			}
 		},
 		"features": {
-			"AutomaticallyPauseZombieClients": true
+			"AutomaticallyPauseZombieClients": true,
+			"RevokeAuthzsUponRevokeCert": false
 		},
 		"ctLogs": {
 			"stagger": "500ms",

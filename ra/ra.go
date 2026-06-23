@@ -1720,6 +1720,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		Requester:    req.RegID,
 	}
 
+	// By default, do not revoke Authorizations held for the revoked-cert
+	// identifiers.
+	requestAuthzRevocation := false
+
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
 	// nested scope. Doing so will create a new `err` variable that is not
 	// captured by this closure.
@@ -1772,11 +1776,38 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// domain names in the certificate". Override the reason code to match.
 		reasonCode = revocation.CessationOfOperation
 		logEvent.Reason = reasonCode
+
+		// We have confirmed that the requester RegistrationID is NOT the same
+		// as the original subscriber. Requester has demonstrated control over
+		// the set of identifiers sufficient for certificate revocation. Given
+		// BOTH, enable this boolean to signal that authorizations held by the
+		// original subscriber RegID should be revoked after certificate
+		// revocation.
+		requestAuthzRevocation = true
 	}
 
 	err = ra.revokeCertificate(ctx, cert, reasonCode)
 	if err != nil {
 		return nil, err
+	}
+
+	// Revoke authorizations held by a RegistrationID that has been confirmed to
+	// be different than the requester
+	if features.Get().RevokeAuthzsUponRevokeCert && requestAuthzRevocation {
+		// TODO(#8673): is this better as one RPC call with all idents, or as one RPC call per ident?
+		idents := identifier.FromCert(cert)
+		for _, ident := range idents {
+			_, err = ra.SA.RevokeAuthorizationFor(ctx, &sapb.RevokeAuthorizationForRequest{
+				RegistrationID: metadata.RegistrationID,
+				Identifier:     ident.ToProto(),
+			})
+			// TODO(#8673): I do NOT think the revocation function should fail
+			// if authz revocation fails, but maybe there's an alternate way to
+			// surface this. Or maybe just log it?
+			// if err != nil {
+			// 	return nil, err
+			// }
+		}
 	}
 
 	return &emptypb.Empty{}, nil
