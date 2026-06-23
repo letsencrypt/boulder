@@ -38,6 +38,9 @@ following hex-encoded bytes: 300a06082a8648ce3d040302.
 If the signing key is P-384, the signature MUST use ECDSA with SHA-384. The encoded AlgorithmIdentifier MUST match the
 following hex-encoded bytes: 300a06082a8648ce3d040303.
 
+If the signing key is P-521, the signature MUST use ECDSA with SHA-512. When encoded, the AlgorithmIdentifier MUST
+be byte-for-byte identical with the following hex-encoded bytes: 300a06082a8648ce3d040304.
+
 The above encodings consist of the corresponding OID with the parameters field omitted, as specified by RFC 5758,
 Section 3.2. Certificates MUST NOT include a NULL parameter. Note this differs from RSASSA-PKCS1-v1_5, which includes
 an explicit NULL.
@@ -51,7 +54,7 @@ func init() {
 			Description:   "The encoded algorithm identifiers for ECDSA signatures MUST match specific hex-encoded bytes",
 			Citation:      "Mozilla Root Store Policy / Section 5.1.2",
 			Source:        lint.MozillaRootStorePolicy,
-			EffectiveDate: util.MozillaPolicy27Date,
+			EffectiveDate: util.MozillaPolicy30Date,
 		},
 		Lint: NewEcdsaSignatureAidEncoding,
 	})
@@ -71,6 +74,7 @@ func (l *ecdsaSignatureAidEncoding) CheckApplies(c *x509.Certificate) bool {
 		c.SignatureAlgorithmOID.Equal(util.OidSignatureSHA224withECDSA)
 }
 
+//nolint:nestif
 func (l *ecdsaSignatureAidEncoding) Execute(c *x509.Certificate) *lint.LintResult {
 	// We must check consistency of the issuer public key to the signature algorithm
 	// (see for example: If the signing key is P-256, the signature MUST use ECDSA with SHA-256.
@@ -94,6 +98,8 @@ func (l *ecdsaSignatureAidEncoding) Execute(c *x509.Certificate) *lint.LintResul
 	const maxP256SigByteLen = 72
 	// len <= 2+2+2+49+49 (= 104)
 	const maxP384SigByteLen = 104
+	// len <= 2+2+2+67+67 (= 140)
+	const maxP521SigByteLen = 140
 
 	if signatureSize <= maxP256SigByteLen {
 		expectedEncoding := []byte{0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02}
@@ -114,6 +120,15 @@ func (l *ecdsaSignatureAidEncoding) Execute(c *x509.Certificate) *lint.LintResul
 		return &lint.LintResult{
 			Status:  lint.Error,
 			Details: "Encoding of signature algorithm does not match signing key on P-384 curve. Got the unsupported " + hex.EncodeToString(encoded),
+		}
+	} else if signatureSize <= maxP521SigByteLen {
+		expectedEncoding := []byte{0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x04}
+		if bytes.Equal(encoded, expectedEncoding) {
+			return &lint.LintResult{Status: lint.Pass}
+		}
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "Encoding of signature algorithm does not match signing key on P-521 curve. Got the unsupported " + hex.EncodeToString(encoded),
 		}
 	}
 	return &lint.LintResult{

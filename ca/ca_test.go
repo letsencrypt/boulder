@@ -125,7 +125,7 @@ func newCAArgs(t *testing.T) *caArgs {
 	features.Reset()
 
 	fc := clock.NewFake()
-	fc.Add(1 * time.Hour)
+	fc.Set(time.Date(2020, 01, 01, 12, 00, 00, 0, time.UTC))
 
 	pa, err := policy.New(map[identifier.IdentifierType]bool{"dns": true}, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -135,7 +135,11 @@ func newCAArgs(t *testing.T) *caArgs {
 	legacy, err := issuance.NewProfile(issuance.ProfileConfig{
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
-		IgnoredLints:        []string{"w_subject_common_name_included"},
+		IgnoredLints: []string{
+			"e_sub_cert_aia_does_not_contain_ocsp_url",
+			"w_ct_sct_policy_count_unsatisfied",
+			"n_subject_common_name_included",
+		},
 	})
 	test.AssertNotError(t, err, "Loading test profile")
 	modern, err := issuance.NewProfile(issuance.ProfileConfig{
@@ -145,7 +149,11 @@ func newCAArgs(t *testing.T) *caArgs {
 		OmitSKID:            true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 6},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
-		IgnoredLints:        []string{"w_ext_subject_key_identifier_missing_sub_cert"},
+		IgnoredLints: []string{
+			"e_sub_cert_aia_does_not_contain_ocsp_url",
+			"w_ct_sct_policy_count_unsatisfied",
+			"w_ext_subject_key_identifier_missing_sub_cert",
+		},
 	})
 	test.AssertNotError(t, err, "Loading test profile")
 	profiles := map[string]*issuance.Profile{

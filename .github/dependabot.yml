@@ -18,8 +18,25 @@ updates:
       default-days: 30
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule: 
+    schedule:
       interval: monthly
     open-pull-requests-limit: 1
     cooldown:
       default-days: 7
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+    groups:
+      docker-compose:
+        patterns:
+          - "*"
+    allow:
+      - dependency-name: "ghcr.io/pkimetal/pkimetal"
+      - dependency-name: "jaegertracing/all-in-one"
+      - dependency-name: "minio/minio"
+      - dependency-name: "minio/mc"

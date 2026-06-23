@@ -63,7 +63,7 @@ func (l *ecImproperCurves) Execute(c *x509.Certificate) *lint.LintResult {
 		theKey = keyType
 	}
 	/* Now can actually check the params */
-	theParams := theKey.Curve.Params()
+	theParams := theKey.Params()
 	switch theParams.Name {
 	case "P-256", "P-384", "P-521":
 		return &lint.LintResult{Status: lint.Pass}
