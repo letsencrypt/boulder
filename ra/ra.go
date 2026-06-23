@@ -896,7 +896,11 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("issuing MTC: %s", err)
 	}
 
-	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcEntryIndex)
+	ra.log.Info(ctx, "issued MTC",
+		slog.String("logID", resp.MtcLogID),
+		slog.Int64("entryIndex", resp.MtcEntryIndex),
+	)
+
 	return nil
 }
 
