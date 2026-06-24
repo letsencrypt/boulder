@@ -11,13 +11,13 @@ import (
 )
 
 func TestVerifyRSAKeyPair(t *testing.T) {
-	privKey1, err := rsa.GenerateKey(rand.Reader, 2048)
+	privKey1, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "Failed while generating test key 1")
 
 	_, _, err = verify(privKey1)
 	test.AssertNotError(t, err, "Failed to verify valid key")
 
-	privKey2, err := rsa.GenerateKey(rand.Reader, 2048)
+	privKey2, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "Failed while generating test key 2")
 
 	verifyHash, err := makeVerifyHash()
@@ -28,13 +28,13 @@ func TestVerifyRSAKeyPair(t *testing.T) {
 }
 
 func TestVerifyECDSAKeyPair(t *testing.T) {
-	privKey1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privKey1, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Failed while generating test key 1")
 
 	_, _, err = verify(privKey1)
 	test.AssertNotError(t, err, "Failed to verify valid key")
 
-	privKey2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privKey2, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Failed while generating test key 2")
 
 	verifyHash, err := makeVerifyHash()

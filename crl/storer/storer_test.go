@@ -212,7 +212,7 @@ func TestUploadCRLInvalidSignature(t *testing.T) {
 			},
 		},
 	}
-	fakeSigner, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	fakeSigner, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating throwaway signer")
 	crlBytes, err := x509.CreateRevocationList(
 		rand.Reader,

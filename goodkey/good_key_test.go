@@ -123,14 +123,14 @@ func TestROCA(t *testing.T) {
 }
 
 func TestGoodKey(t *testing.T) {
-	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	private, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "Error generating key")
 	test.AssertNotError(t, testingPolicy.GoodKey(context.Background(), &private.PublicKey), "Should have accepted good key")
 }
 
 func TestECDSABadCurve(t *testing.T) {
 	for _, curve := range invalidCurves {
-		private, err := ecdsa.GenerateKey(curve, rand.Reader)
+		private, err := ecdsa.GenerateKey(curve, nil)
 		test.AssertNotError(t, err, "Error generating key")
 		err = testingPolicy.GoodKey(context.Background(), &private.PublicKey)
 		test.AssertError(t, err, "Should have rejected key with unsupported curve")
@@ -150,7 +150,7 @@ var validCurves = []elliptic.Curve{
 
 func TestECDSAGoodKey(t *testing.T) {
 	for _, curve := range validCurves {
-		private, err := ecdsa.GenerateKey(curve, rand.Reader)
+		private, err := ecdsa.GenerateKey(curve, nil)
 		test.AssertNotError(t, err, "Error generating key")
 		test.AssertNotError(t, testingPolicy.GoodKey(context.Background(), &private.PublicKey), "Should have accepted good key")
 	}
@@ -159,7 +159,7 @@ func TestECDSAGoodKey(t *testing.T) {
 func TestECDSANotOnCurveX(t *testing.T) {
 	for _, curve := range validCurves {
 		// Change a public key so that it is no longer on the curve.
-		private, err := ecdsa.GenerateKey(curve, rand.Reader)
+		private, err := ecdsa.GenerateKey(curve, nil)
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Add(private.X, big.NewInt(1))
@@ -172,7 +172,7 @@ func TestECDSANotOnCurveX(t *testing.T) {
 func TestECDSANotOnCurveY(t *testing.T) {
 	for _, curve := range validCurves {
 		// Again with Y.
-		private, err := ecdsa.GenerateKey(curve, rand.Reader)
+		private, err := ecdsa.GenerateKey(curve, nil)
 		test.AssertNotError(t, err, "Error generating key")
 
 		// Change the public key so that it is no longer on the curve.
@@ -186,7 +186,7 @@ func TestECDSANotOnCurveY(t *testing.T) {
 func TestECDSANegative(t *testing.T) {
 	for _, curve := range validCurves {
 		// Check that negative X is not accepted.
-		private, err := ecdsa.GenerateKey(curve, rand.Reader)
+		private, err := ecdsa.GenerateKey(curve, nil)
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Neg(private.X)
@@ -206,7 +206,7 @@ func TestECDSANegative(t *testing.T) {
 func TestECDSAXOutsideField(t *testing.T) {
 	for _, curve := range validCurves {
 		// Check that X outside [0, p-1] is not accepted.
-		private, err := ecdsa.GenerateKey(curve, rand.Reader)
+		private, err := ecdsa.GenerateKey(curve, nil)
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Mul(private.X, private.Curve.Params().P)
@@ -219,7 +219,7 @@ func TestECDSAXOutsideField(t *testing.T) {
 func TestECDSAYOutsideField(t *testing.T) {
 	for _, curve := range validCurves {
 		// Check that Y outside [0, p-1] is not accepted.
-		private, err := ecdsa.GenerateKey(curve, rand.Reader)
+		private, err := ecdsa.GenerateKey(curve, nil)
 		test.AssertNotError(t, err, "Error generating key")
 
 		private.X.Mul(private.Y, private.Curve.Params().P)
@@ -245,7 +245,7 @@ func TestECDSAIdentity(t *testing.T) {
 }
 
 func TestNonRefKey(t *testing.T) {
-	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	private, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "Error generating key")
 	test.AssertError(t, testingPolicy.GoodKey(context.Background(), private.PublicKey), "Accepted non-reference key")
 }
@@ -260,7 +260,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 		policy, err := NewPolicy(nil, testCheck)
 		test.AssertNotError(t, err, "NewKeyPolicy failed")
 
-		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 		test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 		err = policy.GoodKey(context.Background(), k.Public())
 		test.AssertNotError(t, err, "GoodKey failed with a non-blocked key")
@@ -275,7 +275,7 @@ func TestDBBlocklistReject(t *testing.T) {
 	policy, err := NewPolicy(nil, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 	err = policy.GoodKey(context.Background(), k.Public())
 	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")

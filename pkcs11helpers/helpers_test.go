@@ -249,7 +249,7 @@ func TestX509Signer(t *testing.T) {
 	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
 		return nil
 	}
-	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Failed to generate test key")
 	ctx.SignFunc = func(_ pkcs11.SessionHandle, digest []byte) ([]byte, error) {
 		r, s, err := ecdsa.Sign(rand.Reader, tk, digest[:])

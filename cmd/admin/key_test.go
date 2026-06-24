@@ -32,12 +32,12 @@ import (
 
 func TestSPKIHashesFromPrivateKeys(t *testing.T) {
 
-	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Generating ECDSA key")
 	pkcs8ecdsa, err := x509.MarshalPKCS8PrivateKey(ecdsaKey)
 	test.AssertNotError(t, err, "Marshalling PKCS8 private key")
 
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	rsaKey, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "Generating RSA key")
 	pkcs8rsa, err := x509.MarshalPKCS8PrivateKey(rsaKey)
 	test.AssertNotError(t, err, "Marshalling PKCS8 private key")
@@ -166,7 +166,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	log := blog.NewMock()
 	msa := mockSARecordingBlocks{}
 
-	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating test private key")
 	keyHash, err := core.KeyDigest(privKey.Public())
 	test.AssertNotError(t, err, "computing test SPKI hash")

@@ -75,7 +75,7 @@ func TestTLSProbe(t *testing.T) {
 		t.Fatalf("creating test acme client: %s", err)
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("generating test key: %s", err)
 	}

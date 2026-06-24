@@ -102,19 +102,19 @@ func derFromPEMFile(filename string) ([]byte, error) {
 func TestMismatches(t *testing.T) {
 	now := time.Now()
 
-	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// A separate issuer key, used for signing the final certificate, but
 	// using the same simulated issuer certificate.
-	untrustedIssuerKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	untrustedIssuerKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	subscriberKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	subscriberKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

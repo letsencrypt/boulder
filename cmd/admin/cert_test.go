@@ -105,7 +105,7 @@ func TestSerialsFromPrivateKey(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating test private key")
 	keyBytes, err := x509.MarshalPKCS8PrivateKey(privKey)
 	test.AssertNotError(t, err, "marshalling test private key bytes")

@@ -24,7 +24,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 		policy, err := NewPolicy(&goodkey.Config{}, testCheck)
 		test.AssertNotError(t, err, "NewKeyPolicy failed")
 
-		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 		test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 		err = policy.GoodKey(context.Background(), k.Public())
 		test.AssertNotError(t, err, "GoodKey failed with a non-blocked key")
@@ -39,7 +39,7 @@ func TestDBBlocklistReject(t *testing.T) {
 	policy, err := NewPolicy(&goodkey.Config{}, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
 	err = policy.GoodKey(context.Background(), k.Public())
 	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")

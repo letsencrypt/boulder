@@ -65,7 +65,7 @@ func testTLSCert(names []string, ips []net.IP, extensions []pkix.Extension) *tls
 		IPAddresses:     ips,
 		ExtraExtensions: extensions,
 	}
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), nil)
 	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 
 	return &tls.Certificate{
@@ -338,7 +338,7 @@ func TestCertNames(t *testing.T) {
 
 	// Round-trip the certificate through generation and parsing, to make sure
 	// certAltNames can handle "real" certificates and not just templates.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Error creating test key")
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 	test.AssertNotError(t, err, "Error creating certificate")
@@ -673,7 +673,7 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 		ExtraExtensions: []pkix.Extension{testACMEExt},
 	}
 
-	eeKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	eeKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating test key")
 
 	issuerCert := &x509.Certificate{
@@ -686,7 +686,7 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 		BasicConstraintsValid: true,
 	}
 
-	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating test key")
 
 	// Test that a cert with mismatched subject and issuer fields is rejected,
@@ -746,7 +746,7 @@ func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
 		ExtraExtensions: []pkix.Extension{testACMEExt},
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating test key")
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")

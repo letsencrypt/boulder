@@ -22,7 +22,7 @@ import (
 
 func TestLoadPubKey(t *testing.T) {
 	tmp := t.TempDir()
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), nil)
 
 	_, _, err := loadPubKey(path.Join(tmp, "does", "not", "exist"))
 	test.AssertError(t, err, "should fail on non-existent file")
@@ -1295,7 +1295,7 @@ func TestPostIssuanceLinting(t *testing.T) {
 	err := postIssuanceLinting(nil, nil)
 	test.AssertError(t, err, "should have failed because no certificate was provided")
 
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "unable to generate ECDSA private key")
 	template := &x509.Certificate{
 		NotAfter:     clk.Now().Add(1 * time.Hour),

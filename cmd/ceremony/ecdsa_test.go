@@ -40,7 +40,7 @@ func TestECGenerate(t *testing.T) {
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return []byte{1, 2, 3}, nil
 	}
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Failed to generate a ECDSA test key")
 
 	// Test ecGenerate fails with unknown curve

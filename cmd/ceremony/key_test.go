@@ -46,7 +46,7 @@ func TestGenerateKeyRSA(t *testing.T) {
 	tmp := t.TempDir()
 
 	ctx := setupCtx()
-	rsaPriv, err := rsa.GenerateKey(rand.Reader, 1024)
+	rsaPriv, err := rsa.GenerateKey(nil, 1024)
 	test.AssertNotError(t, err, "Failed to generate a test RSA key")
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{
@@ -74,7 +74,7 @@ func TestGenerateKeyRSA(t *testing.T) {
 }
 
 func setECGenerateFuncs(ctx *pkcs11helpers.MockCtx) {
-	ecPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	ecPriv, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		panic(err)
 	}
