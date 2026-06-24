@@ -326,7 +326,7 @@ func TestCAARechecking(t *testing.T) {
 	// Try to finalize the order created above. Due to our db manipulation, this
 	// should trigger a CAA recheck. And due to our challtestsrv manipulation,
 	// that CAA recheck should fail. Therefore the whole finalize should fail.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("generating cert key: %s", err)
 	}

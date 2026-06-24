@@ -80,7 +80,7 @@ func TestServerTransportCredentials(t *testing.T) {
 }
 
 func TestClientTransportCredentials(t *testing.T) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 
 	temp := &x509.Certificate{

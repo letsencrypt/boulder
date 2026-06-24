@@ -549,7 +549,7 @@ func TestGenerateCSR(t *testing.T) {
 		Country:      "country",
 	}
 
-	signer, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	signer, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 
 	csrBytes, err := generateCSR(profile, &wrappedSigner{signer})

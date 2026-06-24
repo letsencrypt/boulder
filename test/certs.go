@@ -37,7 +37,7 @@ func ThrowAwayCert(t *testing.T, clk clock.Clock) (string, *x509.Certificate) {
 	_, _ = rand.Read(serialBytes[:])
 	serial := big.NewInt(0).SetBytes(serialBytes[:])
 
-	key, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P224(), nil)
 	AssertNotError(t, err, "rsa.GenerateKey failed")
 
 	template := &x509.Certificate{

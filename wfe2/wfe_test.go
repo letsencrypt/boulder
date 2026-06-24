@@ -2407,7 +2407,7 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 	}
 	issuerKey := loadKey(&testing.T{}, issuerKeyPem)
 
-	newKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	newKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create test key: %w", err)
 	}
@@ -3124,7 +3124,7 @@ func TestKeyRollover(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _, signer := setupWFE(t)
 
-	existingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	existingKey, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "Error creating random 2048 RSA key")
 
 	newKeyBytes, err := os.ReadFile("../test/test-key-5.der")
@@ -3416,7 +3416,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	// Make a self-signed junk certificate
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "unexpected error making random private key")
 	// Use a known serial from the mockSAWithValidCert mock.
 	// This ensures that any failures here are due to the certificate's issuer
@@ -4069,7 +4069,7 @@ func TestOrderMatchesReplacement(t *testing.T) {
 
 	expectExpiry := time.Now().AddDate(0, 0, 1)
 	expectSerial := big.NewInt(1337)
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	testKey, _ := rsa.GenerateKey(nil, 1024)
 	rawCert := x509.Certificate{
 		NotAfter:     expectExpiry,
 		DNSNames:     []string{"example.com", "example-a.com"},
@@ -4230,7 +4230,7 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 		issuer = v
 		break
 	}
-	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), nil)
 	expectSerial := big.NewInt(1337)
 	expectCert := &x509.Certificate{
 		NotBefore:      fc.Now(),
@@ -4296,7 +4296,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 		issuer = v
 		break
 	}
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to create test key")
 	extantCert := &x509.Certificate{
 		NotBefore:      fc.Now(),
