@@ -264,7 +264,7 @@ func TestOrderFinalizeEarly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating order: %s", err)
 	}
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("generating key: %s", err)
 	}

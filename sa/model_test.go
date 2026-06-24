@@ -373,7 +373,7 @@ func insertCertificate(ctx context.Context, dbMap *db.WrappedMap, fc clock.FakeC
 		SerialNumber: serialBigInt,
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		return fmt.Errorf("generating test key: %w", err)
 	}

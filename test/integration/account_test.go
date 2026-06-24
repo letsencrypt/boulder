@@ -54,7 +54,7 @@ func TestNewAccount(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 			if err != nil {
 				t.Fatalf("failed to generate account key: %s", err)
 			}
@@ -90,7 +90,7 @@ func TestNewAccount_DuplicateKey(t *testing.T) {
 		t.Fatalf("failed to connect to acme directory: %s", err)
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("failed to generate account key: %s", err)
 	}
@@ -149,7 +149,7 @@ func TestAccountDeactivate(t *testing.T) {
 		t.Fatalf("failed to connect to acme directory: %s", err)
 	}
 
-	acctKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	acctKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("failed to generate account key: %s", err)
 	}

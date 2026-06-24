@@ -20,7 +20,7 @@ func TestSubordinateCAChainsServedByWFE(t *testing.T) {
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	chains, err := authAndIssueFetchAllChains(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true)

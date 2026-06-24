@@ -118,7 +118,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 		defer db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
 	}
 
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// ---- Test revocation by serial ----

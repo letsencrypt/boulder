@@ -125,7 +125,7 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 // CreateWorkingTestRegistration inserts a new, correct Registration into the
 // given SA.
 func createWorkingRegistration(t testing.TB, sa *SQLStorageAuthority) *corepb.Registration {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("Failed to generate ECDSA key: %s", err)
 	}
@@ -4359,7 +4359,7 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 }
 
 func newAcctKey(t *testing.T) []byte {
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), nil)
 	jwk := &jose.JSONWebKey{Key: key.Public()}
 	acctKey, err := jwk.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")

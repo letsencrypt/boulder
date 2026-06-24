@@ -67,7 +67,7 @@ func TestTLSConfigLoad(t *testing.T) {
 	key := path.Join(tmp, "TestTLSConfigLoad.key.pem")
 	caCert := path.Join(tmp, "TestTLSConfigLoad.cacert.pem")
 
-	rootKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	rootKey, err := ecdsa.GenerateKey(elliptic.P224(), nil)
 	test.AssertNotError(t, err, "creating test root key")
 	rootTemplate := &x509.Certificate{
 		Subject:      pkix.Name{CommonName: "test root"},
@@ -81,7 +81,7 @@ func TestTLSConfigLoad(t *testing.T) {
 	err = os.WriteFile(caCert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootCert}), os.ModeAppend)
 	test.AssertNotError(t, err, "writing test root cert to disk")
 
-	intKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	intKey, err := ecdsa.GenerateKey(elliptic.P224(), nil)
 	test.AssertNotError(t, err, "creating test intermediate key")
 	intKeyBytes, err := x509.MarshalECPrivateKey(intKey)
 	test.AssertNotError(t, err, "marshalling test intermediate key")

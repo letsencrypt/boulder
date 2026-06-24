@@ -88,7 +88,7 @@ func newAccount(s *State, c *acmeCache) error {
 	}
 
 	// Create a random signing key
-	signKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	signKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		return err
 	}
