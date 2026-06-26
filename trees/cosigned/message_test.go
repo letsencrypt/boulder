@@ -3,6 +3,7 @@ package cosigned
 import (
 	"encoding/hex"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -46,26 +47,38 @@ func TestMarshalErrors(t *testing.T) {
 		SubtreeHash:  [32]byte{},
 	}
 
-	m.CosignerName = ""
-	_, err := m.Marshal()
-	if err == nil {
-		t.Fatalf("marshal with short CosignerName: got no error")
-	}
-	expected := "invalid cosigner_name length 0"
-	if err.Error() != expected {
-		t.Errorf("marshal with short name: got %q, want %q", err, expected)
+	type testCase struct {
+		name, expected string
+		distorter      func(target *Message)
 	}
 
-	m.CosignerName = "Michigan"
-	m.LogOrigin = ""
-
-	_, err = m.Marshal()
-	if err == nil {
-		t.Fatalf("marshal with short log_origin: got no error")
+	testCases := []testCase{
+		{"short CosignerName", "invalid cosigner_name length 0", func(target *Message) {
+			target.CosignerName = ""
+		}},
+		{"long CosignerName", "invalid cosigner_name length 256", func(target *Message) {
+			target.CosignerName = strings.Repeat("a", 256)
+		}},
+		{"short LogOrigin", "invalid log_origin length 0", func(target *Message) {
+			target.LogOrigin = ""
+		}},
+		{"long LogOrigin", "invalid log_origin length 256", func(target *Message) {
+			target.LogOrigin = strings.Repeat("a", 256)
+		}},
 	}
-	expected = "invalid log_origin length 0"
-	if err.Error() != expected {
-		t.Errorf("marshal with short log_origin: got %q, want %q", err, expected)
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m2 := m
+			tc.distorter(&m2)
+			_, err := m2.Marshal()
+			if err == nil {
+				t.Fatalf("got no error, want %q", tc.expected)
+			}
+			if err.Error() != tc.expected {
+				t.Errorf("marshal with short name: got %q, want %q", err, tc.expected)
+			}
+		})
 	}
 }
 
