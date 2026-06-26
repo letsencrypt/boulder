@@ -26,6 +26,9 @@ const subtreeLabel = "subtree/v1\n\x00"
 
 // Marshal encodes the Message as bytes.
 //
+// It errors if cosigner_name or log_origin are too long or too short. It does not validate semantic constraints,
+// like start < end.
+//
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
 // opaque HashValue[HASH_SIZE];
 //
