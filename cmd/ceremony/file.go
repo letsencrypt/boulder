@@ -9,6 +9,7 @@ func writeFile(filename string, bytes []byte) error {
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 	_, err = f.Write(bytes)
 	return err
 }
