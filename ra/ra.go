@@ -1685,6 +1685,21 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, smeta *sapb.SerialMetadata) {
+	if features.Get().RevokeAuthzsUponRevokeCert {
+		idents := identifier.FromCert(cert)
+		for _, ident := range idents {
+			_, err := ra.SA.RevokeAuthorizationFor(ctx, &sapb.RevokeAuthorizationForRequest{
+				RegistrationID: smeta.RegistrationID,
+				Identifier:     ident.ToProto(),
+			})
+			if err != nil {
+				ra.log.Infof("Authz revocation failed: %s", err)
+			}
+		}
+	}
+}
+
 // RevokeCertByApplicant revokes the certificate in question. It allows any
 // revocation reason from (0, 1, 3, 4, 5, 9), because Subscribers are allowed to
 // request any revocation reason for their own certificates. However, if the
@@ -1791,23 +1806,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	// Revoke authorizations held by a RegistrationID that has been confirmed to
-	// be different than the requester
-	if features.Get().RevokeAuthzsUponRevokeCert && requestAuthzRevocation {
-		// TODO(#8673): is this better as one RPC call with all idents, or as one RPC call per ident?
-		idents := identifier.FromCert(cert)
-		for _, ident := range idents {
-			_, err = ra.SA.RevokeAuthorizationFor(ctx, &sapb.RevokeAuthorizationForRequest{
-				RegistrationID: metadata.RegistrationID,
-				Identifier:     ident.ToProto(),
-			})
-			// TODO(#8673): I do NOT think the revocation function should fail
-			// if authz revocation fails, but maybe there's an alternate way to
-			// surface this. Or maybe just log it?
-			// if err != nil {
-			// 	return nil, err
-			// }
-		}
+	// Asyncronously request to revoke authorizations held by the RegID from
+	// cert metadata, confirmed above to be different than requester ID.
+	if requestAuthzRevocation {
+		go ra.revokeAuthorizations(ctx, cert, metadata)
 	}
 
 	return &emptypb.Empty{}, nil
