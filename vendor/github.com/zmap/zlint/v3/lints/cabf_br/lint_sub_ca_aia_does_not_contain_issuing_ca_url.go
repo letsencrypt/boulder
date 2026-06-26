@@ -35,11 +35,12 @@ It SHOULD contain the HTTP URL of the Issuing CA’s certificate (accessMethod =
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "w_sub_ca_aia_does_not_contain_issuing_ca_url",
-			Description:   "Subordinate CA Certificate: authorityInformationAccess SHOULD also contain the HTTP URL of the Issuing CA's certificate.",
-			Citation:      "BRs: 7.1.2.2",
-			Source:        lint.CABFBaselineRequirements,
-			EffectiveDate: util.CABEffectiveDate,
+			Name:            "w_sub_ca_aia_does_not_contain_issuing_ca_url",
+			Description:     "Subordinate CA Certificate: authorityInformationAccess SHOULD also contain the HTTP URL of the Issuing CA's certificate.",
+			Citation:        "BRs: 7.1.2.2",
+			Source:          lint.CABFBaselineRequirements,
+			EffectiveDate:   util.CABEffectiveDate,
+			IneffectiveDate: util.CABFBRs_2_0_0_Date,
 		},
 		Lint: NewSubCaIssuerUrl,
 	})

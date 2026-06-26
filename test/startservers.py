@@ -5,12 +5,12 @@ import signal
 import socket
 import subprocess
 
-from helpers import config_dir, waithealth, waitport
+from helpers import config_dir, waithealth, waitport, CONFIG_NEXT
 
 Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_port', 'host_override', 'cmd', 'deps'))
 
 # Keep these ports in sync with consul/config.hcl
-SERVICES = (
+SERVICES = [
     Service('remoteva-a',
         8011, 9397, 'rva.boulder',
         ('./bin/boulder', 'remoteva', '--config', os.path.join(config_dir, 'remoteva-a.json'), '--addr', ':9397', '--debug-addr', ':8011'),
@@ -53,14 +53,6 @@ SERVICES = (
         8104, 9492, 'va.boulder',
         ('./bin/boulder', 'boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', ':9492', '--debug-addr', ':8104'),
         ('remoteva-a', 'remoteva-b')),
-    Service('boulder-mtca-1',
-        8010, 9396, 'mtca.boulder',
-        ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010'),
-        None),
-    Service('boulder-mtpublisher-1',
-        8025, None, None,
-        ('./bin/boulder', 'boulder-mtpublisher', '--config', os.path.join(config_dir, 'mtpublisher.json'), '--debug-addr', ':8025'),
-        None),
     Service('boulder-ca-1',
         8001, 9393, 'ca.boulder',
         ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', ':9393', '--debug-addr', ':8001'),
@@ -151,7 +143,19 @@ SERVICES = (
         8016, None, None,
         ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json'), '--debug-addr', ':8016'),
         None),
-)
+]
+
+if CONFIG_NEXT:
+    SERVICES.extend([
+        Service('boulder-mtca-1',
+            8010, 9396, 'mtca.boulder',
+            ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010'),
+            None),
+        Service('boulder-mtpublisher-1',
+            8025, None, None,
+            ('./bin/boulder', 'boulder-mtpublisher', '--config', os.path.join(config_dir, 'mtpublisher.json'), '--debug-addr', ':8025'),
+            None),
+    ])
 
 def _service_toposort(services):
     """Yields Service objects in topologically sorted order.
@@ -193,7 +197,10 @@ def install(race_detection, coverage=False):
     if coverage:
         go_build_flags += ' -cover' # https://go.dev/blog/integration-test-coverage
 
-    return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
+    cmd = ["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]
+    if CONFIG_NEXT:
+        cmd.append("GO=gotip")
+    return subprocess.call(cmd) == 0
 
 def run(cmd, coverage_dir=None):
     e = os.environ.copy()

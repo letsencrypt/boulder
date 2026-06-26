@@ -50,8 +50,8 @@ func (l *dsaImproperSize) Execute(c *x509.Certificate) *lint.LintResult {
 	if !ok {
 		return &lint.LintResult{Status: lint.NA}
 	}
-	L := dsaKey.Parameters.P.BitLen()
-	N := dsaKey.Parameters.Q.BitLen()
+	L := dsaKey.P.BitLen()
+	N := dsaKey.Q.BitLen()
 	if (L == 2048 && N == 224) || (L == 2048 && N == 256) || (L == 3072 && N == 256) {
 		return &lint.LintResult{Status: lint.Pass}
 	}

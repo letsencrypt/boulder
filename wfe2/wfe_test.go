@@ -429,6 +429,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		10*time.Second,
 		10*time.Second,
 		2,
+		1000,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
 		nil,
@@ -4554,5 +4555,49 @@ func TestAccountBlocker(t *testing.T) {
 	expected := "Account blocked :: oh no"
 	if detail != expected {
 		t.Errorf("newOrder with blocked account: got %q, want %q", detail, expected)
+	}
+}
+
+func TestMaxCumulativeIdentifierLength(t *testing.T) {
+	t.Parallel()
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	// Test that the newOrder endpoint returns no error if the valid profile is specified.
+	responseWriter := httptest.NewRecorder()
+
+	order := struct {
+		Identifiers []identifier.ACMEIdentifier
+	}{}
+
+	const alphabet = "abcdefghijklmnopqrstuvwxyz"
+
+	for i := 0; i < 25; i++ {
+		order.Identifiers = append(order.Identifiers,
+			identifier.NewDNS(
+				fmt.Sprintf("%d.%s.%s.%s.%s.example.com", i,
+					alphabet, alphabet, alphabet, alphabet)))
+	}
+
+	orderBytes, err := json.Marshal(order)
+	if err != nil {
+		t.Fatalf("marshaling JSON: %s", err)
+	}
+
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, string(orderBytes))
+	mux.ServeHTTP(responseWriter, r)
+	if responseWriter.Code != http.StatusBadRequest {
+		t.Fatalf("newOrder with too long identifiers: got %d, want %d; %s", responseWriter.Code, http.StatusBadRequest,
+			responseWriter.Body.String())
+	}
+	var errorResp1 map[string]any
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
+	if err != nil {
+		t.Fatalf("newOrder with too long identifiers: got error unmarshaling response: %s", err)
+	}
+	detail := errorResp1["detail"]
+	expected := "Cumulative length of all identifier values was greater than 1000 bytes"
+	if detail != expected {
+		t.Errorf("newOrder with too long identifiers: got %q, want %q", detail, expected)
 	}
 }

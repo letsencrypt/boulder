@@ -92,7 +92,7 @@ func (l *bRAIAAccessMethodAllowed) Execute(c *x509.Certificate) *lint.LintResult
 					return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("Certificate has an invalid GeneralName with tag %d in an accessLocation.", v.Location.Tag)}
 				}
 
-				if !(v.Method.Equal(idAdCaIssuers) || v.Method.Equal(idAdOCSP)) {
+				if !v.Method.Equal(idAdCaIssuers) && !v.Method.Equal(idAdOCSP) {
 					return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("Certificate has an invalid accessMethod with OID %s.", v.Method)}
 				}
 			}
