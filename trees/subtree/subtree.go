@@ -1,11 +1,11 @@
-package tlog
+package subtree
 
 import (
 	"crypto/sha256"
 	"fmt"
 	"math/bits"
 
-	xtlog "golang.org/x/mod/sumdb/tlog"
+	"golang.org/x/mod/sumdb/tlog"
 )
 
 // largestPowerOfTwoSmallerThan returns the largest power of two strictly less
@@ -17,14 +17,16 @@ func largestPowerOfTwoSmallerThan(n int64) int64 {
 	return int64(1) << (bits.Len64(uint64(n-1)) - 1) //nolint:gosec // G115: n > 1, so n-1 is positive.
 }
 
-// SubtreeHash returns the RFC 6962 section 2.1 Merkle Tree Hash over leaves
-// treated as an independent list. Note: callers must ensure the leaves
-// correspond to a ValidSubtree range.
-func SubtreeHash(leaves []xtlog.Hash) xtlog.Hash {
+// Hash returns the RFC 9162 section 2.1.1 Merkle Tree Hash over leaves treated
+// as an independent list. It folds the list it is given without checking that
+// the leaves are an aligned subtree.
+//
+// https://datatracker.ietf.org/doc/html/rfc9162#section-2.1.1
+func Hash(leaves []tlog.Hash) tlog.Hash {
 	switch len(leaves) {
 	case 0:
 		// The hash of an empty list is the hash of an empty string.
-		return xtlog.Hash(sha256.Sum256(nil))
+		return tlog.Hash(sha256.Sum256(nil))
 	case 1:
 		// The hash of a list with one entry is just the leaf hash.
 		return leaves[0]
@@ -35,13 +37,13 @@ func SubtreeHash(leaves []xtlog.Hash) xtlog.Hash {
 	k := largestPowerOfTwoSmallerThan(int64(len(leaves)))
 
 	// Hash the two subtree roots together as SHA-256(0x01 || left || right).
-	return xtlog.NodeHash(SubtreeHash(leaves[:k]), SubtreeHash(leaves[k:]))
+	return tlog.NodeHash(Hash(leaves[:k]), Hash(leaves[k:]))
 }
 
 // ValidSubtree reports whether [start, end) is a valid subtree per the MTC
 // draft section 4.1 Definition of a Subtree: 0 <= start < end and start is a
 // multiple of BIT_CEIL(end - start).
-func ValidSubtree(start, end int64) bool {
+func valid(start, end int64) bool {
 	if start < 0 || start >= end {
 		// A subtree must have 0 <= start < end.
 		return false
@@ -67,7 +69,7 @@ func perfectSubtree(lo, hi int64) (level int, ok bool) {
 
 // foldRangeHash folds subtree roots, in the order perfectSubtreeIndexes lists
 // them, into MTH(D[lo:hi)). It returns the hash and the unconsumed remainder.
-func foldRangeHash(lo, hi int64, hashes []xtlog.Hash) (xtlog.Hash, []xtlog.Hash) {
+func foldRangeHash(lo, hi int64, hashes []tlog.Hash) (tlog.Hash, []tlog.Hash) {
 	_, ok := perfectSubtree(lo, hi)
 	if ok {
 		return hashes[0], hashes[1:]
@@ -75,7 +77,7 @@ func foldRangeHash(lo, hi int64, hashes []xtlog.Hash) (xtlog.Hash, []xtlog.Hash)
 	k := largestPowerOfTwoSmallerThan(hi - lo)
 	left, rest := foldRangeHash(lo, lo+k, hashes)
 	right, rest := foldRangeHash(lo+k, hi, rest)
-	return xtlog.NodeHash(left, right), rest
+	return tlog.NodeHash(left, right), rest
 }
 
 // perfectSubtreeIndexes appends, in left-to-right order, the stored hash index
@@ -83,34 +85,34 @@ func foldRangeHash(lo, hi int64, hashes []xtlog.Hash) (xtlog.Hash, []xtlog.Hash)
 func perfectSubtreeIndexes(lo, hi int64, indexes []int64) []int64 {
 	level, ok := perfectSubtree(lo, hi)
 	if ok {
-		return append(indexes, xtlog.StoredHashIndex(level, lo>>level))
+		return append(indexes, tlog.StoredHashIndex(level, lo>>level))
 	}
 	k := largestPowerOfTwoSmallerThan(hi - lo)
 	indexes = perfectSubtreeIndexes(lo, lo+k, indexes)
 	return perfectSubtreeIndexes(lo+k, hi, indexes)
 }
 
-// rangeHash returns MTH(D[lo:hi)), the RFC 6962 section 2.1 Merkle Tree Hash
+// rangeHash returns MTH(D[lo:hi)), the RFC 9162 section 2.1.1 Merkle Tree Hash
 // over the leaves in [lo, hi) as an independent list, read through the provided
 // reader. It decomposes [lo, hi) into its maximal aligned perfect subtrees and
 // reads all of their roots in a single ReadHashes call before folding them
 // together.
-func rangeHash(lo, hi int64, reader xtlog.HashReader) (xtlog.Hash, error) {
+func rangeHash(lo, hi int64, reader tlog.HashReader) (tlog.Hash, error) {
 	indexes := perfectSubtreeIndexes(lo, hi, nil)
 	hashes, err := reader.ReadHashes(indexes)
 	if err != nil {
-		return xtlog.Hash{}, err
+		return tlog.Hash{}, err
 	}
 	if len(hashes) != len(indexes) {
 		// Reader returned a slice shorter or larger than the requested indexes.
 		// Avoid panicking on the fold.
-		return xtlog.Hash{}, fmt.Errorf("ReadHashes returned %d hashes for %d indexes", len(hashes), len(indexes))
+		return tlog.Hash{}, fmt.Errorf("ReadHashes returned %d hashes for %d indexes", len(hashes), len(indexes))
 	}
 	h, _ := foldRangeHash(lo, hi, hashes)
 	return h, nil
 }
 
-func appendRangeHash(lo, hi int64, reader xtlog.HashReader, proof []xtlog.Hash) ([]xtlog.Hash, error) {
+func appendRangeHash(lo, hi int64, reader tlog.HashReader, proof []tlog.Hash) ([]tlog.Hash, error) {
 	h, err := rangeHash(lo, hi, reader)
 	if err != nil {
 		return nil, err
@@ -124,7 +126,7 @@ func appendRangeHash(lo, hi int64, reader xtlog.HashReader, proof []xtlog.Hash) 
 // subtree D_n of size n rooted at absolute offset base, and known is the
 // draft's b flag. It reads stored hashes through the provided reader and
 // returns proof with the hashes it emits appended.
-func subtreeSubProof(start, end, base, n int64, known bool, reader xtlog.HashReader, proof []xtlog.Hash) ([]xtlog.Hash, error) {
+func subtreeSubProof(start, end, base, n int64, known bool, reader tlog.HashReader, proof []tlog.Hash) ([]tlog.Hash, error) {
 	if start == 0 && end == n {
 		// [start, end) now covers this whole node D_n, the SUBTREE_SUBPROOF
 		// base case. known decides whether the proof carries it.
@@ -176,24 +178,30 @@ func subtreeSubProof(start, end, base, n int64, known bool, reader xtlog.HashRea
 	return appendRangeHash(siblingLo, siblingHi, reader, proof)
 }
 
-// SubtreeConsistencyProof returns SUBTREE_PROOF(start, end, D_n) for the tree
-// of size treeSize, reading stored hashes through the provided reader, per the
-// MTC draft section 4.4.1 Generating a Subtree Consistency Proof, detailed
-// further in the draft's Appendix B.4. [start, end) must be a valid subtree
-// with end <= treeSize.
-func SubtreeConsistencyProof(start, end, treeSize int64, reader xtlog.HashReader) ([]xtlog.Hash, error) {
-	if !ValidSubtree(start, end) || end > treeSize {
+// ConsistencyProof returns SUBTREE_PROOF(start, end, D_n) for the tree of size
+// treeSize, reading stored hashes through the provided reader, per the MTC
+// draft section 4.4.1 Generating a Subtree Consistency Proof, detailed further
+// in the draft's Appendix B.4. [start, end) must be a valid subtree with end <=
+// treeSize.
+//
+//   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-4.4.1
+//   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#appendix-B.4
+func ConsistencyProof(start, end, treeSize int64, reader tlog.HashReader) ([]tlog.Hash, error) {
+	if !valid(start, end) || end > treeSize {
 		return nil, fmt.Errorf("[%d, %d) is not a valid subtree of a tree of size %d", start, end, treeSize)
 	}
 	return subtreeSubProof(start, end, 0, treeSize, true, reader, nil)
 }
 
-// VerifySubtreeConsistency reports whether proof shows that the subtree [start,
-// end), whose hash is nodeHash, sits at those positions in the tree of size n
-// with root rootHash. It follows the procedure in MTC draft section 4.4.3,
-// detailed further in the draft's Appendix B.5.
-func VerifySubtreeConsistency(start, end, n int64, proof []xtlog.Hash, nodeHash, rootHash xtlog.Hash) bool {
-	if !ValidSubtree(start, end) || end > n {
+// VerifyConsistency reports whether proof shows that the subtree [start, end),
+// whose hash is nodeHash, sits at those positions in the tree of size n with
+// root rootHash. It follows the procedure in MTC draft section 4.4.3, detailed
+// further in the draft's Appendix B.5.
+//
+//   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-4.4.3
+//   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#appendix-B.5
+func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHash tlog.Hash) bool {
+	if !valid(start, end) || end > n {
 		return false
 	}
 
@@ -225,9 +233,9 @@ func VerifySubtreeConsistency(start, end, n int64, proof []xtlog.Hash, nodeHash,
 
 	// fr and sr climb together from a shared seed: fr rebuilds the subtree
 	// hash, sr the tree root.
-	var fr xtlog.Hash
-	var sr xtlog.Hash
-	var rest []xtlog.Hash
+	var fr tlog.Hash
+	var sr tlog.Hash
+	var rest []tlog.Hash
 	if fn == sn {
 		// A single node: the seed is its hash, nodeHash.
 		fr = nodeHash
@@ -253,9 +261,9 @@ func VerifySubtreeConsistency(start, end, n int64, proof []xtlog.Hash, nodeHash,
 			if fn < sn {
 				// fr only folds while fn < sn. Freezing it at fn == sn is what
 				// makes the final fr == nodeHash check meaningful.
-				fr = xtlog.NodeHash(c, fr)
+				fr = tlog.NodeHash(c, fr)
 			}
-			sr = xtlog.NodeHash(c, sr)
+			sr = tlog.NodeHash(c, sr)
 			// At the ragged right edge (sn == tn) the just-merged node is
 			// shorter than its left sibling, so skip its empty levels here,
 			// consuming no proof hash, until sn is odd again.
@@ -267,7 +275,7 @@ func VerifySubtreeConsistency(start, end, n int64, proof []xtlog.Hash, nodeHash,
 		} else {
 			// c is the node's right sibling, outside the subtree, so it extends
 			// sr toward the root.
-			sr = xtlog.NodeHash(sr, c)
+			sr = tlog.NodeHash(sr, c)
 		}
 		fn >>= 1
 		sn >>= 1
