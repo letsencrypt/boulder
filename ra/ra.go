@@ -1806,7 +1806,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	// Asyncronously request to revoke authorizations held by the RegID from
+	// Asynchronously request to revoke authorizations held by the RegID from
 	// cert metadata, confirmed above to be different than requester ID.
 	if requestAuthzRevocation {
 		go ra.revokeAuthorizations(ctx, cert, metadata)
