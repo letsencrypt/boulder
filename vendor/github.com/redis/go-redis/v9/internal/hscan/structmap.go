@@ -109,8 +109,6 @@ func (s StructValue) Scan(key string, value string) error {
 			return scan.ScanRedis(value)
 		case encoding.TextUnmarshaler:
 			return scan.UnmarshalText(util.StringToBytes(value))
-		case encoding.BinaryUnmarshaler:
-			return scan.UnmarshalBinary(util.StringToBytes(value))
 		}
 	}
 

@@ -124,7 +124,7 @@ func TestSubtreeHashVectors(t *testing.T) {
 		"5dc9da79a70659a9ad559cb701ded9a2ab9d823aad2f4960cfe370eff4604328",
 	}
 	for size := 0; size <= 8; size++ {
-		got := Hash(leaves[:size])
+		got := HashLeaves(leaves[:size])
 		if hex.EncodeToString(got[:]) != expect[size] {
 			t.Errorf("Hash(size %d) = %x, want %s", size, got, expect[size])
 		}
@@ -148,7 +148,7 @@ func TestSubtreeHashAppendixVector(t *testing.T) {
 			if !valid(start, end) {
 				continue
 			}
-			subtree := Hash(leaves[start:end])
+			subtree := HashLeaves(leaves[start:end])
 			fmt.Fprintf(h, "[%d, %d) %s\n", start, end, hex.EncodeToString(subtree[:]))
 		}
 	}
@@ -167,7 +167,7 @@ func TestTreeHashMatchesOracle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("TreeHash(%d): %s", n, err)
 		}
-		want := Hash(leafHashes(entries))
+		want := HashLeaves(leafHashes(entries))
 		if got != want {
 			t.Errorf("TreeHash(%d) = %x, want %x", n, got, want)
 		}
@@ -180,9 +180,9 @@ func TestTreeHashMatchesOracle(t *testing.T) {
 func TestSubtreeProofExamples(t *testing.T) {
 	leaves := leafHashes(seqLeaves(14))
 	reader := buildHashReader(t, seqLeaves(14))
-	root := Hash(leaves)
+	root := HashLeaves(leaves)
 	mth := func(start, end int64) tlog.Hash {
-		return Hash(leaves[start:end])
+		return HashLeaves(leaves[start:end])
 	}
 
 	cases := []struct {
@@ -227,7 +227,7 @@ func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
 
 	h := sha256.New()
 	for n := int64(0); n <= 130; n++ {
-		root := Hash(leaves[:n])
+		root := HashLeaves(leaves[:n])
 		for end := int64(1); end <= n; end++ {
 			for start := int64(0); start < end; start++ {
 				if !valid(start, end) {
@@ -237,7 +237,7 @@ func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ConsistencyProof(%d, %d, %d): %s", start, end, n, err)
 				}
-				node := Hash(leaves[start:end])
+				node := HashLeaves(leaves[start:end])
 				if !VerifyConsistency(start, end, n, proof, node, root) {
 					t.Errorf("VerifyConsistency(%d, %d, %d) rejected a valid proof", start, end, n)
 				}
@@ -347,8 +347,8 @@ func TestSubtreeConsistencyProofBatchesReads(t *testing.T) {
 func TestVerifySubtreeConsistencyRejectsBadInput(t *testing.T) {
 	leaves := leafHashes(seqLeaves(14))
 	reader := buildHashReader(t, seqLeaves(14))
-	root := Hash(leaves)
-	node := Hash(leaves[8:13])
+	root := HashLeaves(leaves)
+	node := HashLeaves(leaves[8:13])
 	proof, err := ConsistencyProof(8, 13, 14, reader)
 	if err != nil {
 		t.Fatalf("ConsistencyProof(8, 13, 14): %s", err)
@@ -395,9 +395,9 @@ func TestVerifySubtreeConsistencyMatchesXtlogCheckTree(t *testing.T) {
 		entries := seqLeaves(int(n))
 		reader := buildHashReader(t, entries)
 		leaves := leafHashes(entries)
-		root := Hash(leaves)
+		root := HashLeaves(leaves)
 		for end := int64(1); end < n; end++ {
-			subRoot := Hash(leaves[:end])
+			subRoot := HashLeaves(leaves[:end])
 			proof, err := ConsistencyProof(0, end, n, reader)
 			if err != nil {
 				t.Fatalf("ConsistencyProof(0, %d, %d): %s", end, n, err)
@@ -425,9 +425,9 @@ func TestVerifySubtreeConsistencyMatchesXtlogCheckTree(t *testing.T) {
 func TestVerifySubtreeConsistencyRejectsMismatchedProof(t *testing.T) {
 	leaves := leafHashes(seqLeaves(14))
 	reader := buildHashReader(t, seqLeaves(14))
-	root := Hash(leaves)
+	root := HashLeaves(leaves)
 	mth := func(start, end int64) tlog.Hash {
-		return Hash(leaves[start:end])
+		return HashLeaves(leaves[start:end])
 	}
 
 	proof, err := ConsistencyProof(8, 13, 14, reader)
@@ -442,8 +442,8 @@ func TestVerifySubtreeConsistencyRejectsMismatchedProof(t *testing.T) {
 	for i := range otherEntries {
 		otherEntries[i] = []byte{0xa1, byte(i)}
 	}
-	rootAt13 := Hash(leafHashes(seqLeaves(13)))
-	otherRoot := Hash(leafHashes(otherEntries))
+	rootAt13 := HashLeaves(leafHashes(seqLeaves(13)))
+	otherRoot := HashLeaves(leafHashes(otherEntries))
 
 	cases := []struct {
 		name     string
@@ -473,14 +473,14 @@ func TestSubtreeRoundTrip(t *testing.T) {
 		entries := seqLeaves(int(n))
 		leaves := leafHashes(entries)
 		reader := buildHashReader(t, entries)
-		root := Hash(leaves)
+		root := HashLeaves(leaves)
 
 		for start := int64(0); start < n; start++ {
 			for end := start + 1; end <= n; end++ {
 				if !valid(start, end) {
 					continue
 				}
-				node := Hash(leaves[start:end])
+				node := HashLeaves(leaves[start:end])
 				proof, err := ConsistencyProof(start, end, n, reader)
 				if err != nil {
 					t.Fatalf("ConsistencyProof(%d, %d, %d): %s", start, end, n, err)

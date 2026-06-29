@@ -17,12 +17,13 @@ func largestPowerOfTwoSmallerThan(n int64) int64 {
 	return int64(1) << (bits.Len64(uint64(n-1)) - 1) //nolint:gosec // G115: n > 1, so n-1 is positive.
 }
 
-// Hash returns the RFC 9162 section 2.1.1 Merkle Tree Hash over leaves treated
-// as an independent list. It combines the list it is given without checking
-// that the leaves are an aligned subtree.
+// HashLeaves returns MTH(D[start:end]), the RFC 9162 section 2.1.1 Merkle Tree
+// Hash of the provided leaf hashes. Pass a subtree's leaves to get that
+// subtree's hash. The inputs must be leaf hashes (HASH(0x00 || entry), as
+// produced by tlog.RecordHash).
 //
 // https://datatracker.ietf.org/doc/html/rfc9162#section-2.1.1
-func Hash(leaves []tlog.Hash) tlog.Hash {
+func HashLeaves(leaves []tlog.Hash) tlog.Hash {
 	switch len(leaves) {
 	case 0:
 		// The hash of an empty list is the hash of an empty string.
@@ -30,14 +31,16 @@ func Hash(leaves []tlog.Hash) tlog.Hash {
 	case 1:
 		// The hash of a list with one entry is just the leaf hash.
 		return leaves[0]
+	default:
+		// Split the list into two subtree roots, the left being a "complete" subtree
+		// and the right being the remainder which may or may not be complete.
+
+		// Cases 0 and 1 return above, so len(leaves) >= 2 here.
+		k := largestPowerOfTwoSmallerThan(int64(len(leaves)))
+
+		// Combine the two parts' roots as SHA-256(0x01 || left || right).
+		return tlog.NodeHash(HashLeaves(leaves[:k]), HashLeaves(leaves[k:]))
 	}
-
-	// Split the list into two subtree roots, the left being a "complete" subtree
-	// and the right being the remainder which may or may not be complete.
-	k := largestPowerOfTwoSmallerThan(int64(len(leaves)))
-
-	// Combine the two parts' roots as SHA-256(0x01 || left || right).
-	return tlog.NodeHash(Hash(leaves[:k]), Hash(leaves[k:]))
 }
 
 // valid reports whether [start, end) is a valid subtree per the MTC draft
@@ -59,130 +62,136 @@ func valid(start, end int64) bool {
 	return uint64(start)&(bitCeil-1) == 0
 }
 
-// completeSubtree reports whether [start, end) is an aligned complete subtree
-// (power-of-two size, start aligned to that size), and if so its level.
+// completeSubtree reports whether [start, end) is a complete subtree (a valid
+// subtree with a power-of-two size), and if so its level.
 func completeSubtree(start, end int64) (level int, ok bool) {
-	if start < 0 || start >= end || end < 0 {
-		panic(fmt.Sprintf("invalid interval [%d, %d)", start, end))
-	}
 	size := end - start
-	if bits.OnesCount64(uint64(size)) != 1 || start&(size-1) != 0 { //nolint:gosec // G115: callers pass start < end, so size is positive.
+	if !valid(start, end) || bits.OnesCount64(uint64(size)) != 1 { //nolint:gosec // G115: valid ensures start < end, so size is positive.
 		return 0, false
 	}
-	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: callers pass start < end, so size is positive.
+	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: valid ensures start < end, so size is positive.
 }
 
-// combineIntervalHash combines subtree roots, in the order
+// splitPoint returns where to split the subtree [start, end) into a complete
+// subtree on the left and a possibly ragged one on the right. This is the mid
+// in draft-ietf-plants-merkle-tree-certs section 4.5.1.
+func splitPoint(start, end int64) int64 {
+	return start + largestPowerOfTwoSmallerThan(end-start)
+}
+
+// combineSubtreeRoots combines subtree roots, in the order
 // completeSubtreeIndexes lists them, into MTH(D[start:end]). It returns the
 // hash and the unconsumed remainder.
-func combineIntervalHash(start, end int64, hashes []tlog.Hash) (tlog.Hash, []tlog.Hash) {
+func combineSubtreeRoots(start, end int64, hashes []tlog.Hash) (tlog.Hash, []tlog.Hash) {
 	_, ok := completeSubtree(start, end)
 	if ok {
 		return hashes[0], hashes[1:]
 	}
-	k := largestPowerOfTwoSmallerThan(end - start)
-	left, rest := combineIntervalHash(start, start+k, hashes)
-	right, rest := combineIntervalHash(start+k, end, rest)
+	// completeSubtree accepts single leaves, and the input is always a valid
+	// subtree (end > start), so end-start >= 2 here.
+	mid := splitPoint(start, end)
+	left, rest := combineSubtreeRoots(start, mid, hashes)
+	right, rest := combineSubtreeRoots(mid, end, rest)
 	return tlog.NodeHash(left, right), rest
 }
 
 // completeSubtreeIndexes splits [start, end) into the largest power-of-two
 // subtrees the tree already keeps a single stored hash for, and appends each
 // one's stored hash index left to right.
-func completeSubtreeIndexes(start, end int64, storedHashIndexes []int64) []int64 {
+func completeSubtreeIndexes(start, end int64) []int64 {
 	level, ok := completeSubtree(start, end)
 	if ok {
-		return append(storedHashIndexes, tlog.StoredHashIndex(level, start>>level))
+		return []int64{tlog.StoredHashIndex(level, start>>level)}
 	}
-	k := largestPowerOfTwoSmallerThan(end - start)
-	storedHashIndexes = completeSubtreeIndexes(start, start+k, storedHashIndexes)
-	return completeSubtreeIndexes(start+k, end, storedHashIndexes)
+	// completeSubtree accepts single leaves, and the input is always a valid
+	// subtree (end > start), so end-start >= 2 here.
+	mid := splitPoint(start, end)
+	return append(completeSubtreeIndexes(start, mid), completeSubtreeIndexes(mid, end)...)
 }
 
-// intervalHash returns MTH(D[start:end]), the RFC 9162 section 2.1.1 Merkle
-// Tree Hash over the leaves in [start, end) as an independent list, read
-// through the provided reader. It splits [start, end) into the largest
+// hashSubtree returns the hash of the subtree [start, end), MTH(D[start:end])
+// from RFC 9162 section 2.1.1. It splits [start, end) into the largest
 // power-of-two subtrees the tree already keeps a single stored hash for, reads
-// those hashes in a single ReadHashes call, and combines them.
-func intervalHash(start, end int64, reader tlog.HashReader) (tlog.Hash, error) {
-	indexes := completeSubtreeIndexes(start, end, nil)
+// those hashes through the provided reader in a single ReadHashes call, and
+// combines them.
+func hashSubtree(start, end int64, reader tlog.HashReader) (tlog.Hash, error) {
+	indexes := completeSubtreeIndexes(start, end)
 	hashes, err := reader.ReadHashes(indexes)
 	if err != nil {
 		return tlog.Hash{}, err
 	}
 	if len(hashes) != len(indexes) {
 		// Reader returned a slice shorter or larger than the requested indexes.
-		// Avoid panicking in combineIntervalHash.
+		// Avoid panicking when we combine them.
 		return tlog.Hash{}, fmt.Errorf("ReadHashes returned %d hashes for %d indexes", len(hashes), len(indexes))
 	}
-	h, _ := combineIntervalHash(start, end, hashes)
+	h, _ := combineSubtreeRoots(start, end, hashes)
 	return h, nil
 }
 
-func appendIntervalHash(start, end int64, reader tlog.HashReader, proof []tlog.Hash) ([]tlog.Hash, error) {
-	h, err := intervalHash(start, end, reader)
-	if err != nil {
-		return nil, err
-	}
-	return append(proof, h), nil
-}
-
-// subtreeSubProof implements SUBTREE_SUBPROOF(start, end, D_n, b) from the MTC
-// draft section 4.4.1 Generating a Subtree Consistency Proof, detailed further
-// in the draft's Appendix B.4. start and end are relative to the current
-// subtree D_n of size n rooted at absolute offset base, and known is the
-// draft's b flag. It reads stored hashes through the provided reader and
-// returns proof with the hashes it emits appended.
-func subtreeSubProof(start, end, base, n int64, known bool, reader tlog.HashReader, proof []tlog.Hash) ([]tlog.Hash, error) {
-	if start == 0 && end == n {
-		// [start, end) now covers this whole node D_n, the SUBTREE_SUBPROOF
-		// base case. known decides whether the proof carries it.
+// subtreeSubProof implements the draft's SUBTREE_SUBPROOF from section 4.4.1
+// Generating a Subtree Consistency Proof (Appendix B.4), with the target
+// subtree [start, end) and the node [windowStart, windowEnd) it sits in given
+// as absolute leaf positions. known is the draft's b flag. It reads stored
+// hashes through the provided reader and returns proof with the hashes it emits
+// appended.
+func subtreeSubProof(start, end, windowStart, windowEnd int64, known bool, reader tlog.HashReader, proof []tlog.Hash) ([]tlog.Hash, error) {
+	if start == windowStart && end == windowEnd {
+		// [start, end) covers the whole node, the SUBTREE_SUBPROOF base case.
+		// known decides whether the proof carries it.
 		if known {
 			// The verifier already has this node, so emit nothing.
 			return proof, nil
 		}
 
-		// The verifier doesn't have it, so emit its hash MTH(D_n).
-		h, err := intervalHash(base, base+n, reader)
+		// The verifier doesn't have it, so emit the node's hash.
+		h, err := hashSubtree(windowStart, windowEnd, reader)
 		if err != nil {
 			return nil, err
 		}
 		return append(proof, h), nil
 	}
 
-	// [start, end) covers only part of this node, so split at k. The switch
-	// routes by where the subtree falls (left child, right child, or straddle)
-	// and names the other child as the sibling the shared tail appends.
-	k := largestPowerOfTwoSmallerThan(n)
+	// [start, end) covers only part of the node, so split the node at splitPoint.
+	// The switch routes by where the subtree falls (left child, right child, or
+	// straddle) and names the other child as the sibling the shared tail appends.
+
+	// A one-leaf node has only itself as a subtree, which hits the base case
+	// above, so the node has >= 2 leaves here.
+	split := splitPoint(windowStart, windowEnd)
 	var err error
 	var siblingStart int64
 	var siblingEnd int64
 	switch {
-	case end <= k:
-		// The subtree fits in the left child. Recurse there, with the right
-		// child [k, n) as the sibling.
-		proof, err = subtreeSubProof(start, end, base, k, known, reader, proof)
-		siblingStart = base + k
-		siblingEnd = base + n
-	case k <= start:
-		// The subtree fits in the right child. Recurse there (shifting
-		// coordinates by k), with the left child [0, k) as the sibling.
-		proof, err = subtreeSubProof(start-k, end-k, base+k, n-k, known, reader, proof)
-		siblingStart = base
-		siblingEnd = base + k
+	case end <= split:
+		// The subtree is in the left child [windowStart, split). The right child
+		// is the sibling.
+		proof, err = subtreeSubProof(start, end, windowStart, split, known, reader, proof)
+		siblingStart = split
+		siblingEnd = windowEnd
+	case split <= start:
+		// The subtree is in the right child [split, windowEnd). The left child is
+		// the sibling.
+		proof, err = subtreeSubProof(start, end, split, windowEnd, known, reader, proof)
+		siblingStart = windowStart
+		siblingEnd = split
 	default:
-		// The subtree straddles the split (start < k < end), which a valid
-		// subtree only does when start == 0. Recurse on the right child's
-		// prefix [0, end-k), no longer a node the verifier knows (known =
-		// false), with the left child [0, k) as the sibling.
-		proof, err = subtreeSubProof(0, end-k, base+k, n-k, false, reader, proof)
-		siblingStart = base
-		siblingEnd = base + k
+		// The subtree straddles the split (start < split < end), which a valid
+		// subtree only does when start == windowStart. Recurse into the right
+		// child, no longer a node the verifier knows (known = false). The left
+		// child is the sibling.
+		proof, err = subtreeSubProof(split, end, split, windowEnd, false, reader, proof)
+		siblingStart = windowStart
+		siblingEnd = split
 	}
 	if err != nil {
 		return nil, err
 	}
-	return appendIntervalHash(siblingStart, siblingEnd, reader, proof)
+	h, err := hashSubtree(siblingStart, siblingEnd, reader)
+	if err != nil {
+		return nil, err
+	}
+	return append(proof, h), nil
 }
 
 // ConsistencyProof returns SUBTREE_PROOF(start, end, D_n) for the tree of size

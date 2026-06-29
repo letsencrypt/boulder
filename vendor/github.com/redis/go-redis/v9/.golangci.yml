@@ -26,8 +26,6 @@ linters:
       - builtin$
       - examples$
 formatters:
-  enable:
-    - gofmt
   exclusions:
     generated: lax
     paths:
