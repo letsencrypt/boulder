@@ -32,8 +32,8 @@ func Hash(leaves []tlog.Hash) tlog.Hash {
 		return leaves[0]
 	}
 
-	// Split the list into two subtree roots, the left being a "perfect" subtree
-	// and the right being the remainder which may or may not be perfect.
+	// Split the list into two subtree roots, the left being a "complete" subtree
+	// and the right being the remainder which may or may not be complete.
 	k := largestPowerOfTwoSmallerThan(int64(len(leaves)))
 
 	// Combine the two parts' roots as SHA-256(0x01 || left || right).
@@ -48,15 +48,20 @@ func valid(start, end int64) bool {
 		// A subtree must have 0 <= start < end.
 		return false
 	}
-	// bitCeil is BIT_CEIL(end-start). A multiple of a power of two has its low
-	// bits zero, so start & (bitCeil-1) == 0 becomes our validity test.
-	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: start < end, so end-start-1 is non-negative.
+	// start must be a multiple of BIT_CEIL(end-start). bits.Len64(x) is the bit
+	// width of x, so 1<<bits.Len64(x) is the smallest power of two strictly
+	// above x, an exclusive ceiling. BIT_CEIL(x) is inclusive, the smallest
+	// power of two at least x, so we apply it to end-start-1.
+	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: the start >= end check above leaves end-start positive, so end-start-1 is non-negative.
+
+	// bitCeil-1 masks the bits below bitCeil, so start & (bitCeil-1) is zero
+	// exactly when start is a multiple of bitCeil.
 	return uint64(start)&(bitCeil-1) == 0
 }
 
-// perfectSubtree reports whether [start, end) is an aligned perfect subtree
+// completeSubtree reports whether [start, end) is an aligned complete subtree
 // (power-of-two size, start aligned to that size), and if so its level.
-func perfectSubtree(start, end int64) (level int, ok bool) {
+func completeSubtree(start, end int64) (level int, ok bool) {
 	if start < 0 || start >= end || end < 0 {
 		panic(fmt.Sprintf("invalid interval [%d, %d)", start, end))
 	}
@@ -68,10 +73,10 @@ func perfectSubtree(start, end int64) (level int, ok bool) {
 }
 
 // combineIntervalHash combines subtree roots, in the order
-// perfectSubtreeIndexes lists them, into MTH(D[start:end]). It returns the hash
-// and the unconsumed remainder.
+// completeSubtreeIndexes lists them, into MTH(D[start:end]). It returns the
+// hash and the unconsumed remainder.
 func combineIntervalHash(start, end int64, hashes []tlog.Hash) (tlog.Hash, []tlog.Hash) {
-	_, ok := perfectSubtree(start, end)
+	_, ok := completeSubtree(start, end)
 	if ok {
 		return hashes[0], hashes[1:]
 	}
@@ -81,17 +86,17 @@ func combineIntervalHash(start, end int64, hashes []tlog.Hash) (tlog.Hash, []tlo
 	return tlog.NodeHash(left, right), rest
 }
 
-// perfectSubtreeIndexes splits [start, end) into the largest power-of-two
+// completeSubtreeIndexes splits [start, end) into the largest power-of-two
 // subtrees the tree already keeps a single stored hash for, and appends each
 // one's stored hash index left to right.
-func perfectSubtreeIndexes(start, end int64, storedHashIndexes []int64) []int64 {
-	level, ok := perfectSubtree(start, end)
+func completeSubtreeIndexes(start, end int64, storedHashIndexes []int64) []int64 {
+	level, ok := completeSubtree(start, end)
 	if ok {
 		return append(storedHashIndexes, tlog.StoredHashIndex(level, start>>level))
 	}
 	k := largestPowerOfTwoSmallerThan(end - start)
-	storedHashIndexes = perfectSubtreeIndexes(start, start+k, storedHashIndexes)
-	return perfectSubtreeIndexes(start+k, end, storedHashIndexes)
+	storedHashIndexes = completeSubtreeIndexes(start, start+k, storedHashIndexes)
+	return completeSubtreeIndexes(start+k, end, storedHashIndexes)
 }
 
 // intervalHash returns MTH(D[start:end]), the RFC 9162 section 2.1.1 Merkle
@@ -100,7 +105,7 @@ func perfectSubtreeIndexes(start, end int64, storedHashIndexes []int64) []int64 
 // power-of-two subtrees the tree already keeps a single stored hash for, reads
 // those hashes in a single ReadHashes call, and combines them.
 func intervalHash(start, end int64, reader tlog.HashReader) (tlog.Hash, error) {
-	indexes := perfectSubtreeIndexes(start, end, nil)
+	indexes := completeSubtreeIndexes(start, end, nil)
 	hashes, err := reader.ReadHashes(indexes)
 	if err != nil {
 		return tlog.Hash{}, err
@@ -244,7 +249,7 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 		sr = nodeHash
 		rest = proof
 	} else {
-		// The subtree is larger, so the seed is proof[0], the largest perfect
+		// The subtree is larger, so the seed is proof[0], the largest complete
 		// subtree flush with its right edge.
 		if len(proof) == 0 {
 			return false
