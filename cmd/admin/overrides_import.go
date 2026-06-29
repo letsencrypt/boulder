@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -74,18 +75,27 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	for range overrideCount {
 		result := <-results
 		if result.err != nil {
-			a.log.Errf("failed to add override: key=%q limit=%d: %s", result.ov.BucketKey, result.ov.LimitEnum, result.err)
+			a.log.Error(ctx, "failed to add override", result.err,
+				slog.Int64("limit", result.ov.LimitEnum),
+				slog.String("bucketKey", result.ov.BucketKey),
+			)
 			errorCount++
 			continue
 		}
 		if result.resp != nil && result.resp.Existing != nil {
-			a.log.Errf(
-				"override for limit %s bucketKey %q is lower than existing override (count=%d burst=%d period=%s), use --force to override",
-				ratelimits.Name(int(result.ov.LimitEnum)),
-				result.ov.BucketKey,
-				result.resp.Existing.Count,
-				result.resp.Existing.Burst,
-				result.resp.Existing.Period.AsDuration(),
+			a.log.Error(ctx, "refused to update override", errors.New("new override is lower than existing override"),
+				slog.Int64("limit", result.ov.LimitEnum),
+				slog.String("bucketKey", result.ov.BucketKey),
+				slog.Group("old",
+					slog.Duration("period", result.resp.Existing.Period.AsDuration()),
+					slog.Int64("count", result.resp.Existing.Count),
+					slog.Int64("burst", result.resp.Existing.Burst),
+				),
+				slog.Group("new",
+					slog.Duration("period", result.ov.Period.AsDuration()),
+					slog.Int64("count", result.ov.Count),
+					slog.Int64("burst", result.ov.Burst),
+				),
 			)
 			errorCount++
 		}
@@ -97,6 +107,6 @@ func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	if errorCount > 0 {
 		return fmt.Errorf("%d out of %d overrides failed to be added, see log message(s) for more details", errorCount, overrideCount)
 	}
-	a.log.Infof("Successfully added %d overrides", overrideCount)
+	a.log.Info(ctx, "Successfully added overrides", slog.Int("count", overrideCount))
 	return nil
 }

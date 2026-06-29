@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
@@ -72,7 +72,7 @@ func TestReadingPauseCSV(t *testing.T) {
 			err := os.WriteFile(csvFile, []byte(strings.Join(testCase.data, "\n")), os.ModePerm)
 			test.AssertNotError(t, err, "could not write temporary file")
 
-			parsedData, err := a.readPausedAccountFile(csvFile)
+			parsedData, err := a.readPausedAccountFile(t.Context(), csvFile)
 			test.AssertNotError(t, err, "no error expected, but received one")
 			test.AssertEquals(t, len(parsedData), testCase.expectedRecords)
 		})

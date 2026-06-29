@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
-	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -454,7 +454,7 @@ func TestBackoffPolicy(t *testing.T) {
 
 	// Backoff once. Check to make sure the backoff is logged.
 	bkr.backoff()
-	resultLog := mocklog.GetAllMatching("INFO: backoff trying again in")
+	resultLog := mocklog.GetAllMatching(`level=INFO msg="backing off" retryAfter=`)
 	if len(resultLog) == 0 {
 		t.Fatalf("no backoff loglines found")
 	}
