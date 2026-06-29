@@ -24,16 +24,13 @@ func TestMessageRoundtrip(t *testing.T) {
 		t.Fatalf("marshaling: %s", err)
 	}
 
-	var m2 Message
-
-	err = m2.Unmarshal(out)
+	m2, err := Unmarshal(out)
 	if err != nil {
 		t.Fatalf("unmarshaling encoded message: %s", err)
 	}
 
-	if !reflect.DeepEqual(m, m2) {
-		t.Errorf("round-tripping message: got %#v, want %#v",
-			m, m2)
+	if !reflect.DeepEqual(m, *m2) {
+		t.Errorf("round-tripping message: got %#v, want %#v", m, *m2)
 	}
 }
 
@@ -98,14 +95,13 @@ func TestUnmarshalErrors(t *testing.T) {
 	}
 	t.Logf("%x", out)
 
-	var m2 Message
-	err = m2.Unmarshal(out[:len(out)-1])
+	_, err = Unmarshal(out[:len(out)-1])
 	if err == nil {
 		t.Errorf("unmarshal with short input: got no error")
 	}
 
 	long := append(out, byte('a'))
-	err = m2.Unmarshal(long)
+	_, err = Unmarshal(long)
 	if err == nil {
 		t.Errorf("unmarshal with trailing bytes: got no error")
 	}
@@ -114,7 +110,7 @@ func TestUnmarshalErrors(t *testing.T) {
 	if err != nil {
 		t.Errorf("decoding hex: %s", err)
 	}
-	err = m2.Unmarshal(emptyCosigner)
+	_, err = Unmarshal(emptyCosigner)
 	if err == nil {
 		t.Errorf("unmarshal with empty cosigner_name: got no error")
 	}
@@ -123,7 +119,7 @@ func TestUnmarshalErrors(t *testing.T) {
 	if err != nil {
 		t.Errorf("decoding hex: %s", err)
 	}
-	err = m2.Unmarshal(emptyLogOrigin)
+	_, err = Unmarshal(emptyLogOrigin)
 	if err == nil {
 		t.Errorf("unmarshal with empty log_origin: got no error")
 	}

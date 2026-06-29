@@ -65,59 +65,58 @@ func (message *Message) Marshal() ([]byte, error) {
 	return b.Bytes()
 }
 
-// Unmarshal unmarshals the input bytes into its receiver.
-func (message *Message) Unmarshal(input []byte) error {
+// Unmarshal unmarshals the input bytes and returns a *Message.
+func Unmarshal(input []byte) (*Message, error) {
 	var out Message
 
 	s := cryptobyte.String(input)
 	var label []byte
 	if !s.ReadBytes(&label, len(subtreeLabel)) {
-		return errors.New("invalid label")
+		return nil, errors.New("invalid label")
 	}
 	if !bytes.Equal(label, []byte(subtreeLabel)) {
-		return errors.New("label was not subtree/v1")
+		return nil, errors.New("label was not subtree/v1")
 	}
 
 	var cosignerName cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&cosignerName) {
-		return errors.New("invalid cosigner_name")
+		return nil, errors.New("invalid cosigner_name")
 	}
 	if len(cosignerName) < 1 {
-		return errors.New("empty cosigner_name")
+		return nil, errors.New("empty cosigner_name")
 	}
 	out.CosignerName = string(cosignerName)
 
 	if !s.ReadUint64(&out.Timestamp) {
-		return errors.New("invalid timestamp")
+		return nil, errors.New("invalid timestamp")
 	}
 
 	var logOrigin cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&logOrigin) {
-		return errors.New("invalid log_origin")
+		return nil, errors.New("invalid log_origin")
 	}
 	if len(logOrigin) < 1 {
-		return errors.New("empty log_origin")
+		return nil, errors.New("empty log_origin")
 	}
 	out.LogOrigin = string(logOrigin)
 
 	if !s.ReadUint64(&out.Start) {
-		return errors.New("invalid start")
+		return nil, errors.New("invalid start")
 	}
 
 	if !s.ReadUint64(&out.End) {
-		return errors.New("invalid end")
+		return nil, errors.New("invalid end")
 	}
 
 	var subtreeHash []byte
 	if !s.ReadBytes(&subtreeHash, len(out.SubtreeHash)) {
-		return errors.New("invalid subtree hash")
+		return nil, errors.New("invalid subtree hash")
 	}
 	copy(out.SubtreeHash[:], subtreeHash)
 
 	if !s.Empty() {
-		return errors.New("trailing bytes")
+		return nil, errors.New("trailing bytes")
 	}
 
-	*message = out
-	return nil
+	return &out, nil
 }
