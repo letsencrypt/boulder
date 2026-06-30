@@ -72,6 +72,13 @@ func completeSubtree(start, end int64) (level int, ok bool) {
 	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: valid ensures start < end, so size is positive.
 }
 
+// splitPoint returns where to split the subtree [start, end) into a complete
+// subtree on the left and a possibly ragged one on the right. This is the mid
+// in draft-ietf-plants-merkle-tree-certs section 4.5.1.
+func splitPoint(start, end int64) int64 {
+	return start + largestPowerOfTwoSmallerThan(end-start)
+}
+
 // combineSubtreeRoots combines subtree roots, in the order
 // completeSubtreeIndexes lists them, into MTH(D[start:end]). It returns the
 // hash and the unconsumed remainder.
@@ -82,9 +89,9 @@ func combineSubtreeRoots(start, end int64, hashes []tlog.Hash) (tlog.Hash, []tlo
 	}
 	// completeSubtree accepts single leaves, and the input is always a valid
 	// subtree (end > start), so end-start >= 2 here.
-	k := largestPowerOfTwoSmallerThan(end - start)
-	left, rest := combineSubtreeRoots(start, start+k, hashes)
-	right, rest := combineSubtreeRoots(start+k, end, rest)
+	mid := splitPoint(start, end)
+	left, rest := combineSubtreeRoots(start, mid, hashes)
+	right, rest := combineSubtreeRoots(mid, end, rest)
 	return tlog.NodeHash(left, right), rest
 }
 
@@ -98,8 +105,8 @@ func completeSubtreeIndexes(start, end int64) []int64 {
 	}
 	// completeSubtree accepts single leaves, and the input is always a valid
 	// subtree (end > start), so end-start >= 2 here.
-	k := largestPowerOfTwoSmallerThan(end - start)
-	return append(completeSubtreeIndexes(start, start+k), completeSubtreeIndexes(start+k, end)...)
+	mid := splitPoint(start, end)
+	return append(completeSubtreeIndexes(start, mid), completeSubtreeIndexes(mid, end)...)
 }
 
 // hashSubtree returns the hash of the subtree [start, end), MTH(D[start:end])
