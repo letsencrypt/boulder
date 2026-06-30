@@ -8,10 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"google.golang.org/grpc"
+
+	"github.com/letsencrypt/boulder/blog"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
 )
 
 func TestReadingUnpauseAccountsFile(t *testing.T) {
@@ -53,7 +54,7 @@ func TestReadingUnpauseAccountsFile(t *testing.T) {
 			err := os.WriteFile(file, []byte(strings.Join(testCase.data, "\n")), os.ModePerm)
 			test.AssertNotError(t, err, "could not write temporary file")
 
-			regIDs, err := a.readUnpauseAccountFile(file)
+			regIDs, err := a.readUnpauseAccountFile(t.Context(), file)
 			test.AssertNotError(t, err, "no error expected, but received one")
 			test.AssertEquals(t, len(regIDs), testCase.expectedRegIDs)
 		})

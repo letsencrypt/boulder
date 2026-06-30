@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -78,7 +79,7 @@ func initSAAdmin(t *testing.T) (*SQLStorageAuthorityAdmin, *db.WrappedMap, *db.W
 		t.Fatalf("Failed to create dbIncidentsAdminMap: %s", err)
 	}
 
-	saa, err := NewSQLStorageAuthorityAdmin(dbMap, dbIncidentsAdminMap, log)
+	saa, err := NewSQLStorageAuthorityAdmin(dbMap, dbIncidentsAdminMap, blog.NewMock())
 	if err != nil {
 		t.Fatalf("Failed to create SA admin impl: %s", err)
 	}
