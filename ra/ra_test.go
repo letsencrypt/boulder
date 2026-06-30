@@ -3681,6 +3681,7 @@ func TestRevokeAuthorizations_FeatureDisabled(t *testing.T) {
 	// mockSA should not have received ANY requests
 	test.AssertEquals(t, len(mockSA.recv), 0)
 }
+
 func TestRevokeAuthorizations_FeatureEnabled(t *testing.T) {
 	_, _, ra, _, clk, _, cleanUp := initAuthorities(t)
 	defer cleanUp()

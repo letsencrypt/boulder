@@ -1600,6 +1600,9 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 }
 
 func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, smeta *sapb.SerialMetadata) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
 	if features.Get().RevokeAuthzsUponRevokeCert {
 		idents := identifier.FromCert(cert)
 		for _, ident := range idents {
@@ -1608,7 +1611,9 @@ func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, c
 				Identifier:     ident.ToProto(),
 			})
 			if err != nil {
-				ra.log.Infof("Authz revocation failed: %s", err)
+				ra.log.Error(ctx, "Authz revocation failed", err, blog.Idents(ident), blog.Acct(smeta.RegistrationID))
+			} else {
+				ra.log.Info(ctx, "Authz revocation succeeded", blog.Idents(ident), blog.Acct(smeta.RegistrationID))
 			}
 		}
 	}

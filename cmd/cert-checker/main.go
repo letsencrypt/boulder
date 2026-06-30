@@ -322,8 +322,8 @@ var expectedExtensionContent = map[string][]byte{
 
 // checkValidations checks the database for matching authorizations that were
 // likely valid at the time the certificate was issued. Authorizations with
-// status = "deactivated" are counted for this, so long as their validatedAt
-// is before the issuance and expiration is after.
+// status = "deactivated" and "revoked" are counted for this, so long as their
+// validatedAt is before the issuance and expiration is after.
 func (c *certChecker) checkValidations(ctx context.Context, cert *corepb.Certificate, idents identifier.ACMEIdentifiers) error {
 	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued.AsTime(), idents)
 	if err != nil {

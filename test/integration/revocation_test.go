@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -698,4 +699,92 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	for _, bundle := range bundles {
 		checkUnrevoked(t, allCRLs, bundle.certs[0])
 	}
+}
+
+// waitAndCheckRevoked uses an acme client to poll some(a slice of)
+// authorizations for a desired status. It is willing to repeatedly fetch the
+// authorizations up to four times, and wait up to 5 seconds, before reporting
+// failure.
+func waitAndCheckAuthzStatus(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
+	t.Helper()
+
+	for try := range 4 {
+		time.Sleep(core.RetryBackoff(try, time.Second, 2*time.Second, 1.5))
+
+		var allStatus []string
+
+		for authz := range authzs {
+			respAuth, err := aClient.FetchAuthorization(aClient.Account, authzs[authz])
+			t.Logf("Authorization fetched: %v", respAuth)
+			test.AssertNotError(t, err, "FetchAuthorization Failed")
+
+			allStatus = append(allStatus, respAuth.Status)
+		}
+
+		slices.Sort(allStatus)
+		uniqStatus := slices.Compact(allStatus)
+
+		if len(uniqStatus) == 1 && uniqStatus[0] == string(wantStatus) {
+			// Success, all authorizations match our desired result
+			return
+		}
+	}
+
+	t.Errorf("exhausted authz polling attempts, status values still not as desired")
+}
+
+func TestRevokeAuthzUponRevokeCert(t *testing.T) {
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip("RevokeAuthzUponRevokeCert is only configured in config-next")
+	}
+
+	// Two acme clients, both alike in dignity
+	clientRed, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	clientBlue, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+
+	// With different keys
+	certKeyRed, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate cert key")
+	certKeyBlue, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate cert key")
+
+	// Share one set of domains for BOTH client certs
+	redVsBlueIdents := []acme.Identifier{
+		{Type: "dns", Value: random_domain()},
+		{Type: "dns", Value: random_domain()},
+		{Type: "dns", Value: random_domain()},
+	}
+
+	// Both clients issue certs for the shared-control set of domains
+	res, err := authAndIssue(clientRed, certKeyRed, redVsBlueIdents, true, "")
+	test.AssertNotError(t, err, "authAndIssue failed")
+	certRed := res.certs[0]
+	authzRed := res.Order.Authorizations
+
+	res, err = authAndIssue(clientBlue, certKeyBlue, redVsBlueIdents, true, "")
+	test.AssertNotError(t, err, "authAndIssue failed")
+	certBlue := res.certs[0]
+	authzBlue := res.Order.Authorizations
+
+	// Red client revokes the Blue client cert with reason "Unspecified"
+	err = clientRed.RevokeCertificate(clientRed.Account, certBlue, clientRed.PrivateKey, int(revocation.Unspecified))
+	test.AssertNotError(t, err, "failed to revoke certificate")
+
+	// Authorizations for shared-control domains held by Blue client should be revoked
+	t.Logf("Blue cert revoked by Red client, poll authz for Idents: %v", redVsBlueIdents)
+	waitAndCheckAuthzStatus(t, clientBlue, authzBlue, core.StatusRevoked)
+
+	// Red client revokes its own certificate with reason "Unspecified"
+	err = clientRed.RevokeCertificate(clientRed.Account, certRed, clientRed.PrivateKey, int(revocation.Unspecified))
+	test.AssertNotError(t, err, "failed to revoke certificate")
+
+	// Authorizations for single-client domains should not be revoked
+	t.Logf("Red cert revoked by Red client, poll authz for Idents: %v", redVsBlueIdents)
+	// re-using waitAndCheckAuthzStatus() here is basically only telling us that
+	// the authorizations did not _immediately_ change from valid to something
+	// else. Another function might exhaust more wall clock time to test beyond
+	// the context timeout.
+	waitAndCheckAuthzStatus(t, clientRed, authzRed, core.StatusValid)
 }
