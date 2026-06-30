@@ -129,60 +129,60 @@ func hashSubtree(start, end int64, reader tlog.HashReader) (tlog.Hash, error) {
 	return h, nil
 }
 
-// subtreeSubProof implements SUBTREE_SUBPROOF(start, end, D_n, b) from the MTC
-// draft section 4.4.1 Generating a Subtree Consistency Proof, detailed further
-// in the draft's Appendix B.4. start and end are relative to the current
-// subtree D_n of size n rooted at absolute offset base, and known is the
-// draft's b flag. It reads stored hashes through the provided reader and
-// returns proof with the hashes it emits appended.
-func subtreeSubProof(start, end, base, n int64, known bool, reader tlog.HashReader, proof []tlog.Hash) ([]tlog.Hash, error) {
-	if start == 0 && end == n {
-		// [start, end) now covers this whole node D_n, the SUBTREE_SUBPROOF
-		// base case. known decides whether the proof carries it.
+// subtreeSubProof implements the draft's SUBTREE_SUBPROOF from section 4.4.1
+// Generating a Subtree Consistency Proof (Appendix B.4), with the target
+// subtree [start, end) and the node [windowStart, windowEnd) it sits in given
+// as absolute leaf positions. known is the draft's b flag. It reads stored
+// hashes through the provided reader and returns proof with the hashes it emits
+// appended.
+func subtreeSubProof(start, end, windowStart, windowEnd int64, known bool, reader tlog.HashReader, proof []tlog.Hash) ([]tlog.Hash, error) {
+	if start == windowStart && end == windowEnd {
+		// [start, end) covers the whole node, the SUBTREE_SUBPROOF base case.
+		// known decides whether the proof carries it.
 		if known {
 			// The verifier already has this node, so emit nothing.
 			return proof, nil
 		}
 
-		// The verifier doesn't have it, so emit its hash MTH(D_n).
-		h, err := hashSubtree(base, base+n, reader)
+		// The verifier doesn't have it, so emit the node's hash.
+		h, err := hashSubtree(windowStart, windowEnd, reader)
 		if err != nil {
 			return nil, err
 		}
 		return append(proof, h), nil
 	}
 
-	// [start, end) covers only part of this node, so split at k. The switch
-	// routes by where the subtree falls (left child, right child, or straddle)
-	// and names the other child as the sibling the shared tail appends.
+	// [start, end) covers only part of the node, so split the node at splitPoint.
+	// The switch routes by where the subtree falls (left child, right child, or
+	// straddle) and names the other child as the sibling the shared tail appends.
 
-	// At n == 1, [start, end) can only be [0, 1) (0 <= start < end <= n), which has
-	// start == 0 and end == n, matching the base case above. So n >= 2 here.
-	k := largestPowerOfTwoSmallerThan(n)
+	// A one-leaf node has only itself as a subtree, which hits the base case
+	// above, so the node has >= 2 leaves here.
+	split := splitPoint(windowStart, windowEnd)
 	var err error
 	var siblingStart int64
 	var siblingEnd int64
 	switch {
-	case end <= k:
-		// The subtree fits in the left child. Recurse there, with the right
-		// child [k, n) as the sibling.
-		proof, err = subtreeSubProof(start, end, base, k, known, reader, proof)
-		siblingStart = base + k
-		siblingEnd = base + n
-	case k <= start:
-		// The subtree fits in the right child. Recurse there (shifting
-		// coordinates by k), with the left child [0, k) as the sibling.
-		proof, err = subtreeSubProof(start-k, end-k, base+k, n-k, known, reader, proof)
-		siblingStart = base
-		siblingEnd = base + k
+	case end <= split:
+		// The subtree is in the left child [windowStart, split). The right child
+		// is the sibling.
+		proof, err = subtreeSubProof(start, end, windowStart, split, known, reader, proof)
+		siblingStart = split
+		siblingEnd = windowEnd
+	case split <= start:
+		// The subtree is in the right child [split, windowEnd). The left child is
+		// the sibling.
+		proof, err = subtreeSubProof(start, end, split, windowEnd, known, reader, proof)
+		siblingStart = windowStart
+		siblingEnd = split
 	default:
-		// The subtree straddles the split (start < k < end), which a valid
-		// subtree only does when start == 0. Recurse on the right child's
-		// prefix [0, end-k), no longer a node the verifier knows (known =
-		// false), with the left child [0, k) as the sibling.
-		proof, err = subtreeSubProof(0, end-k, base+k, n-k, false, reader, proof)
-		siblingStart = base
-		siblingEnd = base + k
+		// The subtree straddles the split (start < split < end), which a valid
+		// subtree only does when start == windowStart. Recurse into the right
+		// child, no longer a node the verifier knows (known = false). The left
+		// child is the sibling.
+		proof, err = subtreeSubProof(split, end, split, windowEnd, false, reader, proof)
+		siblingStart = windowStart
+		siblingEnd = split
 	}
 	if err != nil {
 		return nil, err
