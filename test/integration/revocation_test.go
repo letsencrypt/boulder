@@ -701,11 +701,12 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	}
 }
 
-// waitAndCheckRevoked uses an acme client to poll some(a slice of)
-// authorizations for a desired status. It is willing to repeatedly fetch the
-// authorizations up to four times, and wait up to 5 seconds, before reporting
-// failure.
-func waitAndCheckAuthzStatus(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
+// waitForAuthzStatusChange uses an acme client to poll some(a slice of)
+// authorizations to change to a desired status. It is willing to repeatedly
+// fetch the authorizations up to four times, and wait up to 5 seconds, before
+// reporting failure. Observed change is success and cuts the polling time
+// short.
+func waitForAuthzStatusChange(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
 	t.Helper()
 
 	for try := range 4 {
@@ -730,10 +731,35 @@ func waitAndCheckAuthzStatus(t *testing.T, aClient *client, authzs []string, wan
 		}
 	}
 
-	t.Errorf("exhausted authz polling attempts, status values still not as desired")
+	t.Fatalf("exhausted authz polling attempts, status values still not as desired")
+}
+
+// waitForAuthzStatusStable uses an acme client to poll some(a slice of)
+// authorizations to remain stable in a desired status. It will repeatedly fetch
+// the authorizations four times, and wait up to 5 seconds, before success.
+// Failure cuts the polling time short.
+func waitForAuthzStatusStable(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
+	t.Helper()
+
+	for try := range 4 {
+		time.Sleep(core.RetryBackoff(try, time.Second, 2*time.Second, 1.5))
+
+		for authz := range authzs {
+			respAuth, err := aClient.FetchAuthorization(aClient.Account, authzs[authz])
+			t.Logf("Authorization fetched: %v", respAuth)
+			test.AssertNotError(t, err, "FetchAuthorization Failed")
+
+			if respAuth.Status != string(wantStatus) {
+				// Failure, an Authz status has strayed from expected
+				t.Fatalf("Status an authz is now %q, was expected to stay %q", respAuth.Status, string(wantStatus))
+			}
+		}
+	}
 }
 
 func TestRevokeAuthzUponRevokeCert(t *testing.T) {
+	t.Parallel()
+
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		t.Skip("RevokeAuthzUponRevokeCert is only configured in config-next")
 	}
@@ -774,7 +800,7 @@ func TestRevokeAuthzUponRevokeCert(t *testing.T) {
 
 	// Authorizations for shared-control domains held by Blue client should be revoked
 	t.Logf("Blue cert revoked by Red client, poll authz for Idents: %v", redVsBlueIdents)
-	waitAndCheckAuthzStatus(t, clientBlue, authzBlue, core.StatusRevoked)
+	waitForAuthzStatusChange(t, clientBlue, authzBlue, core.StatusRevoked)
 
 	// Red client revokes its own certificate with reason "Unspecified"
 	err = clientRed.RevokeCertificate(clientRed.Account, certRed, clientRed.PrivateKey, int(revocation.Unspecified))
@@ -782,9 +808,5 @@ func TestRevokeAuthzUponRevokeCert(t *testing.T) {
 
 	// Authorizations for single-client domains should not be revoked
 	t.Logf("Red cert revoked by Red client, poll authz for Idents: %v", redVsBlueIdents)
-	// re-using waitAndCheckAuthzStatus() here is basically only telling us that
-	// the authorizations did not _immediately_ change from valid to something
-	// else. Another function might exhaust more wall clock time to test beyond
-	// the context timeout.
-	waitAndCheckAuthzStatus(t, clientRed, authzRed, core.StatusValid)
+	waitForAuthzStatusStable(t, clientRed, authzRed, core.StatusValid)
 }
