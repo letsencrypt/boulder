@@ -242,33 +242,6 @@ func TestAuthz(t *testing.T) {
 	outAuthz2, err := PBToAuthz(pbAuthz2)
 	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthzNilExpires, outAuthz2)
-
-	// Manipulate pbAuthz to test Authz marshalling with various ID combinations
-	// TODO(#8722): clean up these tests when authz IDs are int-only
-	pbAuthz3 := pbAuthz
-
-	pbAuthz3.Id = ""
-	pbAuthz3.IdInt = 0
-	_, err = PBToAuthz(pbAuthz3)
-	test.AssertError(t, err, "PBToAuthz with empty ID and empty IDInt unexpectedly succeeded")
-
-	pbAuthz3.Id = "1"
-	pbAuthz3.IdInt = 0
-	outAuthz3, err := PBToAuthz(pbAuthz3)
-	test.AssertNotError(t, err, "PBToAuthz with only string ID failed")
-	test.AssertDeepEquals(t, inAuthz, outAuthz3)
-
-	pbAuthz3.Id = "1"
-	pbAuthz3.IdInt = 1
-	outAuthz3, err = PBToAuthz(pbAuthz3)
-	test.AssertNotError(t, err, "PBToAuthz with both string ID and int IDInt failed")
-	test.AssertDeepEquals(t, inAuthz, outAuthz3)
-
-	pbAuthz3.Id = ""
-	pbAuthz3.IdInt = 1
-	outAuthz3, err = PBToAuthz(pbAuthz3)
-	test.AssertNotError(t, err, "PBToAuthz with only int IDInt failed")
-	test.AssertDeepEquals(t, inAuthz, outAuthz3)
 }
 
 func TestOrderValid(t *testing.T) {

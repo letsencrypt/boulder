@@ -20,7 +20,6 @@ import (
 	mrand "math/rand/v2"
 	"net/netip"
 	"regexp"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -132,17 +131,15 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, re
 func createFinalizedAuthorization(t *testing.T, saClient sapb.StorageAuthorityClient, regID int64, ident identifier.ACMEIdentifier, exp time.Time, chall core.AcmeChallenge, attemptedAt time.Time) int64 {
 	t.Helper()
 	pending := createPendingAuthorization(t, saClient, regID, ident, exp)
-	pendingID, err := strconv.ParseInt(pending.Id, 10, 64)
-	test.AssertNotError(t, err, "strconv.ParseInt failed")
-	_, err = saClient.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:          pendingID,
+	_, err := saClient.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:          pending.IdInt,
 		Status:      "valid",
 		Expires:     timestamppb.New(exp),
 		Attempted:   string(chall),
 		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
-	return pendingID
+	return pending.IdInt
 }
 
 func getAuthorization(t *testing.T, id int64, sa sapb.StorageAuthorityClient) *corepb.Authorization {
@@ -854,16 +851,15 @@ func TestDeactivateAuthorization(t *testing.T) {
 	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPB.Id)
+	test.AssertNotError(t, err, "Could not get deactivated authorization by ID")
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 
 	dbAuthzPBIdChecks := dbAuthzPB
-	dbAuthzPBIdChecks.Id = fmt.Sprintf("%d", authzID)
 	dbAuthzPBIdChecks.IdInt = authzID
 	_, err = ra.DeactivateAuthorization(ctx, dbAuthzPBIdChecks)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPBIdChecks.Id)
+	test.AssertNotError(t, err, "Could not get deactivated authorization by ID")
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 }
 
@@ -909,7 +905,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	// The first deactivation of a pending authz should work and nothing should
 	// get paused.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		Id:             "1",
+		IdInt:          1,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
@@ -919,7 +915,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 
 	// Deactivating a valid authz shouldn't increment any limits or pause anything.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		Id:             "2",
+		IdInt:          2,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusValid),
@@ -930,7 +926,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	// Deactivating a second pending authz should surpass the limit and result
 	// in a pause request.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		Id:             "3",
+		IdInt:          3,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),

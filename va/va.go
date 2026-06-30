@@ -15,7 +15,6 @@ import (
 	"os"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -734,23 +733,8 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req.Identifier, req.Challenge, req.Authz, req.Authz.RegID, req.ExpectedKeyAuthorization) {
+	if core.IsAnyNilOrZero(req.Identifier, req.Challenge, req.Authz, req.Authz.IdInt, req.Authz.RegID, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
-	}
-
-	// TODO(#8722): remove this and return req.Authz.Id to isAnyNilOrZero check
-	// above when Authz IDs are int64-only
-	var authzIDInt int64
-	if req.Authz.IdInt != 0 {
-		authzIDInt = req.Authz.IdInt
-	} else if req.Authz.Id != "" {
-		parsed, err := strconv.ParseInt(req.Authz.Id, 10, 64)
-		if err != nil {
-			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.Authz.Id, err)
-		}
-		authzIDInt = parsed
-	} else {
-		return nil, berrors.InternalServerError("incomplete validation request")
 	}
 
 	ident := identifier.FromProto(req.Identifier)
@@ -768,7 +752,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// Set the log attributes that we want to appear on all subsequent log lines
 	ctx = blog.ContextWith(ctx,
 		blog.Acct(req.Authz.RegID),
-		blog.Authz(authzIDInt),
+		blog.Authz(req.Authz.IdInt),
 		blog.Idents(ident),
 		slog.String("method", string(chall.Type)),
 		slog.String("token", chall.Token),

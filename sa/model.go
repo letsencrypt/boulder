@@ -12,7 +12,6 @@ import (
 	"math"
 	"net/netip"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -638,15 +637,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		profile := authz.CertificateProfileName
 		am.CertificateProfileName = &profile
 	}
-	if authz.IdInt != 0 {
-		am.ID = authz.IdInt
-	} else if authz.Id != "" {
-		id, err := strconv.Atoi(authz.Id)
-		if err != nil {
-			return nil, err
-		}
-		am.ID = int64(id)
-	} else {
+	if authz.IdInt == 0 {
 		return nil, errors.New("authorization is missing an ID value")
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
@@ -782,7 +773,6 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	}
 
 	pb := &corepb.Authorization{
-		Id:                     fmt.Sprintf("%d", am.ID),
 		IdInt:                  am.ID,
 		Status:                 string(uintToStatus[am.Status]),
 		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),
