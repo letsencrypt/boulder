@@ -543,6 +543,8 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
+		DebugAddr string `validate:"omitempty,hostname_port"`
+
 		Workers int `validate:"required,min=1"`
 		// LookupDNSAuthority can only be specified with PushgatewayService. It's a single
 		// <hostname|IPv4|[IPv6]>:<port> of the DNS server to be used for resolution
@@ -634,6 +636,7 @@ func getPushgatewayURL(ctx context.Context, dnsAuthority string, svc cmd.Service
 }
 
 func main() {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -645,13 +648,17 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	if *debugAddr != "" {
+		config.CertChecker.DebugAddr = *debugAddr
+	}
+
 	features.Set(config.CertChecker.Features)
 
-	logger := cmd.NewLogger(config.Syslog)
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, cmd.OpenTelemetryConfig{}, config.CertChecker.DebugAddr)
+	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
 
-	reg := prometheus.NewRegistry()
-	metrics := newCertCheckerMetrics(reg)
+	metrics := newCertCheckerMetrics(stats)
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
@@ -746,7 +753,7 @@ func main() {
 		if err != nil {
 			logger.Error(ctx, "failed to get pushgateway URL", err)
 		} else {
-			err = cmd.PushMetrics("cert-checker", pushgatewayURL, reg, logger)
+			err = cmd.PushMetrics("cert-checker", pushgatewayURL, stats, logger)
 			if err != nil {
 				logger.Error(ctx, "failed to push metrics to pushgateway", err, slog.String("url", pushgatewayURL))
 			} else {
