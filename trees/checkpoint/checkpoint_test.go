@@ -85,6 +85,8 @@ func TestParseCheckpointRejects(t *testing.T) {
 		{"Leading zero size", "example.com/log\n01\n" + exampleHashB64 + "\n"},
 		{"Negative size", "example.com/log\n-1\n" + exampleHashB64 + "\n"},
 		{"Non-numeric size", "example.com/log\nx\n" + exampleHashB64 + "\n"},
+		{"Size above int64", "example.com/log\n9223372036854775808\n" + exampleHashB64 + "\n"},
+		{"Signed note instead of a bare body", "example.com/log\n1\n" + exampleHashB64 + "\n\n— key AAAA\n"},
 		{"Bad base64 hash", "example.com/log\n1\n!!!notbase64!!!\n"},
 		{"Non-canonical base64 hash", "example.com/log\n1\nCsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2J=\n"},
 		{"Short hash", "example.com/log\n1\nAAAA\n"},
