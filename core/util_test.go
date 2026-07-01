@@ -2,6 +2,11 @@ package core
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,6 +120,42 @@ func TestKeyDigestEquals(t *testing.T) {
 	test.Assert(t, !KeyDigestEquals(jwk1, jwk2), "Key digests for different keys should not match")
 	test.Assert(t, !KeyDigestEquals(jwk1, struct{}{}), "Unknown key types should not match anything")
 	test.Assert(t, !KeyDigestEquals(struct{}{}, struct{}{}), "Unknown key types should not match anything")
+}
+
+// TestCertKeyDigest ensures that CertKeyDigest (which hashes a certificate's
+// SubjectPublicKeyInfo) and KeyDigest (which hashes an in-memory public key,
+// usually from a parsed JWK) produce the same result for the same underlying
+// key. bad-key-revoker relies on these two paths never diverging.
+func TestCertKeyDigest(t *testing.T) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating ECDSA key: %s", err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "example.com"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		BasicConstraintsValid: true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("self-signing certificate: %s", err)
+	}
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("parsing certificate: %s", err)
+	}
+
+	keyDigest, err := KeyDigest(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("computing KeyDigest of public key: %s", err)
+	}
+
+	if CertKeyDigest(cert) != keyDigest {
+		t.Errorf("CertKeyDigest = %x, want %x (KeyDigest of same key)", CertKeyDigest(cert), keyDigest)
+	}
 }
 
 func TestIsAnyNilOrZero(t *testing.T) {

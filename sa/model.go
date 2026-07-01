@@ -2,7 +2,6 @@ package sa
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -1025,7 +1024,7 @@ func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) err
 	if cert.RawSubjectPublicKeyInfo == nil {
 		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
 	}
-	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	h := core.CertKeyDigest(cert)
 	khm := &keyHashModel{
 		KeyHash:      h[:],
 		CertNotAfter: cert.NotAfter,
