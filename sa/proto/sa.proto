@@ -93,7 +93,7 @@ service StorageAuthority {
   rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
   rpc DisableRateLimitOverride(DisableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
   rpc EnableRateLimitOverride(EnableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
-  rpc RevokeAuthorizationFor(RevokeAuthorizationForRequest) returns (google.protobuf.Empty) {}
+  rpc RevokeAuthorizationsFor(RevokeAuthorizationsForRequest) returns (google.protobuf.Empty) {}
 }
 
 // StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
