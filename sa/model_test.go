@@ -114,6 +114,10 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 	test.AssertEquals(t, authzPBOut.CertificateProfileName, authzPB.CertificateProfileName)
 
+	// Complete authz -> model -> authz round-trip should keep everything intact
+	// aside form the hostname and port exceptions tested above
+	test.AssertDeepEquals(t, authzPB, authzPBOut)
+
 	authzPB = newTestAuthzPB(clk.Now())
 
 	validationErr := probs.Connection("weewoo")

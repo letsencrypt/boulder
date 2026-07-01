@@ -302,6 +302,10 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 }
 
 func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
+	if pb.IdInt == 0 {
+		return core.Authorization{}, ErrMissingParameters
+	}
+
 	challs := make([]core.Challenge, len(pb.Challenges))
 	for i, c := range pb.Challenges {
 		chall, err := PBToChallenge(c)
@@ -316,9 +320,6 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		expires = &c
 	}
 
-	if pb.IdInt == 0 {
-		return core.Authorization{}, ErrMissingParameters
-	}
 	authz := core.Authorization{
 		ID:                     pb.IdInt,
 		Identifier:             identifier.FromProto(pb.Identifier),
