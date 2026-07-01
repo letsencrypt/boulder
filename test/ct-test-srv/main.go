@@ -45,7 +45,7 @@ func readJSON(r *http.Request, output any) error {
 	if r.Method != "POST" {
 		return fmt.Errorf("incorrect method; only POST allowed")
 	}
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(&io.LimitedReader{R: r.Body, N: 100_000_000})
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 		http.NotFound(w, r)
 		return
 	}
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(&io.LimitedReader{R: r.Body, N: 100_000_000})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

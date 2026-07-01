@@ -221,7 +221,7 @@ func TestBadSignatureAlgorithm(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		t.Fatalf("reading HTTP response: %s", err)
 	}

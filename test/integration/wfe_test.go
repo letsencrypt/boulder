@@ -49,7 +49,7 @@ func TestWFEHTTPMetrics(t *testing.T) {
 	resp, err = http.Get("http://boulder.service.consul:8013/metrics")
 	test.AssertNotError(t, err, "GET boulder-wfe2 metrics")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	test.AssertNotError(t, err, "Reading boulder-wfe2 metrics response")
 	test.AssertContains(t, string(body), `response_time_count{code="200",endpoint="/directory",method="GET"}`)
 	resp.Body.Close()

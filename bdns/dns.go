@@ -379,7 +379,7 @@ func (d *dohExchanger) ExchangeContext(ctx context.Context, query *dns.Msg, serv
 		return nil, d.clk.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
 	}
 
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
 	}

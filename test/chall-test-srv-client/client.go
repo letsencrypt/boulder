@@ -73,7 +73,7 @@ func (c *Client) postURL(path string, body any) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, endpoint)
 	}
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, fmt.Errorf("reading response from %s: %w", endpoint, err)
 	}

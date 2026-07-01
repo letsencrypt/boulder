@@ -32,7 +32,7 @@ func downloadShard(url string) (*x509.RevocationList, error) {
 		return nil, fmt.Errorf("downloading crl: http status %d", resp.StatusCode)
 	}
 
-	crlBytes, err := io.ReadAll(resp.Body)
+	crlBytes, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, fmt.Errorf("reading CRL bytes: %w", err)
 	}

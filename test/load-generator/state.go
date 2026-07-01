@@ -240,7 +240,7 @@ func (s *State) Restore(filename string) error {
 		return err
 	}
 
-	content, err := io.ReadAll(f)
+	content, err := io.ReadAll(&io.LimitedReader{R: f, N: 100_000_000})
 	if err != nil {
 		return err
 	}

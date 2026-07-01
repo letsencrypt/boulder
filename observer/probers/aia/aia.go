@@ -48,7 +48,7 @@ func (p AIAProbe) Probe(ctx context.Context) error {
 		return fmt.Errorf("certificate Content-Type is %q but want application/pkix-cert", contentType)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return err
 	}

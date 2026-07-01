@@ -108,7 +108,7 @@ func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.Rev
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("fetching %s: status code %d", crlURL, resp.StatusCode)
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		t.Fatalf("reading CRL from %s: %s", crlURL, err)
 	}

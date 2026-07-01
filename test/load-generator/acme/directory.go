@@ -150,7 +150,7 @@ func getRawDirectory(directoryURL string) ([]byte, error) {
 		return nil, ErrInvalidDirectoryHTTPCode
 	}
 
-	rawDirectory, err := io.ReadAll(resp.Body)
+	rawDirectory, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, err
 	}

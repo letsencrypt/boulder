@@ -49,7 +49,7 @@ func createRequest(cert *x509.Certificate) ([]byte, error) {
 }
 
 func parseResponse(resp *http.Response) (*core.RenewalInfo, error) {
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func getARIURL(directory string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return "", err
 	}

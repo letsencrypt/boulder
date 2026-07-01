@@ -283,7 +283,7 @@ type fakeSimpleS3 struct {
 }
 
 func (p *fakeSimpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	recvBytes, err := io.ReadAll(params.Body)
+	recvBytes, err := io.ReadAll(&io.LimitedReader{R: params.Body, N: 100_000_000})
 	if err != nil {
 		return nil, err
 	}

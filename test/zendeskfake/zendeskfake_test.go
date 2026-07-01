@@ -70,7 +70,7 @@ func doJSON(t *testing.T, method, urlStr, authHeader string, body []byte, setCon
 		return nil, nil
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		t.Errorf("reading response body for %s %s failed: %s", method, urlStr, err)
 		err = resp.Body.Close()
