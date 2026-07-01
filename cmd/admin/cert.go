@@ -204,6 +204,7 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 	if err != nil {
 		return nil, fmt.Errorf("opening serials file: %w", err)
 	}
+	defer file.Close()
 
 	var serials []string
 	scanner := bufio.NewScanner(file)
@@ -213,6 +214,10 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 			continue
 		}
 		serials = append(serials, serial)
+	}
+	err = scanner.Err()
+	if err != nil {
+		return nil, fmt.Errorf("error while reading serials file: %w", err)
 	}
 
 	return serials, nil
