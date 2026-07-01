@@ -541,7 +541,7 @@ func SelectAuthzsMatchingIssuance(
 	identConditions, identArgs := buildIdentifierQueryConditions(idents)
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
-			status IN (?, ?) AND
+			status IN (?, ?, ?) AND
 			expires >= ? AND
 			attemptedAt <= ? AND
 			(%s)`,
@@ -550,7 +550,7 @@ func SelectAuthzsMatchingIssuance(
 	var args []any
 	args = append(args,
 		regID,
-		statusToUint[core.StatusValid], statusToUint[core.StatusDeactivated],
+		statusToUint[core.StatusValid], statusToUint[core.StatusDeactivated], statusToUint[core.StatusRevoked],
 		issued.Add(-1*time.Second), // leeway for clock skew
 		issued.Add(1*time.Second),  // leeway for clock skew
 	)

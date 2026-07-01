@@ -3649,6 +3649,62 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)].RevokedReason, int64(revocation.CessationOfOperation))
 }
 
+// mockSARecordAuthzRevocation is a mock sapb.StorageAuthorityClient that simply
+// maps identifier strings to RegistrationIDs for received RevokeAuthorizationFor
+// requests.
+type mockSARecordAuthzRevocation struct {
+	sapb.StorageAuthorityClient
+	recv map[string]int64
+}
+
+func (msa *mockSARecordAuthzRevocation) RevokeAuthorizationFor(ctx context.Context, req *sapb.RevokeAuthorizationForRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	msa.recv[req.Identifier.Value] = req.RegistrationID
+	return &emptypb.Empty{}, nil
+}
+
+func TestRevokeAuthorizations_FeatureDisabled(t *testing.T) {
+	_, _, ra, _, clk, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	features.Set(features.Config{RevokeAuthzsUponRevokeCert: false})
+	defer features.Reset()
+
+	mockSA := mockSARecordAuthzRevocation{}
+	mockSA.recv = make(map[string]int64)
+	ra.SA = &mockSA
+
+	_, cert := test.ThrowAwayCert(t, clk)
+
+	meta := &sapb.SerialMetadata{RegistrationID: 333}
+
+	ra.revokeAuthorizations(context.Background(), cert, meta)
+	// mockSA should not have received ANY requests
+	test.AssertEquals(t, len(mockSA.recv), 0)
+}
+
+func TestRevokeAuthorizations_FeatureEnabled(t *testing.T) {
+	_, _, ra, _, clk, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	features.Set(features.Config{RevokeAuthzsUponRevokeCert: true})
+	defer features.Reset()
+
+	mockSA := mockSARecordAuthzRevocation{}
+	mockSA.recv = make(map[string]int64)
+	ra.SA = &mockSA
+
+	_, cert := test.ThrowAwayCert(t, clk)
+	idents := identifier.FromCert(cert)
+
+	meta := &sapb.SerialMetadata{RegistrationID: 333}
+
+	ra.revokeAuthorizations(context.Background(), cert, meta)
+	// mockSA should have received requests for each of the certificate identifiers
+	for _, ident := range idents {
+		test.AssertEquals(t, mockSA.recv[ident.Value], meta.RegistrationID)
+	}
+}
+
 func TestRevokeCertByKey(t *testing.T) {
 	_, _, ra, _, clk, _, cleanUp := initAuthorities(t)
 	defer cleanUp()

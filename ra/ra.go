@@ -1599,6 +1599,26 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, smeta *sapb.SerialMetadata) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if features.Get().RevokeAuthzsUponRevokeCert {
+		idents := identifier.FromCert(cert)
+		for _, ident := range idents {
+			_, err := ra.SA.RevokeAuthorizationFor(ctx, &sapb.RevokeAuthorizationForRequest{
+				RegistrationID: smeta.RegistrationID,
+				Identifier:     ident.ToProto(),
+			})
+			if err != nil {
+				ra.log.Error(ctx, "Authz revocation failed", err, blog.Idents(ident), blog.Acct(smeta.RegistrationID))
+			} else {
+				ra.log.Info(ctx, "Authz revocation succeeded", blog.Idents(ident), blog.Acct(smeta.RegistrationID))
+			}
+		}
+	}
+}
+
 // RevokeCertByApplicant revokes the certificate in question. It allows any
 // revocation reason from (0, 1, 3, 4, 5, 9), because Subscribers are allowed to
 // request any revocation reason for their own certificates. However, if the
@@ -1626,6 +1646,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 	serialString := core.SerialToString(cert.SerialNumber)
 	ctx = blog.ContextWith(ctx, blog.Acct(req.RegID), blog.Serial(serialString))
+
+	// By default, do not revoke Authorizations held for the revoked-cert
+	// identifiers.
+	requestAuthzRevocation := false
 
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) or `ctx` in
 	// a nested scope. Doing so will create a new variable that is not captured by
@@ -1679,12 +1703,26 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// circumstances where "the certificate subscriber no longer owns the
 		// domain names in the certificate". Override the reason code to match.
 		reasonCode = revocation.CessationOfOperation
+
+		// We have confirmed that the requester RegistrationID is NOT the same
+		// as the original subscriber. Requester has demonstrated control over
+		// the set of identifiers sufficient for certificate revocation. Given
+		// BOTH, enable this boolean to signal that authorizations held by the
+		// original subscriber RegID should be revoked after certificate
+		// revocation.
+		requestAuthzRevocation = true
 	}
 
 	ctx = blog.ContextWith(ctx, slog.Int64("reason", int64(reasonCode)))
 	err = ra.revokeCertificate(ctx, cert, reasonCode)
 	if err != nil {
 		return nil, err
+	}
+
+	// Asynchronously request to revoke authorizations held by the RegID from
+	// cert metadata, confirmed above to be different than requester ID.
+	if requestAuthzRevocation {
+		go ra.revokeAuthorizations(ctx, cert, metadata)
 	}
 
 	return &emptypb.Empty{}, nil
