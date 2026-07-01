@@ -103,6 +103,9 @@ mysql_users =
 	},
 	{
 		username = "mtpublisher";
+	},
+	{
+		username = "mtca";
 	}
 );
 mysql_query_rules =
