@@ -68,6 +68,11 @@ type Config struct {
 	// during certificate issuance. This flag must be set to true in the
 	// RA and VA services for full functionality.
 	DNSPersist01Enabled bool
+
+	// DeactivateBadKeyAccounts controls whether bad-key-revoker will attempt
+	// to find and deactivate accounts using keys which have been added to the
+	// blockedKeys table.
+	DeactivateBadKeyAccounts bool
 }
 
 var fMu = new(sync.RWMutex)
