@@ -101,7 +101,7 @@ func (ts *testServer) upsertContactsHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: r.Body, N: 100_000_000})
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 		return

@@ -126,7 +126,7 @@ func fetchAndCheck(crldp string, client http.Client, issuer *x509.Certificate) e
 		return fmt.Errorf("unexpected status code while downloading crl: %s", http.StatusText(resp.StatusCode))
 	}
 
-	crlDer, err := io.ReadAll(resp.Body)
+	crlDer, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return fmt.Errorf("error reading crl: %s", err)
 	}

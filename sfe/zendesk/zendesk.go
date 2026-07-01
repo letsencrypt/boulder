@@ -177,7 +177,7 @@ func (c *Client) doJSONRequest(method, reqURL string, body []byte) ([]byte, erro
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, fmt.Errorf("failed to read zendesk response body: %w", err)
 	}

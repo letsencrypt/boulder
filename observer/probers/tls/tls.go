@@ -85,7 +85,7 @@ func checkOCSP(ctx context.Context, cert, issuer *x509.Certificate, want int) (b
 	}
 	defer res.Body.Close()
 
-	output, err := io.ReadAll(res.Body)
+	output, err := io.ReadAll(&io.LimitedReader{R: res.Body, N: 100_000_000})
 	if err != nil {
 		return false, err
 	}
@@ -114,7 +114,7 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 	}
 	defer resp.Body.Close()
 
-	der, err := io.ReadAll(resp.Body)
+	der, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return false, fmt.Errorf("reading CRL: %w", err)
 	}

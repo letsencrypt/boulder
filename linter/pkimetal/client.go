@@ -80,7 +80,7 @@ func (pkim *Client) Execute(endpoint string, der []byte) (*lint.LintResult, erro
 		return nil, fmt.Errorf("got status %d (%s) from pkimetal API", resp.StatusCode, resp.Status)
 	}
 
-	resJSON, err := io.ReadAll(resp.Body)
+	resJSON, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, fmt.Errorf("reading response from pkimetal API: %s", err)
 	}

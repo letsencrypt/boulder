@@ -39,7 +39,7 @@ func mockDNSQuery(w http.ResponseWriter, httpReq *http.Request) {
 		fmt.Fprintf(w, "client didn't accept Content-Type: application/dns-message")
 	}
 
-	requestBody, err := io.ReadAll(httpReq.Body)
+	requestBody, err := io.ReadAll(&io.LimitedReader{R: httpReq.Body, N: 100_000_000})
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "reading body: %s", err)

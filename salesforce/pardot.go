@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -117,7 +118,7 @@ func (pc *SalesforceClientImpl) updateToken() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, readErr := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 		if readErr != nil {
 			return fmt.Errorf("token request failed with status %d; while reading body: %w", resp.StatusCode, readErr)
 		}
@@ -202,7 +203,7 @@ func (pc *SalesforceClientImpl) SendContact(email string) error {
 			return nil
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 		resp.Body.Close()
 
 		if err != nil {

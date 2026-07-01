@@ -20,7 +20,7 @@ import (
 func TestValidate(t *testing.T) {
 	crlFile, err := os.Open("../../test/hierarchy/int-e1.crl.pem")
 	test.AssertNotError(t, err, "opening test crl file")
-	crlPEM, err := io.ReadAll(crlFile)
+	crlPEM, err := io.ReadAll(&io.LimitedReader{R: crlFile, N: 100_000_000})
 	test.AssertNotError(t, err, "reading test crl file")
 	crlDER, _ := pem.Decode(crlPEM)
 	crl, err := x509.ParseRevocationList(crlDER.Bytes)
@@ -43,7 +43,7 @@ func TestValidate(t *testing.T) {
 
 	crlFile, err = os.Open("../../linter/lints/cabf_br/testdata/crl_long_validity.pem")
 	test.AssertNotError(t, err, "opening test crl file")
-	crlPEM, err = io.ReadAll(crlFile)
+	crlPEM, err = io.ReadAll(&io.LimitedReader{R: crlFile, N: 100_000_000})
 	test.AssertNotError(t, err, "reading test crl file")
 	crlDER, _ = pem.Decode(crlPEM)
 	crl, err = x509.ParseRevocationList(crlDER.Bytes)

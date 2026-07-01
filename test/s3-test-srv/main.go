@@ -33,7 +33,7 @@ func (srv *s3TestSrv) handleS3(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: r.Body, N: 100_000_000})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("failed to read request body"))

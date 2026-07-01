@@ -2563,7 +2563,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	if err != nil {
 		test.AssertNotError(t, err, "do error")
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		test.AssertNotEquals(t, err, "readall error")
 	}

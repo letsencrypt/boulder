@@ -198,7 +198,7 @@ func newOrder(s *State, c *acmeCache) error {
 		return fmt.Errorf("%s, post failed: %s", newOrderURL, err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return fmt.Errorf("%s, bad response: %s", newOrderURL, body)
 	}
@@ -243,7 +243,7 @@ func getAuthorization(s *State, c *acmeCache, url string) (*core.Authorization, 
 
 	// Read the response body
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +322,7 @@ func completeAuthorization(authz *core.Authorization, url string, s *State, c *a
 
 	// Read the response body and cleanup when finished
 	defer resp.Body.Close()
-	_, err = io.ReadAll(resp.Body)
+	_, err = io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func getOrder(s *State, c *acmeCache, url string) (*OrderJSON, error) {
 	}
 	// Read the response body
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return nil, fmt.Errorf("%s, bad response: %s", url, body)
 	}
@@ -529,7 +529,7 @@ func finalizeOrder(s *State, c *acmeCache) error {
 	defer resp.Body.Close()
 	// Read the body to ensure there isn't an error. We don't need the actual
 	// contents.
-	_, err = io.ReadAll(resp.Body)
+	_, err = io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return err
 	}
@@ -583,7 +583,7 @@ func getCert(s *State, c *acmeCache, url string) ([]byte, error) {
 		return nil, fmt.Errorf("%s bad response: %s", url, err)
 	}
 	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+	return io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 }
 
 // revokeCertificate removes a certificate url from the context, retrieves it,
@@ -639,7 +639,7 @@ func revokeCertificate(s *State, c *acmeCache) error {
 	}
 	defer resp.Body.Close()
 
-	_, err = io.ReadAll(resp.Body)
+	_, err = io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
 	if err != nil {
 		return err
 	}
