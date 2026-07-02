@@ -142,6 +142,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 
 	ctx := blog.ContextWith(stream.Context(),
 		slog.String("issuer", issuer.Subject.CommonName),
+		slog.Int64("issuerNameID", int64(issuer.NameID())),
 		slog.Int64("shard", shardIdx),
 		slog.String("number", crlNumber.String()),
 	)
