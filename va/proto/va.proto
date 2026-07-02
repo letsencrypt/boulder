@@ -15,7 +15,7 @@ service CAA {
 
 message IsCAAValidRequest {
   // Next unused field number: 7
-  reserved 1, 4; // Previously id(string), domain
+  reserved 1, 4; // Previously domain, authzID(string)
   // NOTE: For DNS identifiers, the value may be a wildcard domain name (e.g.
   // `*.example.com`).
   core.Identifier identifier = 5;
