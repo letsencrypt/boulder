@@ -188,3 +188,55 @@ func TestLoggerChecksum(t *testing.T) {
 		t.Errorf("checksum prefix %q does not match LogLineChecksum of remainder %q", parts[0], want)
 	}
 }
+
+func TestLoggerDoesNotMutateCallerAttrs(t *testing.T) {
+	t.Parallel()
+
+	// These methods append internal attrs (error, audit) to the caller's
+	// variadic attr slice. If that append reuses the caller's backing array,
+	// the caller's slice is corrupted for any later use.
+	testCases := []struct {
+		name string
+		log  func(l Logger, attrs ...slog.Attr)
+	}{
+		{
+			name: "Error",
+			log: func(l Logger, attrs ...slog.Attr) {
+				l.Error(context.Background(), "oops", errors.New("boom"), attrs...)
+			},
+		},
+		{
+			name: "AuditError",
+			log: func(l Logger, attrs ...slog.Attr) {
+				l.AuditError(context.Background(), "oops", errors.New("boom"), attrs...)
+			},
+		},
+		{
+			name: "AuditInfo",
+			log: func(l Logger, attrs ...slog.Attr) {
+				l.AuditInfo(context.Background(), "note", attrs...)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			attrs := make([]slog.Attr, 0, 4)
+			attrs = append(attrs, slog.String("k1", "v1"))
+
+			tc.log(NewMock(), attrs...)
+
+			if len(attrs) != 1 || attrs[0].String() != "k1=v1" {
+				t.Errorf("caller's attr slice was mutated: %v", attrs)
+			}
+			leaked := attrs[:cap(attrs)]
+			for i := 1; i < len(leaked); i++ {
+				if !leaked[i].Equal(slog.Attr{}) {
+					t.Errorf("caller's backing array index %d contains leaked attr %v", i, leaked[i])
+				}
+			}
+		})
+	}
+}
