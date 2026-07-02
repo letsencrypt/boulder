@@ -58,6 +58,15 @@ func (w *auditWriter) Write(in []byte) (int, error) {
 // (either text or json) provided by the go standard library. Which handler is
 // wrapped is determined by the build environment: json for prod, and text for
 // integration tests.
+//
+// Warning: the two wrapped handlers each hold their own internal lock, so the
+// shared io.Writer receives whole-line Write calls from both of them
+// concurrently. Any writer placed here must tolerate that. All of today's
+// writers do: os.File serializes concurrent Write calls internally, and
+// syslog.Writer and the test mock's in-memory writer hold their own locks. An
+// unsynchronized wrapper inserted below this point (for example a
+// bufio.Writer added for buffering) would be subject to data races and
+// interleaved lines.
 func newAuditHandler(w io.Writer, opts *slog.HandlerOptions) *auditHandler {
 	origReplaceAttr := opts.ReplaceAttr
 	opts.ReplaceAttr = func(groups []string, attr slog.Attr) slog.Attr {
