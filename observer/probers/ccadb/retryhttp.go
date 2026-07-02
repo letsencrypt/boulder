@@ -21,7 +21,7 @@ func getBody(ctx context.Context, url string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 300_000})
+	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 1_000_000_000})
 	if err != nil {
 		return nil, err
 	}
