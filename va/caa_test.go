@@ -500,7 +500,7 @@ func TestCAALogging(t *testing.T) {
 				Identifier:       identifier.NewDNS(tc.Domain).ToProto(),
 				ValidationMethod: string(tc.ChallengeType),
 				AccountURIID:     tc.AccountURIID,
-				AuthzID:          "123",
+				AuthzIDInt:       123,
 			})
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records`)
@@ -526,10 +526,9 @@ func TestDoCAAErrMessage(t *testing.T) {
 	domain := "caa-timeout.com"
 	resp, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
 		Identifier:       identifier.NewDNS(domain).ToProto(),
-		AuthzID:          "123",
+		AuthzIDInt:       123,
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 		AccountURIID:     12345,
-		AuthzIDInt:       678910,
 	})
 
 	// The lookup itself should not return an error
@@ -1051,10 +1050,9 @@ func TestMultiCAARechecking(t *testing.T) {
 
 			isValidRes, err := va.DoCAA(context.TODO(), &vapb.IsCAAValidRequest{
 				Identifier:       tc.ident.ToProto(),
-				AuthzID:          "123",
+				AuthzIDInt:       123,
 				ValidationMethod: string(core.ChallengeTypeDNS01),
 				AccountURIID:     1,
-				AuthzIDInt:       3,
 			})
 			test.AssertNotError(t, err, "Should not have errored, but did")
 
