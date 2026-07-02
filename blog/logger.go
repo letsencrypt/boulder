@@ -63,9 +63,7 @@ func New(conf Config) (*logger, error) {
 			return nil, fmt.Errorf("failed to connect to syslog: %w", err)
 		}
 
-		writer := newChecksumWriter(syslogger)
-		opts := &slog.HandlerOptions{Level: configToSlogLevel(conf.SyslogLevel)}
-		syslogHandler = &contextHandler{inner: newAuditHandler(writer, opts)}
+		syslogHandler = &contextHandler{inner: newSeverityHandler(syslogger, conf.SyslogLevel)}
 	}
 
 	var l *slog.Logger
