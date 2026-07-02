@@ -133,6 +133,7 @@ func (a *admin) spkiHashesFromFile(filePath string) ([][]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening spki hashes file: %w", err)
 	}
+	defer file.Close()
 
 	var spkiHashes [][]byte
 	scanner := bufio.NewScanner(file)
@@ -151,6 +152,10 @@ func (a *admin) spkiHashesFromFile(filePath string) ([][]byte, error) {
 		}
 
 		spkiHashes = append(spkiHashes, spkiHash)
+	}
+	err = scanner.Err()
+	if err != nil {
+		return nil, fmt.Errorf("error while reading spki hashes file: %w", err)
 	}
 
 	return spkiHashes, nil
