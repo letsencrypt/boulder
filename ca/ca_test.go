@@ -943,7 +943,7 @@ func TestNoteSignError(t *testing.T) {
 
 func TestGenerateSKID(t *testing.T) {
 	t.Parallel()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Error generating key")
 
 	sha256skid, err := generateSKID(key.Public())
@@ -957,7 +957,7 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 	t.Parallel()
 
 	// Create first keypair and cert
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "unable to generate ECDSA private key")
 	template := &x509.Certificate{
 		NotAfter:     time.Now().Add(1 * time.Hour),
@@ -968,7 +968,7 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 	test.AssertNotError(t, err, "unable to create certificate")
 
 	// Create second keypair and cert
-	testKey2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey2, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "unable to generate ECDSA private key")
 	template2 := &x509.Certificate{
 		NotAfter:     time.Now().Add(2 * time.Hour),

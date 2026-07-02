@@ -61,7 +61,7 @@ func (p wrappedSigner) Public() crypto.PublicKey {
 }
 
 func TestGenerateCRLLints(t *testing.T) {
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 
 	cert := &x509.Certificate{
@@ -102,7 +102,7 @@ func TestGenerateCRLLints(t *testing.T) {
 }
 
 func TestGenerateCRL(t *testing.T) {
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 
 	template := &x509.Certificate{

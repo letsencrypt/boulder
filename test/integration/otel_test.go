@@ -283,7 +283,7 @@ func traceIssuingTestCert(t *testing.T) trace.TraceID {
 	c, err := acme.NewClient("http://boulder.service.consul:4001/directory", option)
 	test.AssertNotError(t, err, "acme.NewClient failed")
 
-	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Generating ECDSA key failed")
 
 	account, err := c.NewAccount(privKey, false, true)

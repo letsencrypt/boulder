@@ -154,7 +154,7 @@ func TestContactsSentForNewAccount(t *testing.T) {
 				t.Fatalf("failed to connect to acme directory: %s", err)
 			}
 
-			acctKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			acctKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 			if err != nil {
 				t.Fatalf("failed to generate account key: %s", err)
 			}

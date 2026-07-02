@@ -49,7 +49,7 @@ func makeClient(contacts ...string) (*client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error connecting to acme directory: %v", err)
 	}
-	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating private key: %v", err)
 	}
@@ -161,7 +161,7 @@ func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []ac
 func makeCSR(k *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*x509.CertificateRequest, error) {
 	var err error
 	if k == nil {
-		k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		k, err = ecdsa.GenerateKey(elliptic.P256(), nil)
 		if err != nil {
 			return nil, fmt.Errorf("generating certificate key: %s", err)
 		}

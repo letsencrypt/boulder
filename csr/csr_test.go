@@ -45,7 +45,7 @@ func (pa *mockPA) CheckAuthzChallenges(a *core.Authorization) error {
 }
 
 func TestVerifyCSR(t *testing.T) {
-	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	private, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "error generating test key")
 	signedReqBytes, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{PublicKey: private.PublicKey, SignatureAlgorithm: x509.SHA256WithRSA}, private)
 	test.AssertNotError(t, err, "error generating test CSR")
@@ -257,7 +257,7 @@ func TestSHA1Deprecation(t *testing.T) {
 	keyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "creating test keypolicy")
 
-	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	private, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "error generating test key")
 
 	makeAndVerifyCsr := func(alg x509.SignatureAlgorithm) error {
@@ -283,7 +283,7 @@ func TestSHA1Deprecation(t *testing.T) {
 }
 
 func TestDuplicateExtensionRejection(t *testing.T) {
-	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	private, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "error generating test key")
 
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader,
