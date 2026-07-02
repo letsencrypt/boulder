@@ -109,12 +109,21 @@ func (d dryRunSAAdmin) CreateIncident(ctx context.Context, req *sapb.CreateIncid
 }
 
 func (d dryRunSAAdmin) UpdateIncident(ctx context.Context, req *sapb.UpdateIncidentRequest, _ ...grpc.CallOption) (*sapb.Incident, error) {
-	d.log.Info(ctx, "dry-run: saa.UpdateIncident",
-		slog.String("incident", req.SerialTable),
-		slog.String("url", req.Url),
-		slog.Time("renewBy", req.RenewBy.AsTime()),
-		slog.Bool("enabled", req.GetEnabled()),
-	)
+	// Only log the fields the request would actually change: a real
+	// UpdateIncident only applies non-empty fields, and logging zero values
+	// (1970 timestamps, enabled=false) for unset fields would misrepresent
+	// what a real run would do.
+	attrs := []slog.Attr{slog.String("incident", req.SerialTable)}
+	if req.Url != "" {
+		attrs = append(attrs, slog.String("url", req.Url))
+	}
+	if req.RenewBy != nil {
+		attrs = append(attrs, slog.Time("renewBy", req.RenewBy.AsTime()))
+	}
+	if req.Enabled != nil {
+		attrs = append(attrs, slog.Bool("enabled", *req.Enabled))
+	}
+	d.log.Info(ctx, "dry-run: saa.UpdateIncident", attrs...)
 
 	out := &sapb.Incident{SerialTable: req.SerialTable, Url: req.Url, RenewBy: req.RenewBy}
 	if req.Enabled != nil {
