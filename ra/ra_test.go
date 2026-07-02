@@ -746,7 +746,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 
-	// Wait for the RA to finish processesing the validation, and ensure that
+	// Wait for the RA to finish processing the validation, and ensure that
 	// the reset bucket key is what we expect.
 	reset := <-keyChan
 	test.AssertEquals(t, reset, bucketKey)
@@ -3650,14 +3650,14 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 }
 
 // mockSARecordAuthzRevocation is a mock sapb.StorageAuthorityClient that simply
-// maps identifier strings to RegistrationIDs for received RevokeAuthorizationFor
+// maps identifier strings to RegistrationIDs for received RevokeAuthorizationsFor
 // requests.
 type mockSARecordAuthzRevocation struct {
 	sapb.StorageAuthorityClient
 	recv map[string]int64
 }
 
-func (msa *mockSARecordAuthzRevocation) RevokeAuthorizationFor(ctx context.Context, req *sapb.RevokeAuthorizationForRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (msa *mockSARecordAuthzRevocation) RevokeAuthorizationsFor(ctx context.Context, req *sapb.RevokeAuthorizationsForRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	msa.recv[req.Identifier.Value] = req.RegistrationID
 	return &emptypb.Empty{}, nil
 }
@@ -3677,7 +3677,7 @@ func TestRevokeAuthorizations_FeatureDisabled(t *testing.T) {
 
 	meta := &sapb.SerialMetadata{RegistrationID: 333}
 
-	ra.revokeAuthorizations(context.Background(), cert, meta)
+	ra.revokeAuthorizations(context.Background(), cert, meta.RegistrationID)
 	// mockSA should not have received ANY requests
 	test.AssertEquals(t, len(mockSA.recv), 0)
 }
@@ -3698,7 +3698,7 @@ func TestRevokeAuthorizations_FeatureEnabled(t *testing.T) {
 
 	meta := &sapb.SerialMetadata{RegistrationID: 333}
 
-	ra.revokeAuthorizations(context.Background(), cert, meta)
+	ra.revokeAuthorizations(context.Background(), cert, meta.RegistrationID)
 	// mockSA should have received requests for each of the certificate identifiers
 	for _, ident := range idents {
 		test.AssertEquals(t, mockSA.recv[ident.Value], meta.RegistrationID)

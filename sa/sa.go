@@ -450,8 +450,8 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	return &emptypb.Empty{}, nil
 }
 
-// RevokeAuthorizationFor revokes a valid or pending authorization by Registraton ID and Identifier so long as it is currently unexpired
-func (ssa *SQLStorageAuthority) RevokeAuthorizationFor(ctx context.Context, req *sapb.RevokeAuthorizationForRequest) (*emptypb.Empty, error) {
+// RevokeAuthorizationsFor revokes a valid or pending authorization by Registraton ID and Identifier so long as it is currently unexpired
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req *sapb.RevokeAuthorizationsForRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifier.Type, req.Identifier.Value) {
 		return nil, errIncompleteRequest
 	}
@@ -464,9 +464,9 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationFor(ctx context.Context, req 
 			"registrationID":  req.RegistrationID,
 			"identifierType":  identifierTypeToUint[req.Identifier.Type],
 			"identifierValue": req.Identifier.Value,
-			"expirenow":       ssa.clk.Now(),
 			"valid":           statusUint(core.StatusValid),
 			"pending":         statusUint(core.StatusPending),
+			"expirenow":       ssa.clk.Now(),
 		},
 	)
 	if err != nil {

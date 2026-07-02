@@ -485,7 +485,7 @@ message RateLimitOverrideResponse {
   google.protobuf.Timestamp updatedAt = 3;
 }
 
-message RevokeAuthorizationForRequest {
+message RevokeAuthorizationsForRequest {
   int64 registrationID = 1;
   core.Identifier identifier = 2;
 }

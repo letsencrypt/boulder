@@ -701,16 +701,16 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	}
 }
 
-// waitForAuthzStatusChange uses an acme client to poll some(a slice of)
-// authorizations to change to a desired status. It is willing to repeatedly
-// fetch the authorizations up to four times, and wait up to 5 seconds, before
-// reporting failure. Observed change is success and cuts the polling time
-// short.
+// waitForAuthzStatusChange uses an acme client to poll some (a slice of)
+// authorizations watching for them to change to a desired status. It is willing
+// to repeatedly fetch the authorizations up to five times, accumulating ~3.5
+// seconds total wait time with backoff+jitter, before reporting failure.
+// Observed status change of ALL authorizations is success, ending the loop.
 func waitForAuthzStatusChange(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
 	t.Helper()
 
-	for try := range 4 {
-		time.Sleep(core.RetryBackoff(try, time.Second, 2*time.Second, 1.5))
+	for try := range 5 {
+		time.Sleep(core.RetryBackoff(try, 100*time.Millisecond, 2*time.Second, 2.5))
 
 		var allStatus []string
 
@@ -734,14 +734,16 @@ func waitForAuthzStatusChange(t *testing.T, aClient *client, authzs []string, wa
 	t.Fatalf("exhausted authz polling attempts, status values still not as desired")
 }
 
-// waitForAuthzStatusStable uses an acme client to poll some(a slice of)
-// authorizations to remain stable in a desired status. It will repeatedly fetch
-// the authorizations four times, and wait up to 5 seconds, before success.
-// Failure cuts the polling time short.
+// waitForAuthzStatusStable uses an acme client to poll some (a slice of)
+// authorizations to remain stable with a supplied status. It will repeatedly
+// fetch the authorizations five times, accumulating ~5 seconds total wait time
+// with backoff+jitter (which is intended to be _just_ longer than the
+// revokeAuthorizations function custom context), before reporting success.
+// Observed status change of ANY authorization is fatal, ending the loop.
 func waitForAuthzStatusStable(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
 	t.Helper()
 
-	for try := range 4 {
+	for try := range 5 {
 		time.Sleep(core.RetryBackoff(try, time.Second, 2*time.Second, 1.5))
 
 		for authz := range authzs {

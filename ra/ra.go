@@ -1599,21 +1599,27 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, smeta *sapb.SerialMetadata) {
+// revokeAuthorizations must be called as a background goroutine as it uses a
+// custom context timeout and is not cancelled by its parent. It sends off an
+// asynchronous request to the SA to revoke authorizations for all Identifiers
+// from the provided cert which are held by the provided RegistrationID. It will
+// log each Identifier and RegistrationID pair attempted against the SA, and
+// will include the gRPC error in the logs, if encountered.
+func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, regId int64) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
 	if features.Get().RevokeAuthzsUponRevokeCert {
 		idents := identifier.FromCert(cert)
 		for _, ident := range idents {
-			_, err := ra.SA.RevokeAuthorizationFor(ctx, &sapb.RevokeAuthorizationForRequest{
-				RegistrationID: smeta.RegistrationID,
+			_, err := ra.SA.RevokeAuthorizationsFor(ctx, &sapb.RevokeAuthorizationsForRequest{
+				RegistrationID: regId,
 				Identifier:     ident.ToProto(),
 			})
 			if err != nil {
-				ra.log.Error(ctx, "Authz revocation failed", err, blog.Idents(ident), blog.Acct(smeta.RegistrationID))
+				ra.log.Error(ctx, "Authz revocation failed", err, blog.Idents(ident), blog.Acct(regId))
 			} else {
-				ra.log.Info(ctx, "Authz revocation succeeded", blog.Idents(ident), blog.Acct(smeta.RegistrationID))
+				ra.log.Info(ctx, "Authz revocation succeeded", blog.Idents(ident), blog.Acct(regId))
 			}
 		}
 	}
@@ -1719,10 +1725,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	// Asynchronously request to revoke authorizations held by the RegID from
-	// cert metadata, confirmed above to be different than requester ID.
+	// Asynchronously request to revoke authorizations for identifiers from this
+	// revoked certificate which are held by the RegID from cert metadata,
+	// confirmed above to be different than requester ID.
 	if requestAuthzRevocation {
-		go ra.revokeAuthorizations(ctx, cert, metadata)
+		go ra.revokeAuthorizations(ctx, cert, metadata.RegistrationID)
 	}
 
 	return &emptypb.Empty{}, nil

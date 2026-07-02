@@ -861,7 +861,7 @@ func TestDeactivateAuthorization2(t *testing.T) {
 	test.AssertError(t, err, "sa.DeactivateAuthorization2 unexpectedly succeeded")
 }
 
-func TestRevokeAuthorizationFor(t *testing.T) {
+func TestRevokeAuthorizationsFor(t *testing.T) {
 	sa, fc := initSA(t)
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour).UTC()
@@ -871,7 +871,7 @@ func TestRevokeAuthorizationFor(t *testing.T) {
 	// create a pending authz
 	authzID := createPendingAuthorization(t, sa, reg.Id, ident, expires)
 	// revoke a pending authz
-	_, err := sa.RevokeAuthorizationFor(context.Background(), &sapb.RevokeAuthorizationForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
+	_, err := sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
 	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
 	authz, _ := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	// revoking a pending authz should result in revoked status
@@ -880,7 +880,7 @@ func TestRevokeAuthorizationFor(t *testing.T) {
 	// create a valid authz
 	authzID = createFinalizedAuthorization(t, sa, reg.Id, ident, expires, "valid", attemptedAt)
 	// revoke a valid authz
-	_, err = sa.RevokeAuthorizationFor(context.Background(), &sapb.RevokeAuthorizationForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
+	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
 	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
 	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	// revoking a valid authz should result in revoked status
@@ -889,7 +889,7 @@ func TestRevokeAuthorizationFor(t *testing.T) {
 	// create an invalid authz
 	authzID = createFinalizedAuthorization(t, sa, reg.Id, ident, expires, "invalid", attemptedAt)
 	// revoke an invalid authz
-	_, err = sa.RevokeAuthorizationFor(context.Background(), &sapb.RevokeAuthorizationForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
+	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
 	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
 	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	// revoking an invalid authz should NOT change status from invalid
@@ -899,14 +899,14 @@ func TestRevokeAuthorizationFor(t *testing.T) {
 	expires = fc.Now().Add(-time.Hour).UTC()
 	authzID = createPendingAuthorization(t, sa, reg.Id, ident, expires)
 	// revoke an expired authz
-	_, err = sa.RevokeAuthorizationFor(context.Background(), &sapb.RevokeAuthorizationForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
+	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
 	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
 	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	// revoking an expired authz should NOT change status from expired
 	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusPending)
 
 	// test error case with zero-values in request
-	_, err = sa.RevokeAuthorizationFor(context.Background(), &sapb.RevokeAuthorizationForRequest{RegistrationID: reg.Id, Identifier: &corepb.Identifier{Type: "", Value: ""}})
+	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: &corepb.Identifier{Type: "", Value: ""}})
 	test.AssertError(t, err, "sa.RevokeAuthorization unexpectedly succeeded")
 }
 
