@@ -288,7 +288,7 @@ func (c *certChecker) processCerts(ctx context.Context) {
 		sans, problems := c.checkCert(ctx, cert)
 		if len(problems) != 0 {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
-			c.logger.Error(ctx, "certificate error found",
+			c.logger.AuditError(ctx, "certificate error found",
 				fmt.Errorf("detected %d problems", len(problems)),
 				blog.Serial(cert.Serial),
 				blog.Idents(sans...),
@@ -734,7 +734,7 @@ func main() {
 		})
 	}
 	wg.Wait()
-	logger.Info(ctx, "Finished processing certificates",
+	logger.AuditInfo(ctx, "Finished processing certificates",
 		slog.Time("begin", checker.issuedReport.begin),
 		slog.Time("end", checker.issuedReport.end),
 		slog.Int64("goodCerts", checker.issuedReport.GoodCerts),
