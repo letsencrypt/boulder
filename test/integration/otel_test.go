@@ -72,7 +72,7 @@ func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) Trace {
 	}
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
-	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
+	body, err := io.ReadAll(resp.Body)
 	test.AssertNotError(t, err, "failed to read trace body")
 
 	var parsed TraceResponse
