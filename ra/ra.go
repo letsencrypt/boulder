@@ -1447,6 +1447,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("cannot validate challenge: %s", cErr.Error())
 	}
 
+	// Set the authorization to "processing", to prevent parallel attempts.
+	if features.Get().SetAuthzProcessing {
+		_, err = ra.SA.SetAuthzProcessing(ctx, &sapb.AuthorizationID2{Id: authz.ID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to mark authz as processing: %w", err)
+		}
+	}
+
 	// Dispatch to the VA for service
 	ra.drainWG.Go(func() {
 		ctx := context.WithoutCancel(ctx)
