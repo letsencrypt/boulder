@@ -1178,7 +1178,7 @@ func TestLookupJWK(t *testing.T) {
 			in := tc.JWS.Signatures[0].Header
 			inputLogEvent := newRequestEvent()
 
-			gotJWK, gotAcct, gotErr := wfe.lookupJWK(in, context.Background(), tc.Request, inputLogEvent)
+			gotJWK, gotAcct, gotErr := wfe.lookupJWK(t.Context(), in, tc.Request, wfe.accountCache, inputLogEvent)
 			if tc.WantErrDetail == "" {
 				if gotErr != nil {
 					t.Fatalf("lookupJWK(%#v) = %#v, want nil", in, gotErr)
@@ -1395,7 +1395,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
 
-			gotPayload, gotJWS, gotAcct, gotErr := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
+			gotPayload, gotJWS, gotAcct, gotErr := wfe.validPOSTForAccount(t.Context(), tc.Request, inputLogEvent)
 			if tc.WantErrDetail == "" {
 				if gotErr != nil {
 					t.Fatalf("validPOSTForAccount(%#v) = %#v, want nil", tc.Request, gotErr)
@@ -1478,11 +1478,11 @@ func setupAuthOnlyWFE(
 	inmemNonceService := &inmemnonce.NonceService{Impl: nonceService}
 	freshGetter := &staticRegistrationGetter{registration: freshAccount}
 	wfe := WebFrontEndImpl{
-		sa:            freshGetter,
-		rnc:           inmemNonceService,
-		rncKey:        rncKey,
-		accountGetter: rejectingRegistrationGetter{t: t},
-		stats:         initStats(metrics.NoopRegisterer),
+		sa:           freshGetter,
+		rnc:          inmemNonceService,
+		rncKey:       rncKey,
+		accountCache: rejectingRegistrationGetter{t: t},
+		stats:        initStats(metrics.NoopRegisterer),
 	}
 
 	return wfe, requestSigner{t, inmemNonceService.AsSource()}, freshGetter
@@ -1497,7 +1497,7 @@ func TestValidPOSTForCurrentAccountRejectsCachedDeactivatedAccount(t *testing.T)
 	_, _, body := signer.byKeyID(1, nil, "http://localhost/test", "{}")
 	request := makePostRequestWithPath("test", body)
 
-	_, _, _, err := wfe.validPOSTForCurrentAccount(request, ctx, newRequestEvent())
+	_, _, _, err := wfe.validPOSTForAccount(ctx, request, newRequestEvent())
 	test.AssertErrorIs(t, err, berrors.Unauthorized)
 	test.AssertContains(t, err.Error(), `Account is not valid, has status "deactivated"`)
 	test.AssertEquals(t, freshGetter.calls, 1)
@@ -1512,7 +1512,7 @@ func TestValidPOSTForCurrentAccountRejectsCachedPreRolloverKey(t *testing.T) {
 	_, _, body := signer.byKeyID(1, nil, "http://localhost/test", "{}")
 	request := makePostRequestWithPath("test", body)
 
-	_, _, _, err := wfe.validPOSTForCurrentAccount(request, ctx, newRequestEvent())
+	_, _, _, err := wfe.validPOSTForAccount(ctx, request, newRequestEvent())
 	test.AssertErrorIs(t, err, berrors.Malformed)
 	test.AssertContains(t, err.Error(), "JWS verification error")
 	test.AssertEquals(t, freshGetter.calls, 1)
@@ -1557,7 +1557,7 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			ev := newRequestEvent()
-			_, gotErr := wfe.validPOSTAsGETForAccount(tc.Request, context.Background(), ev)
+			_, gotErr := wfe.validPOSTAsGETForAccount(t.Context(), tc.Request, ev)
 			if tc.WantErrDetail == "" {
 				if gotErr != nil {
 					t.Fatalf("validPOSTAsGETForAccount(%#v) = %#v, want nil", tc.Request, gotErr)
@@ -1595,7 +1595,7 @@ func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.Re
 func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 	wfe.sa = &mockSADifferentStoredKey{}
-	wfe.accountGetter = wfe.sa
+	wfe.accountCache = wfe.sa
 	event := newRequestEvent()
 
 	payload := `{"resource":"ima-payload"}`
@@ -1606,7 +1606,7 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	// Ensure that ValidPOSTForAccount produces an error since the
 	// mockSADifferentStoredKey will return a different key than the one we used to
 	// sign the request
-	_, _, _, err := wfe.validPOSTForAccount(request, ctx, event)
+	_, _, _, err := wfe.validPOSTForAccount(ctx, request, event)
 	test.AssertError(t, err, "No error returned for request signed by wrong key")
 	test.AssertErrorIs(t, err, berrors.Malformed)
 	test.AssertContains(t, err.Error(), "JWS verification error")
