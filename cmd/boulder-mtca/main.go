@@ -1,3 +1,5 @@
+//go:build go1.27
+
 package notmain
 
 import (
@@ -7,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
@@ -28,7 +31,7 @@ type Config struct {
 		Issuer issuance.IssuerConfig
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

@@ -7,6 +7,8 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
+GO ?= go
+
 # TODO(#8410): Remove pardot-test-srv when we've fully migrated to
 # salesforce-test-srv.
 CMDS = admin boulder ceremony ct-test-srv salesforce-test-srv pardot-test-srv chall-test-srv zendesk-test-srv
@@ -44,7 +46,7 @@ bin/pardot-test-srv: bin/salesforce-test-srv
 
 build_cmds: | $(OBJDIR)
 	echo $(OBJECTS)
-	GOBIN=$(OBJDIR) go install -mod=vendor $(GO_BUILD_FLAGS) ./...
+	GOBIN=$(OBJDIR) $(GO) install -mod=vendor $(GO_BUILD_FLAGS) ./...
 
 # Building a .deb requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.

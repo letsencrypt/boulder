@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -45,7 +46,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/must"
@@ -429,6 +429,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		10*time.Second,
 		10*time.Second,
 		2,
+		1000,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
 		nil,
@@ -443,6 +444,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		unpauseLifetime,
 		unpauseURL,
 		[]string{"asdf"},
+		nil,
 		"letsencrypt.org",
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
@@ -2367,7 +2369,7 @@ func TestGetCertificate(t *testing.T) {
 				test.Assert(t, bytes.Equal(bodyBytes, tc.ExpectedCert), "Certificates don't match")
 
 				// Successful requests should be logged as such
-				reqlogs := mockLog.GetAllMatching(`INFO: [^ ]+ [^ ]+ [^ ]+ 200 .*`)
+				reqlogs := mockLog.GetAllMatching(`level=INFO .* code=200`)
 				if len(reqlogs) != 1 {
 					t.Errorf("Didn't find info logs with code 200. Instead got:\n%s\n",
 						strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
@@ -2378,7 +2380,7 @@ func TestGetCertificate(t *testing.T) {
 				test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
 
 				// Unsuccessful requests should be logged as such
-				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`INFO: [^ ]+ [^ ]+ [^ ]+ %d .*`, tc.ExpectedStatus))
+				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`level=INFO .* code=%d`, tc.ExpectedStatus))
 				if len(reqlogs) != 1 {
 					t.Errorf("Didn't find info logs with code %d. Instead got:\n%s\n",
 						tc.ExpectedStatus, strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
@@ -2524,7 +2526,7 @@ func TestGetCertificateNew(t *testing.T) {
 				test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
 
 				// Unsuccessful requests should be logged as such
-				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`INFO: [^ ]+ [^ ]+ [^ ]+ %d .*`, tc.ExpectedStatus))
+				reqlogs := mockLog.GetAllMatching(fmt.Sprintf(`level=INFO .* code=%d`, tc.ExpectedStatus))
 				if len(reqlogs) != 1 {
 					t.Errorf("Didn't find info logs with code %d. Instead got:\n%s\n",
 						tc.ExpectedStatus, strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
@@ -3373,9 +3375,15 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
-	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authenticated revocation"), []string{
-		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"Requester":1,"Method":"applicant"}`,
-	})
+	matches := mockLog.GetAllMatching("Authenticated revocation")
+	test.AssertEquals(t, len(matches), 1)
+	test.AssertContains(t, matches[0], `level=INFO`)
+	test.AssertContains(t, matches[0], `[AUDIT]`)
+	test.AssertContains(t, matches[0], `msg="Authenticated revocation"`)
+	test.AssertContains(t, matches[0], `serial=000000000000000000001d72443db5189821`)
+	test.AssertContains(t, matches[0], `reason=0`)
+	test.AssertContains(t, matches[0], `method=applicant`)
+	test.AssertContains(t, matches[0], `acct=1`)
 }
 
 // Valid revocation request for existing, non-revoked cert, signed using the
@@ -3402,9 +3410,14 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
-	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authenticated revocation"), []string{
-		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":1,"Requester":0,"Method":"privkey"}`,
-	})
+	matches := mockLog.GetAllMatching("Authenticated revocation")
+	test.AssertEquals(t, len(matches), 1)
+	test.AssertContains(t, matches[0], `level=INFO`)
+	test.AssertContains(t, matches[0], `[AUDIT]`)
+	test.AssertContains(t, matches[0], `msg="Authenticated revocation"`)
+	test.AssertContains(t, matches[0], `serial=000000000000000000001d72443db5189821`)
+	test.AssertContains(t, matches[0], `reason=1`)
+	test.AssertContains(t, matches[0], `method=privkey`)
 }
 
 // Invalid revocation request: although signed with the cert key, the cert
@@ -3633,7 +3646,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -3672,7 +3685,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusInvalid,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -3698,7 +3711,7 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("*.example.com"),
@@ -3721,7 +3734,7 @@ func TestPrepAuthzForDisplayShuffle(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -4519,5 +4532,86 @@ func TestLooksLikeRecursiveOnDemandRequest(t *testing.T) {
 				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = nil, but want error", tc.idents, tc.blocked)
 			}
 		})
+	}
+}
+
+type acctBlock struct{}
+
+func (ab *acctBlock) CheckAccountID(id int64) error {
+	return berrors.UnauthorizedError("oh no")
+}
+
+func TestAccountBlocker(t *testing.T) {
+	t.Parallel()
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	wfe.accountBlocker = new(acctBlock)
+
+	responseWriter := httptest.NewRecorder()
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		]
+	}`)
+	mux.ServeHTTP(responseWriter, r)
+	if responseWriter.Code != http.StatusForbidden {
+		t.Fatalf("newOrder with blocked account: got %d, want %d; %s", responseWriter.Code, http.StatusForbidden,
+			responseWriter.Body.String())
+	}
+	var errorResp1 map[string]any
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
+	if err != nil {
+		t.Fatalf("newOrder with blocked account: got error unmarshaling response: %s", err)
+	}
+	detail := errorResp1["detail"]
+	expected := "Account blocked :: oh no"
+	if detail != expected {
+		t.Errorf("newOrder with blocked account: got %q, want %q", detail, expected)
+	}
+}
+
+func TestMaxCumulativeIdentifierLength(t *testing.T) {
+	t.Parallel()
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	// Test that the newOrder endpoint returns no error if the valid profile is specified.
+	responseWriter := httptest.NewRecorder()
+
+	order := struct {
+		Identifiers []identifier.ACMEIdentifier
+	}{}
+
+	const alphabet = "abcdefghijklmnopqrstuvwxyz"
+
+	for i := 0; i < 25; i++ {
+		order.Identifiers = append(order.Identifiers,
+			identifier.NewDNS(
+				fmt.Sprintf("%d.%s.%s.%s.%s.example.com", i,
+					alphabet, alphabet, alphabet, alphabet)))
+	}
+
+	orderBytes, err := json.Marshal(order)
+	if err != nil {
+		t.Fatalf("marshaling JSON: %s", err)
+	}
+
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, string(orderBytes))
+	mux.ServeHTTP(responseWriter, r)
+	if responseWriter.Code != http.StatusBadRequest {
+		t.Fatalf("newOrder with too long identifiers: got %d, want %d; %s", responseWriter.Code, http.StatusBadRequest,
+			responseWriter.Body.String())
+	}
+	var errorResp1 map[string]any
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
+	if err != nil {
+		t.Fatalf("newOrder with too long identifiers: got error unmarshaling response: %s", err)
+	}
+	detail := errorResp1["detail"]
+	expected := "Cumulative length of all identifier values was greater than 1000 bytes"
+	if detail != expected {
+		t.Errorf("newOrder with too long identifiers: got %q, want %q", detail, expected)
 	}
 }

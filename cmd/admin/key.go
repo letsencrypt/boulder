@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/user"
 	"sync"
@@ -132,6 +133,7 @@ func (a *admin) spkiHashesFromFile(filePath string) ([][]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening spki hashes file: %w", err)
 	}
+	defer file.Close()
 
 	var spkiHashes [][]byte
 	scanner := bufio.NewScanner(file)
@@ -150,6 +152,10 @@ func (a *admin) spkiHashesFromFile(filePath string) ([][]byte, error) {
 		}
 
 		spkiHashes = append(spkiHashes, spkiHash)
+	}
+	err = scanner.Err()
+	if err != nil {
+		return nil, fmt.Errorf("error while reading spki hashes file: %w", err)
 	}
 
 	return spkiHashes, nil
@@ -179,8 +185,6 @@ func (a *admin) spkiHashFromCSRPEM(filename string, checkSignature bool, expecte
 	if data == nil {
 		return nil, fmt.Errorf("no PEM data found in %q", filename)
 	}
-
-	a.log.Debugf("Parsing key to block from CSR PEM: %x", data)
 
 	csr, err := x509.ParseCertificateRequest(data.Bytes)
 	if err != nil {
@@ -222,9 +226,9 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 				if err != nil {
 					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
-						a.log.Warningf("not blocking %x: already blocked", spkiHash)
+						a.log.Warn(ctx, "key already blocked", slog.String("spkiHash", hex.EncodeToString(spkiHash)))
 					} else {
-						a.log.Errf("failed to block %x: %s", spkiHash, err)
+						a.log.Error(ctx, "failed to block key", err, slog.String("spkiHash", hex.EncodeToString(spkiHash)))
 					}
 				}
 			}
@@ -270,7 +274,7 @@ func (a *admin) blockSPKIHash(ctx context.Context, spkiHash []byte, u *user.User
 		count++
 	}
 
-	a.log.Infof("Found %d unexpired certificates matching the provided key", count)
+	a.log.Info(ctx, "Found unexpired certificates matching the provided key", slog.Int("count", count))
 
 	_, err = a.sac.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash:   spkiHash[:],

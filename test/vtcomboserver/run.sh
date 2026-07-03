@@ -32,7 +32,7 @@ rm -vf "$VTDATAROOT"/"$tablet_dir"/{mysql.sock,mysql.sock.lock}
 
 VTSCHEMADIR=/vt/schema/
 cp -r /boulder/sa/vtschema/ "${VTSCHEMADIR}"
-for DB in boulder_sa boulder_sa_next incidents_sa incidents_sa_next ; do
+for DB in boulder_sa boulder_sa_next incidents_sa incidents_sa_next mtcmeta_44947_4_1_0_44 ; do
   # In MariaDB land, we need a `USE` statement in the SQL. In Vitess,
   # it's disallowed.
   grep --ignore-case --invert-match '^USE ' \

@@ -64,6 +64,17 @@
 					"dns",
 					"ip"
 				]
+			},
+			"mtcshortlived": {
+				"mtc": true,
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h",
+				"maxNames": 10,
+				"identifierTypes": [
+					"dns",
+					"ip"
+				]
 			}
 		},
 		"defaultProfileName": "legacy",
@@ -71,6 +82,18 @@
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/ra.boulder/cert.pem",
 			"keyFile": "test/certs/ipki/ra.boulder/key.pem"
+		},
+		"profileToMTCA": {
+			"mtcshortlived": {
+				"dnsAuthority": "consul.service.consul",
+				"srvLookup": {
+					"service": "mtca",
+					"domain": "service.consul"
+				},
+				"timeout": "20s",
+				"noWaitForReady": false,
+				"hostOverride": "mtca.boulder"
+			}
 		},
 		"vaService": {
 			"dnsAuthority": "consul.service.consul",

@@ -44,7 +44,7 @@ func (l *ecOtherKeyUsages) CheckApplies(c *x509.Certificate) bool {
 }
 
 func (l *ecOtherKeyUsages) Execute(c *x509.Certificate) *lint.LintResult {
-	if !(util.HasKeyUsage(c, x509.KeyUsageDigitalSignature) || util.HasKeyUsage(c, x509.KeyUsageKeyAgreement)) {
+	if !util.HasKeyUsage(c, x509.KeyUsageDigitalSignature) && !util.HasKeyUsage(c, x509.KeyUsageKeyAgreement) {
 		if c.KeyUsage != 0 {
 			return &lint.LintResult{Status: lint.Error}
 		}

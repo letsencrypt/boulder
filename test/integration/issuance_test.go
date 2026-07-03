@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"testing"
 
@@ -169,6 +170,33 @@ func TestIssuanceProfiles(t *testing.T) {
 
 	test.AssertEquals(t, len(legacy.SubjectKeyId), 20)
 	test.AssertEquals(t, len(modern.SubjectKeyId), 0)
+}
+
+// TestIssuanceMTC issues from an MTC profile.
+func TestIssuanceMTC(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("MTC issuance only available in config-next")
+	}
+
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating keypair: %s", err)
+	}
+
+	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
+
+	_, err = authAndIssue(client, key, idents, true, "mtcshortlived")
+	// "finalized order timeout" is as far as we get for now. Once we are collecting
+	// signatures and constructing standalone certificates, we'll expect this to succeed.
+	if err == nil || !strings.Contains(err.Error(), "finalized order timeout") {
+		t.Fatalf("issuing certificate: expected 'finalized order timeout', got %q", err)
+	}
 }
 
 // TestIPShortLived verifies that we will allow IP address identifiers only in

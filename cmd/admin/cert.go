@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/user"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"unicode"
 
+	"github.com/letsencrypt/boulder/blog"
 	core "github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -137,7 +139,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 		return errors.New("no serials to revoke found")
 	}
 
-	a.log.Infof("Found %d certificates to revoke", len(serials))
+	a.log.Info(ctx, "Found certificates to revoke", slog.Int("count", len(serials)))
 
 	if s.malformed {
 		return s.revokeMalformed(ctx, a, serials, reasonCode)
@@ -202,6 +204,7 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 	if err != nil {
 		return nil, fmt.Errorf("opening serials file: %w", err)
 	}
+	defer file.Close()
 
 	var serials []string
 	scanner := bufio.NewScanner(file)
@@ -211,6 +214,10 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 			continue
 		}
 		serials = append(serials, serial)
+	}
+	err = scanner.Err()
+	if err != nil {
+		return nil, fmt.Errorf("error while reading serials file: %w", err)
 	}
 
 	return serials, nil
@@ -332,9 +339,9 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 				if err != nil {
 					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
-						a.log.Warningf("not revoking %q: already revoked", serial)
+						a.log.Warn(ctx, "cert already revoked", blog.Serial(serial))
 					} else {
-						a.log.Errf("failed to revoke %q: %s", serial, err)
+						a.log.Error(ctx, "failed to revoke", err, blog.Serial(serial))
 					}
 				}
 			}

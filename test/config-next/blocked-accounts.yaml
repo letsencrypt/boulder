@@ -1,0 +1,3 @@
+Message: "your account has been blocked due to excessive traffic"
+BlockedAccountIDs:
+  - 1234

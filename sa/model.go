@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"google.golang.org/protobuf/proto"
 	"math"
 	"net/netip"
 	"net/url"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -638,15 +638,16 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		profile := authz.CertificateProfileName
 		am.CertificateProfileName = &profile
 	}
-	if authz.Id != "" {
-		// The v1 internal authorization objects use a string for the ID, the v2
-		// storage format uses a integer ID. In order to maintain compatibility we
-		// convert the integer ID to a string.
+	if authz.IdInt != 0 {
+		am.ID = authz.IdInt
+	} else if authz.Id != "" {
 		id, err := strconv.Atoi(authz.Id)
 		if err != nil {
 			return nil, err
 		}
 		am.ID = int64(id)
+	} else {
+		return nil, errors.New("authorization is missing an ID value")
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
 		return nil, errors.New("multiple challenges are non-pending")
@@ -782,6 +783,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 
 	pb := &corepb.Authorization{
 		Id:                     fmt.Sprintf("%d", am.ID),
+		IdInt:                  am.ID,
 		Status:                 string(uintToStatus[am.Status]),
 		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),
 		RegistrationID:         am.RegistrationID,

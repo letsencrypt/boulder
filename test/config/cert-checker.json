@@ -6,7 +6,6 @@
 		},
 		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"workers": 16,
-		"unexpiredOnly": true,
 		"badResultsOnly": true,
 		"checkPeriod": "72h",
 		"acceptableValidityDurations": [

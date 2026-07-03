@@ -45,7 +45,7 @@ func NewMailboxAddressFromSAN() lint.LintInterface {
 // CheckApplies is returns true if the certificate's policies assert that it conforms to the SMIME BRs
 func (l *MailboxAddressFromSAN) CheckApplies(c *x509.Certificate) bool {
 
-	if !(util.IsSMIMEBRCertificate(c) && util.IsSubscriberCert(c)) {
+	if !util.IsSMIMEBRCertificate(c) || !util.IsSubscriberCert(c) {
 		return false
 	}
 

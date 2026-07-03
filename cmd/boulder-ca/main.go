@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -107,7 +108,7 @@ type Config struct {
 
 	PA cmd.PAConfig
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -194,7 +195,7 @@ func main() {
 		}
 
 		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
-		cmd.FailOnError(err, "Loading issuer")
+		cmd.FailOnError(err, fmt.Sprintf("Loading issuer %q", issuerConfig.Location.CertFile))
 		issuers = append(issuers, issuer)
 	}
 

@@ -21,6 +21,39 @@ import (
 	"github.com/zmap/zlint/v3/util"
 )
 
+/*
+--- Citation History of this Requirement ---
+v1.0 to v1.2.5: Appendix B §1(A) (roots) and §2(D) (subordinate CAs)
+v1.3.0 to v1.8.7: §7.1.2.1(a) (roots) and §7.1.2.2(d) (subordinate CAs)
+v2.0.0 to v2.1.7: §7.1.2.1.4 (roots) and §7.1.2.10.4 (all other CA profiles)
+
+--- Version Notes ---
+In v1.1.3, Appendix B's sections were numbered but retained their previous titles. "Root CA Certificate"
+became section 1 and "Subordinate CA Certificate" became section 2. The numerical section references are
+used here for all versions following the original document format of the Baseline Requirements.
+
+This requirement was baselined at v2.2.6 and is current.
+
+--- Requirements Language ---
+BRs: 7.1.2.1.4 Root CA Basic Constraints
++-------------------+------------------+
+| Field             | Description      |
++-------------------+------------------+
+| cA                | MUST be set TRUE |
++-------------------+------------------+
+| pathLenConstraint | NOT RECOMMENDED  |
++-------------------+------------------+
+
+BRs: 7.1.2.10.4 CA Certificate Basic Constraints
++-------------------+------------------+
+| Field             | Description      |
++-------------------+------------------+
+| cA                | MUST be set TRUE |
++-------------------+------------------+
+| pathLenConstraint | MAY be present   |
++-------------------+------------------+
+*/
+
 type caIsCA struct{}
 
 func init() {
@@ -28,7 +61,7 @@ func init() {
 		LintMetadata: lint.LintMetadata{
 			Name:          "e_ca_is_ca",
 			Description:   "Root and Sub CA Certificate: The CA field MUST be set to true.",
-			Citation:      "BRs: 7.1.2.1, BRs: 7.1.2.2",
+			Citation:      "BRs: 7.1.2.1.4, 7.1.2.10.4",
 			Source:        lint.CABFBaselineRequirements,
 			EffectiveDate: util.CABEffectiveDate,
 		},

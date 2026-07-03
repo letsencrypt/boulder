@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"math/rand/v2"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -35,7 +37,6 @@ import (
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer" // imported for its init function.
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/policy"
@@ -154,6 +155,10 @@ type WebFrontEndImpl struct {
 	// How many contacts to allow in a single NewAccount request.
 	maxContactsPerReg int
 
+	// maxCumulativeIdentifierLength rejects new-order requests if the cumulative length of all identifiers
+	// is greater than its value.
+	maxCumulativeIdentifierLength int
+
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
@@ -179,6 +184,9 @@ type WebFrontEndImpl struct {
 	// given request counts as a renewal or not.
 	blockedOnDemandLabels []string `validate:"omitempty"`
 
+	// accountBlocker checks whether accounts are blocked and returns errors if so.
+	accountBlocker AccountBlocker
+
 	// certProfiles is a map of acceptable certificate profile names to
 	// descriptions (perhaps including URLs) of those profiles. NewOrder
 	// Requests with a profile name not present in this map will be rejected.
@@ -196,6 +204,12 @@ func (wfe *WebFrontEndImpl) purgeCachedAccount(regID int64) {
 	}
 }
 
+// AccountBlocker defines an interface that can check whether a given ID is
+// blocked, and return an error if so.
+type AccountBlocker interface {
+	CheckAccountID(id int64) error
+}
+
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
@@ -207,6 +221,7 @@ func NewWebFrontEndImpl(
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
 	maxContactsPerReg int,
+	maxCumulativeIdentifierLength int,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	eec emailpb.ExporterClient,
@@ -221,6 +236,7 @@ func NewWebFrontEndImpl(
 	unpauseJWTLifetime time.Duration,
 	unpauseURL string,
 	blockedOnDemandLabels []string,
+	accountBlocker AccountBlocker,
 	caaIdentity string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -250,30 +266,32 @@ func NewWebFrontEndImpl(
 	}
 
 	wfe := WebFrontEndImpl{
-		log:                   logger,
-		clk:                   clk,
-		keyPolicy:             keyPolicy,
-		certificateChains:     certificateChains,
-		issuerCertificates:    issuerCertificates,
-		stats:                 initStats(stats),
-		requestTimeout:        requestTimeout,
-		staleTimeout:          staleTimeout,
-		maxContactsPerReg:     maxContactsPerReg,
-		ra:                    rac,
-		sa:                    sac,
-		ee:                    eec,
-		gnc:                   gnc,
-		rnc:                   rnc,
-		rncKey:                rncKey,
-		accountCache:          accountCache,
-		limiter:               limiter,
-		txnBuilder:            txnBuilder,
-		certProfiles:          certProfiles,
-		unpauseSigner:         unpauseSigner,
-		unpauseJWTLifetime:    unpauseJWTLifetime,
-		unpauseURL:            unpauseURL,
-		blockedOnDemandLabels: blockedLabels,
-		DirectoryCAAIdentity:  normalizedCAAIdentity,
+		log:                           logger,
+		clk:                           clk,
+		keyPolicy:                     keyPolicy,
+		certificateChains:             certificateChains,
+		issuerCertificates:            issuerCertificates,
+		stats:                         initStats(stats),
+		requestTimeout:                requestTimeout,
+		staleTimeout:                  staleTimeout,
+		maxContactsPerReg:             maxContactsPerReg,
+		maxCumulativeIdentifierLength: maxCumulativeIdentifierLength,
+		ra:                            rac,
+		sa:                            sac,
+		ee:                            eec,
+		gnc:                           gnc,
+		rnc:                           rnc,
+		rncKey:                        rncKey,
+		accountCache:                  accountCache,
+		limiter:                       limiter,
+		txnBuilder:                    txnBuilder,
+		certProfiles:                  certProfiles,
+		unpauseSigner:                 unpauseSigner,
+		unpauseJWTLifetime:            unpauseJWTLifetime,
+		unpauseURL:                    unpauseURL,
+		blockedOnDemandLabels:         blockedLabels,
+		accountBlocker:                accountBlocker,
+		DirectoryCAAIdentity:          normalizedCAAIdentity,
 	}
 
 	return wfe, nil
@@ -372,7 +390,7 @@ func marshalIndent(v any) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
-func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logEvent *web.RequestEvent, status int, v any) error {
+func (wfe *WebFrontEndImpl) writeJsonResponse(ctx context.Context, response http.ResponseWriter, logEvent *web.RequestEvent, status int, v any) error {
 	jsonReply, err := marshalIndent(v)
 	if err != nil {
 		return err // All callers are responsible for handling this error
@@ -384,7 +402,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	if err != nil {
 		// Don't worry about returning this error because the caller will
 		// never handle it.
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 		logEvent.AddError("failed to write response: %s", err)
 	}
 	return nil
@@ -752,7 +770,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip netip.
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Warningf("refunding new account limits: %s", err)
+			wfe.log.Warn(ctx, "refunding new account limits", blog.Error(err))
 		}
 	}, nil
 }
@@ -806,7 +824,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			return
 		}
 
-		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
+		err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, acct)
 		if err != nil {
 			// ServerInternal because we just created this account, and it
 			// should be OK.
@@ -931,7 +949,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, acct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusCreated, acct)
 	if err != nil {
 		// ServerInternal because we just created this account, and it
 		// should be OK.
@@ -1011,13 +1029,6 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	return parsedCertificate, reason, nil
 }
 
-type revocationEvidence struct {
-	Serial    string
-	Reason    revocation.Reason
-	Requester int64
-	Method    string
-}
-
 // revokeCertBySubscriberKey processes an outer JWS as a revocation request that
 // is authenticated by a KeyID and the associated account.
 func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
@@ -1037,12 +1048,12 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 		return err
 	}
 
-	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
-		Serial:    core.SerialToString(cert.SerialNumber),
-		Reason:    reason,
-		Requester: acct.ID,
-		Method:    "applicant",
-	})
+	wfe.log.AuditInfo(ctx, "Authenticated revocation",
+		blog.Acct(acct.ID),
+		blog.Serial(core.SerialToString(cert.SerialNumber)),
+		slog.Int64("reason", int64(reason)),
+		slog.String("method", "applicant"),
+	)
 
 	// The RA will confirm that the authenticated account either originally
 	// issued the certificate, or has demonstrated control over all identifiers
@@ -1090,12 +1101,11 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 	}
 
-	wfe.log.AuditInfo("Authenticated revocation", revocationEvidence{
-		Serial:    core.SerialToString(cert.SerialNumber),
-		Reason:    reason,
-		Requester: 0,
-		Method:    "privkey",
-	})
+	wfe.log.AuditInfo(ctx, "Authenticated revocation",
+		blog.Serial(core.SerialToString(cert.SerialNumber)),
+		slog.Int64("reason", int64(reason)),
+		slog.String("method", "privkey"),
+	)
 
 	// The RA assumes here that the WFE2 has validated the JWS as proving
 	// control of the private key corresponding to this certificate.
@@ -1240,7 +1250,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	challenge *core.Challenge,
 ) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, challengePath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID, challenge.StringID())
+	challenge.URL = web.RelativeEndpoint(request, challengePath, fmt.Sprintf("%d", authz.RegistrationID), fmt.Sprintf("%d", authz.ID), challenge.StringID())
 
 	// Internally, we store challenge error problems with just the short form
 	// (e.g. "CAA") of the problem type. But for external display, we need to
@@ -1322,7 +1332,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err := wfe.writeJsonResponse(request.Context(), response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
@@ -1416,7 +1426,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
@@ -1472,7 +1482,7 @@ func (wfe *WebFrontEndImpl) Account(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, acct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal account"), err)
 		return
@@ -1659,7 +1669,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 
 	wfe.prepAuthorizationForDisplay(request, &authz)
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, authz)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal authz"), err)
@@ -1688,7 +1698,7 @@ func (wfe *WebFrontEndImpl) CertificateInfo(ctx context.Context, logEvent *web.R
 	}{
 		NotAfter: metadata.Expires.AsTime(),
 	}
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, certInfoStruct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, certInfoStruct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling certInfoStruct"), err)
 		return
@@ -1848,7 +1858,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 	}
 }
 
@@ -1858,7 +1868,7 @@ func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEv
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 	}
 }
 
@@ -1878,12 +1888,12 @@ func (wfe *WebFrontEndImpl) Healthz(ctx context.Context, logEvent *web.RequestEv
 
 	jsonResponse, err := json.Marshal(WfeHealthzResponse{Details: details})
 	if err != nil {
-		wfe.log.Warningf("Could not marshal healthz response: %s", err)
+		wfe.log.Warn(ctx, "Could not marshal healthz response", blog.Error(err))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, status, jsonResponse)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, status, jsonResponse)
 	if err != nil {
-		wfe.log.Warningf("Could not write response: %s", err)
+		wfe.log.Warn(ctx, "Could not write response", blog.Error(err))
 	}
 }
 
@@ -2058,7 +2068,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 	wfe.purgeCachedAccount(updatedAcct.ID)
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, updatedAcct)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, updatedAcct)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal updated account"), err)
 	}
@@ -2095,11 +2105,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	if order.Error != nil {
 		prob, err := bgrpc.PBToProblemDetails(order.Error)
 		if err != nil {
-			wfe.log.AuditErr("Failed to serialize order problem details", err, map[string]any{
-				"requester": order.RegistrationID,
-				"order":     order.Id,
-				"prob":      order.Error.String(),
-			})
+			wfe.log.AuditError(request.Context(), "Failed to serialize order problem details", err,
+				blog.Acct(order.RegistrationID),
+				blog.Order(order.Id),
+				slog.String("prob", order.Error.String()),
+			)
 		}
 		respObj.Error = prob
 		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type
@@ -2144,7 +2154,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Warningf("refunding new order limits: %s", err)
+			wfe.log.Warn(ctx, "refunding new order limits", blog.Error(err))
 		}
 	}, nil
 }
@@ -2380,6 +2390,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	idents := newOrderRequest.Identifiers
+	var totalIdentifierLen int
 	for _, ident := range idents {
 		if !ident.Type.IsValid() {
 			wfe.sendError(response, logEvent,
@@ -2392,7 +2403,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			wfe.sendError(response, logEvent, probs.Malformed("NewOrder request included empty identifier"), nil)
 			return
 		}
+		totalIdentifierLen += len(ident.Value)
+		if wfe.maxCumulativeIdentifierLength != 0 && totalIdentifierLen > wfe.maxCumulativeIdentifierLength {
+			wfe.sendError(response, logEvent,
+				probs.Malformed("Cumulative length of all identifier values was greater than %d bytes",
+					wfe.maxCumulativeIdentifierLength), nil)
+			return
+		}
 	}
+
 	idents = identifier.Normalize(idents)
 	logEvent.Identifiers = idents
 
@@ -2400,6 +2419,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
+	}
+
+	if wfe.accountBlocker != nil {
+		err = wfe.accountBlocker.CheckAccountID(acct.ID)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Account blocked"), err)
+			return
+		}
 	}
 
 	if features.Get().CheckIdentifiersPaused {
@@ -2509,7 +2536,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	response.Header().Set("Location", orderURL)
 
 	respObj := wfe.orderToOrderJSON(request, order)
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, respObj)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusCreated, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
@@ -2587,7 +2614,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		fmt.Sprintf("%d", acctID), fmt.Sprintf("%d", order.Id))
 	response.Header().Set("Location", orderURL)
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
@@ -2722,7 +2749,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
 	}
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
 		return
@@ -2794,7 +2821,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	}
 
 	response.Header().Set(headerRetryAfter, jitterRetryHeader(6*time.Hour))
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, renewalInfo)
+	err = wfe.writeJsonResponse(ctx, response, logEvent, http.StatusOK, renewalInfo)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
@@ -2802,7 +2829,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	return web.RelativeEndpoint(request, authzPath, fmt.Sprintf("%d", authz.RegistrationID), authz.ID)
+	return web.RelativeEndpoint(request, authzPath, fmt.Sprintf("%d", authz.RegistrationID), fmt.Sprintf("%d", authz.ID))
 }
 
 // jitterRetryHeader will return a string formatted random integer of seconds within a 20% window of the

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -13,13 +14,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -157,16 +157,13 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 		return fmt.Errorf("leasing shard: %w", err)
 	}
 
-	crlID := crl.Id(issuerNameID, shardIdx, crl.Number(atTime))
-
 	for i := range cu.maxAttempts {
 		// core.RetryBackoff always returns 0 when its first argument is zero.
 		sleepTime := core.RetryBackoff(i, time.Second, time.Minute, 2)
 		if i != 0 {
-			cu.log.AuditErr("Generating CRL failed", err, map[string]any{
-				"id":         crlID,
-				"retryAfter": int(sleepTime.Seconds()),
-			})
+			cu.log.AuditError(ctx, "Generating CRL failed", err,
+				slog.Duration("retryAfter", sleepTime),
+			)
 		}
 		cu.clk.Sleep(sleepTime)
 
@@ -203,8 +200,6 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	crlID := crl.Id(issuerNameID, shardIdx, crl.Number(atTime))
-
 	start := cu.clk.Now()
 	defer func() {
 		// This func closes over the named return value `err`, so can reference it.
@@ -216,7 +211,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
 
-	cu.log.Infof("Generating CRL shard: id=[%s]", crlID)
+	cu.log.Info(ctx, "Generating CRL shard")
 
 	// Query for unexpired certificates, with padding to ensure that revoked certificates show
 	// up in at least one CRL, even if they expire between revocation and CRL generation.
@@ -244,7 +239,9 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		crlEntries = append(crlEntries, entry)
 	}
 
-	cu.log.Infof("Queried SA for CRL shard: id=[%s] shardIdx=[%d] numEntries=[%d]", crlID, shardIdx, len(crlEntries))
+	cu.log.Info(ctx, "Queried SA for CRL shard",
+		slog.Int("numEntries", len(crlEntries)),
+	)
 
 	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
@@ -336,9 +333,10 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
 	}
 
-	cu.log.Infof(
-		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
-		crlID, crlLen, crlHash.Sum(nil))
+	cu.log.Info(ctx, "Generated CRL shard",
+		slog.Int("size", crlLen),
+		slog.String("sha256", fmt.Sprintf("%x", crlHash.Sum(nil))),
+	)
 	cu.sizeBytesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(crlLen))
 	cu.sizeEntriesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(len(crlEntries)))
 

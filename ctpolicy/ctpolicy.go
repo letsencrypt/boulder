@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
-	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
 
@@ -247,7 +248,10 @@ func (ctp *CTPolicy) submitAllBestEffort(ctx context.Context, blob core.CertDER,
 				},
 			)
 			if err != nil {
-				ctp.log.Warningf("ct submission of cert to log %q failed: %s", log.Url, err)
+				ctp.log.Warn(ctx, "Submission of cert to CT log failed",
+					slog.String("log", log.Url),
+					blog.Error(err),
+				)
 			}
 		}(log)
 	}

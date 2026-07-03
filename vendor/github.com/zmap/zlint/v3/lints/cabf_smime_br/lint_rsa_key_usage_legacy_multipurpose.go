@@ -15,8 +15,7 @@
 package cabf_smime_br
 
 import (
-	"crypto/rsa"
-
+	"github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"

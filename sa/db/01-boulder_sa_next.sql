@@ -249,6 +249,5 @@ ALTER TABLE `certificateStatus` DROP COLUMN `LockCol`;
 ALTER TABLE `revokedCertificates` ADD KEY `serial` (`serial`);
 
 ALTER TABLE `orders`
-  ADD COLUMN `isMTC` bool NOT NULL DEFAULT FALSE,
   ADD COLUMN `mtcLogID` varchar(255) DEFAULT NULL,
   ADD COLUMN `mtcSerialNumber` bigint(20) unsigned DEFAULT NULL;

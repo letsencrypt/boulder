@@ -6,14 +6,17 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
@@ -27,6 +30,7 @@ import (
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/letsencrypt/boulder/wfe2"
@@ -147,6 +151,10 @@ type Config struct {
 		// contacts than this are rejected. Default: 10.
 		MaxContactsPerRegistration int `validate:"omitempty,min=1"`
 
+		// MaxCumulativeIdentifierLength is the maximum allowed total bytes of
+		// all identifier values in a new-order request. Default (0) means no limit.
+		MaxCumulativeIdentifierLength int `validate:"omitempty,min=1"`
+
 		AccountCache *CacheConfig
 
 		Limiter struct {
@@ -210,9 +218,14 @@ type Config struct {
 		// repeats. We don't want to issue certs for names that look like they
 		// result from this process.
 		BlockedOnDemandLabels []string `validate:"omitempty"`
+
+		// BlockedAccountsFile is the path to a YAML file listing regIDs which are
+		// blocked from requesting issuance of new certificates. If empty, no
+		// accounts are blocked.
+		BlockedAccountsFile string `validate:"omitempty"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 
 	// OpenTelemetryHTTPConfig configures tracing on incoming HTTP requests
@@ -222,6 +235,56 @@ type Config struct {
 type CacheConfig struct {
 	Size int
 	TTL  config.Duration
+}
+
+type blockedAccountsPolicy struct {
+	BlockedAccountIDs []int64 `yaml:"BlockedAccountIDs"`
+	Message           string  `yaml:"Message"`
+}
+
+// accountBlocker implements wfe2.AccountBlocker.
+type accountBlocker struct {
+	message string
+	blocked map[int64]bool
+}
+
+var _ wfe2.AccountBlocker = new(accountBlocker)
+
+func (b *accountBlocker) CheckAccountID(id int64) error {
+	if b.blocked[id] {
+		return berrors.UnauthorizedError("%s", b.message)
+	}
+	return nil
+}
+
+// loadBlockedAccountsFile parses the YAML file at the given path and returns
+// the set of blocked account IDs it contains.
+// TODO: Update the schema to handle multiple lists each with their own
+// message string.
+func loadBlockedAccountsFile(f string) (*accountBlocker, error) {
+	configBytes, err := os.ReadFile(f)
+	if err != nil {
+		return nil, err
+	}
+
+	var policy blockedAccountsPolicy
+	err = strictyaml.Unmarshal(configBytes, &policy)
+	if err != nil {
+		return nil, err
+	}
+
+	blocked := make(map[int64]bool, 0)
+	for _, id := range policy.BlockedAccountIDs {
+		if id <= 0 {
+			return nil, fmt.Errorf("malformed BlockedAccountIDs entry, not a positive integer: %d", id)
+		}
+		blocked[id] = true
+	}
+
+	return &accountBlocker{
+		message: policy.Message,
+		blocked: blocked,
+	}, nil
 }
 
 // loadChain takes a list of filenames containing pem-formatted certificates,
@@ -380,6 +443,12 @@ func main() {
 		overridesRefresherShutdown = txnBuilder.NewRefresher(30 * time.Minute)
 	}
 
+	var acctBlocker wfe2.AccountBlocker
+	if c.WFE.BlockedAccountsFile != "" {
+		acctBlocker, err = loadBlockedAccountsFile(c.WFE.BlockedAccountsFile)
+		cmd.FailOnError(err, "Couldn't load blocked accounts file")
+	}
+
 	var accountGetter wfe2.AccountGetter
 	if c.WFE.AccountCache != nil {
 		accountGetter = wfe2.NewAccountCache(sac,
@@ -400,6 +469,7 @@ func main() {
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
 		c.WFE.MaxContactsPerRegistration,
+		c.WFE.MaxCumulativeIdentifierLength,
 		rac,
 		sac,
 		eec,
@@ -414,6 +484,7 @@ func main() {
 		c.WFE.Unpause.JWTLifetime.Duration,
 		c.WFE.Unpause.URL,
 		c.WFE.BlockedOnDemandLabels,
+		acctBlocker,
 		c.WFE.DirectoryCAAIdentity,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
@@ -428,11 +499,11 @@ func main() {
 		cmd.Fail("HTTP listen address is not configured")
 	}
 
-	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
 	srv := web.NewServer(c.WFE.ListenAddress, handler, logger)
 	go func() {
+		logger.Info(context.Background(), "HTTP server listening", slog.String("addr", c.WFE.ListenAddress))
 		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			cmd.FailOnError(err, "Running HTTP server")
@@ -442,7 +513,7 @@ func main() {
 	tlsSrv := web.NewServer(c.WFE.TLSListenAddress, handler, logger)
 	if tlsSrv.Addr != "" {
 		go func() {
-			logger.Infof("TLS server listening on %s", tlsSrv.Addr)
+			logger.Info(context.Background(), "TLS server listening", slog.String("addr", tlsSrv.Addr))
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			if err != nil && err != http.ErrServerClosed {
 				cmd.FailOnError(err, "Running TLS server")

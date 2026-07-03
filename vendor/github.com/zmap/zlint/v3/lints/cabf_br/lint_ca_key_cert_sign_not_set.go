@@ -23,17 +23,39 @@ import (
 type caKeyCertSignNotSet struct{}
 
 /************************************************
-BRs: 7.1.2.1b
-This extension MUST be present and MUST be marked critical. Bit positions for keyCertSign and cRLSign MUST be set.
-If the Root CA Private Key is used for signing OCSP responses, then the digitalSignature bit MUST be set.
+--- Citation History of this Requirement ---
+v1 to v1.2.5: Appendix B §1(B) (roots) and §2(E) (subordinate CAs)
+v1.3.0 to v1.8.7: 7.1.2.1b (roots) and §7.1.2.2e (subordinate CAs)
+v2.0.0 to v2.1.7: 7.1.2.10.7
+
+--- Version Notes ---
+In v1.1.3, Appendix B's sections were numbered but retained their previous titles. "Root CA Certificate"
+became section 1 and "Subordinate CA Certificate" became section 2. The numerical section references are
+used here for all versions following the original document format of the Baseline Requirements.
+
+This requirement was baselined at v2.1.7 and is current.
+
+--- Requirements Language ---
+BRs: 7.1.2 "Certificate Content and Extensions"
+If the CA asserts compliance with these Baseline Requirements, all certificates that it issues MUST
+comply with one of the following certificate profiles, which incorporate, and are derived from RFC 5280.
+
+[Each of the CA profiles specifies the keyUsage extension follows section 7.1.2.10.7]
+
+BRs: 7.1.2.10.7 "CA Certificate Key Usage"
++-------------+-----------+----------+
+| Key Usage   | Permitted | Required |
++-------------+-----------+----------+
+| keyCertSign | Y         | Y        |
++-------------+-----------+----------+
 ************************************************/
 
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
 			Name:          "e_ca_key_cert_sign_not_set",
-			Description:   "Root CA Certificate: Bit positions for keyCertSign and cRLSign MUST be set.",
-			Citation:      "BRs: 7.1.2.1",
+			Description:   "CA Certificate Key Usage: Bit position for keyCertSign is REQUIRED.",
+			Citation:      "BRs: 7.1.2.10.7",
 			Source:        lint.CABFBaselineRequirements,
 			EffectiveDate: util.CABEffectiveDate,
 		},

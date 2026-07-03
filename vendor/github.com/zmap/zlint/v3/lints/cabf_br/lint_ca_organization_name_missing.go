@@ -20,19 +20,58 @@ import (
 	"github.com/zmap/zlint/v3/util"
 )
 
-type caOrganizationNameMissing struct{}
-
 /************************************************
-BRs: 7.1.2.1e
-The Certificate Subject MUST contain the following: organizationName (OID 2.5.4.10): This field MUST be present and the contents MUST contain either the Subject CA’s name or DBA as verified under Section 3.2.2.2.
+--- Citation History of this Requirement ---
+v1.0 to v1.2.4:   9.1.3
+v1.2.5:           Appendix B 1E, 2H
+v1.3.0 to v1.4.7: 7.1.2.1e, 7.1.2.2h
+v1.4.8 to v1.8.7: 7.1.4.3.1b
+v2.0.0 to v2.1.6: 7.1.2.10.2
+
+--- Version Notes ---
+As of v2.0.0, this requirement no longer applies to CA certificates that conform to the Cross-Certified
+Subordinate CA Certificate Profile. This lint uses the global CrossSignedCa setting to determine if the
+certificate under test should be treated as an exempt cross-signed CA. It does not attempt to determine
+if the issuance date is after CABFBRs_2_0_0_Date because CAs are permitted to back-date the notBefore
+to that of the earliest existing certificate under section 7.1.2.2.1
+
+This requirement was baselined at v2.1.6 and is current.
+
+--- Requirements Language ---
+BRs: 7.1.2
+If the CA asserts compliance with these Baseline Requirements, all certificates that it issues MUST
+comply with one of the following certificate profiles
+
+[Each of the CA profiles, excepting the Cross-Certified Subordinate CA Certificate Profile,
+specifies the subject follows 7.1.2.10.2 in the profile table.]
+
+BRs: 7.1.2.10.2
+The following table details the acceptable AttributeTypes that may appear within the type
+field of an AttributeTypeAndValue, as well as the contents permitted within the value field.
++------------------+----------+--------------------------------------------------------+-----------------+
+| Attribute Name   | Presence | Value                                                  | Verification    |
++------------------+----------+--------------------------------------------------------+-----------------+
+| organizationName | MUST     | The CA’s name or DBA. The CA MAY include information   | Section 3.2.2.2 |
+|                  |          | in this field that differs slightly from the verified  |                 |
+|                  |          | name, such as common variations or abbreviations,      |                 |
+|                  |          | provided that the CA documents the difference and any  |                 |
+|                  |          | abbreviations used are locally accepted abbreviations; |                 |
+|                  |          | e.g. if the official record shows “Company Name        |                 |
+|                  |          | Incorporated”, the CA MAY use “Company Name Inc.” or   |                 |
+|                  |          | “Company Name”.                                        |                 |
++------------------+----------+--------------------------------------------------------+-----------------+
 ************************************************/
+
+type caOrganizationNameMissing struct {
+	TlsBrConfig *lint.CABFBaselineRequirementsConfig
+}
 
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
 			Name:          "e_ca_organization_name_missing",
-			Description:   "Root and Subordinate CA certificates MUST have a organizationName present in subject information",
-			Citation:      "BRs: 7.1.2.1",
+			Description:   "Root and Subordinate CA certificates MUST have an organizationName present in subject information",
+			Citation:      "BRs: 7.1.2.10.2",
 			Source:        lint.CABFBaselineRequirements,
 			EffectiveDate: util.CABEffectiveDate,
 		},
@@ -44,8 +83,12 @@ func NewCaOrganizationNameMissing() lint.LintInterface {
 	return &caOrganizationNameMissing{}
 }
 
+func (l *caOrganizationNameMissing) Configure() interface{} {
+	return l
+}
+
 func (l *caOrganizationNameMissing) CheckApplies(c *x509.Certificate) bool {
-	return c.IsCA
+	return c.IsCA && (l.TlsBrConfig == nil || !l.TlsBrConfig.CrossSignedCa)
 }
 
 func (l *caOrganizationNameMissing) Execute(c *x509.Certificate) *lint.LintResult {
