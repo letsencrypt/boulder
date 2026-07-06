@@ -1627,14 +1627,15 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	serialString := core.SerialToString(cert.SerialNumber)
 	ctx = blog.ContextWith(ctx, blog.Acct(req.RegID), blog.Serial(serialString))
 
-	// Below this point, do not re-declare `err` (i.e. type `err :=`) or `ctx` in
-	// a nested scope. Doing so will create a new variable that is not captured by
-	// this closure.
+	// Below this point, do not re-declare `err`, `ctx`, or `reasonCode` (i.e.
+	// type `x :=`) in a nested scope. Doing so will create a new variable that
+	// is not captured by this closure.
 	defer func() {
+		reason := slog.Int64("reason", int64(reasonCode))
 		if err != nil {
-			ra.log.AuditError(ctx, "Revocation request", err)
+			ra.log.AuditError(ctx, "Revocation request", err, reason)
 		} else {
-			ra.log.AuditInfo(ctx, "Revocation request")
+			ra.log.AuditInfo(ctx, "Revocation request", reason)
 		}
 	}()
 
@@ -1681,7 +1682,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		reasonCode = revocation.CessationOfOperation
 	}
 
-	ctx = blog.ContextWith(ctx, slog.Int64("reason", int64(reasonCode)))
 	err = ra.revokeCertificate(ctx, cert, reasonCode)
 	if err != nil {
 		return nil, err
