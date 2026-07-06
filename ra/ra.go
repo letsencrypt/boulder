@@ -896,7 +896,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("issuing MTC: %s", err)
 	}
 
-	ra.log.Info(ctx, "issued MTC",
+	ra.log.AuditInfo(ctx, "issued MTC",
 		slog.String("logID", resp.MtcLogID),
 		slog.Int64("entryIndex", resp.MtcEntryIndex),
 	)
@@ -1042,8 +1042,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	// fact that we *intended* to use these authzs to issue a cert, even if that
 	// issuance ends up failing. And even if that issuance does fail, this func
 	// can't exit without logging the attempt, so these authz logs will always
-	// correspond to (and carry the same `id` field as) a "Certificate request
-	// complete" line logged below.
+	// correspond to (and carry the same `id` field as) a completion line logged
+	// below: "Certificate request - successful", "Certificate request - error",
+	// or (for MTC orders) "issued MTC".
 	for ident, authz := range authzs {
 		// We know that exactly one challenge is valid, because this was just
 		// confirmed by ra.checkOrderAuthorizations.
@@ -1074,28 +1075,23 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		Limit:       1,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("checking if certificate is a renewal: %w", err)
+		err = fmt.Errorf("checking if certificate is a renewal: %w", err)
+		ra.log.AuditInfo(ctx, "Certificate request - error",
+			slog.String("result", "error"),
+			slog.Time("responseTime", ra.clk.Now()),
+			blog.Error(err),
+		)
+		return nil, err
 	}
 	if len(timestamps.Timestamps) > 0 {
 		isRenewal = true
 		ctx = blog.ContextWith(ctx, slog.Time("prevCertificateIssued", timestamps.Timestamps[0].AsTime()))
 	}
 
-	if ra.isMTC(order) {
-		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
-		if err != nil {
-			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
-			return nil, err
-		}
-
-		ra.countCertificateIssued(ctx, order.RegistrationID, idents, isRenewal)
-		return order, nil
-	}
-
 	// Step 3: Issue the Certificate
 	profileName := ra.profileName(order)
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, order, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	if err != nil {
@@ -1113,6 +1109,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 			slog.Time("responseTime", ra.clk.Now()),
 			blog.Error(err),
 		)
+	} else if cert == nil {
+		// MTC issuance produced no classic certificate, so there is no serial
+		// or validity period to record on the order. Its completion record is
+		// the "issued MTC" audit line logged by issueMTC.
+		return order, nil
 	} else {
 		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
 		order.Status = string(core.StatusValid)
@@ -1183,6 +1184,7 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 // and finalizes the order with the certificate serial.
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
+	order *corepb.Order,
 	csr *x509.CertificateRequest,
 	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	isRenewal bool,
@@ -1207,6 +1209,15 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if ra.isMTC(order) {
+		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
+		if err != nil {
+			return nil, err
+		}
+		ra.countCertificateIssued(ctx, int64(acctID), identifier.FromProtoSlice(order.Identifiers), isRenewal)
+		return nil, nil
 	}
 
 	issueReq := &capb.IssueCertificateRequest{
