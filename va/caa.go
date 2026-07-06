@@ -123,7 +123,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	localLatency = va.clk.Since(start)
 
 	if err != nil {
-		logAttrs = append(logAttrs, blog.Error(err))
+		logAttrs = append(logAttrs, slog.String("internalErr", err.Error()))
 		prob = detailedError(err)
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", ident.Value, prob.Detail)
 	}
