@@ -265,7 +265,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 			body = string(rspErr.Body)
 		}
 		pub.log.Info(ctx, "Failed to submit certificate to CT log",
-			blog.Serial(cert.SerialNumber.String()),
+			blog.Serial(core.SerialToString(cert.SerialNumber)),
 			slog.String("issuer", cert.Issuer.CommonName),
 			slog.String("log", ctLog.uri),
 			slog.String("body", body),
