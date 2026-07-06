@@ -21,9 +21,7 @@ import (
 // numbers documented above (e.g. 1) have the same effect as the next larger
 // value (e.g. 3).
 type Config struct {
-	// When absent or zero, this causes no logs to be emitted on stdout/stderr.
-	// Errors and warnings will be emitted on stderr if the configured level
-	// allows.
+	// When absent or zero, this causes no logs to be emitted on stdout.
 	StdoutLevel int `validate:"min=-1,max=7"`
 	// When absent or zero, this defaults to logging all messages of level 6
 	// or below. To disable syslog logging entirely, set this to -1.

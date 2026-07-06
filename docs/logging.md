@@ -46,7 +46,7 @@ consumed by cmd/log-validator.
 
 All lines logged via `blog.AuditInfo` or `blog.AuditError` are prefixed by the constant string `[AUDIT]`. This is used by internal infrastructure to ensure that audit-level logs have extra persistence and durability.
 
-All log lines have attributes for the datacenter, host, program, and pid. These are replicating information usually prepended to log lines by syslog. In the integration test environment, these attributes are suppressed for readability.
+In production, log lines do not carry attributes identifying the datacenter, host, program, or pid: that information is added by syslog and our log collection infrastructure, so repeating it in every line would only cost storage. In the unit and integration test environments (where there is no syslog), lines carry a `prog` attribute so that interleaved output from multiple components can be told apart.
 
 In production, all lines are logged in JSON format. This is to optimize for machine-readability in our log analysis systems. In the unit and integration tests, all lines are logged in text format, to optimize for human readability.
 
