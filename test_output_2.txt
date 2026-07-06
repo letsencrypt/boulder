@@ -1,0 +1,202 @@
+ok  	github.com/letsencrypt/boulder/allowlist	(cached)
+# github.com/letsencrypt/boulder/blog
+blog\logger.go:61:28: undefined: syslog.Dial
+blog\logger.go:61:48: undefined: syslog.LOG_INFO
+FAIL	github.com/letsencrypt/boulder/bdns [build failed]
+FAIL	github.com/letsencrypt/boulder/blog [build failed]
+# github.com/letsencrypt/pkcs11key/v4
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:70:25: undefined: pkcs11.SessionHandle
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:71:29: undefined: pkcs11.SessionHandle
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:72:28: undefined: pkcs11.SessionHandle
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:72:58: undefined: pkcs11.Attribute
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:73:24: undefined: pkcs11.SessionHandle
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:73:58: undefined: pkcs11.ObjectHandle
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:74:30: undefined: pkcs11.SessionHandle
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:74:54: undefined: pkcs11.ObjectHandle
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:74:80: undefined: pkcs11.Attribute
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:76:36: undefined: pkcs11.TokenInfo
+vendor\github.com\letsencrypt\pkcs11key\v4\key.go:76:36: too many errors
+FAIL	github.com/letsencrypt/boulder/blog/validator [build failed]
+# github.com/zmap/zcrypto/x509
+vendor\github.com\zmap\zcrypto\x509\root.go:27:32: undefined: loadSystemRoots
+# github.com/letsencrypt/boulder/pkcs11helpers
+pkcs11helpers\helpers.go:18:25: undefined: pkcs11.SessionHandle
+pkcs11helpers\helpers.go:18:50: undefined: pkcs11.Mechanism
+pkcs11helpers\helpers.go:18:71: undefined: pkcs11.Attribute
+pkcs11helpers\helpers.go:18:111: undefined: pkcs11.ObjectHandle
+pkcs11helpers\helpers.go:19:27: undefined: pkcs11.SessionHandle
+pkcs11helpers\helpers.go:19:49: undefined: pkcs11.ObjectHandle
+pkcs11helpers\helpers.go:19:73: undefined: pkcs11.Attribute
+pkcs11helpers\helpers.go:20:18: undefined: pkcs11.SessionHandle
+pkcs11helpers\helpers.go:20:43: undefined: pkcs11.Mechanism
+pkcs11helpers\helpers.go:20:61: undefined: pkcs11.ObjectHandle
+pkcs11helpers\helpers.go:20:61: too many errors
+FAIL	github.com/letsencrypt/boulder/ca [build failed]
+?   	github.com/letsencrypt/boulder/ca/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/cmd [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/admin [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/bad-key-revoker [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-ca [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-mtpublisher [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-observer [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-publisher [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-ra [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-sa [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-va [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/boulder-wfe2 [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/ceremony [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/cert-checker [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/crl-checker [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/crl-storer [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/crl-updater [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/email-exporter [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/log-validator [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/nonce-service [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/remoteva [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/reversed-hostname-checker [build failed]
+FAIL	github.com/letsencrypt/boulder/cmd/sfe [build failed]
+?   	github.com/letsencrypt/boulder/config	[no test files]
+ok  	github.com/letsencrypt/boulder/core	(cached)
+?   	github.com/letsencrypt/boulder/core/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/crl [build failed]
+FAIL	github.com/letsencrypt/boulder/crl/checker [build failed]
+ok  	github.com/letsencrypt/boulder/crl/idp	(cached)
+FAIL	github.com/letsencrypt/boulder/crl/storer [build failed]
+?   	github.com/letsencrypt/boulder/crl/storer/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/crl/updater [build failed]
+ok  	github.com/letsencrypt/boulder/csr	(cached)
+FAIL	github.com/letsencrypt/boulder/ctpolicy [build failed]
+?   	github.com/letsencrypt/boulder/ctpolicy/ctconfig	[no test files]
+ok  	github.com/letsencrypt/boulder/ctpolicy/loglist	(cached)
+--- FAIL: TestWrappedMap (0.02s)
+    map_test.go:299: unexpected error beginning transaction: failed to begin transaction: dial tcp: lookup unset DB_ADDR: no such host
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal 0xc0000005 code=0x0 addr=0x10 pc=0x7ff72bca5824]
+
+goroutine 46 [running]:
+testing.tRunner.func1.2({0x7ff72bfdeb60, 0x7ff72c536110})
+	C:/Program Files/Go/src/testing/testing.go:1974 +0x239
+testing.tRunner.func1()
+	C:/Program Files/Go/src/testing/testing.go:1977 +0x349
+panic({0x7ff72bfdeb60?, 0x7ff72c536110?})
+	C:/Program Files/Go/src/runtime/panic.go:860 +0x13a
+github.com/letsencrypt/borp.(*Transaction).Rollback(0x1e7b1d7881e0?)
+	C:/Users/mahin/Desktop/VS Projects/boulder/boulder/vendor/github.com/letsencrypt/borp/transaction.go:194 +0x24
+github.com/letsencrypt/boulder/db.TestWrappedMap.func3()
+	C:/Users/mahin/Desktop/VS Projects/boulder/boulder/db/map_test.go:298 +0x1c
+runtime.Goexit()
+	C:/Program Files/Go/src/runtime/panic.go:694 +0x5e
+testing.(*common).FailNow(0x1e7b1d7edc00)
+	C:/Program Files/Go/src/testing/testing.go:1022 +0x4a
+testing.(*common).Fatalf(0x1e7b1d7edc00, {0x7ff72c07cc0d?, 0x7ff72c5a35e0?}, {0x1e7b1d7f9e90?, 0x7ff72c082ebb?, 0x11?})
+	C:/Program Files/Go/src/testing/testing.go:1228 +0x59
+github.com/letsencrypt/boulder/test.AssertNotError(0x1e7b1d7edc00, {0x7ff72c0b6220, 0x1e7b1d7a59b0}, {0x7ff72c0933ff, 0x26})
+	C:/Users/mahin/Desktop/VS Projects/boulder/boulder/test/asserts.go:73 +0xb7
+github.com/letsencrypt/boulder/db.TestWrappedMap(0x1e7b1d7edc00)
+	C:/Users/mahin/Desktop/VS Projects/boulder/boulder/db/map_test.go:299 +0x10b
+testing.tRunner(0x1e7b1d7edc00, 0x7ff72c0ada88)
+	C:/Program Files/Go/src/testing/testing.go:2036 +0xc3
+created by testing.(*T).Run in goroutine 1
+	C:/Program Files/Go/src/testing/testing.go:2101 +0x4a9
+FAIL	github.com/letsencrypt/boulder/db	1.169s
+ok  	github.com/letsencrypt/boulder/errors	(cached)
+?   	github.com/letsencrypt/boulder/features	[no test files]
+ok  	github.com/letsencrypt/boulder/goodkey	1.099s
+ok  	github.com/letsencrypt/boulder/goodkey/sagoodkey	1.239s
+FAIL	github.com/letsencrypt/boulder/grpc [build failed]
+ok  	github.com/letsencrypt/boulder/grpc/creds	(cached)
+?   	github.com/letsencrypt/boulder/grpc/internal/backoff	[no test files]
+?   	github.com/letsencrypt/boulder/grpc/internal/grpcrand	[no test files]
+ok  	github.com/letsencrypt/boulder/grpc/internal/leakcheck	(cached)
+FAIL	github.com/letsencrypt/boulder/grpc/internal/resolver/dns [build failed]
+?   	github.com/letsencrypt/boulder/grpc/internal/testutils	[no test files]
+ok  	github.com/letsencrypt/boulder/grpc/noncebalancer	(cached)
+ok  	github.com/letsencrypt/boulder/grpc/noncebalancerv1	(cached)
+?   	github.com/letsencrypt/boulder/grpc/test_proto	[no test files]
+ok  	github.com/letsencrypt/boulder/iana	(cached)
+ok  	github.com/letsencrypt/boulder/identifier	(cached)
+FAIL	github.com/letsencrypt/boulder/issuance [build failed]
+FAIL	github.com/letsencrypt/boulder/linter [build failed]
+FAIL	github.com/letsencrypt/boulder/linter/lints [build failed]
+FAIL	github.com/letsencrypt/boulder/linter/lints/cabf_br [build failed]
+FAIL	github.com/letsencrypt/boulder/linter/lints/chrome [build failed]
+FAIL	github.com/letsencrypt/boulder/linter/lints/cpcps [build failed]
+FAIL	github.com/letsencrypt/boulder/linter/lints/rfc [build failed]
+FAIL	github.com/letsencrypt/boulder/linter/lints/test [build failed]
+FAIL	github.com/letsencrypt/boulder/linter/pkimetal [build failed]
+?   	github.com/letsencrypt/boulder/metrics	[no test files]
+ok  	github.com/letsencrypt/boulder/metrics/measured_http	(cached)
+FAIL	github.com/letsencrypt/boulder/mocks [build failed]
+?   	github.com/letsencrypt/boulder/mtca/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/mtpublisher [build failed]
+ok  	github.com/letsencrypt/boulder/must	(cached)
+ok  	github.com/letsencrypt/boulder/nonce	(cached)
+?   	github.com/letsencrypt/boulder/nonce/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/observer [build failed]
+?   	github.com/letsencrypt/boulder/observer/obsclient	[no test files]
+FAIL	github.com/letsencrypt/boulder/observer/probers [build failed]
+FAIL	github.com/letsencrypt/boulder/observer/probers/aia [build failed]
+FAIL	github.com/letsencrypt/boulder/observer/probers/ccadb [build failed]
+FAIL	github.com/letsencrypt/boulder/observer/probers/crl [build failed]
+FAIL	github.com/letsencrypt/boulder/observer/probers/dns [build failed]
+FAIL	github.com/letsencrypt/boulder/observer/probers/http [build failed]
+FAIL	github.com/letsencrypt/boulder/observer/probers/mock [build failed]
+FAIL	github.com/letsencrypt/boulder/observer/probers/tls [build failed]
+FAIL	github.com/letsencrypt/boulder/pkcs11helpers [build failed]
+FAIL	github.com/letsencrypt/boulder/policy [build failed]
+ok  	github.com/letsencrypt/boulder/precert	0.497s
+ok  	github.com/letsencrypt/boulder/privatekey	1.099s
+ok  	github.com/letsencrypt/boulder/probs	(cached)
+FAIL	github.com/letsencrypt/boulder/publisher [build failed]
+?   	github.com/letsencrypt/boulder/publisher/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/ra [build failed]
+?   	github.com/letsencrypt/boulder/ra/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/ratelimits [build failed]
+FAIL	github.com/letsencrypt/boulder/redis [build failed]
+?   	github.com/letsencrypt/boulder/revocation	[no test files]
+FAIL	github.com/letsencrypt/boulder/sa [build failed]
+?   	github.com/letsencrypt/boulder/sa/proto	[no test files]
+?   	github.com/letsencrypt/boulder/sa/satest	[no test files]
+FAIL	github.com/letsencrypt/boulder/salesforce [build failed]
+?   	github.com/letsencrypt/boulder/salesforce/email/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/sfe [build failed]
+ok  	github.com/letsencrypt/boulder/sfe/forms	(cached)
+ok  	github.com/letsencrypt/boulder/sfe/zendesk	(cached)
+ok  	github.com/letsencrypt/boulder/strictyaml	(cached)
+?   	github.com/letsencrypt/boulder/test	[no test files]
+FAIL	github.com/letsencrypt/boulder/test/aia-test-srv [build failed]
+FAIL	github.com/letsencrypt/boulder/test/boulder-tools/flushredis [build failed]
+FAIL	github.com/letsencrypt/boulder/test/certs [build failed]
+FAIL	github.com/letsencrypt/boulder/test/chall-test-srv [build failed]
+?   	github.com/letsencrypt/boulder/test/chall-test-srv-client	[no test files]
+?   	github.com/letsencrypt/boulder/test/checkari	[no test files]
+FAIL	github.com/letsencrypt/boulder/test/ct-test-srv [build failed]
+FAIL	github.com/letsencrypt/boulder/test/health-checker [build failed]
+?   	github.com/letsencrypt/boulder/test/inmem/nonce	[no test files]
+FAIL	github.com/letsencrypt/boulder/test/inmem/ra [build failed]
+FAIL	github.com/letsencrypt/boulder/test/inmem/sa [build failed]
+?   	github.com/letsencrypt/boulder/test/list-features	[no test files]
+FAIL	github.com/letsencrypt/boulder/test/load-generator [build failed]
+--- FAIL: TestNew (0.03s)
+    --- FAIL: TestNew/unreachable_directory_URL (0.02s)
+        directory_test.go:182: String [Get "http://localhost:1987": dial tcp [::1]:1987: connectex: No connection could be made because the target machine actively refused it.] does not contain [connect: connection refused]
+FAIL
+FAIL	github.com/letsencrypt/boulder/test/load-generator/acme	1.340s
+FAIL	github.com/letsencrypt/boulder/test/s3-test-srv [build failed]
+FAIL	github.com/letsencrypt/boulder/test/salesforce-test-srv [build failed]
+?   	github.com/letsencrypt/boulder/test/vars	[no test files]
+FAIL	github.com/letsencrypt/boulder/test/zendesk-test-srv [build failed]
+ok  	github.com/letsencrypt/boulder/test/zendeskfake	(cached)
+?   	github.com/letsencrypt/boulder/tools/crldps	[no test files]
+FAIL	github.com/letsencrypt/boulder/tools/nameid [build failed]
+?   	github.com/letsencrypt/boulder/tools/release/branch	[no test files]
+?   	github.com/letsencrypt/boulder/tools/release/tag	[no test files]
+ok  	github.com/letsencrypt/boulder/trees/cosigned	(cached)
+FAIL	github.com/letsencrypt/boulder/unpause [build failed]
+FAIL	github.com/letsencrypt/boulder/va [build failed]
+FAIL	github.com/letsencrypt/boulder/va/config [build failed]
+?   	github.com/letsencrypt/boulder/va/proto	[no test files]
+FAIL	github.com/letsencrypt/boulder/web [build failed]
+FAIL	github.com/letsencrypt/boulder/wfe2 [build failed]
+FAIL

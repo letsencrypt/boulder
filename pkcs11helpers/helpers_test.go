@@ -275,7 +275,7 @@ func TestX509Signer(t *testing.T) {
 	digest := sha256.Sum256([]byte("hello"))
 	s := &Session{ctx, 0}
 	signer := &x509Signer{session: s, keyType: ECDSAKey, pub: tk.Public()}
-	signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
+	signature, err := signer.Sign(rand.Reader, digest[:], crypto.SHA256)
 	test.AssertNotError(t, err, "x509Signer.Sign failed")
 
 	var rfcFormat struct {

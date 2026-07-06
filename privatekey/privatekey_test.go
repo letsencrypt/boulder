@@ -3,7 +3,6 @@ package privatekey
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/rsa"
 	"testing"
 
