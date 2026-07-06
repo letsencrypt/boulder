@@ -10,9 +10,9 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	blog "github.com/letsencrypt/boulder/log"
 	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 )
 
@@ -117,10 +117,10 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 }
 
 // Start begins asynchronous processing of the email queue. When the parent
-// daemonCtx is cancelled the queue will be drained and the workers will exit.
-func (impl *ExporterImpl) Start(daemonCtx context.Context) {
+// context is cancelled the queue will be drained and the workers will exit.
+func (impl *ExporterImpl) Start(ctx context.Context) {
 	go func() {
-		<-daemonCtx.Done()
+		<-ctx.Done()
 		// Wake waiting workers to exit.
 		impl.wake.Broadcast()
 	}()
@@ -130,12 +130,12 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 		for {
 			impl.Lock()
 
-			for len(impl.toSend) == 0 && daemonCtx.Err() == nil {
+			for len(impl.toSend) == 0 && ctx.Err() == nil {
 				// Wait for the queue to be updated or the daemon to exit.
 				impl.wake.Wait()
 			}
 
-			if len(impl.toSend) == 0 && daemonCtx.Err() != nil {
+			if len(impl.toSend) == 0 && ctx.Err() != nil {
 				// No more emails to process, exit.
 				impl.Unlock()
 				return
@@ -152,9 +152,9 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 				continue
 			}
 
-			err := impl.limiter.Wait(daemonCtx)
+			err := impl.limiter.Wait(ctx)
 			if err != nil && !errors.Is(err, context.Canceled) {
-				impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
+				impl.log.Error(ctx, "Unexpected limiter.Wait() error", err)
 				continue
 			}
 
@@ -162,7 +162,7 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 			if err != nil {
 				impl.emailCache.Remove(email)
 				impl.pardotErrorCounter.Inc()
-				impl.log.Errf("Sending Contact to Pardot: %s", err)
+				impl.log.Error(ctx, "Sending Contact to Pardot", err)
 			} else {
 				impl.emailsHandledCounter.Inc()
 			}

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"slices"
 	"strings"
@@ -84,7 +85,7 @@ func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string
 	}
 
 	addrs := append(addrsAAAA, addrsA...)
-	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
+	va.log.Debug(ctx, "Resolved addresses", slog.String("hostname", hostname), slog.Any("addrs", addrs))
 	return addrs, resolvers, nil
 }
 
@@ -121,7 +122,9 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 
 	// Construct the challenge prefix specific to DNS-ACCOUNT-01
 	challengePrefix := fmt.Sprintf("_%s.%s", prefixLabel, core.DNSPrefix)
-	va.log.Debugf("DNS-ACCOUNT-01: Querying TXT for %q (derived from account URI %q)", fmt.Sprintf("%s.%s", challengePrefix, ident.Value), accountURI)
+	va.log.Debug(ctx, "Querying TXT",
+		slog.String("accountURI", accountURI),
+		slog.String("validationDomainName", fmt.Sprintf("%s.%s", challengePrefix, ident.Value)))
 
 	// Call the common validation logic
 	records, err := va.validateDNS(ctx, ident, challengePrefix, keyAuthorization)
