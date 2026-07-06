@@ -247,6 +247,10 @@ func (th *TopHandler) logEvent(ctx context.Context, logEvent *RequestEvent) {
 		attrs = append(attrs, slog.Any(k, v))
 	}
 
+	if logEvent.Error != "" {
+		attrs = append(attrs, slog.String("problem", logEvent.Error))
+	}
+
 	// There's a long-standing TODO to treat IgnoredRateLimitError the same as
 	// other InternalErrors, so just join them together here.
 	errs := logEvent.InternalErrors

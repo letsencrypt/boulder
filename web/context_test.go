@@ -14,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -178,5 +179,30 @@ func TestPropagateCancel(t *testing.T) {
 	result := <-res
 	if result != "context canceled" {
 		t.Errorf("expected 'context canceled', got %q", result)
+	}
+}
+
+type problemHandler struct{}
+
+func (ph problemHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Request) {
+	e.Endpoint = "/endpoint"
+	SendError(blog.NewMock(), w, e, probs.Unauthorized("you shall not pass"), nil)
+}
+
+// TestLogProblem tests that the client-visible problem details recorded by
+// SendError appear in the request completion log line.
+func TestLogProblem(t *testing.T) {
+	mockLog := blog.NewMock()
+	th := NewTopHandler(mockLog, problemHandler{})
+	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th.ServeHTTP(httptest.NewRecorder(), req)
+
+	matching := mockLog.GetAllMatching(`problem="403 :: unauthorized :: you shall not pass"`)
+	if len(matching) != 1 {
+		t.Errorf("Expected exactly one log line containing the problem details. Got \n%s",
+			strings.Join(mockLog.GetAll(), "\n"))
 	}
 }
