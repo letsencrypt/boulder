@@ -3,14 +3,12 @@ package notmain
 import (
 	"context"
 	"flag"
-	"log/slog"
 	"net/http"
 	"os"
 	"sync"
 
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -106,7 +104,7 @@ type Config struct {
 		Features             features.Config
 	}
 
-	Syslog        blog.Config
+	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 
 	// OpenTelemetryHTTPConfig configures tracing on incoming HTTP requests
@@ -211,7 +209,7 @@ func main() {
 			overridesImporterWG.Go(func() {
 				importer.Start(ctx)
 			})
-			logger.Info(context.Background(), "Overrides importer started", slog.String("mode", string(mode)), slog.Duration("interval", c.SFE.OverridesImporter.Interval.Duration))
+			logger.Infof("Overrides importer started with mode=%s interval=%s", mode, c.SFE.OverridesImporter.Interval.Duration)
 		}
 	}
 
@@ -245,11 +243,11 @@ func main() {
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 
+	logger.Infof("Server running, listening on %s....", c.SFE.ListenAddress)
 	handler := sfei.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
 	srv := web.NewServer(c.SFE.ListenAddress, handler, logger)
 	go func() {
-		logger.Info(context.Background(), "Server listening", slog.String("addr", c.SFE.ListenAddress))
 		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			cmd.FailOnError(err, "Running HTTP server")

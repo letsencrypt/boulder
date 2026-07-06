@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -63,9 +62,6 @@ func (c *subcommandDumpEnabledOverrides) Run(ctx context.Context, a *admin) erro
 		return fmt.Errorf("dumping overrides: %w", err)
 	}
 
-	a.log.Info(ctx, "Wrote overrides to file",
-		slog.Int("count", len(overrides)),
-		slog.String("file", c.file),
-	)
+	a.log.Infof("Wrote %d overrides to %q\n", len(overrides), c.file)
 	return nil
 }

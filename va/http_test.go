@@ -1455,15 +1455,19 @@ func TestHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusMovedPermanently redirect")
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`following HTTP redirect.*http://localhost.com/.well-known/acme-challenge/`+pathValid)), 1)
+	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	matchedValidRedirect := log.GetAllMatching(redirectValid)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathFound, ka(pathFound))
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusFound redirect")
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`following HTTP redirect.*http://localhost.com/.well-known/acme-challenge/`+pathValid)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`following HTTP redirect.*http://localhost.com/.well-known/acme-challenge/`+pathMoved)), 1)
+	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
+	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("always.invalid"), pathFound, ka(pathFound))
 	if err == nil {
@@ -1523,21 +1527,25 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`following HTTP redirect.*http://localhost.com/.well-known/acme-challenge/`+pathValid)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses.*addrs=\[127.0.0.1\]`)), 2)
+	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	matchedValidRedirect := log.GetAllMatching(redirectValid)
+	test.AssertEquals(t, len(matchedValidRedirect), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathFound, ka(pathFound))
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`following HTTP redirect.*http://localhost.com/.well-known/acme-challenge/`+pathMoved)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses.*addrs=\[127.0.0.1\]`)), 3)
+	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
+	test.AssertEquals(t, len(matchedMovedRedirect), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathReLookupInvalid, ka(pathReLookupInvalid))
 	test.AssertError(t, err, "error for pathReLookupInvalid should not be nil")
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses.*addrs=\[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
 	prob := detailedError(err)
 	test.AssertDeepEquals(t, prob, probs.Connection(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid host in redirect target, must end in IANA registered TLD`))
 
@@ -1546,9 +1554,10 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses.*localhost.com.*addrs=\[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`following HTTP redirect.*http://other.valid.com:\d+/path`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses.*other.valid.com.*addrs=\[127.0.0.1\]`)), 1)
+	redirectPattern := `following redirect to host "" url "http://other.valid.com:\d+/path"`
+	test.AssertEquals(t, len(log.GetAllMatching(redirectPattern)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid.com: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathRedirectInvalidPort, ka(pathRedirectInvalidPort))

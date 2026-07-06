@@ -7,9 +7,9 @@ import (
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // Config contains the configuration needed to act as a Redis client.

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -517,7 +516,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	records := []core.ValidationRecord{baseRecord}
 	numRedirects := 0
 	processRedirect := func(req *http.Request, via []*http.Request) error {
-		va.log.Debug(ctx, "processing HTTP redirect", slog.String("to", req.URL.String()))
+		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
 		// Only process up to maxRedirect redirects
 		if numRedirects > maxRedirect {
 			return berrors.ConnectionFailureError("Too many redirects")
@@ -592,7 +591,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			return err
 		}
 
-		va.log.Debug(ctx, "following HTTP redirect", slog.String("to", req.URL.String()))
+		va.log.Debugf("following redirect to host %q url %q", req.Host, req.URL.String())
 		// Replace the transport's DialContext with the new preresolvedDialer for
 		// the redirect.
 		transport.DialContext = redirDialer.DialContext
@@ -670,6 +669,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
+		va.log.Errf("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for HTTP-01 challenge was not DNS or IP")
 	}
 
@@ -684,7 +684,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 	if payload != keyAuthorization {
 		problem := berrors.UnauthorizedError("The key authorization file from the server did not match this challenge. Expected %q (got %q)",
 			keyAuthorization, payload)
-		va.log.Info(ctx, fmt.Sprintf("%s for %s", problem, ident))
+		va.log.Infof("%s for %s", problem, ident)
 		return validationRecords, problem
 	}
 

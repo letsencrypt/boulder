@@ -3,11 +3,8 @@ package updater
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"math/big"
 	"sync"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/issuance"
 )
@@ -17,11 +14,10 @@ import (
 func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
 	atTime := cu.clk.Now()
-	var crlNumber *big.Int = crl.Number(atTime)
 
 	type workItem struct {
-		issuer   *issuance.Certificate
-		shardIdx int
+		issuerNameID issuance.NameID
+		shardIdx     int
 	}
 
 	var anyErr bool
@@ -38,18 +34,11 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 				if !ok {
 					return
 				}
-
-				// Attach log attributes for use here and inside updateShardWithRetry.
-				ctx := blog.ContextWith(ctx,
-					slog.String("issuer", work.issuer.Subject.CommonName),
-					slog.Int("issuerNameID", int(work.issuer.NameID())),
-					slog.Int("shard", work.shardIdx),
-					slog.String("number", crlNumber.String()),
-				)
-
-				err := cu.updateShardWithRetry(ctx, atTime, work.issuer.NameID(), work.shardIdx)
+				err := cu.updateShardWithRetry(ctx, atTime, work.issuerNameID, work.shardIdx)
 				if err != nil {
-					cu.log.AuditError(ctx, "Generating CRL failed", err)
+					cu.log.AuditErr("Generating CRL failed", err, map[string]any{
+						"id": crl.Id(work.issuerNameID, work.shardIdx, crl.Number(atTime)),
+					})
 					once.Do(func() { anyErr = true })
 				}
 			}
@@ -70,7 +59,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 				close(inputs)
 				wg.Wait()
 				return ctx.Err()
-			case inputs <- workItem{issuer: issuer, shardIdx: i + 1}:
+			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i + 1}:
 			}
 		}
 	}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
@@ -31,7 +30,7 @@ type Config struct {
 		// boulder-wfe and nonce-service instances.
 		NonceHMACKey cmd.HMACKeyConfig `validate:"required"`
 
-		Syslog        blog.Config
+		Syslog        cmd.SyslogConfig
 		OpenTelemetry cmd.OpenTelemetryConfig
 	}
 }
@@ -97,6 +96,8 @@ func main() {
 	start, err := bgrpc.NewServer(c.NonceService.GRPC, logger).Add(
 		&noncepb.NonceService_ServiceDesc, ns).Build(tlsConfig, scope, clock.New())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
+
+	logger.Infof("Nonce server listening on %s with prefix %q", c.NonceService.GRPC.Address, noncePrefix)
 
 	cmd.FailOnError(start(), "Nonce service gRPC server failed")
 }

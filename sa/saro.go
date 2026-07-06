@@ -18,12 +18,12 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -903,10 +903,7 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 		if errors.Is(err, berrors.NotFound) {
 			// The existing replacement order has been deleted. This should
 			// never happen.
-			ssa.log.Error(ctx, "replacement order not found", err,
-				blog.Order(replacement.OrderID),
-				blog.Serial(req.Serial),
-			)
+			ssa.log.Errf("replacement order %d for serial %q not found", replacement.OrderID, req.Serial)
 			return &sapb.Exists{Exists: false}, nil
 		}
 	}

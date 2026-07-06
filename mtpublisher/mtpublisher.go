@@ -7,13 +7,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/db"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // MTPublisher polls the MTC issuance log and adds a dummy cosignature to the
@@ -84,11 +83,7 @@ func (p *MTPublisher) publish(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("cosigning checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
-	p.log.Info(ctx, "Cosigned checkpoint",
-		slog.String("logID", latest.MTCLogID),
-		slog.Int64("treesize", latest.TreeSize),
-		slog.Int64("checkpoint", latest.ID),
-	)
+	p.log.Infof("Cosigned checkpoint %d (%s size %d)", latest.ID, latest.MTCLogID, latest.TreeSize)
 	return nil
 }
 
@@ -100,7 +95,7 @@ func (p *MTPublisher) Start(ctx context.Context) {
 	for {
 		err := p.publish(ctx)
 		if err != nil {
-			p.log.Error(ctx, "Cosigning pass failed", err)
+			p.log.Errf("Cosigning pass failed: %s", err)
 		}
 		select {
 		case <-ctx.Done():

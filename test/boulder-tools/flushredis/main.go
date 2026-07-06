@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	bredis "github.com/letsencrypt/boulder/redis"
 
