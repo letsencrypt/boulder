@@ -33,10 +33,7 @@ func (c cmdable) GeoAdd(ctx context.Context, key string, geoLocation ...*GeoLoca
 	return cmd
 }
 
-// GeoRadius queries a geospatial index for members within a distance from a coordinate.
-// This is a read-only variant that does not support Store or StoreDist options.
-//
-// Deprecated: Use GeoSearch with BYRADIUS argument instead as of Redis 6.2.0.
+// GeoRadius is a read-only GEORADIUS_RO command.
 func (c cmdable) GeoRadius(
 	ctx context.Context, key string, longitude, latitude float64, query *GeoRadiusQuery,
 ) *GeoLocationCmd {
@@ -63,10 +60,7 @@ func (c cmdable) GeoRadiusStore(
 	return cmd
 }
 
-// GeoRadiusByMember queries a geospatial index for members within a distance from a member.
-// This is a read-only variant that does not support Store or StoreDist options.
-//
-// Deprecated: Use GeoSearch with BYRADIUS and FROMMEMBER arguments instead as of Redis 6.2.0.
+// GeoRadiusByMember is a read-only GEORADIUSBYMEMBER_RO command.
 func (c cmdable) GeoRadiusByMember(
 	ctx context.Context, key, member string, query *GeoRadiusQuery,
 ) *GeoLocationCmd {
