@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"log/syslog"
 	"os"
+	"slices"
 
 	"github.com/letsencrypt/boulder/core"
 )
@@ -91,7 +92,7 @@ func (l *logger) Error(ctx context.Context, msg string, err error, attrs ...slog
 	// We attach these attrs to the context, rather than passing them directly to
 	// LogAttrs, to ensure that they come last in the log line. See
 	// contextHandler.Handle() for more information.
-	ctx = ContextWith(ctx, append(attrs, Error(err))...)
+	ctx = ContextWith(ctx, append(slices.Clip(attrs), Error(err))...)
 	l.inner.LogAttrs(ctx, slog.LevelError, msg)
 }
 
@@ -117,13 +118,13 @@ func (l *logger) Debug(ctx context.Context, msg string, attrs ...slog.Attr) {
 // level and with the audit tag. The error will be included in the attrs under
 // the key "error".
 func (l *logger) AuditError(ctx context.Context, msg string, err error, attrs ...slog.Attr) {
-	ctx = ContextWith(ctx, append(attrs, auditAttr, Error(err))...)
+	ctx = ContextWith(ctx, append(slices.Clip(attrs), auditAttr, Error(err))...)
 	l.inner.LogAttrs(ctx, slog.LevelError, msg)
 }
 
 // AuditInfo logs the given message and other key-value pairs at info level and
 // with the audit tag.
 func (l *logger) AuditInfo(ctx context.Context, msg string, attrs ...slog.Attr) {
-	ctx = ContextWith(ctx, append(attrs, auditAttr)...)
+	ctx = ContextWith(ctx, append(slices.Clip(attrs), auditAttr)...)
 	l.inner.LogAttrs(ctx, slog.LevelInfo, msg)
 }
