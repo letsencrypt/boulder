@@ -32,6 +32,15 @@ guidelines for Boulder contributions.
   functionality in the patch, including error cases?
 * Are there new RPCs or config fields? Make sure the patch meets the
   Deployability rules below.
+* [All review conversations are
+  resolved](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-conversation-resolution-before-merging).
+  This helps to ensure that review feedback has been fully addressed. This is
+  additionally leveraged as one more layer of control on pull request merges.
+  Pull request authors and reviewers can describe external requirements (like
+  ad-hoc blockers _beyond_ our workflows and `CODEOWNERS`) as review comments,
+  and github will not allow the pull request to be merged until someone declares
+  that the conditions of the comment have been met by marking the conversation
+  as resolved.
 
 # Merge Requirements
 
