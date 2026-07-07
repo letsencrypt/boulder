@@ -32,7 +32,7 @@ guidelines for Boulder contributions.
   functionality in the patch, including error cases?
 * Are there new RPCs or config fields? Make sure the patch meets the
   Deployability rules below.
-* [All review conversations are
+* [All review conversations must be
   resolved](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-conversation-resolution-before-merging).
   This helps to ensure that review feedback has been fully addressed. This is
   additionally leveraged as one more layer of control on pull request merges.
