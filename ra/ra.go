@@ -1703,9 +1703,9 @@ func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, c
 				Identifier:     ident.ToProto(),
 			})
 			if err != nil {
-				ra.log.Error(ctx, "Authz revocation failed", err, blog.Idents(ident), blog.Acct(regId))
+				ra.log.Errf("Authz revocation failed for identifier %q, held by regId %d: %v", ident, regId, err)
 			} else {
-				ra.log.Info(ctx, "Authz revocation succeeded", blog.Idents(ident), blog.Acct(regId))
+				ra.log.Infof("Authz revocation succeeded for identifier %q, held by regId %d", ident, regId)
 			}
 		}
 	}
