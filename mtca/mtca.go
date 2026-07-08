@@ -422,7 +422,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	for i, e := range entries {
 		e.ch <- entryIndexes[i]
 	}
-	// Empty out the entries list so the defered error path doesn't try to notify them.
+	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil
 
 	return nil
