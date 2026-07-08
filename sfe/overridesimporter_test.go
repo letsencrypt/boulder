@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
+	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/zendesk"

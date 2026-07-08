@@ -2,11 +2,10 @@ package observer
 
 import (
 	"context"
-	"log/slog"
 	"strconv"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/observer/probers"
 )
 
@@ -36,19 +35,11 @@ func (m monitor) start(logger blog.Logger) {
 
 			// Log the outcome of the probe attempt.
 			if err != nil {
-				logger.Error(ctx, "Probe complete", err,
-					slog.String("kind", m.prober.Kind()),
-					slog.String("name", m.prober.Name()),
-					slog.Bool("success", false),
-					slog.Duration("duration", dur),
-				)
+				logger.Errf("kind=[%s] success=[%t] duration=[%f] name=[%s] error=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name(), err)
 			} else {
-				logger.Info(ctx, "Probe complete",
-					slog.String("kind", m.prober.Kind()),
-					slog.String("name", m.prober.Name()),
-					slog.Bool("success", true),
-					slog.Duration("duration", dur),
-				)
+				logger.Infof("kind=[%s] success=[%t] duration=[%f] name=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name())
 			}
 		}()
 		<-ticker.C

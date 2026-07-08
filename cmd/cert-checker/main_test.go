@@ -15,7 +15,6 @@ import (
 	"math/big"
 	mrand "math/rand/v2"
 	"net"
-	"net/netip"
 	"net/url"
 	"os"
 	"slices"
@@ -27,7 +26,6 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -36,6 +34,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/linter"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
@@ -173,12 +172,8 @@ func TestCheckCertReturnsSANs(t *testing.T) {
 	}
 
 	names, problems := checker.checkCert(context.Background(), cert)
-	if !slices.Equal(names, identifier.ACMEIdentifiers{
-		identifier.NewDNS("al--so--wr--ong.com"),
-		identifier.NewDNS("quite_invalid.com"),
-		identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
-	}) {
-		t.Errorf("didn't get expected DNS names (got = %#v). other problems: %s", names, strings.Join(problems, "\n"))
+	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com", "127.0.0.1"}) {
+		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
 }
 

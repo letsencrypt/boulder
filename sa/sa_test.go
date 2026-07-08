@@ -35,7 +35,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -43,6 +42,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -51,6 +51,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
+var log = blog.UseMock()
 var ctx = context.Background()
 
 var (
@@ -106,7 +107,7 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 	fc := clock.NewFake()
 	fc.Set(mustTime("2015-03-04 05:00"))
 
-	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 0, fc, blog.NewMock())
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 0, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/user"
 	"sync"
@@ -186,6 +185,8 @@ func (a *admin) spkiHashFromCSRPEM(filename string, checkSignature bool, expecte
 		return nil, fmt.Errorf("no PEM data found in %q", filename)
 	}
 
+	a.log.Debugf("Parsing key to block from CSR PEM: %x", data)
+
 	csr, err := x509.ParseCertificateRequest(data.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("parsing CSR %q: %w", filename, err)
@@ -226,9 +227,9 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 				if err != nil {
 					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
-						a.log.Warn(ctx, "key already blocked", slog.String("spkiHash", hex.EncodeToString(spkiHash)))
+						a.log.Warningf("not blocking %x: already blocked", spkiHash)
 					} else {
-						a.log.Error(ctx, "failed to block key", err, slog.String("spkiHash", hex.EncodeToString(spkiHash)))
+						a.log.Errf("failed to block %x: %s", spkiHash, err)
 					}
 				}
 			}
@@ -274,7 +275,7 @@ func (a *admin) blockSPKIHash(ctx context.Context, spkiHash []byte, u *user.User
 		count++
 	}
 
-	a.log.Info(ctx, "Found unexpired certificates matching the provided key", slog.Int("count", count))
+	a.log.Infof("Found %d unexpired certificates matching the provided key", count)
 
 	_, err = a.sac.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash:   spkiHash[:],

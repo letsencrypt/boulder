@@ -4,15 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -100,7 +98,7 @@ func newLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	if tempErr != nil {
 		// Log and discard temporary errors, as they're likely to be transient
 		// (e.g. network connectivity issues).
-		logger.Warn(ctx, "Resolving ring shards", blog.Error(tempErr))
+		logger.Warningf("resolving ring shards: %s", tempErr)
 	}
 	if nonTempErr != nil && errors.Is(nonTempErr, ErrNoShardsResolved) {
 		// Non-temporary errors are always logged inside of updateNow(), so we
@@ -127,8 +125,7 @@ func (look *lookup) updateNow(ctx context.Context) (tempError, nonTempError erro
 		}
 		// Log non-temporary DNS errors as they occur, as they're likely to be
 		// indicative of misconfiguration.
-		look.logger.Error(ctx, "Resolving service", err,
-			slog.String("name", fmt.Sprintf("_%s._tcp.%s", srv.Service, srv.Domain)))
+		look.logger.Errf("resolving service _%s._tcp.%s: %s", srv.Service, srv.Domain, err)
 	}
 
 	nextAddrs := make(map[string]string)
@@ -201,11 +198,11 @@ func (look *lookup) start() {
 			tempErrs, nonTempErrs := look.updateNow(timeoutCtx)
 			cancel()
 			if tempErrs != nil {
-				look.logger.Warn(timeoutCtx, "Temporary error while resolving ring shards", blog.Error(tempErrs))
+				look.logger.Warningf("resolving ring shards, temporary errors: %s", tempErrs)
 				continue
 			}
 			if nonTempErrs != nil {
-				look.logger.Error(timeoutCtx, "Error while resolving ring shards", nonTempErrs)
+				look.logger.Errf("resolving ring shards, non-temporary errors: %s", nonTempErrs)
 				continue
 			}
 

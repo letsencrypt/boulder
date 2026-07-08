@@ -10,7 +10,6 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -63,7 +62,7 @@ type Config struct {
 		Features features.Config
 	}
 
-	Syslog        blog.Config
+	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

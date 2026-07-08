@@ -3,8 +3,8 @@ package observer
 import (
 	"context"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	_ "github.com/letsencrypt/boulder/observer/probers/aia"
 	_ "github.com/letsencrypt/boulder/observer/probers/ccadb"
 	_ "github.com/letsencrypt/boulder/observer/probers/crl"

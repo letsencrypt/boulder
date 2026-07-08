@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net/netip"
 	"strings"
 
@@ -87,10 +86,7 @@ func (c *subcommandToggleOverride) Run(ctx context.Context, a *admin) error {
 		if err != nil {
 			return fmt.Errorf("enabling override for limit %s key %q: %s", name, bucketKey, err)
 		}
-		a.log.Info(ctx, "Enabled override",
-			slog.String("limit", name.String()),
-			slog.String("bucketKey", bucketKey),
-		)
+		a.log.Infof("Enabled override for limit %s key %q\n", name, bucketKey)
 		return nil
 	}
 
@@ -101,9 +97,6 @@ func (c *subcommandToggleOverride) Run(ctx context.Context, a *admin) error {
 	if err != nil {
 		return fmt.Errorf("disabling override for limit %s key %q: %s", name, bucketKey, err)
 	}
-	a.log.Info(ctx, "Disabled override",
-		slog.String("limit", name.String()),
-		slog.String("bucketKey", bucketKey),
-	)
+	a.log.Infof("Disabled override for limit %s key %q\n", name, bucketKey)
 	return nil
 }
