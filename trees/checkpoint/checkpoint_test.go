@@ -6,11 +6,16 @@ import (
 	"testing"
 
 	"golang.org/x/mod/sumdb/note"
+	"golang.org/x/mod/sumdb/tlog"
 )
 
 // exampleCheckpoint is a canonical tlog-checkpoint note body the cosignature
 // tests sign and verify over.
 const exampleHashB64 = "CsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I="
+
+// emptyTreeHashB64 is the RFC 6962 empty-tree hash, SHA-256 of the empty
+// string, which is the only valid root hash for tree size 0.
+const emptyTreeHashB64 = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="
 
 // exampleCheckpoint is a tlog-checkpoint note body, including the trailing
 // newline and no signature lines.
@@ -39,7 +44,7 @@ func TestCheckpointUnmarshalRoundTrip(t *testing.T) {
 		},
 		{
 			name:   "Zero size",
-			text:   "example.com/log\n0\n" + exampleHashB64 + "\n",
+			text:   "example.com/log\n0\n" + emptyTreeHashB64 + "\n",
 			origin: "example.com/log",
 			size:   0,
 		},
@@ -96,8 +101,11 @@ func TestCheckpointUnmarshalRejects(t *testing.T) {
 		{"Signed note instead of a bare body", "example.com/log\n1\n" + exampleHashB64 + "\n\n— key AAAA\n"},
 		{"Bad base64 hash", "example.com/log\n1\n!!!notbase64!!!\n"},
 		{"Non-canonical base64 hash", "example.com/log\n1\nCsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2J=\n"},
+		{"Carriage return in hash", "example.com/log\n1\nCsUY\rapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I=\n"},
+		{"Unpadded hash", "example.com/log\n1\nCsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I\n"},
 		{"Short hash", "example.com/log\n1\nAAAA\n"},
 		{"Empty extension line", "example.com/log\n1\n" + exampleHashB64 + "\n\n"},
+		{"Zero size with non-empty-tree hash", "example.com/log\n0\n" + exampleHashB64 + "\n"},
 		{"Carriage return in origin", "example.com/log\r\n1\n" + exampleHashB64 + "\n"},
 		{"Invalid UTF-8 in origin", "example.com/\xff\n1\n" + exampleHashB64 + "\n"},
 		{"Control character in extension", "example.com/log\n1\n" + exampleHashB64 + "\next\x01ension\n"},
@@ -112,8 +120,8 @@ func TestCheckpointUnmarshalRejects(t *testing.T) {
 	}
 }
 
-// TestCheckpointMarshal covers the validating serialization path for
-// hand-constructed Checkpoints, which String deliberately does not validate.
+// TestCheckpointMarshal covers Marshal's validation of hand-constructed
+// Checkpoints, which bypass Unmarshal's checks.
 func TestCheckpointMarshal(t *testing.T) {
 	valid, err := Unmarshal(exampleCheckpoint)
 	if err != nil {
@@ -138,6 +146,7 @@ func TestCheckpointMarshal(t *testing.T) {
 		{"Newline in origin", func(c Checkpoint) Checkpoint { c.Origin = "two\nlines"; return c }},
 		{"Invalid UTF-8 in origin", func(c Checkpoint) Checkpoint { c.Origin = "bad\xff"; return c }},
 		{"Negative tree size", func(c Checkpoint) Checkpoint { c.Tree.N = -1; return c }},
+		{"Zero size with zero hash", func(c Checkpoint) Checkpoint { c.Tree = tlog.Tree{}; return c }},
 		{"Empty extension", func(c Checkpoint) Checkpoint { c.Extensions = []string{""}; return c }},
 		{"Newline in extension", func(c Checkpoint) Checkpoint { c.Extensions = []string{"two\nlines"}; return c }},
 	}
