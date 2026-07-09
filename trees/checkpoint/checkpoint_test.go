@@ -8,13 +8,15 @@ import (
 	"golang.org/x/mod/sumdb/note"
 )
 
+// exampleCheckpoint is a canonical tlog-checkpoint note body the cosignature
+// tests sign and verify over.
 const exampleHashB64 = "CsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I="
 
 // exampleCheckpoint is a tlog-checkpoint note body, including the trailing
 // newline and no signature lines.
 const exampleCheckpoint = "example.com/behind-the-sofa\n20852163\n" + exampleHashB64 + "\n"
 
-func TestParseCheckpointRoundTrip(t *testing.T) {
+func TestCheckpointUnmarshalRoundTrip(t *testing.T) {
 	cases := []struct {
 		name       string
 		text       string
@@ -53,9 +55,9 @@ func TestParseCheckpointRoundTrip(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := Parse(tc.text)
+			c, err := Unmarshal(tc.text)
 			if err != nil {
-				t.Fatalf("Parse: %s", err)
+				t.Fatalf("Unmarshal: %s", err)
 			}
 			if c.Origin != tc.origin {
 				t.Errorf("Origin = %q, want %q", c.Origin, tc.origin)
@@ -66,15 +68,18 @@ func TestParseCheckpointRoundTrip(t *testing.T) {
 			if !slices.Equal(c.Extensions, tc.extensions) {
 				t.Errorf("Extensions = %v, want %v", c.Extensions, tc.extensions)
 			}
-			got := c.String()
+			got, err := c.Marshal()
+			if err != nil {
+				t.Fatalf("Marshal: %s", err)
+			}
 			if got != tc.text {
-				t.Errorf("String() = %q, want %q", got, tc.text)
+				t.Errorf("Marshal = %q, want %q", got, tc.text)
 			}
 		})
 	}
 }
 
-func TestParseCheckpointRejects(t *testing.T) {
+func TestCheckpointUnmarshalRejects(t *testing.T) {
 	cases := []struct {
 		name string
 		text string
@@ -84,6 +89,8 @@ func TestParseCheckpointRejects(t *testing.T) {
 		{"Empty origin", "\n1\n" + exampleHashB64 + "\n"},
 		{"Leading zero size", "example.com/log\n01\n" + exampleHashB64 + "\n"},
 		{"Negative size", "example.com/log\n-1\n" + exampleHashB64 + "\n"},
+		{"Plus-signed size", "example.com/log\n+1\n" + exampleHashB64 + "\n"},
+		{"Minus-signed zero size", "example.com/log\n-0\n" + exampleHashB64 + "\n"},
 		{"Non-numeric size", "example.com/log\nx\n" + exampleHashB64 + "\n"},
 		{"Size above int64", "example.com/log\n9223372036854775808\n" + exampleHashB64 + "\n"},
 		{"Signed note instead of a bare body", "example.com/log\n1\n" + exampleHashB64 + "\n\n— key AAAA\n"},
@@ -91,18 +98,15 @@ func TestParseCheckpointRejects(t *testing.T) {
 		{"Non-canonical base64 hash", "example.com/log\n1\nCsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2J=\n"},
 		{"Short hash", "example.com/log\n1\nAAAA\n"},
 		{"Empty extension line", "example.com/log\n1\n" + exampleHashB64 + "\n\n"},
-		// signed-note bans ASCII control characters other than newline. Parse
-		// must enforce it itself because it gates Sign on raw bodies that never
-		// pass through note.Open.
 		{"Carriage return in origin", "example.com/log\r\n1\n" + exampleHashB64 + "\n"},
 		{"Invalid UTF-8 in origin", "example.com/\xff\n1\n" + exampleHashB64 + "\n"},
 		{"Control character in extension", "example.com/log\n1\n" + exampleHashB64 + "\next\x01ension\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Parse(tc.text)
+			_, err := Unmarshal(tc.text)
 			if err == nil {
-				t.Error("Parse = nil error, want error")
+				t.Error("Unmarshal = nil error, want error")
 			}
 		})
 	}
@@ -111,9 +115,9 @@ func TestParseCheckpointRejects(t *testing.T) {
 // TestCheckpointMarshal covers the validating serialization path for
 // hand-constructed Checkpoints, which String deliberately does not validate.
 func TestCheckpointMarshal(t *testing.T) {
-	valid, err := Parse(exampleCheckpoint)
+	valid, err := Unmarshal(exampleCheckpoint)
 	if err != nil {
-		t.Fatalf("Parse: %s", err)
+		t.Fatalf("Unmarshal: %s", err)
 	}
 
 	t.Run("Valid", func(t *testing.T) {
@@ -121,8 +125,8 @@ func TestCheckpointMarshal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Marshal: %s", err)
 		}
-		if got != valid.String() {
-			t.Errorf("Marshal = %q, want %q", got, valid.String())
+		if got != exampleCheckpoint {
+			t.Errorf("Marshal = %q, want %q", got, exampleCheckpoint)
 		}
 	})
 
@@ -139,7 +143,8 @@ func TestCheckpointMarshal(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.mutate(valid).Marshal()
+			mutated := tc.mutate(*valid)
+			_, err := mutated.Marshal()
 			if err == nil {
 				t.Error("Marshal = nil error, want error")
 			}

@@ -12,7 +12,7 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 )
 
-// Checkpoint represents a tlog-checkpoint note body.
+// Checkpoint represents a tlog-checkpoint note text.
 //
 // https://c2sp.org/tlog-checkpoint
 type Checkpoint struct {
@@ -21,46 +21,39 @@ type Checkpoint struct {
 	Extensions []string
 }
 
-// String returns the note body of the checkpoint. Unlike Marshal, it does not
-// validate the checkpoint fields. Call Marshal to validate the fields before
-// serializing.
-//
-// https://c2sp.org/tlog-checkpoint
-func (c Checkpoint) String() string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n%d\n%s\n", c.Origin, c.Tree.N, c.Tree.Hash)
-	for _, ext := range c.Extensions {
-		b.WriteString(ext)
-		b.WriteByte('\n')
+// checkNoteLine returns an error if line cannot be used as a single line of a
+// signed note, nil otherwise. https://c2sp.org/signed-note requires note text
+// to be valid UTF-8 with no ASCII control characters (those below U+0020) other
+// than newline.
+func checkNoteLine(line string) error {
+	switch {
+	case !utf8.ValidString(line):
+		return errors.New("not valid UTF-8")
+
+	case strings.ContainsRune(line, '\n'):
+		return errors.New("contains a newline")
+
+	case strings.ContainsFunc(line, func(r rune) bool { return r < 0x20 }):
+		return errors.New("contains an ASCII control character")
+
+	default:
+		return nil
 	}
-	return b.String()
 }
 
-// validNoteLine reports whether s is a valid signed-note line: UTF-8 with no
-// control character below U+0020.
-func validNoteLine(s string) bool {
-	if !utf8.ValidString(s) {
-		return false
-	}
-	for _, r := range s {
-		if r < 0x20 {
-			return false
-		}
-	}
-	return true
-}
-
-// Marshal returns the note body, first checking the checkpoint against the
-// tlog-checkpoint rules. It returns an error if the checkpoint is invalid.
+// Marshal returns the note text, first checking the checkpoint against the
+// tlog-checkpoint requirements. It returns an error if the checkpoint is
+// invalid.
 //
 //   - https://c2sp.org/tlog-checkpoint
 //   - https://c2sp.org/signed-note
-func (c Checkpoint) Marshal() (string, error) {
+func (c *Checkpoint) Marshal() (string, error) {
 	if c.Origin == "" {
 		return "", errors.New("empty checkpoint origin")
 	}
-	if !validNoteLine(c.Origin) {
-		return "", errors.New("checkpoint origin contains a control character or invalid UTF-8")
+	err := checkNoteLine(c.Origin)
+	if err != nil {
+		return "", fmt.Errorf("validating checkpoint origin: %w", err)
 	}
 	if c.Tree.N < 0 {
 		return "", fmt.Errorf("negative checkpoint tree size %d", c.Tree.N)
@@ -69,43 +62,64 @@ func (c Checkpoint) Marshal() (string, error) {
 		if ext == "" {
 			return "", errors.New("empty checkpoint extension line")
 		}
-		if !validNoteLine(ext) {
-			return "", errors.New("checkpoint extension line contains a control character or invalid UTF-8")
+		err := checkNoteLine(ext)
+		if err != nil {
+			return "", fmt.Errorf("validating checkpoint extension line: %w", err)
 		}
 	}
-	return c.String(), nil
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n%d\n%s\n", c.Origin, c.Tree.N, c.Tree.Hash)
+	for _, ext := range c.Extensions {
+		b.WriteString(ext)
+		b.WriteByte('\n')
+	}
+	return b.String(), nil
 }
 
-// Parse parses a checkpoint note body. It must not have any signature lines.
-// For a signed note, use Open.
+// Unmarshal parses a checkpoint note text. The text must not have any signature
+// lines. For a signed note, use Open.
 //
 //   - https://c2sp.org/tlog-checkpoint
 //   - https://c2sp.org/signed-note
-func Parse(text string) (Checkpoint, error) {
+func Unmarshal(text string) (*Checkpoint, error) {
 	if !strings.HasSuffix(text, "\n") {
-		return Checkpoint{}, errors.New("checkpoint does not end in newline")
+		return nil, errors.New("checkpoint does not end in newline")
 	}
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	if len(lines) < 3 {
-		return Checkpoint{}, errors.New("checkpoint has too few lines")
+		return nil, fmt.Errorf("checkpoint has %d lines, want at least 3", len(lines))
 	}
 
 	origin := lines[0]
 	if origin == "" {
-		return Checkpoint{}, errors.New("empty checkpoint origin")
+		return nil, errors.New("empty checkpoint origin")
 	}
-	if !validNoteLine(origin) {
-		return Checkpoint{}, errors.New("checkpoint origin contains a control character or invalid UTF-8")
+	err := checkNoteLine(origin)
+	if err != nil {
+		return nil, fmt.Errorf("validating checkpoint origin: %w", err)
 	}
 
 	size, err := strconv.ParseInt(lines[1], 10, 64)
-	if err != nil || size < 0 || strconv.FormatInt(size, 10) != lines[1] {
-		return Checkpoint{}, errors.New("malformed checkpoint tree size")
+	if err != nil {
+		return nil, fmt.Errorf("checkpoint tree size: %w", err)
+	}
+	if size < 0 {
+		return nil, fmt.Errorf("negative checkpoint tree size %d", size)
+	}
+	if strconv.FormatInt(size, 10) != lines[1] {
+		return nil, errors.New("checkpoint tree size has a leading zero or sign")
 	}
 
 	hashBytes, err := base64.StdEncoding.DecodeString(lines[2])
-	if err != nil || len(hashBytes) != tlog.HashSize || base64.StdEncoding.EncodeToString(hashBytes) != lines[2] {
-		return Checkpoint{}, errors.New("malformed checkpoint root hash")
+	if err != nil {
+		return nil, fmt.Errorf("checkpoint root hash: %w", err)
+	}
+	if len(hashBytes) != tlog.HashSize {
+		return nil, fmt.Errorf("checkpoint root hash is %d bytes, want %d", len(hashBytes), tlog.HashSize)
+	}
+	if base64.StdEncoding.EncodeToString(hashBytes) != lines[2] {
+		return nil, errors.New("checkpoint root hash is not canonical base64")
 	}
 	var hash tlog.Hash
 	copy(hash[:], hashBytes)
@@ -113,28 +127,29 @@ func Parse(text string) (Checkpoint, error) {
 	extensions := lines[3:]
 	for _, ext := range extensions {
 		if ext == "" {
-			return Checkpoint{}, errors.New("empty checkpoint extension line")
+			return nil, errors.New("empty checkpoint extension line")
 		}
-		if !validNoteLine(ext) {
-			return Checkpoint{}, errors.New("checkpoint extension line contains a control character or invalid UTF-8")
+		err := checkNoteLine(ext)
+		if err != nil {
+			return nil, fmt.Errorf("validating checkpoint extension line: %w", err)
 		}
 	}
-	return Checkpoint{Origin: origin, Tree: tlog.Tree{N: size, Hash: hash}, Extensions: extensions}, nil
+	return &Checkpoint{Origin: origin, Tree: tlog.Tree{N: size, Hash: hash}, Extensions: extensions}, nil
 }
 
-// Open opens a signed checkpoint note and parses its body. An error is returned
+// Open opens a signed checkpoint note and parses its text. An error is returned
 // if the note is not valid or the signature is not verified by one of the
 // verifiers.
 //
 // https://c2sp.org/signed-note
-func Open(signedNote []byte, verifiers note.Verifiers) (Checkpoint, *note.Note, error) {
+func Open(signedNote []byte, verifiers note.Verifiers) (*Checkpoint, *note.Note, error) {
 	n, err := note.Open(signedNote, verifiers)
 	if err != nil {
-		return Checkpoint{}, nil, err
+		return nil, nil, err
 	}
-	c, err := Parse(n.Text)
+	c, err := Unmarshal(n.Text)
 	if err != nil {
-		return Checkpoint{}, nil, err
+		return nil, nil, err
 	}
 	return c, n, nil
 }
