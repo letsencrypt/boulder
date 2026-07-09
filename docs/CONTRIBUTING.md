@@ -56,7 +56,6 @@ resolve that conversation once the external conditions are met. Since our
 repository is configured to require all conversations be resolved before
 merging, this acts as a protection against early merges.
 
-
 # Patch Guidelines
 
 * Please include helpful comments. No need to gratuitously comment clear code,
