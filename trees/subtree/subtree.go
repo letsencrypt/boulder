@@ -1,47 +1,11 @@
 package subtree
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"math/bits"
 
 	"golang.org/x/mod/sumdb/tlog"
 )
-
-// largestPowerOfTwoSmallerThan returns the largest power of two strictly less
-// than n, for n > 1. n <= 1 results in a panic.
-func largestPowerOfTwoSmallerThan(n int64) int64 {
-	if n <= 1 {
-		panic(fmt.Sprintf("n must be > 1, got %d", n))
-	}
-	return int64(1) << (bits.Len64(uint64(n-1)) - 1) //nolint:gosec // G115: n > 1, so n-1 is positive.
-}
-
-// HashLeaves returns MTH(D[start:end]), the RFC 9162 section 2.1.1 Merkle Tree
-// Hash of the provided leaf hashes. Pass a subtree's leaves to get that
-// subtree's hash. The inputs must be leaf hashes (HASH(0x00 || entry), as
-// produced by tlog.RecordHash).
-//
-// https://datatracker.ietf.org/doc/html/rfc9162#section-2.1.1
-func HashLeaves(leaves []tlog.Hash) tlog.Hash {
-	switch len(leaves) {
-	case 0:
-		// The hash of an empty list is the hash of an empty string.
-		return tlog.Hash(sha256.Sum256(nil))
-	case 1:
-		// The hash of a list with one entry is just the leaf hash.
-		return leaves[0]
-	default:
-		// Split the list into two subtree roots, the left being a "complete" subtree
-		// and the right being the remainder which may or may not be complete.
-
-		// Cases 0 and 1 return above, so len(leaves) >= 2 here.
-		k := largestPowerOfTwoSmallerThan(int64(len(leaves)))
-
-		// Combine the two parts' roots as SHA-256(0x01 || left || right).
-		return tlog.NodeHash(HashLeaves(leaves[:k]), HashLeaves(leaves[k:]))
-	}
-}
 
 // valid reports whether [start, end) is a valid subtree per the MTC draft
 // section 4.1 Definition of a Subtree: 0 <= start < end and start is a multiple
@@ -76,7 +40,10 @@ func completeSubtree(start, end int64) (level int, ok bool) {
 // subtree on the left and a possibly ragged one on the right. This is the mid
 // in draft-ietf-plants-merkle-tree-certs section 4.5.1.
 func splitPoint(start, end int64) int64 {
-	return start + largestPowerOfTwoSmallerThan(end-start)
+	if end-start <= 1 {
+		panic(fmt.Sprintf("splitPoint: end-start must be > 1, got %d", end-start))
+	}
+	return start + int64(1)<<(bits.Len64(uint64(end-start-1))-1) //nolint:gosec // G115: end-start > 1, so end-start-1 is positive.
 }
 
 // combineSubtreeRoots combines subtree roots, in the order
