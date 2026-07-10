@@ -239,13 +239,13 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	)
 
 	if features.Get().DeactivateBadKeyAccounts {
-		// Deactivate the account, if any, which uses this key. The registrations
+		// Revoke the account, if any, which uses this key. The registrations
 		// table ensures that jwk_sha256 is unique. However, it stores the jwk_sha256
 		// column in base64, unlike the keyHashToSerial table. We do this before the
 		// certs so that we can still early-exit if there are zero certs to process.
 		_, err = bkr.dbMap.ExecContext(
 			ctx, "UPDATE registrations SET status = ? WHERE jwk_sha256 = ? AND status = ? LIMIT 1",
-			string(core.StatusDeactivated),
+			string(core.StatusRevoked),
 			base64.StdEncoding.EncodeToString(unchecked.KeyHash),
 			string(core.StatusValid),
 		)
