@@ -50,7 +50,7 @@ in a comment or in the PR description.
 
 When creating a pull request that has external dependencies, like another pull
 request being merged or deployed to production, or approval from SRE, the author
-should leave a review comment on the pull request (a "conversation") noting what
+should leave a review comment on the pull request (i.e. create a "conversation" by commenting on a specific file or line of a file) noting what
 the pull request is blocked on. The comment should include instructions to only
 resolve that conversation once the external conditions are met. Since our
 repository is configured to require all conversations be resolved before
