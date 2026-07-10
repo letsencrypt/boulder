@@ -42,6 +42,9 @@ type ProfileConfig struct {
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
+	// OmitCT causes the precertificate poison and SCT list extension to be omitted.
+	// This should only be enabled for MTC profiles.
+	OmitCT bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -68,6 +71,7 @@ type Profile struct {
 	omitKeyEncipherment bool
 	omitClientAuth      bool
 	omitSKID            bool
+	omitCT              bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -104,6 +108,7 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
 		omitClientAuth:      profileConfig.OmitClientAuth,
 		omitSKID:            profileConfig.OmitSKID,
+		omitCT:              profileConfig.OmitCT,
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
 		maxCertificateSize:  profileConfig.MaxCertificateSize,
@@ -343,19 +348,28 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.SubjectKeyId = req.SubjectKeyId
 	}
 
-	if req.IncludeCTPoison {
-		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
-	} else if len(req.sctList) > 0 {
-		if len(req.precertDER) == 0 {
-			return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+	if prof.omitCT {
+		if req.IncludeCTPoison {
+			return nil, nil, errors.New("invalid request for CT poison with OmitCT")
 		}
-		sctListExt, err := generateSCTListExt(req.sctList)
-		if err != nil {
-			return nil, nil, err
+		if len(req.sctList) > 0 {
+			return nil, nil, errors.New("invalid request for SCT list with OmitCT")
 		}
-		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
-		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+		if req.IncludeCTPoison {
+			template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
+		} else if len(req.sctList) > 0 {
+			if len(req.precertDER) == 0 {
+				return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+			}
+			sctListExt, err := generateSCTListExt(req.sctList)
+			if err != nil {
+				return nil, nil, err
+			}
+			template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
+		} else {
+			return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+		}
 	}
 
 	// Pick a CRL shard based on the serial number modulo the number of shards.
