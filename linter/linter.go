@@ -175,9 +175,15 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		Policies:                    realIssuer.Policies,
 		SerialNumber:                realIssuer.SerialNumber,
 		Subject:                     realIssuer.Subject,
-		SubjectKeyId:                realIssuer.SubjectKeyId,
-		URIs:                        realIssuer.URIs,
-		UnknownExtKeyUsage:          realIssuer.UnknownExtKeyUsage,
+		// RawSubject is used internally by x509.CreateCertificate to copy the issuer's
+		// Subject into the signed certificate's Issuer. Without it, only recognized fields
+		// from Subject will be passed through.
+		// For instance, correctly processing MTC's id-rdna-trustAnchorID or its temporary
+		// experimentation equivalent require this.
+		RawSubject:         realIssuer.RawSubject,
+		SubjectKeyId:       realIssuer.SubjectKeyId,
+		URIs:               realIssuer.URIs,
+		UnknownExtKeyUsage: realIssuer.UnknownExtKeyUsage,
 	}
 	lintIssuerBytes, err := x509.CreateCertificate(rand.Reader, lintIssuerTBS, lintIssuerTBS, lintSigner.Public(), lintSigner)
 	if err != nil {
