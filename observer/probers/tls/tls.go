@@ -141,11 +141,13 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 // Return an error if the root settings are nonempty and do not match the
 // expected root.
 func (p TLSProbe) checkRoot(root pkix.Name) error {
-	var rootOrg string
-	if len(root.Organization) > 0 {
-		rootOrg = root.Organization[0]
+	if p.rootCN == "" && p.rootOrg == "" {
+		return nil
 	}
-	if (p.rootCN == "" && p.rootOrg == "") || (rootOrg == p.rootOrg && root.CommonName == p.rootCN) {
+	if len(root.Organization) != 1 {
+		return errors.New("root certificate does not have exactly one Organization")
+	}
+	if root.Organization[0] == p.rootOrg && root.CommonName == p.rootCN {
 		return nil
 	}
 	return fmt.Errorf("Expected root does not match.")
