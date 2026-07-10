@@ -209,8 +209,7 @@ func (p TLSProbe) probeExpired(ctx context.Context) error {
 		return fmt.Errorf("certificate is not expired, notAfter %s", peers[0].NotAfter)
 	}
 
-	root := peers[len(peers)-1].Issuer
-	err = p.checkRoot(root)
+	err = p.checkRoot(peers[len(peers)-1].Issuer)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
 		return err
@@ -261,8 +260,7 @@ func (p TLSProbe) probeUnexpired(ctx context.Context) error {
 
 	// tls.Dialer.DialContext is documented to always return *tls.Conn
 	peers := conn.(*tls.Conn).ConnectionState().PeerCertificates
-	root := peers[len(peers)-1].Issuer
-	err = p.checkRoot(root)
+	err = p.checkRoot(peers[len(peers)-1].Issuer)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
 		return err
