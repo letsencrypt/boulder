@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/probs"
 )
 

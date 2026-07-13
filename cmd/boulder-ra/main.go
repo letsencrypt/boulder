@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -124,7 +125,7 @@ type Config struct {
 
 	PA cmd.PAConfig
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

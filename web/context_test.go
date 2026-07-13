@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,8 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/features"
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -27,23 +27,23 @@ func (m myHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Req
 }
 
 func TestLogCode(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, myHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
-	expected := `INFO: GET /endpoint 0 201 0 0.0.0.0 JSON={}`
+	expected := `level=INFO msg="" method=GET endpoint=/endpoint ip=0.0.0.0 ua="" origin="" code=201`
 	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
-			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+			expected, strings.Join(mockLog.GetAll(), "\n"))
 	}
 }
 
 // TestLogUA tests that user-agents are truncated before logging, and faithfully pass along non-ASCII.
 func TestLogUA(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, myHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
@@ -52,26 +52,18 @@ func TestLogUA(t *testing.T) {
 	req.Header.Add("User-Agent", "🪨"+strings.Repeat("a", 200))
 	th.ServeHTTP(httptest.NewRecorder(), req)
 
-	matching := mockLog.GetAllMatching("JSON=")
+	matching := mockLog.GetAllMatching("endpoint=/endpoint")
 	if len(matching) != 1 {
-		t.Errorf("Expected exactly one log line. Got: %s",
-			strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+		t.Errorf("Expected exactly one log line, got: %s", strings.Join(mockLog.GetAll(), "\n"))
 	}
-	re := regexp.MustCompile(`JSON=({.*})$`)
-	m := re.FindStringSubmatch(matching[0])
-	if len(m) < 2 {
-		t.Fatalf("logging user-agent: no regexp match")
+	re := regexp.MustCompile(`ua=(\S*)`)
+	got := re.FindStringSubmatch(matching[0])
+	if len(got) != 2 {
+		t.Fatalf("logging user-agent: got %d regexp matches but want 2 (1 overall and 1 capture group)", len(got))
 	}
-	var ua struct {
-		UA string
-	}
-	err = json.Unmarshal([]byte(m[1]), &ua)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected := "🪨aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..."
-	if ua.UA != expected {
-		t.Errorf("logging user-agent: got %x, want %x", ua.UA, expected)
+	want := "🪨aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..."
+	if got[1] != want {
+		t.Errorf("logging user-agent: got %x, want %x", got[1], want)
 	}
 }
 
@@ -83,22 +75,22 @@ func (ch codeHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.
 }
 
 func TestStatusCodeLogging(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, codeHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
-	expected := `INFO: GET /endpoint 0 200 0 0.0.0.0 JSON={}`
+	expected := `level=INFO .* code=200`
 	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
-			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+			expected, strings.Join(mockLog.GetAll(), "\n"))
 	}
 }
 
 func TestOrigin(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	th := NewTopHandler(mockLog, myHandler{})
 	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
 	if err != nil {
@@ -106,10 +98,10 @@ func TestOrigin(t *testing.T) {
 	}
 	req.Header.Add("Origin", "https://example.com")
 	th.ServeHTTP(httptest.NewRecorder(), req)
-	expected := `INFO: GET /endpoint 0 201 0 0.0.0.0 JSON={.*"Origin":"https://example.com"}`
+	expected := `level=INFO .* origin=https://example.com`
 	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
-			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))
+			expected, strings.Join(mockLog.GetAll(), "\n"))
 	}
 }
 
@@ -122,7 +114,7 @@ func (hhh hostHeaderHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r
 }
 
 func TestHostHeaderRewrite(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	hhh := hostHeaderHandler{f: func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
 		t.Helper()
 		test.AssertEquals(t, r.Host, "localhost")
@@ -171,7 +163,7 @@ func (ch cancelHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *htt
 }
 
 func TestPropagateCancel(t *testing.T) {
-	mockLog := blog.UseMock()
+	mockLog := blog.NewMock()
 	res := make(chan string)
 	features.Set(features.Config{PropagateCancels: true})
 	th := NewTopHandler(mockLog, cancelHandler{res})
@@ -187,5 +179,30 @@ func TestPropagateCancel(t *testing.T) {
 	result := <-res
 	if result != "context canceled" {
 		t.Errorf("expected 'context canceled', got %q", result)
+	}
+}
+
+type problemHandler struct{}
+
+func (ph problemHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Request) {
+	e.Endpoint = "/endpoint"
+	SendError(blog.NewMock(), w, e, probs.Unauthorized("you shall not pass"), nil)
+}
+
+// TestLogProblem tests that the client-visible problem details recorded by
+// SendError appear in the request completion log line.
+func TestLogProblem(t *testing.T) {
+	mockLog := blog.NewMock()
+	th := NewTopHandler(mockLog, problemHandler{})
+	req, err := http.NewRequest("GET", "/thisisignored", &bytes.Reader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th.ServeHTTP(httptest.NewRecorder(), req)
+
+	matching := mockLog.GetAllMatching(`problem="403 :: unauthorized :: you shall not pass"`)
+	if len(matching) != 1 {
+		t.Errorf("Expected exactly one log line containing the problem details. Got \n%s",
+			strings.Join(mockLog.GetAll(), "\n"))
 	}
 }

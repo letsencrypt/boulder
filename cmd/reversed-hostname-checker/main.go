@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
@@ -39,7 +40,7 @@ func main() {
 	}
 
 	scanner := bufio.NewScanner(input)
-	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	logger := cmd.NewLogger(blog.Config{StdoutLevel: 7})
 	cmd.LogStartup(logger)
 	pa, err := policy.New(nil, nil, logger)
 	if err != nil {

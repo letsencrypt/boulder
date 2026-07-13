@@ -11,7 +11,6 @@ import (
 	"text/template"
 
 	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 // createSlot initializes a SoftHSM slot and token. SoftHSM chooses the highest empty
@@ -78,7 +77,6 @@ func runCeremony(path string) error {
 }
 
 func main() {
-	_ = blog.Set(blog.StdoutLogger(6))
 	defer cmd.AuditPanic()
 
 	// Create SoftHSM slots for the root signing keys

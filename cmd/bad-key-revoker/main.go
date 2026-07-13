@@ -3,9 +3,11 @@ package notmain
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -15,12 +17,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
@@ -197,12 +199,12 @@ func (bkr *badKeyRevoker) revokeCerts(ctx context.Context, certs []unrevokedCert
 // invoke exits early and returns true if there is no work to be done.
 // Otherwise, it processes a single key in the blockedKeys table and returns false.
 func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
-	logEvent := make(map[string]any)
+	var logAttrs []slog.Attr
 	defer func() {
 		if err != nil {
-			bkr.logger.AuditErr("Error while processing bad key", err, logEvent)
+			bkr.logger.AuditError(ctx, "Error while processing bad key", err, logAttrs...)
 		} else {
-			bkr.logger.AuditInfo("Processed bad key", logEvent)
+			bkr.logger.AuditInfo(ctx, "Processed bad key", logAttrs...)
 		}
 	}()
 
@@ -211,14 +213,14 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	logEvent["keysToProcess"] = uncheckedCount
+	logAttrs = append(logAttrs, slog.Int("keysToProcess", uncheckedCount))
 
 	// Set the gauge to the number of rows to be processed (max:
 	// blockedKeysGaugeLimit).
 	bkr.keysToProcess.Set(float64(uncheckedCount))
 
 	if uncheckedCount >= blockedKeysGaugeLimit {
-		logEvent["keysToProcessOverflow"] = true
+		logAttrs = append(logAttrs, slog.Bool("keysToProcessOverflow", true))
 	}
 
 	// select a row to process
@@ -229,15 +231,17 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 		}
 		return false, err
 	}
-	logEvent["keyHash"] = fmt.Sprintf("%x", unchecked.KeyHash)
-	logEvent["revokedBy"] = unchecked.RevokedBy
+	logAttrs = append(logAttrs,
+		slog.String("keyHash", hex.EncodeToString(unchecked.KeyHash)),
+		slog.Int64("revokedBy", unchecked.RevokedBy),
+	)
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash
 	unrevokedCerts, err := bkr.findUnrevoked(ctx, unchecked)
 	if err != nil {
 		return false, err
 	}
-	logEvent["certsToProcess"] = len(unrevokedCerts)
+	logAttrs = append(logAttrs, slog.Int("certsToProcess", len(unrevokedCerts)))
 
 	if len(unrevokedCerts) == 0 {
 		err = bkr.markRowChecked(ctx, unchecked)
@@ -251,7 +255,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	for _, cert := range unrevokedCerts {
 		serials = append(serials, cert.Serial)
 	}
-	logEvent["serials"] = serials
+	logAttrs = append(logAttrs, slog.Any("serials", serials))
 
 	// revoke each certificate
 	err = bkr.revokeCerts(ctx, unrevokedCerts)
@@ -303,7 +307,7 @@ type Config struct {
 		MaxExpectedReplicationLag config.Duration `validate:"-"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -418,7 +422,7 @@ func (bkr *badKeyRevoker) backoff() {
 		bkr.backoffIntervalMax,
 		bkr.backoffFactor,
 	)
-	bkr.logger.Infof("backoff trying again in %.2f seconds", backoffDur.Seconds())
+	bkr.logger.Info(context.Background(), "backing off", slog.Duration("retryAfter", backoffDur))
 	bkr.clk.Sleep(backoffDur)
 }
 

@@ -5,16 +5,18 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"strings"
 	"time"
+
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type subcommandAddOverride struct {
@@ -159,9 +161,15 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 	}
 
 	if resp.Inserted {
-		a.log.Infof("Added new override for limit %s key %q, status=[%s]\n", name, bucketKey, status)
+		a.log.Info(ctx, "Added new override",
+			slog.String("limit", name.String()),
+			slog.String("bucketKey", bucketKey),
+			slog.String("status", status))
 	} else {
-		a.log.Infof("Updated existing override for limit %s key %q, status=[%s]\n", name, bucketKey, status)
+		a.log.Info(ctx, "Updated existing override",
+			slog.String("limit", name.String()),
+			slog.String("bucketKey", bucketKey),
+			slog.String("status", status))
 	}
 	return nil
 }
