@@ -119,6 +119,14 @@ type MerkleTreeCertEntry struct {
 	Value      []byte
 }
 
+// TBS returns the TBSCertificateLogEntry bytes if Type is tbs_cert_entry, or nil otherwise.
+func (mtce MerkleTreeCertEntry) TBS() []byte {
+	if mtce.Type == typeTBSCertEntry {
+		return mtce.Value
+	}
+	return nil
+}
+
 // Marshal returns the encoding of its receiver.
 //
 // Rejects unknown MerkleTreeCertEntryTypes.
