@@ -1,9 +1,8 @@
-//go:build go1.27
-
 package entry
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto"
 	"encoding/base64"
 	"encoding/hex"
@@ -16,7 +15,7 @@ import (
 
 func TestTBSCertificateLogEntryFromX509(t *testing.T) {
 	// Bytes from an example generated test/certs/ipki/wfe.boulder/cert.pem
-	input, err := base64.StdEncoding.DecodeString(strings.Replace(`
+	input, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
 MIIB4TCCAWegAwIBAgIIJuDkMteShO8wCgYIKoZIzj0EAwMwIDEeMBwGA1UEAxMV
 bWluaWNhIHJvb3QgY2EgNGU0YjFkMB4XDTI2MDYyOTA1NDUyNloXDTI4MDcyOTA1
 NDUyNlowFjEUMBIGA1UEAxMLd2ZlLmJvdWxkZXIwdjAQBgcqhkjOPQIBBgUrgQQA
@@ -27,34 +26,38 @@ KwYBBQUHAwIwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBSA+ZfinkHdxJDZuRo1
 zJ7mHOmaCDAWBgNVHREEDzANggt3ZmUuYm91bGRlcjAKBggqhkjOPQQDAwNoADBl
 AjEApE8cwaAQ6hnGtUM/TWAb54E5/29ZVy5E/UY8mEzoE021pl3tq1fEof5qz5n/
 KrL4AjAuEpVOjRrRWWMnRJxd05Pfxq7gZmxgwppjnE9JZ9P6WRP7ZWqZcc9p8YLM
-YhKuXQo=`, "\n", "", -1))
+YhKuXQo=`, "\n", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	output, err := TBSCertificateLogEntryFromX509(input, crypto.SHA256)
+	mtce, err := FromX509(input, crypto.SHA256)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expectedOutput, err := base64.StdEncoding.DecodeString(strings.Replace(`
+	if mtce.Type != typeTBSCertEntry {
+		t.Errorf("mtce.Type: got %d, want tbs_cert_entry (1)", mtce.Type)
+	}
+
+	expectedOutput, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
 oAWgAwIBAjAiMCAxHjAcBgNVBAMTFW1pbmljYSByb290IGNhIDRlNGIxZDAgMB4X
 DTI2MDYyOTA1NDUyNloXDTI4MDcyOTA1NDUyNlowGDAWMRQwEgYDVQQDEwt3ZmUu
 Ym91bGRlcjAQBgcqhkjOPQIBBgUrgQQAIgQgxIsfmHTOfbAsqyQDsdDEYHnn4pV2
 rljEOusgCGD1mQmjeDB2MA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEF
 BQcDAQYIKwYBBQUHAwIwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBSA+ZfinkHd
 xJDZuRo1zJ7mHOmaCDAWBgNVHREEDzANggt3ZmUuYm91bGRlcg==
-`, "\n", "", -1))
+`, "\n", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(output, expectedOutput) {
+	if !bytes.Equal(mtce.Value, expectedOutput) {
 		// Since TBSCertificateLogEntry is encoded as DER without a tag or length,
 		// it's not readily parseable by off-the-shelf DER parsers like lapo.it/asn1js.
 		// For convenience of investigating, wrap both values in a SEQUENCE before output.
 		t.Errorf("sequenceWrap(TBSCertificateLogEntryFromX509()): got %s, want %s",
-			base64.StdEncoding.EncodeToString(sequenceWrap(output)),
+			base64.StdEncoding.EncodeToString(sequenceWrap(mtce.Value)),
 			base64.StdEncoding.EncodeToString(sequenceWrap(expectedOutput)))
 	}
 }
@@ -69,7 +72,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 	}
 
 	nonEmptyNullEntry := MerkleTreeCertEntry{
-		Type:  TYPE_NULL_ENTRY,
+		Type:  typeNullEntry,
 		Value: []byte("abc"),
 	}
 	_, err = nonEmptyNullEntry.Marshal()
@@ -78,7 +81,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 	}
 
 	validNullEntry := MerkleTreeCertEntry{
-		Type: TYPE_NULL_ENTRY,
+		Type: typeNullEntry,
 	}
 	output, err := validNullEntry.Marshal()
 	if err != nil {
@@ -90,7 +93,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 	}
 
 	validTBSCertificateLogEntry := MerkleTreeCertEntry{
-		Type:  TYPE_TBS_CERT_ENTRY,
+		Type:  typeTBSCertEntry,
 		Value: []byte("abc"),
 	}
 	output, err = validTBSCertificateLogEntry.Marshal()
@@ -113,11 +116,11 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 
 	testCases := []testCase{
 		{"valid TBS", "00000001616263", false, &MerkleTreeCertEntry{
-			Type:  TYPE_TBS_CERT_ENTRY,
+			Type:  typeTBSCertEntry,
 			Value: []byte("abc"),
 		}},
 		{"valid null_entry", "00000000", false, &MerkleTreeCertEntry{
-			Type: TYPE_NULL_ENTRY,
+			Type: typeNullEntry,
 		}},
 		{"too short", "000000", true, nil},
 		{"way too short", "00", true, nil},
@@ -132,7 +135,7 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mtce, err := Unmarshal(val)
+			mtce, err := unmarshalMTCE(val)
 			if tc.expectErr && err == nil {
 				t.Errorf("expected error")
 			}
@@ -163,4 +166,45 @@ func sequenceWrap(in []byte) []byte {
 		b.AddBytes(in)
 	})
 	return b.BytesOrPanic()
+}
+
+func TestBundleWriterReader(t *testing.T) {
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	bw := NewBundleWriter(w)
+
+	for range 10 {
+		err := bw.Write(MerkleTreeCertEntry{})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	bw.Close()
+
+	r, err := gzip.NewReader(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	br := NewBundleReader(r)
+
+	for range 10 {
+		mtce, raw, err := br.Read()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mtce.Type != typeNullEntry {
+			t.Errorf("mtce.Type: got %d, want %d", mtce.Type, typeNullEntry)
+		}
+		if len(mtce.Extensions) != 0 {
+			t.Errorf("mtce.Extensions: got %v, want nil", mtce.Extensions)
+		}
+		if len(mtce.Value) != 0 {
+			t.Errorf("mtce.Value: got %v, want nil", mtce.Value)
+		}
+		expected := []byte{0, 0, 0, 0}
+		if !bytes.Equal(raw, expected) {
+			t.Errorf("raw mtce: got %x, want %x", raw, expected)
+		}
+	}
 }
