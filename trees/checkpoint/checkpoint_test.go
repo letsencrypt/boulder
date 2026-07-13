@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"golang.org/x/mod/sumdb/note"
-	"golang.org/x/mod/sumdb/tlog"
 )
 
 // exampleCheckpoint is a canonical tlog-checkpoint note body the cosignature
@@ -105,7 +104,6 @@ func TestCheckpointUnmarshalRejects(t *testing.T) {
 		{"Unpadded hash", "example.com/log\n1\nCsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I\n"},
 		{"Short hash", "example.com/log\n1\nAAAA\n"},
 		{"Empty extension line", "example.com/log\n1\n" + exampleHashB64 + "\n\n"},
-		{"Zero size with non-empty-tree hash", "example.com/log\n0\n" + exampleHashB64 + "\n"},
 		{"Carriage return in origin", "example.com/log\r\n1\n" + exampleHashB64 + "\n"},
 		{"Invalid UTF-8 in origin", "example.com/\xff\n1\n" + exampleHashB64 + "\n"},
 		{"Control character in extension", "example.com/log\n1\n" + exampleHashB64 + "\next\x01ension\n"},
@@ -146,7 +144,6 @@ func TestCheckpointMarshal(t *testing.T) {
 		{"Newline in origin", func(c Checkpoint) Checkpoint { c.Origin = "two\nlines"; return c }},
 		{"Invalid UTF-8 in origin", func(c Checkpoint) Checkpoint { c.Origin = "bad\xff"; return c }},
 		{"Negative tree size", func(c Checkpoint) Checkpoint { c.Tree.N = -1; return c }},
-		{"Zero size with zero hash", func(c Checkpoint) Checkpoint { c.Tree = tlog.Tree{}; return c }},
 		{"Empty extension", func(c Checkpoint) Checkpoint { c.Extensions = []string{""}; return c }},
 		{"Newline in extension", func(c Checkpoint) Checkpoint { c.Extensions = []string{"two\nlines"}; return c }},
 	}

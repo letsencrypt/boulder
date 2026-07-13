@@ -1,7 +1,6 @@
 package checkpoint
 
 import (
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -13,10 +12,6 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 )
 
-// emptyTreeHash is MTH({}), the RFC 6962 section 2.1 hash of the empty tree:
-// SHA-256 of the empty string.
-var emptyTreeHash = tlog.Hash(sha256.Sum256(nil))
-
 // Checkpoint represents a tlog-checkpoint note text.
 //
 // https://c2sp.org/tlog-checkpoint
@@ -26,24 +21,29 @@ type Checkpoint struct {
 	Extensions []string
 }
 
-// checkNoteLine returns an error if line cannot be used as a single line of a
-// signed note, nil otherwise. https://c2sp.org/signed-note requires note text
-// to be valid UTF-8 with no ASCII control characters (those below U+0020) other
-// than newline.
-func checkNoteLine(line string) error {
+// checkNoteText returns an error if text cannot be a signed note's text, nil
+// otherwise. https://c2sp.org/signed-note requires note text to be valid UTF-8
+// with no ASCII control characters (those below U+0020) other than newline.
+func checkNoteText(text string) error {
 	switch {
-	case !utf8.ValidString(line):
+	case !utf8.ValidString(text):
 		return errors.New("not valid UTF-8")
 
-	case strings.ContainsRune(line, '\n'):
-		return errors.New("contains a newline")
-
-	case strings.ContainsFunc(line, func(r rune) bool { return r < 0x20 }):
-		return errors.New("contains an ASCII control character")
+	case strings.ContainsFunc(text, func(r rune) bool { return r < 0x20 && r != '\n' }):
+		return errors.New("contains an ASCII control character other than newline")
 
 	default:
 		return nil
 	}
+}
+
+// checkNoteField returns an error if field contains a newline, the note's line
+// delimiter, nil otherwise.
+func checkNoteField(field string) error {
+	if strings.ContainsRune(field, '\n') {
+		return errors.New("contains a newline")
+	}
+	return nil
 }
 
 // validate returns an error if the checkpoint's fields violate the
@@ -52,21 +52,18 @@ func (c *Checkpoint) validate() error {
 	if c.Origin == "" {
 		return errors.New("empty checkpoint origin")
 	}
-	err := checkNoteLine(c.Origin)
+	err := checkNoteField(c.Origin)
 	if err != nil {
 		return fmt.Errorf("validating checkpoint origin: %w", err)
 	}
 	if c.Tree.N < 0 {
 		return fmt.Errorf("negative checkpoint tree size %d", c.Tree.N)
 	}
-	if c.Tree.N == 0 && c.Tree.Hash != emptyTreeHash {
-		return errors.New("checkpoint root hash for tree size 0 is not the RFC 6962 empty-tree hash")
-	}
 	for _, ext := range c.Extensions {
 		if ext == "" {
 			return errors.New("empty checkpoint extension line")
 		}
-		err := checkNoteLine(ext)
+		err := checkNoteField(ext)
 		if err != nil {
 			return fmt.Errorf("validating checkpoint extension line: %w", err)
 		}
@@ -92,7 +89,12 @@ func (c *Checkpoint) Marshal() (string, error) {
 		b.WriteString(ext)
 		b.WriteByte('\n')
 	}
-	return b.String(), nil
+	text := b.String()
+	err = checkNoteText(text)
+	if err != nil {
+		return "", fmt.Errorf("validating checkpoint note text: %w", err)
+	}
+	return text, nil
 }
 
 // Unmarshal parses a checkpoint note text. The text must not have any signature
@@ -101,6 +103,10 @@ func (c *Checkpoint) Marshal() (string, error) {
 //   - https://c2sp.org/tlog-checkpoint
 //   - https://c2sp.org/signed-note
 func Unmarshal(text string) (*Checkpoint, error) {
+	err := checkNoteText(text)
+	if err != nil {
+		return nil, fmt.Errorf("validating checkpoint note text: %w", err)
+	}
 	if !strings.HasSuffix(text, "\n") {
 		return nil, errors.New("checkpoint does not end in newline")
 	}
@@ -138,8 +144,10 @@ func Unmarshal(text string) (*Checkpoint, error) {
 }
 
 // Open opens a signed checkpoint note and parses its text. An error is returned
-// if the note is not valid or the signature is not verified by one of the
-// verifiers.
+// if signedNote is not a well-formed note, if any of the verifiers rejects a
+// signature (note.InvalidSignatureError), if none of the verifiers has signed
+// the note (note.UnverifiedNoteError), or if the note's text is not a
+// well-formed checkpoint. Signatures from unknown keys are ignored.
 //
 //   - https://c2sp.org/tlog-checkpoint
 //   - https://c2sp.org/signed-note
