@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/letsencrypt/boulder/bs3"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/issuance"
@@ -43,7 +44,7 @@ func getMTCAID(issuerCert *x509.Certificate) (string, error) {
 }
 
 // New creates a new MTCA service.
-func New(issuer *issuance.Issuer, dbMap *borp.DbMap, logger blog.Logger) (*mtca, error) {
+func New(issuer *issuance.Issuer, dbMap *borp.DbMap, s3c *bs3.Client, logger blog.Logger) (*mtca, error) {
 	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
 	if err != nil {
 		return nil, err
@@ -52,6 +53,7 @@ func New(issuer *issuance.Issuer, dbMap *borp.DbMap, logger blog.Logger) (*mtca,
 	return &mtca{
 		log:    logger,
 		db:     initDB(dbMap),
+		s3c:    s3c,
 		issuer: issuer,
 		mtcaID: mtcaID,
 		// TODO: collect this from config
@@ -155,6 +157,7 @@ type mtca struct {
 	logNumber uint16
 
 	db  *db.WrappedMap
+	s3c *bs3.Client
 	log blog.Logger
 
 	pool *pool
