@@ -543,7 +543,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 	test.AssertContains(t, err.Error(), "NXDOMAIN looking up AAAA for")
 
 	_, _, err = obj.LookupTXT(context.Background(), hostname)
-	expected := Error{dns.TypeTXT, hostname, nil, dns.RcodeNameError, nil, false}
+	expected := Error{dns.TypeTXT, hostname, nil, dns.RcodeNameError, nil}
 	test.AssertDeepEquals(t, err, expected)
 }
 

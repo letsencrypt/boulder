@@ -316,6 +316,14 @@ func (c *impl) LookupCAA(ctx context.Context, hostname string) (*Result[*dns.CAA
 		return resultFromMsg[*dns.CAA](resp), resolver, nil
 	}
 
+	// Truncated responses can never be trusted because the truncated portion
+	// may contain a CAA record that forbids issuance, such as one with the
+	// critical bit set and an unknown property tag. For example:
+	// CAA 128 unknown "foo"
+	if resp.Truncated {
+		err = errCAATruncated
+	}
+
 	err = wrapErr(dns.TypeCAA, hostname, resp, err)
 	if err != nil {
 		return nil, resolver, err
