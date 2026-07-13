@@ -69,10 +69,10 @@ type Config struct {
 	// RA and VA services for full functionality.
 	DNSPersist01Enabled bool
 
-	// DeactivateBadKeyAccounts controls whether bad-key-revoker will attempt
-	// to find and deactivate accounts using keys which have been added to the
+	// RevokeBadKeyAccounts controls whether bad-key-revoker will attempt
+	// to find and revoke accounts using keys which have been added to the
 	// blockedKeys table.
-	DeactivateBadKeyAccounts bool
+	RevokeBadKeyAccounts bool
 }
 
 var fMu = new(sync.RWMutex)

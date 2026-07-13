@@ -238,7 +238,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 		slog.Int64("revokedBy", unchecked.RevokedBy),
 	)
 
-	if features.Get().DeactivateBadKeyAccounts {
+	if features.Get().RevokeBadKeyAccounts {
 		// Revoke the account, if any, which uses this key. The registrations
 		// table ensures that jwk_sha256 is unique. However, it stores the jwk_sha256
 		// column in base64, unlike the keyHashToSerial table. We do this before the

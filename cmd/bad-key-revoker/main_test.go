@@ -408,7 +408,7 @@ func TestInvoke(t *testing.T) {
 // to an existing account, invoking bad-key-revoker updates that account's
 // status to "deactivated".
 func TestInvokeDeactivatesAccount(t *testing.T) {
-	features.Set(features.Config{DeactivateBadKeyAccounts: true})
+	features.Set(features.Config{RevokeBadKeyAccounts: true})
 	defer features.Reset()
 
 	ctx := context.Background()
