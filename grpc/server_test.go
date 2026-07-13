@@ -6,10 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc/health"
-
-	"github.com/letsencrypt/boulder/blog"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	"google.golang.org/grpc/health"
 )
 
 func TestServerBuilderInitLongRunningCheck(t *testing.T) {
@@ -40,8 +39,8 @@ func TestServerBuilderInitLongRunningCheck(t *testing.T) {
 	//   - ~0ms   1st check passed, NOT_SERVING to SERVING
 	//   - ~50ms  2nd check passed, [no transition]
 	//   - ~100ms 3rd check failed, SERVING to NOT_SERVING
-	serving := mockLogger.GetAllMatching(`old=NOT_SERVING new=SERVING`)
-	notServing := mockLogger.GetAllMatching(`old=SERVING new=NOT_SERVING`)
+	serving := mockLogger.GetAllMatching(".*\"NOT_SERVING\" to \"SERVING\"")
+	notServing := mockLogger.GetAllMatching((".*\"SERVING\" to \"NOT_SERVING\""))
 	test.Assert(t, len(serving) == 2, "expected two serving log lines")
 	test.Assert(t, len(notServing) == 2, "expected two not serving log lines")
 
@@ -66,8 +65,8 @@ func TestServerBuilderInitLongRunningCheck(t *testing.T) {
 	//   - ~0ms   1st check passed, NOT_SERVING to SERVING
 	//   - ~50ms  2nd check failed, SERVING to NOT_SERVING
 	//   - ~100ms 3rd check passed, NOT_SERVING to SERVING
-	serving = mockLogger.GetAllMatching(`old=NOT_SERVING new=SERVING`)
-	notServing = mockLogger.GetAllMatching(`old=SERVING new=NOT_SERVING`)
+	serving = mockLogger.GetAllMatching(".*\"NOT_SERVING\" to \"SERVING\"")
+	notServing = mockLogger.GetAllMatching((".*\"SERVING\" to \"NOT_SERVING\""))
 	test.Assert(t, len(serving) == 4, "expected four serving log lines")
 	test.Assert(t, len(notServing) == 2, "expected two not serving log lines")
 }

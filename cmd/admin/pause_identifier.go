@@ -7,13 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
 
-	"github.com/letsencrypt/boulder/blog"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -41,7 +39,7 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 		return errors.New("the -batch-file flag is required")
 	}
 
-	idents, err := a.readPausedAccountFile(ctx, p.batchFile)
+	idents, err := a.readPausedAccountFile(p.batchFile)
 	if err != nil {
 		return err
 	}
@@ -87,10 +85,7 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 				})
 				if err != nil {
 					errCount.Add(1)
-					a.log.Error(ctx, "failed to pause identifiers", err,
-						blog.Acct(data.accountID),
-						blog.Idents(identifier.FromProtoSlice(data.idents)...),
-					)
+					a.log.Errf("error pausing identifier(s) %q for account %d: %v", data.idents, data.accountID, err)
 				} else {
 					respChan <- response
 				}
@@ -132,7 +127,7 @@ type pauseCSVData struct {
 // `pauseCSVData` objects and returns it or an error. It will skip malformed
 // lines and continue processing until either the end of file marker is detected
 // or other read error.
-func (a *admin) readPausedAccountFile(ctx context.Context, filePath string) ([]pauseCSVData, error) {
+func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 	fp, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("opening paused account data file: %w", err)
@@ -162,31 +157,25 @@ func (a *admin) readPausedAccountFile(ctx context.Context, filePath string) ([]p
 		// We should have strictly 3 fields, note that just commas is considered
 		// a valid CSV line.
 		if len(record) != 3 {
-			a.log.Info(ctx, "skipping malformed line: should contain exactly 3 fields")
+			a.log.Infof("skipping: malformed line %d, should contain exactly 3 fields\n", lineCounter)
 			continue
 		}
 
 		recordID := record[0]
 		accountID, err := strconv.ParseInt(recordID, 10, 64)
 		if err != nil || accountID == 0 {
-			a.log.Info(ctx, "skipping malformed accountID entry")
+			a.log.Infof("skipping: malformed accountID entry on line %d\n", lineCounter)
 			continue
 		}
 
 		// Ensure that an identifier type is present, otherwise skip the line.
 		if len(record[1]) == 0 {
-			a.log.Info(ctx, "skipping malformed identifierType entry",
-				slog.String("file", filePath),
-				slog.Int("line", lineCounter),
-			)
+			a.log.Infof("skipping: malformed identifierType entry on line %d\n", lineCounter)
 			continue
 		}
 
 		if len(record[2]) == 0 {
-			a.log.Info(ctx, "skipping malformed identifierValue entry",
-				slog.String("file", filePath),
-				slog.Int("line", lineCounter),
-			)
+			a.log.Infof("skipping: malformed identifierValue entry on line %d\n", lineCounter)
 			continue
 		}
 
@@ -197,10 +186,7 @@ func (a *admin) readPausedAccountFile(ctx context.Context, filePath string) ([]p
 		}
 		parsedRecords = append(parsedRecords, parsedRecord)
 	}
-	a.log.Debug(ctx, "Loaded input from file",
-		slog.String("file", filePath),
-		slog.Int("count", len(parsedRecords)),
-	)
+	a.log.Infof("detected %d valid record(s) from input file\n", len(parsedRecords))
 
 	return parsedRecords, nil
 }

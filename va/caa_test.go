@@ -2,9 +2,11 @@ package va
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -19,7 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 
-	"github.com/letsencrypt/boulder/blog"
+	blog "github.com/letsencrypt/boulder/log"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -439,55 +441,55 @@ func TestCAALogging(t *testing.T) {
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:reserved.com}]" method=http-01 present=true foundAt=reserved.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"reserved.com\",\"identifier\":\"reserved.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:reserved.com}]" method=dns-01 present=true foundAt=reserved.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"dns-01\",\"foundAt\":\"reserved.com\",\"identifier\":\"reserved.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:mixedcase.com}]" method=http-01 present=true foundAt=mixedcase.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"mixedcase.com\",\"identifier\":\"mixedcase.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:critical.com}]" method=http-01 present=true foundAt=critical.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"critical.com\",\"identifier\":\"critical.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:present.com}]" method=http-01 present=true foundAt=present.com valid=true response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"present.com\",\"identifier\":\"present.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "not.here.but.still.present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:not.here.but.still.present.com}]" method=http-01 present=true foundAt=present.com valid=true response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"present.com\",\"identifier\":\"not.here.but.still.present.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:multi-crit-present.com}]" method=http-01 present=true foundAt=multi-crit-present.com valid=true response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"multi-crit-present.com\",\"identifier\":\"multi-crit-present.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:present-with-parameter.com}]" method=http-01 present=true foundAt=present-with-parameter.com valid=true response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"present-with-parameter.com\",\"identifier\":\"present-with-parameter.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":true}",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: `level=INFO msg="Checked CAA records" acct=12345 authz=123 idents="[{Type:dns Value:satisfiable-wildcard-override.com}]" method=http-01 present=true foundAt=satisfiable-wildcard-override.com valid=false response="<nil> MsgHdr"`,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records JSON={\"challenge\":\"http-01\",\"foundAt\":\"satisfiable-wildcard-override.com\",\"identifier\":\"satisfiable-wildcard-override.com\",\"present\":true,\"requester\":12345,\"response\":\"<nil> MsgHdr\",\"valid\":false}",
 		},
 	}
 
@@ -496,12 +498,11 @@ func TestCAALogging(t *testing.T) {
 			mockLog := va.log.(*blog.Mock)
 			defer mockLog.Clear()
 
-			_, _ = va.DoCAA(t.Context(), &vapb.IsCAAValidRequest{
-				Identifier:       identifier.NewDNS(tc.Domain).ToProto(),
-				ValidationMethod: string(tc.ChallengeType),
-				AccountURIID:     tc.AccountURIID,
-				AuthzID:          "123",
-			})
+			params := &caaParams{
+				accountURIID:     tc.AccountURIID,
+				validationMethod: tc.ChallengeType,
+			}
+			_ = va.checkCAA(ctx, identifier.NewDNS(tc.Domain), params)
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records`)
 			if len(caaLogLines) != 1 {
@@ -509,7 +510,7 @@ func TestCAALogging(t *testing.T) {
 					strings.Join(mockLog.GetAll(), "\n"),
 					tc.ExpectedLogline)
 			} else {
-				test.AssertContains(t, caaLogLines[0], tc.ExpectedLogline)
+				test.AssertEquals(t, caaLogLines[0], tc.ExpectedLogline)
 			}
 		})
 	}
@@ -526,7 +527,6 @@ func TestDoCAAErrMessage(t *testing.T) {
 	domain := "caa-timeout.com"
 	resp, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
 		Identifier:       identifier.NewDNS(domain).ToProto(),
-		AuthzID:          "123",
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 		AccountURIID:     12345,
 		AuthzIDInt:       678910,
@@ -635,6 +635,25 @@ func (b caaHijackedDNS) LookupCAA(_ context.Context, domain string) (*bdns.Resul
 	}
 
 	return &bdns.Result[*dns.CAA]{Final: results}, "caaHijackedDNS", nil
+}
+
+// parseValidationLogEvent extracts ... from JSON={ ... } in a ValidateChallenge
+// audit log and returns it as a validationLogEvent struct.
+func parseValidationLogEvent(t *testing.T, log []string) validationLogEvent {
+	re := regexp.MustCompile(`JSON=\{.*\}`)
+	var audit validationLogEvent
+	for _, line := range log {
+		match := re.FindString(line)
+		if match != "" {
+			jsonStr := match[len(`JSON=`):]
+			if err := json.Unmarshal([]byte(jsonStr), &audit); err != nil {
+				t.Fatalf("Failed to parse JSON: %v", err)
+			}
+			return audit
+		}
+	}
+	t.Fatal("JSON not found in log")
+	return audit
 }
 
 func TestMultiCAARechecking(t *testing.T) {
@@ -1051,7 +1070,6 @@ func TestMultiCAARechecking(t *testing.T) {
 
 			isValidRes, err := va.DoCAA(context.TODO(), &vapb.IsCAAValidRequest{
 				Identifier:       tc.ident.ToProto(),
-				AuthzID:          "123",
 				ValidationMethod: string(core.ChallengeTypeDNS01),
 				AccountURIID:     1,
 				AuthzIDInt:       3,
@@ -1071,31 +1089,11 @@ func TestMultiCAARechecking(t *testing.T) {
 			}
 
 			if tc.expectedSummary != nil {
-				mpicLog := mockLog.GetAllMatching("mpic.quorum")
-				test.AssertEquals(t, len(mpicLog), 1)
-
+				gotAuditLog := parseValidationLogEvent(t, mockLog.GetAllMatching("CAA check result JSON=.*"))
 				slices.Sort(tc.expectedSummary.Passed)
-				if len(tc.expectedSummary.Passed) > 1 {
-					test.AssertContains(t, mpicLog[0], fmt.Sprintf("mpic.passed=\"%v\"", tc.expectedSummary.Passed))
-				} else {
-					test.AssertContains(t, mpicLog[0], fmt.Sprintf("mpic.passed=%v", tc.expectedSummary.Passed))
-				}
-
 				slices.Sort(tc.expectedSummary.Failed)
-				if len(tc.expectedSummary.Failed) > 1 {
-					test.AssertContains(t, mpicLog[0], fmt.Sprintf("mpic.failed=\"%v\"", tc.expectedSummary.Failed))
-				} else {
-					test.AssertContains(t, mpicLog[0], fmt.Sprintf("mpic.failed=%v", tc.expectedSummary.Failed))
-				}
-
 				slices.Sort(tc.expectedSummary.PassedRIRs)
-				if len(tc.expectedSummary.PassedRIRs) > 1 {
-					test.AssertContains(t, mpicLog[0], fmt.Sprintf("mpic.passedRIRs=\"%v\"", tc.expectedSummary.PassedRIRs))
-				} else {
-					test.AssertContains(t, mpicLog[0], fmt.Sprintf("mpic.passedRIRs=%v", tc.expectedSummary.PassedRIRs))
-				}
-
-				test.AssertContains(t, mpicLog[0], fmt.Sprintf("mpic.quorum=%v", tc.expectedSummary.QuorumResult))
+				test.AssertDeepEquals(t, gotAuditLog.Summary, tc.expectedSummary)
 			}
 
 			gotAnyRemoteFailures := mockLog.GetAllMatching("CAA check failed due to remote failures:")

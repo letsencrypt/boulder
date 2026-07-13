@@ -22,8 +22,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -262,11 +262,10 @@ func TestTraces(t *testing.T) {
 
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
 	// Configure this integration test to trace to jaeger:4317 like Boulder will
-	logger, _ := blog.New(blog.Config{StdoutLevel: 6})
 	shutdown := cmd.NewOpenTelemetry(cmd.OpenTelemetryConfig{
 		Endpoint:    "bjaeger:4317",
 		SampleRatio: 1,
-	}, logger)
+	}, blog.Get())
 	defer shutdown(context.Background())
 
 	tracer := otel.GetTracerProvider().Tracer("TraceTest")

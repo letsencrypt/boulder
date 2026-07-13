@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/observer/probers"
@@ -20,7 +20,7 @@ const (
 
 func TestObsConf_makeMonitors(t *testing.T) {
 	var errDBZ = errors.New(errDBZMsg)
-	var cfgSyslog = blog.Config{StdoutLevel: 6, SyslogLevel: 6}
+	var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}
 	var cfgDur = config.Duration{Duration: time.Second * 5}
 	var cfgBuckets = []float64{.001}
 	var validMonConf = &MonConf{
@@ -28,7 +28,7 @@ func TestObsConf_makeMonitors(t *testing.T) {
 	var invalidMonConf = &MonConf{
 		cfgDur, mockConf, probers.Settings{"valid": false, "errmsg": errDBZMsg, "pname": "foo", "pkind": "bar"}}
 	type fields struct {
-		Syslog    blog.Config
+		Syslog    cmd.SyslogConfig
 		Buckets   []float64
 		DebugAddr string
 		MonConfs  []*MonConf

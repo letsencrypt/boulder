@@ -10,7 +10,6 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -36,7 +35,7 @@ type Config struct {
 		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
-	Syslog        blog.Config
+	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

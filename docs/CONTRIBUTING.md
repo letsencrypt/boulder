@@ -32,6 +32,8 @@ guidelines for Boulder contributions.
   functionality in the patch, including error cases?
 * Are there new RPCs or config fields? Make sure the patch meets the
   Deployability rules below.
+* All review conversations must be resolved. This helps to ensure that review
+  feedback has been fully addressed. This is enforced by GitHub itself.
 
 # Merge Requirements
 
@@ -45,6 +47,15 @@ These may require either a CP/CPS review or filing of a ticket to make matching 
 in production. It is the responsibility of the person merging the PR to make sure
 the required action has been performed before merging. Usually this will be confirmed
 in a comment or in the PR description.
+
+When creating a pull request that has external dependencies, like another pull
+request being merged or deployed to production, or approval from SRE, the author
+should leave a review comment on the pull request (i.e. create a "conversation"
+by commenting on a specific file or line of a file) noting what the pull request
+is blocked on. The comment should include instructions to only resolve that
+conversation once the external conditions are met. Since our repository is
+configured to require all conversations be resolved before merging, this acts as
+a protection against early merges.
 
 # Patch Guidelines
 

@@ -25,14 +25,15 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
+var log = blog.UseMock()
 var ctx = context.Background()
 
 func getPort(srvURL string) (int, error) {
@@ -142,7 +143,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	pub := New(
 		issuerBundles,
 		"test-user-agent/1.0",
-		blog.NewMock(),
+		log,
 		metrics.NoopRegisterer)
 
 	// Load leaf certificate
@@ -159,7 +160,7 @@ func addLog(t *testing.T, port int, pubKey *ecdsa.PublicKey) *Log {
 	uri := fmt.Sprintf("http://localhost:%d", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
-	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der), "test-user-agent/1.0", blog.NewMock())
+	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der), "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "Couldn't create log")
 	test.AssertEquals(t, newLog.uri, fmt.Sprintf("http://localhost:%d", port))
 	return newLog
@@ -264,14 +265,13 @@ func TestLogCache(t *testing.T) {
 	cache := logCache{
 		logs: make(map[cacheKey]*Log),
 	}
-	mocklog := blog.NewMock()
 
 	// Adding a log with an invalid base64 public key should error
-	_, err := cache.AddLog("www.test.com", "1234", "test-user-agent/1.0", blog.NewMock())
+	_, err := cache.AddLog("www.test.com", "1234", "test-user-agent/1.0", log)
 	test.AssertError(t, err, "AddLog() with invalid base64 pk didn't error")
 
 	// Adding a log with an invalid URI should error
-	_, err = cache.AddLog(":", "", "test-user-agent/1.0", blog.NewMock())
+	_, err = cache.AddLog(":", "", "test-user-agent/1.0", log)
 	test.AssertError(t, err, "AddLog() with an invalid log URI didn't error")
 
 	// Create one keypair & base 64 public key
@@ -289,21 +289,21 @@ func TestLogCache(t *testing.T) {
 	k2b64 := base64.StdEncoding.EncodeToString(der2)
 
 	// Adding the first log should not produce an error
-	l1, err := cache.AddLog("http://log.one.example.com", k1b64, "test-user-agent/1.0", mocklog)
+	l1, err := cache.AddLog("http://log.one.example.com", k1b64, "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "cache.AddLog() failed for log 1")
 	test.AssertEquals(t, cache.Len(), 1)
 	test.AssertEquals(t, l1.uri, "http://log.one.example.com")
 	test.AssertEquals(t, l1.logID, k1b64)
 
 	// Adding it again should not produce any errors, or increase the Len()
-	l1, err = cache.AddLog("http://log.one.example.com", k1b64, "test-user-agent/1.0", mocklog)
+	l1, err = cache.AddLog("http://log.one.example.com", k1b64, "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "cache.AddLog() failed for second add of log 1")
 	test.AssertEquals(t, cache.Len(), 1)
 	test.AssertEquals(t, l1.uri, "http://log.one.example.com")
 	test.AssertEquals(t, l1.logID, k1b64)
 
 	// Adding a second log should not error and should increase the Len()
-	l2, err := cache.AddLog("http://log.two.example.com", k2b64, "test-user-agent/1.0", mocklog)
+	l2, err := cache.AddLog("http://log.two.example.com", k2b64, "test-user-agent/1.0", log)
 	test.AssertNotError(t, err, "cache.AddLog() failed for log 2")
 	test.AssertEquals(t, cache.Len(), 2)
 	test.AssertEquals(t, l2.uri, "http://log.two.example.com")
@@ -318,6 +318,7 @@ func TestLogErrorBody(t *testing.T) {
 	port, err := getPort(srv.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
 
+	log.Clear()
 	logURI := fmt.Sprintf("http://localhost:%d", port)
 	pkDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
@@ -329,9 +330,7 @@ func TestLogErrorBody(t *testing.T) {
 		Kind:         pubpb.SubmissionType_final,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
-
-	mocklog := pub.log.(*blog.Mock)
-	test.AssertEquals(t, len(mocklog.GetAllMatching("well this isn't good now is it")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
 }
 
 // TestErrorMetrics checks that the ct_errors_count and

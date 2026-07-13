@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"slices"
 	"strings"
@@ -22,9 +21,9 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // CodedError is a alias required to appease go vet
@@ -201,7 +200,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	if sb.cfg.Address == "" {
 		return nil, errors.New("GRPC listen address not configured")
 	}
-	sb.logger.Info(context.Background(), "grpc server listening", slog.String("addr", sb.cfg.Address))
+	sb.logger.Infof("grpc listening on %s", sb.cfg.Address)
 
 	// Finally return the functions which will start and stop the server.
 	listener, err := net.Listen("tcp", sb.cfg.Address)
@@ -264,7 +263,7 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 		var next healthpb.HealthCheckResponse_ServingStatus
 		err := checkImpl(checkImplCtx)
 		if err != nil {
-			sb.logger.Info(shutdownCtx, "grpc health check failed", slog.String("service", service), blog.Error(err))
+			sb.logger.Infof("health check of gRPC service %q failed: %s", service, err)
 			next = healthpb.HealthCheckResponse_NOT_SERVING
 		} else {
 			next = healthpb.HealthCheckResponse_SERVING
@@ -275,13 +274,12 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 			return next
 		}
 
-		ctx := blog.ContextWith(shutdownCtx, slog.String("old", last.String()), slog.String("new", next.String()))
 		if next != healthpb.HealthCheckResponse_SERVING {
-			sb.logger.Warn(ctx, "transitioning overall health", blog.Error(err))
-			sb.logger.Warn(ctx, "transitioning service health", slog.String("service", service), blog.Error(err))
+			sb.logger.Warningf("transitioning overall health from %q to %q, due to: %s", last, next, err)
+			sb.logger.Warningf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
 		} else {
-			sb.logger.Info(ctx, "transitioning overall health")
-			sb.logger.Info(ctx, "transitioning service health", slog.String("service", service))
+			sb.logger.Infof("transitioning overall health from %q to %q", last, next)
+			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)
 		}
 		sb.healthSrv.SetServingStatus("", next)
 		sb.healthSrv.SetServingStatus(service, next)
