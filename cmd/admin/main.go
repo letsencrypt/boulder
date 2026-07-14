@@ -14,11 +14,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 )
@@ -34,7 +32,7 @@ type Config struct {
 		Features features.Config
 	}
 
-	Syslog        blog.Config
+	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -135,21 +133,20 @@ func main() {
 	a, err := newAdmin(*configFile, *dryRun)
 	cmd.FailOnError(err, "creating admin object")
 
-	ctx := context.Background()
-
 	// Finally, run the selected subcommand.
 	if *dryRun {
-		a.log.Info(ctx, "admin tool executing a dry-run", slog.String("cmd", strings.Join(os.Args, " ")))
+		a.log.Infof("admin tool executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
 	} else {
-		a.log.AuditInfo(ctx, "admin tool beginning execution", slog.String("cmd", strings.Join(os.Args, " ")))
+		a.log.AuditInfo("admin tool beginning execution", map[string]any{"cmd": strings.Join(os.Args, " ")})
 	}
 
-	err = subcommand.Run(ctx, a)
+	err = subcommand.Run(context.Background(), a)
 	cmd.FailOnError(err, "executing subcommand")
 
 	if *dryRun {
-		a.log.Info(ctx, "admin tool completed a dry-run; pass -dry-run=false to mutate the database", slog.String("cmd", strings.Join(os.Args, " ")))
+		a.log.Infof("admin tool has successfully completed executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
+		a.log.Info("Dry run complete. Pass -dry-run=false to mutate the database.")
 	} else {
-		a.log.AuditInfo(ctx, "admin tool completed successfully", slog.String("cmd", strings.Join(os.Args, " ")))
+		a.log.AuditInfo("admin tool completed successfully", map[string]any{"cmd": strings.Join(os.Args, " ")})
 	}
 }

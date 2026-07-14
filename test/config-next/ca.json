@@ -55,6 +55,7 @@
 					"omitSKID": false,
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m",
+					"maxCertificateSize": 10000,
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
 						"w_subject_common_name_included",
@@ -69,6 +70,7 @@
 					"omitSKID": true,
 					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",
+					"maxCertificateSize": 10000,
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
 						"w_ext_subject_key_identifier_missing_sub_cert",
@@ -82,6 +84,7 @@
 					"omitSKID": true,
 					"maxValidityPeriod": "583200s",
 					"maxValidityBackdate": "1h5m",
+					"maxCertificateSize": 10000,
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
 						"w_ext_subject_key_identifier_missing_sub_cert",

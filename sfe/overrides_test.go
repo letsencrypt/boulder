@@ -11,13 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"google.golang.org/grpc"
-
 	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/test/zendeskfake"
+	"google.golang.org/grpc"
 )
 
 const (

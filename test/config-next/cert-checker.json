@@ -1,5 +1,6 @@
 {
 	"certChecker": {
+		"debugAddr": ":8007",
 		"db": {
 			"dbConnectFile": "test/secrets/cert_checker_dburl",
 			"maxOpenConns": 10

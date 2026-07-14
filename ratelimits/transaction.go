@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/netip"
 	"strconv"
 	"time"
@@ -16,10 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -236,10 +235,7 @@ func NewTransactionBuilderFromDatabase(defaults string, overrides GetOverridesFu
 
 			err = ValidateLimit(override)
 			if err != nil {
-				logger.Error(ctx, "Hydrating override", err,
-					slog.String("limit", override.Name.String()),
-					slog.String("bucketKey", resp.Override.BucketKey),
-				)
+				logger.Errf("hydrating %s override with key %q: %s", override.Name.String(), resp.Override.BucketKey, err)
 				errorCount++
 				continue
 			}
