@@ -43,12 +43,12 @@ func (w *severityWriter) Write(in []byte) (int, error) {
 	return len(in), w.fn(string(in))
 }
 
-// severityHandler is a slog.Handler which dispatches each record to one of
-// four wrapped handlers based on the record's level, so that each line reaches
-// syslog with the matching severity. All four wrapped handlers are constructed
-// with the same HandlerOptions-derived level, so Enabled is uniform across
-// them.
+// severityHandler is a slog.Handler which dispatches each record to one of four
+// wrapped handlers based on the record's level, so that each line reaches
+// syslog with the matching severity. It tracks the configured minimum level
+// itself, so the wrapped handlers do no level filtering of their own.
 type severityHandler struct {
+	level slog.Level
 	err   slog.Handler
 	warn  slog.Handler
 	info  slog.Handler
@@ -61,12 +61,15 @@ var _ slog.Handler = (*severityHandler)(nil)
 // The confLevel argument is the syslog-style (0-7) level from our Config.
 func newSeverityHandler(w syslogWriter, confLevel int) *severityHandler {
 	build := func(fn func(string) error) slog.Handler {
+		// configToSlogLevel never returns a level below LevelDebug, so these
+		// chains accept every record that severityHandler.Enabled accepts.
 		// Each chain gets its own HandlerOptions because newAuditHandler
 		// modifies opts.ReplaceAttr in place.
-		opts := &slog.HandlerOptions{Level: configToSlogLevel(confLevel)}
+		opts := &slog.HandlerOptions{Level: slog.LevelDebug}
 		return newAuditHandler(newChecksumWriter(&severityWriter{fn: fn}), opts)
 	}
 	return &severityHandler{
+		level: configToSlogLevel(confLevel),
 		err:   build(w.Err),
 		warn:  build(w.Warning),
 		info:  build(w.Info),
@@ -74,10 +77,9 @@ func newSeverityHandler(w syslogWriter, confLevel int) *severityHandler {
 	}
 }
 
-// Enabled reports whether records at the given level would be handled. All
-// wrapped handlers share the same level, so consulting one suffices.
-func (h *severityHandler) Enabled(ctx context.Context, l slog.Level) bool {
-	return h.info.Enabled(ctx, l)
+// Enabled reports whether records at the given level would be handled.
+func (h *severityHandler) Enabled(_ context.Context, l slog.Level) bool {
+	return l >= h.level
 }
 
 // Handle dispatches the record to the wrapped handler whose syslog severity
@@ -98,6 +100,7 @@ func (h *severityHandler) Handle(ctx context.Context, r slog.Record) error {
 // WithAttrs calls WithAttrs on all wrapped handlers.
 func (h *severityHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &severityHandler{
+		level: h.level,
 		err:   h.err.WithAttrs(attrs),
 		warn:  h.warn.WithAttrs(attrs),
 		info:  h.info.WithAttrs(attrs),
@@ -108,6 +111,7 @@ func (h *severityHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 // WithGroup calls WithGroup on all wrapped handlers.
 func (h *severityHandler) WithGroup(name string) slog.Handler {
 	return &severityHandler{
+		level: h.level,
 		err:   h.err.WithGroup(name),
 		warn:  h.warn.WithGroup(name),
 		info:  h.info.WithGroup(name),
