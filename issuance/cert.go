@@ -42,9 +42,8 @@ type ProfileConfig struct {
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
-	// OmitCT causes the precertificate poison and SCT list extension to be omitted.
-	// This should only be enabled for MTC profiles.
-	OmitCT bool
+	// MTC causes the precertificate poison and SCT list extension to be omitted.
+	MTC bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -71,7 +70,7 @@ type Profile struct {
 	omitKeyEncipherment bool
 	omitClientAuth      bool
 	omitSKID            bool
-	omitCT              bool
+	mtc                 bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -95,6 +94,12 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
+	// CQRP: clientAuth is MUST NOT.
+	// https://docs.google.com/document/d/1bC958-AaZ7ePCPFVyP9Sg2VZ3DcC2-PqwsMly8oIJSU/edit?tab=t.0#heading=h.kbidyave6lzr
+	if profileConfig.MTC {
+		profileConfig.OmitClientAuth = true
+	}
+
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
 	if profileConfig.LintConfig != "" {
@@ -108,7 +113,7 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
 		omitClientAuth:      profileConfig.OmitClientAuth,
 		omitSKID:            profileConfig.OmitSKID,
-		omitCT:              profileConfig.OmitCT,
+		mtc:                 profileConfig.MTC,
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
 		maxCertificateSize:  profileConfig.MaxCertificateSize,
@@ -348,12 +353,12 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.SubjectKeyId = req.SubjectKeyId
 	}
 
-	if prof.omitCT {
+	if prof.mtc {
 		if req.IncludeCTPoison {
-			return nil, nil, errors.New("invalid request for CT poison with OmitCT")
+			return nil, nil, errors.New("invalid request for CT poison with MTC")
 		}
 		if len(req.sctList) > 0 {
-			return nil, nil, errors.New("invalid request for SCT list with OmitCT")
+			return nil, nil, errors.New("invalid request for SCT list with MTC")
 		}
 	} else {
 		if req.IncludeCTPoison {

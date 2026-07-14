@@ -603,12 +603,12 @@ func TestIssueCommonName(t *testing.T) {
 	test.AssertEquals(t, cert.Subject.CommonName, "")
 }
 
-func TestIssueOmitCT(t *testing.T) {
+func TestPrepareMTC(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
 	pc := defaultProfileConfig()
-	pc.OmitCT = true
+	pc.MTC = true
 	pc.IgnoredLints = []string{
 		// Reduce the lint ignores to just the minimal (SCT-related) set.
 		"w_ct_sct_policy_count_unsatisfied",
