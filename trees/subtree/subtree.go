@@ -121,7 +121,8 @@ func subtreeSubProof(start, end, windowStart, windowEnd int64, known bool, reade
 
 	// [start, end) covers only part of the node, so split the node at splitPoint.
 	// The switch routes by where the subtree falls (left child, right child, or
-	// straddle) and names the other child as the sibling the shared tail appends.
+	// straddle) and names the other child as the sibling. The hash of the sibling
+	// will be appended to `proof` and returned.
 
 	// A one-leaf node has only itself as a subtree, which hits the base case
 	// above, so the node has >= 2 leaves here.
@@ -198,7 +199,7 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 	// subtree's right edge meets the tree's right edge (sn == tn) or not.
 	if sn == tn {
 		// A flush subtree has no outside sibling to combine on the way up to
-		// nodeHash, so climb every level.
+		// nodeHash, so climb to the subtree root.
 		for fn != sn {
 			fn >>= 1
 			sn >>= 1
@@ -215,7 +216,7 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 	}
 
 	// fr and sr climb together from a shared seed: fr rebuilds the subtree
-	// hash, sr the tree root.
+	// hash, sr the root hash.
 	var fr tlog.Hash
 	var sr tlog.Hash
 	var rest []tlog.Hash
@@ -225,8 +226,8 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 		sr = nodeHash
 		rest = proof
 	} else {
-		// The subtree is larger, so the seed is proof[0], the largest complete
-		// subtree flush with its right edge.
+		// The subtree is larger than a single node, so the seed is proof[0],
+		// the largest complete subtree flush with its right edge.
 		if len(proof) == 0 {
 			return false
 		}
@@ -242,14 +243,12 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 		}
 		if sn&1 == 1 || sn == tn {
 			if fn < sn {
-				// fr only combines while fn < sn. Freezing it at fn == sn is
-				// what makes the final fr == nodeHash check meaningful.
+				// fr only combines while fn < sn. Once fn == sn, we've finished
+				// with nodes below the subtree root and fr should have its
+				// final value.
 				fr = tlog.NodeHash(c, fr)
 			}
 			sr = tlog.NodeHash(c, sr)
-			// At the ragged right edge (sn == tn) the just-combined node is
-			// shorter than its left sibling, so skip its empty levels here,
-			// consuming no proof hash, until sn is odd again.
 			for sn&1 == 0 {
 				fn >>= 1
 				sn >>= 1
