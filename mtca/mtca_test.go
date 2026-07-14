@@ -25,13 +25,13 @@ import (
 func TestPool(t *testing.T) {
 	p := &pool{maxSize: 20}
 	for i := 0; i < 20; i++ {
-		err := p.append(entry{})
+		err := p.append(pendingEntry{})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	err := p.append(entry{})
+	err := p.append(pendingEntry{})
 	if err == nil {
 		t.Errorf("append to full pool: got nil, want err")
 	}
@@ -114,8 +114,28 @@ func setup() (*mtca, func(), error) {
 	truncateTables(db)
 
 	logger := blog.NewMock()
+	clk := clock.NewFake()
 
-	mtca, err := New(issuer, dbMap, logger)
+	profile, err := issuance.NewProfile(issuance.ProfileConfig{
+		OmitCommonName:      true,
+		OmitKeyEncipherment: true,
+		OmitClientAuth:      true,
+		OmitSKID:            true,
+		// TODO:
+		// OmitCT: true,
+		LintConfig: "",
+		IgnoredLints: []string{
+			"w_ext_subject_key_identifier_missing_sub_cert",
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_signature_algorithm_not_supported",
+		},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	s3c := struct{}{}
+	mtca, err := New(issuer, profile, dbMap, s3c, logger, clk)
 	if err != nil {
 		return nil, nil, err
 	}

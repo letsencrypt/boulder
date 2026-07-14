@@ -1,0 +1,173 @@
+package tiles
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"fmt"
+	"io"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/letsencrypt/boulder/bs3"
+	"github.com/letsencrypt/boulder/trees/entry"
+)
+
+func GetEntry(ctx context.Context,
+	s3c *bs3.Client,
+	index, treeSize int64,
+) (entry.MerkleTreeCertEntry, error) {
+	tileIndex := index / 256
+	tileOffset := index % 256
+
+	path := fmt.Sprintf("tile/entries/%d", tileIndex)
+	if treeSize/256 == tileIndex && treeSize%256 != 0 {
+		path = path + fmt.Sprintf(".p/%d", treeSize%256)
+	}
+	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: &s3c.Bucket,
+		Key:    &path,
+	})
+	if err != nil {
+		return entry.MerkleTreeCertEntry{}, err
+	}
+
+	gzipReader, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return entry.MerkleTreeCertEntry{}, err
+	}
+	br := entry.NewBundleReader(gzipReader)
+	for i := range tileOffset + 1 {
+		mtce, _, err := br.Read()
+		if err != nil {
+			return entry.MerkleTreeCertEntry{}, err
+		}
+		if i == tileOffset {
+			return mtce, nil
+		}
+	}
+
+	return entry.MerkleTreeCertEntry{}, fmt.Errorf("entry %d not found in tile %q", tileOffset, path)
+}
+
+func WriteEntries(ctx context.Context,
+	s3c *bs3.Client,
+	startingIndex int64,
+	entries []entry.MerkleTreeCertEntry,
+) error {
+	for len(entries) > 0 {
+		partialWidth := startingIndex % 256
+		remaining := int(256 - partialWidth)
+		chunkSize := min(remaining, len(entries))
+		var chunk []entry.MerkleTreeCertEntry
+		chunk, entries = entries[:chunkSize], entries[chunkSize:]
+		err := writeEntries(ctx, s3c, startingIndex, chunk)
+		if err != nil {
+			return err
+		}
+		startingIndex += int64(len(chunk))
+	}
+	return nil
+}
+
+// entries must be at most 256 long.
+func writeEntries(ctx context.Context,
+	s3c *bs3.Client,
+	startingIndex int64,
+	entries []entry.MerkleTreeCertEntry) error {
+	if len(entries) > 256 {
+		return fmt.Errorf("shouldn't happen: len(entries) = %d", len(entries))
+	}
+	// tileBytes wil be empty if there is no partial tile to append to.
+	tileBytes, tileEntryCount, err := readPartial(ctx, startingIndex, s3c)
+	if err != nil {
+		return err
+	}
+
+	buf := bytes.NewBuffer(tileBytes)
+	gzipWriter := gzip.NewWriter(buf)
+	bundleWriter := entry.NewBundleWriter(gzipWriter)
+
+	for _, e := range entries {
+		err = bundleWriter.Write(e)
+		if err != nil {
+			return err
+		}
+		tileEntryCount++
+		if tileEntryCount > 256 {
+			return fmt.Errorf("shouldn't happen: too many entries for a tile")
+		}
+	}
+	err = bundleWriter.Close()
+	if err != nil {
+		return err
+	}
+
+	N := startingIndex / 256
+	filename := fmt.Sprintf("tile/entries/%d", N)
+	if tileEntryCount != 256 {
+		filename = filename + fmt.Sprintf(".p/%d", tileEntryCount)
+	}
+	contentEncoding := "gzip"
+	contentType := "application/octet-stream"
+	cacheControl := "public, max-age=604800, immutable"
+	star := "*"
+
+	_, err = s3c.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:          &s3c.Bucket,
+		Key:             &filename,
+		ContentEncoding: &contentEncoding,
+		ContentType:     &contentType,
+		CacheControl:    &cacheControl,
+		Body:            bytes.NewReader(buf.Bytes()),
+		// Error if the file exists
+		IfNoneMatch: &star,
+	})
+	if err != nil {
+		return fmt.Errorf("writing %q/%q: %s", s3c.Bucket, filename, err)
+	}
+
+	return nil
+}
+
+// readPartial returns the bytes of the existing partial tile that contains the entry
+// at `startingIndex`, along with the number of entries in that tile.
+//
+// If startingIndex % 256 == 0, returns nil, 0, nil.
+func readPartial(ctx context.Context, startingIndex int64, s3c *bs3.Client) ([]byte, int64, error) {
+	partialWidth := startingIndex % 256
+	if partialWidth == 0 {
+		return nil, 0, nil
+	}
+	partialN := startingIndex / 256
+	path := fmt.Sprintf("tile/entries/%d.p/%d", partialN, partialWidth)
+	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: &s3c.Bucket,
+		Key:    &path,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	partial, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Double check that it has the right number of entries.
+	readBuf := bytes.NewReader(partial)
+	gzipReader, err := gzip.NewReader(readBuf)
+	if err != nil {
+		return nil, 0, err
+	}
+	br := entry.NewBundleReader(gzipReader)
+	for range partialWidth {
+		_, _, err := br.Read()
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+	if readBuf.Len() > 0 {
+		return nil, 0, fmt.Errorf("after reading %d entries from %q: %d excess bytes",
+			partialWidth, path, readBuf.Len())
+	}
+	return partial, partialWidth, nil
+}

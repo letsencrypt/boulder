@@ -4,6 +4,7 @@ package mtca
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -14,12 +15,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bs3"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/cosigned"
+	"github.com/letsencrypt/boulder/trees/entry"
+	"github.com/letsencrypt/boulder/trees/tiles"
 
 	"github.com/letsencrypt/borp"
 	blog "github.com/letsencrypt/boulder/log"
@@ -44,18 +48,27 @@ func getMTCAID(issuerCert *x509.Certificate) (string, error) {
 }
 
 // New creates a new MTCA service.
-func New(issuer *issuance.Issuer, dbMap *borp.DbMap, s3c *bs3.Client, logger blog.Logger) (*mtca, error) {
+func New(
+	issuer *issuance.Issuer,
+	profile *issuance.Profile,
+	dbMap *borp.DbMap,
+	s3c *bs3.Client,
+	logger blog.Logger,
+	clk clock.Clock,
+) (*mtca, error) {
 	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
 	if err != nil {
 		return nil, err
 	}
 
 	return &mtca{
-		log:    logger,
-		db:     initDB(dbMap),
-		s3c:    s3c,
-		issuer: issuer,
-		mtcaID: mtcaID,
+		log:     logger,
+		clk:     clk,
+		db:      initDB(dbMap),
+		s3c:     s3c,
+		issuer:  issuer,
+		profile: profile,
+		mtcaID:  mtcaID,
 		// TODO: collect this from config
 		logNumber: 0,
 		pool:      &pool{maxSize: 100},
@@ -116,6 +129,11 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		RootHash:        rootHash[:],
 	}
 
+	err = tiles.WriteEntries(ctx, m.s3c, 0, []entry.MerkleTreeCertEntry{entry.MerkleTreeCertEntry{}})
+	if err != nil {
+		return err
+	}
+
 	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		sig, err := m.signCheckpoint(&firstCheckpoint)
 		if err != nil {
@@ -149,35 +167,51 @@ func (m *mtca) InitLog(ctx context.Context) error {
 	return err
 }
 
+// Preflight fetches the latest checkpoint and the latest entry tile tile,
+// to check that everything is working before starting up the sequencing loop.
+func (m *mtca) Preflight(ctx context.Context) error {
+	latestCheckpoint, err := m.latest(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = tiles.GetEntry(ctx, m.s3c, latestCheckpoint.TreeSize-1, latestCheckpoint.TreeSize)
+	if err != nil {
+		return err
+	}
+	m.log.Infof("started, tree size %d", latestCheckpoint.TreeSize)
+	return nil
+}
+
 type mtca struct {
 	mtcapb.UnimplementedMTCAServer
 
 	issuer    *issuance.Issuer
+	profile   *issuance.Profile
 	mtcaID    string
 	logNumber uint16
 
 	db  *db.WrappedMap
 	s3c *bs3.Client
 	log blog.Logger
+	clk clock.Clock
 
 	pool *pool
 
 	sequencingMu sync.Mutex
 }
 
-type entry struct {
-	pubkey      []byte
-	identifiers []*corepb.Identifier
-	ch          chan<- int64
+type pendingEntry struct {
+	mtce entry.MerkleTreeCertEntry
+	ch   chan<- int64
 }
 
 type pool struct {
 	sync.Mutex
-	entries []entry
+	entries []pendingEntry
 	maxSize int
 }
 
-func (p *pool) take() []entry {
+func (p *pool) take() []pendingEntry {
 	p.Lock()
 	defer p.Unlock()
 	ret := p.entries
@@ -191,7 +225,7 @@ func (p *pool) len() int {
 	return len(p.entries)
 }
 
-func (p *pool) append(e entry) error {
+func (p *pool) append(e pendingEntry) error {
 	p.Lock()
 	defer p.Unlock()
 	if len(p.entries) >= p.maxSize {
@@ -209,11 +243,43 @@ func (m *mtca) mtcLogID() string {
 }
 
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
+	key, err := x509.ParsePKIXPublicKey(req.Pubkey)
+	if err != nil {
+		return nil, err
+	}
+
+	notBefore, notAfter := m.profile.GenerateValidity(m.clk.Now())
+
+	dnsNames, ipAddresses, err := identifier.FromProtoSlice(req.Identifiers).ToValues()
+	if err != nil {
+		return nil, err
+	}
+
+	// Placeholder serial; will be omitted from the TBSCertificateLogEntry.
+	serial := [18]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
+
+	lintCertBytes, _, err := m.issuer.Prepare(m.profile, &issuance.IssuanceRequest{
+		PublicKey:   issuance.MarshalablePublicKey{PublicKey: key},
+		Serial:      issuance.HexMarshalableBytes(serial[:]),
+		NotBefore:   notBefore,
+		NotAfter:    notAfter,
+		DNSNames:    dnsNames,
+		IPAddresses: ipAddresses,
+
+		IncludeCTPoison: false,
+		CommonName:      "",
+		SubjectKeyId:    issuance.HexMarshalableBytes{},
+	})
+
+	mtce, err := entry.FromX509(lintCertBytes, crypto.SHA256)
+	if err != nil {
+		return nil, err
+	}
+
 	ch := make(chan int64, 1)
-	err := m.pool.append(entry{
-		pubkey:      req.Pubkey,
-		identifiers: req.Identifiers,
-		ch:          ch,
+	err = m.pool.append(pendingEntry{
+		mtce: mtce,
+		ch:   ch,
 	})
 	if err != nil {
 		return nil, err
@@ -331,14 +397,15 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	// Simulate writing to tile storage
-	latestTreeSize := latest.TreeSize
-	var entryIndexes []int64
-	for range entries {
-		entryIndexes = append(entryIndexes, latestTreeSize)
-		latestTreeSize++
+	// Write leaves
+	var mtces []entry.MerkleTreeCertEntry
+	for _, e := range entries {
+		mtces = append(mtces, e.mtce)
 	}
-
+	err = tiles.WriteEntries(ctx, m.s3c, latest.TreeSize, mtces)
+	if err != nil {
+		return err
+	}
 	// TODO: calculate new root hash for real
 	var newRootHash [sha256.Size]byte
 	rand.Read(newRootHash[:])
@@ -349,7 +416,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		MTCASignature:   nil,
 		MirrorID:        "",
 		MirrorSignature: nil,
-		TreeSize:        latestTreeSize,
+		TreeSize:        latest.TreeSize + int64(len(mtces)),
 		RootHash:        newRootHash[:],
 	}
 
@@ -423,7 +490,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Notify waiting RPCs.
 	for i, e := range entries {
-		e.ch <- entryIndexes[i]
+		e.ch <- latest.TreeSize + int64(i)
 	}
 	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil

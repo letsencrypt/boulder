@@ -37,6 +37,8 @@ type Config struct {
 		// unsigned certificate: https://www.rfc-editor.org/rfc/rfc9925.html.
 		Issuer issuance.IssuerConfig
 
+		CertProfile issuance.ProfileConfig
+
 		// SequencingPeriod controls how frequently the MTCA sequences a batch and signs a checkpoint.
 		SequencingPeriod config.Duration `validate:"required"`
 	}
@@ -90,7 +92,12 @@ func main() {
 	s3c, err := bs3.FromConfig(c.MTCA.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")
 
-	mtcaImpl, err := mtca.New(issuer, dbMap, s3c, logger)
+	c.MTCA.CertProfile.OmitClientAuth = true // MUST NOT per CQRP
+	// c.MTCA.CertProfile.OmitCT = true         // MUST NOT per CQRP
+	profile, err := issuance.NewProfile(c.MTCA.CertProfile)
+	cmd.FailOnError(err, "Making profile")
+
+	mtcaImpl, err := mtca.New(issuer, profile, dbMap, s3c, logger, clk)
 	cmd.FailOnError(err, "Building MTCA")
 
 	if *initLog {
@@ -104,6 +111,9 @@ func main() {
 			cmd.FailOnError(err, "Initializing MTC log DB for test")
 		}
 	}
+
+	err = mtcaImpl.Preflight(context.Background())
+	cmd.FailOnError(err, "MTCA preflight")
 
 	srv := bgrpc.NewServer(c.MTCA.GRPCMTCA, logger).Add(
 		&mtcapb.MTCA_ServiceDesc, mtcaImpl)
