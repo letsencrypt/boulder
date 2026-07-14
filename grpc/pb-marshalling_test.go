@@ -229,6 +229,11 @@ func TestAuthz(t *testing.T) {
 	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
 
+	// zero-value ID in PB should cause PBToAuthz to return ErrMissingParameters
+	pbAuthz.IdInt = 0
+	_, err = PBToAuthz(pbAuthz)
+	test.AssertEquals(t, err, ErrMissingParameters)
+
 	inAuthzNilExpires := core.Authorization{
 		ID:             1,
 		Identifier:     ident,
@@ -242,6 +247,7 @@ func TestAuthz(t *testing.T) {
 	outAuthz2, err := PBToAuthz(pbAuthz2)
 	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthzNilExpires, outAuthz2)
+
 }
 
 func TestOrderValid(t *testing.T) {

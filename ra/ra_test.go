@@ -854,14 +854,6 @@ func TestDeactivateAuthorization(t *testing.T) {
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "Could not get deactivated authorization by ID")
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
-
-	dbAuthzPBIdChecks := dbAuthzPB
-	dbAuthzPBIdChecks.IdInt = authzID
-	_, err = ra.DeactivateAuthorization(ctx, dbAuthzPBIdChecks)
-	test.AssertNotError(t, err, "Could not deactivate authorization")
-	deact, err = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	test.AssertNotError(t, err, "Could not get deactivated authorization by ID")
-	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 }
 
 type mockSARecordingPauses struct {

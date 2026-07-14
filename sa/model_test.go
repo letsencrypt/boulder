@@ -118,6 +118,13 @@ func TestAuthzModel(t *testing.T) {
 	// aside from the hostname and port exceptions tested above
 	test.AssertDeepEquals(t, authzPB, authzPBOut)
 
+	// PB with zero-value ID should error
+	authzPB = newTestAuthzPB(clk.Now())
+	authzPB.IdInt = 0
+	_, err = authzPBToModel(authzPB)
+	test.AssertError(t, err, "authzPBToModel with zero-value ID should error")
+	test.AssertEquals(t, err.Error(), "authorization is missing an ID value")
+
 	authzPB = newTestAuthzPB(clk.Now())
 
 	validationErr := probs.Connection("weewoo")
