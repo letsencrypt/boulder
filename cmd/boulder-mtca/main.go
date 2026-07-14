@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 
@@ -51,6 +52,9 @@ func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	// We require an explicit flag to initialize a log because this is a rare operation and we want
+	// to make sure it's intentional. We exit after initializing the log to make sure we don't
+	// accidentally include `-init-log` in the command intended for general server operation.
 	initLog := flag.Bool("init-log", false, "Initialize log metadata in the database and exit")
 	initLogForTest := flag.Bool("init-log-for-test", false, "For testing: initialize log metadata if not already initialized, then serve")
 
@@ -100,13 +104,18 @@ func main() {
 	mtcaImpl, err := mtca.New(issuer, profile, dbMap, s3c, logger, clk)
 	cmd.FailOnError(err, "Building MTCA")
 
+	if *initLog && *initLogForTest {
+		cmd.Fail("only one of -init-log and -init-log-for-test may happen")
+	}
 	if *initLog {
-		err = mtcaImpl.InitLog(context.Background())
+		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+		err = mtcaImpl.InitLog(ctx)
 		cmd.FailOnError(err, "Initializing log")
 		return
 	}
 	if *initLogForTest {
-		err = mtcaImpl.InitLog(context.Background())
+		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+		err = mtcaImpl.InitLog(ctx)
 		if err != nil && !errors.Is(err, mtca.ErrIssuanceLogAlreadyInitialized) {
 			cmd.FailOnError(err, "Initializing MTC log DB for test")
 		}
@@ -124,6 +133,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Cancel will be called after start() returns, which happens after GracefulStop() returns.
 	// That means all inflight RPCs will be done, which means the last of the pool has been sequenced.
+	// GracefulStop() is registered as part of srv.Build() above.
 	defer cancel()
 	go mtcaImpl.Loop(ctx, c.MTCA.SequencingPeriod.Duration)
 

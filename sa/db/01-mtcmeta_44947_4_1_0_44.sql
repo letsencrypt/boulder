@@ -2,13 +2,19 @@
 -- or optionally as a Vitess sharded keyspace where each issuance log is in a separate shard.
 USE mtcmeta_44947_4_1_0_44;
 
--- latestCheckpoint is a single-row table pointing to the id of the latest checkpoints.
--- Its single row is locked with SELECT ... FOR UPDATE before signing happens, and then
--- updated after signing happens.
+-- latestCheckpoint contains the latest checkpoint for a specific MTC log ID.
+--
+-- In MariaDB, it will only ever contain a single row. In Vitess it could contain a row
+-- per mtcLogID and be sharded on mtcLogID. To ensure the "single row per MTC log ID"
+-- property, we make mtcLogID a primary key.
+--
+-- The row for a given mtcLogID is locked with SELECT ... FOR UPDATE before signing
+-- happens, and then updated after signing happens.
 CREATE TABLE `latestCheckpoint` (
-    `id` bigint(20) NOT NULL,
     -- ASCII-format OID relative to 1.3.6.1.4.1
     `mtcLogID` varchar(255) NOT NULL,
+    -- ID of a checkpoint in the `checkpoints` table.
+    `id` bigint(20) NOT NULL,
     PRIMARY KEY (`mtcLogID`)
 );
 

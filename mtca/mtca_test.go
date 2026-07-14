@@ -5,17 +5,23 @@ package mtca
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/mldsa"
+	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -26,12 +32,16 @@ import (
 
 func TestPool(t *testing.T) {
 	p := &pool{maxSize: 20}
+	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
-		err := p.append(pendingEntry{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		wg.Go(func() {
+			err := p.append(pendingEntry{})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
+	wg.Wait()
 
 	err := p.append(pendingEntry{})
 	if err == nil {
@@ -94,7 +104,7 @@ func TestCheckpointValid(t *testing.T) {
 // setup returns a working mtca plus a cleanup function, or an error.
 func setup() (*mtca, func(), error) {
 	issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
-		Profiles:   []string{},
+		Profiles:   []string{"required to be active"},
 		IssuerURL:  "http://ignored.letsencrypt.org",
 		CRLURLBase: "http://ignored.letsencrypt.org/",
 		CRLShards:  1,
@@ -161,7 +171,9 @@ func TestSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
-	defer cleanup()
+	t.Cleanup(cleanup)
+
+	mtca.pool.append(pendingEntry{ch: make(chan int64, 1)})
 
 	err = mtca.sequence(t.Context())
 	if err == nil {
@@ -171,8 +183,10 @@ func TestSequence(t *testing.T) {
 		t.Errorf("sequencing with an unready checkpoint: expected 'not ready', got %q", err)
 	}
 
+	mtca.pool.take()
+
 	// Fake publication
-	latest, err := mtca.latest(t.Context())
+	latest, err := mtca.latestCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -191,6 +205,15 @@ func TestSequence(t *testing.T) {
 
 	mtca.pool.maxSize = 5
 
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating key: %s", err)
+	}
+	pubkeyBytes, err := x509.MarshalPKIXPublicKey(key.Public())
+	if err != nil {
+		t.Fatalf("marshaling pubkey: %s", err)
+	}
+
 	type result struct {
 		*proto.IssueResponse
 		error
@@ -199,7 +222,7 @@ func TestSequence(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		go func() {
 			resp, err := mtca.Issue(t.Context(), &proto.IssueRequest{
-				Pubkey: []byte("abc"),
+				Pubkey: pubkeyBytes,
 				Identifiers: []*corepb.Identifier{
 					{Type: "dns", Value: "example.com"},
 				},
@@ -238,7 +261,7 @@ func TestSequence(t *testing.T) {
 		t.Errorf("putting 6 entries in a pool of size 5: expected 'pool is full', got %q", seenError)
 	}
 
-	latest, err = mtca.latest(t.Context())
+	latest, err = mtca.latestCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -259,7 +282,7 @@ func TestInitLog(t *testing.T) {
 		t.Errorf("second InitLog: got nil error, want error")
 	}
 
-	latest, err := mtca.latest(t.Context())
+	latest, err := mtca.latestCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -338,4 +361,30 @@ func (s *simpleS3) GetObject(ctx context.Context, params *s3.GetObjectInput, opt
 	return &s3.GetObjectOutput{
 		Body: io.NopCloser(bytes.NewReader(obj)),
 	}, nil
+}
+
+func TestGetMTCAID(t *testing.T) {
+	certBytes, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
+MIIBRjCB9KADAgECAgF7MAoGCCqGSM49BAMCMBsxGTAXBgorBgEEAYLaSy8BDAk0
+NDk0Ny40LjEwHhcNMjYwNzE0MjIyNjIwWhcNMzYwNzExMjIyNjIwWjAbMRkwFwYK
+KwYBBAGC2ksvAQwJNDQ5NDcuNC4xME4wEAYHKoZIzj0CAQYFK4EEACEDOgAERbiP
+RTb8x/eav43juNzWZLId2Wl5TzmTsG5iRf+CiB+rn+TXnuUbWDIuIi/kYs3USANm
+LUyLxH+jNDAyMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA8GA1Ud
+DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
+2TewRlXg+ohJvFoCHQCTMjnYvLIvTCqF3gZm38+h1iShEgMfMT522d60
+`, "\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, err := x509.ParseCertificate(certBytes)
+	mtcaID, err := getMTCAID(cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "44947.4.1"
+	if mtcaID != expected {
+		t.Errorf("getMTCAID(): got %s, want %s", mtcaID, expected)
+	}
 }

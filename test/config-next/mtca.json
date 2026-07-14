@@ -41,7 +41,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 7,
+		"stdoutlevel": 4,
 		"sysloglevel": -1
 	},
 	"openTelemetry": {
