@@ -5,8 +5,8 @@
 			"dbConnectFile": "test/secrets/mtca1_dburl"
 		},
 		"s3": {
-			"endpoint": "http://boulder-minio:9000",
-			"bucket": "boulder-mtc-tiles",
+			"s3endpoint": "http://boulder-minio:9000",
+			"s3bucket": "boulder-mtc-tiles",
 			"awsConfigFile": "test/config-next/mtca-s3-config.ini",
 			"awsCredsFile": "test/secrets/mtca-s3-creds.ini"
 		},
