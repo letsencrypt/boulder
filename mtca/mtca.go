@@ -236,6 +236,8 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 // there are no inflight RPCs from clients, which in turn ensures that we have sequenced everything
 // had in the pool.
 func (m *mtca) Loop(ctx context.Context, sequencingPeriod time.Duration) {
+	// In cmd/boulder-mtca/main.go, the SequencingPeriod field of config is `required`, so this
+	// shouldn't happen, but fall back on a reasonable value just in case.
 	if sequencingPeriod <= 0 {
 		sequencingPeriod = 100 * time.Millisecond
 	}

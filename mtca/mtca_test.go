@@ -10,10 +10,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -24,12 +26,16 @@ import (
 
 func TestPool(t *testing.T) {
 	p := &pool{maxSize: 20}
+	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
-		err := p.append(entry{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		wg.Go(func() {
+			err := p.append(entry{})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
+	wg.Wait()
 
 	err := p.append(entry{})
 	if err == nil {
@@ -139,7 +145,7 @@ func TestSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	err = mtca.sequence(t.Context())
 	if err == nil {
