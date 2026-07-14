@@ -2,7 +2,6 @@ package storer
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -22,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
@@ -29,17 +29,9 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// simpleS3 matches the subset of the s3.Client interface which we use, to allow
-// simpler mocking in tests.
-type simpleS3 interface {
-	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
-	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
-}
-
 type crlStorer struct {
 	cspb.UnsafeCRLStorerServer
-	s3Client         simpleS3
-	s3Bucket         string
+	s3Client         bs3.Simple
 	issuers          map[issuance.NameID]*issuance.Certificate
 	uploadCount      *prometheus.CounterVec
 	latencyHistogram *prometheus.HistogramVec
@@ -51,8 +43,7 @@ var _ cspb.CRLStorerServer = (*crlStorer)(nil)
 
 func New(
 	issuers []*issuance.Certificate,
-	s3Client simpleS3,
-	s3Bucket string,
+	s3Client bs3.Simple,
 	stats prometheus.Registerer,
 	log blog.Logger,
 	clk clock.Clock,
@@ -76,7 +67,6 @@ func New(
 	return &crlStorer{
 		issuers:          issuersByNameID,
 		s3Client:         s3Client,
-		s3Bucket:         s3Bucket,
 		uploadCount:      uploadCount,
 		latencyHistogram: latencyHistogram,
 		log:              log,
@@ -162,8 +152,9 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	// these checks if we found a CRL, so we don't block uploading brand new CRLs.
 	var prevEtag *string
 	filename := fmt.Sprintf("%d/%d.crl", issuer.NameID(), shardIdx)
+	bucket := cs.s3Client.Bucket()
 	prevObj, err := cs.s3Client.GetObject(stream.Context(), &s3.GetObjectInput{
-		Bucket: &cs.s3Bucket,
+		Bucket: &bucket,
 		Key:    &filename,
 	})
 	if err != nil {
@@ -221,7 +212,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
 	_, err = cs.s3Client.PutObject(stream.Context(), &s3.PutObjectInput{
-		Bucket:            &cs.s3Bucket,
+		Bucket:            &bucket,
 		Key:               &filename,
 		Body:              bytes.NewReader(crlBytes),
 		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,

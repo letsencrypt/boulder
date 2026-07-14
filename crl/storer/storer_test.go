@@ -69,7 +69,7 @@ func setupTestUploadCRL(t *testing.T) (*crlStorer, *issuance.Issuer) {
 
 	storer, err := New(
 		[]*issuance.Certificate{r3, issuerE1.Cert},
-		nil, "le-crl.s3.us-west.amazonaws.com",
+		nil,
 		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "creating test crl-storer")
@@ -282,6 +282,10 @@ type fakeSimpleS3 struct {
 	expectBytes []byte
 }
 
+func (p *fakeSimpleS3) Bucket() string {
+	return "fakebucket"
+}
+
 func (p *fakeSimpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	recvBytes, err := io.ReadAll(params.Body)
 	if err != nil {
@@ -475,6 +479,10 @@ func TestUploadCRLBackwardsNumber(t *testing.T) {
 // brokenSimpleS3 implements the simpleS3 interface. It returns errors for all
 // uploads and downloads.
 type brokenSimpleS3 struct{}
+
+func (p *brokenSimpleS3) Bucket() string {
+	return "fake bucket"
+}
 
 func (p *brokenSimpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	return nil, errors.New("sorry")
