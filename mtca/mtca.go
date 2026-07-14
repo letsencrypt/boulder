@@ -14,17 +14,52 @@ import (
 	"sync"
 	"time"
 
+	"github.com/letsencrypt/borp"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/cosigned"
-
-	"github.com/letsencrypt/borp"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
+var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
+var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
+
 var _ mtcapb.MTCAServer = &mtca{}
+
+// New creates a new MTCA service.
+func New(issuer *issuance.Issuer, dbMap *borp.DbMap, logger blog.Logger) (*mtca, error) {
+	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mtca{
+		issuer: issuer,
+		mtcaID: mtcaID,
+		// TODO: collect this from config
+		logNumber: 0,
+		pool:      &pool{maxSize: 100},
+
+		db:  initDB(dbMap),
+		log: logger,
+	}, nil
+}
+
+type mtca struct {
+	mtcapb.UnimplementedMTCAServer
+
+	issuer    *issuance.Issuer
+	mtcaID    string
+	logNumber uint16
+
+	db  *db.WrappedMap
+	log blog.Logger
+
+	pool *pool
+}
 
 func getMTCAID(issuerCert *x509.Certificate) (string, error) {
 	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
@@ -42,79 +77,54 @@ func getMTCAID(issuerCert *x509.Certificate) (string, error) {
 		issuerCert.Subject, testingTrustAnchorIDOID)
 }
 
-// New creates a new MTCA service.
-func New(issuer *issuance.Issuer, dbMap *borp.DbMap, logger blog.Logger) (*mtca, error) {
-	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
-	if err != nil {
-		return nil, err
-	}
-
-	return &mtca{
-		log:    logger,
-		db:     initDB(dbMap),
-		issuer: issuer,
-		mtcaID: mtcaID,
-		// TODO: collect this from config
-		logNumber: 0,
-		pool:      &pool{maxSize: 100},
-	}, nil
-}
-
 func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 	dbMap.AddTableWithName(checkpoint{}, "checkpoints").SetKeys(true, "ID")
 	return db.NewWrappedMap(dbMap)
 }
 
-var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
-var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
-
 // InitLog creates the database metadata for a new, empty log: one checkpoint and the row
 // in `latestCheckpoint` that refers to it. Should only be run once in a log's lifetime.
 func (m *mtca) InitLog(ctx context.Context) error {
-	_, err := m.latest(ctx)
-	if err == nil {
-		return ErrIssuanceLogAlreadyInitialized
-	}
+	_, err := db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
+		var numLatestCheckpoints int64
+		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
+			m.mtcLogID())
+		if err != nil {
+			return nil, fmt.Errorf("getting latestCheckpoint: %s", err)
+		}
 
-	var numLatestCheckpoints int64
-	err = m.db.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
-		m.mtcLogID())
-	if err != nil {
-		return fmt.Errorf("getting latestCheckpoint: %s", err)
-	}
+		var numCheckpoints int64
+		err = tx.SelectOne(ctx, &numCheckpoints, "SELECT COUNT(*) FROM checkpoints WHERE mtcLogID = ?",
+			m.mtcLogID())
+		if err != nil {
+			return nil, fmt.Errorf("getting checkpoints: %s", err)
+		}
 
-	var numCheckpoints int64
-	err = m.db.SelectOne(ctx, &numCheckpoints, "SELECT COUNT(*) FROM checkpoints WHERE mtcLogID = ?",
-		m.mtcLogID())
-	if err != nil {
-		return fmt.Errorf("getting checkpoints: %s", err)
-	}
+		if numCheckpoints > 0 || numLatestCheckpoints > 0 {
+			if numLatestCheckpoints == 1 {
+				return nil, ErrIssuanceLogAlreadyInitialized
+			}
 
-	if numCheckpoints > 0 || numLatestCheckpoints > 0 {
-		return fmt.Errorf("initializing issuance log for %s: already has %d checkpoints and %d latestCheckpoint rows",
-			m.mtcLogID(), numCheckpoints, numLatestCheckpoints)
-	}
+			return nil, fmt.Errorf("initializing issuance log for %s: already has %d checkpoints and %d latestCheckpoint rows",
+				m.mtcLogID(), numCheckpoints, numLatestCheckpoints)
+		}
 
-	// null_entry has empty extensions and a MerkleTreeCertEntryType of 0. Since extensions can be up to 2^16 long
-	// there's two bytes of length prefix. Since MerkleTreeCertEntryType can have up to 2^16 values, it's also two bytes.
-	// All the bytes are zero: empty extensions, null_entry type is enum value zero.
-	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
-	// To calculate the Merkle Tree Hash of a single-entry list, we prepend 0x00 (as compared with 0x01 when hashing
-	// two nodes). So five zeroes total.
-	// https://www.rfc-editor.org/info/rfc9162/#name-definition-of-the-merkle-tr
-	nullEntry := []byte{0, 0, 0, 0, 0}
-	rootHash := sha256.Sum256(nullEntry)
+		// null_entry has empty extensions and a MerkleTreeCertEntryType of 0. Since extensions can be up to 2^16 long
+		// there's two bytes of length prefix. Since MerkleTreeCertEntryType can have up to 2^16 values, it's also two bytes.
+		// All the bytes are zero: empty extensions, null_entry type is enum value zero.
+		// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
+		// To calculate the Merkle Tree Hash of a single-entry list, we prepend 0x00 (as compared with 0x01 when hashing
+		// two nodes). So five zeroes total.
+		// https://www.rfc-editor.org/info/rfc9162/#name-definition-of-the-merkle-tr
+		nullEntry := []byte{0, 0, 0, 0, 0}
+		rootHash := sha256.Sum256(nullEntry)
 
-	firstCheckpoint := checkpoint{
-		MTCLogID:        m.mtcLogID(),
-		MTCASignature:   nil,
-		MirrorID:        "",
-		MirrorSignature: nil,
-		TreeSize:        1,
-		RootHash:        rootHash[:],
-	}
+		firstCheckpoint := checkpoint{
+			MTCLogID: m.mtcLogID(),
+			TreeSize: 1,
+			RootHash: rootHash[:],
+		}
 
-	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		sig, err := m.signCheckpoint(&firstCheckpoint)
 		if err != nil {
 			return nil, err
@@ -139,7 +149,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		return err
 	}
 
-	_, err = m.latest(ctx)
+	_, err = m.latestCheckpoint(ctx)
 	if err != nil {
 		return fmt.Errorf("fetching first checkpoint: %s", err)
 	}
@@ -147,31 +157,17 @@ func (m *mtca) InitLog(ctx context.Context) error {
 	return err
 }
 
-type mtca struct {
-	mtcapb.UnimplementedMTCAServer
-
-	issuer    *issuance.Issuer
-	mtcaID    string
-	logNumber uint16
-
-	db  *db.WrappedMap
-	log blog.Logger
-
-	pool *pool
-
-	sequencingMu sync.Mutex
+type pool struct {
+	sync.RWMutex
+	entries []entry
+	maxSize int
 }
 
+// entry represents an entry in the pool, along with a channel to notify a pending RPC.
 type entry struct {
 	pubkey      []byte
 	identifiers []*corepb.Identifier
 	ch          chan<- int64
-}
-
-type pool struct {
-	sync.Mutex
-	entries []entry
-	maxSize int
 }
 
 func (p *pool) take() []entry {
@@ -183,8 +179,8 @@ func (p *pool) take() []entry {
 }
 
 func (p *pool) len() int {
-	p.Lock()
-	defer p.Unlock()
+	p.RLock()
+	defer p.RUnlock()
 	return len(p.entries)
 }
 
@@ -205,7 +201,11 @@ func (m *mtca) mtcLogID() string {
 	return fmt.Sprintf("%s.0.%d", m.mtcaID, m.logNumber)
 }
 
+// Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
+// and a new checkpoint signed by the CA. It does not wait for a mirror cosignature.
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
+	// We'll get notification of sequencing on this channel. Buffer it so `sequence()` doesn't
+	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan int64, 1)
 	err := m.pool.append(entry{
 		pubkey:      req.Pubkey,
@@ -246,6 +246,7 @@ func (m *mtca) Loop(ctx context.Context, sequencingPeriod time.Duration) {
 
 	since := time.Now()
 	ticker := time.NewTicker(sequencingPeriod)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
@@ -262,7 +263,7 @@ func (m *mtca) Loop(ctx context.Context, sequencingPeriod time.Duration) {
 		case <-ctx.Done():
 			poolSize := m.pool.len()
 			if poolSize != 0 {
-				m.log.Errf("shutting down loop: pool has %d entries left. ungraceful stop?", poolSize)
+				m.log.Errf("shouldn't happen: pool has %d entries left after Loop() context canceled. ungraceful stop?", poolSize)
 			}
 			return
 		}
@@ -278,7 +279,7 @@ func (m *mtca) fakePublisher(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			latest, err := m.latest(ctx)
+			latest, err := m.latestCheckpoint(ctx)
 			if err != nil {
 				m.log.Errf("getting latest checkpoint for fake publisher: %s", err)
 				continue
@@ -298,23 +299,30 @@ func (m *mtca) fakePublisher(ctx context.Context) {
 	}
 }
 
+// sequence takes all entries from the pool, simulates writing them to tile storage, signs
+// and stores a new checkpoint, and notifies waiting RPCs.
+//
+// If the pool is empty, nothing happens.
+// If the pool is non-empty, but the previous checkpoint doesn't have a mirror signature,
+// returns an error that wraps ErrCheckpointNotReady (without taking entries from the pool).
+// This is expected to be a common occurrence.
+//
+// Each entry in the pool will get a notification on its channel: either the index at which
+// it was sequenced, or -1 if there was an error during sequencing.
 func (m *mtca) sequence(ctx context.Context) error {
 	if m.pool.len() == 0 {
 		return nil
 	}
 
-	latest, err := m.latest(ctx)
+	latest, err := m.latestCheckpoint(ctx)
 	if err != nil {
 		return err
 	}
 
-	if !latest.sequencingReady() {
+	if !latest.mirrored() {
 		return fmt.Errorf("temporary: checkpoint ID %d (tree size %d): %w",
 			latest.ID, latest.TreeSize, ErrCheckpointNotReady)
 	}
-
-	m.sequencingMu.Lock()
-	defer m.sequencingMu.Unlock()
 
 	// Pull the contents of the pool.
 	entries := m.pool.take()
@@ -430,6 +438,9 @@ func (m *mtca) sequence(ctx context.Context) error {
 	return nil
 }
 
+// checkpoint represents the database storage of a checkpoint and associated signatures.
+//
+// For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Message`.
 type checkpoint struct {
 	ID              int64  `db:"id"`
 	MTCLogID        string `db:"mtcLogID"`
@@ -457,7 +468,7 @@ func (c *checkpoint) valid() error {
 	return nil
 }
 
-func (c *checkpoint) sequencingReady() bool {
+func (c *checkpoint) mirrored() bool {
 	return len(c.MTCASignature) > 0 && len(c.MirrorSignature) > 0
 }
 
@@ -475,7 +486,7 @@ func (c *checkpoint) String() string {
 		c.ID, c.MTCLogID, caSig, c.MirrorID, mirrorSig, c.TreeSize, c.RootHash)
 }
 
-func (m *mtca) latest(ctx context.Context) (*checkpoint, error) {
+func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 	var latestCheckpoint checkpoint
 	err := m.db.SelectOne(ctx, &latestCheckpoint,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,

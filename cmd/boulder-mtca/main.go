@@ -118,6 +118,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Cancel will be called after start() returns, which happens after GracefulStop() returns.
 	// That means all inflight RPCs will be done, which means the last of the pool has been sequenced.
+	// GracefulStop() is registered as part of srv.Build() above.
 	defer cancel()
 	go mtcaImpl.Loop(ctx, c.MTCA.SequencingPeriod.Duration)
 
