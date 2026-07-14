@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/mldsa"
+	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -156,7 +158,7 @@ func TestSequence(t *testing.T) {
 	}
 
 	// Fake publication
-	latest, err := mtca.latest(t.Context())
+	latest, err := mtca.latestCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -222,7 +224,7 @@ func TestSequence(t *testing.T) {
 		t.Errorf("putting 6 entries in a pool of size 5: expected 'pool is full', got %q", seenError)
 	}
 
-	latest, err = mtca.latest(t.Context())
+	latest, err = mtca.latestCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -243,7 +245,7 @@ func TestInitLog(t *testing.T) {
 		t.Errorf("second InitLog: got nil error, want error")
 	}
 
-	latest, err := mtca.latest(t.Context())
+	latest, err := mtca.latestCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -283,5 +285,31 @@ func verify(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
 	err = mldsa.Verify(pubkey, marshaled, checkpoint.MTCASignature, nil)
 	if err != nil {
 		t.Errorf("verifying MTCASignature: %s", err)
+	}
+}
+
+func TestGetMTCAID(t *testing.T) {
+	certBytes, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
+MIIBRjCB9KADAgECAgF7MAoGCCqGSM49BAMCMBsxGTAXBgorBgEEAYLaSy8BDAk0
+NDk0Ny40LjEwHhcNMjYwNzE0MjIyNjIwWhcNMzYwNzExMjIyNjIwWjAbMRkwFwYK
+KwYBBAGC2ksvAQwJNDQ5NDcuNC4xME4wEAYHKoZIzj0CAQYFK4EEACEDOgAERbiP
+RTb8x/eav43juNzWZLId2Wl5TzmTsG5iRf+CiB+rn+TXnuUbWDIuIi/kYs3USANm
+LUyLxH+jNDAyMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA8GA1Ud
+DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
+2TewRlXg+ohJvFoCHQCTMjnYvLIvTCqF3gZm38+h1iShEgMfMT522d60
+`, "\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, err := x509.ParseCertificate(certBytes)
+	mtcaID, err := getMTCAID(cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "44947.4.1"
+	if mtcaID != expected {
+		t.Errorf("getMTCAID(): got %s, want %s", mtcaID, expected)
 	}
 }

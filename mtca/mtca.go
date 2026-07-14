@@ -125,7 +125,12 @@ func (m *mtca) InitLog(ctx context.Context) error {
 			RootHash: rootHash[:],
 		}
 
-		sig, err := m.signCheckpoint(&firstCheckpoint)
+		message, err := m.cosignedMessage(&firstCheckpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		sig, err := m.sign(message)
 		if err != nil {
 			return nil, err
 		}
@@ -261,6 +266,10 @@ func (m *mtca) Loop(ctx context.Context, sequencingPeriod time.Duration) {
 			}
 			since = time.Now()
 		case <-ctx.Done():
+			// Given the structure of main(), this context will only be cancelled once
+			// GracefulStop has finished. That means all in-flight RPCs have returned,
+			// which in turn means that their certificate requests were sequenced (or
+			// they timed out, in which case emitting this error is appropriate).
 			poolSize := m.pool.len()
 			if poolSize != 0 {
 				m.log.Errf("shouldn't happen: pool has %d entries left after Loop() context canceled. ungraceful stop?", poolSize)
@@ -373,6 +382,11 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return err
 	}
 
+	message, err := m.cosignedMessage(&newCheckpoint)
+	if err != nil {
+		return err
+	}
+
 	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		var latestID int64
 		// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
@@ -391,7 +405,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 		// Note that we're doing HSM work while holding a database lock. That's intentional; the database lock
 		// is to prevent the possibility of a concurrent signer on the same tree.
-		sig, err := m.signCheckpoint(&newCheckpoint)
+		sig, err := m.sign(message)
 		if err != nil {
 			return nil, err
 		}
@@ -507,8 +521,7 @@ func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 	return &latestCheckpoint, nil
 }
 
-// signCheckpoint signs the checkpoint contents and returns the signature bytes.
-func (m *mtca) signCheckpoint(c *checkpoint) ([]byte, error) {
+func (m *mtca) cosignedMessage(c *checkpoint) (*cosigned.Message, error) {
 	err := c.valid()
 	if err != nil {
 		return nil, fmt.Errorf("validating checkpoint: %s", err)
@@ -521,15 +534,18 @@ func (m *mtca) signCheckpoint(c *checkpoint) ([]byte, error) {
 		return nil, errors.New("already mirror-signed")
 	}
 
-	message := cosigned.Message{
+	return &cosigned.Message{
 		CosignerName: fmt.Sprintf("oid/1.3.6.1.4.1.%s", m.mtcaID),
 		Timestamp:    0,
 		LogOrigin:    fmt.Sprintf("oid/1.3.6.1.4.1.%s", m.mtcLogID()),
 		Start:        0,
 		End:          uint64(c.TreeSize),
 		SubtreeHash:  [32]byte(c.RootHash),
-	}
+	}, nil
+}
 
+// signCheckpoint signs the checkpoint contents and returns the signature bytes.
+func (m *mtca) sign(message *cosigned.Message) ([]byte, error) {
 	marshaled, err := message.Marshal()
 	if err != nil {
 		return nil, err
