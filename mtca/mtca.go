@@ -52,7 +52,7 @@ func New(
 	issuer *issuance.Issuer,
 	profile *issuance.Profile,
 	dbMap *borp.DbMap,
-	s3c *bs3.Client,
+	s3c bs3.Simple,
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtca, error) {
@@ -191,7 +191,7 @@ type mtca struct {
 	logNumber uint16
 
 	db  *db.WrappedMap
-	s3c *bs3.Client
+	s3c bs3.Simple
 	log blog.Logger
 	clk clock.Clock
 

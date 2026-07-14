@@ -13,7 +13,7 @@ import (
 )
 
 func GetEntry(ctx context.Context,
-	s3c *bs3.Client,
+	s3c bs3.Simple,
 	index, treeSize int64,
 ) (entry.MerkleTreeCertEntry, error) {
 	tileIndex := index / 256
@@ -23,8 +23,9 @@ func GetEntry(ctx context.Context,
 	if treeSize/256 == tileIndex && treeSize%256 != 0 {
 		path = path + fmt.Sprintf(".p/%d", treeSize%256)
 	}
+	bucket := s3c.Bucket()
 	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: &s3c.Bucket,
+		Bucket: &bucket,
 		Key:    &path,
 	})
 	if err != nil {
@@ -50,7 +51,7 @@ func GetEntry(ctx context.Context,
 }
 
 func WriteEntries(ctx context.Context,
-	s3c *bs3.Client,
+	s3c bs3.Simple,
 	startingIndex int64,
 	entries []entry.MerkleTreeCertEntry,
 ) error {
@@ -71,7 +72,7 @@ func WriteEntries(ctx context.Context,
 
 // entries must be at most 256 long.
 func writeEntries(ctx context.Context,
-	s3c *bs3.Client,
+	s3c bs3.Simple,
 	startingIndex int64,
 	entries []entry.MerkleTreeCertEntry) error {
 	if len(entries) > 256 {
@@ -112,8 +113,9 @@ func writeEntries(ctx context.Context,
 	cacheControl := "public, max-age=604800, immutable"
 	star := "*"
 
+	bucket := s3c.Bucket()
 	_, err = s3c.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:          &s3c.Bucket,
+		Bucket:          &bucket,
 		Key:             &filename,
 		ContentEncoding: &contentEncoding,
 		ContentType:     &contentType,
@@ -123,7 +125,7 @@ func writeEntries(ctx context.Context,
 		IfNoneMatch: &star,
 	})
 	if err != nil {
-		return fmt.Errorf("writing %q/%q: %s", s3c.Bucket, filename, err)
+		return fmt.Errorf("writing %q/%q: %s", s3c.Bucket(), filename, err)
 	}
 
 	return nil
@@ -133,15 +135,16 @@ func writeEntries(ctx context.Context,
 // at `startingIndex`, along with the number of entries in that tile.
 //
 // If startingIndex % 256 == 0, returns nil, 0, nil.
-func readPartial(ctx context.Context, startingIndex int64, s3c *bs3.Client) ([]byte, int64, error) {
+func readPartial(ctx context.Context, startingIndex int64, s3c bs3.Simple) ([]byte, int64, error) {
 	partialWidth := startingIndex % 256
 	if partialWidth == 0 {
 		return nil, 0, nil
 	}
 	partialN := startingIndex / 256
 	path := fmt.Sprintf("tile/entries/%d.p/%d", partialN, partialWidth)
+	bucket := s3c.Bucket()
 	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: &s3c.Bucket,
+		Bucket: &bucket,
 		Key:    &path,
 	})
 	if err != nil {

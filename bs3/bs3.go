@@ -78,10 +78,15 @@ func FromConfig(c Config, logger blog.Logger) (*Client, error) {
 type Simple interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
 }
 
 type Client struct {
 	*s3.Client
-	// Bucket is carried along from the config for convenience in constructing PutObjectInput and GetObjectInput.
-	Bucket string
+	// bucket is carried along from the config for convenience in constructing PutObjectInput and GetObjectInput.
+	bucket string
+}
+
+func (c *Client) Bucket() string {
+	return c.bucket
 }

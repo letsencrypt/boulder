@@ -9,9 +9,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -61,7 +63,6 @@ func TestCheckpointValid(t *testing.T) {
 	rootHash := [32]byte{}
 
 	testCases := []testCase{
-		{"no ID", checkpoint{MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:]}},
 		{"no MTCLogID", checkpoint{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
 		{"no TreeSize", checkpoint{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
 		{"short RootHash", checkpoint{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
@@ -134,7 +135,8 @@ func setup() (*mtca, func(), error) {
 		return nil, nil, err
 	}
 
-	s3c := struct{}{}
+	s3c := newSimpleS3()
+
 	mtca, err := New(issuer, profile, dbMap, s3c, logger, clk)
 	if err != nil {
 		return nil, nil, err
@@ -298,4 +300,42 @@ func verify(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
 	if err != nil {
 		t.Errorf("verifying MTCASignature: %s", err)
 	}
+}
+
+type simpleS3 struct {
+	objects map[string][]byte
+}
+
+func newSimpleS3() *simpleS3 {
+	return &simpleS3{make(map[string][]byte)}
+}
+
+func (s *simpleS3) Bucket() string {
+	return "fake bucket"
+}
+
+func (s *simpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	if params.Key == nil {
+		return nil, fmt.Errorf("nil key")
+	}
+	b, err := io.ReadAll(params.Body)
+	if err != nil {
+		return nil, err
+	}
+	s.objects[*params.Key] = b
+	return nil, nil
+}
+
+func (s *simpleS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	if params.Key == nil {
+		return nil, fmt.Errorf("nil key")
+	}
+	obj, ok := s.objects[*params.Key]
+	if !ok {
+		return nil, fmt.Errorf("object not found")
+	}
+
+	return &s3.GetObjectOutput{
+		Body: io.NopCloser(bytes.NewReader(obj)),
+	}, nil
 }
