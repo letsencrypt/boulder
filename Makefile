@@ -11,7 +11,7 @@ GO ?= go
 
 # TODO(#8410): Remove pardot-test-srv when we've fully migrated to
 # salesforce-test-srv.
-CMDS = admin boulder ceremony ct-test-srv salesforce-test-srv pardot-test-srv chall-test-srv zendesk-test-srv
+CMDS = admin boulder ceremony ct-test-srv salesforce-test-srv pardot-test-srv chall-test-srv zendesk-test-srv tlog-mirror-test-srv
 CMD_BINS = $(addprefix bin/, $(CMDS) )
 OBJECTS = $(CMD_BINS)
 

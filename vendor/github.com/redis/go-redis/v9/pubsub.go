@@ -3,21 +3,17 @@ package redis
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9/internal"
-	"github.com/redis/go-redis/v9/internal/otel"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
-	"github.com/redis/go-redis/v9/push"
 )
 
 // PubSub implements Pub/Sub commands as described in
-// https://redis.io/docs/latest/develop/pubsub. Message receiving is NOT safe
+// http://redis.io/topics/pubsub. Message receiving is NOT safe
 // for concurrent use by multiple goroutines.
 //
 // PubSub automatically reconnects to Redis Server and resubscribes
@@ -25,7 +21,7 @@ import (
 type PubSub struct {
 	opt *Options
 
-	newConn   func(ctx context.Context, addr string, channels []string) (*pool.Conn, error)
+	newConn   func(ctx context.Context, channels []string) (*pool.Conn, error)
 	closeConn func(*pool.Conn) error
 
 	mu        sync.Mutex
@@ -42,12 +38,6 @@ type PubSub struct {
 	chOnce sync.Once
 	msgCh  *channel
 	allCh  *channel
-
-	// Push notification processor for handling generic push notifications
-	pushProcessor push.NotificationProcessor
-
-	// Cleanup callback for maintenanceNotifications upgrade tracking
-	onClose func()
 }
 
 func (c *PubSub) init() {
@@ -58,9 +48,9 @@ func (c *PubSub) String() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	channels := slices.Collect(maps.Keys(c.channels))
-	channels = append(channels, slices.Collect(maps.Keys(c.patterns))...)
-	channels = append(channels, slices.Collect(maps.Keys(c.schannels))...)
+	channels := mapKeys(c.channels)
+	channels = append(channels, mapKeys(c.patterns)...)
+	channels = append(channels, mapKeys(c.schannels)...)
 	return fmt.Sprintf("PubSub(%s)", strings.Join(channels, ", "))
 }
 
@@ -79,27 +69,10 @@ func (c *PubSub) conn(ctx context.Context, newChannels []string) (*pool.Conn, er
 		return c.cn, nil
 	}
 
-	if c.opt.Addr == "" {
-		// TODO(maintenanceNotifications):
-		// this is probably cluster client
-		// c.newConn will ignore the addr argument
-		// will be changed when we have maintenanceNotifications upgrades for cluster clients
-		c.opt.Addr = internal.RedisNull
-	}
-
-	// Include c.schannels so reconnect-time routing of an SSubscribe-only
-	// PubSub picks the slot owner (channels[0] in ClusterClient.pubSub()'s
-	// newConn closure) instead of a random node.
-	// See https://github.com/redis/go-redis/issues/3806.
-	// c.patterns is intentionally NOT included: patterns are not slot-
-	// addressable, and adding them would force PSubscribe-only PubSubs to
-	// pin to a single node based on pattern-string hash, regressing the
-	// existing random-node behaviour.
-	channels := slices.Collect(maps.Keys(c.channels))
-	channels = append(channels, slices.Collect(maps.Keys(c.schannels))...)
+	channels := mapKeys(c.channels)
 	channels = append(channels, newChannels...)
 
-	cn, err := c.newConn(ctx, c.opt.Addr, channels)
+	cn, err := c.newConn(ctx, channels)
 	if err != nil {
 		return nil, err
 	}
@@ -123,24 +96,34 @@ func (c *PubSub) resubscribe(ctx context.Context, cn *pool.Conn) error {
 	var firstErr error
 
 	if len(c.channels) > 0 {
-		firstErr = c._subscribe(ctx, cn, "subscribe", slices.Collect(maps.Keys(c.channels)))
+		firstErr = c._subscribe(ctx, cn, "subscribe", mapKeys(c.channels))
 	}
 
 	if len(c.patterns) > 0 {
-		err := c._subscribe(ctx, cn, "psubscribe", slices.Collect(maps.Keys(c.patterns)))
+		err := c._subscribe(ctx, cn, "psubscribe", mapKeys(c.patterns))
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	if len(c.schannels) > 0 {
-		err := c._subscribe(ctx, cn, "ssubscribe", slices.Collect(maps.Keys(c.schannels)))
+		err := c._subscribe(ctx, cn, "ssubscribe", mapKeys(c.schannels))
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	return firstErr
+}
+
+func mapKeys(m map[string]struct{}) []string {
+	s := make([]string, len(m))
+	i := 0
+	for k := range m {
+		s[i] = k
+		i++
+	}
+	return s
 }
 
 func (c *PubSub) _subscribe(
@@ -170,32 +153,12 @@ func (c *PubSub) releaseConn(ctx context.Context, cn *pool.Conn, err error, allo
 	if c.cn != cn {
 		return
 	}
-
-	if !cn.IsUsable() || cn.ShouldHandoff() {
-		c.reconnect(ctx, fmt.Errorf("pubsub: connection is not usable"))
-		return
-	}
-
 	if isBadConn(err, allowTimeout, c.opt.Addr) {
 		c.reconnect(ctx, err)
 	}
 }
 
 func (c *PubSub) reconnect(ctx context.Context, reason error) {
-	if c.cn != nil && c.cn.ShouldHandoff() {
-		newEndpoint := c.cn.GetHandoffEndpoint()
-		// If new endpoint is NULL, use the original address
-		if newEndpoint == internal.RedisNull {
-			newEndpoint = c.opt.Addr
-		}
-
-		if newEndpoint != "" {
-			// Update the address in the options
-			oldAddr := c.cn.RemoteAddr().String()
-			c.opt.Addr = newEndpoint
-			internal.Logger.Printf(ctx, "pubsub: reconnecting to new endpoint %s (was %s)", newEndpoint, oldAddr)
-		}
-	}
 	_ = c.closeTheCn(reason)
 	_, _ = c.conn(ctx, nil)
 }
@@ -203,6 +166,9 @@ func (c *PubSub) reconnect(ctx context.Context, reason error) {
 func (c *PubSub) closeTheCn(reason error) error {
 	if c.cn == nil {
 		return nil
+	}
+	if !c.closed {
+		internal.Logger.Printf(c.getContext(), "redis: discarding bad PubSub connection: %s", reason)
 	}
 	err := c.closeConn(c.cn)
 	c.cn = nil
@@ -218,11 +184,6 @@ func (c *PubSub) Close() error {
 	}
 	c.closed = true
 	close(c.exit)
-
-	// Call cleanup callback if set
-	if c.onClose != nil {
-		c.onClose()
-	}
 
 	return c.closeTheCn(pool.ErrClosed)
 }
@@ -286,7 +247,9 @@ func (c *PubSub) Unsubscribe(ctx context.Context, channels ...string) error {
 		}
 	} else {
 		// Unsubscribe from all channels.
-		clear(c.channels)
+		for channel := range c.channels {
+			delete(c.channels, channel)
+		}
 	}
 
 	err := c.subscribe(ctx, "unsubscribe", channels...)
@@ -305,7 +268,9 @@ func (c *PubSub) PUnsubscribe(ctx context.Context, patterns ...string) error {
 		}
 	} else {
 		// Unsubscribe from all patterns.
-		clear(c.patterns)
+		for pattern := range c.patterns {
+			delete(c.patterns, pattern)
+		}
 	}
 
 	err := c.subscribe(ctx, "punsubscribe", patterns...)
@@ -324,7 +289,9 @@ func (c *PubSub) SUnsubscribe(ctx context.Context, channels ...string) error {
 		}
 	} else {
 		// Unsubscribe from all channels.
-		clear(c.schannels)
+		for channel := range c.schannels {
+			delete(c.schannels, channel)
+		}
 	}
 
 	err := c.subscribe(ctx, "sunsubscribe", channels...)
@@ -348,25 +315,6 @@ func (c *PubSub) Ping(ctx context.Context, payload ...string) error {
 		args = append(args, payload[0])
 	}
 	cmd := NewCmd(ctx, args...)
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	cn, err := c.conn(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	err = c.writeCmd(ctx, cn, cmd)
-	c.releaseConn(ctx, cn, err, false)
-	return err
-}
-
-// ClientSetName assigns  a namee to the PubSub connection using  CLIENT SETNAME,
-// The name is visible in CLIENT LIST output and is useful for debugging
-// and identifying connections in a redis instance.
-func (c *PubSub) ClientSetName(ctx context.Context, name string) error {
-	cmd := NewStatusCmd(ctx, "client", "setname", name)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -419,7 +367,7 @@ func (p *Pong) String() string {
 	return "Pong"
 }
 
-func (c *PubSub) newMessage(ctx context.Context, cn *pool.Conn, reply interface{}) (interface{}, error) {
+func (c *PubSub) newMessage(reply interface{}) (interface{}, error) {
 	switch reply := reply.(type) {
 	case string:
 		return &Pong{
@@ -436,42 +384,30 @@ func (c *PubSub) newMessage(ctx context.Context, cn *pool.Conn, reply interface{
 				Count:   int(reply[2].(int64)),
 			}, nil
 		case "message", "smessage":
-			channel := reply[1].(string)
-			sharded := kind == "smessage"
 			switch payload := reply[2].(type) {
 			case string:
-				msg := &Message{
-					Channel: channel,
+				return &Message{
+					Channel: reply[1].(string),
 					Payload: payload,
-				}
-				// Record PubSub message received
-				otel.RecordPubSubMessage(ctx, cn, "received", channel, sharded)
-				return msg, nil
+				}, nil
 			case []interface{}:
 				ss := make([]string, len(payload))
 				for i, s := range payload {
 					ss[i] = s.(string)
 				}
-				msg := &Message{
-					Channel:      channel,
+				return &Message{
+					Channel:      reply[1].(string),
 					PayloadSlice: ss,
-				}
-				// Record PubSub message received
-				otel.RecordPubSubMessage(ctx, cn, "received", channel, sharded)
-				return msg, nil
+				}, nil
 			default:
 				return nil, fmt.Errorf("redis: unsupported pubsub message payload: %T", payload)
 			}
 		case "pmessage":
-			channel := reply[2].(string)
-			msg := &Message{
+			return &Message{
 				Pattern: reply[1].(string),
-				Channel: channel,
+				Channel: reply[2].(string),
 				Payload: reply[3].(string),
-			}
-			// Record PubSub message received (pattern message, not sharded)
-			otel.RecordPubSubMessage(ctx, cn, "received", channel, false)
-			return msg, nil
+			}, nil
 		case "pong":
 			return &Pong{
 				Payload: reply[1].(string),
@@ -493,38 +429,28 @@ func (c *PubSub) ReceiveTimeout(ctx context.Context, timeout time.Duration) (int
 	}
 
 	// Don't hold the lock to allow subscriptions and pings.
+
 	cn, err := c.connWithLock(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	err = cn.WithReader(ctx, timeout, func(rd *proto.Reader) error {
-		// To be sure there are no buffered push notifications, we process them before reading the reply
-		if err := c.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
-			// Log the error but don't fail the command execution
-			// Push notification processing errors shouldn't break normal Redis operations
-			internal.Logger.Printf(ctx, "push: conn[%d] error processing pending notifications before reading reply: %v", cn.GetID(), err)
-		}
 		return c.cmd.readReply(rd)
 	})
+
 	c.releaseConnWithLock(ctx, cn, err, timeout > 0)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return c.newMessage(ctx, cn, c.cmd.Val())
+	return c.newMessage(c.cmd.Val())
 }
 
 // Receive returns a message as a Subscription, Message, Pong or error.
 // See PubSub example for details. This is low-level API and in most cases
 // Channel should be used instead.
-// Receive returns a message as a Subscription, Message, Pong, or an error.
-// See PubSub example for details. This is a low-level API and in most cases
-// Channel should be used instead.
-// This method blocks until a message is received or an error occurs.
-// It may return early with an error if the context is canceled, the connection fails,
-// or other internal errors occur.
 func (c *PubSub) Receive(ctx context.Context) (interface{}, error) {
 	return c.ReceiveTimeout(ctx, 0)
 }
@@ -604,27 +530,6 @@ func (c *PubSub) ChannelWithSubscriptions(opts ...ChannelOption) <-chan interfac
 		panic(err)
 	}
 	return c.allCh.allCh
-}
-
-func (c *PubSub) processPendingPushNotificationWithReader(ctx context.Context, cn *pool.Conn, rd *proto.Reader) error {
-	// Only process push notifications for RESP3 connections with a processor
-	if c.opt.Protocol != 3 || c.pushProcessor == nil {
-		return nil
-	}
-
-	// Create handler context with client, connection pool, and connection information
-	handlerCtx := c.pushNotificationHandlerContext(cn)
-	return c.pushProcessor.ProcessPendingNotifications(ctx, handlerCtx, rd)
-}
-
-func (c *PubSub) pushNotificationHandlerContext(cn *pool.Conn) push.NotificationHandlerContext {
-	// PubSub doesn't have a client or connection pool, so we pass nil for those
-	// PubSub connections are blocking
-	return push.NotificationHandlerContext{
-		PubSub:     c,
-		Conn:       cn,
-		IsBlocking: true,
-	}
 }
 
 type ChannelOption func(c *channel)
@@ -762,7 +667,7 @@ func (c *channel) initMsgChan() {
 					}
 				case <-timer.C:
 					internal.Logger.Printf(
-						ctx, "redis: %v channel is full for %s (message is dropped)",
+						ctx, "redis: %s channel is full for %s (message is dropped)",
 						c, c.chanSendTimeout)
 				}
 			default:
@@ -816,7 +721,7 @@ func (c *channel) initAllChan() {
 					}
 				case <-timer.C:
 					internal.Logger.Printf(
-						ctx, "redis: %v channel is full for %s (message is dropped)",
+						ctx, "redis: %s channel is full for %s (message is dropped)",
 						c, c.chanSendTimeout)
 				}
 			default:

@@ -6,7 +6,24 @@
 		},
 		"pollInterval": "1s",
 		"mtcLogID": "44947.4.1.0.44",
-		"mirrorID": "32473.9"
+		"quorum": 1,
+		"source": {
+			"origin": "example.com/log",
+			"verifierKey": "example.com/log+b7d49da7+AQKAuH3ku6UakPNQ7xdemre2SlgzMfsLVgShonmagJFK",
+			"s3Endpoint": "http://boulder-minio:9000",
+			"s3Bucket": "boulder-mtc-tiles",
+			"awsConfigFile": "test/config-next/mtpublisher-s3.ini",
+			"awsCredsFile": "test/secrets/minio_creds.ini"
+		},
+		"mirrors": [
+			{
+				"id": "32473.9",
+				"baseURL": "http://localhost:4700",
+				"name": "mirror.test/m1",
+				"verifierKeyFile": "test/secrets/mtpublisher_mirror_verifier_key",
+				"tier1": true
+			}
+		]
 	},
 	"syslog": {
 		"stdoutlevel": 6,

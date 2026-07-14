@@ -3,8 +3,6 @@ package redis
 import (
 	"context"
 	"time"
-
-	"github.com/redis/go-redis/v9/internal/hashtag"
 )
 
 type HashCmdable interface {
@@ -70,13 +68,6 @@ func (c cmdable) HGet(ctx context.Context, key, field string) *StringCmd {
 	return cmd
 }
 
-// HGetAll returns a map of all fields and values stored at key.
-//
-// Returns an empty map when key does not exist.
-//
-// Time complexity: O(N) where N is the size of the hash.
-//
-// See https://redis.io/commands/hgetall/
 func (c cmdable) HGetAll(ctx context.Context, key string) *MapStringStringCmd {
 	cmd := NewMapStringStringCmd(ctx, "hgetall", key)
 	_ = c(ctx, cmd)
@@ -123,16 +114,16 @@ func (c cmdable) HMGet(ctx context.Context, key string, fields ...string) *Slice
 
 // HSet accepts values in following formats:
 //
-//   - HSet(ctx, "myhash", "key1", "value1", "key2", "value2")
+//   - HSet("myhash", "key1", "value1", "key2", "value2")
 //
-//   - HSet(ctx, "myhash", []string{"key1", "value1", "key2", "value2"})
+//   - HSet("myhash", []string{"key1", "value1", "key2", "value2"})
 //
-//   - HSet(ctx, "myhash", map[string]interface{}{"key1": "value1", "key2": "value2"})
+//   - HSet("myhash", map[string]interface{}{"key1": "value1", "key2": "value2"})
 //
 //     Playing struct With "redis" tag.
 //     type MyHash struct { Key1 string `redis:"key1"`; Key2 int `redis:"key2"` }
 //
-//   - HSet(ctx, "myhash", MyHash{"value1", "value2"}) Warn: redis-server >= 4.0
+//   - HSet("myhash", MyHash{"value1", "value2"}) Warn: redis-server >= 4.0
 //
 //     For struct, can be a structure pointer type, we only parse the field whose tag is redis.
 //     if you don't want the field to be read, you can use the `redis:"-"` flag to ignore it,
@@ -201,9 +192,6 @@ func (c cmdable) HScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -223,9 +211,6 @@ func (c cmdable) HScanNoValues(ctx context.Context, key string, cursor uint64, m
 	}
 	args = append(args, "novalues")
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }

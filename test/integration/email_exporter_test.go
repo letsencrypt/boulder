@@ -165,4 +165,3 @@ func TestContactsSentForNewAccount(t *testing.T) {
 		})
 	}
 }
-

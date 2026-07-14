@@ -1,0 +1,12 @@
+{
+	"ListenAddr": ":4700",
+	"StorageDir": "data/tlog-mirror-test-srv",
+	"MirrorName": "mirror.test/m1",
+	"MirrorKeySeed": "dtZy6tkYXO8J50OBK3ebpur/7iRv0chaZt3PK1SK1Dw=",
+	"Logs": [
+		{
+			"Origin": "example.com/log",
+			"VerifierKey": "example.com/log+b7d49da7+AQKAuH3ku6UakPNQ7xdemre2SlgzMfsLVgShonmagJFK"
+		}
+	]
+}
