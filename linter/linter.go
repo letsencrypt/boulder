@@ -253,5 +253,12 @@ func makeLintCRL(tbs *x509.RevocationList, issuer *x509.Certificate, signer cryp
 	if err != nil {
 		return nil, err
 	}
+	// Baseline Requirements, Section 7.2
+	//
+	// The CRL issuer field MUST be byte-for-byte identical to the
+	// subject field of the Issuing CA.
+	if !bytes.Equal(issuer.RawSubject, lintCRL.RawIssuer) {
+		return nil, fmt.Errorf("mismatch between lint issuer RawSubject and lintCRL.RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCRL.RawIssuer)
+	}
 	return lintCRL, nil
 }

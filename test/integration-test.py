@@ -140,7 +140,18 @@ def check_balance():
                 % address)
 
 def run_cert_checker():
-    run(["./bin/boulder", "cert-checker", "-config", "%s/cert-checker.json" % config_dir])
+    # cert-checker no longer exits non-zero when it finds bad certs, so capture
+    # its output and inspect the report it logs when it finishes.
+    output = subprocess.check_output(
+        ["./bin/boulder", "cert-checker", "-config", "%s/cert-checker.json" % config_dir],
+        stderr=subprocess.STDOUT).decode()
+    print(output)
+
+    match = re.search(r'Finished processing certificates JSON=.*"bad-certs":(\d+)', output)
+    if match is None:
+        raise(Exception("cert-checker did not emit a final report"))
+    if int(match.group(1)) > 0:
+        raise(Exception("cert-checker found %s bad certs" % match.group(1)))
 
 def process_covdata(coverage_dir):
     """Process coverage data and generate reports."""

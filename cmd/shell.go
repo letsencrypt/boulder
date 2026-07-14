@@ -182,7 +182,7 @@ func (l logOutput) Output(calldepth int, logline string) error {
 // is called, because gRPC's SetLogger doesn't use any locking.
 //
 // This function does not return an error, and will panic on problems.
-func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
+func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (*prometheus.Registry, blog.Logger, func(context.Context)) {
 	logger := NewLogger(logConf)
 
 	shutdown := NewOpenTelemetry(otConf, logger)
@@ -261,7 +261,7 @@ func newVersionCollector() prometheus.Collector {
 	)
 }
 
-func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
+func newStatsRegistry(addr string, logger blog.Logger) *prometheus.Registry {
 	registry := prometheus.NewRegistry()
 
 	if addr == "" {
