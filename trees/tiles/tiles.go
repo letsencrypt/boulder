@@ -108,14 +108,23 @@ func writeEntries(ctx context.Context,
 	if len(entries) > 256 {
 		return fmt.Errorf("shouldn't happen: len(entries) = %d", len(entries))
 	}
-	// tileBytes wil be empty if there is no partial tile to append to.
-	tileBytes, tileEntryCount, err := readPartial(ctx, startingIndex, s3c)
+	// partialTileBytes wil be empty if there is no partial tile to append to.
+	partialTileBytes, tileEntryCount, err := readPartial(ctx, startingIndex, s3c)
 	if err != nil {
 		return err
 	}
 
-	buf := bytes.NewBuffer(tileBytes)
-	gzipWriter := gzip.NewWriter(buf)
+	var buf bytes.Buffer
+	gzipWriter, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	if err != nil {
+		return err
+	}
+
+	_, err = gzipWriter.Write(partialTileBytes)
+	if err != nil {
+		return err
+	}
+
 	bundleWriter := entry.NewBundleWriter(gzipWriter)
 
 	for _, e := range entries {
@@ -161,17 +170,16 @@ func writeEntries(ctx context.Context,
 	return nil
 }
 
-// readPartial returns the bytes of the existing partial tile that contains the entry
-// at `startingIndex`, along with the number of entries in that tile.
+// readPartial returns the decompressed bytes of the existing partial tile that contains
+// the entry at `startingIndex`, along with the number of entries in that tile.
 //
 // If startingIndex % 256 == 0, returns nil, 0, nil.
 func readPartial(ctx context.Context, startingIndex int64, s3c bs3.Simple) ([]byte, int64, error) {
-	partialWidth := startingIndex % 256
+	partialTileIndex, partialWidth := startingIndex/256, startingIndex%256
 	if partialWidth == 0 {
 		return nil, 0, nil
 	}
-	partialN := startingIndex / 256
-	path := fmt.Sprintf("tile/entries/%d.p/%d", partialN, partialWidth)
+	path := fmt.Sprintf("tile/entries/%s.p/%d", N(uint64(partialTileIndex)), partialWidth)
 	bucket := s3c.Bucket()
 	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &bucket,
@@ -191,7 +199,13 @@ func readPartial(ctx context.Context, startingIndex int64, s3c bs3.Simple) ([]by
 	if err != nil {
 		return nil, 0, err
 	}
-	br := entry.NewBundleReader(gzipReader)
+
+	decompressed, err := io.ReadAll(gzipReader)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	br := entry.NewBundleReader(bytes.NewReader(decompressed))
 	for range partialWidth {
 		_, _, err := br.Read()
 		if err != nil {
@@ -202,5 +216,5 @@ func readPartial(ctx context.Context, startingIndex int64, s3c bs3.Simple) ([]by
 		return nil, 0, fmt.Errorf("after reading %d entries from %q: %d excess bytes",
 			partialWidth, path, readBuf.Len())
 	}
-	return partial, partialWidth, nil
+	return decompressed, partialWidth, nil
 }

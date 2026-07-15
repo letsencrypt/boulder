@@ -4,6 +4,9 @@ package notmain
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"flag"
@@ -16,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	mtca "github.com/letsencrypt/boulder/mtca"
@@ -96,8 +100,7 @@ func main() {
 	s3c, err := bs3.FromConfig(c.MTCA.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")
 
-	c.MTCA.CertProfile.OmitClientAuth = true // MUST NOT per CQRP
-	// c.MTCA.CertProfile.OmitCT = true         // MUST NOT per CQRP
+	// c.MTCA.CertProfile.MTC = true //XXX
 	profile, err := issuance.NewProfile(c.MTCA.CertProfile)
 	cmd.FailOnError(err, "Making profile")
 
@@ -129,6 +132,25 @@ func main() {
 
 	start, err := srv.Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup MTCA gRPC server")
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	cmd.FailOnError(err, "genkey")
+	spki, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	cmd.FailOnError(err, "marshal")
+	go func() {
+		for {
+			time.Sleep(500 * time.Millisecond)
+			_, err := mtcaImpl.Issue(context.Background(), &mtcapb.IssueRequest{
+				Identifiers: []*proto.Identifier{
+					&proto.Identifier{Type: "dns", Value: "example.com"},
+				},
+				Pubkey: spki,
+			})
+			if err != nil {
+				logger.Errf("issuing: %s", err)
+			}
+		}
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	// Cancel will be called after start() returns, which happens after GracefulStop() returns.
