@@ -6,11 +6,41 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/trees/entry"
 )
+
+// N returns the encoding of a tile index described at
+// https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md#merkle-tree
+//
+// Example: N(1234067) = "x001/x234/067"
+func N(tileIndex uint64) string {
+	tileIndexString := fmt.Sprintf("%d", tileIndex)
+	for len(tileIndexString)%3 != 0 {
+		tileIndexString = "0" + tileIndexString
+	}
+
+	var out strings.Builder
+
+	for remaining := tileIndexString; len(remaining) != 0; {
+		var chunk string
+		remaining, chunk = remaining[3:], remaining[:3]
+		// Slash between path componenets, not at the start.
+		if out.Len() > 0 {
+			out.WriteString("/")
+		}
+		// "x" for each path component but the last.
+		if len(remaining) > 0 {
+			out.WriteString("x")
+		}
+		out.WriteString(chunk)
+	}
+
+	return out.String()
+}
 
 func GetEntry(ctx context.Context,
 	s3c bs3.Simple,
@@ -19,7 +49,7 @@ func GetEntry(ctx context.Context,
 	tileIndex := index / 256
 	tileOffset := index % 256
 
-	path := fmt.Sprintf("tile/entries/%d", tileIndex)
+	path := fmt.Sprintf("tile/entries/%s", N(uint64(tileIndex)))
 	if treeSize/256 == tileIndex && treeSize%256 != 0 {
 		path = path + fmt.Sprintf(".p/%d", treeSize%256)
 	}
@@ -103,8 +133,8 @@ func writeEntries(ctx context.Context,
 		return err
 	}
 
-	N := startingIndex / 256
-	filename := fmt.Sprintf("tile/entries/%d", N)
+	tileIndex := startingIndex / 256
+	filename := fmt.Sprintf("tile/entries/%s", N(uint64(tileIndex)))
 	if tileEntryCount != 256 {
 		filename = filename + fmt.Sprintf(".p/%d", tileEntryCount)
 	}
