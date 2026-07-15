@@ -30,10 +30,14 @@ var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
 var _ mtcapb.MTCAServer = &mtca{}
 
 // New creates a new MTCA service.
-func New(issuer *issuance.Issuer, dbMap *borp.DbMap, logger blog.Logger) (*mtca, error) {
+func New(issuer *issuance.Issuer, sequencingPeriod time.Duration, dbMap *borp.DbMap, logger blog.Logger) (*mtca, error) {
 	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
 	if err != nil {
 		return nil, err
+	}
+
+	if sequencingPeriod == 0 {
+		return nil, errors.New("sequencingPeriod must be non-zero")
 	}
 
 	return &mtca{
@@ -42,6 +46,8 @@ func New(issuer *issuance.Issuer, dbMap *borp.DbMap, logger blog.Logger) (*mtca,
 		// TODO: collect this from config
 		logNumber: 0,
 		pool:      &pool{maxSize: 100},
+
+		sequencingPeriod: sequencingPeriod,
 
 		db:  initDB(dbMap),
 		log: logger,
@@ -54,6 +60,8 @@ type mtca struct {
 	issuer    *issuance.Issuer
 	mtcaID    string
 	logNumber uint16
+
+	sequencingPeriod time.Duration
 
 	db  *db.WrappedMap
 	log blog.Logger
@@ -240,17 +248,11 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 // At process shutdown, this context should be canceled _after_ GracefulStop returns. That ensures
 // there are no inflight RPCs from clients, which in turn ensures that we have sequenced everything
 // had in the pool.
-func (m *mtca) Loop(ctx context.Context, sequencingPeriod time.Duration) {
-	// In cmd/boulder-mtca/main.go, the SequencingPeriod field of config is `required`, so this
-	// shouldn't happen, but fall back on a reasonable value just in case.
-	if sequencingPeriod <= 0 {
-		sequencingPeriod = 100 * time.Millisecond
-	}
-
+func (m *mtca) Loop(ctx context.Context) {
 	go m.fakePublisher(ctx)
 
 	since := time.Now()
-	ticker := time.NewTicker(sequencingPeriod)
+	ticker := time.NewTicker(m.sequencingPeriod)
 	defer ticker.Stop()
 	for {
 		select {
@@ -259,7 +261,7 @@ func (m *mtca) Loop(ctx context.Context, sequencingPeriod time.Duration) {
 			if err != nil {
 				if !errors.Is(err, ErrCheckpointNotReady) {
 					m.log.Errf("sequencing: %s", err)
-				} else if time.Since(since) > 10*sequencingPeriod {
+				} else if time.Since(since) > 10*m.sequencingPeriod {
 					m.log.Errf("after %s: %s", time.Since(since).Round(time.Millisecond), err)
 				}
 				continue

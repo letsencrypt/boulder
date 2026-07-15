@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
@@ -123,7 +124,7 @@ func setup() (*mtca, func(), error) {
 
 	logger := blog.NewMock()
 
-	mtca, err := New(issuer, dbMap, logger)
+	mtca, err := New(issuer, 100*time.Millisecond, dbMap, logger)
 	if err != nil {
 		return nil, nil, err
 	}

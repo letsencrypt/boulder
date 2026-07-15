@@ -89,7 +89,7 @@ func main() {
 	cmd.FailOnError(err, "Opening DB")
 	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
 
-	mtcaImpl, err := mtca.New(issuer, dbMap, logger)
+	mtcaImpl, err := mtca.New(issuer, c.MTCA.SequencingPeriod.Duration, dbMap, logger)
 	cmd.FailOnError(err, "Building MTCA")
 
 	if *initLog && *initLogForTest {
@@ -120,7 +120,7 @@ func main() {
 	// That means all inflight RPCs will be done, which means the last of the pool has been sequenced.
 	// GracefulStop() is registered as part of srv.Build() above.
 	defer cancel()
-	go mtcaImpl.Loop(ctx, c.MTCA.SequencingPeriod.Duration)
+	go mtcaImpl.Loop(ctx)
 
 	cmd.FailOnError(start(), "MTCA gRPC service failed")
 }
