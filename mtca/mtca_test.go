@@ -150,7 +150,7 @@ func setup() (*mtca, func(), error) {
 
 	s3c := newSimpleS3()
 
-	mtca, err := New(issuer, profile, dbMap, s3c, logger, clk)
+	mtca, err := New(issuer, 100*time.Millisecond, profile, dbMap, s3c, logger, clk)
 	if err != nil {
 		return nil, nil, err
 	}

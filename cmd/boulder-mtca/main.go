@@ -104,7 +104,7 @@ func main() {
 	profile, err := issuance.NewProfile(c.MTCA.CertProfile)
 	cmd.FailOnError(err, "Making profile")
 
-	mtcaImpl, err := mtca.New(issuer, profile, dbMap, s3c, logger, clk)
+	mtcaImpl, err := mtca.New(issuer, profile, c.MTCA.SequencingPeriod.Duration, dbMap, s3c, logger, clk)
 	cmd.FailOnError(err, "Building MTCA")
 
 	if *initLog && *initLogForTest {
@@ -157,7 +157,7 @@ func main() {
 	// That means all inflight RPCs will be done, which means the last of the pool has been sequenced.
 	// GracefulStop() is registered as part of srv.Build() above.
 	defer cancel()
-	go mtcaImpl.Loop(ctx, c.MTCA.SequencingPeriod.Duration)
+	go mtcaImpl.Loop(ctx)
 
 	cmd.FailOnError(start(), "MTCA gRPC service failed")
 }
