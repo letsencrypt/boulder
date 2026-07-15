@@ -404,10 +404,10 @@ func TestInvoke(t *testing.T) {
 	test.AssertEquals(t, noWork, true)
 }
 
-// TestInvokeDeactivatesAccount checks that when a blocked key hash corresponds
+// TestInvokeRevokesAccount checks that when a blocked key hash corresponds
 // to an existing account, invoking bad-key-revoker updates that account's
 // status to "deactivated".
-func TestInvokeDeactivatesAccount(t *testing.T) {
+func TestInvokeRevokesAccount(t *testing.T) {
 	features.Set(features.Config{RevokeBadKeyAccounts: true})
 	defer features.Reset()
 
@@ -450,7 +450,7 @@ func TestInvokeDeactivatesAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("selecting registration status: %s", err)
 	}
-	if status.Status != string(core.StatusDeactivated) {
+	if status.Status != string(core.StatusRevoked) {
 		t.Errorf("account status = %q, want %q", status.Status, string(core.StatusDeactivated))
 	}
 }

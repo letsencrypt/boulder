@@ -111,6 +111,9 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 		return nil, err
 	}
 
+	// Ensure that the fields are correct for a new account creation.
+	reg.ID = 0
+	reg.Status = string(core.StatusValid)
 	reg.CreatedAt = ssa.clk.Now()
 
 	err = ssa.dbMap.Insert(ctx, reg)
@@ -146,10 +149,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 
 	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx,
-			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? LIMIT 1",
+			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? AND status = ? LIMIT 1",
 			req.Jwk,
 			sha,
 			req.RegistrationID,
+			string(core.StatusValid),
 		)
 		if err != nil {
 			if db.IsDuplicate(err) {
