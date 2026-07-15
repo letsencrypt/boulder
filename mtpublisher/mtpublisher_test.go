@@ -8,8 +8,8 @@ import (
 
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/db"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 )

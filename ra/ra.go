@@ -9,7 +9,6 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"slices"
 	"strconv"
@@ -27,7 +26,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/allowlist"
-	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -40,6 +38,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/probs"
@@ -396,6 +395,96 @@ func (vp *validationProfiles) get(name string) (*validationProfile, error) {
 	return profile, nil
 }
 
+// certificateRequestAuthz is a struct for logging information about when and
+// how an identifier was validated. We include the challenge type that solved
+// the authorization and when the challenge was completed to make some common
+// analysis easier.
+type identifierLog struct {
+	Ident     identifier.ACMEIdentifier
+	Authz     int64
+	Challenge core.AcmeChallenge
+	Validated time.Time
+}
+
+// certificateRequestEvent is a struct for holding information that is logged as
+// JSON to the audit log as the result of an issuance event.
+type certificateRequestEvent struct {
+	ID string `json:",omitempty"`
+	// Requester is the associated account ID
+	Requester int64 `json:",omitempty"`
+	// OrderID is the associated order ID (may be empty for an ACME v1 issuance)
+	OrderID int64 `json:",omitempty"`
+	// SerialNumber is the string representation of the issued certificate's
+	// serial number
+	SerialNumber string `json:",omitempty"`
+	// VerifiedFields are required by the baseline requirements and are always
+	// a static value for Boulder.
+	VerifiedFields []string `json:",omitempty"`
+	// CommonName is the subject common name from the issued cert
+	CommonName string `json:",omitempty"`
+	// Identifiers are the identifiers and validation data from the issued cert
+	Identifiers []identifierLog `json:",omitempty"`
+	// NotBefore is the starting timestamp of the issued cert's validity period
+	NotBefore time.Time
+	// NotAfter is the ending timestamp of the issued cert's validity period
+	NotAfter time.Time
+	// RequestTime and ResponseTime are for tracking elapsed time during issuance
+	RequestTime  time.Time
+	ResponseTime time.Time
+	// Error contains any encountered errors
+	Error string `json:",omitempty"`
+	// CertProfileName is a human readable name used to refer to the certificate
+	// profile.
+	CertProfileName string `json:",omitempty"`
+	// CertProfileHash is SHA256 sum over every exported field of an
+	// issuance.ProfileConfig, represented here as a hexadecimal string.
+	CertProfileHash string `json:",omitempty"`
+	// PreviousCertificateIssued is present when this certificate uses the same set
+	// of FQDNs as a previous certificate (from any account) and contains the
+	// notBefore of the most recent such certificate.
+	PreviousCertificateIssued time.Time
+	// UserAgent is the User-Agent header from the ACME client (provided to the
+	// RA via gRPC metadata).
+	UserAgent string
+}
+
+// certificateRevocationEvent is a struct for holding information that is logged
+// as JSON to the audit log as the result of a revocation event.
+type certificateRevocationEvent struct {
+	ID string `json:",omitempty"`
+	// SerialNumber is the string representation of the revoked certificate's
+	// serial number.
+	SerialNumber string `json:",omitempty"`
+	// Reason is the integer representing the revocation reason used.
+	Reason revocation.Reason `json:"reason"`
+	// Method is the way in which revocation was requested.
+	// It will be one of the strings: "applicant", "subscriber", "control", "key", or "admin".
+	Method string `json:",omitempty"`
+	// Requester is the account ID of the requester.
+	// Will be zero for admin revocations.
+	Requester int64 `json:",omitempty"`
+	CRLShard  int64
+	// AdminName is the name of the admin requester.
+	// Will be zero for subscriber revocations.
+	AdminName string `json:",omitempty"`
+	// Error contains any error encountered during revocation.
+	Error string `json:",omitempty"`
+}
+
+// finalizationCAACheckEvent is a struct for holding information logged as JSON
+// to the info log as the result of an issuance event. It is logged when the RA
+// performs the final CAA check of a certificate finalization request.
+type finalizationCAACheckEvent struct {
+	// Requester is the associated account ID.
+	Requester int64 `json:",omitempty"`
+	// Reused is a count of Authz where the original CAA check was performed in
+	// the last 7 hours.
+	Reused int `json:",omitempty"`
+	// Rechecked is a count of Authz where a new CAA check was performed because
+	// the original check was older than 7 hours.
+	Rechecked int `json:",omitempty"`
+}
+
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
@@ -575,7 +664,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	if !features.Get().CAARechecksFailOrder {
 		// Check that the authzs either don't need CAA rechecking, or do the
 		// necessary CAA rechecks right now.
-		err = ra.checkAuthorizationsCAA(ctx, authzs, now)
+		err = ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, now)
 		if err != nil {
 			return nil, err
 		}
@@ -603,6 +692,7 @@ func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool,
 // be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	ctx context.Context,
+	acctID int64,
 	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	now time.Time) error {
 	if len(authzs) == 0 {
@@ -642,10 +732,12 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		}
 	}
 
-	ra.log.Info(ctx, "FinalizationCaaCheck",
-		slog.Int("reused", len(authzs)-len(recheckAuthzs)),
-		slog.Int("rechecked", len(recheckAuthzs)),
-	)
+	caaEvent := &finalizationCAACheckEvent{
+		Requester: acctID,
+		Reused:    len(authzs) - len(recheckAuthzs),
+		Rechecked: len(recheckAuthzs),
+	}
+	ra.log.InfoObject("FinalizationCaaCheck", caaEvent)
 
 	return nil
 }
@@ -693,11 +785,11 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				AuthzIDInt:       authz.ID,
 			})
 			if err != nil {
-				ra.log.AuditError(ctx, "Rechecking CAA", err,
-					blog.Acct(authz.RegistrationID),
-					blog.Idents(authz.Identifier),
-					slog.String("method", method),
-				)
+				ra.log.AuditErr("Rechecking CAA", err, map[string]any{
+					"requester":  authz.RegistrationID,
+					"identifier": authz.Identifier.Value,
+					"method":     method,
+				})
 				err = berrors.InternalServerError(
 					"Internal error rechecking CAA for authorization ID %v (%v)",
 					authz.ID, authz.Identifier.Value,
@@ -774,11 +866,11 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 		Error: order.Error,
 	})
 	if err != nil {
-		ra.log.AuditError(ctx, "Persisting failed order", err,
-			blog.Acct(order.RegistrationID),
-			blog.Order(order.Id),
-			slog.String("prob", order.Error.String()),
-		)
+		ra.log.AuditErr("Persisting failed order", err, map[string]any{
+			"requester": order.RegistrationID,
+			"order":     order.Id,
+			"prob":      order.Error.String(),
+		})
 	}
 }
 
@@ -801,15 +893,14 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, errIncompleteGRPCRequest
 	}
 
-	ctx = blog.ContextWith(ctx,
-		slog.String("id", core.NewToken()),
-		blog.Acct(req.Order.RegistrationID),
-		blog.Order(req.Order.Id),
-		slog.Time("requestTime", ra.clk.Now()),
-		slog.String("ua", web.UserAgent(ctx)),
-	)
-
-	csr, authzs, err := ra.validateFinalizeRequest(ctx, req)
+	logEvent := certificateRequestEvent{
+		ID:          core.NewToken(),
+		OrderID:     req.Order.Id,
+		Requester:   req.Order.RegistrationID,
+		RequestTime: ra.clk.Now(),
+		UserAgent:   web.UserAgent(ctx),
+	}
+	csr, authzs, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
 		return nil, err
 	}
@@ -862,16 +953,19 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
 			defer cancel()
 
-			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, authzs)
+			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, authzs, logEvent)
 			if err != nil {
 				// We only log here, because this is in a background goroutine with
 				// no parent goroutine waiting for it to receive the error.
-				ra.log.AuditError(ctx, "Asynchronous finalization failed", err)
+				ra.log.AuditErr("Asynchronous finalization failed", err, map[string]any{
+					"requester": order.RegistrationID,
+					"order":     order.Id,
+				})
 			}
 		})
 		return order, nil
 	} else {
-		return ra.issueCertificateOuter(ctx, order, csr, authzs)
+		return ra.issueCertificateOuter(ctx, order, csr, authzs, logEvent)
 	}
 }
 
@@ -896,11 +990,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("issuing MTC: %s", err)
 	}
 
-	ra.log.Info(ctx, "issued MTC",
-		slog.String("logID", resp.MtcLogID),
-		slog.Int64("entryIndex", resp.MtcEntryIndex),
-	)
-
+	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcEntryIndex)
 	return nil
 }
 
@@ -928,7 +1018,10 @@ func containsMustStaple(extensions []pkix.Extension) bool {
 // and ready for issuance.
 //
 // Returns a CertificateRequest, a map of identifiers to authorizations, and an error.
-func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(ctx context.Context, req *rapb.FinalizeOrderRequest) (
+func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
+	ctx context.Context,
+	req *rapb.FinalizeOrderRequest,
+	logEvent *certificateRequestEvent) (
 	*x509.CertificateRequest, map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	if req.Order.Id <= 0 {
 		return nil, nil, berrors.MalformedError("invalid order ID: %d", req.Order.Id)
@@ -1016,11 +1109,31 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(ctx context.Context
 		return nil, nil, err
 	}
 
-	// Track the age of used authzs.
-	for _, authz := range authzs {
+	// Collect up identifierLogs to log validation information for each identifier.
+	logIdents := make([]identifierLog, 0)
+	for ident, authz := range authzs {
+		// We know that at least one challenge is valid, because this was just
+		// confirmed by ra.checkOrderAuthorizations.
+		var solvedChall core.Challenge
+		for _, chall := range authz.Challenges {
+			if chall.Status == core.StatusValid {
+				solvedChall = chall
+				break
+			}
+		}
+		logIdents = append(logIdents, identifierLog{
+			Ident:     ident,
+			Authz:     authz.ID,
+			Challenge: solvedChall.Type,
+			Validated: *solvedChall.Validated,
+		})
 		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		ra.authzAges.WithLabelValues("FinalizeOrder", string(authz.Status)).Observe(authzAge)
 	}
+	logEvent.Identifiers = logIdents
+
+	// Mark that we verified the CN and SANs
+	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	return csr, authzs, nil
 }
@@ -1034,36 +1147,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	order *corepb.Order,
 	csr *x509.CertificateRequest,
 	authzs map[identifier.ACMEIdentifier]*core.Authorization,
+	logEvent certificateRequestEvent,
 ) (*corepb.Order, error) {
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
-
-	// Log the authzs used to validate this order. We log this now to reflect the
-	// fact that we *intended* to use these authzs to issue a cert, even if that
-	// issuance ends up failing. And even if that issuance does fail, this func
-	// can't exit without logging the attempt, so these authz logs will always
-	// correspond to (and carry the same `id` field as) a "Certificate request
-	// complete" line logged below.
-	for ident, authz := range authzs {
-		// We know that exactly one challenge is valid, because this was just
-		// confirmed by ra.checkOrderAuthorizations.
-		for _, chall := range authz.Challenges {
-			if chall.Status == core.StatusValid {
-				ra.log.AuditInfo(ctx, "Authz used for issuance",
-					blog.Authz(authz.ID),
-					blog.Idents(ident),
-					slog.String("method", string(chall.Type)),
-					slog.Time("validated", *chall.Validated),
-				)
-				break
-			}
-		}
-	}
-
-	// Mark that we verified the CN and SANs
-	ctx = blog.ContextWith(ctx,
-		slog.Any("verifiedFields", []string{"subject.commonName", "subjectAltName"}),
-	)
 
 	idents := identifier.FromProtoSlice(order.Identifiers)
 
@@ -1078,7 +1165,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	}
 	if len(timestamps.Timestamps) > 0 {
 		isRenewal = true
-		ctx = blog.ContextWith(ctx, slog.Time("prevCertificateIssued", timestamps.Timestamps[0].AsTime()))
+		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
 	}
 
 	if ra.isMTC(order) {
@@ -1098,6 +1185,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
+	var result string
 	if err != nil {
 		// The problem is computed using `web.ProblemDetailsForError`, the same
 		// function the WFE uses to convert between `berrors` and problems. This
@@ -1108,11 +1196,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
 		order.Status = string(core.StatusInvalid)
 
-		ra.log.AuditInfo(ctx, "Certificate request - error",
-			slog.String("result", "error"),
-			slog.Time("responseTime", ra.clk.Now()),
-			blog.Error(err),
-		)
+		logEvent.Error = err.Error()
+		result = "error"
 	} else {
 		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
 		order.Status = string(core.StatusValid)
@@ -1123,16 +1208,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 		ra.newCertCounter.Inc()
 
-		ra.log.AuditInfo(ctx, "Certificate request - successful",
-			slog.String("result", "success"),
-			blog.Serial(core.SerialToString(cert.SerialNumber)),
-			slog.String("profile", profileName),
-			slog.String("commonName", cert.Subject.CommonName),
-			slog.Time("notBefore", cert.NotBefore),
-			slog.Time("notAfter", cert.NotAfter),
-			slog.Time("responseTime", ra.clk.Now()),
-		)
+		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
+		logEvent.CommonName = cert.Subject.CommonName
+		logEvent.NotBefore = cert.NotBefore
+		logEvent.NotAfter = cert.NotAfter
+		logEvent.CertProfileName = profileName
+
+		result = "successful"
 	}
+
+	logEvent.ResponseTime = ra.clk.Now()
+	ra.log.AuditInfo(fmt.Sprintf("Certificate request - %s", result), logEvent)
 
 	return order, err
 }
@@ -1159,14 +1245,14 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 	if !isRenewal {
 		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderIdents)
 		if err != nil {
-			ra.log.Warn(ctx, "building rate limit transactions at finalize", blog.Error(err))
+			ra.log.Warningf("building rate limit transactions at finalize: %s", err)
 		}
 		transactions = append(transactions, txns...)
 	}
 
 	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderIdents)
 	if err != nil {
-		ra.log.Warn(ctx, "building rate limit transaction at finalize", blog.Error(err))
+		ra.log.Warningf("building rate limit transaction at finalize: %s", err)
 	}
 	transactions = append(transactions, txn)
 
@@ -1175,7 +1261,7 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		ra.log.Warn(ctx, "spending against rate limits at finalize", blog.Error(err))
+		ra.log.Warningf("spending against rate limits at finalize: %s", err)
 	}
 }
 
@@ -1203,7 +1289,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if features.Get().CAARechecksFailOrder {
 		// Check that the authzs either don't need CAA rechecking, or do the
 		// necessary CAA rechecks right now.
-		err := ra.checkAuthorizationsCAA(ctx, authzs, ra.clk.Now())
+		err := ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, ra.clk.Now())
 		if err != nil {
 			return nil, err
 		}
@@ -1265,7 +1351,7 @@ func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *ra
 			// otherwise it will be a generic serverInternalError
 			err = berrors.MissingSCTsError("failed to get SCTs: %s", err.Error())
 		}
-		ra.log.Warn(ctx, "ctpolicy.GetSCTs failed", blog.Error(err))
+		ra.log.Warningf("ctpolicy.GetSCTs failed: %s", err)
 		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
 		return nil, err
 	}
@@ -1339,13 +1425,13 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
 	txns, err := ra.txnBuilder.NewPausingResetTransactions(regId, ident)
 	if err != nil {
-		ra.log.Warn(ctx, "building reset transaction", blog.Acct(regId), blog.Idents(ident), blog.Error(err))
+		ra.log.Warningf("building reset transaction for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 		return
 	}
 
 	err = ra.limiter.BatchReset(ctx, txns)
 	if err != nil {
-		ra.log.Warn(ctx, "resetting bucket", blog.Acct(regId), blog.Idents(ident), blog.Error(err))
+		ra.log.Warningf("resetting bucket for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}
 }
 
@@ -1469,7 +1555,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		)
 		if err != nil {
 			prob = bgrpc.ProblemDetailsToPB(probs.ServerInternal("Could not communicate with VA"))
-			ra.log.Error(ctx, "Failed to communicate with VA", err)
+			ra.log.Errf("Failed to communicate with VA: %s", err)
 		}
 
 		var status core.AcmeStatus
@@ -1479,7 +1565,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			expires = *authz.Expires
 			err := ra.countFailedValidations(ctx, authz.RegistrationID, authz.Identifier)
 			if err != nil {
-				ra.log.Warn(ctx, "incrementing failed validations", blog.Error(err))
+				ra.log.Warningf("incrementing failed validations: %s", err)
 			}
 		} else {
 			status = core.StatusValid
@@ -1504,16 +1590,16 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// parallel-validation race: a different validation attempt has already
 				// updated this authz, so we failed to find a *pending* authz with the
 				// given ID to update.
-				ra.log.Info(ctx, "Failed to record validation (likely parallel validation race)",
-					blog.Acct(authz.RegistrationID),
-					blog.Authz(authz.ID),
-					blog.Error(err),
-				)
+				ra.log.InfoObject("Failed to record validation (likely parallel validation race)", map[string]any{
+					"requester": authz.RegistrationID,
+					"authz":     authz.ID,
+					"error":     err.Error(),
+				})
 			} else {
-				ra.log.AuditError(ctx, "Failed to record validation (likely parallel validation race)", err,
-					blog.Acct(authz.RegistrationID),
-					blog.Authz(authz.ID),
-				)
+				ra.log.AuditErr("Failed to record validation (likely parallel validation race)", err, map[string]any{
+					"requester": authz.RegistrationID,
+					"authz":     authz.ID,
+				})
 			}
 		}
 	})
@@ -1625,17 +1711,23 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	}
 
 	serialString := core.SerialToString(cert.SerialNumber)
-	ctx = blog.ContextWith(ctx, blog.Acct(req.RegID), blog.Serial(serialString))
 
-	// Below this point, do not re-declare `err` (i.e. type `err :=`) or `ctx` in
-	// a nested scope. Doing so will create a new variable that is not captured by
-	// this closure.
+	logEvent := certificateRevocationEvent{
+		ID:           core.NewToken(),
+		SerialNumber: serialString,
+		Reason:       reasonCode,
+		Method:       "applicant",
+		Requester:    req.RegID,
+	}
+
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
 	defer func() {
 		if err != nil {
-			ra.log.AuditError(ctx, "Revocation request", err)
-		} else {
-			ra.log.AuditInfo(ctx, "Revocation request")
+			logEvent.Error = err.Error()
 		}
+		ra.log.AuditInfo("Revocation request", logEvent)
 	}()
 
 	metadata, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: serialString})
@@ -1645,11 +1737,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 	if req.RegID == metadata.RegistrationID {
 		// The requester is the original subscriber. They can revoke for any reason.
-		ctx = blog.ContextWith(ctx, slog.String("method", "subscriber"))
+		logEvent.Method = "subscriber"
 	} else {
 		// The requester is a different account. We need to confirm that they have
 		// authorizations for all names in the cert.
-		ctx = blog.ContextWith(ctx, slog.String("method", "control"))
+		logEvent.Method = "control"
 
 		idents := identifier.FromCert(cert)
 		var authzPB *sapb.Authorizations
@@ -1679,9 +1771,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// circumstances where "the certificate subscriber no longer owns the
 		// domain names in the certificate". Override the reason code to match.
 		reasonCode = revocation.CessationOfOperation
+		logEvent.Reason = reasonCode
 	}
 
-	ctx = blog.ContextWith(ctx, slog.Int64("reason", int64(reasonCode)))
 	err = ra.revokeCertificate(ctx, cert, reasonCode)
 	if err != nil {
 		return nil, err
@@ -1764,21 +1856,22 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	ctx = blog.ContextWith(ctx,
-		blog.Serial(core.SerialToString(cert.SerialNumber)),
-		slog.Int64("reason", int64(revocation.KeyCompromise)),
-		slog.String("method", "key"),
-	)
+	logEvent := certificateRevocationEvent{
+		ID:           core.NewToken(),
+		SerialNumber: core.SerialToString(cert.SerialNumber),
+		Reason:       revocation.KeyCompromise,
+		Method:       "key",
+		Requester:    0,
+	}
 
-	// Below this point, do not re-declare `err` (i.e. type `err :=`) or `ctx` in
-	// a nested scope. Doing so will create a new variable that is not captured by
-	// this closure.
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
 	defer func() {
 		if err != nil {
-			ra.log.AuditError(ctx, "Revocation request", err)
-		} else {
-			ra.log.AuditInfo(ctx, "Revocation request")
+			logEvent.Error = err.Error()
 		}
+		ra.log.AuditInfo("Revocation request", logEvent)
 	}()
 
 	// We revoke the cert before adding it to the blocked keys list, to avoid a
@@ -1850,24 +1943,24 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return nil, fmt.Errorf("cannot revoke malformed certificate for KeyCompromise")
 	}
 
-	ctx = blog.ContextWith(ctx,
-		blog.Serial(req.Serial),
-		slog.Int64("reason", int64(reasonCode)),
-		slog.String("method", "admin"),
-		slog.String("adminName", req.AdminName),
-		slog.Int64("crlShard", req.CrlShard),
-	)
+	logEvent := certificateRevocationEvent{
+		ID:           core.NewToken(),
+		SerialNumber: req.Serial,
+		Reason:       reasonCode,
+		CRLShard:     req.CrlShard,
+		Method:       "admin",
+		AdminName:    req.AdminName,
+	}
 
-	// Below this point, do not re-declare `err` (i.e. type `err :=`) or `ctx` in
-	// a nested scope. Doing so will create a new variable that is not captured by
-	// this closure.
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
 	var err error
 	defer func() {
 		if err != nil {
-			ra.log.AuditError(ctx, "Revocation request", err)
-		} else {
-			ra.log.AuditInfo(ctx, "Revocation request")
+			logEvent.Error = err.Error()
 		}
+		ra.log.AuditInfo("Revocation request", logEvent)
 	}()
 
 	var cert *x509.Certificate

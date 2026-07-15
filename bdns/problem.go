@@ -14,13 +14,18 @@ import (
 type Error struct {
 	recordType uint16
 	hostname   string
-	// Exactly one of rCode or underlying should be set.
+	// Exactly one of underlying, rCode, or truncated should be set.
 	underlying error
 	rCode      int
 
 	// Optional: If the resolver returned extended error information, it will be stored here.
 	// https://www.rfc-editor.org/rfc/rfc8914
 	extended *dns.EDNS0_EDE
+
+	// truncated is set when the response to a CAA query had the TC bit set. We
+	// don't implement fallback to TCP, so we treat a truncated response as an
+	// error rather than risk silently acting on an incomplete set of records.
+	truncated bool
 }
 
 // extendedDNSError returns non-nil if the input message contained an OPT RR
@@ -39,8 +44,10 @@ func extendedDNSError(msg *dns.Msg) *dns.EDNS0_EDE {
 	return nil
 }
 
-// wrapErr returns a non-nil error if err is non-nil or if resp.Rcode is not dns.RcodeSuccess.
-// The error includes appropriate details about the DNS query that failed.
+// wrapErr returns a non-nil error if err is non-nil, if resp.Rcode is not
+// dns.RcodeSuccess, or if resp was truncated (the TC bit was set) for a CAA
+// query. The error includes appropriate details about the DNS query that
+// failed.
 func wrapErr(queryType uint16, hostname string, resp *dns.Msg, err error) error {
 	if err != nil {
 		return Error{
@@ -48,6 +55,13 @@ func wrapErr(queryType uint16, hostname string, resp *dns.Msg, err error) error 
 			hostname:   hostname,
 			underlying: err,
 			extended:   nil,
+		}
+	}
+	if queryType == dns.TypeCAA && resp.Truncated {
+		return Error{
+			recordType: queryType,
+			hostname:   hostname,
+			truncated:  true,
 		}
 	}
 	if resp.Rcode != dns.RcodeSuccess {
@@ -120,6 +134,8 @@ func (d Error) Error() string {
 		} else {
 			detail = detailServerFailure
 		}
+	} else if d.truncated {
+		detail = detailDNSTruncated
 	} else if d.rCode != dns.RcodeSuccess {
 		detail = dns.RcodeToString[d.rCode]
 		if explanation, ok := rcodeExplanations[d.rCode]; ok {
@@ -150,6 +166,7 @@ const detailDNSTimeout = "query timed out"
 const detailCanceled = "query timed out (and was canceled)"
 const detailDNSNetFailure = "networking error"
 const detailServerFailure = "server failure at resolver"
+const detailDNSTruncated = "response was truncated"
 
 // rcodeExplanations provide additional friendly explanatory text to be included in DNS
 // error messages, for select inscrutable RCODEs.

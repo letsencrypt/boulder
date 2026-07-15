@@ -9,7 +9,6 @@ import (
 
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
@@ -31,7 +30,7 @@ type Config struct {
 		Issuer issuance.IssuerConfig
 	}
 
-	Syslog        blog.Config
+	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

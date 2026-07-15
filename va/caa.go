@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -16,7 +15,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -73,33 +71,25 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		validationMethod: challType,
 	}
 
-	// Set the log attributes that we want to appear on all subsequent log lines
-	ctx = blog.ContextWith(ctx,
-		blog.Acct(req.AccountURIID),
-		blog.Authz(authzIDInt),
-		blog.Idents(ident),
-		slog.String("method", string(challType)),
-	)
-
-	// Initialize variables and a deferred function to handle validation latency
-	// metrics, log validation errors, and log an MPIC summary. Avoid using :=
-	// to redeclare any of these variables below this point.
+	// Initialize variables and a deferred function to handle check latency
+	// metrics, log check errors, and log an MPIC summary. Avoid using := to
+	// redeclare `prob`, `localLatency`, or `summary` below this point.
 	var prob *probs.ProblemDetails
+	var summary *mpicSummary
 	var localLatency time.Duration
-	var logAttrs []slog.Attr
 	start := va.clk.Now()
+	logEvent := validationLogEvent{
+		AuthzID:    authzIDInt,
+		Requester:  req.AccountURIID,
+		Identifier: ident,
+	}
 	defer func() {
-		logAttrs = append(logAttrs,
-			slog.Duration("localLatency", localLatency),
-			slog.Duration("totalLatency", va.clk.Since(start).Round(time.Millisecond)),
-		)
-
 		probType := ""
 		outcome := fail
 		if prob != nil {
 			// CAA check failed.
 			probType = string(prob.Type)
-			logAttrs = append(logAttrs, slog.String("error", prob.String()))
+			logEvent.Error = prob.String()
 		} else {
 			// CAA check passed.
 			outcome = pass
@@ -110,9 +100,12 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		if va.isPrimaryVA() {
 			// Observe total check latency (primary+remote).
 			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
+			logEvent.Summary = summary
 		}
 
-		va.log.AuditInfo(ctx, "CAA check result", logAttrs...)
+		// Log the total check latency.
+		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
+		va.log.AuditInfo("CAA check result", logEvent)
 	}()
 
 	// Do the local checks. We do these before kicking off the remote checks to
@@ -123,7 +116,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	localLatency = va.clk.Since(start)
 
 	if err != nil {
-		logAttrs = append(logAttrs, blog.Error(err))
+		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", ident.Value, prob.Detail)
 	}
@@ -156,14 +149,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			}
 			return remoteva.DoCAA(ctx, checkRequest)
 		}
-		var summary *mpicSummary
 		summary, prob = va.doRemoteOperation(ctx, op, req)
-		logAttrs = append(logAttrs, slog.Group("mpic",
-			slog.Any("passed", summary.Passed),
-			slog.Any("failed", summary.Failed),
-			slog.Any("passedRIRs", summary.PassedRIRs),
-			slog.String("quorum", summary.QuorumResult),
-		))
 	}
 
 	return bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
@@ -184,12 +170,15 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return berrors.DNSError("%s", err)
 	}
 
-	va.log.AuditInfo(ctx, "Checked CAA records",
-		slog.Bool("present", foundAt != ""),
-		slog.String("foundAt", foundAt),
-		slog.Bool("valid", valid),
-		slog.Any("response", response),
-	)
+	va.log.AuditInfo("Checked CAA records", map[string]any{
+		"identifier": ident.Value,
+		"present":    foundAt != "",
+		"requester":  params.accountURIID,
+		"challenge":  params.validationMethod,
+		"valid":      valid,
+		"foundAt":    foundAt,
+		"response":   response,
+	})
 	if !valid {
 		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}

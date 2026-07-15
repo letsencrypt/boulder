@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/netip"
 	"strconv"
@@ -151,16 +150,18 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	case identifier.TypeIP:
 		reverseIP, err := dns.ReverseAddr(ident.Value)
 		if err != nil {
+			va.log.Infof("%s Failed to parse IP address %s.", core.ChallengeTypeTLSALPN01, ident.Value)
 			return nil, nil, fmt.Errorf("failed to parse IP address")
 		}
 		serverName = reverseIP
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
-		return nil, nil, fmt.Errorf("unrecognized identifier type: %s", ident.Type)
+		va.log.Infof("%s Unknown identifier type '%s' for %s.", core.ChallengeTypeTLSALPN01, ident.Type, ident.Value)
+		return nil, nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
-	va.log.Info(ctx, "attempting to validate", slog.String("hostPort", hostPort), slog.String("serverName", serverName))
+	va.log.Infof("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, serverName)
 
 	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
 	defer cancel()
@@ -189,6 +190,7 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 
 	conn, err := dialer.DialContext(dialCtx, "tcp", hostPort)
 	if err != nil {
+		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", core.ChallengeTypeTLSALPN01, ident, err, err)
 		if (hostIP != netip.Addr{}) {
 			// Wrap the validation error and the IP of the remote host in an
 			// IPError so we can display the IP in the problem details returned
@@ -203,9 +205,13 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	cs := conn.(*tls.Conn).ConnectionState()
 	certs := cs.PeerCertificates
 	if len(certs) == 0 {
+		va.log.Infof("%s challenge for %s resulted in no certificates", core.ChallengeTypeTLSALPN01, ident.Value)
 		return nil, nil, berrors.UnauthorizedError("No certs presented for %s challenge", core.ChallengeTypeTLSALPN01)
 	}
-	va.log.Info(ctx, "received certificate", slog.String("cert", hex.EncodeToString(certs[0].Raw)))
+	for i, cert := range certs {
+		va.log.Infof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
+			core.ChallengeTypeTLSALPN01, ident.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
+	}
 	return certs[0], &cs, nil
 }
 
@@ -289,6 +295,7 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
+		va.log.Infof("Identifier type for TLS-ALPN-01 challenge was not DNS or IP: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
 	}
 

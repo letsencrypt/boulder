@@ -2,13 +2,10 @@ package updater
 
 import (
 	"context"
-	"log/slog"
-	"math/big"
 	"math/rand/v2"
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/issuance"
 )
@@ -19,7 +16,7 @@ import (
 func (cu *crlUpdater) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 
-	shardWorker := func(ctx context.Context, issuer *issuance.Certificate, shardIdx int) {
+	shardWorker := func(issuerNameID issuance.NameID, shardIdx int) {
 		defer wg.Done()
 
 		// Wait for a random number of nanoseconds less than the updatePeriod, so
@@ -44,21 +41,13 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 			}
 
 			atTime := cu.clk.Now()
-			var crlNumber *big.Int = crl.Number(atTime)
-
-			// Attach log attributes for use here and inside updateShardWithRetry.
-			ctx := blog.ContextWith(ctx,
-				slog.String("issuer", issuer.Subject.CommonName),
-				slog.Int("issuerNameID", int(issuer.NameID())),
-				slog.Int("shard", shardIdx),
-				slog.String("number", crlNumber.String()),
-			)
-
-			err := cu.updateShardWithRetry(ctx, atTime, issuer.NameID(), shardIdx)
+			err := cu.updateShardWithRetry(ctx, atTime, issuerNameID, shardIdx)
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
-				cu.log.AuditError(ctx, "Generating CRL failed", err)
+				cu.log.AuditErr("Generating CRL failed", err, map[string]any{
+					"id": crl.Id(issuerNameID, shardIdx, crl.Number(atTime)),
+				})
 			}
 
 			select {
@@ -74,7 +63,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 	for _, issuer := range cu.issuers {
 		for i := 1; i <= cu.numShards; i++ {
 			wg.Add(1)
-			go shardWorker(ctx, issuer, i)
+			go shardWorker(issuer.NameID(), i)
 		}
 	}
 

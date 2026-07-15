@@ -10,9 +10,9 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	blog "github.com/letsencrypt/boulder/log"
 	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 )
 
@@ -117,10 +117,10 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 }
 
 // Start begins asynchronous processing of the email queue. When the parent
-// context is cancelled the queue will be drained and the workers will exit.
-func (impl *ExporterImpl) Start(ctx context.Context) {
+// daemonCtx is cancelled the queue will be drained and the workers will exit.
+func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 	go func() {
-		<-ctx.Done()
+		<-daemonCtx.Done()
 		// Wake waiting workers to exit.
 		impl.wake.Broadcast()
 	}()
@@ -130,12 +130,12 @@ func (impl *ExporterImpl) Start(ctx context.Context) {
 		for {
 			impl.Lock()
 
-			for len(impl.toSend) == 0 && ctx.Err() == nil {
+			for len(impl.toSend) == 0 && daemonCtx.Err() == nil {
 				// Wait for the queue to be updated or the daemon to exit.
 				impl.wake.Wait()
 			}
 
-			if len(impl.toSend) == 0 && ctx.Err() != nil {
+			if len(impl.toSend) == 0 && daemonCtx.Err() != nil {
 				// No more emails to process, exit.
 				impl.Unlock()
 				return
@@ -152,9 +152,9 @@ func (impl *ExporterImpl) Start(ctx context.Context) {
 				continue
 			}
 
-			err := impl.limiter.Wait(ctx)
+			err := impl.limiter.Wait(daemonCtx)
 			if err != nil && !errors.Is(err, context.Canceled) {
-				impl.log.Error(ctx, "Unexpected limiter.Wait() error", err)
+				impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
 				continue
 			}
 
@@ -162,7 +162,7 @@ func (impl *ExporterImpl) Start(ctx context.Context) {
 			if err != nil {
 				impl.emailCache.Remove(email)
 				impl.pardotErrorCounter.Inc()
-				impl.log.Error(ctx, "Sending Contact to Pardot", err)
+				impl.log.Errf("Sending Contact to Pardot: %s", err)
 			} else {
 				impl.emailsHandledCounter.Inc()
 			}

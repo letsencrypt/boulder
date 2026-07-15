@@ -6,19 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bcrl "github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 type crlImpl struct {
@@ -115,16 +115,17 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 		return errors.New("no crl metadata received")
 	}
 
-	ctx := blog.ContextWith(stream.Context(),
-		slog.String("issuer", issuer.Name()),
-		slog.Int64("shard", req.Shard),
-		slog.String("number", req.Number.String()),
-	)
-
-	ci.log.AuditInfo(ctx, "Signing CRL",
-		slog.Time("thisUpdate", req.ThisUpdate),
-		slog.Int("numEntries", len(rcs)),
-	)
+	// Compute a unique ID for this issuer-number-shard combo, to tie together all
+	// the audit log lines related to its issuance.
+	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.NameID()) + req.Number.String() + fmt.Sprintf("%d", req.Shard))
+	ci.log.AuditInfo("Signing CRL", map[string]any{
+		"logID":      logID,
+		"issuer":     issuer.Cert.Subject.CommonName,
+		"number":     req.Number.String(),
+		"shard":      req.Shard,
+		"thisUpdate": req.ThisUpdate.Format(time.RFC3339),
+		"numEntries": len(rcs),
+	})
 
 	if len(rcs) > 0 {
 		builder := strings.Builder{}
@@ -132,15 +133,17 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 			fmt.Fprintf(&builder, "\"%x:%d\",", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
 
 			if builder.Len() >= ci.maxLogLen {
-				ci.log.AuditInfo(ctx, "Signing CRL entries",
-					slog.String("entries", fmt.Sprintf("[%s]", strings.TrimSuffix(builder.String(), ","))),
-				)
+				ci.log.AuditInfo("Signing CRL entries", map[string]string{
+					"logID":   logID,
+					"entries": fmt.Sprintf("[%s]", strings.TrimSuffix(builder.String(), ",")),
+				})
 				builder = strings.Builder{}
 			}
 		}
-		ci.log.AuditInfo(ctx, "Signing CRL entries",
-			slog.String("entries", fmt.Sprintf("[%s]", strings.TrimSuffix(builder.String(), ","))),
-		)
+		ci.log.AuditInfo("Signing CRL entries", map[string]any{
+			"logID":   logID,
+			"entries": fmt.Sprintf("[%s]", strings.TrimSuffix(builder.String(), ",")),
+		})
 	}
 
 	req.Entries = rcs
@@ -153,10 +156,11 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 	ci.metrics.signatureCount.With(prometheus.Labels{"purpose": "crl", "issuer": issuer.Name()}).Inc()
 
 	hash := sha256.Sum256(crlBytes)
-	ci.log.AuditInfo(ctx, "Signing CRL success",
-		slog.Int("size", len(crlBytes)),
-		slog.String("sha256", fmt.Sprintf("%x", hash)),
-	)
+	ci.log.AuditInfo("Signing CRL success", map[string]any{
+		"logID": logID,
+		"size":  len(crlBytes),
+		"hash":  fmt.Sprintf("%x", hash),
+	})
 
 	for i := 0; i < len(crlBytes); i += 1000 {
 		j := min(i+1000, len(crlBytes))
@@ -167,7 +171,7 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 			return err
 		}
 		if i%1000 == 0 {
-			ci.log.Debug(ctx, "Output byte stream checkpoint", slog.Int("bytes", i*1000))
+			ci.log.Debugf("Wrote %d bytes to output stream", i*1000)
 		}
 	}
 

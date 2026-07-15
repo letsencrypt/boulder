@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"os"
 	"runtime"
@@ -11,7 +9,7 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // memoryCheckPeriod indicates how frequently we'll check for high-memory-usage conditions.
@@ -32,7 +30,6 @@ func MemoryMonitor() {
 	}
 	memLimitU64 := uint64(memLimit) //nolint:gosec // G115: memLimit is not negative
 
-	var logger blog.Logger
 	var memStats runtime.MemStats
 	ticker := time.NewTicker(memoryCheckPeriod)
 	for {
@@ -41,20 +38,14 @@ func MemoryMonitor() {
 		runtime.ReadMemStats(&memStats)
 
 		if memStats.Sys-memStats.HeapReleased > memLimitU64 {
-			if logger == nil && backupLogger.log != nil {
-				logger = backupLogger.log
-			} else if logger == nil {
-				// We're so early in the process that a real logger hasn't been built yet.
-				// Create one with a sane default config that cannot error during creation.
-				logger, _ = blog.New(blog.Config{StdoutLevel: 6, SyslogLevel: -1})
-			}
+			logger := blog.Get()
 			err := writeProfile(logger, "heap")
 			if err != nil {
-				logger.Error(context.Background(), "Writing heap profile", err)
+				logger.Errf("writing heap profile: %s", err)
 			}
 			err = writeProfile(logger, "goroutine")
 			if err != nil {
-				logger.Error(context.Background(), "Writing goroutine profile", err)
+				logger.Errf("writing goroutine profile: %s", err)
 			}
 
 			time.Sleep(profileDumpPeriod)
@@ -69,7 +60,7 @@ func writeProfile(logger blog.Logger, typ string) error {
 		return fmt.Errorf("creating profile file: %s", err)
 	}
 	defer profileFile.Close()
-	logger.Info(context.Background(), "Writing profile", slog.String("type", typ), slog.String("file", profileFile.Name()))
+	logger.Infof("Writing %s profile to %s", typ, profileFile.Name())
 	err = pprof.Lookup(typ).WriteTo(profileFile, 0)
 	if err != nil {
 		return fmt.Errorf("writing profile: %s", err)

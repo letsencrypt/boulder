@@ -23,8 +23,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -179,7 +179,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	log.Clear()
 	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "hello world")
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching(`Found unexpired certificates matching the provided key.* count=0`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 1)
 	test.AssertByteEquals(t, msa.blockRequests[0].KeyHash, keyHash[:])
 	test.AssertContains(t, msa.blockRequests[0].Comment, "hello world")
@@ -190,7 +190,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	a.sac = dryRunSAC{log: log}
 	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "")
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching(`Found unexpired certificates matching the provided key.* count=0`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`dry-run: sa.AddBlockedKey.* keyHash=`+hex.EncodeToString(keyHash[:]))), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("dry-run: Block SPKI hash "+hex.EncodeToString(keyHash[:]))), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 0)
 }

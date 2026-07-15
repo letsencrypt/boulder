@@ -19,13 +19,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/unpause"
@@ -268,7 +268,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			IsExpired:             false,
 			IssuerID:              req.IssuerNameID,
 		}
-		err = ssa.dbMap.Insert(ctx, cs)
+		err = tx.Insert(ctx, cs)
 		if err != nil {
 			return nil, err
 		}
@@ -374,7 +374,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// but don't return an error from AddCertificate.
 	if fqdnTransactionErr != nil {
 		ssa.rateLimitWriteErrors.Inc()
-		ssa.log.Error(ctx, "failed AddCertificate FQDN sets insert transaction", fqdnTransactionErr)
+		ssa.log.Errf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -1605,7 +1605,7 @@ func (ssa *SQLStorageAuthority) updateRateLimitOverride(
 				UPDATE overrides
 				SET comment = :comment,
 					periodNS = :periodNS,
-					count = :count,		
+					count = :count,
 					burst = :burst,
 					updatedAt = :updatedAt,
 					enabled = :enabled

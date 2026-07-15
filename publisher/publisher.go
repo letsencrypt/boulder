@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -27,9 +26,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
@@ -264,14 +263,15 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		if ok && rspErr.StatusCode < 500 {
 			body = string(rspErr.Body)
 		}
-		pub.log.Info(ctx, "Failed to submit certificate to CT log",
-			blog.Serial(cert.SerialNumber.String()),
-			slog.String("issuer", cert.Issuer.CommonName),
-			slog.String("log", ctLog.uri),
-			slog.String("body", body),
-			blog.Error(err),
-		)
-
+		pub.log.InfoObject("Failed to submit certificate to CT log", struct {
+			LogURL string
+			Error  string
+			Body   string
+		}{
+			LogURL: ctLog.uri,
+			Error:  err.Error(),
+			Body:   body,
+		})
 		return nil, err
 	}
 
