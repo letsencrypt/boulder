@@ -165,9 +165,9 @@ services:
     healthcheck:
       test: [ "CMD", "curl", "-s", "-O", "/dev/null",
         "http://localhost:9000/boulder-mtc-tiles/index.html" ]
-      interval: 0.05s
+      interval: 0.1s
       timeout: 1s
-      retries: 100
+      retries: 200
     networks:
       bouldernet:
         aliases:
