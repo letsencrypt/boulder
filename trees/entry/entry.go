@@ -196,6 +196,9 @@ func unmarshalMTCE(input []byte) (MerkleTreeCertEntry, error) {
 // FromX509 takes a DER-encoded X.509 certificate and transforms it into a TBSCertificateLogEntry,
 // then returns a MerkleTreeCertEntry wrapping that TBSCertificateLogEntry.
 func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
+	if len(in) == 0 {
+		return MerkleTreeCertEntry{}, fmt.Errorf("input empty")
+	}
 	tbsCertificateDER, err := tbsDERFromCertDER(in)
 	if err != nil {
 		return MerkleTreeCertEntry{}, err

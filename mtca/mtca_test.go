@@ -17,11 +17,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
+	"github.com/letsencrypt/boulder/config"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -104,7 +106,7 @@ func TestCheckpointValid(t *testing.T) {
 // setup returns a working mtca plus a cleanup function, or an error.
 func setup() (*mtca, func(), error) {
 	issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
-		Profiles:   []string{"required to be active"},
+		Profiles:   []string{"some profile"},
 		IssuerURL:  "http://ignored.letsencrypt.org",
 		CRLURLBase: "http://ignored.letsencrypt.org/",
 		CRLShards:  1,
@@ -132,9 +134,10 @@ func setup() (*mtca, func(), error) {
 		OmitKeyEncipherment: true,
 		OmitClientAuth:      true,
 		OmitSKID:            true,
-		// TODO:
-		// OmitCT: true,
-		LintConfig: "",
+		//TODO
+		// MTC:                 true,
+		MaxValidityPeriod: config.Duration{time.Hour},
+		LintConfig:        "",
 		IgnoredLints: []string{
 			"w_ext_subject_key_identifier_missing_sub_cert",
 			"w_ct_sct_policy_count_unsatisfied",
@@ -232,6 +235,12 @@ func TestSequence(t *testing.T) {
 		}()
 	}
 
+	for range 10 {
+		if mtca.pool.len() >= 5 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	err = mtca.sequence(t.Context())
 	if err != nil {
 		t.Fatalf("sequencing with waiting entries: %s", err)
@@ -243,7 +252,7 @@ func TestSequence(t *testing.T) {
 		res := <-ch
 		if res.error != nil {
 			if seenError != nil {
-				t.Errorf("too many errors: %s", res.error)
+				t.Errorf("sequence(): want 1 error, got at least one extra: %s", res.error)
 			}
 			seenError = res.error
 			continue
@@ -255,7 +264,7 @@ func TestSequence(t *testing.T) {
 	}
 
 	if seenError == nil {
-		t.Errorf("putting 6 entries in a pool of size 5: expected error, got none")
+		t.Fatalf("putting 6 entries in a pool of size 5: expected error, got none")
 	}
 	if !strings.Contains(seenError.Error(), "pool is full") {
 		t.Errorf("putting 6 entries in a pool of size 5: expected 'pool is full', got %q", seenError)
