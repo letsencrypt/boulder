@@ -4408,11 +4408,6 @@ func TestUpdateRegistrationKey(t *testing.T) {
 			})
 			test.AssertNotError(t, err, "creating new registration")
 
-			fetchedReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{
-				Id: reg.Id,
-			})
-			t.Logf("db holds: %#v", fetchedReg)
-
 			updatedReg, err := sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
 				RegistrationID: reg.Id,
 				Jwk:            tt.newJwk,
