@@ -264,7 +264,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			IsExpired:             false,
 			IssuerID:              req.IssuerNameID,
 		}
-		err = ssa.dbMap.Insert(ctx, cs)
+		err = tx.Insert(ctx, cs)
 		if err != nil {
 			return nil, err
 		}
@@ -1601,7 +1601,7 @@ func (ssa *SQLStorageAuthority) updateRateLimitOverride(
 				UPDATE overrides
 				SET comment = :comment,
 					periodNS = :periodNS,
-					count = :count,		
+					count = :count,
 					burst = :burst,
 					updatedAt = :updatedAt,
 					enabled = :enabled

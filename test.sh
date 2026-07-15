@@ -93,7 +93,7 @@ function run_unit_tests() {
     # The ra and sa unittests conflict because they both mutate the database.
     # Exclude the ra from our first test run, then run on its own.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go_test $(go list ./... | grep -v boulder/ra)
+    go_test $(go list ./... | grep -v 'boulder\/ra$')
     go_test ./ra
   else
     go_test "${UNIT_PACKAGES[@]}"

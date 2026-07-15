@@ -60,6 +60,9 @@ type Config struct {
 	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
 	PoolFIFO bool
 
+	// Maximum number of retry attempts when dialing fails.
+	// Default is 5 attempts.
+	DialerRetries int `validate:"min=0"`
 	// Maximum number of retries before giving up.
 	// Default is to not retry failed commands.
 	MaxRetries int `validate:"min=0"`
@@ -138,6 +141,7 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 		Password:  password,
 		TLSConfig: tlsConfig,
 
+		DialerRetries:   c.DialerRetries,
 		MaxRetries:      c.MaxRetries,
 		MinRetryBackoff: c.MinRetryBackoff.Duration,
 		MaxRetryBackoff: c.MaxRetryBackoff.Duration,

@@ -163,11 +163,13 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     healthcheck:
-      test: [ "CMD", "curl", "-s", "-O", "/dev/null",
+      test: [ "CMD", "curl", "-fs", "-o", "/dev/null",
         "http://localhost:9000/boulder-mtc-tiles/index.html" ]
-      interval: 0.05s
-      timeout: 1s
-      retries: 100
+      start_period: 30s
+      start_interval: 0.1s
+      interval: 30s
+      timeout: 2s
+      retries: 3
     networks:
       bouldernet:
         aliases:
