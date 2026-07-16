@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -32,6 +33,67 @@ import (
 	"github.com/letsencrypt/boulder/trees/cosigned"
 )
 
+// setup returns a working mtca plus a cleanup function, or an error.
+func setup() (*mtca, func(), error) {
+	issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
+		Profiles:   []string{"some profile"},
+		IssuerURL:  "http://ignored.letsencrypt.org",
+		CRLURLBase: "http://ignored.letsencrypt.org/",
+		CRLShards:  1,
+		Location: issuance.IssuerLoc{
+			File:     "../test/certs/mtpki/mtca1.key.pem",
+			CertFile: "../test/certs/mtpki/mtca1.cert.pem",
+		},
+	}, clock.NewFake())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	db, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
+	if err != nil {
+		return nil, nil, err
+	}
+	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
+	truncateTables(db)
+
+	logger := blog.NewMock()
+	clk := clock.NewFake()
+
+	profile, err := issuance.NewProfile(issuance.ProfileConfig{
+		OmitCommonName:      true,
+		OmitKeyEncipherment: true,
+		OmitClientAuth:      true,
+		OmitSKID:            true,
+		//TODO
+		// MTC:                 true,
+		MaxValidityPeriod: config.Duration{time.Hour},
+		LintConfig:        "",
+		IgnoredLints: []string{
+			"w_ext_subject_key_identifier_missing_sub_cert",
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_signature_algorithm_not_supported",
+		},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	s3c := newSimpleS3()
+
+	mtca, err := New(issuer, profile, 100*time.Millisecond, dbMap, s3c, logger, clk)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mtca.InitLog(context.Background())
+
+	cleanup := func() {
+		truncateTables(db)
+	}
+
+	return mtca, cleanup, nil
+}
+
 func TestPool(t *testing.T) {
 	p := &pool{maxSize: 20}
 	var wg sync.WaitGroup
@@ -39,7 +101,7 @@ func TestPool(t *testing.T) {
 		wg.Go(func() {
 			err := p.append(pendingEntry{})
 			if err != nil {
-				t.Fatal(err)
+				t.Errorf("appending entry: %s", err)
 			}
 		})
 	}
@@ -103,67 +165,6 @@ func TestCheckpointValid(t *testing.T) {
 	}
 }
 
-// setup returns a working mtca plus a cleanup function, or an error.
-func setup() (*mtca, func(), error) {
-	issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
-		Profiles:   []string{"some profile"},
-		IssuerURL:  "http://ignored.letsencrypt.org",
-		CRLURLBase: "http://ignored.letsencrypt.org/",
-		CRLShards:  1,
-		Location: issuance.IssuerLoc{
-			File:     "../test/certs/mtpki/mtca1.key.pem",
-			CertFile: "../test/certs/mtpki/mtca1.cert.pem",
-		},
-	}, clock.NewFake())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	db, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
-	if err != nil {
-		return nil, nil, err
-	}
-	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
-	truncateTables(db)
-
-	logger := blog.NewMock()
-	clk := clock.NewFake()
-
-	profile, err := issuance.NewProfile(issuance.ProfileConfig{
-		OmitCommonName:      true,
-		OmitKeyEncipherment: true,
-		OmitClientAuth:      true,
-		OmitSKID:            true,
-		//TODO
-		// MTC:                 true,
-		MaxValidityPeriod: config.Duration{time.Hour},
-		LintConfig:        "",
-		IgnoredLints: []string{
-			"w_ext_subject_key_identifier_missing_sub_cert",
-			"w_ct_sct_policy_count_unsatisfied",
-			"e_signature_algorithm_not_supported",
-		},
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	s3c := newSimpleS3()
-
-	mtca, err := New(issuer, profile, 100*time.Millisecond, dbMap, s3c, logger, clk)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	mtca.InitLog(context.Background())
-
-	cleanup := func() {
-		truncateTables(db)
-	}
-
-	return mtca, cleanup, nil
-}
-
 func truncateTables(db *sql.DB) {
 	db.Exec("TRUNCATE TABLE checkpoints")
 	db.Exec("TRUNCATE TABLE latestCheckpoint")
@@ -176,36 +177,12 @@ func TestSequence(t *testing.T) {
 	}
 	t.Cleanup(cleanup)
 
-	mtca.pool.append(pendingEntry{ch: make(chan int64, 1)})
-
-	err = mtca.sequence(t.Context())
-	if err == nil {
-		t.Fatalf("sequencing with an unready checkpoint: got nil error, want error")
-	}
-	if !strings.Contains(err.Error(), "not ready") {
-		t.Errorf("sequencing with an unready checkpoint: expected 'not ready', got %q", err)
-	}
-
-	mtca.pool.take()
-
-	// Fake publication
-	latest, err := mtca.latestCheckpoint(t.Context())
-	if err != nil {
-		t.Fatalf("getting latest: %s", err)
-	}
-	latest.MirrorID = "fake"
-	latest.MirrorSignature = []byte("fake")
-
-	_, err = mtca.db.Update(t.Context(), latest)
-	if err != nil {
-		t.Fatalf("updating checkpoint with fake mirror signature: %s", err)
-	}
-
+	// An empty pool is a no-op regardless of checkpoint state.
 	err = mtca.sequence(t.Context())
 	if err != nil {
-		t.Fatalf("sequencing with ready checkpoint and empty pool: %s", err)
+		t.Fatalf("sequencing with empty pool: %s", err)
 	}
-
+	// Fill the pool with five concurrent requests.
 	mtca.pool.maxSize = 5
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
@@ -217,64 +194,85 @@ func TestSequence(t *testing.T) {
 		t.Fatalf("marshaling pubkey: %s", err)
 	}
 
+	req := &proto.IssueRequest{
+		Pubkey: pubkeyBytes,
+		Identifiers: []*corepb.Identifier{
+			{Type: "dns", Value: "example.com"},
+		},
+		Profile: "mtcExample",
+	}
+
 	type result struct {
 		*proto.IssueResponse
 		error
 	}
 	ch := make(chan result)
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 5; i++ {
 		go func() {
-			resp, err := mtca.Issue(t.Context(), &proto.IssueRequest{
-				Pubkey: pubkeyBytes,
-				Identifiers: []*corepb.Identifier{
-					{Type: "dns", Value: "example.com"},
-				},
-				Profile: "mtcExample",
-			})
+			resp, err := mtca.Issue(t.Context(), req)
 			ch <- result{IssueResponse: resp, error: err}
 		}()
 	}
 
-	for range 10 {
-		if mtca.pool.len() >= 5 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Issue blocks until sequencing, so wait for all five to be pooled.
+	for mtca.pool.len() < 5 {
+		time.Sleep(time.Millisecond)
 	}
+
+	// With the pool full, a sixth request should fail.
+	_, err = mtca.Issue(t.Context(), req)
+	if err == nil {
+		t.Fatal("Issue with a full pool: got nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "pool is full") {
+		t.Errorf("Issue with a full pool: expected 'pool is full', got %q", err)
+	}
+	// The checkpoint has no mirror signature yet, so sequencing must fail.
+	err = mtca.sequence(t.Context())
+	if err == nil {
+		t.Fatalf("sequencing with an unready checkpoint: got nil error, want error")
+	}
+	if !errors.Is(err, ErrCheckpointNotReady) {
+		t.Errorf("sequencing with an unready checkpoint: want ErrCheckpointNotReady, got %q", err)
+	}
+	if mtca.pool.len() != 5 {
+		t.Errorf("pool after refused sequencing: got len %d, want 5", mtca.pool.len())
+	}
+	// Fake publication
+	latest, err := mtca.latestCheckpoint(t.Context())
+	if err != nil {
+		t.Fatalf("getting latest: %s", err)
+	}
+	latest.MirrorID = "fake"
+	latest.MirrorSignature = []byte("fake")
+	_, err = mtca.db.Update(t.Context(), latest)
+	if err != nil {
+		t.Fatalf("updating checkpoint with fake mirror signature: %s", err)
+	}
+	// Now sequencing should succeed.
 	err = mtca.sequence(t.Context())
 	if err != nil {
 		t.Fatalf("sequencing with waiting entries: %s", err)
 	}
-
+	// The five requests should now be unblocked and return results.
 	seenIDs := map[int64]bool{}
-	var seenError error
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 5; i++ {
 		res := <-ch
 		if res.error != nil {
-			if seenError != nil {
-				t.Errorf("sequence(): want 1 error, got at least one extra: %s", res.error)
-			}
-			seenError = res.error
+			t.Errorf("Issue: %s", err)
 			continue
 		}
-		if seenIDs[res.MtcEntryIndex] {
-			t.Errorf("entryIndex %d seen twice", res.MtcEntryIndex)
+		if res.MtcEntryIndex < 1 || res.MtcEntryIndex > 5 || seenIDs[res.MtcEntryIndex] {
+			t.Errorf("entryIndex %d out of range or seen twice", res.MtcEntryIndex)
 		}
 		seenIDs[res.MtcEntryIndex] = true
 	}
 
-	if seenError == nil {
-		t.Fatalf("putting 6 entries in a pool of size 5: expected error, got none")
-	}
-	if !strings.Contains(seenError.Error(), "pool is full") {
-		t.Errorf("putting 6 entries in a pool of size 5: expected 'pool is full', got %q", seenError)
-	}
-
+	// Lastly, verify the resulting checkpoint is valid.
 	latest, err = mtca.latestCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
-
 	verify(t, mtca, latest)
 }
 
@@ -387,6 +385,9 @@ DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
 	}
 
 	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mtcaID, err := getMTCAID(cert)
 	if err != nil {
 		t.Fatal(err)

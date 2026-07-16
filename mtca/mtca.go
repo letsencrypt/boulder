@@ -59,7 +59,7 @@ func New(
 		mtcaID:  mtcaID,
 
 		// TODO: collect this from config
-		logNumber: 0,
+		logNumber: 44,
 		pool:      &pool{maxSize: 100},
 
 		sequencingPeriod: sequencingPeriod,
@@ -83,6 +83,9 @@ type mtca struct {
 
 	sequencingPeriod time.Duration
 
+	// TODO: factor our sa.InitWrappedDb() so we get metrics and other goodies.
+	// TODO: decide whether we want to route this through the SA or an SA-like object,
+	// or keep a direct DB connection from the MTCA.
 	db  *db.WrappedMap
 	s3c bs3.Simple
 	log blog.Logger
@@ -142,8 +145,8 @@ func (m *mtca) InitLog(ctx context.Context) error {
 				m.mtcLogID(), numCheckpoints, numLatestCheckpoints)
 		}
 
-		// null_entry has empty extensions and a MerkleTreeCertEntryType of 0. Since extensions can be up to 2^16 long
-		// there's two bytes of length prefix. Since MerkleTreeCertEntryType can have up to 2^16 values, it's also two bytes.
+		// null_entry has empty extensions and a MTCLogEntryType of 0. Since extensions can be up to 2^16 long
+		// there's two bytes of length prefix. Since MTCLogEntryType can have up to 2^16 values, it's also two bytes.
 		// All the bytes are zero: empty extensions, null_entry type is enum value zero.
 		// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
 		// To calculate the Merkle Tree Hash of a single-entry list, we prepend 0x00 (as compared with 0x01 when hashing
@@ -361,6 +364,7 @@ func (m *mtca) Loop(ctx context.Context) {
 // TODO: remove once a real publisher is available in integration.
 func (m *mtca) fakePublisher(ctx context.Context) {
 	ticker := time.NewTicker(37 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
@@ -446,6 +450,11 @@ func (m *mtca) sequence(ctx context.Context) error {
 		RootHash:        newRootHash[:],
 	}
 
+	message, err := m.cosignedMessage(&newCheckpoint)
+	if err != nil {
+		return err
+	}
+
 	// Precommit to the new checkpoint. This will allow us to do recovery if we crash between signing
 	// the new checkpoint and writing it to the database.
 	//
@@ -455,11 +464,6 @@ func (m *mtca) sequence(ctx context.Context) error {
 	//
 	// Note: Insert() updates the ID field of its parameter due to SetKeys(true, "ID")
 	err = m.db.Insert(ctx, &newCheckpoint)
-	if err != nil {
-		return err
-	}
-
-	message, err := m.cosignedMessage(&newCheckpoint)
 	if err != nil {
 		return err
 	}
@@ -578,8 +582,8 @@ func (c *checkpoint) String() string {
 }
 
 func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
-	var latestCheckpoint checkpoint
-	err := m.db.SelectOne(ctx, &latestCheckpoint,
+	var latest checkpoint
+	err := m.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
 		        mirrorSignature, treeSize, rootHash
 		 FROM latestCheckpoint JOIN checkpoints
@@ -595,7 +599,7 @@ func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 		return nil, fmt.Errorf("getting latest checkpoint for %q: %w", m.mtcLogID(), err)
 	}
 
-	return &latestCheckpoint, nil
+	return &latest, nil
 }
 
 func (m *mtca) cosignedMessage(c *checkpoint) (*cosigned.Message, error) {
@@ -621,7 +625,9 @@ func (m *mtca) cosignedMessage(c *checkpoint) (*cosigned.Message, error) {
 	}, nil
 }
 
-// signCheckpoint signs the checkpoint contents and returns the signature bytes.
+// sign marshals a *cosigned.Message and signs its bytes.
+//
+// Returns the signature bytes.
 func (m *mtca) sign(message *cosigned.Message) ([]byte, error) {
 	marshaled, err := message.Marshal()
 	if err != nil {
