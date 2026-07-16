@@ -196,9 +196,26 @@ func unmarshalMTCE(input []byte) (MerkleTreeCertEntry, error) {
 // FromX509 takes a DER-encoded X.509 certificate and transforms it into a TBSCertificateLogEntry,
 // then returns a MerkleTreeCertEntry wrapping that TBSCertificateLogEntry.
 func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
-	tbsCertificateDER, err := tbsDERFromCertDER(in)
-	if err != nil {
-		return MerkleTreeCertEntry{}, err
+	var inner cryptobyte.String
+	input := cryptobyte.String(in)
+
+	// https://datatracker.ietf.org/doc/html/rfc5280#page-116
+	//
+	//		Certificate  ::=  SEQUENCE  {
+	//		    tbsCertificate       TBSCertificate,
+	//		    ...
+	//
+	//		TBSCertificate  ::=  SEQUENCE  {
+	//		    version         [0]  Version DEFAULT v1,
+	//		    serialNumber         CertificateSerialNumber,
+	//	     ...
+	if !input.ReadASN1(&inner, asn1.SEQUENCE) {
+		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read outer sequence")
+	}
+
+	var tbsCertificate cryptobyte.String
+	if !inner.ReadASN1(&tbsCertificate, asn1.SEQUENCE) {
+		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read tbsCertificate")
 	}
 
 	// https://datatracker.ietf.org/doc/html/rfc5280#page-117
@@ -223,7 +240,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 		var fieldElement cryptobyte.String
 		var fieldTag asn1.Tag
 
-		if !tbsCertificateDER.ReadAnyASN1Element(&fieldElement, &fieldTag) {
+		if !tbsCertificate.ReadAnyASN1Element(&fieldElement, &fieldTag) {
 			return MerkleTreeCertEntry{}, fmt.Errorf("failed to read field")
 		}
 
@@ -243,7 +260,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// Use ReadASN1Element, not ReadASN1, so spki contains the tag and
 	// length bytes, which should be included in the hash.
 	var spki cryptobyte.String
-	if !tbsCertificateDER.ReadASN1Element(&spki, asn1.SEQUENCE) {
+	if !tbsCertificate.ReadASN1Element(&spki, asn1.SEQUENCE) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
 	}
 
@@ -270,7 +287,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// which has an encoding instruction of [3].
 	var extensions cryptobyte.String
 	extensionsTag := asn1.Tag(3).Constructed().ContextSpecific()
-	if !tbsCertificateDER.ReadASN1Element(&extensions, extensionsTag) {
+	if !tbsCertificate.ReadASN1Element(&extensions, extensionsTag) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("error reading extensions")
 	}
 
@@ -310,33 +327,4 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 		Type:  typeTBSCertEntry,
 		Value: tbsCertificateLogEntryBytes,
 	}, nil
-}
-
-// tbsDERFromCertDER takes a Certificate object encoded as DER, and parses
-// away the outermost two sequences to get the inner bytes of the TBSCertificate.
-//
-// https://datatracker.ietf.org/doc/html/rfc5280#page-116
-//
-//		Certificate  ::=  SEQUENCE  {
-//		    tbsCertificate       TBSCertificate,
-//		    ...
-//
-//		TBSCertificate  ::=  SEQUENCE  {
-//		    version         [0]  Version DEFAULT v1,
-//		    serialNumber         CertificateSerialNumber,
-//	     ...
-func tbsDERFromCertDER(certDER []byte) (cryptobyte.String, error) {
-	var inner cryptobyte.String
-	input := cryptobyte.String(certDER)
-
-	if !input.ReadASN1(&inner, asn1.SEQUENCE) {
-		return nil, fmt.Errorf("failed to read outer sequence")
-	}
-
-	var tbsCertificate cryptobyte.String
-	if !inner.ReadASN1(&tbsCertificate, asn1.SEQUENCE) {
-		return nil, fmt.Errorf("failed to read tbsCertificate")
-	}
-
-	return tbsCertificate, nil
 }
