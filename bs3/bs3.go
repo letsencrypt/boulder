@@ -73,14 +73,6 @@ func FromConfig(c Config, logger blog.Logger) (*Client, error) {
 	return &Client{s3.NewFromConfig(awsConfig, s3opts...), c.S3Bucket}, nil
 }
 
-// Simple matches the subset of the s3.Client interface which we use, to allow
-// simpler mocking in tests.
-type Simple interface {
-	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
-	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
-	Bucket() string
-}
-
 type Client struct {
 	*s3.Client
 	// bucket is carried along from the config for convenience in constructing PutObjectInput and GetObjectInput.

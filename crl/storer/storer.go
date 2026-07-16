@@ -2,6 +2,7 @@ package storer
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -21,7 +22,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
@@ -29,9 +29,17 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// simpleS3 matches the subset of the s3.Client interface which we use, to allow
+// simpler mocking in tests.
+type simpleS3 interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
+}
+
 type crlStorer struct {
 	cspb.UnsafeCRLStorerServer
-	s3Client         bs3.Simple
+	s3Client         simpleS3
 	issuers          map[issuance.NameID]*issuance.Certificate
 	uploadCount      *prometheus.CounterVec
 	latencyHistogram *prometheus.HistogramVec
@@ -43,7 +51,7 @@ var _ cspb.CRLStorerServer = (*crlStorer)(nil)
 
 func New(
 	issuers []*issuance.Certificate,
-	s3Client bs3.Simple,
+	s3Client simpleS3,
 	stats prometheus.Registerer,
 	log blog.Logger,
 	clk clock.Clock,

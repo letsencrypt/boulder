@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
-	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
@@ -40,7 +40,7 @@ func New(
 	profile *issuance.Profile,
 	sequencingPeriod time.Duration,
 	dbMap *borp.DbMap,
-	s3c bs3.Simple,
+	s3c simpleS3,
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtca, error) {
@@ -87,9 +87,17 @@ type mtca struct {
 	// TODO: decide whether we want to route this through the SA or an SA-like object,
 	// or keep a direct DB connection from the MTCA.
 	db  *db.WrappedMap
-	s3c bs3.Simple
+	s3c simpleS3
 	log blog.Logger
 	clk clock.Clock
+}
+
+// simpleS3 matches the subset of the s3.Client interface which we use, to allow
+// simpler mocking in tests.
+type simpleS3 interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
 }
 
 func getMTCAID(issuerCert *x509.Certificate) (string, error) {

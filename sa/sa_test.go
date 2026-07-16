@@ -21,7 +21,6 @@ import (
 	"os"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2442,7 +2441,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 		if !ok {
 			t.Errorf("output had element for %q, an identifier not present in input", authzPB.Identifier.Value)
 		}
-		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
+		test.AssertEquals(t, authzPB.IdInt, model.ID)
 		test.AssertEquals(t, authzPB.Identifier.Type, string(uintToIdentifierType[model.IdentifierType]))
 		test.AssertEquals(t, authzPB.Identifier.Value, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
@@ -2532,8 +2531,8 @@ func TestGetOrderAuthorizations(t *testing.T) {
 		}
 		for _, a := range authzPBs.Authzs {
 			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
-			if fmt.Sprintf("%d", identsToCheck[ident]) != a.Id {
-				t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
+			if identsToCheck[ident] != a.IdInt {
+				t.Fatalf("incorrect identifier %q with id %d", a.Identifier.Value, a.IdInt)
 			}
 			test.AssertEquals(t, a.Expires.AsTime(), expires)
 			delete(identsToCheck, ident)
@@ -2690,11 +2689,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 
 			var gotIDs []int64
 			for _, authz := range got.Authzs {
-				id, err := strconv.Atoi(authz.Id)
-				if err != nil {
-					t.Fatalf("parsing authz id: %s", err)
-				}
-				gotIDs = append(gotIDs, int64(id))
+				gotIDs = append(gotIDs, authz.IdInt)
 			}
 
 			slices.Sort(gotIDs)

@@ -12,7 +12,6 @@ import (
 	"math"
 	"net/netip"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -625,9 +624,14 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
+	if authz.IdInt == 0 {
+		return nil, errors.New("authorization is missing an ID value")
+	}
+
 	ident := identifier.FromProto(authz.Identifier)
 
 	am := &authzModel{
+		ID:              authz.IdInt,
 		IdentifierType:  identifierTypeToUint[ident.ToProto().Type],
 		IdentifierValue: ident.Value,
 		RegistrationID:  authz.RegistrationID,
@@ -637,17 +641,6 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	if authz.CertificateProfileName != "" {
 		profile := authz.CertificateProfileName
 		am.CertificateProfileName = &profile
-	}
-	if authz.IdInt != 0 {
-		am.ID = authz.IdInt
-	} else if authz.Id != "" {
-		id, err := strconv.Atoi(authz.Id)
-		if err != nil {
-			return nil, err
-		}
-		am.ID = int64(id)
-	} else {
-		return nil, errors.New("authorization is missing an ID value")
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
 		return nil, errors.New("multiple challenges are non-pending")
@@ -782,7 +775,6 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	}
 
 	pb := &corepb.Authorization{
-		Id:                     fmt.Sprintf("%d", am.ID),
 		IdInt:                  am.ID,
 		Status:                 string(uintToStatus[am.Status]),
 		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),

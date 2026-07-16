@@ -13,9 +13,16 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/trees/entry"
 )
+
+// simpleS3 matches the subset of the s3.Client interface which we use, to allow
+// simpler mocking in tests.
+type simpleS3 interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
+}
 
 // N returns the encoding of a tile index described at
 // https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md#merkle-tree
@@ -47,7 +54,7 @@ func N(tileIndex uint64) string {
 }
 
 func GetEntry(ctx context.Context,
-	s3c bs3.Simple,
+	s3c simpleS3,
 	index, treeSize int64,
 ) (entry.MerkleTreeCertEntry, error) {
 	tileIndex := index / 256
@@ -85,7 +92,7 @@ func GetEntry(ctx context.Context,
 }
 
 func WriteEntries(ctx context.Context,
-	s3c bs3.Simple,
+	s3c simpleS3,
 	startingIndex int64,
 	entries []entry.MerkleTreeCertEntry,
 ) error {
@@ -106,7 +113,7 @@ func WriteEntries(ctx context.Context,
 
 // entries must be at most 256 long.
 func writeEntries(ctx context.Context,
-	s3c bs3.Simple,
+	s3c simpleS3,
 	startingIndex int64,
 	entries []entry.MerkleTreeCertEntry) error {
 	if len(entries) > 256 {
@@ -182,7 +189,7 @@ func writeEntries(ctx context.Context,
 // the entry at `startingIndex`, along with the number of entries in that tile.
 //
 // If startingIndex % 256 == 0, returns nil, 0, nil.
-func readPartial(ctx context.Context, startingIndex int64, s3c bs3.Simple) ([]byte, int64, error) {
+func readPartial(ctx context.Context, startingIndex int64, s3c simpleS3) ([]byte, int64, error) {
 	partialTileIndex, partialWidth := startingIndex/256, startingIndex%256
 	if partialWidth == 0 {
 		return nil, 0, nil
