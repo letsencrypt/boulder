@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/trees/entry"
 )
@@ -164,7 +168,11 @@ func writeEntries(ctx context.Context,
 		IfNoneMatch: &star,
 	})
 	if err != nil {
-		return fmt.Errorf("writing %q/%q: %s", s3c.Bucket(), filename, err)
+		respErr, ok := errors.AsType[*awshttp.ResponseError](err)
+		if ok && respErr.HTTPStatusCode() == http.StatusPreconditionFailed {
+			return fmt.Errorf("writing s3://%s/%s: file exists", s3c.Bucket(), filename)
+		}
+		return fmt.Errorf("writing s3://%s/%s: %v", s3c.Bucket(), filename, err)
 	}
 
 	return nil

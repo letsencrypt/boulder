@@ -139,7 +139,7 @@ func main() {
 	cmd.FailOnError(err, "marshal")
 	go func() {
 		for {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(3 * time.Millisecond)
 			_, err := mtcaImpl.Issue(context.Background(), &mtcapb.IssueRequest{
 				Identifiers: []*proto.Identifier{
 					&proto.Identifier{Type: "dns", Value: "example.com"},
