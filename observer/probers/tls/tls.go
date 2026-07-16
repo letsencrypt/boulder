@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -139,8 +140,14 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 
 // Return an error if the root settings are nonempty and do not match the
 // expected root.
-func (p TLSProbe) checkRoot(rootOrg, rootCN string) error {
-	if (p.rootCN == "" && p.rootOrg == "") || (rootOrg == p.rootOrg && rootCN == p.rootCN) {
+func (p TLSProbe) checkRoot(root pkix.Name) error {
+	if p.rootCN == "" && p.rootOrg == "" {
+		return nil
+	}
+	if len(root.Organization) != 1 {
+		return errors.New("root certificate does not have exactly one Organization")
+	}
+	if root.Organization[0] == p.rootOrg && root.CommonName == p.rootCN {
 		return nil
 	}
 	return fmt.Errorf("Expected root does not match.")
@@ -204,8 +211,7 @@ func (p TLSProbe) probeExpired(ctx context.Context) error {
 		return fmt.Errorf("certificate is not expired, notAfter %s", peers[0].NotAfter)
 	}
 
-	root := peers[len(peers)-1].Issuer
-	err = p.checkRoot(root.Organization[0], root.CommonName)
+	err = p.checkRoot(peers[len(peers)-1].Issuer)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
 		return err
@@ -256,8 +262,7 @@ func (p TLSProbe) probeUnexpired(ctx context.Context) error {
 
 	// tls.Dialer.DialContext is documented to always return *tls.Conn
 	peers := conn.(*tls.Conn).ConnectionState().PeerCertificates
-	root := peers[len(peers)-1].Issuer
-	err = p.checkRoot(root.Organization[0], root.CommonName)
+	err = p.checkRoot(peers[len(peers)-1].Issuer)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
 		return err
