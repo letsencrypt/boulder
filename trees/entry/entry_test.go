@@ -56,7 +56,7 @@ AQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUgPmX4p5B3cSQ2bkaNcye
 }
 
 func TestMerkleTreeCertEntryMarshal(t *testing.T) {
-	invalidType := MerkleTreeCertEntry{
+	invalidType := MTCLogEntry{
 		Type: 99,
 	}
 	_, err := invalidType.Marshal()
@@ -64,7 +64,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 		t.Errorf("invalid type: got nil err, want error")
 	}
 
-	nonEmptyNullEntry := MerkleTreeCertEntry{
+	nonEmptyNullEntry := MTCLogEntry{
 		Type:  typeNullEntry,
 		Value: []byte("abc"),
 	}
@@ -73,7 +73,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 		t.Errorf("non-empty null_entry: got nil err, want error")
 	}
 
-	validNullEntry := MerkleTreeCertEntry{
+	validNullEntry := MTCLogEntry{
 		Type: typeNullEntry,
 	}
 	output, err := validNullEntry.Marshal()
@@ -85,7 +85,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 		t.Errorf("marshaling valid null_entry: got %x, want %x", output, expected)
 	}
 
-	validTBSCertificateLogEntry := MerkleTreeCertEntry{
+	validTBSCertificateLogEntry := MTCLogEntry{
 		Type:  typeTBSCertEntry,
 		Value: []byte("abc"),
 	}
@@ -104,15 +104,15 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 		name      string
 		input     string
 		expectErr bool
-		expectVal *MerkleTreeCertEntry
+		expectVal *MTCLogEntry
 	}
 
 	testCases := []testCase{
-		{"valid TBS", "00000001616263", false, &MerkleTreeCertEntry{
+		{"valid TBS", "00000001616263", false, &MTCLogEntry{
 			Type:  typeTBSCertEntry,
 			Value: []byte("abc"),
 		}},
-		{"valid null_entry", "00000000", false, &MerkleTreeCertEntry{
+		{"valid null_entry", "00000000", false, &MTCLogEntry{
 			Type: typeNullEntry,
 		}},
 		{"too short", "000000", true, nil},
@@ -155,7 +155,7 @@ func TestBundleBuildAndRead(t *testing.T) {
 	bw := NewBundleBuilder(buf)
 
 	for range 10 {
-		bw.Add(MerkleTreeCertEntry{})
+		bw.Add(MTCLogEntry{})
 	}
 
 	tile, err := bw.Bytes()

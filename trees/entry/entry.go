@@ -1,22 +1,23 @@
-// Package entry defines types related to TBSCertificateLogEntry and MerkleTreeCertEntry from
+// Package entry defines types related to TBSCertificateLogEntry and MTCLogEntry from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries,
 // and the entry bundle encoding from https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md#log-entries
 //
 // The concepts fit together like so:
 //
-// Entry bundles contain MerkleTreeCertEntry. MerkleTreeCertEntry contains (typically) TBSCertificateLogEntry.
+// Entry bundles contain MTCLogEntry. MTCLogEntry contains (typically) TBSCertificateLogEntry.
 //
 // TBSCertificateLogEntry is part of the X.509 layer. It will be used to build certificates
 // (TODO: implement TBSCertificateLogEntry.ToX509).
 //
-// MerkleTreeCertEntry is part of the Merkle Tree layer and is what gets hashed. It provides type switching
+// MTCLogEntry is part of the Merkle tree layer and is what gets hashed. It provides type switching
 // (needed for null_entry) and extensibility.
 //
 // Entry bundles are part of the tile storage layer. They provide a simple length-prefixed framing so that
-// MerkleTreeCertEntries can be concatenated unambiguously.
+// MTCLogEntries can be concatenated unambiguously.
 //
-// Note that neither TBSCertificateLogEntry nor MerkleTreeCertEntry carries its own length, since they will
-// always be wrapped or converted into a format that has length information: entry bundles or X.509 certificate.
+// Note that neither TBSCertificateLogEntry nor MTCLogEntry carries its own length, since they will
+// always be wrapped or converted into a format that has length information: an entry bundle or an
+// X.509 certificate.
 package entry
 
 import (
@@ -29,7 +30,7 @@ import (
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
-// BundleBuilder appends a sequence of MerkleTreeCertEntry to a buffer as an entry bundle.
+// BundleBuilder appends a sequence of MTCLogEntry to a buffer as an entry bundle.
 type BundleBuilder struct {
 	b cryptobyte.Builder
 }
@@ -45,8 +46,8 @@ func (b *BundleBuilder) Bytes() ([]byte, error) {
 	return b.b.Bytes()
 }
 
-// Add appends a single MerkleTreeCertEntry, with its length prefix, to the builder.
-func (b *BundleBuilder) Add(merkleTreeCertificateEntry MerkleTreeCertEntry) {
+// Add appends a single MTCLogEntry, with its length prefix, to the builder.
+func (b *BundleBuilder) Add(merkleTreeCertificateEntry MTCLogEntry) {
 	out, err := merkleTreeCertificateEntry.Marshal()
 	if err != nil {
 		b.b.SetError(err)
@@ -58,7 +59,7 @@ func (b *BundleBuilder) Add(merkleTreeCertificateEntry MerkleTreeCertEntry) {
 	})
 }
 
-// BundleReader reads records of MerkleTreeCertEntry from the underlying buffer in the
+// BundleReader reads records of MTCLogEntry from the underlying buffer in the
 // entry bundle format.
 type BundleReader struct {
 	r cryptobyte.String
@@ -71,22 +72,22 @@ func NewBundleReader(buf []byte) *BundleReader {
 
 // Read reads the bytes of a single entry.
 //
-// Returns the parsed MerkleTreeCertEntry as well as its bytes, both of which
+// Returns the parsed MTCLogEntry as well as its bytes, both of which
 // reference the same memory as the original buffer.
 //
-// Returns MerkleTreeCertEntry{}, nil, io.EOF when there is no more to read.
-func (br *BundleReader) Read() (MerkleTreeCertEntry, []byte, error) {
+// Returns MTCLogEntry{}, nil, io.EOF when there is no more to read.
+func (br *BundleReader) Read() (MTCLogEntry, []byte, error) {
 	if br.r.Empty() {
-		return MerkleTreeCertEntry{}, nil, io.EOF
+		return MTCLogEntry{}, nil, io.EOF
 	}
 	var body cryptobyte.String
 	if !br.r.ReadUint16LengthPrefixed(&body) {
-		return MerkleTreeCertEntry{}, nil, fmt.Errorf("malformed length")
+		return MTCLogEntry{}, nil, fmt.Errorf("malformed length")
 	}
 
 	mtce, err := unmarshalMTCE(body)
 	if err != nil {
-		return MerkleTreeCertEntry{}, nil, err
+		return MTCLogEntry{}, nil, err
 	}
 
 	return mtce, body, nil
@@ -95,28 +96,28 @@ func (br *BundleReader) Read() (MerkleTreeCertEntry, []byte, error) {
 const typeNullEntry = 0
 const typeTBSCertEntry = 1
 
-// MerkleTreeCertEntry implements the corresponding structure from
+// MTCLogEntry implements the corresponding structure from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
 //
 //	struct {
-//	    MerkleTreeCertEntryExtension extensions<0..2^16-1>;
-//	    MerkleTreeCertEntryType type;
+//	    MTCLogEntryExtension extensions<0..2^16-1>;
+//	    MTCLogEntryType type;
 //	    select (type) {
 //	       case null_entry: Empty;
 //	       case tbs_cert_entry: opaque tbs_cert_entry_data[N];
 //	       /* May be extended with future types. */
 //	    }
-//	} MerkleTreeCertEntry;
+//	} MTCLogEntry;
 //
 // The zero value represents a null_entry.
-type MerkleTreeCertEntry struct {
+type MTCLogEntry struct {
 	Extensions []byte
 	Type       uint16
 	Value      []byte
 }
 
 // TBS returns the TBSCertificateLogEntry bytes if Type is tbs_cert_entry, or nil otherwise.
-func (mtce MerkleTreeCertEntry) TBS() []byte {
+func (mtce MTCLogEntry) TBS() []byte {
 	if mtce.Type == typeTBSCertEntry {
 		return mtce.Value
 	}
@@ -125,8 +126,8 @@ func (mtce MerkleTreeCertEntry) TBS() []byte {
 
 // Marshal returns the encoding of its receiver.
 //
-// Rejects unknown MerkleTreeCertEntryTypes.
-func (mtce MerkleTreeCertEntry) Marshal() ([]byte, error) {
+// Rejects unknown MTCLogEntryTypes.
+func (mtce MTCLogEntry) Marshal() ([]byte, error) {
 	var builder cryptobyte.Builder
 	builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes(mtce.Extensions)
@@ -145,44 +146,44 @@ func (mtce MerkleTreeCertEntry) Marshal() ([]byte, error) {
 		builder.AddBytes(mtce.Value)
 	case typeNullEntry:
 		if len(mtce.Value) != 0 {
-			return nil, fmt.Errorf("non-empty value for null_entry MerkleTreeCertEntry")
+			return nil, fmt.Errorf("non-empty value for null_entry MTCLogEntry")
 		}
 		// Append nothing; the encoding of the null entry is Empty.
 	default:
-		return nil, fmt.Errorf("unknown MerkleTreeCertEntryType %d", mtce.Type)
+		return nil, fmt.Errorf("unknown MTCLogEntryType %d", mtce.Type)
 	}
 	return builder.Bytes()
 }
 
-// unmarshalMTCE parses a MerkleTreeCertEntry and returns it.
+// unmarshalMTCE parses a MTCLogEntry and returns it.
 //
-// Rejects unknown MerkleTreeCertEntryTypes.
-func unmarshalMTCE(input []byte) (MerkleTreeCertEntry, error) {
+// Rejects unknown MTCLogEntryType.
+func unmarshalMTCE(input []byte) (MTCLogEntry, error) {
 	val := cryptobyte.String(input)
 
 	var extensions cryptobyte.String
 	if !val.ReadUint16LengthPrefixed(&extensions) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("malformed extensions")
+		return MTCLogEntry{}, fmt.Errorf("malformed extensions")
 	}
 
 	var typ uint16
 	if !val.ReadUint16(&typ) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("malformed type")
+		return MTCLogEntry{}, fmt.Errorf("malformed type")
 	}
 
 	switch typ {
 	case typeTBSCertEntry:
 	case typeNullEntry:
 		if len(val) > 0 {
-			return MerkleTreeCertEntry{}, fmt.Errorf("null_entry with non-empty value")
+			return MTCLogEntry{}, fmt.Errorf("null_entry with non-empty value")
 		}
 	default:
-		return MerkleTreeCertEntry{}, fmt.Errorf("unknown MerkleTreeCertEntryType %d", typ)
+		return MTCLogEntry{}, fmt.Errorf("unknown MTCLogEntryType %d", typ)
 	}
 
 	// Per the spec, value is not length-prefixed. It's a fixed-length vector, where
 	// the length is known externally. So it just consists of the rest of the bytes.
-	return MerkleTreeCertEntry{
+	return MTCLogEntry{
 		Extensions: []byte(extensions),
 		Type:       typ,
 		Value:      []byte(val),
@@ -190,8 +191,8 @@ func unmarshalMTCE(input []byte) (MerkleTreeCertEntry, error) {
 }
 
 // FromX509 takes a DER-encoded X.509 certificate and transforms it into a TBSCertificateLogEntry,
-// then returns a MerkleTreeCertEntry wrapping that TBSCertificateLogEntry.
-func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
+// then returns a MTCLogEntry wrapping that TBSCertificateLogEntry.
+func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 	var inner cryptobyte.String
 	input := cryptobyte.String(in)
 
@@ -206,15 +207,15 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	//		    serialNumber         CertificateSerialNumber,
 	//	     ...
 	if !input.ReadASN1(&inner, asn1.SEQUENCE) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read outer sequence")
+		return MTCLogEntry{}, fmt.Errorf("failed to read outer sequence")
 	}
 	if !input.Empty() {
-		return MerkleTreeCertEntry{}, fmt.Errorf("extra bytes at end")
+		return MTCLogEntry{}, fmt.Errorf("extra bytes at end")
 	}
 
 	var tbsCertificate cryptobyte.String
 	if !inner.ReadASN1(&tbsCertificate, asn1.SEQUENCE) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read tbsCertificate")
+		return MTCLogEntry{}, fmt.Errorf("failed to read tbsCertificate")
 	}
 
 	// https://datatracker.ietf.org/doc/html/rfc5280#page-117
@@ -236,12 +237,12 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
 	var version cryptobyte.String
 	if !tbsCertificate.ReadASN1(&version, asn1.Tag(0).Constructed().ContextSpecific()) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read version")
+		return MTCLogEntry{}, fmt.Errorf("failed to read version")
 	}
 	// Version should always be v3, which is represented as an ASN.1 INTEGER 2.
 	// That's tag 2, length 1, value 2.
 	if !bytes.Equal(version, []byte{2, 1, 2}) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("invalid X.509 version")
+		return MTCLogEntry{}, fmt.Errorf("invalid X.509 version")
 	}
 	var fields []cryptobyte.String
 	for i := range 5 {
@@ -249,7 +250,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 		var fieldTag asn1.Tag
 
 		if !tbsCertificate.ReadAnyASN1Element(&fieldElement, &fieldTag) {
-			return MerkleTreeCertEntry{}, fmt.Errorf("failed to read field")
+			return MTCLogEntry{}, fmt.Errorf("failed to read field")
 		}
 
 		switch i {
@@ -269,7 +270,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// length bytes, which should be included in the hash.
 	var spki cryptobyte.String
 	if !tbsCertificate.ReadASN1Element(&spki, asn1.SEQUENCE) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
+		return MTCLogEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
 	}
 
 	h := hash.New()
@@ -280,11 +281,11 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// subjectPublicKeyAlgorithm.
 	var spkiInner cryptobyte.String
 	if !spki.ReadASN1(&spkiInner, asn1.SEQUENCE) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
+		return MTCLogEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
 	}
 	var algID cryptobyte.String
 	if !spkiInner.ReadASN1Element(&algID, asn1.SEQUENCE) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("malformed algorithmIdentifier")
+		return MTCLogEntry{}, fmt.Errorf("malformed algorithmIdentifier")
 	}
 
 	// Read the extensions.
@@ -296,11 +297,11 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	var extensions cryptobyte.String
 	extensionsTag := asn1.Tag(3).Constructed().ContextSpecific()
 	if !tbsCertificate.ReadASN1Element(&extensions, extensionsTag) {
-		return MerkleTreeCertEntry{}, fmt.Errorf("error reading extensions")
+		return MTCLogEntry{}, fmt.Errorf("error reading extensions")
 	}
 
 	if !tbsCertificate.Empty() {
-		return MerkleTreeCertEntry{}, fmt.Errorf("extra bytes at end")
+		return MTCLogEntry{}, fmt.Errorf("extra bytes at end")
 	}
 
 	// TBSCertificateLogEntry ::= SEQUENCE {
@@ -341,10 +342,10 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 
 	tbsCertificateLogEntryBytes, err := builder.Bytes()
 	if err != nil {
-		return MerkleTreeCertEntry{}, err
+		return MTCLogEntry{}, err
 	}
 
-	return MerkleTreeCertEntry{
+	return MTCLogEntry{
 		Type:  typeTBSCertEntry,
 		Value: tbsCertificateLogEntryBytes,
 	}, nil
