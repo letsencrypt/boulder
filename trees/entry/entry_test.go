@@ -8,9 +8,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
-
-	"github.com/zmap/zcrypto/cryptobyte"
-	"github.com/zmap/zcrypto/cryptobyte/asn1"
 )
 
 func TestTBSCertificateLogEntryFromX509(t *testing.T) {
@@ -51,16 +48,11 @@ AQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUgPmX4p5B3cSQ2bkaNcye
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(base64.StdEncoding.EncodeToString(mtce.Value))
-	t.Log(base64.StdEncoding.EncodeToString(sequenceWrap(mtce.Value)))
 
 	if !bytes.Equal(mtce.Value, expectedOutput) {
-		// Since TBSCertificateLogEntry is encoded as DER without a tag or length,
-		// it's not readily parseable by off-the-shelf DER parsers like lapo.it/asn1js.
-		// For convenience of investigating, wrap both values in a SEQUENCE before output.
-		t.Errorf("sequenceWrap(TBSCertificateLogEntryFromX509()): got %s, want %s",
-			base64.StdEncoding.EncodeToString(sequenceWrap(mtce.Value)),
-			base64.StdEncoding.EncodeToString(sequenceWrap(expectedOutput)))
+		t.Errorf("TBSCertificateLogEntryFromX509(): got %s, want %s",
+			base64.StdEncoding.EncodeToString(mtce.Value),
+			base64.StdEncoding.EncodeToString(expectedOutput))
 	}
 }
 
@@ -157,17 +149,6 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 			}
 		})
 	}
-}
-
-func sequenceWrap(in []byte) []byte {
-	// TBSCertificateLogEntry is DER encoded with the length and tag stripped, or equivalently
-	// the concatenated fields. That means DER parsers like https://lapo.it/asn1js/ can't parse
-	// it. For convenience, spit out a version that is wrapped in a SEQUENCE.
-	var b cryptobyte.Builder
-	b.AddASN1(asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-		b.AddBytes(in)
-	})
-	return b.BytesOrPanic()
 }
 
 func TestBundleWriterReader(t *testing.T) {
