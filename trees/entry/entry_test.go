@@ -2,18 +2,14 @@ package entry
 
 import (
 	"bytes"
-	"compress/gzip"
 	"crypto"
 	"encoding/base64"
 	"encoding/hex"
 	"strings"
 	"testing"
-
-	"github.com/zmap/zcrypto/cryptobyte"
-	"github.com/zmap/zcrypto/cryptobyte/asn1"
 )
 
-func TestTBSCertificateLogEntryFromX509(t *testing.T) {
+func TestFromX509(t *testing.T) {
 	// Bytes from an example generated test/certs/ipki/wfe.boulder/cert.pem
 	input, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
 MIIB4TCCAWegAwIBAgIIJuDkMteShO8wCgYIKoZIzj0EAwMwIDEeMBwGA1UEAxMV
@@ -51,21 +47,65 @@ AQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUgPmX4p5B3cSQ2bkaNcye
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(base64.StdEncoding.EncodeToString(mtce.Value))
-	t.Log(base64.StdEncoding.EncodeToString(sequenceWrap(mtce.Value)))
 
 	if !bytes.Equal(mtce.Value, expectedOutput) {
-		// Since TBSCertificateLogEntry is encoded as DER without a tag or length,
-		// it's not readily parseable by off-the-shelf DER parsers like lapo.it/asn1js.
-		// For convenience of investigating, wrap both values in a SEQUENCE before output.
-		t.Errorf("sequenceWrap(TBSCertificateLogEntryFromX509()): got %s, want %s",
-			base64.StdEncoding.EncodeToString(sequenceWrap(mtce.Value)),
-			base64.StdEncoding.EncodeToString(sequenceWrap(expectedOutput)))
+		t.Errorf("TBSCertificateLogEntryFromX509(): got %s, want %s",
+			base64.StdEncoding.EncodeToString(mtce.Value),
+			base64.StdEncoding.EncodeToString(expectedOutput))
+	}
+}
+
+func TestFromX509Malformed(t *testing.T) {
+	valid, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
+MIIB4TCCAWegAwIBAgIIJuDkMteShO8wCgYIKoZIzj0EAwMwIDEeMBwGA1UEAxMV
+bWluaWNhIHJvb3QgY2EgNGU0YjFkMB4XDTI2MDYyOTA1NDUyNloXDTI4MDcyOTA1
+NDUyNlowFjEUMBIGA1UEAxMLd2ZlLmJvdWxkZXIwdjAQBgcqhkjOPQIBBgUrgQQA
+IgNiAATLkY1wBrGl9+jhR4+HSycRv5kvVV8LUO3xY1styu8+q9kaSi03wrdH7LUf
+rJkRE6S60XzVXkeqL9N//jOXFsaM9JbsbeHFRoAx+mBEV68Vu69dblxtXIAKNlMM
+5dav5XOjeDB2MA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEFBQcDAQYI
+KwYBBQUHAwIwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBSA+ZfinkHdxJDZuRo1
+zJ7mHOmaCDAWBgNVHREEDzANggt3ZmUuYm91bGRlcjAKBggqhkjOPQQDAwNoADBl
+AjEApE8cwaAQ6hnGtUM/TWAb54E5/29ZVy5E/UY8mEzoE021pl3tq1fEof5qz5n/
+KrL4AjAuEpVOjRrRWWMnRJxd05Pfxq7gZmxgwppjnE9JZ9P6WRP7ZWqZcc9p8YLM
+YhKuXQo=`, "\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shortValid := valid[:len(valid)-2]
+	longValid := append(valid, 0)
+
+	wrongVersion := bytes.Clone(valid)
+	copy(wrongVersion[10:13], []byte{2, 1, 1})
+
+	type testCase struct {
+		name, hex string
+	}
+	testCases := []testCase{
+		{"empty", ""},
+		{"tag only", "30"},
+		{"nothing inside", "300100"},
+		{"too short", hex.EncodeToString(shortValid)},
+		{"too long", hex.EncodeToString(longValid)},
+		{"wrong version", hex.EncodeToString(wrongVersion)},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			val, err := hex.DecodeString(tc.hex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = FromX509(val, crypto.SHA256)
+			if err == nil {
+				t.Errorf("FromX509(): got nil err, want error")
+			}
+		})
 	}
 }
 
 func TestMerkleTreeCertEntryMarshal(t *testing.T) {
-	invalidType := MerkleTreeCertEntry{
+	invalidType := MTCLogEntry{
 		Type: 99,
 	}
 	_, err := invalidType.Marshal()
@@ -73,7 +113,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 		t.Errorf("invalid type: got nil err, want error")
 	}
 
-	nonEmptyNullEntry := MerkleTreeCertEntry{
+	nonEmptyNullEntry := MTCLogEntry{
 		Type:  typeNullEntry,
 		Value: []byte("abc"),
 	}
@@ -82,7 +122,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 		t.Errorf("non-empty null_entry: got nil err, want error")
 	}
 
-	validNullEntry := MerkleTreeCertEntry{
+	validNullEntry := MTCLogEntry{
 		Type: typeNullEntry,
 	}
 	output, err := validNullEntry.Marshal()
@@ -94,7 +134,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 		t.Errorf("marshaling valid null_entry: got %x, want %x", output, expected)
 	}
 
-	validTBSCertificateLogEntry := MerkleTreeCertEntry{
+	validTBSCertificateLogEntry := MTCLogEntry{
 		Type:  typeTBSCertEntry,
 		Value: []byte("abc"),
 	}
@@ -113,15 +153,15 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 		name      string
 		input     string
 		expectErr bool
-		expectVal *MerkleTreeCertEntry
+		expectVal *MTCLogEntry
 	}
 
 	testCases := []testCase{
-		{"valid TBS", "00000001616263", false, &MerkleTreeCertEntry{
+		{"valid TBS", "00000001616263", false, &MTCLogEntry{
 			Type:  typeTBSCertEntry,
 			Value: []byte("abc"),
 		}},
-		{"valid null_entry", "00000000", false, &MerkleTreeCertEntry{
+		{"valid null_entry", "00000000", false, &MTCLogEntry{
 			Type: typeNullEntry,
 		}},
 		{"too short", "000000", true, nil},
@@ -159,36 +199,20 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 	}
 }
 
-func sequenceWrap(in []byte) []byte {
-	// TBSCertificateLogEntry is DER encoded with the length and tag stripped, or equivalently
-	// the concatenated fields. That means DER parsers like https://lapo.it/asn1js/ can't parse
-	// it. For convenience, spit out a version that is wrapped in a SEQUENCE.
-	var b cryptobyte.Builder
-	b.AddASN1(asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-		b.AddBytes(in)
-	})
-	return b.BytesOrPanic()
-}
-
-func TestBundleWriterReader(t *testing.T) {
-	var buf bytes.Buffer
-	w := gzip.NewWriter(&buf)
-	bw := NewBundleWriter(w)
+func TestBundleBuildAndRead(t *testing.T) {
+	var buf []byte
+	bw := NewBundleBuilder(buf)
 
 	for range 10 {
-		err := bw.Write(MerkleTreeCertEntry{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		bw.Add(MTCLogEntry{})
 	}
-	bw.Close()
 
-	r, err := gzip.NewReader(&buf)
+	tile, err := bw.Bytes()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	br := NewBundleReader(r)
+	br := NewBundleReader(tile)
 
 	for range 10 {
 		mtce, raw, err := br.Read()
