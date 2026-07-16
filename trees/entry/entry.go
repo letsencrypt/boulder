@@ -4,6 +4,7 @@
 package entry
 
 import (
+	"bytes"
 	"crypto"
 	"encoding/binary"
 	"fmt"
@@ -212,6 +213,9 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	if !input.ReadASN1(&inner, asn1.SEQUENCE) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read outer sequence")
 	}
+	if !input.Empty() {
+		return MerkleTreeCertEntry{}, fmt.Errorf("extra bytes at end")
+	}
 
 	var tbsCertificate cryptobyte.String
 	if !inner.ReadASN1(&tbsCertificate, asn1.SEQUENCE) {
@@ -235,8 +239,15 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	//      					 -- If present, version MUST be v3 --  }
 	//
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
+	var version cryptobyte.String
+	if !tbsCertificate.ReadASN1(&version, asn1.Tag(0).Constructed().ContextSpecific()) {
+		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read version")
+	}
+	if !bytes.Equal(version, []byte{2, 1, 2}) {
+		return MerkleTreeCertEntry{}, fmt.Errorf("invalid X.509 version")
+	}
 	var fields []cryptobyte.String
-	for i := range 6 {
+	for i := range 5 {
 		var fieldElement cryptobyte.String
 		var fieldTag asn1.Tag
 
@@ -245,7 +256,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 		}
 
 		switch i {
-		case 0, 3, 4, 5: // version, issuer, validity, subject from the TBSCertificate.
+		case 2, 3, 4: // issuer, validity, subject from the TBSCertificate.
 			fields = append(fields, fieldElement)
 		}
 	}
@@ -291,6 +302,10 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("error reading extensions")
 	}
 
+	if !tbsCertificate.Empty() {
+		return MerkleTreeCertEntry{}, fmt.Errorf("extra bytes at end")
+	}
+
 	// TBSCertificateLogEntry ::= SEQUENCE {
 	//      version               [0] EXPLICIT Version DEFAULT v1,
 	//      issuer                    Name,
@@ -308,6 +323,10 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// TBSCertificateLogEntry, relative to TBSCertificate, lacks `serialNumber`
 	// and `signature`, and encodes subjectPublicKeyInfo as its hash.
 	var builder cryptobyte.Builder
+
+	builder.AddASN1(asn1.Tag(0).Constructed().ContextSpecific(), func(child *cryptobyte.Builder) {
+		child.AddASN1Int64(2)
+	})
 
 	for _, f := range fields {
 		// The fields were read with ReadASN1Element so they still include
