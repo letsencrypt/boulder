@@ -177,7 +177,7 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mtce, err := unmarshalMTCE(val)
+			mtcle, err := unmarshalMTCLE(val)
 			if tc.expectErr && err == nil {
 				t.Errorf("expected error")
 			}
@@ -185,14 +185,14 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Unmarshal(): %s", err)
 				}
-				if !bytes.Equal(mtce.Extensions, tc.expectVal.Extensions) {
-					t.Errorf("Unmarshal() extensions: got %#v, want %#v", mtce.Extensions, tc.expectVal.Extensions)
+				if !bytes.Equal(mtcle.Extensions, tc.expectVal.Extensions) {
+					t.Errorf("Unmarshal() extensions: got %#v, want %#v", mtcle.Extensions, tc.expectVal.Extensions)
 				}
-				if mtce.Type != tc.expectVal.Type {
-					t.Errorf("Unmarshal() type: got %#v, want %#v", mtce.Type, tc.expectVal.Type)
+				if mtcle.Type != tc.expectVal.Type {
+					t.Errorf("Unmarshal() type: got %#v, want %#v", mtcle.Type, tc.expectVal.Type)
 				}
-				if !bytes.Equal(mtce.Value, tc.expectVal.Value) {
-					t.Errorf("Unmarshal() value: got %#v, want %#v", mtce.Value, tc.expectVal.Value)
+				if !bytes.Equal(mtcle.Value, tc.expectVal.Value) {
+					t.Errorf("Unmarshal() value: got %#v, want %#v", mtcle.Value, tc.expectVal.Value)
 				}
 			}
 		})
