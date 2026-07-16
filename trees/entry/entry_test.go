@@ -41,16 +41,18 @@ YhKuXQo=`, "\n", ""))
 	}
 
 	expectedOutput, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
-oAWgAwIBAjAiMCAxHjAcBgNVBAMTFW1pbmljYSByb290IGNhIDRlNGIxZDAgMB4X
-DTI2MDYyOTA1NDUyNloXDTI4MDcyOTA1NDUyNlowGDAWMRQwEgYDVQQDEwt3ZmUu
-Ym91bGRlcjAQBgcqhkjOPQIBBgUrgQQAIgQgxIsfmHTOfbAsqyQDsdDEYHnn4pV2
-rljEOusgCGD1mQmjeDB2MA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEF
-BQcDAQYIKwYBBQUHAwIwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBSA+ZfinkHd
-xJDZuRo1zJ7mHOmaCDAWBgNVHREEDzANggt3ZmUuYm91bGRlcg==
+oAMCAQIwIDEeMBwGA1UEAxMVbWluaWNhIHJvb3QgY2EgNGU0YjFkMB4XDTI2MDYy
+OTA1NDUyNloXDTI4MDcyOTA1NDUyNlowFjEUMBIGA1UEAxMLd2ZlLmJvdWxkZXIw
+EAYHKoZIzj0CAQYFK4EEACIEIMSLH5h0zn2wLKskA7HQxGB55+KVdq5YxDrrIAhg
+9ZkJo3gwdjAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsG
+AQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUgPmX4p5B3cSQ2bkaNcye
+5hzpmggwFgYDVR0RBA8wDYILd2ZlLmJvdWxkZXI=
 `, "\n", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Log(base64.StdEncoding.EncodeToString(mtce.Value))
+	t.Log(base64.StdEncoding.EncodeToString(sequenceWrap(mtce.Value)))
 
 	if !bytes.Equal(mtce.Value, expectedOutput) {
 		// Since TBSCertificateLogEntry is encoded as DER without a tag or length,

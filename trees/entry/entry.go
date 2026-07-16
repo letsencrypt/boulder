@@ -218,22 +218,18 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	//      					 -- If present, version MUST be v3 --  }
 	//
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
-	type pair struct {
-		tag   asn1.Tag
-		value cryptobyte.String
-	}
-	var fields []pair
+	var fields []cryptobyte.String
 	for i := range 6 {
-		var fieldInner cryptobyte.String
+		var fieldElement cryptobyte.String
 		var fieldTag asn1.Tag
 
-		if !tbsCertificateDER.ReadAnyASN1Element(&fieldInner, &fieldTag) {
+		if !tbsCertificateDER.ReadAnyASN1Element(&fieldElement, &fieldTag) {
 			return MerkleTreeCertEntry{}, fmt.Errorf("failed to read field")
 		}
 
 		switch i {
 		case 0, 3, 4, 5: // version, issuer, validity, subject from the TBSCertificate.
-			fields = append(fields, pair{fieldTag, fieldInner})
+			fields = append(fields, fieldElement)
 		}
 	}
 
@@ -262,7 +258,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
 	}
 	var algID cryptobyte.String
-	if !spkiInner.ReadASN1(&algID, asn1.SEQUENCE) {
+	if !spkiInner.ReadASN1Element(&algID, asn1.SEQUENCE) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("malformed algorithmIdentifier")
 	}
 
@@ -274,7 +270,7 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// which has an encoding instruction of [3].
 	var extensions cryptobyte.String
 	extensionsTag := asn1.Tag(3).Constructed().ContextSpecific()
-	if !tbsCertificateDER.ReadASN1(&extensions, extensionsTag) {
+	if !tbsCertificateDER.ReadASN1Element(&extensions, extensionsTag) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("error reading extensions")
 	}
 
@@ -297,17 +293,13 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	var builder cryptobyte.Builder
 
 	for _, f := range fields {
-		builder.AddASN1(f.tag, func(child *cryptobyte.Builder) {
-			child.AddBytes(f.value)
-		})
+		// The fields were read with ReadASN1Element so they still include
+		// their tag and length. Add them straight to
+		builder.AddBytes(f)
 	}
-	builder.AddASN1(asn1.SEQUENCE, func(child *cryptobyte.Builder) {
-		child.AddBytes(algID)
-	})
+	builder.AddBytes(algID)
 	builder.AddASN1OctetString(spkiHash)
-	builder.AddASN1(extensionsTag, func(child *cryptobyte.Builder) {
-		child.AddBytes(extensions)
-	})
+	builder.AddBytes(extensions)
 
 	tbsCertificateLogEntryBytes, err := builder.Bytes()
 	if err != nil {
