@@ -339,43 +339,6 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
 }
 
-// TODO(#8722): Remove this whole function when Authz IDs are int-only
-func TestPerformValidationWithAuthzIDMatrix(t *testing.T) {
-	t.Parallel()
-
-	va, _ := setup(nil, "", nil, &txtFakeDNS{})
-
-	// create a challenge with well known token
-	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	// manipulate Authz ID for this validation attempt
-	req.Authz.Id = ""
-	req.Authz.IdInt = 0
-	_, err := va.DoDCV(context.Background(), req)
-	test.AssertError(t, err, "expected error upon validation request with empty authz ID fields")
-
-	// repeat
-	req = createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	req.Authz.Id = "1"
-	req.Authz.IdInt = 0
-	res, err := va.DoDCV(context.Background(), req)
-	test.AssertNotError(t, err, "domain validation request failed")
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-
-	req = createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	req.Authz.Id = ""
-	req.Authz.IdInt = 1
-	res, err = va.DoDCV(context.Background(), req)
-	test.AssertNotError(t, err, "domain validation request failed")
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-
-	req = createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	req.Authz.Id = "1"
-	req.Authz.IdInt = 1
-	res, err = va.DoDCV(context.Background(), req)
-	test.AssertNotError(t, err, "domain validation request failed")
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-}
-
 func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 	t.Parallel()
 
@@ -549,6 +512,17 @@ func TestExperimentalVAZeroSample(t *testing.T) {
 		"operation":   opDCV,
 		"concurrence": "false",
 	}, 0)
+}
+
+func TestPerformValidationWithEmptyAuthzID(t *testing.T) {
+	t.Parallel()
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
+
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
+	req.Authz.IdInt = 0
+	_, err := va.DoDCV(context.Background(), req)
+	test.AssertError(t, err, "validation unexpectedly succeeded")
+	test.AssertEquals(t, err.Error(), "Incomplete validation request")
 }
 
 func TestPerformValidationInvalid(t *testing.T) {

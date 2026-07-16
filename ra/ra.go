@@ -781,7 +781,6 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
-				AuthzID:          fmt.Sprintf("%d", authz.ID),
 				AuthzIDInt:       authz.ID,
 			})
 			if err != nil {
@@ -1470,8 +1469,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	// TODO(#8722): Re-add req.Authz.Id to this check once int64-only
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.IdInt, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1542,14 +1540,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
-				Authz:                    &vapb.AuthzMeta{Id: fmt.Sprintf("%d", authz.ID), RegID: authz.RegistrationID, IdInt: authz.ID},
+				Authz:                    &vapb.AuthzMeta{IdInt: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: string(ch.Type),
 				AccountURIID:     authz.RegistrationID,
-				AuthzID:          fmt.Sprintf("%d", authz.ID),
 				AuthzIDInt:       authz.ID,
 			},
 		)
@@ -2068,23 +2065,10 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
 	ident := identifier.FromProto(req.Identifier)
 
-	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID) {
+	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID, req.IdInt) {
 		return nil, errIncompleteGRPCRequest
 	}
-	// TODO(#8722): Re-add req.Id to IsAnyNilOrZero check above, and cleanup following blocks when authz ids are int64-only
-	var authzIDInt int64
-	if req.IdInt != 0 {
-		authzIDInt = req.IdInt
-	} else if req.Id != "" {
-		parsed, err := strconv.ParseInt(req.Id, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("malformed gRPC request message field: %w", err)
-		}
-		authzIDInt = parsed
-	} else {
-		return nil, errIncompleteGRPCRequest
-	}
-	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzIDInt}); err != nil {
+	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: req.IdInt}); err != nil {
 		return nil, err
 	}
 	if req.Status == string(core.StatusPending) {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,22 +37,8 @@ type caaParams struct {
 // implements the CAA portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	if core.IsAnyNilOrZero(req.Identifier, req.ValidationMethod, req.AccountURIID) {
+	if core.IsAnyNilOrZero(req.AuthzIDInt, req.Identifier, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
-	}
-
-	// TODO(#8722): remove this whole thing when Authz IDs are int64-only
-	var authzIDInt int64
-	if req.AuthzIDInt != 0 {
-		authzIDInt = req.AuthzIDInt
-	} else if req.AuthzID != "" {
-		parsed, err := strconv.ParseInt(req.AuthzID, 10, 64)
-		if err != nil {
-			return nil, berrors.MalformedError("Unable to parse Authz ID %q as integer: %v", req.AuthzID, err)
-		}
-		authzIDInt = parsed
-	} else {
-		return nil, berrors.MalformedError("No Authz ID value supplied in gRPC message")
 	}
 
 	ident := identifier.FromProto(req.Identifier)
@@ -79,7 +64,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	var localLatency time.Duration
 	start := va.clk.Now()
 	logEvent := validationLogEvent{
-		AuthzID:    authzIDInt,
+		AuthzID:    req.AuthzIDInt,
 		Requester:  req.AccountURIID,
 		Identifier: ident,
 	}
