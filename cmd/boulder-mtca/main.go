@@ -4,9 +4,6 @@ package notmain
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/x509"
 	"database/sql"
 	"errors"
 	"flag"
@@ -20,7 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
-	"github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	mtca "github.com/letsencrypt/boulder/mtca"
@@ -137,25 +133,6 @@ func main() {
 
 	start, err := srv.Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup MTCA gRPC server")
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
-	cmd.FailOnError(err, "genkey")
-	spki, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
-	cmd.FailOnError(err, "marshal")
-	go func() {
-		for {
-			time.Sleep(3 * time.Millisecond)
-			_, err := mtcaImpl.Issue(context.Background(), &mtcapb.IssueRequest{
-				Identifiers: []*proto.Identifier{
-					&proto.Identifier{Type: "dns", Value: "example.com"},
-				},
-				Pubkey: spki,
-			})
-			if err != nil {
-				logger.Errf("issuing: %s", err)
-			}
-		}
-	}()
 
 	// Cancel will be called after start() returns, which happens after GracefulStop() returns.
 	// That means all inflight RPCs will be done, which means the last of the pool has been sequenced.

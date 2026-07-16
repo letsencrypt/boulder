@@ -2,9 +2,13 @@ package notmain
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -13,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -281,6 +286,31 @@ func main() {
 		overrideRefresherShutdown := txnBuilder.NewRefresher(30 * time.Minute)
 		defer overrideRefresherShutdown()
 	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	cmd.FailOnError(err, "genkey")
+	spki, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	cmd.FailOnError(err, "marshal")
+	go func() {
+		for {
+			time.Sleep(3 * time.Millisecond)
+			var wg sync.WaitGroup
+			for range 100 {
+				wg.Go(func() {
+					_, err := profileToMTCA["mtcshortlived"].Issue(context.Background(), &mtcapb.IssueRequest{
+						Identifiers: []*proto.Identifier{
+							&proto.Identifier{Type: "dns", Value: "example.com"},
+						},
+						Pubkey: spki,
+					})
+					if err != nil {
+						logger.Errf("issuing: %s", err)
+					}
+				})
+			}
+			wg.Wait()
+		}
+	}()
 
 	rai := ra.NewRegistrationAuthorityImpl(
 		clk,
