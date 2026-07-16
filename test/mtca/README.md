@@ -12,3 +12,7 @@ To list all tiles (while bminio is running):
 To see a specific tile:
 
     mc cat local/boulder-mtc-tiles/tile/entries/011.p/9 > 9.gz
+
+To clear tile storage:
+
+    mc rm -r --force local/boulder-mtc-tiles/

@@ -126,6 +126,13 @@ func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 func (m *mtca) InitLog(ctx context.Context) error {
 	err := tiles.WriteEntries(ctx, m.s3c, 0, []entry.MerkleTreeCertEntry{entry.MerkleTreeCertEntry{}})
 	if err != nil {
+		if errors.Is(err, tiles.ErrFileExists) {
+			_, err := m.latestCheckpoint(ctx)
+			if err != nil {
+				return fmt.Errorf("tile exists but DB checkpoint does not: %s", err)
+			}
+			return ErrIssuanceLogAlreadyInitialized
+		}
 		return err
 	}
 

@@ -16,6 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/trees/entry"
 )
 
+var ErrFileExists = errors.New("file exists")
+
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
 // simpler mocking in tests.
 type simpleS3 interface {
@@ -177,7 +179,7 @@ func writeEntries(ctx context.Context,
 	if err != nil {
 		respErr, ok := errors.AsType[*awshttp.ResponseError](err)
 		if ok && respErr.HTTPStatusCode() == http.StatusPreconditionFailed {
-			return fmt.Errorf("writing s3://%s/%s: file exists", s3c.Bucket(), filename)
+			return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), filename, ErrFileExists)
 		}
 		return fmt.Errorf("writing s3://%s/%s: %v", s3c.Bucket(), filename, err)
 	}
