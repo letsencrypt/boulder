@@ -10,8 +10,8 @@ import (
 	"io"
 	"math"
 
-	"github.com/zmap/zcrypto/cryptobyte"
-	"github.com/zmap/zcrypto/cryptobyte/asn1"
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
 // BundleWriter writes a sequence of MerkleTreeCertEntry to the underlying writer
