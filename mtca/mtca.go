@@ -230,8 +230,8 @@ func (m *mtca) Preflight(ctx context.Context) error {
 
 // pendingEntry represents an entry in the pool, along with a channel to notify a pending RPC.
 type pendingEntry struct {
-	mtce entry.MerkleTreeCertEntry
-	ch   chan<- int64
+	mtcle entry.MTCLogEntry
+	ch    chan<- int64
 }
 
 type pool struct {
@@ -301,7 +301,7 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 		return nil, fmt.Errorf("preparing x509 certificate: %s", err)
 	}
 
-	mtce, err := entry.FromX509(lintCertBytes, crypto.SHA256)
+	mtcle, err := entry.FromX509(lintCertBytes, crypto.SHA256)
 	if err != nil {
 		return nil, fmt.Errorf("generating TBSCertificateLogEntry: %s '%x'", err, lintCertBytes)
 	}
@@ -310,8 +310,8 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan int64, 1)
 	err = m.pool.append(pendingEntry{
-		mtce: mtce,
-		ch:   ch,
+		mtcle: mtcle,
+		ch:    ch,
 	})
 	if err != nil {
 		return nil, err
@@ -439,11 +439,11 @@ func (m *mtca) sequence(ctx context.Context) error {
 	}()
 
 	// Write leaves
-	var mtces []entry.MerkleTreeCertEntry
+	var mtcles []entry.MTCLogEntry
 	for _, e := range entries {
-		mtces = append(mtces, e.mtce)
+		mtcles = append(mtcles, e.mtcle)
 	}
-	err = tiles.WriteEntries(ctx, m.s3c, latest.TreeSize, mtces)
+	err = tiles.WriteEntries(ctx, m.s3c, latest.TreeSize, mtcles)
 	if err != nil {
 		return err
 	}
@@ -457,7 +457,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		MTCASignature:   nil,
 		MirrorID:        "",
 		MirrorSignature: nil,
-		TreeSize:        latest.TreeSize + int64(len(mtces)),
+		TreeSize:        latest.TreeSize + int64(len(mtcles)),
 		RootHash:        newRootHash[:],
 	}
 
