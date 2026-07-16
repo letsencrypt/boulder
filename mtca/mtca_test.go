@@ -64,10 +64,9 @@ func setup() (*mtca, func(), error) {
 		OmitKeyEncipherment: true,
 		OmitClientAuth:      true,
 		OmitSKID:            true,
-		//TODO
-		// MTC:                 true,
-		MaxValidityPeriod: config.Duration{time.Hour},
-		LintConfig:        "",
+		MTC:                 true,
+		MaxValidityPeriod:   config.Duration{time.Hour},
+		LintConfig:          "",
 		IgnoredLints: []string{
 			"w_ext_subject_key_identifier_missing_sub_cert",
 			"w_ct_sct_policy_count_unsatisfied",

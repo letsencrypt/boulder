@@ -101,7 +101,9 @@ func main() {
 	s3c, err := bs3.FromConfig(c.MTCA.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")
 
-	// c.MTCA.CertProfile.MTC = true //XXX
+	if !c.MTCA.CertProfile.MTC {
+		cmd.Fail("MTCA configured with non-MTC profile")
+	}
 	profile, err := issuance.NewProfile(c.MTCA.CertProfile)
 	cmd.FailOnError(err, "Making profile")
 

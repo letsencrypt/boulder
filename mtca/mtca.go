@@ -296,10 +296,6 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 		NotAfter:    notAfter,
 		DNSNames:    dnsNames,
 		IPAddresses: ipAddresses,
-
-		IncludeCTPoison: true, // XXX: should be false
-		CommonName:      "",
-		SubjectKeyId:    issuance.HexMarshalableBytes{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("preparing x509 certificate: %s", err)
