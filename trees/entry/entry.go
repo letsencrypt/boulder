@@ -1,92 +1,87 @@
-// Package entry defines types related TBSCertificateLogEntry and MerkleTreeCertEntry from
+// Package entry defines types related to TBSCertificateLogEntry and MerkleTreeCertEntry from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries,
 // and the entry bundle encoding from https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md#log-entries
+//
+// The concepts fit together like so:
+//
+// Entry bundles contain MerkleTreeCertEntry. MerkleTreeCertEntry contains (typically) TBSCertificateLogEntry.
+//
+// TBSCertificateLogEntry is part of the X.509 layer. It will be used to build certificates
+// (TODO: implement TBSCertificateLogEntry.ToX509).
+//
+// MerkleTreeCertEntry is part of the Merkle Tree layer and is what gets hashed. It provides type switching
+// (needed for null_entry) and extensibility.
+//
+// Entry bundles are part of the tile storage layer. They provide a simple length-prefixed framing so that
+// MerkleTreeCertEntries can be concatenated unambiguously.
+//
+// Note that neither TBSCertificateLogEntry nor MerkleTreeCertEntry carries its own length, since they will
+// always be wrapped or converted into a format that has length information: entry bundles or X.509 certificate.
 package entry
 
 import (
 	"bytes"
 	"crypto"
-	"encoding/binary"
 	"fmt"
 	"io"
-	"math"
 
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
-// BundleWriter writes a sequence of MerkleTreeCertEntry to the underlying writer
-// as entry bundles.
-type BundleWriter struct {
-	w io.WriteCloser
+// BundleBuilder appends a sequence of MerkleTreeCertEntry to a buffer as an entry bundle.
+type BundleBuilder struct {
+	b cryptobyte.Builder
 }
 
-// NewBundleWriter returns a BundleWriter with given underlying writer.
-func NewBundleWriter(w io.WriteCloser) BundleWriter {
-	return BundleWriter{w}
+// NewBundleBuilder returns a BundleBuilder that appends to the given buffer. Like
+// cryptobyte.Builder, the slice will be reallocated if its capacity is exceeded.
+// Use Bytes to get the final buffer.
+func NewBundleBuilder(buf []byte) *BundleBuilder {
+	return &BundleBuilder{*cryptobyte.NewBuilder(buf)}
 }
 
-func (bw BundleWriter) Close() error {
-	return bw.w.Close()
+func (b *BundleBuilder) Bytes() ([]byte, error) {
+	return b.b.Bytes()
 }
 
-// Write writes a single MerkleTreeLogEntry, with its length prefix, to the underlying
-// writer.
-func (bw BundleWriter) Write(merkleTreeCertificateEntry MerkleTreeCertEntry) error {
+// Add appends a single MerkleTreeCertEntry, with its length prefix, to the builder.
+func (b *BundleBuilder) Add(merkleTreeCertificateEntry MerkleTreeCertEntry) {
 	out, err := merkleTreeCertificateEntry.Marshal()
 	if err != nil {
-		return err
+		b.b.SetError(err)
+		return
 	}
 
-	return bw.writeLengthPrefixed(out)
+	b.b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(out)
+	})
 }
 
-// writeLengthPrefixed writes to the underlying writer a byte sequence with a two-byte length prefix.
-func (bw BundleWriter) writeLengthPrefixed(in []byte) error {
-	prefix := len(in)
-	if prefix > math.MaxUint16 {
-		return fmt.Errorf("input too long: %d bytes", len(in))
-	}
-	var prefixBytes [2]byte
-	binary.BigEndian.PutUint16(prefixBytes[:], uint16(prefix))
-	_, err := bw.w.Write(prefixBytes[:])
-	if err != nil {
-		return err
-	}
-
-	_, err = bw.w.Write(in)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// BundleReader reads records of MerkleTreeCertEntry from the underlying reader in the
+// BundleReader reads records of MerkleTreeCertEntry from the underlying buffer in the
 // entry bundle format.
 type BundleReader struct {
-	r io.Reader
+	r cryptobyte.String
 }
 
 // NewBundleReader returns a new BundleReader.
-func NewBundleReader(r io.Reader) BundleReader {
-	return BundleReader{r}
+func NewBundleReader(buf []byte) *BundleReader {
+	return &BundleReader{cryptobyte.String(buf)}
 }
 
-// Read reads the bytes of a single entry from the underlying reader.
+// Read reads the bytes of a single entry.
 //
-// Returns the parsed MerkleTreeCertEntry as well as its bytes.
-func (br BundleReader) Read() (MerkleTreeCertEntry, []byte, error) {
-	var buf [2]byte
-	_, err := io.ReadFull(br.r, buf[:])
-	if err != nil {
-		return MerkleTreeCertEntry{}, nil, err
+// Returns the parsed MerkleTreeCertEntry as well as its bytes, both of which
+// reference the same memory as the original buffer.
+//
+// Returns MerkleTreeCertEntry{}, nil, io.EOF when there is no more to read.
+func (br *BundleReader) Read() (MerkleTreeCertEntry, []byte, error) {
+	if br.r.Empty() {
+		return MerkleTreeCertEntry{}, nil, io.EOF
 	}
-	entryLen := binary.BigEndian.Uint16(buf[:])
-	body := make([]byte, entryLen)
-	_, err = io.ReadFull(br.r, body)
-	if err != nil {
-		return MerkleTreeCertEntry{}, nil, err
+	var body cryptobyte.String
+	if !br.r.ReadUint16LengthPrefixed(&body) {
+		return MerkleTreeCertEntry{}, nil, fmt.Errorf("malformed length")
 	}
 
 	mtce, err := unmarshalMTCE(body)
@@ -243,6 +238,8 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	if !tbsCertificate.ReadASN1(&version, asn1.Tag(0).Constructed().ContextSpecific()) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("failed to read version")
 	}
+	// Version should always be v3, which is represented as an ASN.1 INTEGER 2.
+	// That's tag 2, length 1, value 2.
 	if !bytes.Equal(version, []byte{2, 1, 2}) {
 		return MerkleTreeCertEntry{}, fmt.Errorf("invalid X.509 version")
 	}
@@ -324,17 +321,22 @@ func FromX509(in []byte, hash crypto.Hash) (MerkleTreeCertEntry, error) {
 	// and `signature`, and encodes subjectPublicKeyInfo as its hash.
 	var builder cryptobyte.Builder
 
+	// version
 	builder.AddASN1(asn1.Tag(0).Constructed().ContextSpecific(), func(child *cryptobyte.Builder) {
 		child.AddASN1Int64(2)
 	})
 
+	// issuer, validity, subject
 	for _, f := range fields {
 		// The fields were read with ReadASN1Element so they still include
-		// their tag and length. Add them straight to
+		// their tag and length. Add them straight to the builder.
 		builder.AddBytes(f)
 	}
+	// subjectPublicKeyAlgorithm
 	builder.AddBytes(algID)
+	// subjectPublicKeyInfoHash
 	builder.AddASN1OctetString(spkiHash)
+	// extensions
 	builder.AddBytes(extensions)
 
 	tbsCertificateLogEntryBytes, err := builder.Bytes()

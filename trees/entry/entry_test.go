@@ -2,7 +2,6 @@ package entry
 
 import (
 	"bytes"
-	"compress/gzip"
 	"crypto"
 	"encoding/base64"
 	"encoding/hex"
@@ -151,25 +150,20 @@ func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
 	}
 }
 
-func TestBundleWriterReader(t *testing.T) {
-	var buf bytes.Buffer
-	w := gzip.NewWriter(&buf)
-	bw := NewBundleWriter(w)
+func TestBundleBuildAndRead(t *testing.T) {
+	var buf []byte
+	bw := NewBundleBuilder(buf)
 
 	for range 10 {
-		err := bw.Write(MerkleTreeCertEntry{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		bw.Add(MerkleTreeCertEntry{})
 	}
-	bw.Close()
 
-	r, err := gzip.NewReader(&buf)
+	tile, err := bw.Bytes()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	br := NewBundleReader(r)
+	br := NewBundleReader(tile)
 
 	for range 10 {
 		mtce, raw, err := br.Read()
