@@ -38,8 +38,6 @@ CREATE TABLE `checkpoints` (
     -- Note that `log_origin` and `cosigner_name` in the link above are derived from `mtcLogID` and `mirrorID` respectively.
     -- Also, for checkpoint signatures start == 0 and end == tree size.
     -- `treeSize` will be strictly increasing over time, enforced by the application.
-    -- Appending to this table will involve a check (in a transaction) that the treeSize and root hash of the
-    -- highest-sized checkpoint match what the CA expects.
     `treeSize` bigint(20) unsigned NOT NULL,
     `rootHash` binary(32) NOT NULL,
 

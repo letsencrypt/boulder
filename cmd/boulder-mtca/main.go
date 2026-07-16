@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -96,13 +97,15 @@ func main() {
 		cmd.Fail("only one of -init-log and -init-log-for-test may happen")
 	}
 	if *initLog {
-		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
 		err = mtcaImpl.InitLog(ctx)
 		cmd.FailOnError(err, "Initializing log")
 		return
 	}
 	if *initLogForTest {
-		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
 		err = mtcaImpl.InitLog(ctx)
 		if err != nil && !errors.Is(err, mtca.ErrIssuanceLogAlreadyInitialized) {
 			cmd.FailOnError(err, "Initializing MTC log DB for test")
@@ -115,12 +118,18 @@ func main() {
 	start, err := srv.Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup MTCA gRPC server")
 
-	ctx, cancel := context.WithCancel(context.Background())
 	// Cancel will be called after start() returns, which happens after GracefulStop() returns.
 	// That means all inflight RPCs will be done, which means the last of the pool has been sequenced.
 	// GracefulStop() is registered as part of srv.Build() above.
-	defer cancel()
-	go mtcaImpl.Loop(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
+	var loopWG sync.WaitGroup
+	loopWG.Go(func() {
+		mtcaImpl.Loop(ctx)
+	})
+	defer func() {
+		cancel()
+		loopWG.Wait()
+	}()
 
 	cmd.FailOnError(start(), "MTCA gRPC service failed")
 }
