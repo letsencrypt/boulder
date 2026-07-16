@@ -85,12 +85,12 @@ func (br *BundleReader) Read() (MTCLogEntry, []byte, error) {
 		return MTCLogEntry{}, nil, fmt.Errorf("malformed length")
 	}
 
-	mtce, err := unmarshalMTCE(body)
+	mtcle, err := unmarshalMTCLE(body)
 	if err != nil {
 		return MTCLogEntry{}, nil, err
 	}
 
-	return mtce, body, nil
+	return mtcle, body, nil
 }
 
 const typeNullEntry = 0
@@ -117,9 +117,9 @@ type MTCLogEntry struct {
 }
 
 // TBS returns the TBSCertificateLogEntry bytes if Type is tbs_cert_entry, or nil otherwise.
-func (mtce MTCLogEntry) TBS() []byte {
-	if mtce.Type == typeTBSCertEntry {
-		return mtce.Value
+func (mtcle MTCLogEntry) TBS() []byte {
+	if mtcle.Type == typeTBSCertEntry {
+		return mtcle.Value
 	}
 	return nil
 }
@@ -127,13 +127,13 @@ func (mtce MTCLogEntry) TBS() []byte {
 // Marshal returns the encoding of its receiver.
 //
 // Rejects unknown MTCLogEntryTypes.
-func (mtce MTCLogEntry) Marshal() ([]byte, error) {
+func (mtcle MTCLogEntry) Marshal() ([]byte, error) {
 	var builder cryptobyte.Builder
 	builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes(mtce.Extensions)
+		child.AddBytes(mtcle.Extensions)
 	})
-	builder.AddUint16(mtce.Type)
-	switch mtce.Type {
+	builder.AddUint16(mtcle.Type)
+	switch mtcle.Type {
 	case typeTBSCertEntry:
 		// We don't encode a length prefix for Value. Per the spec:
 		//      opaque tbs_cert_entry_data[N];
@@ -143,22 +143,22 @@ func (mtce MTCLogEntry) Marshal() ([]byte, error) {
 		//
 		// In other words, per TLS presentation syntax (https://datatracker.ietf.org/doc/html/rfc8446#section-3.4),
 		// this is a fixed-length vector of size N, where N is known externally.
-		builder.AddBytes(mtce.Value)
+		builder.AddBytes(mtcle.Value)
 	case typeNullEntry:
-		if len(mtce.Value) != 0 {
+		if len(mtcle.Value) != 0 {
 			return nil, fmt.Errorf("non-empty value for null_entry MTCLogEntry")
 		}
 		// Append nothing; the encoding of the null entry is Empty.
 	default:
-		return nil, fmt.Errorf("unknown MTCLogEntryType %d", mtce.Type)
+		return nil, fmt.Errorf("unknown MTCLogEntryType %d", mtcle.Type)
 	}
 	return builder.Bytes()
 }
 
-// unmarshalMTCE parses a MTCLogEntry and returns it.
+// unmarshalMTCLE parses a MTCLogEntry and returns it.
 //
 // Rejects unknown MTCLogEntryType.
-func unmarshalMTCE(input []byte) (MTCLogEntry, error) {
+func unmarshalMTCLE(input []byte) (MTCLogEntry, error) {
 	val := cryptobyte.String(input)
 
 	var extensions cryptobyte.String
