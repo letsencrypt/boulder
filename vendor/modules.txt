@@ -289,7 +289,7 @@ github.com/redis/go-redis/v9/push
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 ## explicit
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.50.4-0.20260507075217-1bd47f85b3da
+# github.com/weppos/publicsuffix-go v0.50.4-0.20260716074310-43d7adb18c47
 ## explicit; go 1.24.0
 github.com/weppos/publicsuffix-go/publicsuffix
 # github.com/zmap/zcrypto v0.0.0-20260514033604-a1159eb3cad9
