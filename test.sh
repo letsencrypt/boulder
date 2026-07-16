@@ -21,13 +21,14 @@ INTEGRATION_FLAGS=()
 FILTER=()
 COVERAGE="false"
 COVERAGE_DIR="test/coverage/$(date +%Y-%m-%d_%H-%M-%S)"
+GO=go
 
 #
 # Cleanup Functions
 #
 
 function flush_redis() {
-  go run ./test/boulder-tools/flushredis/main.go
+  "${GO}" run ./test/boulder-tools/flushredis/main.go
 }
 
 #
@@ -105,7 +106,7 @@ function run_unit_tests() {
 # Run `go test` on a given set of packages.
 #
 function go_test() {
-  go test "${UNIT_FLAGS[@]}" "${FILTER[@]}" "$@"
+  "${GO}" test "${UNIT_FLAGS[@]}" "${FILTER[@]}" "$@"
 }
 
 #
@@ -165,7 +166,7 @@ while getopts luvwecisgnhbd:p:f:-: OPT; do
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start-py )                   RUN+=("start") ;;
     g | generate )                   RUN+=("generate") ;;
-    n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
+    n | config-next )                BOULDER_CONFIG_DIR="test/config-next"; GO=gotip ;;
     c | coverage )                   COVERAGE="true" ;;
     d | coverage-dir )               check_arg; COVERAGE_DIR="${OPTARG}" ;;
     h | help )                       print_usage_exit ;;
@@ -208,7 +209,7 @@ trap "print_outcome" EXIT
 settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
-    GOCACHE:            $(go env GOCACHE)
+    GOCACHE:            $("${GO}" env GOCACHE)
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
     UNIT_FLAGS:         ${UNIT_FLAGS[@]}
     FILTER:             ${FILTER[@]}
@@ -317,8 +318,8 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   #   stringer: checking package: grpc/bcodes.go:6:2: could not import
   #     github.com/letsencrypt/boulder/probs (can't find import:
   #     github.com/letsencrypt/boulder/probs)
-  go install ./probs
-  go install ./vendor/google.golang.org/grpc/codes
+  "${GO}" install ./probs
+  "${GO}" install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
   run_and_expect_silence git diff --exit-code .
 fi
