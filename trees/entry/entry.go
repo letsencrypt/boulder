@@ -32,7 +32,7 @@ import (
 
 // BundleBuilder appends a sequence of MTCLogEntry to a buffer as an entry bundle.
 type BundleBuilder struct {
-	b cryptobyte.Builder
+	builder cryptobyte.Builder
 }
 
 // NewBundleBuilder returns a BundleBuilder that appends to the given buffer. Like
@@ -43,18 +43,18 @@ func NewBundleBuilder(buf []byte) *BundleBuilder {
 }
 
 func (b *BundleBuilder) Bytes() ([]byte, error) {
-	return b.b.Bytes()
+	return b.builder.Bytes()
 }
 
 // Add appends a single MTCLogEntry, with its length prefix, to the builder.
 func (b *BundleBuilder) Add(mtcLogEntry MTCLogEntry) {
 	out, err := mtcLogEntry.Marshal()
 	if err != nil {
-		b.b.SetError(err)
+		b.builder.SetError(err)
 		return
 	}
 
-	b.b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+	b.builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes(out)
 	})
 }
@@ -62,7 +62,7 @@ func (b *BundleBuilder) Add(mtcLogEntry MTCLogEntry) {
 // BundleReader reads records of MTCLogEntry from the underlying buffer in the
 // entry bundle format.
 type BundleReader struct {
-	r cryptobyte.String
+	reader cryptobyte.String
 }
 
 // NewBundleReader returns a new BundleReader.
@@ -76,18 +76,18 @@ func NewBundleReader(buf []byte) *BundleReader {
 // reference the same memory as the original buffer.
 //
 // Returns MTCLogEntry{}, nil, io.EOF when there is no more to read.
-func (br *BundleReader) Read() (MTCLogEntry, []byte, error) {
-	if br.r.Empty() {
-		return MTCLogEntry{}, nil, io.EOF
+func (br *BundleReader) Read() (*MTCLogEntry, []byte, error) {
+	if br.reader.Empty() {
+		return nil, nil, io.EOF
 	}
 	var body cryptobyte.String
-	if !br.r.ReadUint16LengthPrefixed(&body) {
-		return MTCLogEntry{}, nil, fmt.Errorf("malformed length")
+	if !br.reader.ReadUint16LengthPrefixed(&body) {
+		return nil, nil, fmt.Errorf("malformed length")
 	}
 
 	mtcle, err := unmarshalMTCLE(body)
 	if err != nil {
-		return MTCLogEntry{}, nil, err
+		return nil, nil, err
 	}
 
 	return mtcle, body, nil
@@ -111,15 +111,15 @@ const typeTBSCertEntry = 1
 //
 // The zero value represents a null_entry.
 type MTCLogEntry struct {
-	Extensions []byte
-	Type       uint16
-	Value      []byte
+	extensions []byte
+	typ        uint16
+	value      []byte
 }
 
 // TBS returns the TBSCertificateLogEntry bytes if Type is tbs_cert_entry, or nil otherwise.
 func (mtcle MTCLogEntry) TBS() []byte {
-	if mtcle.Type == typeTBSCertEntry {
-		return mtcle.Value
+	if mtcle.typ == typeTBSCertEntry {
+		return mtcle.value
 	}
 	return nil
 }
@@ -130,10 +130,10 @@ func (mtcle MTCLogEntry) TBS() []byte {
 func (mtcle MTCLogEntry) Marshal() ([]byte, error) {
 	var builder cryptobyte.Builder
 	builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes(mtcle.Extensions)
+		child.AddBytes(mtcle.extensions)
 	})
-	builder.AddUint16(mtcle.Type)
-	switch mtcle.Type {
+	builder.AddUint16(mtcle.typ)
+	switch mtcle.typ {
 	case typeTBSCertEntry:
 		// We don't encode a length prefix for Value. Per the spec:
 		//      opaque tbs_cert_entry_data[N];
@@ -143,14 +143,14 @@ func (mtcle MTCLogEntry) Marshal() ([]byte, error) {
 		//
 		// In other words, per TLS presentation syntax (https://datatracker.ietf.org/doc/html/rfc8446#section-3.4),
 		// this is a fixed-length vector of size N, where N is known externally.
-		builder.AddBytes(mtcle.Value)
+		builder.AddBytes(mtcle.value)
 	case typeNullEntry:
-		if len(mtcle.Value) != 0 {
+		if len(mtcle.value) != 0 {
 			return nil, fmt.Errorf("non-empty value for null_entry MTCLogEntry")
 		}
 		// Append nothing; the encoding of the null entry is Empty.
 	default:
-		return nil, fmt.Errorf("unknown MTCLogEntryType %d", mtcle.Type)
+		return nil, fmt.Errorf("unknown MTCLogEntryType %d", mtcle.typ)
 	}
 	return builder.Bytes()
 }
@@ -158,41 +158,41 @@ func (mtcle MTCLogEntry) Marshal() ([]byte, error) {
 // unmarshalMTCLE parses a MTCLogEntry and returns it.
 //
 // Rejects unknown MTCLogEntryType.
-func unmarshalMTCLE(input []byte) (MTCLogEntry, error) {
+func unmarshalMTCLE(input []byte) (*MTCLogEntry, error) {
 	val := cryptobyte.String(input)
 
 	var extensions cryptobyte.String
 	if !val.ReadUint16LengthPrefixed(&extensions) {
-		return MTCLogEntry{}, fmt.Errorf("malformed extensions")
+		return nil, fmt.Errorf("malformed extensions")
 	}
 
 	var typ uint16
 	if !val.ReadUint16(&typ) {
-		return MTCLogEntry{}, fmt.Errorf("malformed type")
+		return nil, fmt.Errorf("malformed type")
 	}
 
 	switch typ {
 	case typeTBSCertEntry:
 	case typeNullEntry:
 		if len(val) > 0 {
-			return MTCLogEntry{}, fmt.Errorf("null_entry with non-empty value")
+			return nil, fmt.Errorf("null_entry with non-empty value")
 		}
 	default:
-		return MTCLogEntry{}, fmt.Errorf("unknown MTCLogEntryType %d", typ)
+		return nil, fmt.Errorf("unknown MTCLogEntryType %d", typ)
 	}
 
 	// Per the spec, value is not length-prefixed. It's a fixed-length vector, where
 	// the length is known externally. So it just consists of the rest of the bytes.
-	return MTCLogEntry{
-		Extensions: []byte(extensions),
-		Type:       typ,
-		Value:      []byte(val),
+	return &MTCLogEntry{
+		extensions: []byte(extensions),
+		typ:        typ,
+		value:      []byte(val),
 	}, nil
 }
 
 // FromX509 takes a DER-encoded X.509 certificate and transforms it into a TBSCertificateLogEntry,
 // then returns a MTCLogEntry wrapping that TBSCertificateLogEntry.
-func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
+func FromX509(in []byte, hash crypto.Hash) (*MTCLogEntry, error) {
 	var inner cryptobyte.String
 	input := cryptobyte.String(in)
 
@@ -207,15 +207,15 @@ func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 	//		    serialNumber         CertificateSerialNumber,
 	//	     ...
 	if !input.ReadASN1(&inner, asn1.SEQUENCE) {
-		return MTCLogEntry{}, fmt.Errorf("failed to read outer sequence")
+		return nil, fmt.Errorf("failed to read outer sequence")
 	}
 	if !input.Empty() {
-		return MTCLogEntry{}, fmt.Errorf("extra bytes at end")
+		return nil, fmt.Errorf("extra bytes at end")
 	}
 
 	var tbsCertificate cryptobyte.String
 	if !inner.ReadASN1(&tbsCertificate, asn1.SEQUENCE) {
-		return MTCLogEntry{}, fmt.Errorf("failed to read tbsCertificate")
+		return nil, fmt.Errorf("failed to read tbsCertificate")
 	}
 
 	// https://datatracker.ietf.org/doc/html/rfc5280#page-117
@@ -237,12 +237,12 @@ func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
 	var version cryptobyte.String
 	if !tbsCertificate.ReadASN1(&version, asn1.Tag(0).Constructed().ContextSpecific()) {
-		return MTCLogEntry{}, fmt.Errorf("failed to read version")
+		return nil, fmt.Errorf("failed to read version")
 	}
 	// Version should always be v3, which is represented as an ASN.1 INTEGER 2.
 	// That's tag 2, length 1, value 2.
 	if !bytes.Equal(version, []byte{2, 1, 2}) {
-		return MTCLogEntry{}, fmt.Errorf("invalid X.509 version")
+		return nil, fmt.Errorf("invalid X.509 version")
 	}
 	var fields []cryptobyte.String
 	for i := range 5 {
@@ -250,7 +250,7 @@ func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 		var fieldTag asn1.Tag
 
 		if !tbsCertificate.ReadAnyASN1Element(&fieldElement, &fieldTag) {
-			return MTCLogEntry{}, fmt.Errorf("failed to read field")
+			return nil, fmt.Errorf("failed to read field")
 		}
 
 		switch i {
@@ -270,7 +270,7 @@ func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 	// length bytes, which should be included in the hash.
 	var spki cryptobyte.String
 	if !tbsCertificate.ReadASN1Element(&spki, asn1.SEQUENCE) {
-		return MTCLogEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
+		return nil, fmt.Errorf("malformed subjectPublicKeyInfo")
 	}
 
 	h := hash.New()
@@ -281,11 +281,11 @@ func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 	// subjectPublicKeyAlgorithm.
 	var spkiInner cryptobyte.String
 	if !spki.ReadASN1(&spkiInner, asn1.SEQUENCE) {
-		return MTCLogEntry{}, fmt.Errorf("malformed subjectPublicKeyInfo")
+		return nil, fmt.Errorf("malformed subjectPublicKeyInfo")
 	}
 	var algID cryptobyte.String
 	if !spkiInner.ReadASN1Element(&algID, asn1.SEQUENCE) {
-		return MTCLogEntry{}, fmt.Errorf("malformed algorithmIdentifier")
+		return nil, fmt.Errorf("malformed algorithmIdentifier")
 	}
 
 	// Read the extensions.
@@ -297,11 +297,11 @@ func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 	var extensions cryptobyte.String
 	extensionsTag := asn1.Tag(3).Constructed().ContextSpecific()
 	if !tbsCertificate.ReadASN1Element(&extensions, extensionsTag) {
-		return MTCLogEntry{}, fmt.Errorf("error reading extensions")
+		return nil, fmt.Errorf("error reading extensions")
 	}
 
 	if !tbsCertificate.Empty() {
-		return MTCLogEntry{}, fmt.Errorf("extra bytes at end")
+		return nil, fmt.Errorf("extra bytes at end")
 	}
 
 	// TBSCertificateLogEntry ::= SEQUENCE {
@@ -342,11 +342,11 @@ func FromX509(in []byte, hash crypto.Hash) (MTCLogEntry, error) {
 
 	tbsCertificateLogEntryBytes, err := builder.Bytes()
 	if err != nil {
-		return MTCLogEntry{}, err
+		return nil, err
 	}
 
-	return MTCLogEntry{
-		Type:  typeTBSCertEntry,
-		Value: tbsCertificateLogEntryBytes,
+	return &MTCLogEntry{
+		typ:   typeTBSCertEntry,
+		value: tbsCertificateLogEntryBytes,
 	}, nil
 }

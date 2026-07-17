@@ -5,6 +5,8 @@ import (
 	"crypto"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -27,13 +29,13 @@ YhKuXQo=`, "\n", ""))
 		t.Fatal(err)
 	}
 
-	mtce, err := FromX509(input, crypto.SHA256)
+	mtcle, err := FromX509(input, crypto.SHA256)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if mtce.Type != typeTBSCertEntry {
-		t.Errorf("mtce.Type: got %d, want tbs_cert_entry (1)", mtce.Type)
+	if mtcle.typ != typeTBSCertEntry {
+		t.Errorf("mtcle.Type: got %d, want tbs_cert_entry (1)", mtcle.typ)
 	}
 
 	expectedOutput, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
@@ -48,9 +50,9 @@ AQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUgPmX4p5B3cSQ2bkaNcye
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(mtce.Value, expectedOutput) {
-		t.Errorf("TBSCertificateLogEntryFromX509(): got %s, want %s",
-			base64.StdEncoding.EncodeToString(mtce.Value),
+	if !bytes.Equal(mtcle.value, expectedOutput) {
+		t.Errorf("FromX509(): got %s, want %s",
+			base64.StdEncoding.EncodeToString(mtcle.value),
 			base64.StdEncoding.EncodeToString(expectedOutput))
 	}
 }
@@ -106,7 +108,7 @@ YhKuXQo=`, "\n", ""))
 
 func TestMarshalMTCLE(t *testing.T) {
 	invalidType := MTCLogEntry{
-		Type: 99,
+		typ: 99,
 	}
 	_, err := invalidType.Marshal()
 	if err == nil {
@@ -114,8 +116,8 @@ func TestMarshalMTCLE(t *testing.T) {
 	}
 
 	nonEmptyNullEntry := MTCLogEntry{
-		Type:  typeNullEntry,
-		Value: []byte("abc"),
+		typ:   typeNullEntry,
+		value: []byte("abc"),
 	}
 	_, err = nonEmptyNullEntry.Marshal()
 	if err == nil {
@@ -123,7 +125,7 @@ func TestMarshalMTCLE(t *testing.T) {
 	}
 
 	validNullEntry := MTCLogEntry{
-		Type: typeNullEntry,
+		typ: typeNullEntry,
 	}
 	output, err := validNullEntry.Marshal()
 	if err != nil {
@@ -135,8 +137,8 @@ func TestMarshalMTCLE(t *testing.T) {
 	}
 
 	validTBSCertificateLogEntry := MTCLogEntry{
-		Type:  typeTBSCertEntry,
-		Value: []byte("abc"),
+		typ:   typeTBSCertEntry,
+		value: []byte("abc"),
 	}
 	output, err = validTBSCertificateLogEntry.Marshal()
 	if err != nil {
@@ -158,11 +160,11 @@ func TestUnmarshalMTCLE(t *testing.T) {
 
 	testCases := []testCase{
 		{"valid TBS", "00000001616263", false, &MTCLogEntry{
-			Type:  typeTBSCertEntry,
-			Value: []byte("abc"),
+			typ:   typeTBSCertEntry,
+			value: []byte("abc"),
 		}},
 		{"valid null_entry", "00000000", false, &MTCLogEntry{
-			Type: typeNullEntry,
+			typ: typeNullEntry,
 		}},
 		{"too short", "000000", true, nil},
 		{"way too short", "00", true, nil},
@@ -185,14 +187,14 @@ func TestUnmarshalMTCLE(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Unmarshal(): %s", err)
 				}
-				if !bytes.Equal(mtcle.Extensions, tc.expectVal.Extensions) {
-					t.Errorf("Unmarshal() extensions: got %#v, want %#v", mtcle.Extensions, tc.expectVal.Extensions)
+				if !bytes.Equal(mtcle.extensions, tc.expectVal.extensions) {
+					t.Errorf("Unmarshal() extensions: got %#v, want %#v", mtcle.extensions, tc.expectVal.extensions)
 				}
-				if mtcle.Type != tc.expectVal.Type {
-					t.Errorf("Unmarshal() type: got %#v, want %#v", mtcle.Type, tc.expectVal.Type)
+				if mtcle.typ != tc.expectVal.typ {
+					t.Errorf("Unmarshal() type: got %#v, want %#v", mtcle.typ, tc.expectVal.typ)
 				}
-				if !bytes.Equal(mtcle.Value, tc.expectVal.Value) {
-					t.Errorf("Unmarshal() value: got %#v, want %#v", mtcle.Value, tc.expectVal.Value)
+				if !bytes.Equal(mtcle.value, tc.expectVal.value) {
+					t.Errorf("Unmarshal() value: got %#v, want %#v", mtcle.value, tc.expectVal.value)
 				}
 			}
 		})
@@ -201,36 +203,142 @@ func TestUnmarshalMTCLE(t *testing.T) {
 
 func TestBundleBuildAndRead(t *testing.T) {
 	var buf []byte
-	bw := NewBundleBuilder(buf)
+	bb := NewBundleBuilder(buf)
+
+	bb.Add(MTCLogEntry{})
 
 	for range 10 {
-		bw.Add(MTCLogEntry{})
+		bb.Add(MTCLogEntry{
+			typ:   typeTBSCertEntry,
+			value: []byte{0x55, 0x55, 0x55, 0x55, 0x55},
+		})
 	}
 
-	tile, err := bw.Bytes()
+	tile, err := bb.Bytes()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	br := NewBundleReader(tile)
 
+	mtcle, raw, err := br.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mtcle.typ != typeNullEntry {
+		t.Errorf("mtcle.Type: got %d, want %d", mtcle.typ, typeNullEntry)
+	}
+	if len(mtcle.extensions) != 0 {
+		t.Errorf("mtcle.Extensions: got %v, want nil", mtcle.extensions)
+	}
+	if len(mtcle.value) != 0 {
+		t.Errorf("mtcle.Value: got %v, want nil", mtcle.value)
+	}
+	expected := []byte{0, 0, 0, 0}
+	if !bytes.Equal(raw, expected) {
+		t.Errorf("raw mtcle: got %x, want %x", raw, expected)
+	}
+
 	for range 10 {
-		mtce, raw, err := br.Read()
+		mtcle, raw, err := br.Read()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if mtce.Type != typeNullEntry {
-			t.Errorf("mtce.Type: got %d, want %d", mtce.Type, typeNullEntry)
+		if mtcle.typ != typeTBSCertEntry {
+			t.Errorf("mtcle.Type: got %d, want %d", mtcle.typ, typeTBSCertEntry)
 		}
-		if len(mtce.Extensions) != 0 {
-			t.Errorf("mtce.Extensions: got %v, want nil", mtce.Extensions)
+		if len(mtcle.extensions) != 0 {
+			t.Errorf("mtcle.Extensions: got %v, want nil", mtcle.extensions)
 		}
-		if len(mtce.Value) != 0 {
-			t.Errorf("mtce.Value: got %v, want nil", mtce.Value)
+		wantValue := []byte{0x55, 0x55, 0x55, 0x55, 0x55}
+		if !bytes.Equal(mtcle.value, wantValue) {
+			t.Errorf("mtcle.Value: got %x, want %x", mtcle.value, wantValue)
 		}
-		expected := []byte{0, 0, 0, 0}
-		if !bytes.Equal(raw, expected) {
-			t.Errorf("raw mtce: got %x, want %x", raw, expected)
+		wantMTCLEBytes := append([]byte{0, 0, 0, 1}, wantValue...)
+		if !bytes.Equal(raw, wantMTCLEBytes) {
+			t.Errorf("raw MTCLogEntry: got %x, want %x", raw, expected)
 		}
+	}
+}
+
+func TestBundleReaderSuccess(t *testing.T) {
+	br := NewBundleReader(nil)
+	entry, entryBytes, err := br.Read()
+	if err != nil && !errors.Is(err, io.EOF) {
+		t.Error(err)
+	}
+	if entry != nil {
+		t.Errorf("empty reader: got %v, want nil entry", entry)
+	}
+	if len(entryBytes) != 0 {
+		t.Errorf("empty reader: got %x, want empty bytes", entryBytes)
+	}
+
+	// - 9 bytes of data
+	// - empty extensions (0000);
+	// - type = TBSCertificateLogEntry (0001)
+	// - fake TBSCertificateLogEntry (5 bytes of 55)
+	input, err := hex.DecodeString("0009000000015555555555")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	br = NewBundleReader(input)
+	entry, entryBytes, err = br.Read()
+	if err != nil && !errors.Is(err, io.EOF) {
+		t.Error(err)
+	}
+	entry, entryBytes, err = br.Read()
+	if !errors.Is(err, io.EOF) {
+		t.Errorf("second read on a 1-element bundle: want EOF, got %v", err)
+	}
+
+	br = NewBundleReader(bytes.Repeat(input, 256))
+	var count int64
+	for count = 0; ; count++ {
+		_, _, err := br.Read()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			t.Fatal(err)
+		}
+	}
+
+	if count != 256 {
+		t.Errorf("reading many bundles: got %d values, want %d", count, 256)
+	}
+}
+
+func TestBundleReaderMalformed(t *testing.T) {
+	type testCase struct {
+		name, input string
+	}
+
+	testCases := []testCase{
+		{"short length", "09"},
+		{"short body", "0001"},
+		{"max length, short body", "FFFF"},
+		{"two records, short length on second", "0001FF09"},
+		{"two records, short body on second", "0001FF0001"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := hex.DecodeString(tc.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			br := NewBundleReader(in)
+			for {
+				_, _, err = br.Read()
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						t.Error("got nil error, want error")
+					}
+					break
+				}
+			}
+		})
 	}
 }
