@@ -30,69 +30,6 @@ import (
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
-// BundleBuilder appends a sequence of MTCLogEntry to a buffer as an entry bundle.
-type BundleBuilder struct {
-	builder cryptobyte.Builder
-}
-
-// NewBundleBuilder returns a BundleBuilder that appends to the given buffer. Like
-// cryptobyte.Builder, the slice will be reallocated if its capacity is exceeded.
-// Use Bytes to get the final buffer.
-func NewBundleBuilder(buf []byte) *BundleBuilder {
-	return &BundleBuilder{*cryptobyte.NewBuilder(buf)}
-}
-
-func (b *BundleBuilder) Bytes() ([]byte, error) {
-	return b.builder.Bytes()
-}
-
-// Add appends a single MTCLogEntry, with its length prefix, to the builder.
-func (b *BundleBuilder) Add(mtcLogEntry MTCLogEntry) {
-	out, err := mtcLogEntry.Marshal()
-	if err != nil {
-		b.builder.SetError(err)
-		return
-	}
-
-	b.builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes(out)
-	})
-}
-
-// BundleReader reads records of MTCLogEntry from the underlying buffer in the
-// entry bundle format.
-type BundleReader struct {
-	reader cryptobyte.String
-}
-
-// NewBundleReader returns a new BundleReader.
-func NewBundleReader(buf []byte) *BundleReader {
-	return &BundleReader{cryptobyte.String(buf)}
-}
-
-// Read reads the bytes of a single entry.
-//
-// Returns the parsed MTCLogEntry as well as its bytes, both of which
-// reference the same memory as the original buffer.
-//
-// Returns MTCLogEntry{}, nil, io.EOF when there is no more to read.
-func (br *BundleReader) Read() (*MTCLogEntry, []byte, error) {
-	if br.reader.Empty() {
-		return nil, nil, io.EOF
-	}
-	var body cryptobyte.String
-	if !br.reader.ReadUint16LengthPrefixed(&body) {
-		return nil, nil, fmt.Errorf("malformed length")
-	}
-
-	mtcle, err := unmarshalMTCLE(body)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return mtcle, body, nil
-}
-
 const typeNullEntry = 0
 const typeTBSCertEntry = 1
 
@@ -349,4 +286,67 @@ func FromX509(in []byte, hash crypto.Hash) (*MTCLogEntry, error) {
 		typ:   typeTBSCertEntry,
 		value: tbsCertificateLogEntryBytes,
 	}, nil
+}
+
+// BundleBuilder appends a sequence of MTCLogEntry to a buffer as an entry bundle.
+type BundleBuilder struct {
+	builder cryptobyte.Builder
+}
+
+// NewBundleBuilder returns a BundleBuilder that appends to the given buffer. Like
+// cryptobyte.Builder, the slice will be reallocated if its capacity is exceeded.
+// Use Bytes to get the final buffer.
+func NewBundleBuilder(buf []byte) *BundleBuilder {
+	return &BundleBuilder{*cryptobyte.NewBuilder(buf)}
+}
+
+func (b *BundleBuilder) Bytes() ([]byte, error) {
+	return b.builder.Bytes()
+}
+
+// Add appends a single MTCLogEntry, with its length prefix, to the builder.
+func (b *BundleBuilder) Add(mtcLogEntry MTCLogEntry) {
+	out, err := mtcLogEntry.Marshal()
+	if err != nil {
+		b.builder.SetError(err)
+		return
+	}
+
+	b.builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(out)
+	})
+}
+
+// BundleReader reads records of MTCLogEntry from the underlying buffer in the
+// entry bundle format.
+type BundleReader struct {
+	reader cryptobyte.String
+}
+
+// NewBundleReader returns a new BundleReader.
+func NewBundleReader(buf []byte) *BundleReader {
+	return &BundleReader{cryptobyte.String(buf)}
+}
+
+// Read reads the bytes of a single entry.
+//
+// Returns the parsed MTCLogEntry as well as its bytes, both of which
+// reference the same memory as the original buffer.
+//
+// Returns MTCLogEntry{}, nil, io.EOF when there is no more to read.
+func (br *BundleReader) Read() (*MTCLogEntry, []byte, error) {
+	if br.reader.Empty() {
+		return nil, nil, io.EOF
+	}
+	var body cryptobyte.String
+	if !br.reader.ReadUint16LengthPrefixed(&body) {
+		return nil, nil, fmt.Errorf("malformed length")
+	}
+
+	mtcle, err := unmarshalMTCLE(body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return mtcle, body, nil
 }
