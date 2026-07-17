@@ -2,6 +2,9 @@ package core
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,6 +118,17 @@ func TestKeyDigestEquals(t *testing.T) {
 	test.Assert(t, !KeyDigestEquals(jwk1, jwk2), "Key digests for different keys should not match")
 	test.Assert(t, !KeyDigestEquals(jwk1, struct{}{}), "Unknown key types should not match anything")
 	test.Assert(t, !KeyDigestEquals(struct{}{}, struct{}{}), "Unknown key types should not match anything")
+}
+
+func TestGenerateSKID(t *testing.T) {
+	t.Parallel()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Error generating key")
+
+	sha256skid, err := GenerateSKID(key.Public())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(sha256skid), 20)
+	test.AssertEquals(t, cap(sha256skid), 20)
 }
 
 func TestIsAnyNilOrZero(t *testing.T) {

@@ -24,21 +24,21 @@ func TestLoadPubKey(t *testing.T) {
 	tmp := t.TempDir()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
-	_, _, err := loadPubKey(path.Join(tmp, "does", "not", "exist"))
+	_, err := loadPubKey(path.Join(tmp, "does", "not", "exist"))
 	test.AssertError(t, err, "should fail on non-existent file")
 	test.AssertErrorIs(t, err, fs.ErrNotExist)
 
-	_, _, err = loadPubKey("../../test/hierarchy/README.md")
+	_, err = loadPubKey("../../test/hierarchy/README.md")
 	test.AssertError(t, err, "should fail on non-PEM file")
 
 	priv, _ := x509.MarshalPKCS8PrivateKey(key)
 	_ = os.WriteFile(path.Join(tmp, "priv.pem"), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: priv}), 0644)
-	_, _, err = loadPubKey(path.Join(tmp, "priv.pem"))
+	_, err = loadPubKey(path.Join(tmp, "priv.pem"))
 	test.AssertError(t, err, "should fail on non-pubkey PEM")
 
 	pub, _ := x509.MarshalPKIXPublicKey(key.Public())
 	_ = os.WriteFile(path.Join(tmp, "pub.pem"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}), 0644)
-	_, _, err = loadPubKey(path.Join(tmp, "pub.pem"))
+	_, err = loadPubKey(path.Join(tmp, "pub.pem"))
 	test.AssertNotError(t, err, "should not have errored")
 }
 

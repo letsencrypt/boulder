@@ -2,10 +2,8 @@ package main
 
 import (
 	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +11,8 @@ import (
 	"regexp"
 	"slices"
 	"time"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 type policyInfoConfig struct {
@@ -187,25 +187,8 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
 
-func generateSKID(pk []byte) ([]byte, error) {
-	var pkixPublicKey struct {
-		Algo      pkix.AlgorithmIdentifier
-		BitString asn1.BitString
-	}
-	if _, err := asn1.Unmarshal(pk, &pkixPublicKey); err != nil {
-		return nil, err
-	}
-
-	// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers: The
-	// keyIdentifier [may be] composed of the leftmost 160-bits of the SHA-256
-	// hash of the value of the BIT STRING subjectPublicKey (excluding the tag,
-	// length, and number of unused bits).
-	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
-	return skid[0:20:20], nil
-}
-
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
-func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbcs *x509.Certificate, ct certType) (*x509.Certificate, error) {
+func makeTemplate(randReader io.Reader, profile *certProfile, pubKey crypto.PublicKey, tbcs *x509.Certificate, ct certType) (*x509.Certificate, error) {
 	// Handle "unrestricted" vs "restricted" subordinate CA profile specifics.
 	if ct == crossCert && tbcs == nil {
 		return nil, fmt.Errorf("toBeCrossSigned cert field was nil, but was required to gather EKUs for the lint cert")
@@ -220,7 +203,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		issuingCertificateURL = []string{profile.IssuerURL}
 	}
 
-	subjectKeyID, err := generateSKID(pubKey)
+	subjectKeyID, err := core.GenerateSKID(pubKey)
 	if err != nil {
 		return nil, err
 	}
