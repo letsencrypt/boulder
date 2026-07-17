@@ -58,7 +58,7 @@ func N(tileIndex uint64) string {
 func GetEntry(ctx context.Context,
 	s3c simpleS3,
 	index, treeSize int64,
-) (entry.MerkleTreeCertEntry, error) {
+) (entry.MTCLogEntry, error) {
 	tileIndex := index / 256
 	tileOffset := index % 256
 
@@ -72,37 +72,43 @@ func GetEntry(ctx context.Context,
 		Key:    &path,
 	})
 	if err != nil {
-		return entry.MerkleTreeCertEntry{}, err
+		return entry.MTCLogEntry{}, err
 	}
 
 	gzipReader, err := gzip.NewReader(resp.Body)
 	if err != nil {
-		return entry.MerkleTreeCertEntry{}, err
+		return entry.MTCLogEntry{}, err
 	}
-	br := entry.NewBundleReader(gzipReader)
+
+	body, err := io.ReadAll(gzipReader)
+	if err != nil {
+		return entry.MTCLogEntry{}, err
+	}
+
+	br := entry.NewBundleReader(body)
 	for i := range tileOffset + 1 {
 		mtce, _, err := br.Read()
 		if err != nil {
-			return entry.MerkleTreeCertEntry{}, err
+			return entry.MTCLogEntry{}, err
 		}
 		if i == tileOffset {
 			return mtce, nil
 		}
 	}
 
-	return entry.MerkleTreeCertEntry{}, fmt.Errorf("entry %d not found in tile %q", tileOffset, path)
+	return entry.MTCLogEntry{}, fmt.Errorf("entry %d not found in tile %q", tileOffset, path)
 }
 
 func WriteEntries(ctx context.Context,
 	s3c simpleS3,
 	startingIndex int64,
-	entries []entry.MerkleTreeCertEntry,
+	entries []entry.MTCLogEntry,
 ) error {
 	for len(entries) > 0 {
 		partialWidth := startingIndex % 256
 		remaining := int(256 - partialWidth)
 		chunkSize := min(remaining, len(entries))
-		var chunk []entry.MerkleTreeCertEntry
+		var chunk []entry.MTCLogEntry
 		chunk, entries = entries[:chunkSize], entries[chunkSize:]
 		err := writeEntries(ctx, s3c, startingIndex, chunk)
 		if err != nil {
@@ -117,12 +123,27 @@ func WriteEntries(ctx context.Context,
 func writeEntries(ctx context.Context,
 	s3c simpleS3,
 	startingIndex int64,
-	entries []entry.MerkleTreeCertEntry) error {
+	entries []entry.MTCLogEntry) error {
 	if len(entries) > 256 {
 		return fmt.Errorf("shouldn't happen: len(entries) = %d", len(entries))
 	}
 	// partialTileBytes wil be empty if there is no partial tile to append to.
 	partialTileBytes, tileEntryCount, err := readPartial(ctx, startingIndex, s3c)
+	if err != nil {
+		return err
+	}
+
+	bundleWriter := entry.NewBundleBuilder(partialTileBytes)
+
+	for _, e := range entries {
+		bundleWriter.Add(e)
+		tileEntryCount++
+		if tileEntryCount > 256 {
+			return fmt.Errorf("shouldn't happen: too many entries for a tile")
+		}
+	}
+
+	tile, err := bundleWriter.Bytes()
 	if err != nil {
 		return err
 	}
@@ -133,24 +154,7 @@ func writeEntries(ctx context.Context,
 		return err
 	}
 
-	_, err = gzipWriter.Write(partialTileBytes)
-	if err != nil {
-		return err
-	}
-
-	bundleWriter := entry.NewBundleWriter(gzipWriter)
-
-	for _, e := range entries {
-		err = bundleWriter.Write(e)
-		if err != nil {
-			return err
-		}
-		tileEntryCount++
-		if tileEntryCount > 256 {
-			return fmt.Errorf("shouldn't happen: too many entries for a tile")
-		}
-	}
-	err = bundleWriter.Close()
+	_, err = gzipWriter.Write(tile)
 	if err != nil {
 		return err
 	}
@@ -222,7 +226,7 @@ func readPartial(ctx context.Context, startingIndex int64, s3c simpleS3) ([]byte
 		return nil, 0, err
 	}
 
-	br := entry.NewBundleReader(bytes.NewReader(decompressed))
+	br := entry.NewBundleReader(decompressed)
 	for range partialWidth {
 		_, _, err := br.Read()
 		if err != nil {

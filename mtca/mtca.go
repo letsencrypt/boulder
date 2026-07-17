@@ -124,7 +124,7 @@ func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 // InitLog creates the database metadata for a new, empty log: one checkpoint and the row
 // in `latestCheckpoint` that refers to it. Should only be run once in a log's lifetime.
 func (m *mtca) InitLog(ctx context.Context) error {
-	err := tiles.WriteEntries(ctx, m.s3c, 0, []entry.MerkleTreeCertEntry{entry.MerkleTreeCertEntry{}})
+	err := tiles.WriteEntries(ctx, m.s3c, 0, []entry.MTCLogEntry{entry.MTCLogEntry{}})
 	if err != nil {
 		if errors.Is(err, tiles.ErrFileExists) {
 			_, err := m.latestCheckpoint(ctx)
