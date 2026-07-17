@@ -47,8 +47,8 @@ func (b *BundleBuilder) Bytes() ([]byte, error) {
 }
 
 // Add appends a single MTCLogEntry, with its length prefix, to the builder.
-func (b *BundleBuilder) Add(merkleTreeCertificateEntry MTCLogEntry) {
-	out, err := merkleTreeCertificateEntry.Marshal()
+func (b *BundleBuilder) Add(mtcLogEntry MTCLogEntry) {
+	out, err := mtcLogEntry.Marshal()
 	if err != nil {
 		b.b.SetError(err)
 		return

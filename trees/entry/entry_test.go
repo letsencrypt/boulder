@@ -104,7 +104,7 @@ YhKuXQo=`, "\n", ""))
 	}
 }
 
-func TestMerkleTreeCertEntryMarshal(t *testing.T) {
+func TestMarshalMTCLE(t *testing.T) {
 	invalidType := MTCLogEntry{
 		Type: 99,
 	}
@@ -148,7 +148,7 @@ func TestMerkleTreeCertEntryMarshal(t *testing.T) {
 	}
 }
 
-func TestMerkleTreeCertEntryUnmarshal(t *testing.T) {
+func TestUnmarshalMTCLE(t *testing.T) {
 	type testCase struct {
 		name      string
 		input     string
