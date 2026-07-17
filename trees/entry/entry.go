@@ -54,7 +54,7 @@ type MTCLogEntry struct {
 }
 
 // TBS returns the TBSCertificateLogEntry bytes if Type is tbs_cert_entry, or nil otherwise.
-func (mtcle MTCLogEntry) TBS() []byte {
+func (mtcle *MTCLogEntry) TBS() []byte {
 	if mtcle.typ == typeTBSCertEntry {
 		return mtcle.value
 	}
@@ -64,7 +64,7 @@ func (mtcle MTCLogEntry) TBS() []byte {
 // Marshal returns the encoding of its receiver.
 //
 // Rejects unknown MTCLogEntryTypes.
-func (mtcle MTCLogEntry) Marshal() ([]byte, error) {
+func (mtcle *MTCLogEntry) Marshal() ([]byte, error) {
 	var builder cryptobyte.Builder
 	builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes(mtcle.extensions)
@@ -305,7 +305,7 @@ func (b *BundleBuilder) Bytes() ([]byte, error) {
 }
 
 // Add appends a single MTCLogEntry, with its length prefix, to the builder.
-func (b *BundleBuilder) Add(mtcLogEntry MTCLogEntry) {
+func (b *BundleBuilder) Add(mtcLogEntry *MTCLogEntry) {
 	out, err := mtcLogEntry.Marshal()
 	if err != nil {
 		b.builder.SetError(err)

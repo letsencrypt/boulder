@@ -205,10 +205,10 @@ func TestBundleBuildAndRead(t *testing.T) {
 	var buf []byte
 	bb := NewBundleBuilder(buf)
 
-	bb.Add(MTCLogEntry{})
+	bb.Add(&MTCLogEntry{})
 
 	for range 10 {
-		bb.Add(MTCLogEntry{
+		bb.Add(&MTCLogEntry{
 			typ:   typeTBSCertEntry,
 			value: []byte{0x55, 0x55, 0x55, 0x55, 0x55},
 		})
