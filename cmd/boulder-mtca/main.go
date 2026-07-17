@@ -39,6 +39,8 @@ type Config struct {
 		// unsigned certificate: https://www.rfc-editor.org/rfc/rfc9925.html.
 		Issuer issuance.IssuerConfig
 
+		CertProfile issuance.ProfileConfig
+
 		// SequencingPeriod controls how frequently the MTCA sequences a batch and signs a checkpoint.
 		SequencingPeriod config.Duration `validate:"required"`
 	}
@@ -86,6 +88,12 @@ func main() {
 	issuer, err := issuance.LoadIssuer(c.MTCA.Issuer, clk)
 	cmd.FailOnError(err, "Loading issuer")
 
+	if !c.MTCA.CertProfile.MTC {
+		cmd.Fail("MTCA configured with non-MTC profile")
+	}
+	profile, err := issuance.NewProfile(c.MTCA.CertProfile)
+	cmd.FailOnError(err, "Making profile")
+
 	url, err := c.MTCA.DB.URL()
 	cmd.FailOnError(err, "Reading DB URL")
 	db, err := sql.Open("mysql", url)
@@ -97,10 +105,12 @@ func main() {
 
 	mtcaImpl, err := mtca.New(
 		issuer,
+		profile,
 		c.MTCA.SequencingPeriod.Duration,
 		dbMap,
 		s3c,
-		logger)
+		logger,
+		clk)
 	cmd.FailOnError(err, "Building MTCA")
 
 	if *initLog && *initLogForTest {

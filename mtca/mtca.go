@@ -15,10 +15,12 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
@@ -33,10 +35,12 @@ var _ mtcapb.MTCAServer = &mtca{}
 // New creates a new MTCA service.
 func New(
 	issuer *issuance.Issuer,
+	profile *issuance.Profile,
 	sequencingPeriod time.Duration,
 	dbMap *borp.DbMap,
 	s3c simpleS3,
 	logger blog.Logger,
+	clk clock.Clock,
 ) (*mtca, error) {
 	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
 	if err != nil {
@@ -48,8 +52,9 @@ func New(
 	}
 
 	return &mtca{
-		issuer: issuer,
-		mtcaID: mtcaID,
+		issuer:  issuer,
+		profile: profile,
+		mtcaID:  mtcaID,
 		// TODO: collect this from config
 		logNumber: 44,
 		pool:      &pool{maxSize: 100},
@@ -59,15 +64,19 @@ func New(
 		db:  initDB(dbMap),
 		s3c: s3c,
 		log: logger,
+		clk: clk,
 	}, nil
 }
 
 type mtca struct {
 	mtcapb.UnimplementedMTCAServer
 
-	issuer    *issuance.Issuer
-	mtcaID    string
+	issuer  *issuance.Issuer
+	profile *issuance.Profile
+	mtcaID  string
+
 	logNumber uint16
+	pool      *pool
 
 	sequencingPeriod time.Duration
 
@@ -77,8 +86,7 @@ type mtca struct {
 	db  *db.WrappedMap
 	s3c simpleS3
 	log blog.Logger
-
-	pool *pool
+	clk clock.Clock
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -237,10 +245,41 @@ func (m *mtca) mtcLogID() string {
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
 // and a new checkpoint signed by the CA. It does not wait for a mirror cosignature.
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
+	key, err := x509.ParsePKIXPublicKey(req.Pubkey)
+	if err != nil {
+		return nil, fmt.Errorf("parsing public key: %s", err)
+	}
+
+	notBefore, notAfter := m.profile.GenerateValidity(m.clk.Now())
+
+	dnsNames, ipAddresses, err := identifier.FromProtoSlice(req.Identifiers).ToValues()
+	if err != nil {
+		return nil, err
+	}
+
+	// Placeholder serial; will be omitted from the TBSCertificateLogEntry.
+	serial := [18]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
+
+	lintCertBytes, _, err := m.issuer.Prepare(m.profile, &issuance.IssuanceRequest{
+		PublicKey:   issuance.MarshalablePublicKey{PublicKey: key},
+		Serial:      issuance.HexMarshalableBytes(serial[:]),
+		NotBefore:   notBefore,
+		NotAfter:    notAfter,
+		DNSNames:    dnsNames,
+		IPAddresses: ipAddresses,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("preparing x509 certificate: %s", err)
+	}
+
+	// TODO: Call entry.FromX509, put the resulting bytes in the pool, and log them at sequence()
+	// time instead of here.
+	m.log.AuditInfo("requesting issuance for %x", lintCertBytes)
+
 	// We'll get notification of sequencing on this channel. Buffer it so `sequence()` doesn't
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan int64, 1)
-	err := m.pool.append(entry{
+	err = m.pool.append(entry{
 		pubkey:      req.Pubkey,
 		identifiers: req.Identifiers,
 		ch:          ch,
