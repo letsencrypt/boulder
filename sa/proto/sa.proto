@@ -20,7 +20,6 @@ service StorageAuthorityReadOnly {
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
-  rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
@@ -52,7 +51,6 @@ service StorageAuthority {
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
-  rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
@@ -397,12 +395,6 @@ message GetRevokedCertsByShardRequest {
   google.protobuf.Timestamp revokedBefore = 2;
   google.protobuf.Timestamp expiresAfter = 3;
   int64 shardIdx = 4;
-}
-
-message RevocationStatus {
-  int64 status = 1;
-  int64 revokedReason = 2;
-  google.protobuf.Timestamp revokedDate = 3; // Unix timestamp (nanoseconds)
 }
 
 message LeaseCRLShardRequest {

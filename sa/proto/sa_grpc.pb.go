@@ -31,7 +31,6 @@ const (
 	StorageAuthorityReadOnly_GetOrderForNames_FullMethodName             = "/sa.StorageAuthorityReadOnly/GetOrderForNames"
 	StorageAuthorityReadOnly_GetRegistration_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetRegistration"
 	StorageAuthorityReadOnly_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetRegistrationByKey"
-	StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetRevocationStatus"
 	StorageAuthorityReadOnly_GetRevokedCertsByShard_FullMethodName       = "/sa.StorageAuthorityReadOnly/GetRevokedCertsByShard"
 	StorageAuthorityReadOnly_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetSerialMetadata"
 	StorageAuthorityReadOnly_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetSerialsByAccount"
@@ -66,7 +65,6 @@ type StorageAuthorityReadOnlyClient interface {
 	GetOrderForNames(ctx context.Context, in *GetOrderForNamesRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error)
-	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
 	GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
 	GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error)
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
@@ -187,16 +185,6 @@ func (c *storageAuthorityReadOnlyClient) GetRegistrationByKey(ctx context.Contex
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetRegistrationByKey_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityReadOnlyClient) GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RevocationStatus)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -424,7 +412,6 @@ type StorageAuthorityReadOnlyServer interface {
 	GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error)
 	GetRegistration(context.Context, *RegistrationID) (*proto.Registration, error)
 	GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error)
-	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
 	GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
 	GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error)
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
@@ -480,9 +467,6 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetRegistration(context.Conte
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRegistrationByKey not implemented")
-}
-func (UnimplementedStorageAuthorityReadOnlyServer) GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetRevocationStatus not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error {
 	return status.Errorf(codes.Unimplemented, "method GetRevokedCertsByShard not implemented")
@@ -730,24 +714,6 @@ func _StorageAuthorityReadOnly_GetRegistrationByKey_Handler(srv interface{}, ctx
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityReadOnlyServer).GetRegistrationByKey(ctx, req.(*JSONWebKey))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthorityReadOnly_GetRevocationStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Serial)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).GetRevocationStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).GetRevocationStatus(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1053,10 +1019,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_GetRegistrationByKey_Handler,
 		},
 		{
-			MethodName: "GetRevocationStatus",
-			Handler:    _StorageAuthorityReadOnly_GetRevocationStatus_Handler,
-		},
-		{
 			MethodName: "GetSerialMetadata",
 			Handler:    _StorageAuthorityReadOnly_GetSerialMetadata_Handler,
 		},
@@ -1142,7 +1104,6 @@ const (
 	StorageAuthority_GetOrderForNames_FullMethodName             = "/sa.StorageAuthority/GetOrderForNames"
 	StorageAuthority_GetRegistration_FullMethodName              = "/sa.StorageAuthority/GetRegistration"
 	StorageAuthority_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthority/GetRegistrationByKey"
-	StorageAuthority_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthority/GetRevocationStatus"
 	StorageAuthority_GetRevokedCertsByShard_FullMethodName       = "/sa.StorageAuthority/GetRevokedCertsByShard"
 	StorageAuthority_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthority/GetSerialMetadata"
 	StorageAuthority_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthority/GetSerialsByAccount"
@@ -1200,7 +1161,6 @@ type StorageAuthorityClient interface {
 	GetOrderForNames(ctx context.Context, in *GetOrderForNamesRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error)
-	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
 	GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
 	GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error)
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
@@ -1344,16 +1304,6 @@ func (c *storageAuthorityClient) GetRegistrationByKey(ctx context.Context, in *J
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, StorageAuthority_GetRegistrationByKey_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RevocationStatus)
-	err := c.cc.Invoke(ctx, StorageAuthority_GetRevocationStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1802,7 +1752,6 @@ type StorageAuthorityServer interface {
 	GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error)
 	GetRegistration(context.Context, *RegistrationID) (*proto.Registration, error)
 	GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error)
-	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
 	GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
 	GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error)
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
@@ -1881,9 +1830,6 @@ func (UnimplementedStorageAuthorityServer) GetRegistration(context.Context, *Reg
 }
 func (UnimplementedStorageAuthorityServer) GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRegistrationByKey not implemented")
-}
-func (UnimplementedStorageAuthorityServer) GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetRevocationStatus not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error {
 	return status.Errorf(codes.Unimplemented, "method GetRevokedCertsByShard not implemented")
@@ -2196,24 +2142,6 @@ func _StorageAuthority_GetRegistrationByKey_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).GetRegistrationByKey(ctx, req.(*JSONWebKey))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_GetRevocationStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Serial)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).GetRevocationStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_GetRevocationStatus_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).GetRevocationStatus(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2913,10 +2841,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRegistrationByKey",
 			Handler:    _StorageAuthority_GetRegistrationByKey_Handler,
-		},
-		{
-			MethodName: "GetRevocationStatus",
-			Handler:    _StorageAuthority_GetRevocationStatus_Handler,
 		},
 		{
 			MethodName: "GetSerialMetadata",
