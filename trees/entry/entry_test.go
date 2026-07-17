@@ -284,11 +284,11 @@ func TestBundleReaderSuccess(t *testing.T) {
 	}
 
 	br = NewBundleReader(input)
-	entry, entryBytes, err = br.Read()
-	if err != nil && !errors.Is(err, io.EOF) {
+	_, _, err = br.Read()
+	if err != nil {
 		t.Error(err)
 	}
-	entry, entryBytes, err = br.Read()
+	_, _, err = br.Read()
 	if !errors.Is(err, io.EOF) {
 		t.Errorf("second read on a 1-element bundle: want EOF, got %v", err)
 	}
