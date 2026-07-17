@@ -124,19 +124,7 @@ func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 // InitLog creates the database metadata for a new, empty log: one checkpoint and the row
 // in `latestCheckpoint` that refers to it. Should only be run once in a log's lifetime.
 func (m *mtca) InitLog(ctx context.Context) error {
-	err := tiles.WriteEntries(ctx, m.s3c, 0, []entry.MTCLogEntry{entry.MTCLogEntry{}})
-	if err != nil {
-		if errors.Is(err, tiles.ErrFileExists) {
-			_, err := m.latestCheckpoint(ctx)
-			if err != nil {
-				return fmt.Errorf("tile exists but DB checkpoint does not: %s", err)
-			}
-			return ErrIssuanceLogAlreadyInitialized
-		}
-		return err
-	}
-
-	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
+	_, err := db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		var numLatestCheckpoints int64
 		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
 			m.mtcLogID())
@@ -202,6 +190,22 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		return nil, nil
 	})
 	if err != nil {
+		// The DB thinks the log is initialized; make sure the tiles are there.
+		if errors.Is(err, ErrIssuanceLogAlreadyInitialized) {
+			err = m.Preflight(ctx)
+			if err != nil {
+				return fmt.Errorf("DB is initialized but preflight returns: %s", err)
+			}
+			return ErrIssuanceLogAlreadyInitialized
+		}
+		return err
+	}
+
+	err = tiles.WriteEntries(ctx, m.s3c, 0, []entry.MTCLogEntry{entry.MTCLogEntry{}})
+	if err != nil {
+		if errors.Is(err, tiles.ErrFileExists) {
+			return ErrIssuanceLogAlreadyInitialized
+		}
 		return err
 	}
 

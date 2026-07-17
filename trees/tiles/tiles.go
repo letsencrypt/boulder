@@ -67,29 +67,30 @@ func GetEntry(ctx context.Context,
 		path = path + fmt.Sprintf(".p/%d", treeSize%256)
 	}
 	bucket := s3c.Bucket()
+	url := fmt.Sprintf("s3://%s/%s", bucket, path)
 	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &bucket,
 		Key:    &path,
 	})
 	if err != nil {
-		return entry.MTCLogEntry{}, err
+		return entry.MTCLogEntry{}, fmt.Errorf("%s: %s", url, err)
 	}
 
 	gzipReader, err := gzip.NewReader(resp.Body)
 	if err != nil {
-		return entry.MTCLogEntry{}, err
+		return entry.MTCLogEntry{}, fmt.Errorf("building gzipReader from %s: %s", url, err)
 	}
 
 	body, err := io.ReadAll(gzipReader)
 	if err != nil {
-		return entry.MTCLogEntry{}, err
+		return entry.MTCLogEntry{}, fmt.Errorf("reading tile from %s: %s", url, err)
 	}
 
 	br := entry.NewBundleReader(body)
 	for i := range tileOffset + 1 {
 		mtce, _, err := br.Read()
 		if err != nil {
-			return entry.MTCLogEntry{}, err
+			return entry.MTCLogEntry{}, fmt.Errorf("reading tile %d from %s: %s", i, url, err)
 		}
 		if i == tileOffset {
 			return mtce, nil
@@ -155,6 +156,11 @@ func writeEntries(ctx context.Context,
 	}
 
 	_, err = gzipWriter.Write(tile)
+	if err != nil {
+		return err
+	}
+
+	err = gzipWriter.Close()
 	if err != nil {
 		return err
 	}
