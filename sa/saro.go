@@ -310,20 +310,6 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 	return &sapb.Timestamps{Timestamps: results}, nil
 }
 
-// FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
-// exists in the database
-func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	idents := identifier.FromProtoSlice(req.Identifiers)
-	if len(idents) == 0 {
-		return nil, errIncompleteRequest
-	}
-	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, idents)
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Exists{Exists: exists}, nil
-}
-
 // oneSelectorFunc is a func type that matches both borp.Transaction.SelectOne
 // and borp.DbMap.SelectOne.
 type oneSelectorFunc func(ctx context.Context, holder any, query string, args ...any) error

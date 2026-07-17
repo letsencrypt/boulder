@@ -21,7 +21,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StorageAuthorityReadOnly_FQDNSetExists_FullMethodName                = "/sa.StorageAuthorityReadOnly/FQDNSetExists"
 	StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthorityReadOnly/FQDNSetTimestampsForWindow"
 	StorageAuthorityReadOnly_GetAuthorization2_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetAuthorization2"
 	StorageAuthorityReadOnly_GetCertificate_FullMethodName               = "/sa.StorageAuthorityReadOnly/GetCertificate"
@@ -56,7 +55,6 @@ const (
 //
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 type StorageAuthorityReadOnlyClient interface {
-	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
@@ -91,16 +89,6 @@ type storageAuthorityReadOnlyClient struct {
 
 func NewStorageAuthorityReadOnlyClient(cc grpc.ClientConnInterface) StorageAuthorityReadOnlyClient {
 	return &storageAuthorityReadOnlyClient{cc}
-}
-
-func (c *storageAuthorityReadOnlyClient) FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Exists)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_FQDNSetExists_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *storageAuthorityReadOnlyClient) FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error) {
@@ -414,7 +402,6 @@ type StorageAuthorityReadOnly_GetEnabledRateLimitOverridesClient = grpc.ServerSt
 //
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 type StorageAuthorityReadOnlyServer interface {
-	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
 	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
@@ -451,9 +438,6 @@ type StorageAuthorityReadOnlyServer interface {
 // pointer dereference when methods are called.
 type UnimplementedStorageAuthorityReadOnlyServer struct{}
 
-func (UnimplementedStorageAuthorityReadOnlyServer) FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetExists not implemented")
-}
 func (UnimplementedStorageAuthorityReadOnlyServer) FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetTimestampsForWindow not implemented")
 }
@@ -552,24 +536,6 @@ func RegisterStorageAuthorityReadOnlyServer(s grpc.ServiceRegistrar, srv Storage
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&StorageAuthorityReadOnly_ServiceDesc, srv)
-}
-
-func _StorageAuthorityReadOnly_FQDNSetExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FQDNSetExistsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).FQDNSetExists(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_FQDNSetExists_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).FQDNSetExists(ctx, req.(*FQDNSetExistsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1013,10 +979,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*StorageAuthorityReadOnlyServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "FQDNSetExists",
-			Handler:    _StorageAuthorityReadOnly_FQDNSetExists_Handler,
-		},
-		{
 			MethodName: "FQDNSetTimestampsForWindow",
 			Handler:    _StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_Handler,
 		},
@@ -1132,7 +1094,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	StorageAuthority_FQDNSetExists_FullMethodName                = "/sa.StorageAuthority/FQDNSetExists"
 	StorageAuthority_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthority/FQDNSetTimestampsForWindow"
 	StorageAuthority_GetAuthorization2_FullMethodName            = "/sa.StorageAuthority/GetAuthorization2"
 	StorageAuthority_GetCertificate_FullMethodName               = "/sa.StorageAuthority/GetCertificate"
@@ -1190,7 +1151,6 @@ const (
 // StorageAuthority provides full read/write access to the database.
 type StorageAuthorityClient interface {
 	// Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
-	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
@@ -1248,16 +1208,6 @@ type storageAuthorityClient struct {
 
 func NewStorageAuthorityClient(cc grpc.ClientConnInterface) StorageAuthorityClient {
 	return &storageAuthorityClient{cc}
-}
-
-func (c *storageAuthorityClient) FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Exists)
-	err := c.cc.Invoke(ctx, StorageAuthority_FQDNSetExists_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *storageAuthorityClient) FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error) {
@@ -1792,7 +1742,6 @@ func (c *storageAuthorityClient) EnableRateLimitOverride(ctx context.Context, in
 // StorageAuthority provides full read/write access to the database.
 type StorageAuthorityServer interface {
 	// Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
-	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
 	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
@@ -1852,9 +1801,6 @@ type StorageAuthorityServer interface {
 // pointer dereference when methods are called.
 type UnimplementedStorageAuthorityServer struct{}
 
-func (UnimplementedStorageAuthorityServer) FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetExists not implemented")
-}
 func (UnimplementedStorageAuthorityServer) FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetTimestampsForWindow not implemented")
 }
@@ -2018,24 +1964,6 @@ func RegisterStorageAuthorityServer(s grpc.ServiceRegistrar, srv StorageAuthorit
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&StorageAuthority_ServiceDesc, srv)
-}
-
-func _StorageAuthority_FQDNSetExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FQDNSetExistsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).FQDNSetExists(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_FQDNSetExists_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).FQDNSetExists(ctx, req.(*FQDNSetExistsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _StorageAuthority_FQDNSetTimestampsForWindow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -2874,10 +2802,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "sa.StorageAuthority",
 	HandlerType: (*StorageAuthorityServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "FQDNSetExists",
-			Handler:    _StorageAuthority_FQDNSetExists_Handler,
-		},
 		{
 			MethodName: "FQDNSetTimestampsForWindow",
 			Handler:    _StorageAuthority_FQDNSetTimestampsForWindow_Handler,

@@ -239,11 +239,6 @@ func (sa *StorageAuthorityReadOnly) FQDNSetTimestampsForWindow(_ context.Context
 	return &sapb.Timestamps{}, nil
 }
 
-// FQDNSetExists is a mock
-func (sa *StorageAuthorityReadOnly) FQDNSetExists(_ context.Context, _ *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: false}, nil
-}
-
 // GetOrder is a mock
 func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	switch req.Id {
