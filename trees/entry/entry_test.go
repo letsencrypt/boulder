@@ -221,7 +221,7 @@ func TestBundleBuildAndRead(t *testing.T) {
 
 	br := NewBundleReader(tile)
 
-	mtcle, raw, err := br.Read()
+	mtcle, raw, err := br.ReadEntry()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestBundleBuildAndRead(t *testing.T) {
 	}
 
 	for range 10 {
-		mtcle, raw, err := br.Read()
+		mtcle, raw, err := br.ReadEntry()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,7 +263,7 @@ func TestBundleBuildAndRead(t *testing.T) {
 
 func TestBundleReaderSuccess(t *testing.T) {
 	br := NewBundleReader(nil)
-	entry, entryBytes, err := br.Read()
+	entry, entryBytes, err := br.ReadEntry()
 	if err != nil && !errors.Is(err, io.EOF) {
 		t.Error(err)
 	}
@@ -284,11 +284,11 @@ func TestBundleReaderSuccess(t *testing.T) {
 	}
 
 	br = NewBundleReader(input)
-	_, _, err = br.Read()
+	_, _, err = br.ReadEntry()
 	if err != nil {
 		t.Error(err)
 	}
-	_, _, err = br.Read()
+	_, _, err = br.ReadEntry()
 	if !errors.Is(err, io.EOF) {
 		t.Errorf("second read on a 1-element bundle: want EOF, got %v", err)
 	}
@@ -296,7 +296,7 @@ func TestBundleReaderSuccess(t *testing.T) {
 	br = NewBundleReader(bytes.Repeat(input, 256))
 	var count int64
 	for count = 0; ; count++ {
-		_, _, err := br.Read()
+		_, _, err := br.ReadEntry()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -331,7 +331,7 @@ func TestBundleReaderMalformed(t *testing.T) {
 
 			br := NewBundleReader(in)
 			for {
-				_, _, err = br.Read()
+				_, _, err = br.ReadEntry()
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						t.Error("got nil error, want error")

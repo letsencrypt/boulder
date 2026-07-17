@@ -63,12 +63,14 @@ func (mtcle *MTCLogEntry) TBS() []byte {
 
 // Marshal returns the encoding of its receiver.
 //
-// Rejects unknown MTCLogEntryTypes.
+// Rejects unknown MTCLogEntryTypes. Rejects non-empty MTCLogEntry.extensions.
 func (mtcle *MTCLogEntry) Marshal() ([]byte, error) {
 	var builder cryptobyte.Builder
-	builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes(mtcle.extensions)
-	})
+	// Extensions are always empty in this implementation.
+	if len(mtcle.extensions) != 0 {
+		builder.SetError(fmt.Errorf("extensions not supported"))
+	}
+	builder.AddUint16(0)
 	builder.AddUint16(mtcle.typ)
 	switch mtcle.typ {
 	case typeTBSCertEntry:
@@ -300,6 +302,7 @@ func NewBundleBuilder(buf []byte) *BundleBuilder {
 	return &BundleBuilder{*cryptobyte.NewBuilder(buf)}
 }
 
+// Bytes returns the bundle's bytes.
 func (b *BundleBuilder) Bytes() ([]byte, error) {
 	return b.builder.Bytes()
 }
@@ -328,13 +331,13 @@ func NewBundleReader(buf []byte) *BundleReader {
 	return &BundleReader{cryptobyte.String(buf)}
 }
 
-// Read reads the bytes of a single entry.
+// ReadEntry reads the bytes of a single entry.
 //
 // Returns the parsed MTCLogEntry as well as its bytes, both of which
 // reference the same memory as the original buffer.
 //
 // Returns MTCLogEntry{}, nil, io.EOF when there is no more to read.
-func (br *BundleReader) Read() (*MTCLogEntry, []byte, error) {
+func (br *BundleReader) ReadEntry() (*MTCLogEntry, []byte, error) {
 	if br.reader.Empty() {
 		return nil, nil, io.EOF
 	}
