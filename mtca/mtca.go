@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/letsencrypt/borp"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -30,7 +31,13 @@ var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
 var _ mtcapb.MTCAServer = &mtca{}
 
 // New creates a new MTCA service.
-func New(issuer *issuance.Issuer, sequencingPeriod time.Duration, dbMap *borp.DbMap, logger blog.Logger) (*mtca, error) {
+func New(
+	issuer *issuance.Issuer,
+	sequencingPeriod time.Duration,
+	dbMap *borp.DbMap,
+	s3c simpleS3,
+	logger blog.Logger,
+) (*mtca, error) {
 	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
 	if err != nil {
 		return nil, err
@@ -50,6 +57,7 @@ func New(issuer *issuance.Issuer, sequencingPeriod time.Duration, dbMap *borp.Db
 		sequencingPeriod: sequencingPeriod,
 
 		db:  initDB(dbMap),
+		s3c: s3c,
 		log: logger,
 	}, nil
 }
@@ -67,9 +75,18 @@ type mtca struct {
 	// TODO: decide whether we want to route this through the SA or an SA-like object,
 	// or keep a direct DB connection from the MTCA.
 	db  *db.WrappedMap
+	s3c simpleS3
 	log blog.Logger
 
 	pool *pool
+}
+
+// simpleS3 matches the subset of the s3.Client interface which we use, to allow
+// simpler mocking in tests.
+type simpleS3 interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
 }
 
 func getMTCAID(issuerCert *x509.Certificate) (string, error) {

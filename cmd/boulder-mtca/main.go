@@ -14,6 +14,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/borp"
+	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -28,7 +29,8 @@ type Config struct {
 
 		GRPCMTCA *cmd.GRPCServerConfig
 
-		DB cmd.DBConfig
+		DB cmd.DBConfig `validate:"required"`
+		S3 bs3.Config   `validate:"required"`
 
 		// Issuer holds the configuration for a single MTCA instance with a single mtcaID.
 		// We run a separate process for each issuer.
@@ -90,7 +92,15 @@ func main() {
 	cmd.FailOnError(err, "Opening DB")
 	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
 
-	mtcaImpl, err := mtca.New(issuer, c.MTCA.SequencingPeriod.Duration, dbMap, logger)
+	s3c, err := bs3.FromConfig(c.MTCA.S3, logger)
+	cmd.FailOnError(err, "Loading S3 config")
+
+	mtcaImpl, err := mtca.New(
+		issuer,
+		c.MTCA.SequencingPeriod.Duration,
+		dbMap,
+		s3c,
+		logger)
 	cmd.FailOnError(err, "Building MTCA")
 
 	if *initLog && *initLogForTest {
