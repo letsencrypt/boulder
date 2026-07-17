@@ -30,7 +30,28 @@
 				}
 			}
 		},
+		"certProfile": {
+			"mtc": true,
+			"omitCommonName": true,
+			"omitKeyEncipherment": true,
+			"omitClientAuth": true,
+			"omitSKID": true,
+			"maxValidityPeriod": "7776000s",
+			"maxValidityBackdate": "1h5m",
+			"maxCertificateSize": 10000,
+			"lintConfig": "test/config-next/zlint.toml",
+			"ignoredLints": [
+				"e_pkimetal_lint_cabf_serverauth_cert",
+				"e_signature_algorithm_not_supported",
+				"e_ext_authority_key_identifier_no_key_identifier",
+				"w_ext_subject_key_identifier_missing_sub_cert",
+				"w_ct_sct_policy_count_unsatisfied"
+			]
+		},
 		"issuer": {
+			"profiles": [
+				"theprofilelistedabove"
+			],
 			"crlShards": 10,
 			"issuerURL": "http://ignored.letsencrypt.org",
 			"crlURLBase": "http://ignored.letsencrypt.org/",
