@@ -77,7 +77,14 @@ type Profile struct {
 
 	maxCertificateSize int
 
+	// lints is the registry of lints to run against certificates issued under
+	// this profile. It carries no lint configuration of its own: at issuance
+	// time it is combined with a configuration derived from lintConfig.
 	lints lint.Registry
+	// lintConfig is the in-memory contents of this profile's zlint config
+	// file. At issuance time it is augmented with the issuing Issuer's
+	// certificate via WithIssuer.
+	lintConfig linter.Config
 }
 
 // NewProfile converts the profile config into a usable profile.
@@ -102,11 +109,9 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
-	if profileConfig.LintConfig != "" {
-		lintconfig, err := lint.NewConfigFromFile(profileConfig.LintConfig)
-		cmd.FailOnError(err, "Failed to load zlint config file")
-		lints.SetConfiguration(lintconfig)
-	}
+
+	lintConfig, err := linter.LoadConfigFile(profileConfig.LintConfig)
+	cmd.FailOnError(err, "Failed to load zlint config file")
 
 	sp := &Profile{
 		omitCommonName:      profileConfig.OmitCommonName,
@@ -118,6 +123,7 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
 		maxCertificateSize:  profileConfig.MaxCertificateSize,
 		lints:               lints,
+		lintConfig:          lintConfig,
 	}
 
 	return sp, nil
@@ -386,7 +392,11 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints)
+	lintConfig, err := prof.lintConfig.WithIssuer(i.Cert.Certificate)
+	if err != nil {
+		return nil, nil, fmt.Errorf("building lint config: %w", err)
+	}
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints, lintConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}

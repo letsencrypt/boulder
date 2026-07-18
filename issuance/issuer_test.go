@@ -24,6 +24,9 @@ import (
 
 func defaultProfileConfig() ProfileConfig {
 	return ProfileConfig{
+		// Our CP/CPS profile forbids the clientAuth EKU, and the
+		// e_precertificate_matches_cps_profile lint enforces that.
+		OmitClientAuth:      true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{

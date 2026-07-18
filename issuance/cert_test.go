@@ -21,12 +21,16 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/test"
 )
 
 var (
+	// goodSKID is a fake subject key ID for tests which only exercise request
+	// validation. Tests which also run lints must use core.GenerateSKID because
+	// our custom lints verify that the SKID matches the actual public key.
 	goodSKID = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 )
 
@@ -269,7 +273,7 @@ func TestRequestValid(t *testing.T) {
 				SubjectKeyId:    goodSKID,
 				NotBefore:       fc.Now(),
 				NotAfter:        fc.Now().Add(time.Hour),
-				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 				IncludeCTPoison: true,
 			},
 		},
@@ -286,7 +290,7 @@ func TestRequestValid(t *testing.T) {
 				SubjectKeyId: goodSKID,
 				NotBefore:    fc.Now(),
 				NotAfter:     fc.Now().Add(time.Hour),
-				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 				sctList:      []ct.SignedCertificateTimestamp{},
 			},
 		},
@@ -357,10 +361,12 @@ func TestIssue(t *testing.T) {
 			test.AssertNotError(t, err, "NewIssuer failed")
 			pk, err := tc.generateFunc()
 			test.AssertNotError(t, err, "failed to generate test key")
+			skid, err := core.GenerateSKID(pk.Public())
+			test.AssertNotError(t, err, "failed to compute subject key ID")
 			lintCertBytes, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 				PublicKey:       MarshalablePublicKey{pk.Public()},
-				SubjectKeyId:    goodSKID,
-				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				SubjectKeyId:    skid,
+				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 				DNSNames:        []string{"example.com"},
 				IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
 				NotBefore:       fc.Now(),
@@ -385,7 +391,7 @@ func TestIssue(t *testing.T) {
 			// addresses back to 4 bytes. Adding .To4() both allows this test to
 			// succeed, and covers this requirement.
 			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")})
-			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
+			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
@@ -440,10 +446,14 @@ func TestIssueDNSNamesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
+	skid, err := core.GenerateSKID(pk.Public())
+	if err != nil {
+		t.Fatalf("core.GenerateSKID: %s", err)
+	}
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -479,10 +489,14 @@ func TestIssueIPAddressesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
+	skid, err := core.GenerateSKID(pk.Public())
+	if err != nil {
+		t.Fatalf("core.GenerateSKID: %s", err)
+	}
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -521,11 +535,15 @@ func TestIssueWithCRLDP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
+	skid, err := core.GenerateSKID(pk.Public())
+	if err != nil {
+		t.Fatalf("core.GenerateSKID: %s", err)
+	}
 	profile := defaultProfile()
 	_, issuanceToken, err := signer.Prepare(profile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -543,7 +561,7 @@ func TestIssueWithCRLDP(t *testing.T) {
 		t.Fatalf("x509.ParseCertificate: %s", err)
 	}
 	// Because CRL shard is calculated deterministically from serial, we know which shard will be chosen.
-	expectedCRLDP := []string{"http://crls.example.net/919.crl"}
+	expectedCRLDP := []string{"http://crls.example.net/838.crl"}
 	if !reflect.DeepEqual(cert.CRLDistributionPoints, expectedCRLDP) {
 		t.Errorf("CRLDP=%+v, want %+v", cert.CRLDistributionPoints, expectedCRLDP)
 	}
@@ -561,10 +579,12 @@ func TestIssueCommonName(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	ir := &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com", "www.example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -697,10 +717,12 @@ func TestIssueOmissions(t *testing.T) {
 
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	_, issuanceToken, err := signer.Prepare(prof, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		CommonName:      "example.com",
 		IncludeCTPoison: true,
@@ -726,10 +748,12 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		IncludeCTPoison: true,
 		NotBefore:       fc.Now(),
@@ -742,7 +766,7 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse certificate")
 	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
 	test.AssertDeepEquals(t, cert.Extensions[9], ctPoisonExt)
@@ -774,10 +798,12 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	_, issuanceToken, err := signer.Prepare(enforceSCTsProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -814,7 +840,7 @@ func TestIssueSCTList(t *testing.T) {
 
 	err = finalCert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, finalCert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	test.AssertByteEquals(t, finalCert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18})
 	test.AssertDeepEquals(t, finalCert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(finalCert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
 	test.AssertDeepEquals(t, finalCert.Extensions[9], pkix.Extension{
@@ -842,10 +868,12 @@ func TestIssueBadLint(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	_, _, err = signer.Prepare(noSkipLintsProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example-com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -871,10 +899,12 @@ func TestIssuanceToken(t *testing.T) {
 
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -890,8 +920,8 @@ func TestIssuanceToken(t *testing.T) {
 
 	_, issuanceToken, err = signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -918,10 +948,12 @@ func TestInvalidProfile(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	_, _, err = signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -932,8 +964,8 @@ func TestInvalidProfile(t *testing.T) {
 
 	_, _, err = signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:    MarshalablePublicKey{pk.Public()},
-		SubjectKeyId: goodSKID,
-		Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId: skid,
+		Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:     []string{"example.com"},
 		NotBefore:    fc.Now(),
 		NotAfter:     fc.Now().Add(time.Hour - time.Second),
@@ -967,10 +999,12 @@ func TestMismatchedProfiles(t *testing.T) {
 
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
+	skid, err := core.GenerateSKID(pk.Public())
+	test.AssertNotError(t, err, "failed to compute subject key ID")
 	_, issuanceToken, err := issuer1.Prepare(cnProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		SubjectKeyId:    skid,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		CommonName:      "example.com",
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),

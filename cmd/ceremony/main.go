@@ -46,8 +46,15 @@ type lintCert *x509.Certificate
 // template certificate signed by a given issuer and returns a *lintCert or an
 // error. The lint certificate is linted prior to being returned. The public key
 // from the just issued lint certificate is checked by the GoodKey package.
-func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (lintCert, error) {
-	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
+// When cross-signing, existing is the pre-existing certificate of the CA being
+// cross-signed, allowing the CP/CPS profile lints to check correspondence with
+// it; it is nil otherwise.
+func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, existing *x509.Certificate, skipLints []string) (lintCert, error) {
+	lintConfig, err := linter.Config{}.WithExisting(existing)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create lint config: %w", err)
+	}
+	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, lintConfig, skipLints)
 	if err != nil {
 		return nil, fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
@@ -66,8 +73,10 @@ func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey
 // postIssuanceLinting performs post-issuance linting on the raw bytes of a
 // given certificate with the same set of lints as
 // issueLintCertAndPerformLinting. The public key is also checked by the GoodKey
-// package.
-func postIssuanceLinting(fc *x509.Certificate, skipLints []string) error {
+// package. The issuer and existing certificates, when non-nil, are supplied to
+// the CP/CPS profile lints so that they can perform their correspondence
+// checks.
+func postIssuanceLinting(fc, issuer, existing *x509.Certificate, skipLints []string) error {
 	if fc == nil {
 		return fmt.Errorf("certificate was not provided")
 	}
@@ -77,7 +86,15 @@ func postIssuanceLinting(fc *x509.Certificate, skipLints []string) error {
 		// lint. This should be treated as ZLint rejecting the certificate
 		return fmt.Errorf("unable to parse certificate: %s", err)
 	}
-	registry, err := linter.NewRegistry(skipLints)
+	lintConfig, err := linter.Config{}.WithIssuer(issuer)
+	if err != nil {
+		return fmt.Errorf("unable to create lint config: %s", err)
+	}
+	lintConfig, err = lintConfig.WithExisting(existing)
+	if err != nil {
+		return fmt.Errorf("unable to create lint config: %s", err)
+	}
+	registry, err := linter.NewRegistryWithConfig(skipLints, lintConfig)
 	if err != nil {
 		return fmt.Errorf("unable to create zlint registry: %s", err)
 	}
@@ -586,7 +603,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
-	lintCert, err := issueLintCertAndPerformLinting(template, template, keyInfo.key, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, template, keyInfo.key, signer, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -594,7 +611,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	err = postIssuanceLinting(finalCert, config.SkipLints)
+	err = postIssuanceLinting(finalCert, nil, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -631,7 +648,7 @@ func intermediateCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -646,7 +663,7 @@ func intermediateCeremony(configBytes []byte) error {
 	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
 		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
-	err = postIssuanceLinting(finalCert, config.SkipLints)
+	err = postIssuanceLinting(finalCert, issuer, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -687,7 +704,7 @@ func crossCertCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, toBeCrossSigned, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -748,7 +765,7 @@ func crossCertCeremony(configBytes []byte) error {
 	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
 		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
-	err = postIssuanceLinting(finalCert, config.SkipLints)
+	err = postIssuanceLinting(finalCert, issuer, toBeCrossSigned, config.SkipLints)
 	if err != nil {
 		return err
 	}

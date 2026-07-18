@@ -16,7 +16,6 @@ import (
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
 	_ "github.com/letsencrypt/boulder/linter/lints/chrome"
-	_ "github.com/letsencrypt/boulder/linter/lints/cpcps"
 	_ "github.com/letsencrypt/boulder/linter/lints/rfc"
 )
 
@@ -30,8 +29,13 @@ var ErrLinting = fmt.Errorf("failed lint(s)")
 // primary public interface of this package, but it can be inefficient; creating
 // a new signer and a new lint registry are expensive operations which
 // performance-sensitive clients may want to cache via linter.New().
-func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) ([]byte, error) {
+func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, config Config, skipLints []string) ([]byte, error) {
 	linter, err := New(realIssuer, realSigner)
+	if err != nil {
+		return nil, err
+	}
+
+	config, err = config.WithIssuer(realIssuer)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +45,7 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 		return nil, err
 	}
 
-	lintCertBytes, err := linter.Check(tbs, subjectPubKey, reg)
+	lintCertBytes, err := linter.Check(tbs, subjectPubKey, reg, config)
 	if err != nil {
 		return nil, err
 	}
@@ -98,14 +102,37 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer) (*Linter, error
 // replaced with the linter's pubkey so that it appears self-signed. It returns
 // an error if any lint fails. On success it also returns the DER bytes of the
 // linting certificate.
-func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, reg lint.Registry) ([]byte, error) {
+func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, reg lint.Registry, config Config) ([]byte, error) {
+	if reg == nil {
+		reg = lint.GlobalRegistry()
+	}
+
+	lintConfig, err := config.build()
+	if err != nil {
+		return nil, err
+	}
+
+	reg = configuredRegistry{reg, lintConfig}
+
 	lintPubKey := subjectPubKey
 	selfSigned, err := core.PublicKeysEqual(subjectPubKey, l.realPubKey)
 	if err != nil {
 		return nil, err
 	}
 	if selfSigned {
+		// If the cert being linted is going to be self-signed, replace the lint
+		// cert's public key and subjectKeyId extension with ones built from the
+		// fake lint signing key, so that everything lines up as it should.
 		lintPubKey = l.signer.Public()
+		if len(tbs.SubjectKeyId) != 0 {
+			lintSKID, err := core.GenerateSKID(lintPubKey)
+			if err != nil {
+				return nil, err
+			}
+			tbsCopy := *tbs
+			tbsCopy.SubjectKeyId = lintSKID
+			tbs = &tbsCopy
+		}
 	}
 
 	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer)
