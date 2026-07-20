@@ -38,7 +38,7 @@
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
 					"omitSKID": true,
-					"maxValidityPeriod": "7776000s",
+					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",
 					"maxCertificateSize": 10000,
 					"lintConfig": "test/config-next/zlint.toml",

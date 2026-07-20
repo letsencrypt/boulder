@@ -205,7 +205,7 @@ type pool struct {
 	maxSize int
 }
 
-// pendingEntry represents an pendingEntry in the pool, along with a channel to notify a pending RPC.
+// pendingEntry represents an pending entry in the pool, along with a channel to notify a pending RPC.
 type pendingEntry struct {
 	mtcle *entry.MTCLogEntry
 	ch    chan<- int64
