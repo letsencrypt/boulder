@@ -32,12 +32,15 @@ type Config struct {
 		DB cmd.DBConfig `validate:"required"`
 		S3 bs3.Config   `validate:"required"`
 
-		// Issuer holds the configuration for a single MTCA instance with a single mtcaID.
-		// We run a separate process for each issuer.
-		// TODO: the issuance package parses the CA certificate as a self-signed X.509
-		// certificate, but per MTC draft, a CA SHOULD be represented by an RFC 9925
-		// unsigned certificate: https://www.rfc-editor.org/rfc/rfc9925.html.
-		Issuer issuance.IssuerConfig
+		Issuance struct {
+			CertProfiles map[string]issuance.ProfileConfig `validate:"required,dive,keys,alphanum,min=1,max=32,endkeys"`
+			// Issuers holds the configuration for a single MTCA instance with a single mtcaID.
+			// We run a separate process for each issuer.
+			// TODO: the issuance package parses the CA certificate as a self-signed X.509
+			// certificate, but per MTC draft, a CA SHOULD be represented by an RFC 9925
+			// unsigned certificate: https://www.rfc-editor.org/rfc/rfc9925.html.
+			Issuers []issuance.IssuerConfig `validate:"min=1,max=1,dive"`
+		}
 
 		CertProfile issuance.ProfileConfig
 
@@ -85,14 +88,21 @@ func main() {
 
 	clk := clock.New()
 
-	issuer, err := issuance.LoadIssuer(c.MTCA.Issuer, clk)
+	issuer, err := issuance.LoadIssuer(c.MTCA.Issuance.Issuers[0], clk)
 	cmd.FailOnError(err, "Loading issuer")
 
-	if !c.MTCA.CertProfile.MTC {
-		cmd.Fail("MTCA configured with non-MTC profile")
+	if len(c.MTCA.Issuance.CertProfiles) > 1 {
+		cmd.Fail("multiple profiles in MTCA not yet implemented")
 	}
-	profile, err := issuance.NewProfile(c.MTCA.CertProfile)
-	cmd.FailOnError(err, "Making profile")
+
+	var profile *issuance.Profile
+	for _, profileConfig := range c.MTCA.Issuance.CertProfiles {
+		if !profileConfig.MTC {
+			cmd.Fail("MTCA configured with non-MTC profile")
+		}
+		profile, err = issuance.NewProfile(profileConfig)
+		cmd.FailOnError(err, "Loading profile")
+	}
 
 	url, err := c.MTCA.DB.URL()
 	cmd.FailOnError(err, "Reading DB URL")
