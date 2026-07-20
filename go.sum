@@ -233,8 +233,8 @@ github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399 h1:e/5i7d4oYZ+C
 github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399/go.mod h1:LdwHTNJT99C5fTAzDz0ud328OgXz+gierycbcIx2fRs=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
 github.com/ugorji/go v1.1.4/go.mod h1:uQMGLiO92mf5W77hV/PUCpI3pbzQx3CRekS0kk+RGrc=
-github.com/weppos/publicsuffix-go v0.50.4-0.20260507075217-1bd47f85b3da h1:fvG9axse5NWVonGRSWkjrIBP5v6jXxJE2yZxcPILBX4=
-github.com/weppos/publicsuffix-go v0.50.4-0.20260507075217-1bd47f85b3da/go.mod h1:/rOa781xBykZhHK/I3QeHo92qdDKVmKZKF7s8qAEM/4=
+github.com/weppos/publicsuffix-go v0.50.4-0.20260716074310-43d7adb18c47 h1:N/32gK71QD8I1n6f1gDdUnqCy2dfN7nQMBh7AQptICM=
+github.com/weppos/publicsuffix-go v0.50.4-0.20260716074310-43d7adb18c47/go.mod h1:/rOa781xBykZhHK/I3QeHo92qdDKVmKZKF7s8qAEM/4=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

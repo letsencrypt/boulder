@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -77,6 +76,14 @@ func setup() (*mtca, func(), error) {
 		return nil, nil, err
 	}
 
+	mtca, err := New(
+		issuer,
+		profile,
+		100*time.Millisecond,
+		dbMap,
+		&fakeS3{},
+		logger,
+		clk)
 	mtca.InitLog(context.Background())
 
 	cleanup := func() {
@@ -91,7 +98,7 @@ func TestPool(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Go(func() {
-			err := p.append(entry{})
+			err := p.append(pendingEntry{})
 			if err != nil {
 				t.Errorf("appending entry: %s", err)
 			}
@@ -99,7 +106,7 @@ func TestPool(t *testing.T) {
 	}
 	wg.Wait()
 
-	err := p.append(entry{})
+	err := p.append(pendingEntry{})
 	if err == nil {
 		t.Errorf("append to full pool: got nil, want err")
 	}

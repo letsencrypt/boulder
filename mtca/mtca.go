@@ -4,6 +4,7 @@ package mtca
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -18,13 +19,13 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/cosigned"
+	"github.com/letsencrypt/boulder/trees/entry"
 )
 
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
@@ -200,18 +201,17 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 type pool struct {
 	sync.RWMutex
-	entries []entry
+	entries []pendingEntry
 	maxSize int
 }
 
-// entry represents an entry in the pool, along with a channel to notify a pending RPC.
-type entry struct {
-	pubkey      []byte
-	identifiers []*corepb.Identifier
-	ch          chan<- int64
+// pendingEntry represents an pendingEntry in the pool, along with a channel to notify a pending RPC.
+type pendingEntry struct {
+	mtcle *entry.MTCLogEntry
+	ch    chan<- int64
 }
 
-func (p *pool) take() []entry {
+func (p *pool) take() []pendingEntry {
 	p.Lock()
 	defer p.Unlock()
 	ret := p.entries
@@ -225,7 +225,7 @@ func (p *pool) len() int {
 	return len(p.entries)
 }
 
-func (p *pool) append(e entry) error {
+func (p *pool) append(e pendingEntry) error {
 	p.Lock()
 	defer p.Unlock()
 	if len(p.entries) >= p.maxSize {
@@ -272,17 +272,17 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 		return nil, fmt.Errorf("preparing x509 certificate: %s", err)
 	}
 
-	// TODO: Call entry.FromX509, put the resulting bytes in the pool, and log them at sequence()
-	// time instead of here.
-	m.log.AuditInfo("requesting issuance for %x", lintCertBytes)
+	mtcle, err := entry.FromX509(lintCertBytes, crypto.SHA256)
+	if err != nil {
+		return nil, fmt.Errorf("generating MTCLogEntry: %s '%x'", err, lintCertBytes)
+	}
 
 	// We'll get notification of sequencing on this channel. Buffer it so `sequence()` doesn't
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan int64, 1)
-	err = m.pool.append(entry{
-		pubkey:      req.Pubkey,
-		identifiers: req.Identifiers,
-		ch:          ch,
+	err = m.pool.append(pendingEntry{
+		mtcle: mtcle,
+		ch:    ch,
 	})
 	if err != nil {
 		return nil, err
@@ -412,7 +412,8 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Simulate writing to tile storage
 	latestTreeSize := latest.TreeSize
 	var entryIndexes []int64
-	for range entries {
+	for _, e := range entries {
+		m.log.AuditInfo("Preparing to issue: %x", e)
 		entryIndexes = append(entryIndexes, latestTreeSize)
 		latestTreeSize++
 	}
