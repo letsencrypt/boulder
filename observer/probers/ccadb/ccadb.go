@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"time"
 
@@ -227,11 +226,9 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 		}
 
 		if len(seenCRLShardIndices) > 0 {
-			sort.IntSlice(seenCRLShardIndices).Sort()
-
 			// The max()+1th shard should not be live. This generally occurs if we have
 			// live CRL shards that are not reported in CCADB.
-			maxShardIndex := seenCRLShardIndices[len(seenCRLShardIndices)-1]
+			maxShardIndex := slices.Max(seenCRLShardIndices)
 			err := checkCRLShardNotFound(ctx, c.crlRegexp, exampleCRLShardURL, maxShardIndex+1)
 			if err != nil {
 				errs = append(errs, err)
