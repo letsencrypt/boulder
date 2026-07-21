@@ -230,7 +230,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 	switch in.Id {
 	case 1: // Return a valid authorization with a single valid challenge.
 		return &corepb.Authorization{
-			IdInt:          1,
+			Id:             1,
 			RegistrationID: 1,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusValid),
@@ -241,7 +241,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		}, nil
 	case 2: // Return a pending authorization with three pending challenges.
 		return &corepb.Authorization{
-			IdInt:          2,
+			Id:             2,
 			RegistrationID: 1,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
@@ -254,7 +254,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		}, nil
 	case 3: // Return an expired authorization with three pending (but expired) challenges.
 		return &corepb.Authorization{
-			IdInt:          3,
+			Id:             3,
 			RegistrationID: 1,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
@@ -269,7 +269,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return nil, fmt.Errorf("unspecified error")
 	case 5: // Return a pending authorization as above, but associated with RegID 2.
 		return &corepb.Authorization{
-			IdInt:          5,
+			Id:             5,
 			RegistrationID: 2,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
@@ -1871,7 +1871,7 @@ type RAWithFailedChallenge struct {
 
 func (ra *RAWithFailedChallenge) GetAuthorization(ctx context.Context, id *rapb.GetAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	return &corepb.Authorization{
-		IdInt:          6,
+		Id:             6,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 		Status:         string(core.StatusInvalid),

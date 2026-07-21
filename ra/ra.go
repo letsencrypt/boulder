@@ -781,7 +781,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
-				AuthzIDInt:       authz.ID,
+				AuthzID:          authz.ID,
 			})
 			if err != nil {
 				ra.log.AuditErr("Rechecking CAA", err, map[string]any{
@@ -1469,7 +1469,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.IdInt, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1540,14 +1540,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
-				Authz:                    &vapb.AuthzMeta{IdInt: authz.ID, RegID: authz.RegistrationID},
+				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: string(ch.Type),
 				AccountURIID:     authz.RegistrationID,
-				AuthzIDInt:       authz.ID,
+				AuthzID:          authz.ID,
 			},
 		)
 		if err != nil {
@@ -2065,10 +2065,10 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
 	ident := identifier.FromProto(req.Identifier)
 
-	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID, req.IdInt) {
+	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID, req.Id) {
 		return nil, errIncompleteGRPCRequest
 	}
-	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: req.IdInt}); err != nil {
+	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: req.Id}); err != nil {
 		return nil, err
 	}
 	if req.Status == string(core.StatusPending) {
