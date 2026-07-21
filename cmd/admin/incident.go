@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -48,7 +47,7 @@ func (s *subcommandCreateIncident) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("parsing -renew-by as RFC3339: %w", err)
 	}
 
-	_, err = a.saac.CreateIncident(ctx, &sapb.CreateIncidentRequest{
+	inc, err := a.saac.CreateIncident(ctx, &sapb.CreateIncidentRequest{
 		SerialTable: s.incident,
 		Url:         s.url,
 		RenewBy:     timestamppb.New(renewBy),
@@ -56,6 +55,8 @@ func (s *subcommandCreateIncident) Run(ctx context.Context, a *admin) error {
 	if err != nil {
 		return fmt.Errorf("creating incident: %w", err)
 	}
+	a.log.Infof("Created incident %q url=%q renewBy=%s enabled=%t",
+		inc.SerialTable, inc.Url, inc.RenewBy.AsTime(), inc.Enabled)
 	return nil
 }
 
@@ -130,6 +131,17 @@ func (s *subcommandUpdateIncident) Run(ctx context.Context, a *admin) error {
 	if err != nil {
 		return fmt.Errorf("updating incident %q: %w", s.incident, err)
 	}
+	var changes []string
+	if req.Url != "" {
+		changes = append(changes, fmt.Sprintf("url=%q", req.Url))
+	}
+	if req.RenewBy != nil {
+		changes = append(changes, fmt.Sprintf("renewBy=%s", req.RenewBy.AsTime()))
+	}
+	if req.Enabled != nil {
+		changes = append(changes, fmt.Sprintf("enabled=%t", *req.Enabled))
+	}
+	a.log.AuditInfo(fmt.Sprintf("Updated incident %q: %s", s.incident, strings.Join(changes, " ")), nil)
 	return nil
 }
 
@@ -169,6 +181,9 @@ func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error
 		return fmt.Errorf("opening serials file: %w", err)
 	}
 	defer file.Close()
+
+	a.log.Infof("Loading serials from %q into incident %q with parallelism=%d batch-size=%d.",
+		s.serialsFile, s.incident, s.parallelism, s.batchSize)
 
 	var totalSent atomic.Uint64
 	work := make(chan []string, s.parallelism)
@@ -253,7 +268,7 @@ func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error
 				n := totalSent.Add(uint64(len(chunk)))
 				prev := n - uint64(len(chunk))
 				if prev/100000 != n/100000 {
-					a.log.Info(ctx, "Loading serials in progress", slog.Uint64("count", n))
+					a.log.Infof("Sent %d serials total", n)
 				}
 			}
 
@@ -271,5 +286,6 @@ func (s *subcommandLoadIncidentSerials) Run(ctx context.Context, a *admin) error
 		return fmt.Errorf("loading serials: %w", err)
 	}
 
+	a.log.Infof("Done. Sent %d serials from %q into incident %q.", totalSent.Load(), s.serialsFile, s.incident)
 	return nil
 }

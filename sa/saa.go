@@ -5,16 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -194,7 +193,7 @@ func (ssa *SQLStorageAuthorityAdmin) AddSerialsToIncident(stream sapb.StorageAut
 		if err != nil {
 			return fmt.Errorf("inserting batch into %q: %w", incidentTable, err)
 		}
-		ssa.log.Info(ctx, "Added serials to incident", slog.String("incident", incidentTable), slog.Int("count", len(serials)), slog.Int64("inserted", inserted))
+		ssa.log.Infof("AddSerialsToIncident %q: batch of %d, %d inserted", incidentTable, len(serials), inserted)
 		return nil
 	}
 

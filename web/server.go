@@ -2,30 +2,27 @@ package web
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
-// errorWriter is an adaptor for blog.Logger to meet the io.Writer interface,
-// used by the go stdlib's log.Logger, which in turn is used by http.Server.
-// It appears here rather than in //blog/adapters.go because it is used
-// locally, not set at a package-global level.
 type errorWriter struct {
 	blog.Logger
 }
 
-func (ew errorWriter) Write(p []byte) (int, error) {
-	// log.Logger appends a newline to all messages before calling Write. Our
-	// logging infra will append another. Strip the first one to prevent
-	// redundancy.
+func (ew errorWriter) Write(p []byte) (n int, err error) {
+	// log.Logger will append a newline to all messages before calling
+	// Write. Our log checksum checker doesn't like newlines, because
+	// syslog will strip them out so the calculated checksums will
+	// differ. So that we don't hit this corner case for every line
+	// logged from inside net/http.Server we strip the newline before
+	// we get to the checksum generator.
 	p = bytes.TrimRight(p, "\n")
-	ew.Logger.Error(context.Background(), "net/http.Server", errors.New(string(p)))
-	return len(p), nil
+	ew.Logger.Errf("net/http.Server: %s", p)
+	return
 }
 
 // NewServer returns an http.Server which will listen on the given address, when

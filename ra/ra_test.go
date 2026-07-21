@@ -20,7 +20,7 @@ import (
 	mrand "math/rand/v2"
 	"net/netip"
 	"regexp"
-	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,7 +36,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/allowlist"
-	"github.com/letsencrypt/boulder/blog"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -49,6 +48,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
@@ -132,17 +132,15 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, re
 func createFinalizedAuthorization(t *testing.T, saClient sapb.StorageAuthorityClient, regID int64, ident identifier.ACMEIdentifier, exp time.Time, chall core.AcmeChallenge, attemptedAt time.Time) int64 {
 	t.Helper()
 	pending := createPendingAuthorization(t, saClient, regID, ident, exp)
-	pendingID, err := strconv.ParseInt(pending.Id, 10, 64)
-	test.AssertNotError(t, err, "strconv.ParseInt failed")
-	_, err = saClient.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:          pendingID,
+	_, err := saClient.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:          pending.IdInt,
 		Status:      "valid",
 		Expires:     timestamppb.New(exp),
 		Attempted:   string(chall),
 		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
-	return pendingID
+	return pending.IdInt
 }
 
 func getAuthorization(t *testing.T, id int64, sa sapb.StorageAuthorityClient) *corepb.Authorization {
@@ -277,6 +275,8 @@ var (
 	ExampleCSR = &x509.CertificateRequest{}
 
 	Identifier = "not-example.com"
+
+	log = blog.UseMock()
 )
 
 var ctx = context.Background()
@@ -294,8 +294,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
-
-	log := blog.NewMock()
 
 	fc := clock.NewFake()
 	// Set to some non-zero time.
@@ -746,7 +744,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 
-	// Wait for the RA to finish processesing the validation, and ensure that
+	// Wait for the RA to finish processing the validation, and ensure that
 	// the reset bucket key is what we expect.
 	reset := <-keyChan
 	test.AssertEquals(t, reset, bucketKey)
@@ -854,16 +852,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPB.Id)
-	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
-
-	dbAuthzPBIdChecks := dbAuthzPB
-	dbAuthzPBIdChecks.Id = fmt.Sprintf("%d", authzID)
-	dbAuthzPBIdChecks.IdInt = authzID
-	_, err = ra.DeactivateAuthorization(ctx, dbAuthzPBIdChecks)
-	test.AssertNotError(t, err, "Could not deactivate authorization")
-	deact, err = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPBIdChecks.Id)
+	test.AssertNotError(t, err, "Could not get deactivated authorization by ID")
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
 }
 
@@ -909,7 +898,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	// The first deactivation of a pending authz should work and nothing should
 	// get paused.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		Id:             "1",
+		IdInt:          1,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
@@ -919,7 +908,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 
 	// Deactivating a valid authz shouldn't increment any limits or pause anything.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		Id:             "2",
+		IdInt:          2,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusValid),
@@ -930,7 +919,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	// Deactivating a second pending authz should surpass the limit and result
 	// in a pause request.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		Id:             "3",
+		IdInt:          3,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
@@ -1011,7 +1000,7 @@ func (cr *caaRecorder) DoCAA(
 // Test that the right set of domain names have their CAA rechecked, based on
 // their `Validated` (attemptedAt in the database) timestamp.
 func TestRecheckCAADates(t *testing.T) {
-	_, _, ra, _, fc, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, registration, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.VA = va.RemoteClients{CAAClient: recorder}
@@ -1131,22 +1120,22 @@ func TestRecheckCAADates(t *testing.T) {
 
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
-	err := ra.checkAuthorizationsCAA(context.Background(), authzs, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), registration.Id, authzs, fc.Now())
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), twoChallenges, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), registration.Id, twoChallenges, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id 13372")
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), noChallenges, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), registration.Id, noChallenges, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id 13370")
 
 	// Should error if authorization's challenge has no validated timestamp
-	err = ra.checkAuthorizationsCAA(context.Background(), noValidationTime, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), registration.Id, noValidationTime, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id 13371")
 
 	// We expect that "recent.com" is not checked because its mock authorization
@@ -1322,7 +1311,7 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 }
 
 func TestRecheckSkipIPAddress(t *testing.T) {
-	_, _, ra, _, fc, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, registration, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	ident := identifier.NewIP(netip.MustParseAddr("127.0.0.1"))
@@ -1342,12 +1331,12 @@ func TestRecheckSkipIPAddress(t *testing.T) {
 			},
 		},
 	}
-	err := ra.checkAuthorizationsCAA(context.Background(), authzs, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), registration.Id, authzs, fc.Now())
 	test.AssertNotError(t, err, "rechecking CAA for IP address, should have skipped")
 }
 
 func TestRecheckInvalidIdentifierType(t *testing.T) {
-	_, _, ra, _, fc, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, registration, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ident := identifier.ACMEIdentifier{
 		Type:  "fnord",
@@ -1369,7 +1358,7 @@ func TestRecheckInvalidIdentifierType(t *testing.T) {
 			},
 		},
 	}
-	err := ra.checkAuthorizationsCAA(context.Background(), authzs, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), registration.Id, authzs, fc.Now())
 	test.AssertError(t, err, "expected err, got nil")
 	test.AssertErrorIs(t, err, berrors.Malformed)
 	test.AssertContains(t, err.Error(), "invalid identifier type")
@@ -3002,6 +2991,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	parsedCerts, err := x509.ParseCertificates(cert)
 	test.AssertNotError(t, err, "Failed to parse mock cert DER bytes")
 	test.AssertEquals(t, len(parsedCerts), 1)
+	parsedCert := parsedCerts[0]
 
 	// Cast the RA's mock log so we can ensure its cleared and can access the
 	// matched log lines
@@ -3017,43 +3007,54 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	test.AssertNotError(t, err, "Error finalizing test order")
 
 	// Get the logged lines from the audit logger
-	loglines := mockLog.GetAllMatching("Certificate request - ")
+	loglines := mockLog.GetAllMatching("Certificate request - successful JSON=")
 
 	// There should be exactly 1 matching log line
 	test.AssertEquals(t, len(loglines), 1)
-	t.Log(loglines[0])
+	// Strip away the stuff before 'JSON='
+	jsonContent := strings.TrimPrefix(loglines[0], "INFO: [AUDIT] Certificate request - successful JSON=")
 
+	// Unmarshal the JSON into a certificate request event object
+	var event certificateRequestEvent
+	err = json.Unmarshal([]byte(jsonContent), &event)
+	// The JSON should unmarshal without error
+	test.AssertNotError(t, err, "Error unmarshalling logged JSON issuance event")
 	// The event should have no error
-	test.AssertNotContains(t, loglines[0], "err=")
+	test.AssertEquals(t, event.Error, "")
 	// The event requester should be the expected reg ID
-	test.AssertContains(t, loglines[0], fmt.Sprintf("acct=%d", registration.Id))
+	test.AssertEquals(t, event.Requester, registration.Id)
 	// The event order ID should be the expected order ID
-	test.AssertContains(t, loglines[0], fmt.Sprintf("order=%d", order.Id))
+	test.AssertEquals(t, event.OrderID, order.Id)
 	// The event serial number should be the expected serial number
-	test.AssertContains(t, loglines[0], fmt.Sprintf("serial=%s", core.SerialToString(template.SerialNumber)))
+	test.AssertEquals(t, event.SerialNumber, core.SerialToString(template.SerialNumber))
 	// The event verified fields should be the expected value
-	test.AssertContains(t, loglines[0], "verifiedFields=\"[subject.commonName subjectAltName]\"")
+	test.AssertDeepEquals(t, event.VerifiedFields, []string{"subject.commonName", "subjectAltName"})
 	// The event CommonName should match the expected common name
-	test.AssertContains(t, loglines[0], "commonName=not-example.com")
-
+	test.AssertEquals(t, event.CommonName, "not-example.com")
 	// The event's NotBefore and NotAfter should match the cert's
-	// TODO(https://github.com/golang/go/issues/78215): Restore these checks
-	// when slog's time formatting is fixed to match Time.Format().
-	// test.AssertContains(t, loglines[0], fmt.Sprintf("notBefore=%s", parsedCerts[0].NotBefore.Format(time.RFC3339Nano)))
-	// test.AssertContains(t, loglines[0], fmt.Sprintf("notAfter=%s", parsedCerts[0].NotAfter.Format(time.RFC3339Nano)))
+	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
+	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
 
-	// Now do the same for each identifier/authz in the cert.
-	loglines = mockLog.GetAllMatching("Authz used for issuance")
-	test.AssertEquals(t, len(loglines), len(idents))
+	// There should be one event identifier/authz entry for each name.
+	test.AssertEquals(t, len(event.Identifiers), len(names))
 
+	// The event identifiers should match the order identifiers
+	eventIdents := make([]identifier.ACMEIdentifier, 0)
+	for _, eventIdent := range event.Identifiers {
+		eventIdents = append(eventIdents, eventIdent.Ident)
+	}
+	test.AssertDeepEquals(t, identifier.Normalize(eventIdents), identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)))
+
+	// Check the identifier/authz entry for each name
 	for i, name := range names {
-		loglines = mockLog.GetAllMatching(fmt.Sprintf("Authz used for issuance.*Value:%s", name))
-		test.AssertEquals(t, len(loglines), 1)
-
-		// The authz entry should have the correct authz ID
-		test.AssertContains(t, loglines[0], fmt.Sprintf("authz=%d", authzIDs[i]))
-		// The authz entry should have the correct challenge type
-		test.AssertContains(t, loglines[0], fmt.Sprintf("method=%s", challs[i]))
+		for _, entry := range event.Identifiers {
+			if entry.Ident.Value == name {
+				// The authz entry should have the correct authz ID
+				test.AssertEquals(t, entry.Authz, authzIDs[i])
+				// The authz entry should have the correct challenge type
+				test.AssertEquals(t, entry.Challenge, challs[i])
+			}
+		}
 	}
 }
 
@@ -3142,17 +3143,25 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	test.AssertNotError(t, err, "Error finalizing test order")
 
 	// Get the logged lines from the mock logger.
-	loglines := mockLog.GetAllMatching("FinalizationCaaCheck")
+	loglines := mockLog.GetAllMatching("FinalizationCaaCheck JSON=")
 	// There should be exactly 1 matching log line.
 	test.AssertEquals(t, len(loglines), 1)
 
+	// Strip away the stuff before 'JSON='.
+	jsonContent := strings.TrimPrefix(loglines[0], "INFO: FinalizationCaaCheck JSON=")
+
+	// Unmarshal the JSON into an event object.
+	var event finalizationCAACheckEvent
+	err = json.Unmarshal([]byte(jsonContent), &event)
+	// The JSON should unmarshal without error.
+	test.AssertNotError(t, err, "Error unmarshalling logged JSON issuance event.")
 	// The event requester should be the expected registration ID.
-	test.AssertContains(t, loglines[0], fmt.Sprintf("acct=%d", registration.Id))
+	test.AssertEquals(t, event.Requester, registration.Id)
 	// The event should have the expected number of Authzs where CAA was reused.
-	test.AssertContains(t, loglines[0], "reused=2")
+	test.AssertEquals(t, event.Reused, 2)
 	// The event should have the expected number of Authzs where CAA was
 	// rechecked.
-	test.AssertContains(t, loglines[0], "rechecked=2")
+	test.AssertEquals(t, event.Rechecked, 2)
 }
 
 func TestPerformValidationBadChallengeType(t *testing.T) {
@@ -3202,7 +3211,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
 		{Name: "LogA1", Operator: "OperA", Url: "UrlA1", Key: []byte("KeyA1")},
 		{Name: "LogB1", Operator: "OperB", Url: "UrlB1", Key: []byte("KeyB1")},
-	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	_, cert := test.ThrowAwayCert(t, clock.NewFake())
 	_, err := ra.GetSCTs(context.Background(), &rapb.SCTRequest{
@@ -3322,7 +3331,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 				CertificateProfileName: tc.profile,
 			}
 
-			order, err = ra.issueCertificateOuter(context.Background(), order, csr, nil)
+			order, err = ra.issueCertificateOuter(context.Background(), order, csr, nil, certificateRequestEvent{})
 
 			// The resulting order should have new fields populated
 			if order.Status != string(core.StatusValid) {

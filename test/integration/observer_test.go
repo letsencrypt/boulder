@@ -167,7 +167,7 @@ monitors:
 			t.Fatalf("timed out before getting desired log line from boulder-observer")
 		case line := <-output:
 			t.Log(line)
-			if strings.Contains(line, "name=integration.trust:8675") && strings.Contains(line, "success=true") {
+			if strings.Contains(line, "name=[integration.trust:8675]") && strings.Contains(line, "success=[true]") {
 				return
 			}
 		}

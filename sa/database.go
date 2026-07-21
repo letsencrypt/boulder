@@ -1,7 +1,6 @@
 package sa
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -11,10 +10,10 @@ import (
 
 	"github.com/letsencrypt/borp"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // DbSettings contains settings for the database/sql driver. The zero
@@ -232,7 +231,7 @@ type SQLLogger struct {
 
 // Printf adapts the Logger to borp's interface
 func (log *SQLLogger) Printf(format string, v ...any) {
-	log.Debug(context.Background(), fmt.Sprintf(format, v...))
+	log.Debugf(format, v...)
 }
 
 // initTables constructs the table map for the ORM.

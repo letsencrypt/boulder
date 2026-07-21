@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"runtime"
@@ -12,9 +13,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -69,6 +70,54 @@ func TestPAConfigUnmarshal(t *testing.T) {
 	test.AssertNotError(t, pc4.CheckIdentifiers(), "Disallowed empty identifiers map")
 }
 
+func TestMysqlLogger(t *testing.T) {
+	log := blog.UseMock()
+	mLog := mysqlLogger{log}
+
+	testCases := []struct {
+		args     []any
+		expected string
+	}{
+		{
+			[]any{nil},
+			`ERR: [mysql] <nil>`,
+		},
+		{
+			[]any{""},
+			`ERR: [mysql] `,
+		},
+		{
+			[]any{"Sup ", 12345, " Sup sup"},
+			`ERR: [mysql] Sup 12345 Sup sup`,
+		},
+	}
+
+	for _, tc := range testCases {
+		// mysqlLogger proxies blog.AuditLogger to provide a Print() method
+		mLog.Print(tc.args...)
+		logged := log.GetAll()
+		// Calling Print should produce the expected output
+		test.AssertEquals(t, len(logged), 1)
+		test.AssertEquals(t, logged[0], tc.expected)
+		log.Clear()
+	}
+}
+
+func TestCaptureStdlibLog(t *testing.T) {
+	logger := blog.UseMock()
+	oldDest := log.Writer()
+	defer func() {
+		log.SetOutput(oldDest)
+	}()
+	log.SetOutput(logWriter{logger})
+	log.Print("thisisatest")
+	results := logger.GetAllMatching("thisisatest")
+	if len(results) != 1 {
+		t.Fatalf("Expected logger to receive 'thisisatest', got: %s",
+			strings.Join(logger.GetAllMatching(".*"), "\n"))
+	}
+}
+
 func TestLogStartup(t *testing.T) {
 	core.BuildID = "TestBuildID"
 	core.BuildTime = "RightNow!"
@@ -77,13 +126,8 @@ func TestLogStartup(t *testing.T) {
 	log := blog.NewMock()
 	LogStartup(log)
 	logged := strings.Join(log.GetAll(), "\n")
-	test.AssertContains(t, logged, `level=INFO`)
-	test.AssertContains(t, logged, `[AUDIT]`)
-	test.AssertContains(t, logged, `msg="Process starting"`)
-	test.AssertContains(t, logged, `buildID=TestBuildID`)
-	test.AssertContains(t, logged, `buildTime=RightNow!`)
-	test.AssertContains(t, logged, `buildHost=Localhost`)
-	test.AssertContains(t, logged, fmt.Sprintf(`goVersion=%s`, runtime.Version()))
+	expected := fmt.Sprintf(`INFO: [AUDIT] Process starting JSON={"Command":"cmd.test","BuildID":"TestBuildID","BuildTime":"RightNow!","GoVersion":"%s","BuildHost":"Localhost"}`, runtime.Version())
+	test.AssertEquals(t, logged, expected)
 }
 
 func TestReadConfigFile(t *testing.T) {
@@ -98,6 +142,29 @@ func TestReadConfigFile(t *testing.T) {
 	err = ReadConfigFile("../test/config/health-checker.json", &c)
 	test.AssertNotError(t, err, "ReadConfigFile(../test/config/health-checker.json) errored")
 	test.AssertEquals(t, c.GRPC.Timeout.Duration, 1*time.Second)
+}
+
+func TestLogWriter(t *testing.T) {
+	mock := blog.UseMock()
+	lw := logWriter{mock}
+	_, _ = lw.Write([]byte("hi\n"))
+	lines := mock.GetAllMatching(".*")
+	test.AssertEquals(t, len(lines), 1)
+	test.AssertEquals(t, lines[0], "INFO: hi")
+}
+
+func TestGRPCLoggerWarningFilter(t *testing.T) {
+	m := blog.NewMock()
+	l := grpcLogger{m}
+	l.Warningln("asdf", "qwer")
+	lines := m.GetAllMatching(".*")
+	test.AssertEquals(t, len(lines), 1)
+
+	m = blog.NewMock()
+	l = grpcLogger{m}
+	l.Warningln("Server.processUnaryRPC failed to write status: connection error: desc = \"transport is closing\"")
+	lines = m.GetAllMatching(".*")
+	test.AssertEquals(t, len(lines), 0)
 }
 
 func Test_newVersionCollector(t *testing.T) {
@@ -215,10 +282,7 @@ func TestFailExit(t *testing.T) {
 	cmd.Env = append(os.Environ(), "TIME_TO_DIE=1")
 	output, err := cmd.CombinedOutput()
 	test.AssertError(t, err, "running a failing program")
-	test.AssertContains(t, string(output), `[AUDIT]`)
-	test.AssertContains(t, string(output), `level=ERROR`)
-	test.AssertContains(t, string(output), `msg="Command failed"`)
-	test.AssertContains(t, string(output), `error="tears in the rain"`)
+	test.AssertContains(t, string(output), "[AUDIT] tears in the rain")
 	// "goroutine" usually shows up in stack traces, so we check it
 	// to make sure we didn't print a stack trace.
 	test.AssertNotContains(t, string(output), "goroutine")

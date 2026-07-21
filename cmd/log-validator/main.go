@@ -4,15 +4,14 @@ import (
 	"context"
 	"flag"
 
-	"github.com/letsencrypt/boulder/blog"
-	"github.com/letsencrypt/boulder/blog/validator"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/log/validator"
 )
 
 type Config struct {
 	Files         []string `validate:"min=1,dive,required"`
 	DebugAddr     string   `validate:"omitempty,hostname_port"`
-	Syslog        blog.Config
+	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 

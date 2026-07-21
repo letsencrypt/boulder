@@ -6,14 +6,12 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -225,7 +223,7 @@ type Config struct {
 		BlockedAccountsFile string `validate:"omitempty"`
 	}
 
-	Syslog        blog.Config
+	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 
 	// OpenTelemetryHTTPConfig configures tracing on incoming HTTP requests
@@ -499,11 +497,11 @@ func main() {
 		cmd.Fail("HTTP listen address is not configured")
 	}
 
+	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
 	srv := web.NewServer(c.WFE.ListenAddress, handler, logger)
 	go func() {
-		logger.Info(context.Background(), "HTTP server listening", slog.String("addr", c.WFE.ListenAddress))
 		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			cmd.FailOnError(err, "Running HTTP server")
@@ -513,7 +511,7 @@ func main() {
 	tlsSrv := web.NewServer(c.WFE.TLSListenAddress, handler, logger)
 	if tlsSrv.Addr != "" {
 		go func() {
-			logger.Info(context.Background(), "TLS server listening", slog.String("addr", tlsSrv.Addr))
+			logger.Infof("TLS server listening on %s", tlsSrv.Addr)
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			if err != nil && err != http.ErrServerClosed {
 				cmd.FailOnError(err, "Running TLS server")

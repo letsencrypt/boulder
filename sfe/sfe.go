@@ -1,13 +1,11 @@
 package sfe
 
 import (
-	"context"
 	"embed"
 	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,8 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
@@ -190,7 +188,7 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 
 // renderTemplate takes the name of an HTML template and optional dynamicData
 // which are rendered and served back to the client via the response writer.
-func (sfe *SelfServiceFrontEndImpl) renderTemplate(ctx context.Context, w http.ResponseWriter, filename string, dynamicData any) {
+func (sfe *SelfServiceFrontEndImpl) renderTemplate(w http.ResponseWriter, filename string, dynamicData any) {
 	if len(filename) == 0 {
 		http.Error(w, "Template page does not exist", http.StatusInternalServerError)
 		return
@@ -199,14 +197,14 @@ func (sfe *SelfServiceFrontEndImpl) renderTemplate(ctx context.Context, w http.R
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := sfe.templatePages.ExecuteTemplate(w, filename, dynamicData)
 	if err != nil {
-		sfe.log.Error(ctx, "Failed to execute template", err, slog.String("template", filename))
+		sfe.log.Warningf("template %q execute failed: %s", filename, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 // Index is the homepage of the SFE
 func (sfe *SelfServiceFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
-	sfe.renderTemplate(request.Context(), response, "index.html", nil)
+	sfe.renderTemplate(response, "index.html", nil)
 }
 
 // BuildID tells the requester what boulder build version is running.
@@ -215,7 +213,7 @@ func (sfe *SelfServiceFrontEndImpl) BuildID(response http.ResponseWriter, reques
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
-		sfe.log.Error(request.Context(), "Could not write response", err)
+		sfe.log.Warningf("Could not write response: %s", err)
 	}
 }
 
@@ -230,16 +228,16 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 	if err != nil {
 		if errors.Is(err, jwt.ErrExpired) {
 			// JWT expired before the Subscriber visited the unpause page.
-			sfe.unpauseTokenExpired(request.Context(), response)
+			sfe.unpauseTokenExpired(response)
 			return
 		}
 		if errors.Is(err, unpause.ErrMalformedJWT) {
 			// JWT is malformed. This could happen if the Subscriber failed to
 			// copy the entire URL from their logs.
-			sfe.unpauseRequestMalformed(request.Context(), response)
+			sfe.unpauseRequestMalformed(response)
 			return
 		}
-		sfe.unpauseFailed(request.Context(), response)
+		sfe.unpauseFailed(response)
 		return
 	}
 
@@ -253,7 +251,7 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 	}
 
 	// Present the unpause form to the Subscriber.
-	sfe.renderTemplate(request.Context(), response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, accountID, idents})
+	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, accountID, idents})
 }
 
 // UnpauseSubmit serves a page showing the result of the unpause form submission.
@@ -266,16 +264,16 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, 
 	if err != nil {
 		if errors.Is(err, jwt.ErrExpired) {
 			// JWT expired before the Subscriber could click the unpause button.
-			sfe.unpauseTokenExpired(request.Context(), response)
+			sfe.unpauseTokenExpired(response)
 			return
 		}
 		if errors.Is(err, unpause.ErrMalformedJWT) {
 			// JWT is malformed. This should never happen if the request came
 			// from our form.
-			sfe.unpauseRequestMalformed(request.Context(), response)
+			sfe.unpauseRequestMalformed(response)
 			return
 		}
-		sfe.unpauseFailed(request.Context(), response)
+		sfe.unpauseFailed(response)
 		return
 	}
 
@@ -283,7 +281,7 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, 
 		RegistrationID: accountID,
 	})
 	if err != nil {
-		sfe.unpauseFailed(request.Context(), response)
+		sfe.unpauseFailed(response)
 		return
 	}
 
@@ -294,12 +292,12 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, 
 	http.Redirect(response, request, unpauseStatus+"?"+params.Encode(), http.StatusFound)
 }
 
-func (sfe *SelfServiceFrontEndImpl) unpauseRequestMalformed(ctx context.Context, response http.ResponseWriter) {
-	sfe.renderTemplate(ctx, response, "unpause-invalid-request.html", nil)
+func (sfe *SelfServiceFrontEndImpl) unpauseRequestMalformed(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-invalid-request.html", nil)
 }
 
-func (sfe *SelfServiceFrontEndImpl) unpauseTokenExpired(ctx context.Context, response http.ResponseWriter) {
-	sfe.renderTemplate(ctx, response, "unpause-expired.html", nil)
+func (sfe *SelfServiceFrontEndImpl) unpauseTokenExpired(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-expired.html", nil)
 }
 
 type unpauseStatusTemplate struct {
@@ -308,12 +306,12 @@ type unpauseStatusTemplate struct {
 	Count      int64
 }
 
-func (sfe *SelfServiceFrontEndImpl) unpauseFailed(ctx context.Context, response http.ResponseWriter) {
-	sfe.renderTemplate(ctx, response, "unpause-status.html", unpauseStatusTemplate{Successful: false})
+func (sfe *SelfServiceFrontEndImpl) unpauseFailed(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplate{Successful: false})
 }
 
-func (sfe *SelfServiceFrontEndImpl) unpauseSuccessful(ctx context.Context, response http.ResponseWriter, count int64) {
-	sfe.renderTemplate(ctx, response, "unpause-status.html", unpauseStatusTemplate{
+func (sfe *SelfServiceFrontEndImpl) unpauseSuccessful(response http.ResponseWriter, count int64) {
+	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplate{
 		Successful: true,
 		Limit:      unpause.RequestLimit,
 		Count:      count},
@@ -331,11 +329,11 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseStatus(response http.ResponseWriter, 
 
 	count, err := strconv.ParseInt(request.URL.Query().Get("count"), 10, 64)
 	if err != nil || count < 0 {
-		sfe.unpauseFailed(request.Context(), response)
+		sfe.unpauseFailed(response)
 		return
 	}
 
-	sfe.unpauseSuccessful(request.Context(), response, count)
+	sfe.unpauseSuccessful(response, count)
 }
 
 // parseUnpauseJWT extracts and returns the subscriber's registration ID and a

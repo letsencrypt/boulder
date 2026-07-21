@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"reflect"
 	"strings"
@@ -395,6 +396,40 @@ func TestIssue(t *testing.T) {
 	}
 }
 
+func TestIssueCertTooBig(t *testing.T) {
+	fc := clock.NewFake()
+	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %s", err)
+	}
+	var dnsNames []string
+	for i := 0; i < 1000; i++ {
+		dnsNames = append(dnsNames, fmt.Sprintf("%d.example.com", i))
+	}
+	profile := defaultProfile()
+	profile.maxCertificateSize = 1000
+	_, _, err = signer.Prepare(profile, &IssuanceRequest{
+		PublicKey:       MarshalablePublicKey{pk.Public()},
+		SubjectKeyId:    goodSKID,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        dnsNames,
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+	})
+	if err == nil {
+		t.Errorf("signer.Prepare of big cert: got nil error, want an error")
+	}
+	expected := "linting certificate too big"
+	if !strings.Contains(err.Error(), expected) {
+		t.Errorf("signer.Prepare of big cert: got %q, want %q", err, expected)
+	}
+}
+
 func TestIssueDNSNamesOnly(t *testing.T) {
 	fc := clock.NewFake()
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
@@ -566,6 +601,75 @@ func TestIssueCommonName(t *testing.T) {
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
 	test.AssertEquals(t, cert.Subject.CommonName, "")
+}
+
+func TestPrepareMTC(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
+	pc := defaultProfileConfig()
+	pc.MTC = true
+	pc.IgnoredLints = []string{
+		// Reduce the lint ignores to just the minimal (SCT-related) set.
+		"w_ct_sct_policy_count_unsatisfied",
+		// Ignore the warning about *not* including the SubjectKeyIdentifier extension:
+		// zlint has both lints (one enforcing RFC5280, the other the BRs).
+		"w_ext_subject_key_identifier_missing_sub_cert",
+	}
+	prof, err := NewProfile(pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = signer.Prepare(prof, &IssuanceRequest{
+		IncludeCTPoison: false,
+		sctList:         nil,
+
+		PublicKey: MarshalablePublicKey{pk.Public()},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	if err != nil {
+		t.Errorf("Prepare() of req with !IncludeCTPoison && !sctList: %s", err)
+	}
+
+	_, _, err = signer.Prepare(prof, &IssuanceRequest{
+		IncludeCTPoison: true,
+
+		PublicKey: MarshalablePublicKey{pk.Public()},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	if err == nil {
+		t.Errorf("Prepare() of req with IncludeCTPoison: got nil err, want error")
+	}
+
+	_, _, err = signer.Prepare(prof, &IssuanceRequest{
+		sctList: []ct.SignedCertificateTimestamp{{SCTVersion: 1}},
+
+		PublicKey: MarshalablePublicKey{pk.Public()},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	if err == nil {
+		t.Errorf("Prepare() of req with sctList: got nil err, want error")
+	}
 }
 
 func TestIssueOmissions(t *testing.T) {
