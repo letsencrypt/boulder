@@ -1512,13 +1512,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// parallel-validation race: a different validation attempt has already
 				// updated this authz, so we failed to find a *pending* authz with the
 				// given ID to update.
-				ra.log.Info(ctx, "Failed to record validation (likely parallel validation race)",
+				// TODO(#3036): Remove this special case after the SetAuthzProcessing
+				// flag defaults to true, since validation races should be eliminated.
+				ra.log.Info(ctx, "Failed to record validation (authz no longer pending)",
 					blog.Acct(authz.RegistrationID),
 					blog.Authz(authz.ID),
 					blog.Error(err),
 				)
 			} else {
-				ra.log.AuditError(ctx, "Failed to record validation (likely parallel validation race)", err,
+				ra.log.AuditError(ctx, "Failed to record validation", err,
 					blog.Acct(authz.RegistrationID),
 					blog.Authz(authz.ID),
 				)
