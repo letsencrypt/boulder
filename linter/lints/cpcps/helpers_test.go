@@ -110,8 +110,8 @@ func testRootTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate {
 			CommonName:   "ISRG Root X99",
 		},
 		NotBefore: notBefore,
-		// 9132 days, inclusive of the final second.
-		NotAfter:              notBefore.AddDate(0, 0, 9132).Add(-time.Second),
+		// 3660 days, inclusive of the final second.
+		NotAfter:              notBefore.AddDate(0, 0, 3660).Add(-time.Second),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
@@ -131,8 +131,9 @@ func testIntermediateTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certific
 			Organization: []string{"Let's Encrypt"},
 			CommonName:   "E99",
 		},
-		NotBefore:             notBefore,
-		NotAfter:              notBefore.AddDate(5, 0, 0).Add(-time.Second),
+		NotBefore: notBefore,
+		// 1098 days, inclusive of the final second.
+		NotAfter:              notBefore.AddDate(0, 0, 1098).Add(-time.Second),
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		MaxPathLen:            0,

@@ -86,12 +86,12 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("issuer is not byte-for-byte identical to the subject")
 	}
 
-	// validity is "At most 9132 days". RFC 5280 4.1.2.5: "The validity period
-	// for a certificate is the period of time from notBefore through notAfter,
-	// inclusive."
+	// validity is "At most 3660 days (approx. 10 years)". RFC 5280 4.1.2.5:
+	// "The validity period for a certificate is the period of time from
+	// notBefore through notAfter, inclusive."
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1001
-	if c.NotAfter.Add(time.Second).Sub(c.NotBefore) > 9132*lints.BRDay {
-		return errResult("validity is more than 9132 days")
+	if c.NotAfter.Add(time.Second).Sub(c.NotBefore) > 3660*lints.BRDay {
+		return errResult("validity is more than 3660 days")
 	}
 
 	// subject is "C=US, O=ISRG, and a unique CN".

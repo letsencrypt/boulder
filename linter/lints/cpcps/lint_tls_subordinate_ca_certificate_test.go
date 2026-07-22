@@ -36,10 +36,11 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "validity_too_long",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				tmpl.NotAfter = tmpl.NotBefore.AddDate(9, 0, 0)
+				// One second past the maximum 1098-day validity period.
+				tmpl.NotAfter = tmpl.NotBefore.AddDate(0, 0, 1098)
 			},
 			want:       lint.Error,
-			wantSubStr: "validity is more than 8 years",
+			wantSubStr: "validity is more than 1098 days",
 		},
 		{
 			name: "serial_too_long",

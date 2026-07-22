@@ -27,7 +27,8 @@ func testCrossCertTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate
 			CommonName:   "ISRG Root X100",
 		},
 		NotBefore: notBefore,
-		NotAfter:  notBefore.AddDate(5, 0, 0).Add(-time.Second),
+		// 1098 days, inclusive of the final second.
+		NotAfter: notBefore.AddDate(0, 0, 1098).Add(-time.Second),
 		// The existing CA Certificate being cross-signed is a root, which has
 		// no pathLenConstraint, so MaxPathLen and MaxPathLenZero are left at
 		// their zero values.
@@ -77,10 +78,11 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "validity_too_long",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				tmpl.NotAfter = tmpl.NotBefore.AddDate(9, 0, 0)
+				// One second past the maximum 1098-day validity period.
+				tmpl.NotAfter = tmpl.NotBefore.AddDate(0, 0, 1098)
 			},
 			want:       lint.Error,
-			wantSubStr: "validity is more than 8 years",
+			wantSubStr: "validity is more than 1098 days",
 		},
 		{
 			name: "extra_key_usage_bit",

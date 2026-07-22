@@ -31,6 +31,7 @@ func TestRootCACertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "good_notafter_before_2050",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.NotBefore = time.Date(2039, time.June, 1, 0, 0, 0, 0, time.UTC)
 				tmpl.NotAfter = time.Date(2049, time.June, 1, 0, 0, 0, 0, time.UTC)
 			},
 			want: lint.Pass,
@@ -49,7 +50,7 @@ func TestRootCACertificateMatchesCPSProfile(t *testing.T) {
 				tmpl.NotAfter = tmpl.NotAfter.Add(24 * time.Hour)
 			},
 			want:       lint.Error,
-			wantSubStr: "validity is more than 9132 days",
+			wantSubStr: "validity is more than 3660 days",
 		},
 		{
 			name: "wrong_organization",
