@@ -7,10 +7,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/url"
 	"slices"
-	"strings"
 	"time"
 
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	zrsa "github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
@@ -277,8 +278,13 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 	if len(c.IssuingCertificateURL) != 1 {
 		return errResult("authorityInformationAccess does not contain exactly one caIssuers entry")
 	}
-	if !strings.HasPrefix(c.IssuingCertificateURL[0], "http://") {
-		return errResult("authorityInformationAccess caIssuers URI does not use the http scheme")
+	aiaURL, err := url.Parse(c.IssuingCertificateURL[0])
+	if err != nil || aiaURL.Scheme != "http" {
+		return errResult("authorityInformationAccess caIssuers URI is not an http URL")
+	}
+	_, err = publicsuffix.ParseFromListWithOptions(publicsuffix.DefaultList, aiaURL.Hostname(), &publicsuffix.FindOptions{IgnorePrivate: true, DefaultRule: nil})
+	if err != nil {
+		return errResult("authorityInformationAccess caIssuers URI hostname is not a domain under a public suffix")
 	}
 
 	// authorityKeyIdentifier "Contains a keyIdentifier byte-for-byte identical
@@ -331,8 +337,13 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 	if len(c.CRLDistributionPoints) != 1 {
 		return errResult("crlDistributionPoints does not contain exactly one distribution point")
 	}
-	if !strings.HasPrefix(c.CRLDistributionPoints[0], "http://") {
-		return errResult("crlDistributionPoints URI does not use the http scheme")
+	crldpURL, err := url.Parse(c.CRLDistributionPoints[0])
+	if err != nil || crldpURL.Scheme != "http" {
+		return errResult("crlDistributionPoints URI is not an http URL")
+	}
+	_, err = publicsuffix.ParseFromListWithOptions(publicsuffix.DefaultList, crldpURL.Hostname(), &publicsuffix.FindOptions{IgnorePrivate: true, DefaultRule: nil})
+	if err != nil {
+		return errResult("crlDistributionPoints URI hostname is not a domain under a public suffix")
 	}
 
 	// extKeyUsage "Contains only id-kp-serverAuth (OID 1.3.6.1.5.5.7.3.1)".

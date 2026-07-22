@@ -185,6 +185,70 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "authorityInformationAccess extension is not present",
 		},
 		{
+			name: "https_aia",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.IssuingCertificateURL = []string{"https://e99.i.lencr.org/"}
+			},
+			want:       lint.Error,
+			wantSubStr: "authorityInformationAccess caIssuers URI is not an http URL",
+		},
+		{
+			name: "aia_unparseable",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.IssuingCertificateURL = []string{"http://e99.i.lencr.org/%zz"}
+			},
+			want:       lint.Error,
+			wantSubStr: "authorityInformationAccess caIssuers URI is not an http URL",
+		},
+		{
+			name: "aia_no_hostname",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.IssuingCertificateURL = []string{"http:///e99.crt"}
+			},
+			want:       lint.Error,
+			wantSubStr: "authorityInformationAccess caIssuers URI hostname is not a domain under a public suffix",
+		},
+		{
+			name: "aia_bad_tld",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.IssuingCertificateURL = []string{"http://e99.i.lencr.invalid/"}
+			},
+			want:       lint.Error,
+			wantSubStr: "authorityInformationAccess caIssuers URI hostname is not a domain under a public suffix",
+		},
+		{
+			name: "https_crldp",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.CRLDistributionPoints = []string{"https://e99.c.lencr.org/1.crl"}
+			},
+			want:       lint.Error,
+			wantSubStr: "crlDistributionPoints URI is not an http URL",
+		},
+		{
+			name: "crldp_unparseable",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.CRLDistributionPoints = []string{"http://e99.c.lencr.org/%zz"}
+			},
+			want:       lint.Error,
+			wantSubStr: "crlDistributionPoints URI is not an http URL",
+		},
+		{
+			name: "crldp_no_hostname",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.CRLDistributionPoints = []string{"http:///1.crl"}
+			},
+			want:       lint.Error,
+			wantSubStr: "crlDistributionPoints URI hostname is not a domain under a public suffix",
+		},
+		{
+			name: "crldp_bad_tld",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.CRLDistributionPoints = []string{"http://e99.c.lencr.invalid/1.crl"}
+			},
+			want:       lint.Error,
+			wantSubStr: "crlDistributionPoints URI hostname is not a domain under a public suffix",
+		},
+		{
 			name: "missing_crldp",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.CRLDistributionPoints = nil
