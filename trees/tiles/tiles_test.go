@@ -343,6 +343,19 @@ func TestStorageCorrectness(t *testing.T) {
 		level++
 	}
 
+	rootHash := f.RootHash()
+	want, err := base64.StdEncoding.DecodeString("+AWMUCk19n0KCYumG1DKQ4dW3hcS8C/ygvZB7mP5NOU=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calculated := subtree.MTH(leafHashes)
+	if !bytes.Equal(calculated[:], want) {
+		t.Errorf("test assumptions failed: MTH(leafHashes) = %s, want %s", calculated, want)
+	}
+	if !bytes.Equal(rootHash[:], want) {
+		t.Errorf("f.RootHash(): got %s, want %s", rootHash, want)
+	}
+
 	// Load and check equality with the in-memory copy one last time.
 	loaded, err := Load(t.Context(), fs3, n, prefix)
 	if err != nil {
@@ -453,4 +466,14 @@ func TestFlushClean(t *testing.T) {
 	if fs3.puts != putsBefore {
 		t.Errorf("second Flush wrote %d objects, want 0", fs3.puts-putsBefore)
 	}
+}
+
+func TestRootHash(t *testing.T) {
+	f := NewFrontier()
+	got := f.RootHash()
+	want := subtree.MTH(nil)
+	if !bytes.Equal(got[:], want[:]) {
+		t.Errorf("NewFrontier().RootHash()=%s, want %s", got, want)
+	}
+
 }

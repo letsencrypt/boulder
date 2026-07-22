@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
@@ -29,20 +30,24 @@ type simpleS3 interface {
 }
 
 // Frontier contains all the tiles on the right edge of the tree,
-// partial and full. It keeps track of which tiles have been
-// modified and need to be written to storage.
+// which may be partial or empty (but not full). It keeps track
+// of which tiles have been modified and need to be written to
+// storage.
 //
-// When we need to append a hash to a level with a full tile, the
-// full tile gets moved into a holding list of tiles that are not
-// on the right edge but need to be written.
+// When a tile becomes full, it gets moved into a holding list of
+// tiles that are not on the right edge but need to be written and
+// its MTH gets appended to the tile above it.
 type Frontier struct {
 	// The rightmost hash tiles in the tree, ordered from level 0
 	// (leaf hashes) to level N (containing the root hash).
-	// Will be empty only on an empty tree (i.e. NewFrontier())
+	// Will be empty only on an empty tree (i.e. NewFrontier()).
+	//
+	// Tiles in this list may be empty (coords.W == 0) but never
+	// full (coords.W == 256).
 	hashesTiles []*hashesTile
 
 	// entryTile contains the rightmost tile in the entries layer.
-	// Will be empty only on an empty tree (i.e. NewFrontier())
+	// May be empty but never full.
 	entryTile *entryTile
 
 	// This level of hashes and all below it need writing to storage
@@ -59,6 +64,8 @@ type Frontier struct {
 }
 
 // hashesTile represents a tile containing hashes.
+// It may be empty, partial, or full. If it's full it can only
+// be part of fullHashesTiles.
 type hashesTile struct {
 	// Note we don't bother setting H because it's not encoded
 	// in paths for tlog-tiles.
@@ -67,6 +74,8 @@ type hashesTile struct {
 }
 
 // entryTile represent a tile containing entries.
+// It may be empty, partial or full. If it's full it can only be
+// part of fullEntryTiles.
 type entryTile struct {
 	coords tlog.Tile
 	data   []byte
@@ -91,18 +100,10 @@ func Load(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Fr
 		return nil, fmt.Errorf("can't load an empty tree")
 	}
 
-	tileIndex := treeSize / 256
-	width := int(treeSize % 256)
-	// If the tile would be empty get the full tile to its left instead.
-	if width == 0 {
-		tileIndex--
-		width = 256
-	}
-
 	coords := tlog.Tile{
 		L: -1, // entries layer is represented as -1.
-		N: tileIndex,
-		W: width,
+		N: treeSize / 256,
+		W: int(treeSize % 256),
 	}
 
 	entryData, err := getTile(ctx, s3c, coords, prefix)
@@ -135,20 +136,10 @@ func Load(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Fr
 	// Iterate up the tree. layerSize is the number of hashes (not tiles)
 	// in a layer.
 	for layerSize := treeSize; layerSize > 0; layerSize /= 256 {
-		level := len(hashesTiles)
-		tileIndex = layerSize / 256
-
-		width := int(layerSize % 256)
-		// If the tile would be empty get the full tile to its left instead.
-		if width == 0 {
-			tileIndex--
-			width = 256
-		}
-
 		coords := tlog.Tile{
-			L: level,
-			N: tileIndex,
-			W: width,
+			L: len(hashesTiles),
+			N: layerSize / 256,
+			W: int(layerSize % 256),
 		}
 
 		body, err := getTile(ctx, s3c, coords, prefix)
@@ -156,13 +147,13 @@ func Load(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Fr
 			return nil, err
 		}
 
-		if len(body) != width*tlog.HashSize {
+		if len(body) != coords.W*tlog.HashSize {
 			return nil, fmt.Errorf("%q: got %d bytes, expected %d",
-				tilePath(coords), len(body), width*tlog.HashSize)
+				tilePath(coords), len(body), coords.W*tlog.HashSize)
 		}
 
 		var data []tlog.Hash
-		for i := 0; i < width; i++ {
+		for i := 0; i < coords.W; i++ {
 			var hash tlog.Hash
 			copy(hash[:], body[:tlog.HashSize])
 			data = append(data, hash)
@@ -188,6 +179,51 @@ func (f *Frontier) TreeSize() int64 {
 	return f.treeSize
 }
 
+// RootHash calculates and returns the current root hash.
+func (f *Frontier) RootHash() tlog.Hash {
+	if len(f.hashesTiles) == 0 {
+		return subtree.MTH(nil)
+	}
+
+	// Intuition:
+	//  A leaf tile's MTH is the MTH of its nodes, whether it's partial or full.
+	//
+	//  At level L, a tile contains hashes of _complete_ subtrees from level L-1.
+	//  Imagine an empty spot at the end where the next hash will go when it's complete.
+	//  We temporarily put one more hash there - the MTH of the partial subtree below
+	//  (if there is one). Then we calculate MTH of the level L tile including that
+	//  temporary hash.
+	//
+	// That lets us calculate the root hash like so:
+	//
+	//  - Climb from level 0.
+	//  - Skip any empty tiles (a parent or grandparent will incorporate the hashes from below).
+	//  - If we don't have a hash yet, calculate MTH of the current tile.
+	//  - Otherwise, calculate MTH of the current tile, with the previous tile's MTH appended.
+	var currentHash tlog.Hash
+	var currentHashInitialized bool
+	for level := 0; level < len(f.hashesTiles); level++ {
+		if f.hashesTiles[level].coords.W == 0 {
+			continue
+		}
+		hashes := f.hashesTiles[level].data
+		if !currentHashInitialized {
+			currentHash = subtree.MTH(hashes)
+			currentHashInitialized = true
+		} else {
+			currentHash = subtree.MTH(append(slices.Clone(hashes), currentHash))
+		}
+	}
+
+	if !currentHashInitialized {
+		// This shouldn't happen because the top tile is never empty.
+		// When we add a layer we immediately put a hash in it.
+		panic("shouldn't happen: all tiles on frontier are empty")
+	}
+
+	return currentHash
+}
+
 // AppendEntry appends a single MTCLogEntry to the entries tile and a
 // corresponding hash to the level-0 hashes tile, updating any higher
 // levels as needed.
@@ -206,22 +242,24 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry) error {
 		return err
 	}
 
-	if f.entryTile.coords.W == 256 {
-		// Existing tile is full. Queue it for writing (if it's dirty).
-		if f.dirtyLevel >= 0 {
-			f.fullEntryTiles = append(f.fullEntryTiles, f.entryTile)
-		}
-		f.entryTile = &entryTile{
-			coords: tlog.Tile{
-				L: -1, // entries layer is represented as -1.
-				N: f.treeSize / 256,
-			},
-		}
-	}
-
 	f.entryTile.data = append(f.entryTile.data, bundleBytes...)
 	f.entryTile.coords.W++
 
+	if f.entryTile.coords.W == 256 {
+		// Tile is full. Queue it for writing.
+		f.fullEntryTiles = append(f.fullEntryTiles, f.entryTile)
+		// And set up a new, empty tile.
+		f.entryTile = &entryTile{
+			coords: tlog.Tile{
+				L: -1, // entries layer is represented as -1.
+				N: (f.treeSize + 1) / 256,
+				W: 0,
+			},
+			data: nil,
+		}
+	}
+
+	// Add the corresponding hash to level 0 (leaf hashes).
 	f.appendHash(tlog.RecordHash(mtcleBytes), 0)
 
 	f.treeSize++
@@ -246,32 +284,24 @@ func (f *Frontier) appendHash(val tlog.Hash, level int) {
 	}
 
 	currentTile := f.hashesTiles[level]
-	if currentTile.coords.W != 256 {
-		currentTile.data = append(currentTile.data, val)
-		currentTile.coords.W++
+	currentTile.data = append(currentTile.data, val)
+	currentTile.coords.W++
 
-		if currentTile.coords.W == 256 {
-			// We finished a tile. Now we get to append that tile's hash
-			// to the tile above it.
-			fullTileHash := subtree.MTH(currentTile.data)
-			f.appendHash(fullTileHash, level+1)
-		}
-	} else {
-		// Move the full tile to the holding area and create
-		// a new one with one entry. Only if the full tile
-		// needs to be written.
-		if f.dirtyLevel >= level {
-			f.fullHashesTiles = append(f.fullHashesTiles, currentTile)
-		}
-
-		newCoords := currentTile.coords
-		newCoords.N++
-		newCoords.W = 1
+	if currentTile.coords.W == 256 {
+		// Move the full tile to the holding area and create a new empty one.
+		f.fullHashesTiles = append(f.fullHashesTiles, currentTile)
 
 		f.hashesTiles[level] = &hashesTile{
-			coords: newCoords,
-			data:   []tlog.Hash{val},
+			coords: tlog.Tile{
+				L: level,
+				N: currentTile.coords.N + 1,
+				W: 0,
+			},
+			data: nil,
 		}
+
+		// Append the full tile's hash to the tile above it.
+		f.appendHash(subtree.MTH(currentTile.data), level+1)
 	}
 
 	f.dirtyLevel = max(f.dirtyLevel, level)
@@ -307,9 +337,6 @@ func (f *Frontier) Flush(ctx context.Context, s3c simpleS3, prefix string) error
 
 	dirtyHashTiles := append(f.fullHashesTiles, f.hashesTiles[:f.dirtyLevel+1]...)
 	for _, dt := range dirtyHashTiles {
-		if len(dt.data) == 0 {
-			return fmt.Errorf("shouldn't happen: empty hash tile %v", dt.coords)
-		}
 		// Transform our slice of 32-byte arrays into a contiguous byte slice.
 		body := make([]byte, 0, len(dt.data)*tlog.HashSize)
 		for i := range len(dt.data) {
@@ -338,10 +365,12 @@ func writeTile(
 	body []byte,
 	compress bool,
 ) error {
-	path := prefix + tilePath(coords)
-	if len(body) == 0 {
-		return fmt.Errorf("shouldn't happen: attempted to write empty tile to %q", path)
+	if coords.W == 0 {
+		// Neither write nor read an empty tile. They do not exist in storage.
+		return nil
 	}
+
+	path := prefix + tilePath(coords)
 
 	var contentEncoding *string
 	if compress {
@@ -445,6 +474,11 @@ func tilePath(coords tlog.Tile) string {
 }
 
 func getTile(ctx context.Context, s3c simpleS3, coords tlog.Tile, prefix string) ([]byte, error) {
+	if coords.W == 0 {
+		// Neither write nor read an empty tile. They do not exist in storage.
+		return nil, nil
+	}
+
 	path := prefix + tilePath(coords)
 	bucket := s3c.Bucket()
 	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
@@ -475,9 +509,12 @@ func getTile(ctx context.Context, s3c simpleS3, coords tlog.Tile, prefix string)
 		if err != nil {
 			return nil, err
 		}
-		return decompressed, nil
+		body = decompressed
+	}
+
+	if len(body) == 0 {
+		return nil, fmt.Errorf("shouldn't happen: read empty tile body")
 	}
 
 	return body, nil
-
 }
