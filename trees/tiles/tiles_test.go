@@ -468,12 +468,30 @@ func TestFlushClean(t *testing.T) {
 	}
 }
 
+// TestRootHash checks RootHash against an MTH computed directly over the
+// leaf hashes at a variety of interesting sizes, including sizes that are
+// three tiles high.
 func TestRootHash(t *testing.T) {
-	f := NewFrontier()
-	got := f.RootHash()
-	want := subtree.MTH(nil)
-	if !bytes.Equal(got[:], want[:]) {
-		t.Errorf("NewFrontier().RootHash()=%s, want %s", got, want)
-	}
+	n := 65792
+	const checkAllUpTo = 600
+	spotSizes := map[int]bool{65535: true, 65536: true, 65537: true, 65791: true, 65792: true}
 
+	var leafHashes []tlog.Hash
+	f := NewFrontier()
+	for i := 0; i < n; i++ {
+		mtcle := testEntry(i)
+		leafHashes = append(leafHashes, tlog.RecordHash(testEntryBody(i)))
+
+		err := f.AppendEntry(mtcle)
+		if err != nil {
+			t.Fatalf("AppendEntry(%d): %s", i, err)
+		}
+
+		n := i + 1
+		if n <= checkAllUpTo || spotSizes[n] {
+			if got, want := f.RootHash(), subtree.MTH(leafHashes); got != want {
+				t.Errorf("RootHash at size %d: got %s, want %s", n, got, want)
+			}
+		}
+	}
 }
