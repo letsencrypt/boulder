@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"slices"
 	"strings"
 
@@ -370,7 +371,7 @@ func writeTile(
 		return nil
 	}
 
-	path := prefix + tilePath(coords)
+	key := path.Join(prefix, tilePath(coords))
 
 	var contentEncoding *string
 	if compress {
@@ -398,7 +399,7 @@ func writeTile(
 	bucket := s3c.Bucket()
 	_, err := s3c.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:          &bucket,
-		Key:             &path,
+		Key:             &key,
 		ContentEncoding: contentEncoding,
 		ContentType:     &contentType,
 		CacheControl:    &cacheControl,
@@ -414,9 +415,9 @@ func writeTile(
 		// Partial tiles are written at different paths based on width.
 		// https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/http-412-precondition-failed.html
 		if ok && respErr.HTTPStatusCode() == http.StatusPreconditionFailed {
-			return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), path, ErrFileExists)
+			return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), key, ErrFileExists)
 		}
-		return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), path, err)
+		return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), key, err)
 	}
 	return nil
 }
@@ -479,11 +480,11 @@ func getTile(ctx context.Context, s3c simpleS3, coords tlog.Tile, prefix string)
 		return nil, nil
 	}
 
-	path := prefix + tilePath(coords)
+	key := path.Join(prefix, tilePath(coords))
 	bucket := s3c.Bucket()
 	resp, err := s3c.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &bucket,
-		Key:    &path,
+		Key:    &key,
 	})
 	if err != nil {
 		return nil, err
