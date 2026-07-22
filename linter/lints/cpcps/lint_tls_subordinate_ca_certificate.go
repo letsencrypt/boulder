@@ -174,13 +174,13 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 
 	// issuerUniqueID is "Not present".
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1053
-	if c.IssuerUniqueId.BitLength != 0 || len(c.IssuerUniqueId.Bytes) != 0 {
+	if c.IssuerUniqueId.Bytes != nil {
 		return errResult("issuerUniqueID is present")
 	}
 
 	// subjectUniqueID is "Not present".
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1054
-	if c.SubjectUniqueId.BitLength != 0 || len(c.SubjectUniqueId.Bytes) != 0 {
+	if c.SubjectUniqueId.Bytes != nil {
 		return errResult("subjectUniqueID is present")
 	}
 
