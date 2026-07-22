@@ -1,12 +1,15 @@
 package cpcps
 
 import (
+	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"testing"
@@ -27,6 +30,7 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 
 	testCases := []struct {
 		name       string
+		pub        crypto.PublicKey
 		mod        func(t *testing.T, tmpl *x509.Certificate)
 		want       lint.LintStatus
 		wantSubStr string
@@ -249,6 +253,27 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "crlDistributionPoints URI hostname is not a domain under a public suffix",
 		},
 		{
+			// 2^2047 + 1 is a 2048-bit odd modulus, but the exponent is wrong.
+			name:       "rsa_exponent_not_65537",
+			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 2047), big.NewInt(1)), E: 3},
+			want:       lint.Error,
+			wantSubStr: "RSA public exponent 3 is not 65537",
+		},
+		{
+			// 2^2047 is a 2048-bit modulus, but it is even.
+			name:       "rsa_modulus_even",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 2047), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus is even",
+		},
+		{
+			// 2^2047 + 1 is a 2048-bit odd modulus, but is divisible by 3.
+			name:       "rsa_modulus_small_factor",
+			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 2047), big.NewInt(1)), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus has a prime factor smaller than 752",
+		},
+		{
 			name: "missing_crldp",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.CRLDistributionPoints = nil
@@ -308,16 +333,19 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			leafKey := testKey(t, elliptic.P256())
+			pub := crypto.PublicKey(testKey(t, elliptic.P256()).Public())
+			if tc.pub != nil {
+				pub = tc.pub
+			}
 			tmpl := testLeafTemplate(t)
 			if tc.name == "good_with_skid" {
-				tmpl.SubjectKeyId = testRFC7093SKID(t, leafKey.Public())
+				tmpl.SubjectKeyId = testRFC7093SKID(t, pub)
 			}
 			if tc.mod != nil {
 				tc.mod(t, tmpl)
 			}
 
-			der, err := x509.CreateCertificate(rand.Reader, tmpl, intTmpl, leafKey.Public(), intKey)
+			der, err := x509.CreateCertificate(rand.Reader, tmpl, intTmpl, pub, intKey)
 			if err != nil {
 				t.Fatalf("creating test certificate: %s", err)
 			}

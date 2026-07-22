@@ -2,10 +2,12 @@ package cpcps
 
 import (
 	"bytes"
+	"crypto/ecdh"
 	"crypto/elliptic"
 	stdx509 "crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/zmap/zcrypto/encoding/asn1"
@@ -115,12 +117,14 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 
 	// subjectPublicKeyInfo: Section 6.1.5 says Root CA key pairs are "either
 	// RSA keys whose encoded modulus size is 4096 bits, or ECDSA keys which
-	// are a valid point on the NIST P-384 elliptic curve", and Section 7.1.3.1
-	// requires the AlgorithmIdentifier to be byte-for-byte identical to a BRs
-	// Section 7.1.3.1 encoding. Point-on-curve validation is performed by
-	// zcrypto at parse time.
+	// are a valid point on the NIST P-384 elliptic curve", Section 6.1.6
+	// requires the key parameter quality checks performed inline below, and
+	// Section 7.1.3.1 requires the AlgorithmIdentifier to be byte-for-byte
+	// identical to a BRs Section 7.1.3.1 encoding. Point-on-curve validation
+	// is also performed by zcrypto at parse time.
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1003
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L852
+	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L858-L862
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1111-L1113
 	spkiAlgID, err := util.GetPublicKeyAidEncoded(c)
 	if err != nil {
@@ -134,12 +138,35 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		if hex.EncodeToString(spkiAlgID) != spkiAlgorithmRSA {
 			return errResult("public key algorithm is not byte-for-byte identical to the BRs Section 7.1.3.1 RSA encoding")
 		}
+		// Section 6.1.6, via NIST SP 800-89 Section 5.3.3, requires that RSA
+		// keys have "a public exponent of 65537 and an odd modulus which has
+		// no factors smaller than 752".
+		if key.E.Cmp(big.NewInt(65537)) != 0 {
+			return errResult(fmt.Sprintf("RSA public exponent %s is not 65537", key.E))
+		}
+		if key.N.Bit(0) == 0 {
+			return errResult("RSA modulus is even")
+		}
+		if new(big.Int).GCD(nil, nil, key.N, smallOddPrimesProduct).Cmp(big.NewInt(1)) != 0 {
+			return errResult("RSA modulus has a prime factor smaller than 752")
+		}
 	case *x509.AugmentedECDSA:
 		if key.Pub.Curve != elliptic.P384() {
 			return errResult(fmt.Sprintf("ECDSA curve %s is not allowed", key.Pub.Curve.Params().Name))
 		}
 		if hex.EncodeToString(spkiAlgID) != spkiAlgorithmP384 {
 			return errResult("public key algorithm is not byte-for-byte identical to the BRs Section 7.1.3.1 encoding for its curve")
+		}
+		// Section 6.1.6, via NIST SP 800-56A (Revision 2) Section 5.6.2.3.2,
+		// requires that ECDSA keys comply with the ECC Full Public Key
+		// Validation Routine. ecdh.Curve.NewPublicKey accepts only a
+		// well-formed uncompressed point which is on the curve, within the
+		// underlying field, and not the point at infinity; the routine's
+		// final step, confirming the point's order, is implied by the others
+		// for the NIST curves, whose cofactors are 1.
+		_, err = ecdh.P384().NewPublicKey(key.Raw.Bytes)
+		if err != nil {
+			return errResult("ECDSA public key is not a valid uncompressed point on its curve")
 		}
 	default:
 		return errResult(fmt.Sprintf("unsupported public key type %T", c.PublicKey))

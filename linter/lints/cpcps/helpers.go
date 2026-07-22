@@ -10,6 +10,7 @@ package cpcps
 import (
 	"encoding/pem"
 	"fmt"
+	"math/big"
 
 	"github.com/zmap/zcrypto/encoding/asn1"
 	"github.com/zmap/zcrypto/x509"
@@ -155,6 +156,33 @@ func getOuterSignatureAlgorithm(der []byte) ([]byte, error) {
 	}
 	return signatureAlgorithm, nil
 }
+
+// smallOddPrimesProduct is the product of all odd primes smaller than 752.
+// CP/CPS Section 6.1.6, via NIST SP 800-89 Section 5.3.3, commits us to
+// issuing only RSA keys whose moduli are odd and have no factors smaller than
+// 752; a single GCD against this product detects any such odd factor
+// (evenness is checked separately). To generate the list of primes, run:
+// primes 3 752 | tr '\n' ,
+var smallOddPrimesProduct = func() *big.Int {
+	product := big.NewInt(1)
+	for _, prime := range []int64{
+		3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47,
+		53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107,
+		109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167,
+		173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229,
+		233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283,
+		293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359,
+		367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431,
+		433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491,
+		499, 503, 509, 521, 523, 541, 547, 557, 563, 569, 571,
+		577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641,
+		643, 647, 653, 659, 661, 673, 677, 683, 691, 701, 709,
+		719, 727, 733, 739, 743, 751,
+	} {
+		product.Mul(product, big.NewInt(prime))
+	}
+	return product
+}()
 
 // getExtension returns the extension with the given OID, or nil if absent.
 func getExtension(c *x509.Certificate, oid asn1.ObjectIdentifier) *pkix.Extension {

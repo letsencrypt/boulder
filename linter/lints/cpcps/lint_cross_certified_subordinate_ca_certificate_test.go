@@ -4,8 +4,10 @@ import (
 	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +58,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 
 	testCases := []struct {
 		name       string
+		pub        crypto.PublicKey
 		mod        func(t *testing.T, tmpl *x509.Certificate)
 		want       lint.LintStatus
 		wantSubStr string
@@ -188,6 +191,27 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			want:       lint.Error,
 			wantSubStr: "crlDistributionPoints URI hostname is not a domain under a public suffix",
 		},
+		{
+			// 2^4095 + 1 is a 4096-bit odd modulus, but the exponent is wrong.
+			name:       "rsa_exponent_not_65537",
+			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 4095), big.NewInt(1)), E: 3},
+			want:       lint.Error,
+			wantSubStr: "RSA public exponent 3 is not 65537",
+		},
+		{
+			// 2^4095 is a 4096-bit modulus, but it is even.
+			name:       "rsa_modulus_even",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 4095), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus is even",
+		},
+		{
+			// 2^4095 + 1 is a 4096-bit odd modulus, but is divisible by 3.
+			name:       "rsa_modulus_small_factor",
+			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 4095), big.NewInt(1)), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus has a prime factor smaller than 752",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -203,12 +227,17 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 				t.Fatalf("creating existing CA certificate: %s", err)
 			}
 
-			tmpl := testCrossCertTemplate(t, crossKey.Public())
+			pub := crypto.PublicKey(crossKey.Public())
+			if tc.pub != nil {
+				pub = tc.pub
+			}
+
+			tmpl := testCrossCertTemplate(t, pub)
 			if tc.mod != nil {
 				tc.mod(t, tmpl)
 			}
 
-			der, err := x509.CreateCertificate(rand.Reader, tmpl, rootTmpl, crossKey.Public(), rootKey)
+			der, err := x509.CreateCertificate(rand.Reader, tmpl, rootTmpl, pub, rootKey)
 			if err != nil {
 				t.Fatalf("creating test certificate: %s", err)
 			}

@@ -1,11 +1,14 @@
 package cpcps
 
 import (
+	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +29,7 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 	testCases := []struct {
 		name       string
 		curve      elliptic.Curve
+		pub        crypto.PublicKey
 		mod        func(t *testing.T, tmpl *x509.Certificate)
 		want       lint.LintStatus
 		wantSubStr string
@@ -199,6 +203,27 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "crlDistributionPoints URI hostname is not a domain under a public suffix",
 		},
 		{
+			// 2^2047 + 1 is a 2048-bit odd modulus, but the exponent is wrong.
+			name:       "rsa_exponent_not_65537",
+			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 2047), big.NewInt(1)), E: 3},
+			want:       lint.Error,
+			wantSubStr: "RSA public exponent 3 is not 65537",
+		},
+		{
+			// 2^2047 is a 2048-bit modulus, but it is even.
+			name:       "rsa_modulus_even",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 2047), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus is even",
+		},
+		{
+			// 2^2047 + 1 is a 2048-bit odd modulus, but is divisible by 3.
+			name:       "rsa_modulus_small_factor",
+			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 2047), big.NewInt(1)), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus has a prime factor smaller than 752",
+		},
+		{
 			name: "aia_contains_ocsp",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.OCSPServer = []string{"http://ocsp.x99.lencr.org/"}
@@ -234,14 +259,17 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			if curve == nil {
 				curve = elliptic.P384()
 			}
-			intKey := testKey(t, curve)
+			pub := crypto.PublicKey(testKey(t, curve).Public())
+			if tc.pub != nil {
+				pub = tc.pub
+			}
 
-			tmpl := testIntermediateTemplate(t, intKey.Public())
+			tmpl := testIntermediateTemplate(t, pub)
 			if tc.mod != nil {
 				tc.mod(t, tmpl)
 			}
 
-			der, err := x509.CreateCertificate(rand.Reader, tmpl, rootTmpl, intKey.Public(), rootKey)
+			der, err := x509.CreateCertificate(rand.Reader, tmpl, rootTmpl, pub, rootKey)
 			if err != nil {
 				t.Fatalf("creating test certificate: %s", err)
 			}
