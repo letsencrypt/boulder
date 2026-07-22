@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zmap/zlint/v3/lint"
 )
@@ -65,6 +66,14 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 			},
 			want:       lint.Error,
 			wantSubStr: "validity is more than 100 days",
+		},
+		{
+			name: "validity_negative",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.NotAfter = tmpl.NotBefore.Add(-time.Second)
+			},
+			want:       lint.Error,
+			wantSubStr: "validity is negative",
 		},
 		{
 			name: "serial_too_short",

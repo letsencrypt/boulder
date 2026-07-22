@@ -175,6 +175,9 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 	// for a certificate is the period of time from notBefore through notAfter,
 	// inclusive."
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1077
+	if c.NotAfter.Before(c.NotBefore) {
+		return errResult("validity is negative: notAfter is before notBefore")
+	}
 	if c.NotAfter.Add(time.Second).Sub(c.NotBefore) > 100*lints.BRDay {
 		return errResult("validity is more than 100 days")
 	}

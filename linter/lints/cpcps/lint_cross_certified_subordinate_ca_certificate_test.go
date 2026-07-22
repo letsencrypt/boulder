@@ -85,6 +85,14 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "validity is more than 1098 days",
 		},
 		{
+			name: "validity_negative",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.NotAfter = tmpl.NotBefore.Add(-time.Second)
+			},
+			want:       lint.Error,
+			wantSubStr: "validity is negative",
+		},
+		{
 			name: "extra_key_usage_bit",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.KeyUsage |= x509.KeyUsageDigitalSignature

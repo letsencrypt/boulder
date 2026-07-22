@@ -120,6 +120,9 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	// "The validity period for a certificate is the period of time from
 	// notBefore through notAfter, inclusive."
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1050
+	if c.NotAfter.Before(c.NotBefore) {
+		return errResult("validity is negative: notAfter is before notBefore")
+	}
 	if c.NotAfter.Add(time.Second).Sub(c.NotBefore) > 1098*lints.BRDay {
 		return errResult("validity is more than 1098 days")
 	}

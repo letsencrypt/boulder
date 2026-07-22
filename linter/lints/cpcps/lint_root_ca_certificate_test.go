@@ -53,6 +53,14 @@ func TestRootCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "validity is more than 3660 days",
 		},
 		{
+			name: "validity_negative",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.NotAfter = tmpl.NotBefore.Add(-time.Second)
+			},
+			want:       lint.Error,
+			wantSubStr: "validity is negative",
+		},
+		{
 			name: "wrong_organization",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.Subject.Organization = []string{"Internet Security Research Group"}
