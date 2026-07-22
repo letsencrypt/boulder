@@ -9,8 +9,8 @@
 // Invariants:
 //   - Tiles in storage are never empty.
 //   - Tiles in storage are immutable.
-//   - A hash is only appended to a tile when it will be permanent. Equivalently: a hash is only
-//     appended to a tile when the subtree it represents is complete.
+//   - A hash is only appended to a tile when it will be permanent. Equivalently: only the hashes
+//     of complete subtrees are appended to a tile.
 //   - Any hash stored in a level L tile is equal to MTH(c), where c is a list of exactly 256
 //     hashes stored in a child tile at level L-1 (for L > 0).
 package tiles
