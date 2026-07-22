@@ -1,3 +1,18 @@
+// Package tiles implements https://c2sp.org/tlog-tiles.
+//
+// Entry tiles contain up to 256 MTCLogEntry objects and are stored as compressed entry bundles.
+//
+// Hash tiles contain up to 256 32-byte SHA-256 hashes, concatenated. The tile represents up to
+// 8 layers of the Merkle Tree, but only the bottom of those layers is actually stored. Higher
+// layers are calculated from the tile contents as needed.
+//
+// Invariants:
+//   - Tiles in storage are never empty.
+//   - Tiles in storage are immutable.
+//   - A hash is only appended to a tile when it will be permanent. Equivalently: a hash is only
+//     appended to a tile when the subtree it represents is complete.
+//   - Any hash stored in a level L tile is equal to MTH(c), where c is a list of exactly 256
+//     hashes stored in a child tile at level L-1 (for L > 0).
 package tiles
 
 import (
@@ -20,9 +35,10 @@ import (
 	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
-var ErrFileExists = errors.New("file exists")
+// ErrTileExists is returned when trying to write a tile that already exists in storage.
+var ErrTileExists = errors.New("tile exists")
 
-// simpleS3 matches the subset of the s3.Client interface which we use, to allow
+// simpleS3 matches the subset of the bs3.Client interface which we use, to allow
 // simpler mocking in tests.
 type simpleS3 interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
@@ -40,7 +56,8 @@ type simpleS3 interface {
 // its MTH gets appended to the tile above it.
 type Frontier struct {
 	// The rightmost hash tiles in the tree, ordered from level 0
-	// (leaf hashes) to level N (containing the root hash).
+	// (leaf hashes) to the top of the tree.
+	//
 	// Will be empty only on an empty tree (i.e. NewFrontier()).
 	//
 	// Tiles in this list may be empty (coords.W == 0) but never
@@ -58,9 +75,11 @@ type Frontier struct {
 	dirtyLevel int
 
 	// Tiles pushed off the frontier are stored here to be written. No particular order.
+	// These have entries if and only if dirtyLevel > 0.
 	fullHashesTiles []*hashesTile
 	fullEntryTiles  []*entryTile
 
+	// treeSize is the current size of the tree.
 	treeSize int64
 }
 
@@ -71,15 +90,27 @@ type hashesTile struct {
 	// Note we don't bother setting H because it's not encoded
 	// in paths for tlog-tiles.
 	coords tlog.Tile
-	data   []tlog.Hash
+	// Invariant: len(data) == coords.W
+	data []tlog.Hash
 }
 
-// entryTile represent a tile containing entries.
+func (h *hashesTile) append(val tlog.Hash) {
+	h.coords.W++
+	h.data = append(h.data, val)
+}
+
+// entryTile represents a tile containing entries.
 // It may be empty, partial or full. If it's full it can only be
 // part of fullEntryTiles.
 type entryTile struct {
 	coords tlog.Tile
-	data   []byte
+	// data contains an entry bundle with coords.W entries.
+	data []byte
+}
+
+func (e *entryTile) append(val []byte) {
+	e.coords.W++
+	e.data = append(e.data, val...)
 }
 
 // NewFrontier returns a frontier object representing an empty tree,
@@ -96,6 +127,8 @@ func NewFrontier() *Frontier {
 }
 
 // Load loads the current frontier from storage, given the current tree size.
+//
+// Succeeds only if all the frontier tiles for that tree size exist in storage.
 func Load(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Frontier, error) {
 	if treeSize == 0 {
 		return nil, fmt.Errorf("can't load an empty tree")
@@ -195,10 +228,12 @@ func (f *Frontier) RootHash() tlog.Hash {
 	//  (if there is one). Then we calculate MTH of the level L tile including that
 	//  temporary hash.
 	//
+	// Since MTH([x]) == x, appending a hash to an empty tile and then taking its MTH is
+	// equivalent to simply skipping the tile.
+	//
 	// That lets us calculate the root hash like so:
 	//
-	//  - Climb from level 0.
-	//  - Skip any empty tiles (a parent or grandparent will incorporate the hashes from below).
+	//  - Climb from level 0, skipping any empty tiles.
 	//  - If we don't have a hash yet, calculate MTH of the current tile.
 	//  - Otherwise, calculate MTH of the current tile, with the previous tile's MTH appended.
 	var currentHash tlog.Hash
@@ -228,6 +263,8 @@ func (f *Frontier) RootHash() tlog.Hash {
 // AppendEntry appends a single MTCLogEntry to the entries tile and a
 // corresponding hash to the level-0 hashes tile, updating any higher
 // levels as needed.
+//
+// On error, the Frontier is unchanged.
 func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry) error {
 	mtcleBytes, err := mtcle.Marshal()
 	if err != nil {
@@ -243,8 +280,7 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry) error {
 		return err
 	}
 
-	f.entryTile.data = append(f.entryTile.data, bundleBytes...)
-	f.entryTile.coords.W++
+	f.entryTile.append(bundleBytes)
 
 	if f.entryTile.coords.W == 256 {
 		// Tile is full. Queue it for writing.
@@ -285,8 +321,7 @@ func (f *Frontier) appendHash(val tlog.Hash, level int) {
 	}
 
 	currentTile := f.hashesTiles[level]
-	currentTile.data = append(currentTile.data, val)
-	currentTile.coords.W++
+	currentTile.append(val)
 
 	if currentTile.coords.W == 256 {
 		// Move the full tile to the holding area and create a new empty one.
@@ -355,7 +390,9 @@ func (f *Frontier) Flush(ctx context.Context, s3c simpleS3, prefix string) error
 	return nil
 }
 
-// writeTile writes a single tile. Handles hash tiles and entry tiles, using coords.L to distinguish.
+// writeTile writes a single tile (hash tile or entry tile).
+//
+// If coords.W is 0, returns nil without writing anything.
 //
 // If compress is true, compresses the data before storing.
 func writeTile(
@@ -415,22 +452,16 @@ func writeTile(
 		// Partial tiles are written at different paths based on width.
 		// https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/http-412-precondition-failed.html
 		if ok && respErr.HTTPStatusCode() == http.StatusPreconditionFailed {
-			return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), key, ErrFileExists)
+			return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), key, ErrTileExists)
 		}
 		return fmt.Errorf("writing s3://%s/%s: %w", s3c.Bucket(), key, err)
 	}
 	return nil
 }
 
-// tilePath returns a  tile path like tile/0/x001/x234/067.p/23.
+// tilePath returns a tile path like tile/0/x001/x234/067.p/23.
 //
-// tileIndex is the index of a tile within a level, or in other words an
-// entry index divided by 256.
-//
-// If tileLevel is -1, the path starts with tile/entries/ instead of tile/L.
-//
-// Produces invalid results when treeSize is 0 or if the tileIndex is
-// beyond the treeSize.
+// If coords.L is -1, the path starts with tile/entries/ instead of tile/L.
 //
 // Note: this is similar to tlog.Tile.Path(), but Path() uses "tile/" and "tile/<H>/data/"
 // where we need "tile/" and "tile/entries/" (and don't use <H>).
@@ -474,6 +505,9 @@ func tilePath(coords tlog.Tile) string {
 	return out.String()
 }
 
+// getTile fetches a single tile from storage, transparently decompressing if needed.
+//
+// If coords.W is zero, returns an empty tile without reading from storage.
 func getTile(ctx context.Context, s3c simpleS3, coords tlog.Tile, prefix string) ([]byte, error) {
 	if coords.W == 0 {
 		// Neither write nor read an empty tile. They do not exist in storage.
