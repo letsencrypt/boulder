@@ -5,6 +5,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -122,13 +124,24 @@ func TestKeyDigestEquals(t *testing.T) {
 
 func TestGenerateSKID(t *testing.T) {
 	t.Parallel()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Error generating key")
 
-	sha256skid, err := GenerateSKID(key.Public())
+	// Test basics with a random key.
+	key1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Error generating key")
+	skid, err := GenerateSKID(key1.Public())
 	test.AssertNotError(t, err, "Error generating SKID")
-	test.AssertEquals(t, len(sha256skid), 20)
-	test.AssertEquals(t, cap(sha256skid), 20)
+	test.AssertEquals(t, len(skid), 20)
+	test.AssertEquals(t, cap(skid), 20)
+
+	// Test specific output with the known test vector from RFC 7093 Section 3:
+	spkiDER, err := hex.DecodeString(
+		"3059301306072a8648ce3d020106082a8648ce3d030107034200047f7f35a79794c950060b8029fc8f363a28f11159692d9d34e6ac948190434735f833b1a66652dc514337aff7f5c9c75d670c019d95a5d639b72744c64a9128bb")
+	test.AssertNotError(t, err, "Error decoding test vector SPKI")
+	key2, err := x509.ParsePKIXPublicKey(spkiDER)
+	test.AssertNotError(t, err, "Error parsing test vector SPKI")
+	skid, err = GenerateSKID(key2)
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, hex.EncodeToString(skid), "bf37b3e5808fd46d54b28e846311bcce1cad2e1a")
 }
 
 func TestIsAnyNilOrZero(t *testing.T) {
