@@ -1201,7 +1201,7 @@ type StorageAuthorityClient interface {
 	AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error)
 	DisableRateLimitOverride(ctx context.Context, in *DisableRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnableRateLimitOverride(ctx context.Context, in *EnableRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	RevokeAuthorizationsFor(ctx context.Context, in *RevokeAuthorizationsForRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RevokeAuthorizationsFor(ctx context.Context, in *RevokeAuthorizationsForRequest, opts ...grpc.CallOption) (*RevokeAuthorizationsForResponse, error)
 }
 
 type storageAuthorityClient struct {
@@ -1737,9 +1737,9 @@ func (c *storageAuthorityClient) EnableRateLimitOverride(ctx context.Context, in
 	return out, nil
 }
 
-func (c *storageAuthorityClient) RevokeAuthorizationsFor(ctx context.Context, in *RevokeAuthorizationsForRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityClient) RevokeAuthorizationsFor(ctx context.Context, in *RevokeAuthorizationsForRequest, opts ...grpc.CallOption) (*RevokeAuthorizationsForResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(RevokeAuthorizationsForResponse)
 	err := c.cc.Invoke(ctx, StorageAuthority_RevokeAuthorizationsFor_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -1803,7 +1803,7 @@ type StorageAuthorityServer interface {
 	AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error)
 	DisableRateLimitOverride(context.Context, *DisableRateLimitOverrideRequest) (*emptypb.Empty, error)
 	EnableRateLimitOverride(context.Context, *EnableRateLimitOverrideRequest) (*emptypb.Empty, error)
-	RevokeAuthorizationsFor(context.Context, *RevokeAuthorizationsForRequest) (*emptypb.Empty, error)
+	RevokeAuthorizationsFor(context.Context, *RevokeAuthorizationsForRequest) (*RevokeAuthorizationsForResponse, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
 
@@ -1958,7 +1958,7 @@ func (UnimplementedStorageAuthorityServer) DisableRateLimitOverride(context.Cont
 func (UnimplementedStorageAuthorityServer) EnableRateLimitOverride(context.Context, *EnableRateLimitOverrideRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EnableRateLimitOverride not implemented")
 }
-func (UnimplementedStorageAuthorityServer) RevokeAuthorizationsFor(context.Context, *RevokeAuthorizationsForRequest) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityServer) RevokeAuthorizationsFor(context.Context, *RevokeAuthorizationsForRequest) (*RevokeAuthorizationsForResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RevokeAuthorizationsFor not implemented")
 }
 func (UnimplementedStorageAuthorityServer) mustEmbedUnimplementedStorageAuthorityServer() {}

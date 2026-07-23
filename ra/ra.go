@@ -1686,8 +1686,9 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 // custom context timeout and is not cancelled by its parent. It sends off an
 // asynchronous request to the SA to revoke authorizations for all Identifiers
 // from the provided cert which are held by the provided RegistrationID. It will
-// log each Identifier and RegistrationID pair attempted against the SA, and
-// will include the gRPC error in the logs, if encountered.
+// log each Identifier and RegistrationID pair attempted against the SA. The
+// logged line will include the affected row count from the gRPC response when
+// successful, or an error.
 func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, regId int64) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -1695,14 +1696,17 @@ func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, c
 	if features.Get().RevokeAuthzsUponRevokeCert {
 		idents := identifier.FromCert(cert)
 		for _, ident := range idents {
-			_, err := ra.SA.RevokeAuthorizationsFor(ctx, &sapb.RevokeAuthorizationsForRequest{
+			// We expect a limit of 100 to be be rarely, if ever, reached. We
+			// can add re-fire logic if we see evidence otherwise.
+			response, err := ra.SA.RevokeAuthorizationsFor(ctx, &sapb.RevokeAuthorizationsForRequest{
 				RegistrationID: regId,
 				Identifier:     ident.ToProto(),
+				RevokeLimit:    100,
 			})
 			if err != nil {
-				ra.log.Errf("Authz revocation failed for identifier %q, held by regId %d: %v", ident, regId, err)
+				ra.log.Errf("Authz revocation error encountered for identifier %q, held by regId %d: %v", ident, regId, err)
 			} else {
-				ra.log.Infof("Authz revocation succeeded for identifier %q, held by regId %d", ident, regId)
+				ra.log.Infof("Authz revocation succeeded with %d affected rows for identifier %q, held by regId %d", response.RevokedCount, ident, regId)
 			}
 		}
 	}

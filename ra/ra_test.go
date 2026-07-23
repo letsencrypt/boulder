@@ -3666,9 +3666,12 @@ type mockSARecordAuthzRevocation struct {
 	recv map[string]int64
 }
 
-func (msa *mockSARecordAuthzRevocation) RevokeAuthorizationsFor(ctx context.Context, req *sapb.RevokeAuthorizationsForRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (msa *mockSARecordAuthzRevocation) RevokeAuthorizationsFor(ctx context.Context, req *sapb.RevokeAuthorizationsForRequest, _ ...grpc.CallOption) (*sapb.RevokeAuthorizationsForResponse, error) {
 	msa.recv[req.Identifier.Value] = req.RegistrationID
-	return &emptypb.Empty{}, nil
+	// always return an affected rows count of 3
+	fauxResp := &sapb.RevokeAuthorizationsForResponse{}
+	fauxResp.RevokedCount = 3
+	return fauxResp, nil
 }
 
 func TestRevokeAuthorizations_FeatureDisabled(t *testing.T) {

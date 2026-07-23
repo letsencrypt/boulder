@@ -867,30 +867,61 @@ func TestRevokeAuthorizationsFor(t *testing.T) {
 	expires := fc.Now().Add(time.Hour).UTC()
 	attemptedAt := fc.Now()
 	ident := identifier.NewDNS("example.com")
+	var valIdCount int64 = 5
+
+	// slice to hold Authz IDs
+	var collectedAuthzIds []int64
+	// create <zero-indexed range> worth of valid authorizations for a single
+	// identifier under a single regId
+	for range valIdCount {
+		authzID := createFinalizedAuthorization(t, sa, reg.Id, ident, expires, "valid", attemptedAt)
+		collectedAuthzIds = append(collectedAuthzIds, authzID)
+	}
+
+	// revoke valid authorizations for single regId & identifier
+	resp, err := sa.RevokeAuthorizationsFor(context.Background(),
+		&sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto(), RevokeLimit: valIdCount},
+	)
+	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+
+	// expect <valIdCount> of rows affected
+	test.AssertEquals(t, resp.RevokedCount, valIdCount)
+
+	// review all authz status
+	for idx, authzId := range collectedAuthzIds {
+		authz, _ := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzId})
+		// an authz revocation request should result in status of "revoked" for
+		// up to <valIdCount> previously-"valid" authorizations for that
+		// regId+identifier
+		//
+		// zero-indexed range should mean we left one authz un-revoked
+		if int64(idx) < valIdCount {
+			test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusRevoked)
+		} else {
+			test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusValid)
+		}
+	}
 
 	// create a pending authz
 	authzID := createPendingAuthorization(t, sa, reg.Id, ident, expires)
 	// revoke a pending authz
-	_, err := sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
+	resp, err = sa.RevokeAuthorizationsFor(context.Background(),
+		&sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto(), RevokeLimit: 100},
+	)
 	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+	test.AssertEquals(t, resp.RevokedCount, int64(0))
 	authz, _ := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	// revoking a pending authz should result in revoked status
-	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusRevoked)
-
-	// create a valid authz
-	authzID = createFinalizedAuthorization(t, sa, reg.Id, ident, expires, "valid", attemptedAt)
-	// revoke a valid authz
-	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
-	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
-	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
-	// revoking a valid authz should result in revoked status
-	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusRevoked)
+	// revoking a pending authz should NOT change status from pending
+	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusPending)
 
 	// create an invalid authz
 	authzID = createFinalizedAuthorization(t, sa, reg.Id, ident, expires, "invalid", attemptedAt)
 	// revoke an invalid authz
-	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
+	resp, err = sa.RevokeAuthorizationsFor(context.Background(),
+		&sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto(), RevokeLimit: 100},
+	)
 	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+	test.AssertEquals(t, resp.RevokedCount, int64(0))
 	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	// revoking an invalid authz should NOT change status from invalid
 	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusInvalid)
@@ -899,15 +930,21 @@ func TestRevokeAuthorizationsFor(t *testing.T) {
 	expires = fc.Now().Add(-time.Hour).UTC()
 	authzID = createPendingAuthorization(t, sa, reg.Id, ident, expires)
 	// revoke an expired authz
-	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto()})
+	resp, err = sa.RevokeAuthorizationsFor(context.Background(),
+		&sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: ident.ToProto(), RevokeLimit: 100},
+	)
 	test.AssertNotError(t, err, "sa.RevokeAuthorization failed")
+	test.AssertEquals(t, resp.RevokedCount, int64(0))
 	authz, _ = sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	// revoking an expired authz should NOT change status from expired
 	test.AssertEquals(t, core.AcmeStatus(authz.Status), core.StatusPending)
 
 	// test error case with zero-values in request
-	_, err = sa.RevokeAuthorizationsFor(context.Background(), &sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: &corepb.Identifier{Type: "", Value: ""}})
+	_, err = sa.RevokeAuthorizationsFor(context.Background(),
+		&sapb.RevokeAuthorizationsForRequest{RegistrationID: reg.Id, Identifier: &corepb.Identifier{Type: "", Value: ""}, RevokeLimit: 100},
+	)
 	test.AssertError(t, err, "sa.RevokeAuthorization unexpectedly succeeded")
+	test.AssertEquals(t, err.Error(), "incomplete gRPC request message")
 }
 
 func TestDeactivateAccount(t *testing.T) {

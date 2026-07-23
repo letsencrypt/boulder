@@ -454,15 +454,29 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 	return &emptypb.Empty{}, nil
 }
 
-// RevokeAuthorizationsFor revokes a valid or pending authorization by Registraton ID and Identifier so long as it is currently unexpired
-func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req *sapb.RevokeAuthorizationsForRequest) (*emptypb.Empty, error) {
+// RevokeAuthorizationsFor revokes authorizations by Registraton ID and
+// Identifier so long as the authzs are currently valid, and unexpired. The
+// query applies a LIMIT according to the gRPC revokeLimit value to cap database
+// impact. Authorization Revocation is a best-effort operation with no
+// compliance requirement. This function responds with the number of affected
+// rows, or an error.
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req *sapb.RevokeAuthorizationsForRequest) (*sapb.RevokeAuthorizationsForResponse, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifier.Type, req.Identifier.Value) {
 		return nil, errIncompleteRequest
 	}
 
-	// Aim to leverage the `regID_identifier_status_expires_idx` index on the Authz2 table
-	_, err := ssa.dbMap.ExecContext(ctx,
-		`UPDATE authz2 SET status = :revoked WHERE registrationID = :registrationID AND identifierType = :identifierType AND identifierValue = :identifierValue AND status IN (:valid,:pending) AND :expirenow < expires`,
+	rowsReport := &sapb.RevokeAuthorizationsForResponse{}
+
+	// Aim to leverage the `regID_identifier_status_expires_idx` index on the
+	// Authz2 table
+	result, err := ssa.dbMap.ExecContext(ctx,
+		`UPDATE authz2 SET status = :revoked
+		WHERE registrationID = :registrationID
+		AND identifierType = :identifierType
+		AND identifierValue = :identifierValue
+		AND status IN (:valid)
+		AND :expirenow < expires
+		LIMIT :revokeLimit`,
 		map[string]any{
 			"revoked":         statusUint(core.StatusRevoked),
 			"registrationID":  req.RegistrationID,
@@ -471,12 +485,20 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req
 			"valid":           statusUint(core.StatusValid),
 			"pending":         statusUint(core.StatusPending),
 			"expirenow":       ssa.clk.Now(),
+			"revokeLimit":     req.RevokeLimit,
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, nil
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	rowsReport.RevokedCount = rowsAffected
+	return rowsReport, nil
 }
 
 // NewOrderAndAuthzs creates an order in the database.
