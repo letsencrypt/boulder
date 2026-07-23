@@ -20,7 +20,7 @@ func TestARIAndReplacement(t *testing.T) {
 	// Setup
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Issue a cert, request ARI, and check that both the suggested window and
@@ -68,7 +68,7 @@ func TestARIShortLived(t *testing.T) {
 	// Setup
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Issue a short-lived cert, request ARI, and check that both the suggested
@@ -94,7 +94,7 @@ func TestARIRevoked(t *testing.T) {
 	// Setup
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Issue a cert, revoke it, request ARI, and check that the suggested window
@@ -118,7 +118,7 @@ func TestARIForPrecert(t *testing.T) {
 	// Setup
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Try to make a new cert for a new domain, but sabotage the CT logs so

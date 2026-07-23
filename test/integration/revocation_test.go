@@ -272,7 +272,7 @@ func TestRevocation(t *testing.T) {
 		issueClient, err := makeClient()
 		test.AssertNotError(t, err, "creating acme client")
 
-		certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		certKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 		test.AssertNotError(t, err, "creating random cert key")
 
 		domain := random_domain()
@@ -475,7 +475,7 @@ func TestReRevocation(t *testing.T) {
 			issueClient, err := makeClient()
 			test.AssertNotError(t, err, "creating acme client")
 
-			certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			certKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 			test.AssertNotError(t, err, "creating random cert key")
 
 			// Try to issue a certificate for the name.
@@ -578,7 +578,7 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 		c, err := makeClient("mailto:example@letsencrypt.org")
 		test.AssertNotError(t, err, "creating acme client")
 
-		certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		certKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 		test.AssertNotError(t, err, "failed to generate cert key")
 
 		res, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
@@ -621,7 +621,7 @@ func TestBadKeyRevoker(t *testing.T) {
 	neutralClient, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
 
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate cert key")
 
 	// Issue a cert from the revokee client, which we'll revoke soon
@@ -662,7 +662,7 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	neutralClient, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
 
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate cert key")
 
 	// Issue a cert from the revoke client, which we'll revoke soon

@@ -44,7 +44,7 @@ func TestRSAGenerate(t *testing.T) {
 		return []byte{1, 2, 3}, nil
 	}
 
-	priv, err := rsa.GenerateKey(rand.Reader, 1024)
+	priv, err := rsa.GenerateKey(nil, 1024)
 	test.AssertNotError(t, err, "Failed to generate a RSA test key")
 
 	// Test rsaGenerate fails when GenerateKeyPair fails

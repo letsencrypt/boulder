@@ -249,7 +249,7 @@ func TestX509Signer(t *testing.T) {
 	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
 		return nil
 	}
-	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Failed to generate test key")
 	ctx.SignFunc = func(_ pkcs11.SessionHandle, digest []byte) ([]byte, error) {
 		r, s, err := ecdsa.Sign(rand.Reader, tk, digest[:])
@@ -275,7 +275,7 @@ func TestX509Signer(t *testing.T) {
 	digest := sha256.Sum256([]byte("hello"))
 	s := &Session{ctx, 0}
 	signer := &x509Signer{session: s, keyType: ECDSAKey, pub: tk.Public()}
-	signature, err := signer.Sign(nil, digest[:], crypto.SHA256)
+	signature, err := signer.Sign(rand.Reader, digest[:], crypto.SHA256)
 	test.AssertNotError(t, err, "x509Signer.Sign failed")
 
 	var rfcFormat struct {

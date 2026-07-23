@@ -29,7 +29,7 @@ func TestCommonNameInCSR(t *testing.T) {
 	test.AssertNotError(t, err, "creating acme client")
 
 	// Create a private key.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Put together some names.
@@ -66,7 +66,7 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	test.AssertNotError(t, err, "creating acme client")
 
 	// Create a private key.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Create some names that we can sort.
@@ -100,7 +100,7 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 	test.AssertNotError(t, err, "creating acme client")
 
 	// Create a private key.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Put together some names.
@@ -142,7 +142,7 @@ func TestIssuanceProfiles(t *testing.T) {
 	}
 
 	// Create a private key.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Create a set of identifiers to request.
@@ -184,7 +184,7 @@ func TestIssuanceMTC(t *testing.T) {
 		t.Fatalf("creating acme client: %s", err)
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("generating keypair: %s", err)
 	}
@@ -211,7 +211,7 @@ func TestIPShortLived(t *testing.T) {
 	}
 
 	// Create a private key.
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("creating random cert key: %s", err)
 	}
@@ -298,7 +298,7 @@ func TestIPCNRejected(t *testing.T) {
 		t.Fatalf("updating challenge: %s", err)
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("creating random cert key: %s", err)
 	}

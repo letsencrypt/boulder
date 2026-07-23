@@ -73,7 +73,7 @@ func init() {
 
 func BenchmarkCheckCert(b *testing.B) {
 	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
-	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), nil)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
 	rawCert := x509.Certificate{
@@ -106,7 +106,7 @@ func TestCheckWildcardCert(t *testing.T) {
 		saCleanup()
 	}()
 
-	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, _ := rsa.GenerateKey(nil, 2048)
 	fc := clock.NewFake()
 	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
 	issued := checker.clock.Now().Add(-time.Minute)
@@ -184,13 +184,13 @@ type keyGen interface {
 type ecP256Generator struct{}
 
 func (*ecP256Generator) genKey() (crypto.Signer, error) {
-	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	return ecdsa.GenerateKey(elliptic.P256(), nil)
 }
 
 type rsa2048Generator struct{}
 
 func (*rsa2048Generator) genKey() (crypto.Signer, error) {
-	return rsa.GenerateKey(rand.Reader, 2048)
+	return rsa.GenerateKey(nil, 2048)
 }
 
 func TestCheckCert(t *testing.T) {
@@ -348,7 +348,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		saCleanUp()
 	}()
 
-	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), nil)
 	// Problems
 	//   Expiry period is too long
 	rawCert := x509.Certificate{
@@ -559,7 +559,7 @@ func TestIgnoredLint(t *testing.T) {
 
 	err = loglist.InitLintList("../../test/ct-test-srv/log_list.json", false)
 	test.AssertNotError(t, err, "failed to load ct log list")
-	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, _ := rsa.GenerateKey(nil, 2048)
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
 	serial := big.NewInt(1337)
 
@@ -646,7 +646,7 @@ func TestPrecertCorrespond(t *testing.T) {
 	checker.getPrecert = func(_ context.Context, _ string) ([]byte, error) {
 		return []byte("hello"), nil
 	}
-	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, _ := rsa.GenerateKey(nil, 2048)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
 	rawCert := x509.Certificate{

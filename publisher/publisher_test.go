@@ -150,7 +150,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	leaf, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "unable to load leaf certificate.")
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "Couldn't generate test key")
 
 	return pub, leaf, k
@@ -275,14 +275,14 @@ func TestLogCache(t *testing.T) {
 	test.AssertError(t, err, "AddLog() with an invalid log URI didn't error")
 
 	// Create one keypair & base 64 public key
-	k1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k1, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "ecdsa.GenerateKey() failed for k1")
 	der1, err := x509.MarshalPKIXPublicKey(&k1.PublicKey)
 	test.AssertNotError(t, err, "x509.MarshalPKIXPublicKey(der1) failed")
 	k1b64 := base64.StdEncoding.EncodeToString(der1)
 
 	// Create a second keypair & base64 public key
-	k2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k2, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "ecdsa.GenerateKey() failed for k2")
 	der2, err := x509.MarshalPKIXPublicKey(&k2.PublicKey)
 	test.AssertNotError(t, err, "x509.MarshalPKIXPublicKey(der2) failed")

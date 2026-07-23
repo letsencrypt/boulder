@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		log.Fatalf("Failed to parse private key: %s", err)
 	}

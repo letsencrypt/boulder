@@ -5,7 +5,6 @@ import (
 	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -338,14 +337,14 @@ func TestIssue(t *testing.T) {
 		{
 			name: "RSA",
 			generateFunc: func() (crypto.Signer, error) {
-				return rsa.GenerateKey(rand.Reader, 2048)
+				return rsa.GenerateKey(nil, 2048)
 			},
 			ku: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		},
 		{
 			name: "ECDSA",
 			generateFunc: func() (crypto.Signer, error) {
-				return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+				return ecdsa.GenerateKey(elliptic.P256(), nil)
 			},
 			ku: x509.KeyUsageDigitalSignature,
 		},
@@ -402,7 +401,7 @@ func TestIssueCertTooBig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newIssuer: %s", err)
 	}
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
@@ -436,7 +435,7 @@ func TestIssueDNSNamesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newIssuer: %s", err)
 	}
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
@@ -475,7 +474,7 @@ func TestIssueIPAddressesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newIssuer: %s", err)
 	}
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
@@ -517,7 +516,7 @@ func TestIssueWithCRLDP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newIssuer: %s", err)
 	}
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
@@ -559,7 +558,7 @@ func TestIssueCommonName(t *testing.T) {
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 	ir := &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
@@ -695,7 +694,7 @@ func TestIssueOmissions(t *testing.T) {
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 
-	pk, err := rsa.GenerateKey(rand.Reader, 2048)
+	pk, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(prof, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
@@ -724,7 +723,7 @@ func TestIssueCTPoison(t *testing.T) {
 	fc.Set(time.Now())
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
@@ -772,7 +771,7 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(enforceSCTsProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
@@ -840,7 +839,7 @@ func TestIssueBadLint(t *testing.T) {
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, _, err = signer.Prepare(noSkipLintsProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
@@ -869,7 +868,7 @@ func TestIssuanceToken(t *testing.T) {
 	_, err = signer.Issue(nil)
 	test.AssertError(t, err, "expected issuance with a nil token to fail")
 
-	pk, err := rsa.GenerateKey(rand.Reader, 2048)
+	pk, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
@@ -916,7 +915,7 @@ func TestInvalidProfile(t *testing.T) {
 
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, _, err = signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
@@ -965,7 +964,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	cnProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
 
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := issuer1.Prepare(cnProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},

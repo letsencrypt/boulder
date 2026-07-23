@@ -2351,7 +2351,7 @@ func TestFinalizeOrder(t *testing.T) {
 	authzIDA := createFinalizedAuthorization(t, sa, registration.Id, identifier.NewDNS("not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 	authzIDB := createFinalizedAuthorization(t, sa, registration.Id, identifier.NewDNS("www.not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 
-	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "error generating test key")
 
 	policyForbidCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
@@ -2660,7 +2660,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
-	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "error generating test key")
 	mixedCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		PublicKey:          testKey.PublicKey,
@@ -2706,7 +2706,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	now := ra.clk.Now()
 	exp := now.Add(365 * 24 * time.Hour)
 
-	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "Error creating test RSA key")
 	wildcardCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		PublicKey:          testKey.PublicKey,
@@ -2821,7 +2821,7 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 	test.AssertEquals(t, order.V2Authorizations[0], authzID)
 
 	// Create a CSR for this order
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "generating test key")
 	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		PublicKey: testKey.PublicKey,
@@ -2885,7 +2885,7 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 	test.AssertNotError(t, err, "creating test order")
 	test.AssertEquals(t, order.V2Authorizations[0], authzID)
 
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "generating test key")
 
 	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
@@ -2955,7 +2955,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
 	// Generate a CSR covering the order names with a random RSA key
-	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "error generating test key")
 	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		PublicKey:          testKey.PublicKey,
@@ -3097,7 +3097,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
 
 	// Generate a CSR covering the order names with a random RSA key.
-	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	testKey, err := rsa.GenerateKey(nil, 2048)
 	test.AssertNotError(t, err, "error generating test key")
 	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		PublicKey:          testKey.PublicKey,
@@ -3282,7 +3282,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 	ra.SA = &mockSAWithFinalize{}
 
 	// Create a CSR to submit and a certificate for the fake CA to return.
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "generating test key")
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{DNSNames: []string{"example.com"}}, testKey)
 	test.AssertNotError(t, err, "creating test csr")
@@ -3489,7 +3489,7 @@ func (msar *mockSARevocation) GetCertificate(_ context.Context, req *sapb.Serial
 	_, _ = rand.Read(serialBytes[:])
 	serial := big.NewInt(0).SetBytes(serialBytes[:])
 
-	key, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	key, err := ecdsa.GenerateKey(elliptic.P224(), nil)
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,7 @@ import (
 // TestAIAProbe_Probe tests the Probe method of AIAProbe
 func TestAIAProbe_Probe(t *testing.T) {
 	// Create a test CA certificate
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	test.AssertNotError(t, err, "generating private key")
 
 	template := x509.Certificate{

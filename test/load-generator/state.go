@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -281,7 +280,7 @@ func New(
 	operations []string,
 	challStrat string,
 	revokeChance float32) (*State, error) {
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		return nil, err
 	}

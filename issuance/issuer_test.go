@@ -50,7 +50,7 @@ var issuerCert *Certificate
 var issuerSigner *ecdsa.PrivateKey
 
 func TestMain(m *testing.M) {
-	tk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	cmd.FailOnError(err, "failed to generate test key")
 	issuerSigner = tk
 	template := &x509.Certificate{
@@ -106,7 +106,7 @@ func TestLoadSigner(t *testing.T) {
 	// We're using this for its pubkey. This definitely doesn't match the private
 	// key loaded in any of the tests below, but that's okay because it still gets
 	// us through all the logic in loadSigner.
-	fakeKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	fakeKey, err := ecdsa.GenerateKey(elliptic.P224(), nil)
 	test.AssertNotError(t, err, "generating test key")
 
 	tests := []struct {
