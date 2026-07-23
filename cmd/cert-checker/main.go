@@ -756,10 +756,6 @@ func main() {
 			}
 		}
 	}
-
-	if checker.issuedReport.BadCerts > 0 {
-		os.Exit(1)
-	}
 }
 
 func init() {

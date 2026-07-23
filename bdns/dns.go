@@ -304,7 +304,9 @@ func (c *impl) LookupCAA(ctx context.Context, hostname string) (*Result[*dns.CAA
 	// for DNS-01 challenge) and then removed after validation but before CAA
 	// rechecking. But allow NXDOMAIN for TLDs to fall through to the error code
 	// below, so we don't issue for gTLDs that have been removed by ICANN.
-	if err == nil && resp.Rcode == dns.RcodeNameError && strings.Contains(hostname, ".") {
+	// Truncated responses also fall through, since we can't definitively trust
+	// an incomplete response to accurately reflect an NXDOMAIN.
+	if err == nil && !resp.Truncated && resp.Rcode == dns.RcodeNameError && strings.Contains(hostname, ".") {
 		return resultFromMsg[*dns.CAA](resp), resolver, nil
 	}
 

@@ -69,6 +69,11 @@ type Config struct {
 	// RA and VA services for full functionality.
 	DNSPersist01Enabled bool
 
+	// RevokeBadKeyAccounts controls whether bad-key-revoker will attempt
+	// to find and revoke accounts using keys which have been added to the
+	// blockedKeys table.
+	RevokeBadKeyAccounts bool
+
 	// RevokeAuthzsUponRevokeCert controls whether the RA will call for
 	// revocation of Authorizations for identifiers in a certificate that is
 	// successfully revoked by a requester that is DIFFERENT than the one that

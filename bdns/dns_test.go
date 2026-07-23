@@ -543,7 +543,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 	test.AssertContains(t, err.Error(), "NXDOMAIN looking up AAAA for")
 
 	_, _, err = obj.LookupTXT(context.Background(), hostname)
-	expected := Error{dns.TypeTXT, hostname, nil, dns.RcodeNameError, nil}
+	expected := Error{dns.TypeTXT, hostname, nil, dns.RcodeNameError, nil, false}
 	test.AssertDeepEquals(t, err, expected)
 }
 
@@ -960,4 +960,40 @@ func TestDOHMetric(t *testing.T) {
 
 	// Now, we should count 1 "out of retries" errors.
 	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 1)
+}
+
+// truncatedExchanger returns a truncated (TC bit set) response with the given
+// Rcode. If a caller failed to check for truncation on a CAA query, it would
+// otherwise be fooled into trusting an incomplete set of records, potentially
+// missing an issue record that would forbid issuance.
+type truncatedExchanger struct {
+	rcode int
+}
+
+func (te truncatedExchanger) ExchangeContext(_ context.Context, m *dns.Msg, _ string) (*dns.Msg, time.Duration, error) {
+	resp := new(dns.Msg)
+	resp.SetReply(m)
+	resp.Rcode = te.rcode
+	resp.Truncated = true
+	return resp, time.Millisecond, nil
+}
+
+func TestDNSCAATruncatedResponse(t *testing.T) {
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	client := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.NewMock(), tlsConfig)
+	client.(*impl).exchanger = truncatedExchanger{rcode: dns.RcodeSuccess}
+
+	_, _, err = client.LookupCAA(context.Background(), "example.com")
+	test.AssertError(t, err, "expected error for truncated CAA response")
+	test.AssertContains(t, err.Error(), "response was truncated")
+
+	// A truncated NXDOMAIN response must not be treated as the usual
+	// NXDOMAIN-as-empty-CAA-set special case for non-TLD names: we can't
+	// trust an incomplete response to accurately reflect an NXDOMAIN.
+	client.(*impl).exchanger = truncatedExchanger{rcode: dns.RcodeNameError}
+	_, _, err = client.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
+	test.AssertError(t, err, "expected error for truncated CAA response, even when NXDOMAIN-shaped")
+	test.AssertContains(t, err.Error(), "response was truncated")
 }

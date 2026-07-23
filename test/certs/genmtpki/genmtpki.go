@@ -112,10 +112,10 @@ func mtcaSubject() pkix.Name {
 	// idRDNATrustAnchorID := asn1.ObjectIdentifier{ 1, 3, 6, 1, 5, 5, 7, 25 }
 	idRDNATrustAnchorIDExperimental := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
 
-	// https://www.alvestrand.no/objectid/1.3.6.1.4.1.44947.1.html
-	// 44947.1 is Let's Encrypt; 44947.1.2 will be temporarily for our prototype MTC implementation, with ".1"
+	// https://letsencrypt.org/docs/oids/
+	// 44947 is ISRG; 44947.4.1 will be temporarily for our prototype MTC implementation, with ".1"
 	// representing one CA instance.
-	mtcaID := "44947.1.2.1"
+	mtcaID := "44947.4.1"
 	attributes := []pkix.AttributeTypeAndValue{
 		{
 			Type:  idRDNATrustAnchorIDExperimental,

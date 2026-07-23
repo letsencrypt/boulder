@@ -147,6 +147,12 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		// realIssuer, which could be either an intermediate or cross-signed
 		// intermediate, the SignatureAlgorithm of that certificate may differ
 		// from the root certificate that had signed it.
+		//
+		// RawSubject is used internally by x509.CreateCertificate to copy the issuer's
+		// Subject into the signed certificate's Issuer. Without it, only recognized fields
+		// from Subject will be passed through.
+		// For instance, correctly processing MTC's id-rdna-trustAnchorID or its temporary
+		// experimentation equivalent require this.
 		AuthorityKeyId:              realIssuer.AuthorityKeyId,
 		BasicConstraintsValid:       realIssuer.BasicConstraintsValid,
 		CRLDistributionPoints:       realIssuer.CRLDistributionPoints,
@@ -173,6 +179,7 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		PermittedIPRanges:           realIssuer.PermittedIPRanges,
 		PermittedURIDomains:         realIssuer.PermittedURIDomains,
 		Policies:                    realIssuer.Policies,
+		RawSubject:                  realIssuer.RawSubject,
 		SerialNumber:                realIssuer.SerialNumber,
 		Subject:                     realIssuer.Subject,
 		SubjectKeyId:                realIssuer.SubjectKeyId,

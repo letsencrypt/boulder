@@ -68,8 +68,8 @@ services:
         condition: service_started
       bpkimetal:
         condition: service_started
-      bminio-init:
-        condition: service_completed_successfully
+      bminio:
+        condition: service_healthy
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -155,37 +155,25 @@ services:
 
   bminio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data
+    volumes:
+      - ./test/minio:/boulder/test/minio/
+    entrypoint:
+      - /boulder/test/minio/entrypoint.sh
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+    healthcheck:
+      test: [ "CMD", "curl", "-fs", "-o", "/dev/null",
+        "http://localhost:9000/boulder-mtc-tiles/index.html" ]
+      start_period: 30s
+      start_interval: 0.1s
+      interval: 30s
+      timeout: 2s
+      retries: 3
     networks:
       bouldernet:
         aliases:
           - boulder-minio
-
-  bminio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    depends_on:
-      bminio:
-        condition: service_started
-    networks:
-      - bouldernet
-    # Idempotently create the tile storage bucket, then exit. `mc` is the MinIO
-    # command-line client; it addresses servers by registered aliases not URLs,
-    # so we must register the server as an alias before running `mc mb` (make
-    # bucket).
-    #
-    # `mc alias set` probes the server and exits nonzero if it's unreachable, so
-    # our retry loop also doubles as a readiness check. For more information see:
-    #
-    # - https://docs.min.io/aistor/reference/cli/mc-mb/#alias
-    # - https://docs.min.io/aistor/reference/cli/mc-alias/mc-alias-set/
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://boulder-minio:9000 minioadmin minioadmin >/dev/null 2>&1; do sleep 1; done;
-      mc mb --ignore-existing local/boulder-mtc-tiles
-      "
 
   bvitess:
     # The `letsencrypt/boulder-vtcomboserver:latest` tag is automatically built

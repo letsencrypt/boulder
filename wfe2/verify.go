@@ -523,7 +523,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		return nil, nil, berrors.InternalServerError("Error retrieving account %q: %s", accountURL, err)
 	}
 
-	// Verify the account is not deactivated
+	// Verify the account is not deactivated or revoked.
 	if core.AcmeStatus(account.Status) != core.StatusValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDAccountInvalid"}).Inc()
 		return nil, nil, berrors.UnauthorizedError("Account is not valid, has status %q", account.Status)

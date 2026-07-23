@@ -793,11 +793,16 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	returnExistingAcct := func(acctPB *corepb.Registration) {
+		// If there is an existing but inactive account, then return an unauthorized
+		// problem informing the user that this account was deactivated
 		if core.AcmeStatus(acctPB.Status) == core.StatusDeactivated {
-			// If there is an existing, but deactivated account, then return an unauthorized
-			// problem informing the user that this account was deactivated
 			wfe.sendError(response, logEvent, probs.Unauthorized(
 				"An account with the provided public key exists but is deactivated"), nil)
+			return
+		}
+		if core.AcmeStatus(acctPB.Status) == core.StatusRevoked {
+			wfe.sendError(response, logEvent, probs.Unauthorized(
+				"An account with the provided public key exists but is revoked"), nil)
 			return
 		}
 

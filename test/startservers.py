@@ -149,7 +149,7 @@ if CONFIG_NEXT:
     SERVICES.extend([
         Service('boulder-mtca-1',
             8010, 9396, 'mtca.boulder',
-            ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010'),
+            ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010', '-init-log-for-test'),
             None),
         Service('boulder-mtpublisher-1',
             8025, None, None,

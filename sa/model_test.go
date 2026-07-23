@@ -114,41 +114,16 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 	test.AssertEquals(t, authzPBOut.CertificateProfileName, authzPB.CertificateProfileName)
 
-	// Manipulate authzPB to test marshalling between corepb.Authorization and
-	// the SA authz model
-	// TODO(#8722): clean up these tests when authz IDs are int-only
+	// Complete authz -> model -> authz round-trip should keep everything intact
+	// aside from the hostname and port exceptions tested above
+	test.AssertDeepEquals(t, authzPB, authzPBOut)
+
+	// PB with zero-value ID should error
 	authzPB = newTestAuthzPB(clk.Now())
-	authzPB.Id = ""
 	authzPB.IdInt = 0
 	_, err = authzPBToModel(authzPB)
-	test.AssertError(t, err, "authzPBToModel with empty Id and empty IdInt unexpectedly succeeded")
-
-	authzPB = newTestAuthzPB(clk.Now())
-	authzPB.Id = "1"
-	authzPB.IdInt = 0
-	model, err = authzPBToModel(authzPB)
-	test.AssertNotError(t, err, "authzPBToModel with a value for string Id and empty IdInt failed")
-	authzPBOut, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed")
-	test.AssertEquals(t, fmt.Sprintf("%d", authzPBOut.IdInt), authzPBOut.Id)
-
-	authzPB = newTestAuthzPB(clk.Now())
-	authzPB.Id = ""
-	authzPB.IdInt = 1
-	model, err = authzPBToModel(authzPB)
-	test.AssertNotError(t, err, "authzPBToModel with empty Id and an int value for IdInt failed")
-	authzPBOut, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed")
-	test.AssertEquals(t, fmt.Sprintf("%d", authzPBOut.IdInt), authzPBOut.Id)
-
-	authzPB = newTestAuthzPB(clk.Now())
-	authzPB.Id = "1"
-	authzPB.IdInt = 1
-	model, err = authzPBToModel(authzPB)
-	test.AssertNotError(t, err, "authzPBToModel with values for both string Id and int IdInt failed")
-	authzPBOut, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed")
-	test.AssertEquals(t, fmt.Sprintf("%d", authzPBOut.IdInt), authzPBOut.Id)
+	test.AssertError(t, err, "authzPBToModel with zero-value ID should error")
+	test.AssertEquals(t, err.Error(), "authorization is missing an ID value")
 
 	authzPB = newTestAuthzPB(clk.Now())
 

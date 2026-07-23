@@ -42,6 +42,8 @@ type ProfileConfig struct {
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
+	// MTC causes the precertificate poison and SCT list extension to be omitted.
+	MTC bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -68,6 +70,7 @@ type Profile struct {
 	omitKeyEncipherment bool
 	omitClientAuth      bool
 	omitSKID            bool
+	mtc                 bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -91,6 +94,12 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
+	// CQRP: clientAuth is MUST NOT.
+	// https://docs.google.com/document/d/1bC958-AaZ7ePCPFVyP9Sg2VZ3DcC2-PqwsMly8oIJSU/edit?tab=t.0#heading=h.kbidyave6lzr
+	if profileConfig.MTC {
+		profileConfig.OmitClientAuth = true
+	}
+
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
 	if profileConfig.LintConfig != "" {
@@ -104,6 +113,7 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
 		omitClientAuth:      profileConfig.OmitClientAuth,
 		omitSKID:            profileConfig.OmitSKID,
+		mtc:                 profileConfig.MTC,
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
 		maxCertificateSize:  profileConfig.MaxCertificateSize,
@@ -343,19 +353,28 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.SubjectKeyId = req.SubjectKeyId
 	}
 
-	if req.IncludeCTPoison {
-		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
-	} else if len(req.sctList) > 0 {
-		if len(req.precertDER) == 0 {
-			return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+	if prof.mtc {
+		if req.IncludeCTPoison {
+			return nil, nil, errors.New("invalid request for CT poison with MTC")
 		}
-		sctListExt, err := generateSCTListExt(req.sctList)
-		if err != nil {
-			return nil, nil, err
+		if len(req.sctList) > 0 {
+			return nil, nil, errors.New("invalid request for SCT list with MTC")
 		}
-		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
-		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+		if req.IncludeCTPoison {
+			template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
+		} else if len(req.sctList) > 0 {
+			if len(req.precertDER) == 0 {
+				return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+			}
+			sctListExt, err := generateSCTListExt(req.sctList)
+			if err != nil {
+				return nil, nil, err
+			}
+			template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
+		} else {
+			return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+		}
 	}
 
 	// Pick a CRL shard based on the serial number modulo the number of shards.
