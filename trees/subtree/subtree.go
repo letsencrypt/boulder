@@ -267,7 +267,9 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 	return tn == 0 && fr == nodeHash && sr == rootHash
 }
 
-// MTH implements MTH(D[start:end]) from RFC 9162 section 2.1.1.
+// MTH emits the Merkle Tree Hash of its inputs, as defined in RFC 9162 section 2.1.1.
+//
+// https://www.rfc-editor.org/info/rfc9162/#name-definition-of-the-merkle-tr
 func MTH(leaves []tlog.Hash) tlog.Hash {
 	switch len(leaves) {
 	case 0:

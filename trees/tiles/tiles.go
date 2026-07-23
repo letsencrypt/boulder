@@ -54,6 +54,11 @@ type simpleS3 interface {
 // When a tile becomes full, it gets moved into a holding list of
 // tiles that are not on the right edge but need to be written and
 // its MTH gets appended to the tile above it.
+//
+// The zero value of Frontier represents an empty tree. Empty trees
+// cannot be loaded or flushed.
+//
+// Frontier is not safe for concurrent access.
 type Frontier struct {
 	// The rightmost hash tiles in the tree, ordered from level 0
 	// (leaf hashes) to the top of the tree.
