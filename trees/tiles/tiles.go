@@ -3,7 +3,7 @@
 // Entry tiles contain up to 256 MTCLogEntry objects and are stored as compressed entry bundles.
 //
 // Hash tiles contain up to 256 32-byte SHA-256 hashes, concatenated. The tile represents up to
-// 8 layers of the Merkle Tree, but only the bottom of those layers is actually stored. Higher
+// 8 layers of the Merkle Tree, but only the bottom-most of those layers is actually stored. Higher
 // layers are calculated from the tile contents as needed.
 //
 // Invariants:
@@ -58,7 +58,7 @@ type Frontier struct {
 	// The rightmost hash tiles in the tree, ordered from level 0
 	// (leaf hashes) to the top of the tree.
 	//
-	// Will be empty only on an empty tree (i.e. NewFrontier()).
+	// Will be empty only on an empty tree.
 	//
 	// Tiles in this list may be empty (coords.W == 0) but never
 	// full (coords.W == 256).
@@ -113,34 +113,21 @@ func (e *entryTile) append(val []byte) {
 	e.data = append(e.data, val...)
 }
 
-// NewFrontier returns a frontier object representing an empty tree,
-// suitable for initializing a tree for the first time.
-func NewFrontier() *Frontier {
-	return &Frontier{
-		entryTile: &entryTile{
-			coords: tlog.Tile{
-				L: -1, // entries layer is represented as -1.
-			},
-		},
-		dirtyLevel: -1,
-	}
-}
-
-// Load loads the current frontier from storage, given the current tree size.
+// LoadFrontier loads the current frontier from storage, given the current tree size.
 //
 // Succeeds only if all the frontier tiles for that tree size exist in storage.
-func Load(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Frontier, error) {
+func LoadFrontier(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Frontier, error) {
 	if treeSize == 0 {
 		return nil, fmt.Errorf("can't load an empty tree")
 	}
 
-	coords := tlog.Tile{
+	entryCoords := tlog.Tile{
 		L: -1, // entries layer is represented as -1.
 		N: treeSize / 256,
 		W: int(treeSize % 256),
 	}
 
-	entryData, err := getTile(ctx, s3c, coords, prefix)
+	entryData, err := getTile(ctx, s3c, entryCoords, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -156,13 +143,13 @@ func Load(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Fr
 			return nil, fmt.Errorf("parsing entries: %s", err)
 		}
 	}
-	if entriesCount != coords.W {
+	if entriesCount != entryCoords.W {
 		return nil, fmt.Errorf("reading entries from %q: got %d entries, want %d",
-			tilePath(coords), entriesCount, coords.W)
+			tilePath(entryCoords), entriesCount, entryCoords.W)
 	}
 
 	entryTile := &entryTile{
-		coords: coords,
+		coords: entryCoords,
 		data:   entryData,
 	}
 
@@ -220,9 +207,9 @@ func (f *Frontier) RootHash() tlog.Hash {
 	}
 
 	// Intuition:
-	//  A leaf tile's MTH is the MTH of its nodes, whether it's partial or full.
+	//  A leaf (L=0) tile's MTH is the MTH of its nodes, whether it's partial or full.
 	//
-	//  At level L, a tile contains hashes of _complete_ subtrees from level L-1.
+	//  At level L > 0, a tile contains hashes of _complete_ subtrees from level L-1.
 	//  Imagine an empty spot at the end where the next hash will go when it's complete.
 	//  We temporarily put one more hash there - the MTH of the partial subtree below
 	//  (if there is one). Then we calculate MTH of the level L tile including that
@@ -266,6 +253,16 @@ func (f *Frontier) RootHash() tlog.Hash {
 //
 // On error, the Frontier is unchanged.
 func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry) error {
+	// First time appending to a zero Frontier, initialize it.
+	if f.entryTile == nil {
+		f.entryTile = &entryTile{
+			coords: tlog.Tile{
+				L: -1, // entries layer is represented as -1.
+			},
+		}
+		f.dirtyLevel = -1
+	}
+
 	mtcleBytes, err := mtcle.Marshal()
 	if err != nil {
 		return err
@@ -348,7 +345,7 @@ func (f *Frontier) appendHash(val tlog.Hash, level int) {
 // If it errors partway, dirty status is not reset but subsequent flushes
 // will likely fail (duplicate writes).
 //
-// Errors if the tree is empty (i.e. NewFrontier() without appending any entries).
+// Errors if the tree is empty.
 func (f *Frontier) Flush(ctx context.Context, s3c simpleS3, prefix string) error {
 	if f.treeSize == 0 {
 		return fmt.Errorf("an empty tree has nothing to write")

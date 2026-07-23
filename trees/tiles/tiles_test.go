@@ -147,7 +147,7 @@ func appendEntries(t *testing.T, f *Frontier, fs3 *fakeS3, start, end int, prefi
 // `flushEvery` appends and once at the end.
 func buildFrontier(t *testing.T, fs3 *fakeS3, n int, prefix string, flushEvery int) *Frontier {
 	t.Helper()
-	f := NewFrontier()
+	f := &Frontier{}
 	appendEntries(t, f, fs3, 0, n, prefix, flushEvery)
 	return f
 }
@@ -249,7 +249,7 @@ func TestRoundTrip(t *testing.T) {
 			prefix := "p/"
 			f := buildFrontier(t, fs3, n, prefix, 100)
 
-			loaded, err := Load(t.Context(), fs3, int64(n), prefix)
+			loaded, err := LoadFrontier(t.Context(), fs3, int64(n), prefix)
 			if err != nil {
 				t.Fatalf("Load(%d): %s", n, err)
 			}
@@ -287,7 +287,7 @@ func TestStorageCorrectness(t *testing.T) {
 	fs3 := newFakeS3()
 	buildFrontier(t, fs3, reloadAt, prefix, 999)
 
-	f, err := Load(t.Context(), fs3, reloadAt, prefix)
+	f, err := LoadFrontier(t.Context(), fs3, reloadAt, prefix)
 	if err != nil {
 		t.Fatalf("Load at %d: %s", reloadAt, err)
 	}
@@ -357,7 +357,7 @@ func TestStorageCorrectness(t *testing.T) {
 	}
 
 	// Load and check equality with the in-memory copy one last time.
-	loaded, err := Load(t.Context(), fs3, n, prefix)
+	loaded, err := LoadFrontier(t.Context(), fs3, n, prefix)
 	if err != nil {
 		t.Fatalf("Load: %s", err)
 	}
@@ -375,7 +375,7 @@ func TestLoadBadHashTile(t *testing.T) {
 	o.data = o.data[:len(o.data)-1]
 	fs3.objects["tile/0/000.p/1"] = o
 
-	_, err := Load(t.Context(), fs3, 1, "")
+	_, err := LoadFrontier(t.Context(), fs3, 1, "")
 	if err == nil {
 		t.Errorf("Load with truncated hash tile: got nil, want error")
 	}
@@ -407,7 +407,7 @@ func TestLoadBadEntryTile(t *testing.T) {
 			// ContentEncoding).
 			fs3.objects["tile/entries/000.p/2"] = fakeS3Object{data: tc.body}
 
-			_, err := Load(t.Context(), fs3, 2, "")
+			_, err := LoadFrontier(t.Context(), fs3, 2, "")
 			if err == nil {
 				t.Errorf("Load with %s in entry tile: got nil, want error", tc.name)
 			}
@@ -416,7 +416,7 @@ func TestLoadBadEntryTile(t *testing.T) {
 }
 
 func TestLoadEmptyTree(t *testing.T) {
-	_, err := Load(t.Context(), newFakeS3(), 0, "")
+	_, err := LoadFrontier(t.Context(), newFakeS3(), 0, "")
 	if err == nil {
 		t.Errorf("Load(0): got nil, want error")
 	}
@@ -430,7 +430,7 @@ func TestAppendMaxSizeEntry(t *testing.T) {
 		t.Fatalf("parsing max-size entry: %s", err)
 	}
 
-	f := NewFrontier()
+	f := &Frontier{}
 	err = f.AppendEntry(mtcle)
 	if err != nil {
 		t.Fatalf("AppendEntry(65535-byte entry): %s", err)
@@ -445,7 +445,7 @@ func TestAppendMaxSizeEntry(t *testing.T) {
 }
 
 func TestFlushEmptyTree(t *testing.T) {
-	f := NewFrontier()
+	f := &Frontier{}
 	err := f.Flush(t.Context(), newFakeS3(), "")
 	if err == nil {
 		t.Errorf("Flush of empty tree: got nil, want error")
@@ -477,7 +477,7 @@ func TestRootHash(t *testing.T) {
 	spotSizes := map[int]bool{65535: true, 65536: true, 65537: true, 65791: true, 65792: true}
 
 	var leafHashes []tlog.Hash
-	f := NewFrontier()
+	f := &Frontier{}
 	for i := 0; i < n; i++ {
 		mtcle := testEntry(i)
 		leafHashes = append(leafHashes, tlog.RecordHash(testEntryBody(i)))
