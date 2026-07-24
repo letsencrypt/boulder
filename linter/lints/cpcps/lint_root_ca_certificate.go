@@ -47,22 +47,22 @@ func (l *rootCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) b
 // Profile, row by row. Root CA Certificates are self-signed, so unlike the
 // other profiles there is no Issuing CA to be configured with: the issuer
 // correspondence is checked against the certificate's own subject.
-// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L992-L1012
+// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L992
+// ### Root CA Certificate Profile
 func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
-	// version is "X.509 version 3" (Section 7.1.1). Note that unlike
-	// crypto/x509, zcrypto's Version field is one-indexed: it holds 3 (not the
-	// raw encoded value 2) for a v3 certificate.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L997
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1101-L1103
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L997
+	// |     `version`                  | See [Section 7.1.1](#711-version-numbers) |
+	// Section 7.1.1 says "All certificates use X.509 version 3". Note that
+	// unlike crypto/x509, zcrypto's Version field is one-indexed: it holds 3
+	// (not the raw encoded value 2) for a v3 certificate.
 	if c.Version != 3 {
 		return errResult("version is not v3")
 	}
 
-	// serialNumber is "More than 100 bits of output from a CSPRNG, optionally
-	// with additional non-random bits". We can't test randomness here, but a
-	// serial containing more than 100 bits of CSPRNG output must itself be
-	// more than 100 bits long.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L998
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L998
+	// |     `serialNumber`             | More than 100 bits of output from a CSPRNG, optionally with additional non-random bits |
+	// We can't test randomness here, but a serial containing more than 100
+	// bits of CSPRNG output must itself be more than 100 bits long.
 	if c.SerialNumber == nil || c.SerialNumber.Sign() <= 0 {
 		return errResult("serialNumber is not a positive integer")
 	}
@@ -70,11 +70,11 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("serialNumber is not more than 100 bits long")
 	}
 
-	// signature is byte-for-byte identical to one of the hexadecimal encodings
-	// specified by Section 7.1.3.2 of the Baseline Requirements (Section
-	// 7.1.3.2).
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L999
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1115-L1117
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L999
+	// |     `signature`                | See [Section 7.1.3.2](#7132-signature-algorithmidentifier) |
+	// Section 7.1.3.2 requires signature AlgorithmIdentifiers to be
+	// byte-for-byte identical with one of the hexadecimal encodings specified
+	// by Section 7.1.3.2 of the Baseline Requirements.
 	tbsSignature, err := util.GetSignatureAlgorithmInTBSEncoded(c)
 	if err != nil {
 		return errResult("failed to parse tbsCertificate.signature")
@@ -83,16 +83,16 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("signature is not byte-for-byte identical to a BRs Section 7.1.3.2 encoding")
 	}
 
-	// issuer is "Byte-for-byte identical to the subject field".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1000
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1000
+	// |     `issuer`                   | Byte-for-byte identical to the `subject` field |
 	if !bytes.Equal(c.RawIssuer, c.RawSubject) {
 		return errResult("issuer is not byte-for-byte identical to the subject")
 	}
 
-	// validity is "At most 3660 days (approx. 10 years)". RFC 5280 4.1.2.5:
-	// "The validity period for a certificate is the period of time from
-	// notBefore through notAfter, inclusive."
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1001
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1001
+	// |     `validity`                 | At most 3660 days (approx. 10 years) |
+	// RFC 5280 4.1.2.5: "The validity period for a certificate is the period
+	// of time from notBefore through notAfter, inclusive."
 	if c.NotAfter.Before(c.NotBefore) {
 		return errResult("validity is negative: notAfter is before notBefore")
 	}
@@ -100,9 +100,9 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("validity is more than 3660 days")
 	}
 
-	// subject is "C=US, O=ISRG, and a unique CN".
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1002
+	// |     `subject`                  | C=US, O=ISRG, and a unique CN |
 	// We can't test for CN uniqueness here, but the rest we can check.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1002
 	if len(c.Subject.Names) != 3 {
 		return errResult("subject does not contain exactly C, O, and CN attributes")
 	}
@@ -116,17 +116,15 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("subject commonName is empty")
 	}
 
-	// subjectPublicKeyInfo: Section 6.1.5 says Root CA key pairs are "either
-	// RSA keys whose encoded modulus size is 4096 bits, or ECDSA keys which
-	// are a valid point on the NIST P-384 elliptic curve", Section 6.1.6
-	// requires the key parameter quality checks performed inline below, and
-	// Section 7.1.3.1 requires the AlgorithmIdentifier to be byte-for-byte
-	// identical to a BRs Section 7.1.3.1 encoding. Point-on-curve validation
-	// is also performed by zcrypto at parse time.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1003
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L852
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L858-L862
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1111-L1113
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1003
+	// |     `subjectPublicKeyInfo`     | See Sections [6.1.5](#615-key-sizes), [6.1.6](#616-public-key-parameters-generation-and-quality-checking), and [7.1.3.1](#7131-subjectpublickeyinfo) |
+	// Section 6.1.5 says Root CA key pairs are "either RSA keys whose encoded
+	// modulus size is 4096 bits, or ECDSA keys which are a valid point on the
+	// NIST P-384 elliptic curve". Section 6.1.6 requires the key parameter
+	// quality checks performed inline below. Section 7.1.3.1 requires the
+	// AlgorithmIdentifier to be byte-for-byte identical to a BRs Section
+	// 7.1.3.1 encoding. Point-on-curve validation is also performed by
+	// zcrypto at parse time.
 	spkiAlgID, err := util.GetPublicKeyAidEncoded(c)
 	if err != nil {
 		return errResult("failed to parse subjectPublicKeyInfo algorithm")
@@ -173,20 +171,20 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult(fmt.Sprintf("unsupported public key type %T", c.PublicKey))
 	}
 
-	// issuerUniqueID is "Not present".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1004
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1004
+	// |     `issuerUniqueID`           | Not present |
 	if c.IssuerUniqueId.Bytes != nil {
 		return errResult("issuerUniqueID is present")
 	}
 
-	// subjectUniqueID is "Not present".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1005
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1005
+	// |     `subjectUniqueID`          | Not present |
 	if c.SubjectUniqueId.Bytes != nil {
 		return errResult("subjectUniqueID is present")
 	}
 
-	// basicConstraints is "Critical, with cA set to true".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1007
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1007
+	// |         `basicConstraints`     | Critical, with `cA` set to true |
 	bcExt := getExtension(c, basicConstraintsOID)
 	if bcExt == nil {
 		return errResult("basicConstraints extension is not present")
@@ -198,9 +196,8 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("basicConstraints cA is not true")
 	}
 
-	// keyUsage is "Critical, with only the keyCertSign (5) and cRLSign (6)
-	// bits set".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1008
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1008
+	// |         `keyUsage`             | Critical, with only the `keyCertSign` (5) and `cRLSign` (6) bits set |
 	kuExt := getExtension(c, keyUsageOID)
 	if kuExt == nil {
 		return errResult("keyUsage extension is not present")
@@ -212,9 +209,8 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("keyUsage does not assert exactly the bits required by the profile")
 	}
 
-	// subjectKeyIdentifier "Contains a truncated hash of the subjectPublicKey,
-	// per Section 2(1) of RFC 7093".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1009
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1009
+	// |         `subjectKeyIdentifier` | Contains a truncated hash of the `subjectPublicKey`, per Section 2(1) of RFC 7093 |
 	skidExt := getExtension(c, subjectKeyIdentifierOID)
 	if skidExt == nil {
 		return errResult("subjectKeyIdentifier extension is not present")
@@ -235,8 +231,8 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("subjectKeyIdentifier is not the RFC 7093 Section 2(1) truncated hash of the subjectPublicKey")
 	}
 
-	// Any other extension is "Not present".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1010
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1010
+	// |         Any other extension    | Not present |
 	allowedExtensions := []asn1.ObjectIdentifier{
 		basicConstraintsOID,
 		keyUsageOID,
@@ -254,9 +250,8 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		}
 	}
 
-	// signatureAlgorithm is "Byte-for-byte identical to the
-	// tbsCertificate.signature".
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1011
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1011
+	// | `signatureAlgorithm`           | Byte-for-byte identical to the `tbsCertificate.signature` |
 	signatureAlgorithm, err := getOuterSignatureAlgorithm(c.Raw)
 	if err != nil {
 		return errResult(err.Error())
@@ -265,11 +260,11 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("signatureAlgorithm is not byte-for-byte identical to the tbsCertificate.signature")
 	}
 
-	// signatureValue is "A signature appropriate to the signatureAlgorithm
-	// field". We can't verify the signature under pre-issuance linting (the
-	// certificate is signed by a throwaway key), but CheckApplies only selects
-	// certificates whose self-signature zcrypto has verified.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1012
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1012
+	// | `signatureValue`               | A signature appropriate to the `signatureAlgorithm` field |
+	// We can't verify the signature under pre-issuance linting (the
+	// certificate is signed by a throwaway key), but CheckApplies only
+	// selects certificates whose self-signature zcrypto has verified.
 
 	return &lint.LintResult{Status: lint.Pass}
 }

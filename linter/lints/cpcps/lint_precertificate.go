@@ -43,23 +43,22 @@ func (l *precertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool
 	return util.IsSubscriberCert(c) && util.IsServerAuthCert(c) && util.IsExtInCert(c, util.CtPoisonOID)
 }
 
-// Execute checks the given precertificate against the Precertificate Profile,
-// which is "Identical to the Subscriber (Server) Certificate Profile, except
-// that the SignedCertificateTimestampList extension is omitted, and a critical
-// 'CT poison' extension (OID 1.3.6.1.4.1.11129.2.4.3) is included": first the
-// rows shared with the Subscriber (Server) Certificate Profile (whose
-// implementation lives in lint_subscriber_server_certificate.go), then the
-// rows specific to precertificates.
-// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1097-L1099
+// Execute checks the given precertificate against the Precertificate Profile:
+// first the rows shared with the Subscriber (Server) Certificate Profile
+// (whose implementation lives in lint_subscriber_server_certificate.go), then
+// the requirements specific to precertificates.
+// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1097
+// ### Precertificate Profile
 func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
 	res := checkSubscriberProfile(c, l.Config.issuerPEM())
 	if res != nil {
 		return res
 	}
 
-	// In place of the SignedCertificateTimestampList extension, a critical
-	// "CT poison" extension (OID 1.3.6.1.4.1.11129.2.4.3) is included.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1099
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1099
+	// Identical to the Subscriber (Server) Certificate Profile, except that the `SignedCertificateTimestampList` extension is omitted, and a critical "CT poison" extension (OID 1.3.6.1.4.1.11129.2.4.3) is included. ISRG Precertificates are issued directly by the Issuing CA, not by a delegated Precertificate Signing CA.
+	// This check enforces the presence and criticality of the CT poison
+	// extension.
 	poisonExt := getExtension(c, util.CtPoisonOID)
 	if poisonExt == nil {
 		return errResult("CT poison extension is not present")
@@ -68,11 +67,12 @@ func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.Lin
 		return errResult("CT poison extension is not critical")
 	}
 
-	// Any other extension is "Not present". In particular, the
-	// SignedCertificateTimestampList extension is omitted from
-	// precertificates, so it is not in the allowed set.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1093
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1099
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1093
+	// |         Any other extension              | Not present |
+	// The SignedCertificateTimestampList extension is omitted from
+	// precertificates and replaced by the CT poison extension, so the allowed
+	// set here differs from the Subscriber (Server) Certificate Profile's by
+	// exactly that substitution.
 	allowedExtensions := []asn1.ObjectIdentifier{
 		authorityInformationAccessOID,
 		authorityKeyIdentifierOID,

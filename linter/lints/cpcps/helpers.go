@@ -21,10 +21,10 @@ import (
 )
 
 var (
-	// The AlgorithmIdentifier encodings specified by Section 7.1.3.2 of the
-	// Baseline Requirements, which Section 7.1.3.2 of our CP/CPS incorporates
-	// by reference.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1115-L1117
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1117
+	// When used in the context of a signature, fields of type `AlgorithmIdentifier` of all objects signed by ISRG CAs are byte-for-byte identical with one of the hexadecimal encodings specified by Section 7.1.3.2 of the Baseline Requirements.
+	// These are the AlgorithmIdentifier encodings specified by Section
+	// 7.1.3.2 of the Baseline Requirements.
 	brSignatureAlgorithmIdentifiers = map[string]bool{
 		// sha256WithRSAEncryption
 		"300d06092a864886f70d01010b0500": true,
@@ -40,10 +40,10 @@ var (
 		"300a06082a8648ce3d040304": true,
 	}
 
-	// The SubjectPublicKeyInfo AlgorithmIdentifier encodings specified by
-	// Section 7.1.3.1 of the Baseline Requirements, which Section 7.1.3.1 of
-	// our CP/CPS incorporates by reference.
-	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1111-L1113
+	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1113
+	// The `AlgorithmIdentifier` field of the `SubjectPublicKeyInfo` field of ISRG Certificates is byte-for-byte identical with one of the hexadecimal encodings specified by Section 7.1.3.1 of the Baseline Requirements.
+	// These are the SubjectPublicKeyInfo AlgorithmIdentifier encodings
+	// specified by Section 7.1.3.1 of the Baseline Requirements.
 	spkiAlgorithmRSA  = "300d06092a864886f70d0101010500"
 	spkiAlgorithmP256 = "301306072a8648ce3d020106082a8648ce3d030107"
 	spkiAlgorithmP384 = "301006072a8648ce3d020106052b81040022"
