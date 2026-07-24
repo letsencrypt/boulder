@@ -36,7 +36,7 @@ var _ mtcapb.MTCAServer = &mtca{}
 // New creates a new MTCA service.
 func New(
 	issuer *issuance.Issuer,
-	profile *issuance.Profile,
+	profiles map[string]*issuance.Profile,
 	sequencingPeriod time.Duration,
 	dbMap *borp.DbMap,
 	s3c simpleS3,
@@ -53,9 +53,9 @@ func New(
 	}
 
 	return &mtca{
-		issuer:  issuer,
-		profile: profile,
-		mtcaID:  mtcaID,
+		issuer:   issuer,
+		profiles: profiles,
+		mtcaID:   mtcaID,
 		// TODO: collect this from config
 		logNumber: 44,
 		pool:      &pool{maxSize: 100},
@@ -72,9 +72,9 @@ func New(
 type mtca struct {
 	mtcapb.UnimplementedMTCAServer
 
-	issuer  *issuance.Issuer
-	profile *issuance.Profile
-	mtcaID  string
+	issuer   *issuance.Issuer
+	profiles map[string]*issuance.Profile
+	mtcaID   string
 
 	logNumber uint16
 	pool      *pool
@@ -250,7 +250,12 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 		return nil, fmt.Errorf("parsing public key: %s", err)
 	}
 
-	notBefore, notAfter := m.profile.GenerateValidity(m.clk.Now())
+	profile, ok := m.profiles[req.Profile]
+	if !ok {
+		return nil, fmt.Errorf("unrecognized profile name: %q", req.Profile)
+	}
+
+	notBefore, notAfter := profile.GenerateValidity(m.clk.Now())
 
 	dnsNames, ipAddresses, err := identifier.FromProtoSlice(req.Identifiers).ToValues()
 	if err != nil {
@@ -260,7 +265,7 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	// Placeholder serial; will be omitted from the TBSCertificateLogEntry.
 	serial := [18]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
 
-	lintCertBytes, _, err := m.issuer.Prepare(m.profile, &issuance.IssuanceRequest{
+	lintCertBytes, _, err := m.issuer.Prepare(profile, &issuance.IssuanceRequest{
 		PublicKey:   issuance.MarshalablePublicKey{PublicKey: key},
 		Serial:      issuance.HexMarshalableBytes(serial[:]),
 		NotBefore:   notBefore,
