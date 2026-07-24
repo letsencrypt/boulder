@@ -16,6 +16,8 @@ import (
 	"os"
 	"path"
 	"time"
+
+	"github.com/letsencrypt/boulder/unsigned"
 )
 
 func main() {
@@ -85,7 +87,12 @@ func main2() error {
 		return err
 	}
 
-	_, err = x509.ParseCertificate(certBytes)
+	unsigned, err := unsigned.Design(certBytes, true)
+	if err != nil {
+		return err
+	}
+
+	_, err = x509.ParseCertificate(unsigned)
 	if err != nil {
 		return err
 	}
@@ -96,7 +103,7 @@ func main2() error {
 	}
 	defer certFile.Close()
 
-	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: unsigned})
 	if err != nil {
 		return err
 	}
