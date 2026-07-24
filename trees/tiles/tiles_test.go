@@ -5,13 +5,17 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"reflect"
 	"slices"
 	"testing"
 
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 
@@ -70,7 +74,12 @@ func newFakeS3() *fakeS3 {
 func (f *fakeS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	_, ok := f.objects[*params.Key]
 	if ok {
-		return nil, fmt.Errorf("duplicate PUT: %q", *params.Key)
+		return nil, &awshttp.ResponseError{
+			ResponseError: &smithyhttp.ResponseError{
+				Response: &smithyhttp.Response{Response: &http.Response{StatusCode: http.StatusPreconditionFailed}},
+				Err:      errors.New("PreconditionFailed"),
+			},
+		}
 	}
 	body, err := io.ReadAll(params.Body)
 	if err != nil {
@@ -493,5 +502,21 @@ func TestRootHash(t *testing.T) {
 				t.Errorf("RootHash at size %d: got %s, want %s", n, got, want)
 			}
 		}
+	}
+}
+
+func TestWriteTileThatAlreadyExists(t *testing.T) {
+	fs3 := newFakeS3()
+	coords := tlog.Tile{L: 0, N: 0, W: 1}
+	body := bytes.Repeat([]byte{'h'}, tlog.HashSize)
+
+	err := writeTile(t.Context(), fs3, "", coords, body, false)
+	if err != nil {
+		t.Fatalf("first writeTile: %s", err)
+	}
+
+	err = writeTile(t.Context(), fs3, "", coords, body, false)
+	if !errors.Is(err, ErrTileExists) {
+		t.Errorf("second writeTile: got %s, want ErrTileExists", err)
 	}
 }
