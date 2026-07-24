@@ -2,7 +2,6 @@ package sa
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -159,41 +158,6 @@ func SelectCertificateStatus(ctx context.Context, s db.OneSelector, serial strin
 		serial,
 	)
 	return model.toPb(), err
-}
-
-// RevocationStatusModel represents a small subset of the columns in the
-// certificateStatus table, used to determine the authoritative revocation
-// status of a certificate.
-type RevocationStatusModel struct {
-	Status        core.OCSPStatus   `db:"status"`
-	RevokedDate   time.Time         `db:"revokedDate"`
-	RevokedReason revocation.Reason `db:"revokedReason"`
-}
-
-// SelectRevocationStatus returns the authoritative revocation information for
-// the certificate with the given serial.
-func SelectRevocationStatus(ctx context.Context, s db.OneSelector, serial string) (*sapb.RevocationStatus, error) {
-	var model RevocationStatusModel
-	err := s.SelectOne(
-		ctx,
-		&model,
-		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ? LIMIT 1",
-		serial,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	statusInt, ok := core.OCSPStatusToInt[model.Status]
-	if !ok {
-		return nil, fmt.Errorf("got unrecognized status %q", model.Status)
-	}
-
-	return &sapb.RevocationStatus{
-		Status:        int64(statusInt),
-		RevokedDate:   timestamppb.New(model.RevokedDate),
-		RevokedReason: int64(model.RevokedReason),
-	}, nil
 }
 
 var mediumBlobSize = int(math.Pow(2, 24))
@@ -624,14 +588,14 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
-	if authz.IdInt == 0 {
+	if authz.Id == 0 {
 		return nil, errors.New("authorization is missing an ID value")
 	}
 
 	ident := identifier.FromProto(authz.Identifier)
 
 	am := &authzModel{
-		ID:              authz.IdInt,
+		ID:              authz.Id,
 		IdentifierType:  identifierTypeToUint[ident.ToProto().Type],
 		IdentifierValue: ident.Value,
 		RegistrationID:  authz.RegistrationID,
@@ -775,7 +739,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	}
 
 	pb := &corepb.Authorization{
-		IdInt:                  am.ID,
+		Id:                     am.ID,
 		Status:                 string(uintToStatus[am.Status]),
 		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),
 		RegistrationID:         am.RegistrationID,
@@ -1017,7 +981,7 @@ func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) err
 	if cert.RawSubjectPublicKeyInfo == nil {
 		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
 	}
-	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	h := core.CertKeyDigest(cert)
 	khm := &keyHashModel{
 		KeyHash:      h[:],
 		CertNotAfter: cert.NotAfter,

@@ -94,7 +94,7 @@ func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core
 		},
 		Authz: &vapb.AuthzMeta{
 			RegID: 1,
-			IdInt: 1,
+			Id:    1,
 		},
 		ExpectedKeyAuthorization: expectedKeyAuthorization,
 	}
@@ -519,7 +519,7 @@ func TestPerformValidationWithEmptyAuthzID(t *testing.T) {
 	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	req.Authz.IdInt = 0
+	req.Authz.Id = 0
 	_, err := va.DoDCV(context.Background(), req)
 	test.AssertError(t, err, "validation unexpectedly succeeded")
 	test.AssertEquals(t, err.Error(), "Incomplete validation request")

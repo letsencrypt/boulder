@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
@@ -53,7 +54,7 @@ func setup() (*mtca, func(), error) {
 
 	logger := blog.NewMock()
 
-	mtca, err := New(issuer, 100*time.Millisecond, dbMap, logger)
+	mtca, err := New(issuer, 100*time.Millisecond, dbMap, &fakeS3{}, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -316,4 +317,19 @@ DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
 	if mtcaID != expected {
 		t.Errorf("getMTCAID(): got %s, want %s", mtcaID, expected)
 	}
+}
+
+type fakeS3 struct {
+}
+
+func (f *fakeS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (f *fakeS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (f *fakeS3) Bucket() string {
+	return "fake bucket"
 }

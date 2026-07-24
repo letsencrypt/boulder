@@ -246,28 +246,6 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 	return certStatus, nil
 }
 
-// GetRevocationStatus takes a hexadecimal string representing the full serial
-// number of a certificate and returns a minimal set of data about that cert's
-// current validity.
-func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *sapb.Serial) (*sapb.RevocationStatus, error) {
-	if req.Serial == "" {
-		return nil, errIncompleteRequest
-	}
-	if !core.ValidSerial(req.Serial) {
-		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
-	}
-
-	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
-		}
-		return nil, err
-	}
-
-	return status, nil
-}
-
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
 // certificate, issued for a set of identifiers, during a given window of time,
 // starting from the most recent issuance.

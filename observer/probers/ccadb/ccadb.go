@@ -10,14 +10,15 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/letsencrypt/boulder/observer/probers"
-	"github.com/letsencrypt/boulder/strictyaml"
-	"github.com/prometheus/client_golang/prometheus"
 	"io"
 	"maps"
 	"regexp"
 	"slices"
 	"time"
+
+	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/strictyaml"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/crl/checker"
 	"github.com/letsencrypt/boulder/crl/idp"
@@ -154,7 +155,8 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 		return err
 	}
 
-	serials := make(map[string]*x509.RevocationList)
+	// Map of serials to their CRL issuingDistributionPoint.
+	serials := make(map[string]string)
 
 	var errs []error
 	for skid, urls := range crlURLs {
@@ -188,15 +190,10 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 					break
 				}
 				serialByteString := string(entry.SerialNumber.Bytes())
-				if otherCRL, ok := serials[serialByteString]; ok {
-					otherCRLURL, err := getIDP(otherCRL)
-					if err != nil {
-						errs = append(errs, fmt.Errorf("failed to get CRL from other CRL: %s", err))
-						continue
-					}
+				if otherCRLURL, ok := serials[serialByteString]; ok {
 					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s", entry.SerialNumber, otherCRLURL, url))
 				}
-				serials[serialByteString] = crl
+				serials[serialByteString] = url
 			}
 		}
 	}

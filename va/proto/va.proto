@@ -21,7 +21,7 @@ message IsCAAValidRequest {
   core.Identifier identifier = 5;
   string validationMethod = 2;
   int64 accountURIID = 3;
-  int64 authzIDInt = 6; // TODO(#8722): rename
+  int64 authzID = 6;
 }
 
 // If CAA is valid for the requested domain, the problem will be empty
@@ -44,7 +44,7 @@ message AuthzMeta {
   // Next unused field number: 4
   reserved 1; // Previously id(string)
   int64 regID = 2;
-  int64 idInt = 3; // TODO(#8722): rename
+  int64 id = 3;
 }
 
 message ValidationResult {
