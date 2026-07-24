@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"math/big"
 	"strings"
 	"testing"
@@ -88,6 +89,14 @@ func TestPrecertificateMatchesCPSProfile(t *testing.T) {
 			},
 			want:       lint.Error,
 			wantSubStr: "serialNumber is not more than 100 bits long",
+		},
+		{
+			name: "duplicate_extension",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "duplicate extension 2.5.29.15",
 		},
 	}
 

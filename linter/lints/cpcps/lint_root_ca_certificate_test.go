@@ -141,6 +141,14 @@ func TestRootCACertificateMatchesCPSProfile(t *testing.T) {
 			want:       lint.Error,
 			wantSubStr: "unexpected extension",
 		},
+		{
+			name: "duplicate_extension",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "duplicate extension 2.5.29.15",
+		},
 	}
 
 	for _, tc := range testCases {

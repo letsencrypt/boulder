@@ -3,7 +3,6 @@ package cpcps
 import (
 	"fmt"
 
-	"github.com/zmap/zcrypto/encoding/asn1"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -73,29 +72,33 @@ func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.Lin
 	// precertificates and replaced by the CT poison extension, so the allowed
 	// set here differs from the Subscriber (Server) Certificate Profile's by
 	// exactly that substitution.
-	allowedExtensions := []asn1.ObjectIdentifier{
-		authorityInformationAccessOID,
-		authorityKeyIdentifierOID,
-		basicConstraintsOID,
-		certificatePoliciesOID,
-		crlDistributionPointsOID,
-		extKeyUsageOID,
-		keyUsageOID,
-		util.CtPoisonOID,
-		subjectAltNameOID,
-		subjectKeyIdentifierOID,
+	extensions := map[string]bool{
+		authorityInformationAccessOID.String(): false,
+		authorityKeyIdentifierOID.String():     false,
+		basicConstraintsOID.String():           false,
+		certificatePoliciesOID.String():        false,
+		crlDistributionPointsOID.String():      false,
+		extKeyUsageOID.String():                false,
+		keyUsageOID.String():                   false,
+		util.CtPoisonOID.String():              false,
+		subjectAltNameOID.String():             false,
+		subjectKeyIdentifierOID.String():       false,
 	}
 	for _, ext := range c.Extensions {
-		found := false
-		for _, oid := range allowedExtensions {
-			if ext.Id.Equal(oid) {
-				found = true
-			}
-		}
-		if !found {
+		seen, allowed := extensions[ext.Id.String()]
+		if !allowed {
 			return errResult(fmt.Sprintf("unexpected extension %s", ext.Id.String()))
 		}
+		if seen {
+			return errResult(fmt.Sprintf("duplicate extension %s", ext.Id.String()))
+		}
+		extensions[ext.Id.String()] = true
 	}
-
+	for oid, seen := range extensions {
+		// The subjectKeyIdentifier extension is optional, so missing it is ok.
+		if !seen && oid != subjectKeyIdentifierOID.String() {
+			return errResult(fmt.Sprintf("missing extension %s", oid))
+		}
+	}
 	return &lint.LintResult{Status: lint.Pass}
 }

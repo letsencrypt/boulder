@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"github.com/zmap/zcrypto/encoding/asn1"
 	zrsa "github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
@@ -161,8 +160,11 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	}
 	switch key := c.PublicKey.(type) {
 	case *zrsa.PublicKey:
-		if key.N.BitLen() != 2048 {
-			return errResult(fmt.Sprintf("RSA modulus size %d is not allowed", key.N.BitLen()))
+		// DER INTEGERs are minimal-length, so the encoded modulus size is its
+		// bit length rounded up to a whole number of octets.
+		encodedModulusBits := len(key.N.Bytes()) * 8
+		if encodedModulusBits != 2048 {
+			return errResult(fmt.Sprintf("RSA encoded modulus size %d is not allowed", encodedModulusBits))
 		}
 		if hex.EncodeToString(spkiAlgID) != spkiAlgorithmRSA {
 			return errResult("public key algorithm is not byte-for-byte identical to the BRs Section 7.1.3.1 RSA encoding")
@@ -170,6 +172,7 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 		// Section 6.1.6, via NIST SP 800-89 Section 5.3.3, requires that RSA
 		// keys have "a public exponent of 65537 and an odd modulus which has
 		// no factors smaller than 752".
+		// https://nvlpubs.nist.gov/nistpubs/legacy/sp/nistspecialpublication800-89.pdf
 		if key.E.Cmp(big.NewInt(65537)) != 0 {
 			return errResult(fmt.Sprintf("RSA public exponent %s is not 65537", key.E))
 		}
@@ -193,6 +196,7 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 		// underlying field, and not the point at infinity; the routine's
 		// final step, confirming the point's order, is implied by the others
 		// for the NIST curves, whose cofactors are 1.
+		// https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-56ar2.pdf
 		_, err = ecdh.P384().NewPublicKey(key.Raw.Bytes)
 		if err != nil {
 			return errResult("ECDSA public key is not a valid uncompressed point on its curve")
@@ -219,8 +223,12 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	// observable here, but the extension must contain exactly one caIssuers
 	// entry with an http URI and nothing else (in particular, no OCSP
 	// entries).
-	if !util.IsExtInCert(c, authorityInformationAccessOID) {
+	aiaExt := getExtension(c, authorityInformationAccessOID)
+	if aiaExt == nil {
 		return errResult("authorityInformationAccess extension is not present")
+	}
+	if aiaExt.Critical {
+		return errResult("authorityInformationAccess extension is critical")
 	}
 	if len(c.OCSPServer) != 0 {
 		return errResult("authorityInformationAccess contains an OCSP entry")
@@ -271,8 +279,12 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1059
 	// |         `certificatePolicies`        | Contains only the Baseline Requirements Domain Validated Reserved Policy Identifier (OID 2.23.140.1.2.1) |
-	if !util.IsExtInCert(c, certificatePoliciesOID) {
+	cpExt := getExtension(c, certificatePoliciesOID)
+	if cpExt == nil {
 		return errResult("certificatePolicies extension is not present")
+	}
+	if cpExt.Critical {
+		return errResult("certificatePolicies extension is critical")
 	}
 	if len(c.PolicyIdentifiers) != 1 || !c.PolicyIdentifiers[0].Equal(domainValidatedOID) {
 		return errResult("certificatePolicies does not contain exactly the Domain Validated Reserved Policy Identifier")
@@ -282,8 +294,12 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	// |         `crlDistributionPoints`      | Contains the HTTP URI of a CRL issued by the Issuing CA whose scope includes this certificate |
 	// Whether the CRL's scope actually includes this certificate is not
 	// observable here.
-	if !util.IsExtInCert(c, crlDistributionPointsOID) {
+	crldpExt := getExtension(c, crlDistributionPointsOID)
+	if crldpExt == nil {
 		return errResult("crlDistributionPoints extension is not present")
+	}
+	if crldpExt.Critical {
+		return errResult("crlDistributionPoints extension is critical")
 	}
 	if len(c.CRLDistributionPoints) != 1 {
 		return errResult("crlDistributionPoints does not contain exactly one distribution point")
@@ -299,8 +315,12 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1061
 	// |         `extKeyUsage`                | Contains only `id-kp-serverAuth` (OID 1.3.6.1.5.5.7.3.1) |
-	if !util.IsExtInCert(c, extKeyUsageOID) {
+	ekuExt := getExtension(c, extKeyUsageOID)
+	if ekuExt == nil {
 		return errResult("extKeyUsage extension is not present")
+	}
+	if ekuExt.Critical {
+		return errResult("extKeyUsage extension is critical")
 	}
 	if len(c.ExtKeyUsage) != 1 || c.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth || len(c.UnknownExtKeyUsage) != 0 {
 		return errResult("extKeyUsage does not contain exactly id-kp-serverAuth")
@@ -343,25 +363,29 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1064
 	// |         Any other extension          | Not present |
-	allowedExtensions := []asn1.ObjectIdentifier{
-		authorityInformationAccessOID,
-		authorityKeyIdentifierOID,
-		basicConstraintsOID,
-		certificatePoliciesOID,
-		crlDistributionPointsOID,
-		extKeyUsageOID,
-		keyUsageOID,
-		subjectKeyIdentifierOID,
+	extensions := map[string]bool{
+		authorityInformationAccessOID.String(): false,
+		authorityKeyIdentifierOID.String():     false,
+		basicConstraintsOID.String():           false,
+		certificatePoliciesOID.String():        false,
+		crlDistributionPointsOID.String():      false,
+		extKeyUsageOID.String():                false,
+		keyUsageOID.String():                   false,
+		subjectKeyIdentifierOID.String():       false,
 	}
 	for _, ext := range c.Extensions {
-		found := false
-		for _, oid := range allowedExtensions {
-			if ext.Id.Equal(oid) {
-				found = true
-			}
-		}
-		if !found {
+		seen, allowed := extensions[ext.Id.String()]
+		if !allowed {
 			return errResult(fmt.Sprintf("unexpected extension %s", ext.Id.String()))
+		}
+		if seen {
+			return errResult(fmt.Sprintf("duplicate extension %s", ext.Id.String()))
+		}
+		extensions[ext.Id.String()] = true
+	}
+	for oid, seen := range extensions {
+		if !seen {
+			return errResult(fmt.Sprintf("missing extension %s", oid))
 		}
 	}
 

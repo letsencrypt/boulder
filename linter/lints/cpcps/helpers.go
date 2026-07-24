@@ -69,7 +69,7 @@ var (
 )
 
 // Keys within the shared configuration stanza. These must match the toml
-// tags on IssuingCAConfig's fields, and are exported so that the linter
+// tags on SharedConfig's fields, and are exported so that the linter
 // package can emit configuration using these keys.
 const (
 	// GlobalConfigNamespace is the name of the TOML stanza from which

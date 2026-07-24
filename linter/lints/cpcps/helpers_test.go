@@ -205,6 +205,65 @@ func testLeafTemplate(t *testing.T) *x509.Certificate {
 	}
 }
 
+// synthesizeExt returns a default version of the extension with the given OID.
+// It does so by creating a throwaway cert from the given template, getting
+// crypto/x509 to produce the extension for us, and then extracts the bits we
+// want from the resulting cert. This is useful for creating extensions that Go
+// produces from typed fields, like x509.Certificate.CRLDistributionPoints
+// making the CRLDP extension.
+func synthesizeExt(t *testing.T, tmpl *x509.Certificate, oid asn1.ObjectIdentifier) pkix.Extension {
+	t.Helper()
+	key := testKey(t, elliptic.P256())
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+	if err != nil {
+		t.Fatalf("creating throwaway certificate: %s", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parsing throwaway certificate: %s", err)
+	}
+	for _, ext := range cert.Extensions {
+		if ext.Id.Equal(oid) {
+			return ext
+		}
+	}
+	t.Fatalf("template did not produce extension %s", oid)
+	return pkix.Extension{}
+}
+
+// criticalizeExt marks the template's extension with the given OID as critical.
+// If the extension is already present in ExtraExtensions, its Critical bit is
+// set directly. Otherwise, the extension value CreateCertificate would
+// produce is harvested and re-added as a critical ExtraExtension, which
+// overrides the non-critical extension CreateCertificate would otherwise
+// generate.
+func criticalizeExt(t *testing.T, tmpl *x509.Certificate, oid asn1.ObjectIdentifier) {
+	t.Helper()
+	for i := range tmpl.ExtraExtensions {
+		if tmpl.ExtraExtensions[i].Id.Equal(oid) {
+			tmpl.ExtraExtensions[i].Critical = true
+			return
+		}
+	}
+	ext := synthesizeExt(t, tmpl, oid)
+	ext.Critical = true
+	tmpl.ExtraExtensions = append(tmpl.ExtraExtensions, ext)
+}
+
+// duplicateExt causes the template to produce two identical copies of
+// the extension with the given OID.
+func duplicateExt(t *testing.T, tmpl *x509.Certificate, oid asn1.ObjectIdentifier) {
+	t.Helper()
+	for i := range tmpl.ExtraExtensions {
+		if tmpl.ExtraExtensions[i].Id.Equal(oid) {
+			tmpl.ExtraExtensions = append(tmpl.ExtraExtensions, tmpl.ExtraExtensions[i])
+			return
+		}
+	}
+	ext := synthesizeExt(t, tmpl, oid)
+	tmpl.ExtraExtensions = append(tmpl.ExtraExtensions, ext, ext)
+}
+
 // testPEM returns the PEM encoding of the given certificate DER.
 func testPEM(t *testing.T, der []byte) string {
 	t.Helper()

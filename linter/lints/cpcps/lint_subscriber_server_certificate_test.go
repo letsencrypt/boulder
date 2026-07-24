@@ -121,6 +121,28 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "subject contains an attribute other than commonName",
 		},
 		{
+			name: "cn_not_a_string",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				// A subject whose commonName value is an OCTET STRING rather
+				// than any ASN.1 string type. RawSubject is used verbatim by
+				// CreateCertificate, overriding the Subject field.
+				rawSubject, err := asn1.Marshal(pkix.RDNSequence{
+					pkix.RelativeDistinguishedNameSET{
+						pkix.AttributeTypeAndValue{
+							Type:  asn1.ObjectIdentifier{2, 5, 4, 3},
+							Value: []byte("example.com"),
+						},
+					},
+				})
+				if err != nil {
+					t.Fatalf("marshalling subject: %s", err)
+				}
+				tmpl.RawSubject = rawSubject
+			},
+			want:       lint.Error,
+			wantSubStr: "subject commonName value is not a string",
+		},
+		{
 			name: "email_san",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.EmailAddresses = []string{"admin@example.com"}
@@ -281,6 +303,71 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 2047), big.NewInt(1)), E: 65537},
 			want:       lint.Error,
 			wantSubStr: "RSA modulus has a prime factor smaller than 752",
+		},
+		{
+			// 2^2046 has a bit length of 2047, but still encodes in 256
+			// octets, so its encoded modulus size is 2048 bits: it passes the
+			// size check and fails the parity check instead.
+			name:       "rsa_modulus_leading_zero_bit",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 2046), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus is even",
+		},
+		{
+			// 2^2039 encodes in 255 octets, so its encoded modulus size is
+			// 2040 bits.
+			name:       "rsa_modulus_wrong_encoded_size",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 2039), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA encoded modulus size 2040 is not allowed",
+		},
+		{
+			name: "critical_aia",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(authorityInformationAccessOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "authorityInformationAccess extension is critical",
+		},
+		{
+			name: "critical_certificate_policies",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(certificatePoliciesOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "certificatePolicies extension is critical",
+		},
+		{
+			name: "critical_crldp",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(crlDistributionPointsOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "crlDistributionPoints extension is critical",
+		},
+		{
+			name: "critical_eku",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(extKeyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "extKeyUsage extension is critical",
+		},
+		{
+			name: "critical_sct_list",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(sctListOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "signedCertificateTimestampList extension is critical",
+		},
+		{
+			name: "duplicate_extension",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "duplicate extension 2.5.29.15",
 		},
 		{
 			name: "missing_crldp",

@@ -233,6 +233,63 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "RSA modulus has a prime factor smaller than 752",
 		},
 		{
+			// 2^2046 has a bit length of 2047, but still encodes in 256
+			// octets, so its encoded modulus size is 2048 bits: it passes the
+			// size check and fails the parity check instead.
+			name:       "rsa_modulus_leading_zero_bit",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 2046), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus is even",
+		},
+		{
+			// 2^2039 encodes in 255 octets, so its encoded modulus size is
+			// 2040 bits.
+			name:       "rsa_modulus_wrong_encoded_size",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 2039), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA encoded modulus size 2040 is not allowed",
+		},
+		{
+			name: "critical_aia",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(authorityInformationAccessOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "authorityInformationAccess extension is critical",
+		},
+		{
+			name: "critical_certificate_policies",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(certificatePoliciesOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "certificatePolicies extension is critical",
+		},
+		{
+			name: "critical_crldp",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(crlDistributionPointsOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "crlDistributionPoints extension is critical",
+		},
+		{
+			name: "critical_eku",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(extKeyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "extKeyUsage extension is critical",
+		},
+		{
+			name: "duplicate_extension",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "duplicate extension 2.5.29.15",
+		},
+		{
 			name: "aia_contains_ocsp",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.OCSPServer = []string{"http://ocsp.x99.lencr.org/"}

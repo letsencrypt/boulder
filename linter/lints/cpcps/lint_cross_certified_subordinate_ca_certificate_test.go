@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"math/big"
 	"strings"
 	"testing"
@@ -228,6 +229,63 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 4095), big.NewInt(1)), E: 65537},
 			want:       lint.Error,
 			wantSubStr: "RSA modulus has a prime factor smaller than 752",
+		},
+		{
+			// 2^4094 has a bit length of 4095, but still encodes in 512
+			// octets, so its encoded modulus size is 4096 bits: it passes the
+			// size check and fails the parity check instead.
+			name:       "rsa_modulus_leading_zero_bit",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 4094), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA modulus is even",
+		},
+		{
+			// 2^4087 encodes in 511 octets, so its encoded modulus size is
+			// 4088 bits.
+			name:       "rsa_modulus_wrong_encoded_size",
+			pub:        &rsa.PublicKey{N: new(big.Int).Lsh(big.NewInt(1), 4087), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA encoded modulus size 4088 is not allowed",
+		},
+		{
+			name: "critical_aia",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(authorityInformationAccessOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "authorityInformationAccess extension is critical",
+		},
+		{
+			name: "critical_certificate_policies",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(certificatePoliciesOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "certificatePolicies extension is critical",
+		},
+		{
+			name: "critical_crldp",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(crlDistributionPointsOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "crlDistributionPoints extension is critical",
+		},
+		{
+			name: "critical_eku",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(extKeyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "extKeyUsage extension is critical",
+		},
+		{
+			name: "duplicate_extension",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
+			},
+			want:       lint.Error,
+			wantSubStr: "duplicate extension 2.5.29.15",
 		},
 	}
 
