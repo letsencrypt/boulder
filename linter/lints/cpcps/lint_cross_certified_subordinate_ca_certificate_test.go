@@ -68,6 +68,23 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			want: lint.Pass,
 		},
 		{
+			name: "good_minimal_serial",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				// Exactly 101 bits, the smallest permitted length.
+				tmpl.SerialNumber = new(big.Int).Lsh(big.NewInt(1), 100)
+			},
+			want: lint.Pass,
+		},
+		{
+			name: "serial_too_short",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				// Exactly 100 bits, one bit short of the required minimum.
+				tmpl.SerialNumber = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 100), big.NewInt(1))
+			},
+			want:       lint.Error,
+			wantSubStr: "serialNumber is not more than 100 bits long",
+		},
+		{
 			name: "pathlen_mismatch",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				// The existing CA Certificate has no pathLenConstraint, so

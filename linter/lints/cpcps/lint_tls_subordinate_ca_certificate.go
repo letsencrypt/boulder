@@ -88,15 +88,16 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 		return errResult("version is not v3")
 	}
 
-	// serialNumber is "Approximately 128 bits, including at least 64 bits of
-	// output from a CSPRNG". We can't test randomness here, but a 128-bit
-	// serial occupies exactly 16 bytes.
+	// serialNumber is "More than 100 bits of output from a CSPRNG, optionally
+	// with additional non-random bits". We can't test randomness here, but a
+	// serial containing more than 100 bits of CSPRNG output must itself be
+	// more than 100 bits long.
 	// https://github.com/letsencrypt/cp-cps/blob/6adcd83ff21e9571a39339048364edd6ba34ed39/CP-CPS.md?plain=1#L1047
 	if c.SerialNumber == nil || c.SerialNumber.Sign() <= 0 {
 		return errResult("serialNumber is not a positive integer")
 	}
-	if (c.SerialNumber.BitLen()+7)/8 != 16 {
-		return errResult("serialNumber is not approximately 128 bits")
+	if c.SerialNumber.BitLen() <= 100 {
+		return errResult("serialNumber is not more than 100 bits long")
 	}
 
 	// signature is byte-for-byte identical to one of the hexadecimal encodings
