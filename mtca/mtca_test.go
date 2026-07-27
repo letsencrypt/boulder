@@ -5,6 +5,8 @@ package mtca
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/mldsa"
 	"crypto/x509"
 	"database/sql"
@@ -21,6 +23,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
+	"github.com/letsencrypt/boulder/config"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -32,7 +35,7 @@ import (
 // setup returns a working mtca plus a cleanup function, or an error.
 func setup() (*mtca, func(), error) {
 	issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
-		Profiles:   []string{},
+		Profiles:   []string{"some profile"},
 		IssuerURL:  "http://ignored.letsencrypt.org",
 		CRLURLBase: "http://ignored.letsencrypt.org/",
 		CRLShards:  1,
@@ -53,12 +56,34 @@ func setup() (*mtca, func(), error) {
 	truncateTables(db)
 
 	logger := blog.NewMock()
+	clk := clock.NewFake()
 
-	mtca, err := New(issuer, 100*time.Millisecond, dbMap, &fakeS3{}, logger)
+	profile, err := issuance.NewProfile(issuance.ProfileConfig{
+		OmitCommonName:      true,
+		OmitKeyEncipherment: true,
+		OmitClientAuth:      true,
+		OmitSKID:            true,
+		MTC:                 true,
+		MaxValidityPeriod:   config.Duration{time.Hour},
+		LintConfig:          "",
+		IgnoredLints: []string{
+			"w_ext_subject_key_identifier_missing_sub_cert",
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_signature_algorithm_not_supported",
+		},
+	})
 	if err != nil {
 		return nil, nil, err
 	}
 
+	mtca, err := New(
+		issuer,
+		profile,
+		100*time.Millisecond,
+		dbMap,
+		&fakeS3{},
+		logger,
+		clk)
 	mtca.InitLog(context.Background())
 
 	cleanup := func() {
@@ -73,7 +98,7 @@ func TestPool(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Go(func() {
-			err := p.append(entry{})
+			err := p.append(pendingEntry{})
 			if err != nil {
 				t.Errorf("appending entry: %s", err)
 			}
@@ -81,7 +106,7 @@ func TestPool(t *testing.T) {
 	}
 	wg.Wait()
 
-	err := p.append(entry{})
+	err := p.append(pendingEntry{})
 	if err == nil {
 		t.Errorf("append to full pool: got nil, want err")
 	}
@@ -157,6 +182,24 @@ func TestSequence(t *testing.T) {
 	}
 	// Fill the pool with five concurrent requests.
 	mtca.pool.maxSize = 5
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating key: %s", err)
+	}
+	pubkeyBytes, err := x509.MarshalPKIXPublicKey(key.Public())
+	if err != nil {
+		t.Fatalf("marshaling pubkey: %s", err)
+	}
+
+	req := &proto.IssueRequest{
+		Pubkey: pubkeyBytes,
+		Identifiers: []*corepb.Identifier{
+			{Type: "dns", Value: "example.com"},
+		},
+		Profile: "mtcExample",
+	}
+
 	type result struct {
 		*proto.IssueResponse
 		error
@@ -164,22 +207,18 @@ func TestSequence(t *testing.T) {
 	ch := make(chan result)
 	for i := 0; i < 5; i++ {
 		go func() {
-			resp, err := mtca.Issue(t.Context(), &proto.IssueRequest{
-				Pubkey: []byte("abc"),
-				Identifiers: []*corepb.Identifier{
-					{Type: "dns", Value: "example.com"},
-				},
-				Profile: "mtcExample",
-			})
+			resp, err := mtca.Issue(t.Context(), req)
 			ch <- result{IssueResponse: resp, error: err}
 		}()
 	}
+
 	// Issue blocks until sequencing, so wait for all five to be pooled.
 	for mtca.pool.len() < 5 {
 		time.Sleep(time.Millisecond)
 	}
+
 	// With the pool full, a sixth request should fail.
-	_, err = mtca.Issue(t.Context(), &proto.IssueRequest{Pubkey: []byte("abc")})
+	_, err = mtca.Issue(t.Context(), req)
 	if err == nil {
 		t.Fatal("Issue with a full pool: got nil error, want error")
 	}
@@ -226,6 +265,7 @@ func TestSequence(t *testing.T) {
 		}
 		seenIDs[res.MtcEntryIndex] = true
 	}
+
 	// Lastly, verify the resulting checkpoint is valid.
 	latest, err = mtca.latestCheckpoint(t.Context())
 	if err != nil {
