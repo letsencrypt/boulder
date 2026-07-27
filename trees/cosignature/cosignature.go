@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
@@ -196,8 +194,8 @@ func (c *Cosigner) CosignatureLine(tree tlog.Tree) (string, error) {
 	return signatureLineFor(c.name, c.keyID, signature), nil
 }
 
-// Verifier is a note.Verifier that verifies ML-DSA-44 cosignatures over
-// checkpoints.
+// Verifier is a note.Verifier that verifies an MTC cosigner's ML-DSA-44
+// cosignatures over checkpoints.
 //
 //   - https://c2sp.org/tlog-cosignature
 //   - https://c2sp.org/mtc-tlog
@@ -275,29 +273,30 @@ func (v *Verifier) Verify(text, signature []byte) bool {
 	return v.VerifyCheckpoint(parsed.Origin, parsed.Tree, signature) == nil
 }
 
-// TimestampedSignature extracts verifier's timestamped_signature from n. It
-// returns false when verifier did not sign n or the signature is malformed. n
-// must come from note.Open with verifier in its verifier list.
-func TimestampedSignature(n *note.Note, verifier note.Verifier) ([]byte, bool) {
-	for _, signature := range n.Sigs {
-		if signature.Name != verifier.Name() || signature.Hash != verifier.KeyHash() {
-			continue
-		}
-		idSignature, err := base64.StdEncoding.DecodeString(signature.Base64)
-		if err != nil || len(idSignature) != keyIDSize+timestampedSignatureSize {
-			return nil, false
-		}
-		return idSignature[keyIDSize:], true
+// TimestampedSignature verifies line against the checkpoint note text with
+// verifier and returns the timestamped_signature by verifier's cosigner. An
+// error is returned if text and line do not form a well-formed note or if
+// verifier rejects the signature. Signatures from unknown keys are ignored.
+func TimestampedSignature(text, line string, verifier *Verifier) ([]byte, error) {
+	n, err := note.Open([]byte(text+"\n"+line), note.VerifierList(verifier))
+	if err != nil {
+		return nil, fmt.Errorf("opening the cosigned note: %s", err)
 	}
-	return nil, false
+	// verifier is the only verifier in the list, so every signature in n.Sigs
+	// is the cosigner's, verified and length-checked.
+	idSignature, err := base64.StdEncoding.DecodeString(n.Sigs[0].Base64)
+	if err != nil {
+		return nil, fmt.Errorf("decoding the signature by %s: %s", verifier.name, err)
+	}
+	return idSignature[keyIDSize:], nil
 }
 
-// Signature returns the ML-DSA-44 signature of a timestamped_signature, the
-// form certificates embed. It errors on a wrong length or a non-zero timestamp,
-// which certificates cannot carry.
+// RawSignature returns the ML-DSA-44 signature from a timestamped_signature,
+// the form certificates embed. It errors if the input has the wrong length or a
+// non-zero timestamp, which certificates cannot carry.
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-6.2
-func Signature(timestampedSignature []byte) ([]byte, error) {
+func RawSignature(timestampedSignature []byte) ([]byte, error) {
 	if len(timestampedSignature) != timestampedSignatureSize {
 		return nil, fmt.Errorf("timestamped signature is %d bytes, want %d", len(timestampedSignature), timestampedSignatureSize)
 	}
@@ -306,34 +305,4 @@ func Signature(timestampedSignature []byte) ([]byte, error) {
 		return nil, fmt.Errorf("timestamp is %d, want 0 for a cosignature used in certificates", timestamp)
 	}
 	return timestampedSignature[timestampSize:], nil
-}
-
-// Line rebuilds the signature line for a timestamped_signature, recomputing the
-// key ID from name and pubKey. It does not verify the signature.
-func Line(name string, pubKey *mldsa.PublicKey, timestampedSignature []byte) (string, error) {
-	if name == "" {
-		return "", errors.New("empty cosigner name")
-	}
-	if len(name) > 255 {
-		return "", fmt.Errorf("cosigner name %q is %d bytes, want at most 255", name, len(name))
-	}
-	if !utf8.ValidString(name) {
-		return "", fmt.Errorf("cosigner name %q is not valid UTF-8", name)
-	}
-	if strings.ContainsFunc(name, func(r rune) bool { return r < 0x20 }) {
-		return "", fmt.Errorf("cosigner name %q contains a control character", name)
-	}
-	if strings.IndexFunc(name, unicode.IsSpace) >= 0 {
-		return "", fmt.Errorf("cosigner name %q contains a space", name)
-	}
-	if strings.Contains(name, "+") {
-		return "", fmt.Errorf("cosigner name %q contains a plus sign", name)
-	}
-	if pubKey.Parameters().PublicKeySize() != mldsa.MLDSA44PublicKeySize {
-		return "", errors.New("public key must be ML-DSA-44")
-	}
-	if len(timestampedSignature) != timestampedSignatureSize {
-		return "", fmt.Errorf("timestamped signature is %d bytes, want %d", len(timestampedSignature), timestampedSignatureSize)
-	}
-	return signatureLineFor(name, keyIDFor(name, pubKey), timestampedSignature), nil
 }

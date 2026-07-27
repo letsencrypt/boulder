@@ -9,7 +9,9 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -85,12 +87,16 @@ func TestKeyID(t *testing.T) {
 	}
 }
 
-func TestVerifyRejectsMalformedSignature(t *testing.T) {
+func TestVerifyRejectsMalformedInput(t *testing.T) {
 	v := newVerifier(t)
 	for _, length := range []int{0, 7, 8, timestampedSignatureSize - 1, timestampedSignatureSize + 1} {
 		if v.Verify([]byte(exampleCheckpoint), make([]byte, length)) {
 			t.Errorf("Verify accepted a %d-byte signature", length)
 		}
+	}
+
+	if v.Verify([]byte("not a checkpoint"), make([]byte, timestampedSignatureSize)) {
+		t.Error("Verify accepted malformed checkpoint text")
 	}
 }
 
@@ -263,8 +269,8 @@ func TestCosignerRoundTrip(t *testing.T) {
 	}
 
 	// ML-DSA signing through a crypto.Signer may be hedged, so
-	// CosignatureLine's line carries a fresh signature. Line must rebuild that
-	// line byte for byte from the signature extracted out of it.
+	// CosignatureLine's line carries a fresh signature. signatureLineFor must
+	// rebuild that line byte for byte from the signature extracted out of it.
 	line, err := ca.CosignatureLine(parsed.Tree)
 	if err != nil {
 		t.Fatalf("CosignatureLine: %s", err)
@@ -273,24 +279,16 @@ func TestCosignerRoundTrip(t *testing.T) {
 		t.Errorf("line %q has unexpected prefix", line)
 	}
 
-	signed := []byte(text + "\n" + line)
-	n, err := note.Open(signed, note.VerifierList(v))
+	extracted, err := TimestampedSignature(text, line, v)
 	if err != nil {
-		t.Fatalf("note.Open of a reassembled MTC-cosigned note: %s", err)
-	}
-	extracted, ok := TimestampedSignature(n, v)
-	if !ok {
-		t.Fatal("TimestampedSignature = false for a reassembled note")
+		t.Fatalf("TimestampedSignature on a reassembled note: %s", err)
 	}
 	if !v.Verify([]byte(text), extracted) {
 		t.Error("Verify rejected an extracted cosignature")
 	}
-	rebuilt, err := Line(ca.name, testPubKey(t), extracted)
-	if err != nil {
-		t.Fatalf("Line: %s", err)
-	}
+	rebuilt := signatureLineFor(ca.name, ca.keyID, extracted)
 	if rebuilt != line {
-		t.Errorf("Line = %q, want %q", rebuilt, line)
+		t.Errorf("signatureLineFor = %q, want %q", rebuilt, line)
 	}
 }
 
@@ -368,83 +366,68 @@ func TestCosignerRejectsShortSignature(t *testing.T) {
 	if err == nil {
 		t.Error("CosignCheckpoint with a truncated signature = nil error, want error")
 	}
+	_, err = ca.CosignatureLine(tlog.Tree{N: 1})
+	if err == nil {
+		t.Error("CosignatureLine with a truncated signature = nil error, want error")
+	}
 }
 
-// TestLineRejects enforces signed-note's key name rules, for which Line is the
-// only gate now that cosigner and verifier names derive from validated OIDs.
-func TestLineRejects(t *testing.T) {
-	pub := testPubKey(t)
-	wrong, err := mldsa.GenerateKey(mldsa.MLDSA65())
+// errSigner is a crypto.Signer with a valid ML-DSA-44 public key whose Sign
+// always fails, standing in for an unavailable external signer such as an HSM.
+type errSigner struct {
+	pubKey *mldsa.PublicKey
+}
+
+func (s errSigner) Public() crypto.PublicKey {
+	return s.pubKey
+}
+
+func (s errSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, error) {
+	return nil, errors.New("signer unavailable")
+}
+
+func TestCosignerPropagatesSignerError(t *testing.T) {
+	ca, err := NewCosigner("32473.2", "32473.2.0.42", errSigner{pubKey: testPubKey(t)})
 	if err != nil {
-		t.Fatalf("GenerateKey(MLDSA65): %s", err)
+		t.Fatalf("NewCosigner: %s", err)
 	}
-	good := make([]byte, timestampedSignatureSize)
-
-	for _, name := range []string{
-		"",
-		"has space",
-		"has\ttab",
-		"has+plus",
-		"has\x01control",
-		"bad\xffutf8",
-		strings.Repeat("a", 256),
-	} {
-		_, err := Line(name, pub, good)
-		if err == nil {
-			t.Errorf("Line(%q) = nil error, want error", name)
-		}
-	}
-
-	cases := []struct {
-		name      string
-		signer    string
-		pub       *mldsa.PublicKey
-		signature []byte
-	}{
-		{"Wrong key type", cosignerName, wrong.PublicKey(), good},
-		{"Short signature", cosignerName, pub, good[:10]},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := Line(tc.signer, tc.pub, tc.signature)
-			if err == nil {
-				t.Error("want error")
-			}
-		})
+	_, err = ca.CosignCheckpoint(tlog.Tree{N: 1})
+	if err == nil {
+		t.Error("CosignCheckpoint with a failing signer = nil error, want error")
 	}
 }
 
-// TestSignature checks that Signature returns the trailing signature bytes and
-// refuses lengths and timestamps that certificates cannot carry.
-func TestSignature(t *testing.T) {
+// TestRawSignature checks that RawSignature returns the trailing signature
+// bytes and refuses lengths and timestamps that certificates cannot carry.
+func TestRawSignature(t *testing.T) {
 	timestampedSignature := make([]byte, timestampedSignatureSize)
 	for i := range timestampedSignature[8:] {
 		timestampedSignature[8+i] = byte(i)
 	}
-	signature, err := Signature(timestampedSignature)
+	signature, err := RawSignature(timestampedSignature)
 	if err != nil {
-		t.Fatalf("Signature: %s", err)
+		t.Fatalf("RawSignature: %s", err)
 	}
 	if !bytes.Equal(signature, timestampedSignature[8:]) {
-		t.Error("Signature did not return the trailing signature bytes")
+		t.Error("RawSignature did not return the trailing signature bytes")
 	}
 
-	_, err = Signature(timestampedSignature[:10])
+	_, err = RawSignature(timestampedSignature[:10])
 	if err == nil {
-		t.Error("Signature with a short input = nil error, want error")
+		t.Error("RawSignature with a short input = nil error, want error")
 	}
 
 	nonzero := bytes.Clone(timestampedSignature)
 	nonzero[7] = 1
-	_, err = Signature(nonzero)
+	_, err = RawSignature(nonzero)
 	if err == nil {
-		t.Error("Signature with a non-zero timestamp = nil error, want error")
+		t.Error("RawSignature with a non-zero timestamp = nil error, want error")
 	}
 }
 
-// TestTimestampedSignature checks that the timestamped_signature extracted from
-// an opened note verifies on its own, and that extraction fails for a verifier
-// that did not sign.
+// TestTimestampedSignature checks that the extracted timestamped_signature
+// verifies on its own, and that extraction errors for a verifier that did not
+// sign.
 func TestTimestampedSignature(t *testing.T) {
 	ca, err := NewCosigner("32473.2", "32473.2.0.42", testKey(t))
 	if err != nil {
@@ -464,14 +447,9 @@ func TestTimestampedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	n, err := note.Open([]byte(text+"\n"+line), note.VerifierList(v))
+	timestampedSignature, err := TimestampedSignature(text, line, v)
 	if err != nil {
-		t.Fatalf("note.Open: %s", err)
-	}
-
-	timestampedSignature, ok := TimestampedSignature(n, v)
-	if !ok {
-		t.Fatal("TimestampedSignature = false for the cosigner that signed the note")
+		t.Fatalf("TimestampedSignature for the cosigner that signed the note: %s", err)
 	}
 	if !v.Verify([]byte(text), timestampedSignature) {
 		t.Fatal("Verify rejected an extracted cosignature")
@@ -481,44 +459,24 @@ func TestTimestampedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	_, dup := TimestampedSignature(n, other)
-	if dup {
-		t.Error("TimestampedSignature = true for a cosigner that did not sign the note")
+	_, err = TimestampedSignature(text, line, other)
+	if err == nil {
+		t.Error("TimestampedSignature for a cosigner that did not sign the note = nil error, want error")
 	}
 }
 
-// TestTimestampedSignatureRejectsForeignFormat covers a signature verified by
-// x/mod's standard signer (alg 0x01, 64-byte payload). It is not a
-// timestamped_signature, so TimestampedSignature must refuse it even though the
-// note opened.
+// TestTimestampedSignatureRejectsForeignFormat checks that a signature line
+// whose body is not keyID || timestamped_signature (such as x/mod's standard
+// 64-byte Ed25519 form) fails verification even when its name and key ID match
+// the verifier's.
 func TestTimestampedSignatureRejectsForeignFormat(t *testing.T) {
-	skey, vkey, err := note.GenerateKey(rand.Reader, "log.example")
-	if err != nil {
-		t.Fatalf("GenerateKey: %s", err)
-	}
-	signer, err := note.NewSigner(skey)
-	if err != nil {
-		t.Fatalf("NewSigner: %s", err)
-	}
-	signed, err := note.Sign(&note.Note{Text: exampleCheckpoint}, signer)
-	if err != nil {
-		t.Fatalf("note.Sign: %s", err)
-	}
-	verifier, err := note.NewVerifier(vkey)
-	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
-	}
-	n, err := note.Open(signed, note.VerifierList(verifier))
-	if err != nil {
-		t.Fatalf("note.Open: %s", err)
-	}
-
-	if len(n.Sigs) != 1 {
-		t.Fatalf("Sigs = %+v, want the standard signer's verified signature", n.Sigs)
-	}
-	_, ok := TimestampedSignature(n, verifier)
-	if ok {
-		t.Error("TimestampedSignature = true for a non-cosignature-format signature")
+	v := newVerifier(t)
+	idSignature := make([]byte, keyIDSize+64)
+	binary.BigEndian.PutUint32(idSignature[:keyIDSize], v.KeyHash())
+	line := noteSignatureLinePrefix + v.Name() + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"
+	_, err := TimestampedSignature(exampleCheckpoint, line, v)
+	if err == nil {
+		t.Error("TimestampedSignature with a 64-byte signature body = nil error, want error")
 	}
 }
 
