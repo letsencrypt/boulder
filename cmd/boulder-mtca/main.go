@@ -141,6 +141,9 @@ func main() {
 		}
 	}
 
+	err = mtcaImpl.Preflight(context.Background())
+	cmd.FailOnError(err, "Loading log state")
+
 	srv := bgrpc.NewServer(c.MTCA.GRPCMTCA, logger).Add(
 		&mtcapb.MTCA_ServiceDesc, mtcaImpl)
 

@@ -3,13 +3,15 @@
 package mtca
 
 import (
+	"bytes"
 	"context"
 	"crypto"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/asn1"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -26,6 +28,7 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
+	"github.com/letsencrypt/boulder/trees/tiles"
 )
 
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
@@ -79,6 +82,11 @@ type mtca struct {
 	logNumber uint16
 	pool      *pool
 
+	// frontier contains all the tiles on the right edge of the tree.
+	// It will be used to accumulate entries for writing to storage.
+	// Not safe for concurrent reading and writing.
+	frontier *tiles.Frontier
+
 	sequencingPeriod time.Duration
 
 	// TODO: factor our sa.InitWrappedDb() so we get metrics and other goodies.
@@ -122,7 +130,17 @@ func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 // InitLog creates the database metadata for a new, empty log: one checkpoint and the row
 // in `latestCheckpoint` that refers to it. Should only be run once in a log's lifetime.
 func (m *mtca) InitLog(ctx context.Context) error {
-	_, err := db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
+	candidate := &tiles.Frontier{}
+
+	nullEntry := &entry.MTCLogEntry{}
+	err := candidate.AppendEntry(nullEntry)
+	if err != nil {
+		return err
+	}
+
+	rootHash := candidate.RootHash()
+
+	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		var numLatestCheckpoints int64
 		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
 			m.mtcLogID())
@@ -146,19 +164,9 @@ func (m *mtca) InitLog(ctx context.Context) error {
 				m.mtcLogID(), numCheckpoints, numLatestCheckpoints)
 		}
 
-		// null_entry has empty extensions and a MTCLogEntryType of 0. Since extensions can be up to 2^16 long
-		// there's two bytes of length prefix. Since MTCLogEntryType can have up to 2^16 values, it's also two bytes.
-		// All the bytes are zero: empty extensions, null_entry type is enum value zero.
-		// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-log-entries
-		// To calculate the Merkle Tree Hash of a single-entry list, we prepend 0x00 (as compared with 0x01 when hashing
-		// two nodes). So five zeroes total.
-		// https://www.rfc-editor.org/info/rfc9162/#name-definition-of-the-merkle-tr
-		nullEntry := []byte{0, 0, 0, 0, 0}
-		rootHash := sha256.Sum256(nullEntry)
-
 		firstCheckpoint := checkpoint{
 			MTCLogID: m.mtcLogID(),
-			TreeSize: 1,
+			TreeSize: candidate.TreeSize(),
 			RootHash: rootHash[:],
 		}
 
@@ -188,8 +196,26 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		return nil, nil
 	})
 	if err != nil {
+		if errors.Is(err, ErrIssuanceLogAlreadyInitialized) {
+			// The DB thinks the log is initialized; make sure the tiles are there.
+			err2 := m.Preflight(ctx)
+			if err2 != nil {
+				return fmt.Errorf("DB is initialized but Preflight returns: %s", err2)
+			}
+			return err
+		}
 		return err
 	}
+
+	err = candidate.Publish(ctx, m.s3c, m.mtcLogID())
+	if err != nil {
+		if errors.Is(err, tiles.ErrTileExists) {
+			return ErrIssuanceLogAlreadyInitialized
+		}
+		return err
+	}
+
+	m.frontier = candidate
 
 	_, err = m.latestCheckpoint(ctx)
 	if err != nil {
@@ -199,13 +225,37 @@ func (m *mtca) InitLog(ctx context.Context) error {
 	return err
 }
 
+// Preflight gets the latest checkpoint from the database and reads the corresponding
+// frontier tiles from storage. It must be called on startup, before Loop().
+func (m *mtca) Preflight(ctx context.Context) error {
+	latest, err := m.latestCheckpoint(ctx)
+	if err != nil {
+		return err
+	}
+	frontier, err := tiles.LoadFrontier(ctx, m.s3c, latest.TreeSize, m.mtcLogID())
+	if err != nil {
+		return err
+	}
+
+	tileBasedHash := frontier.RootHash()
+	if !bytes.Equal(latest.RootHash, tileBasedHash[:]) {
+		return fmt.Errorf("state mismatch: at tree size %d, DB contains RootHash %s, but frontier tiles calculate %s",
+			latest.TreeSize,
+			base64.StdEncoding.EncodeToString(latest.RootHash[:]),
+			tileBasedHash)
+	}
+
+	m.frontier = frontier
+	return nil
+}
+
 type pool struct {
 	sync.RWMutex
 	entries []pendingEntry
 	maxSize int
 }
 
-// pendingEntry represents an pending entry in the pool, along with a channel to notify a pending RPC.
+// pendingEntry represents a pending entry in the pool, along with a channel to notify a pending RPC.
 type pendingEntry struct {
 	mtcle *entry.MTCLogEntry
 	ch    chan<- int64
@@ -244,6 +294,8 @@ func (m *mtca) mtcLogID() string {
 
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
 // and a new checkpoint signed by the CA. It does not wait for a mirror cosignature.
+//
+// Safe for concurrent calls. Implements a gRPC method.
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
 	key, err := x509.ParsePKIXPublicKey(req.Pubkey)
 	if err != nil {
@@ -279,7 +331,7 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 
 	mtcle, err := entry.FromX509(lintCertBytes, crypto.SHA256)
 	if err != nil {
-		return nil, fmt.Errorf("generating MTCLogEntry: %s '%x'", err, lintCertBytes)
+		return nil, fmt.Errorf("generating MTCLogEntry: %s", err)
 	}
 
 	// We'll get notification of sequencing on this channel. Buffer it so `sequence()` doesn't
@@ -308,6 +360,8 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 }
 
 // Loop periodically sequences all entries in the pool and sends notifications to the waiting RPCs.
+//
+// Must be called after Preflight() returns success.
 //
 // At process shutdown, this context should be canceled _after_ GracefulStop returns. That ensures
 // there are no inflight RPCs from clients, which in turn ensures that we have sequenced everything
@@ -385,7 +439,13 @@ func (m *mtca) fakePublisher(ctx context.Context) {
 //
 // Each entry in the pool will get a notification on its channel: either the index at which
 // it was sequenced, or -1 if there was an error during sequencing.
+//
+// Must only be called after Preflight() returns success.
 func (m *mtca) sequence(ctx context.Context) error {
+	if m.frontier == nil {
+		return fmt.Errorf("call mtca.Preflight() before sequencing")
+	}
+
 	if m.pool.len() == 0 {
 		return nil
 	}
@@ -414,18 +474,36 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	// Simulate writing to tile storage
-	latestTreeSize := latest.TreeSize
-	var entryIndexes []int64
+	candidate := m.frontier.Clone()
+
+	// Add leaves to the candidate.
 	for _, e := range entries {
-		m.log.AuditInfo("Preparing to issue: %x", e)
-		entryIndexes = append(entryIndexes, latestTreeSize)
-		latestTreeSize++
+		err = candidate.AppendEntry(e.mtcle)
+		if err != nil {
+			return err
+		}
 	}
 
-	// TODO: calculate new root hash for real
-	var newRootHash [sha256.Size]byte
-	rand.Read(newRootHash[:])
+	newRootHash := candidate.RootHash()
+
+	// Log each leaf along with the root hash it will be included in.
+	for i, e := range entries {
+		m.log.AuditInfo("issuing", map[string]any{
+			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
+			"entryIndex":             latest.TreeSize + int64(i),
+			"mtcLogID":               m.mtcLogID(),
+			"newRootHash":            newRootHash.String(),
+		})
+	}
+
+	// First stage to a pending area. After signing and storing to the DB
+	// (but before publishing a new checkpoint signed note), we will flush
+	// to the live location. This ensures we've persisted the tiles before
+	// committing to a tree hash by signing it.
+	err = candidate.Stage(ctx, m.s3c, m.mtcLogID())
+	if err != nil {
+		return fmt.Errorf("staging candidate tiles: %s", err)
+	}
 
 	newCheckpoint := checkpoint{
 		ID:              0,
@@ -433,7 +511,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		MTCASignature:   nil,
 		MirrorID:        "",
 		MirrorSignature: nil,
-		TreeSize:        latestTreeSize,
+		TreeSize:        candidate.TreeSize(),
 		RootHash:        newRootHash[:],
 	}
 
@@ -510,9 +588,24 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return err
 	}
 
+	m.frontier = candidate
+
+	// Write the tiles to a live serving location.
+	//
+	// TODO(#8902): This should include indefinite retries on error. We've committed to the
+	// tree hash by signing it, so nothing can make progress until we've published the tiles.
+	//
+	// Once we add publishing of checkpoints as signed notes, publication of the signed note
+	// should come after this flush succeeds, so monitors don't try to fetch tiles that aren't
+	// yet available.
+	err = candidate.Publish(ctx, m.s3c, m.mtcLogID())
+	if err != nil {
+		return fmt.Errorf("publishing tiles: %s", err)
+	}
+
 	// Notify waiting RPCs.
 	for i, e := range entries {
-		e.ch <- entryIndexes[i]
+		e.ch <- latest.TreeSize + int64(i)
 	}
 	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil

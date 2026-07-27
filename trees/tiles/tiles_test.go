@@ -3,22 +3,17 @@ package tiles
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"reflect"
 	"slices"
 	"testing"
 
-	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/subtree"
 )
@@ -57,54 +52,6 @@ func TestPath(t *testing.T) {
 	}
 }
 
-type fakeS3Object struct {
-	data            []byte
-	contentEncoding *string
-}
-
-type fakeS3 struct {
-	objects map[string]fakeS3Object
-	puts    int
-}
-
-func newFakeS3() *fakeS3 {
-	return &fakeS3{objects: make(map[string]fakeS3Object)}
-}
-
-func (f *fakeS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	_, ok := f.objects[*params.Key]
-	if ok {
-		return nil, &awshttp.ResponseError{
-			ResponseError: &smithyhttp.ResponseError{
-				Response: &smithyhttp.Response{Response: &http.Response{StatusCode: http.StatusPreconditionFailed}},
-				Err:      errors.New("PreconditionFailed"),
-			},
-		}
-	}
-	body, err := io.ReadAll(params.Body)
-	if err != nil {
-		return nil, err
-	}
-	f.objects[*params.Key] = fakeS3Object{data: body, contentEncoding: params.ContentEncoding}
-	f.puts++
-	return nil, nil
-}
-
-func (f *fakeS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
-	o, ok := f.objects[*params.Key]
-	if ok {
-		return &s3.GetObjectOutput{
-			Body:            io.NopCloser(bytes.NewReader(o.data)),
-			ContentEncoding: o.contentEncoding,
-		}, nil
-	}
-	return nil, fmt.Errorf("not found")
-}
-
-func (f *fakeS3) Bucket() string {
-	return "fakebucket"
-}
-
 // testEntryBody returns the marshaled MTCLogEntry bytes for index i: empty
 // extensions, type tbs_cert_entry, and a unique value with length varying by
 // index (not a real TBSCertificateLogEntry).
@@ -132,7 +79,7 @@ func testEntry(i int) *entry.MTCLogEntry {
 
 // appendEntries appends test entries [start, end) to `f`, flushing every
 // `flushEvery“ appends and once at the end.
-func appendEntries(t *testing.T, f *Frontier, fs3 *fakeS3, start, end int, prefix string, flushEvery int) {
+func appendEntries(t *testing.T, f *Frontier, fs3 *bs3test.FakeS3, start, end int, prefix string, flushEvery int) {
 	t.Helper()
 	for i := start; i < end; i++ {
 		err := f.AppendEntry(testEntry(i))
@@ -140,13 +87,13 @@ func appendEntries(t *testing.T, f *Frontier, fs3 *fakeS3, start, end int, prefi
 			t.Fatalf("AppendEntry(%d): %s", i, err)
 		}
 		if (i+1)%flushEvery == 0 {
-			err := f.Flush(t.Context(), fs3, prefix)
+			err := f.Publish(t.Context(), fs3, prefix)
 			if err != nil {
 				t.Fatalf("Flush after %d entries: %s", i+1, err)
 			}
 		}
 	}
-	err := f.Flush(t.Context(), fs3, prefix)
+	err := f.Publish(t.Context(), fs3, prefix)
 	if err != nil {
 		t.Fatalf("final Flush: %s", err)
 	}
@@ -154,7 +101,7 @@ func appendEntries(t *testing.T, f *Frontier, fs3 *fakeS3, start, end int, prefi
 
 // buildFrontier appends `n` test entries to a new Frontier, flushing every
 // `flushEvery` appends and once at the end.
-func buildFrontier(t *testing.T, fs3 *fakeS3, n int, prefix string, flushEvery int) *Frontier {
+func buildFrontier(t *testing.T, fs3 *bs3test.FakeS3, n int, prefix string, flushEvery int) *Frontier {
 	t.Helper()
 	f := &Frontier{}
 	appendEntries(t, f, fs3, 0, n, prefix, flushEvery)
@@ -177,7 +124,7 @@ func parseEntries(t *testing.T, body []byte) [][]byte {
 }
 
 func TestGetTile(t *testing.T) {
-	fs3 := newFakeS3()
+	fs3 := bs3test.New()
 	gzipStr := "gzip"
 
 	gz := func(data []byte) []byte {
@@ -204,7 +151,7 @@ func TestGetTile(t *testing.T) {
 	})
 
 	t.Run("no content encoding", func(t *testing.T) {
-		fs3.objects["tile/0/000.p/1"] = fakeS3Object{data: raw}
+		fs3.Objects["tile/0/000.p/1"] = bs3test.StoredObject{Data: raw}
 		got, err := getTile(t.Context(), fs3, tlog.Tile{L: 0, N: 0, W: 1}, "")
 		if err != nil {
 			t.Fatalf("getTile: %s", err)
@@ -215,7 +162,7 @@ func TestGetTile(t *testing.T) {
 	})
 
 	t.Run("gzip", func(t *testing.T) {
-		fs3.objects["tile/entries/000.p/1"] = fakeS3Object{data: gz([]byte("compressed tile bytes")), contentEncoding: &gzipStr}
+		fs3.Objects["tile/entries/000.p/1"] = bs3test.StoredObject{Data: gz([]byte("compressed tile bytes")), ContentEncoding: &gzipStr}
 		got, err := getTile(t.Context(), fs3, tlog.Tile{L: -1, N: 0, W: 1}, "")
 		if err != nil {
 			t.Fatalf("getTile: %s", err)
@@ -226,7 +173,7 @@ func TestGetTile(t *testing.T) {
 	})
 
 	t.Run("corrupt gzip", func(t *testing.T) {
-		fs3.objects["tile/entries/000.p/2"] = fakeS3Object{data: []byte("not gzip"), contentEncoding: &gzipStr}
+		fs3.Objects["tile/entries/000.p/2"] = bs3test.StoredObject{Data: []byte("not gzip"), ContentEncoding: &gzipStr}
 		_, err := getTile(t.Context(), fs3, tlog.Tile{L: -1, N: 0, W: 2}, "")
 		if err == nil {
 			t.Errorf("getTile of corrupt gzip body: got nil, want error")
@@ -234,7 +181,7 @@ func TestGetTile(t *testing.T) {
 	})
 
 	t.Run("prefix", func(t *testing.T) {
-		fs3.objects["pre/tile/entries/000.p/3"] = fakeS3Object{data: gz([]byte("prefixed")), contentEncoding: &gzipStr}
+		fs3.Objects["pre/tile/entries/000.p/3"] = bs3test.StoredObject{Data: gz([]byte("prefixed")), ContentEncoding: &gzipStr}
 		got, err := getTile(t.Context(), fs3, tlog.Tile{L: -1, N: 0, W: 3}, "pre/")
 		if err != nil {
 			t.Fatalf("getTile with prefix: %s", err)
@@ -254,7 +201,7 @@ func TestRoundTrip(t *testing.T) {
 	sizes := []int{1, 2, 100, 255, 256, 257, 511, 512, 513, 767, 768, 1000}
 	for _, n := range sizes {
 		t.Run(fmt.Sprintf("size %d", n), func(t *testing.T) {
-			fs3 := newFakeS3()
+			fs3 := bs3test.New()
 			prefix := "p/"
 			f := buildFrontier(t, fs3, n, prefix, 100)
 
@@ -293,7 +240,7 @@ func TestStorageCorrectness(t *testing.T) {
 		leafHashes[i] = tlog.RecordHash(bodies[i])
 	}
 
-	fs3 := newFakeS3()
+	fs3 := bs3test.New()
 	buildFrontier(t, fs3, reloadAt, prefix, 999)
 
 	f, err := LoadFrontier(t.Context(), fs3, reloadAt, prefix)
@@ -376,13 +323,13 @@ func TestStorageCorrectness(t *testing.T) {
 }
 
 func TestLoadBadHashTile(t *testing.T) {
-	fs3 := newFakeS3()
+	fs3 := bs3test.New()
 	buildFrontier(t, fs3, 1, "", 100)
 
 	// Corrupt the level-0 hash tile so its length no longer matches its width.
-	o := fs3.objects["tile/0/000.p/1"]
-	o.data = o.data[:len(o.data)-1]
-	fs3.objects["tile/0/000.p/1"] = o
+	o := fs3.Objects["tile/0/000.p/1"]
+	o.Data = o.Data[:len(o.Data)-1]
+	fs3.Objects["tile/0/000.p/1"] = o
 
 	_, err := LoadFrontier(t.Context(), fs3, 1, "")
 	if err == nil {
@@ -409,12 +356,12 @@ func TestLoadBadEntryTile(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fs3 := newFakeS3()
+			fs3 := bs3test.New()
 			buildFrontier(t, fs3, 2, "", 100)
 
 			// Replace the entry tile with the bad body (uncompressed, so no
 			// ContentEncoding).
-			fs3.objects["tile/entries/000.p/2"] = fakeS3Object{data: tc.body}
+			fs3.Objects["tile/entries/000.p/2"] = bs3test.StoredObject{Data: tc.body}
 
 			_, err := LoadFrontier(t.Context(), fs3, 2, "")
 			if err == nil {
@@ -425,7 +372,7 @@ func TestLoadBadEntryTile(t *testing.T) {
 }
 
 func TestLoadEmptyTree(t *testing.T) {
-	_, err := LoadFrontier(t.Context(), newFakeS3(), 0, "")
+	_, err := LoadFrontier(t.Context(), bs3test.New(), 0, "")
 	if err == nil {
 		t.Errorf("Load(0): got nil, want error")
 	}
@@ -444,7 +391,7 @@ func TestAppendMaxSizeEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AppendEntry(65535-byte entry): %s", err)
 	}
-	err = f.Flush(t.Context(), newFakeS3(), "")
+	err = f.Publish(t.Context(), bs3test.New(), "")
 	if err != nil {
 		t.Fatalf("Flush: %s", err)
 	}
@@ -455,7 +402,7 @@ func TestAppendMaxSizeEntry(t *testing.T) {
 
 func TestFlushEmptyTree(t *testing.T) {
 	f := &Frontier{}
-	err := f.Flush(t.Context(), newFakeS3(), "")
+	err := f.Publish(t.Context(), bs3test.New(), "")
 	if err == nil {
 		t.Errorf("Flush of empty tree: got nil, want error")
 	}
@@ -464,16 +411,16 @@ func TestFlushEmptyTree(t *testing.T) {
 // TestFlushClean checks the dirtyLevel behavior. After a Flush,
 // a re-Flush should write nothing.
 func TestFlushClean(t *testing.T) {
-	fs3 := newFakeS3()
+	fs3 := bs3test.New()
 	f := buildFrontier(t, fs3, 10, "", 100)
 
-	putsBefore := fs3.puts
-	err := f.Flush(t.Context(), fs3, "")
+	objectsBefore := len(fs3.Objects)
+	err := f.Publish(t.Context(), fs3, "")
 	if err != nil {
 		t.Fatalf("second Flush: %s", err)
 	}
-	if fs3.puts != putsBefore {
-		t.Errorf("second Flush wrote %d objects, want 0", fs3.puts-putsBefore)
+	if len(fs3.Objects) != objectsBefore {
+		t.Errorf("second Flush wrote %d objects, want 0", len(fs3.Objects)-objectsBefore)
 	}
 }
 
@@ -506,7 +453,7 @@ func TestRootHash(t *testing.T) {
 }
 
 func TestWriteTileThatAlreadyExists(t *testing.T) {
-	fs3 := newFakeS3()
+	fs3 := bs3test.New()
 	coords := tlog.Tile{L: 0, N: 0, W: 1}
 	body := bytes.Repeat([]byte{'h'}, tlog.HashSize)
 
@@ -518,5 +465,74 @@ func TestWriteTileThatAlreadyExists(t *testing.T) {
 	err = writeTile(t.Context(), fs3, "", coords, body, false)
 	if !errors.Is(err, ErrTileExists) {
 		t.Errorf("second writeTile: got %s, want ErrTileExists", err)
+	}
+}
+
+// TestClone checks that a cloned Frontier shares no mutable state with the
+// original: growing the clone across a full-tile boundary must leave the
+// original unchanged, and appending the same entries to the original must
+// produce an identical tree that publishes identical tiles.
+func TestClone(t *testing.T) {
+	// Append more than one full tile's worth of entries, to exercise
+	// fullHashesTiles and fullEntryTiles.
+	frontier := &Frontier{}
+	for i := 0; i < 260; i++ {
+		err := frontier.AppendEntry(testEntry(i))
+		if err != nil {
+			t.Fatalf("AppendEntry(%d): %s", i, err)
+		}
+	}
+
+	clonedAt := frontier.TreeSize()
+
+	candidate := frontier.Clone()
+	if !reflect.DeepEqual(frontier, candidate) {
+		t.Fatalf("clone differs from original:\ngot  %#v\nwant %#v", candidate, frontier)
+	}
+
+	rootBefore := frontier.RootHash()
+
+	// Add another full tile's worth of entries.
+	const growTo = 520
+	for i := clonedAt; i < growTo; i++ {
+		err := candidate.AppendEntry(testEntry(int(i)))
+		if err != nil {
+			t.Fatalf("AppendEntry(%d) to clone: %s", i, err)
+		}
+	}
+
+	gotTreeSize := frontier.TreeSize()
+	if gotTreeSize != clonedAt {
+		t.Errorf("original TreeSize after appending to clone: got %d, want %d", gotTreeSize, clonedAt)
+	}
+
+	gotRootHash := frontier.RootHash()
+	if gotRootHash != rootBefore {
+		t.Errorf("original RootHash after appending to clone: got %s, want %s", gotRootHash, rootBefore)
+	}
+
+	// Append the same entries to the original and check for equality.
+	for i := clonedAt; i < growTo; i++ {
+		err := frontier.AppendEntry(testEntry(int(i)))
+		if err != nil {
+			t.Fatalf("AppendEntry(%d) to original: %s", i, err)
+		}
+	}
+	if !reflect.DeepEqual(frontier, candidate) {
+		t.Errorf("after identical appends, original differs from clone:\ngot  %#v\nwant %#v", frontier, candidate)
+	}
+
+	// Published tiles must be the same, too.
+	fs3f, fs3c := bs3test.New(), bs3test.New()
+	err := frontier.Publish(t.Context(), fs3f, "")
+	if err != nil {
+		t.Fatalf("publishing original: %s", err)
+	}
+	err = candidate.Publish(t.Context(), fs3c, "")
+	if err != nil {
+		t.Fatalf("publishing clone: %s", err)
+	}
+	if !reflect.DeepEqual(fs3f.Objects, fs3c.Objects) {
+		t.Errorf("original and clone published different tiles")
 	}
 }
