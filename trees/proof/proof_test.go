@@ -69,8 +69,8 @@ func TestMTCSignatureMarshal(t *testing.T) {
 
 func TestMTCProofMarshal(t *testing.T) {
 	var hash1, hash2 tlog.Hash
-	rand.Read(hash1[:])
-	rand.Read(hash1[:])
+	_, _ = rand.Read(hash1[:])
+	_, _ = rand.Read(hash1[:])
 
 	proof := MTCProof{
 		Extensions: nil,
