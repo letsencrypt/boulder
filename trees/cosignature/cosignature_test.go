@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
@@ -50,6 +51,12 @@ func testKey(t *testing.T) *mldsa.PrivateKey {
 func testPubKey(t *testing.T) *mldsa.PublicKey {
 	t.Helper()
 	return testKey(t).PublicKey()
+}
+
+// testSigner returns testKey wrapped to sign deterministically.
+func testSigner(t *testing.T) crypto.Signer {
+	t.Helper()
+	return privatekey.NewDeterministicSigner(testKey(t))
 }
 
 func newVerifier(t *testing.T) *Verifier {
@@ -214,7 +221,7 @@ func TestOrigin(t *testing.T) {
 // verifier against the matching checkpoint text, and reassembles into a
 // signature line that opens.
 func TestCosignerRoundTrip(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", testKey(t))
+	ca, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -429,7 +436,7 @@ func TestRawSignature(t *testing.T) {
 // verifies on its own, and that extraction errors for a verifier that did not
 // sign.
 func TestTimestampedSignature(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", testKey(t))
+	ca, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -484,7 +491,7 @@ func TestTimestampedSignatureRejectsForeignFormat(t *testing.T) {
 // signatures from unknown keys" with a note cosigned for one log by two MTC
 // cosigners and opened by one verifier, the shape of every real exchange.
 func TestOpenIgnoresUnknownSignatures(t *testing.T) {
-	known, err := NewCosigner("32473.2", "32473.2.0.42", testKey(t))
+	known, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -497,7 +504,7 @@ func TestOpenIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	unknown, err := NewCosigner("32473.9", "32473.2.0.42", otherKey)
+	unknown, err := NewCosigner("32473.9", "32473.2.0.42", privatekey.NewDeterministicSigner(otherKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}

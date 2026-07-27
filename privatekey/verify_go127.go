@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 )
 
 // verify ensures that the embedded PublicKey of the provided privateKey is
@@ -40,6 +41,28 @@ func verify(privateKey crypto.Signer) (crypto.Signer, crypto.PublicKey, error) {
 	}
 }
 
+// deterministicSigner is a crypto.Signer over an ML-DSA private key that signs
+// with SignDeterministic as opposed to the default hedged Sign method.
+type deterministicSigner struct {
+	key *mldsa.PrivateKey
+}
+
+// NewDeterministicSigner returns a crypto.Signer over an ML-DSA private key
+// that signs with SignDeterministic.
+func NewDeterministicSigner(key *mldsa.PrivateKey) crypto.Signer {
+	return deterministicSigner{key: key}
+}
+
+var _ crypto.Signer = deterministicSigner{}
+
+func (s deterministicSigner) Public() crypto.PublicKey {
+	return s.key.PublicKey()
+}
+
+func (s deterministicSigner) Sign(_ io.Reader, message []byte, _ crypto.SignerOpts) ([]byte, error) {
+	return s.key.SignDeterministic(message, nil)
+}
+
 // verifyMLDSA verifies ML-DSA private keys.
 func verifyMLDSA(privKey *mldsa.PrivateKey, pubKey *mldsa.PublicKey, msgHash hash.Hash) (crypto.Signer, crypto.PublicKey, error) {
 	sig, err := privKey.Sign(nil, msgHash.Sum(nil), nil)
@@ -51,5 +74,5 @@ func verifyMLDSA(privKey *mldsa.PrivateKey, pubKey *mldsa.PublicKey, msgHash has
 	if err != nil {
 		return nil, nil, fmt.Errorf("the provided ML-DSA private key failed signature verification: %s", err)
 	}
-	return privKey, privKey.Public(), nil
+	return NewDeterministicSigner(privKey), privKey.Public(), nil
 }

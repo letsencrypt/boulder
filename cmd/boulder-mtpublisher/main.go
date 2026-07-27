@@ -1,15 +1,20 @@
+//go:build go1.27
+
 package notmain
 
 import (
 	"context"
+	"crypto/mldsa"
+	"crypto/x509"
+	"encoding/pem"
 	"flag"
+	"fmt"
 	"os"
-
-	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/mtpublisher"
+	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -31,9 +36,35 @@ type Config struct {
 		// MirrorID identifies the cosigner this publisher writes alongside each
 		// cosignature (e.g. "32473.9").
 		MirrorID string `validate:"required"`
+
+		// KeyFile and PublicKeyFile hold the mirror cosigner's PEM-encoded
+		// ML-DSA-44 keypair.
+		KeyFile       string `validate:"required"`
+		PublicKeyFile string `validate:"required"`
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
+}
+
+// loadMLDSAPublicKey reads a PEM-encoded PKIX ML-DSA-44 public key.
+func loadMLDSAPublicKey(filename string) (*mldsa.PublicKey, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, fmt.Errorf("no PUBLIC KEY PEM block in %s", filename)
+	}
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	pubKey, ok := parsed.(*mldsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("key in %s is %T, must be ML-DSA-44", filename, parsed)
+	}
+	return pubKey, nil
 }
 
 func main() {
@@ -56,12 +87,16 @@ func main() {
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.MTPublisher.DebugAddr)
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
-	clk := clock.New()
 
 	dbMap, err := sa.InitWrappedDb(c.MTPublisher.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.MTCLogID, c.MTPublisher.MirrorID, clk, logger)
+	signer, _, err := privatekey.Load(c.MTPublisher.KeyFile)
+	cmd.FailOnError(err, "Loading cosigner key")
+	pubKey, err := loadMLDSAPublicKey(c.MTPublisher.PublicKeyFile)
+	cmd.FailOnError(err, "Loading cosigner public key")
+
+	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.MTCLogID, c.MTPublisher.MirrorID, signer, pubKey, logger)
 	cmd.FailOnError(err, "Failed to create MTPublisher stub")
 
 	ctx, cancel := context.WithCancel(context.Background())

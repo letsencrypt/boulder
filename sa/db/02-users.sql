@@ -101,6 +101,7 @@ CREATE USER IF NOT EXISTS 'mtpublisher'@'%';
 
 -- MTPublisher stub: reads checkpoints awaiting a cosignature and writes one.
 GRANT SELECT,UPDATE ON checkpoints TO 'mtpublisher'@'%';
+GRANT SELECT ON latestCheckpoint TO 'mtpublisher'@'%';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';
