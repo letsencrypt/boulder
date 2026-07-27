@@ -46,18 +46,18 @@ const oidPrefix = "oid/1.3.6.1.4.1."
 // 0x06 || pubkey)[:4] as a big-endian uint32.
 //
 // https://c2sp.org/tlog-cosignature
-func keyIDFor(name string, pubKey *mldsa.PublicKey) uint32 {
+func keyIDFor(name string, publicKey *mldsa.PublicKey) uint32 {
 	h := sha256.New()
 	h.Write([]byte(name))
 	h.Write([]byte{'\n', cosignatureAlg})
-	h.Write(pubKey.Bytes())
+	h.Write(publicKey.Bytes())
 	return binary.BigEndian.Uint32(h.Sum(nil)[:keyIDSize])
 }
 
 // marshalCosignedMessage serializes the cosigned.Message for a checkpoint
 // cosignature, with start 0 and end the tree size as the MTC draft section
 // 5.3.1 requires for checkpoints. It rejects a non-positive end.
-func marshalCosignedMessage(name string, timestamp uint64, origin string, end int64, hash tlog.Hash) ([]byte, error) {
+func marshalCosignedMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
 	if end <= 0 {
 		return nil, fmt.Errorf("non-positive end %d", end)
 	}
@@ -67,7 +67,7 @@ func marshalCosignedMessage(name string, timestamp uint64, origin string, end in
 		LogOrigin:    origin,
 		Start:        0,
 		End:          uint64(end),
-		SubtreeHash:  hash,
+		SubtreeHash:  rootHash,
 	}
 	return cosignedMessage.Marshal()
 }
@@ -209,19 +209,19 @@ var _ note.Verifier = (*Verifier)(nil)
 
 // NewVerifier returns a Verifier for the MTC cosigner with the given ID,
 // deriving its name per mtc-tlog like NewCosigner. It errors if cosignerID is
-// not a dotted decimal OID or pubKey is not ML-DSA-44.
-func NewVerifier(cosignerID string, pubKey *mldsa.PublicKey) (*Verifier, error) {
+// not a dotted decimal OID or publicKey is not ML-DSA-44.
+func NewVerifier(cosignerID string, publicKey *mldsa.PublicKey) (*Verifier, error) {
 	err := checkRelativeOID(cosignerID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid cosigner ID %q: %w", cosignerID, err)
 	}
-	if pubKey.Parameters().PublicKeySize() != mldsa.MLDSA44PublicKeySize {
+	if publicKey.Parameters().PublicKeySize() != mldsa.MLDSA44PublicKeySize {
 		return nil, errors.New("public key must be ML-DSA-44")
 	}
 	return &Verifier{
 		name:      oidPrefix + cosignerID,
-		keyID:     keyIDFor(oidPrefix+cosignerID, pubKey),
-		publicKey: pubKey,
+		keyID:     keyIDFor(oidPrefix+cosignerID, publicKey),
+		publicKey: publicKey,
 	}, nil
 }
 
@@ -235,17 +235,17 @@ func (v *Verifier) KeyHash() uint32 {
 	return v.keyID
 }
 
-// VerifyCheckpoint returns nil if signature is a valid cosignature by this
-// cosigner over the checkpoint described by origin and tree, and an error
-// naming the failure otherwise. For a checkpoint note text, use Verify.
+// VerifyCheckpoint returns nil if timestampedSignature is a valid cosignature
+// by this cosigner over the checkpoint described by origin and tree, and an
+// error naming the failure otherwise. For a checkpoint note text, use Verify.
 //
 //   - https://c2sp.org/tlog-cosignature
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
-func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, signature []byte) error {
-	if len(signature) != timestampedSignatureSize {
-		return fmt.Errorf("timestamped signature is %d bytes, want %d", len(signature), timestampedSignatureSize)
+func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, timestampedSignature []byte) error {
+	if len(timestampedSignature) != timestampedSignatureSize {
+		return fmt.Errorf("timestamped signature is %d bytes, want %d", len(timestampedSignature), timestampedSignatureSize)
 	}
-	timestamp := binary.BigEndian.Uint64(signature[:timestampSize])
+	timestamp := binary.BigEndian.Uint64(timestampedSignature[:timestampSize])
 	if timestamp > math.MaxInt64 {
 		return fmt.Errorf("timestamp %d exceeds 2^63-1", timestamp)
 	}
@@ -253,7 +253,7 @@ func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, signature []b
 	if err != nil {
 		return err
 	}
-	err = mldsa.Verify(v.publicKey, cosignedMessage, signature[timestampSize:], nil)
+	err = mldsa.Verify(v.publicKey, cosignedMessage, timestampedSignature[timestampSize:], nil)
 	if err != nil {
 		return fmt.Errorf("verifying cosignature: %s", err)
 	}
@@ -261,24 +261,24 @@ func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, signature []b
 }
 
 // Verify reports whether signature is a valid cosignature by this cosigner over
-// the checkpoint in text. The signed message covers the origin, tree size, and
-// root hash from text, so extension lines do not affect the result. Verify is
-// the note.Verifier entry point. For an already parsed checkpoint, use
-// VerifyCheckpoint.
-func (v *Verifier) Verify(text, signature []byte) bool {
-	parsed, err := checkpoint.Unmarshal(string(text))
+// the checkpoint in noteText. The signed message covers the origin, tree size,
+// and root hash from noteText, so extension lines do not affect the result.
+// Verify is the note.Verifier entry point. For an already parsed checkpoint,
+// use VerifyCheckpoint.
+func (v *Verifier) Verify(noteText, signature []byte) bool {
+	parsed, err := checkpoint.Unmarshal(string(noteText))
 	if err != nil {
 		return false
 	}
 	return v.VerifyCheckpoint(parsed.Origin, parsed.Tree, signature) == nil
 }
 
-// TimestampedSignature verifies line against the checkpoint note text with
-// verifier and returns the timestamped_signature by verifier's cosigner. An
-// error is returned if text and line do not form a well-formed note or if
+// TimestampedSignature verifies signatureLine against noteText with verifier
+// and returns the timestamped_signature by verifier's cosigner. An error is
+// returned if noteText and signatureLine do not form a well-formed note or if
 // verifier rejects the signature. Signatures from unknown keys are ignored.
-func TimestampedSignature(text, line string, verifier *Verifier) ([]byte, error) {
-	n, err := note.Open([]byte(text+"\n"+line), note.VerifierList(verifier))
+func TimestampedSignature(noteText, signatureLine string, verifier *Verifier) ([]byte, error) {
+	n, err := note.Open([]byte(noteText+"\n"+signatureLine), note.VerifierList(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("opening the cosigned note: %s", err)
 	}
