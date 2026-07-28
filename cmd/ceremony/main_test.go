@@ -1292,7 +1292,7 @@ func TestSignAndWriteNoLintCert(t *testing.T) {
 
 func TestPostIssuanceLinting(t *testing.T) {
 	clk := clock.New()
-	err := postIssuanceLinting(nil, nil)
+	err := postIssuanceLinting(nil, nil, nil, nil)
 	test.AssertError(t, err, "should have failed because no certificate was provided")
 
 	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -1306,6 +1306,6 @@ func TestPostIssuanceLinting(t *testing.T) {
 	test.AssertNotError(t, err, "unable to create certificate")
 	parsedCert, err := x509.ParseCertificate(certDer)
 	test.AssertNotError(t, err, "unable to parse DER bytes")
-	err = postIssuanceLinting(parsedCert, nil)
+	err = postIssuanceLinting(parsedCert, nil, nil, nil)
 	test.AssertNotError(t, err, "should not have errored")
 }

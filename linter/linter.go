@@ -30,8 +30,13 @@ var ErrLinting = fmt.Errorf("failed lint(s)")
 // primary public interface of this package, but it can be inefficient; creating
 // a new signer and a new lint registry are expensive operations which
 // performance-sensitive clients may want to cache via linter.New().
-func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) ([]byte, error) {
+func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, config Config, skipLints []string) ([]byte, error) {
 	linter, err := New(realIssuer, realSigner)
+	if err != nil {
+		return nil, err
+	}
+
+	config, err = config.WithIssuer(realIssuer)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +46,7 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 		return nil, err
 	}
 
-	lintCertBytes, err := linter.Check(tbs, subjectPubKey, reg)
+	lintCertBytes, err := linter.Check(tbs, subjectPubKey, reg, config)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +103,18 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer) (*Linter, error
 // replaced with the linter's pubkey so that it appears self-signed. It returns
 // an error if any lint fails. On success it also returns the DER bytes of the
 // linting certificate.
-func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, reg lint.Registry) ([]byte, error) {
+func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, reg lint.Registry, config Config) ([]byte, error) {
+	if reg == nil {
+		reg = lint.GlobalRegistry()
+	}
+
+	lintConfig, err := config.build()
+	if err != nil {
+		return nil, err
+	}
+
+	reg = configuredRegistry{reg, lintConfig}
+
 	lintPubKey := subjectPubKey
 	selfSigned, err := core.PublicKeysEqual(subjectPubKey, l.realPubKey)
 	if err != nil {
