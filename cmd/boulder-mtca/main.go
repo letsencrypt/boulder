@@ -129,7 +129,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		err = mtcaImpl.InitLog(ctx)
-		cmd.FailOnError(err, "Initializing log")
+		cmd.FailOnError(err, "Initializing MTC issuance log")
 		return
 	}
 	if *initLogForTest {
@@ -137,7 +137,7 @@ func main() {
 		defer cancel()
 		err = mtcaImpl.InitLog(ctx)
 		if err != nil && !errors.Is(err, mtca.ErrIssuanceLogAlreadyInitialized) {
-			cmd.FailOnError(err, "Initializing MTC log DB for test")
+			cmd.FailOnError(err, "Initializing MTC issuance log for test")
 		}
 	}
 

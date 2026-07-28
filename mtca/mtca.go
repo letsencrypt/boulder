@@ -207,11 +207,8 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		return err
 	}
 
-	err = candidate.Publish(ctx, m.s3c, m.mtcLogID())
+	err = candidate.Publish(ctx, m.s3c, m.tileStoragePrefix())
 	if err != nil {
-		if errors.Is(err, tiles.ErrTileExists) {
-			return ErrIssuanceLogAlreadyInitialized
-		}
 		return err
 	}
 
