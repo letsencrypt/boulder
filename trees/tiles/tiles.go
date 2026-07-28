@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -88,6 +89,38 @@ type Frontier struct {
 	treeSize int64
 }
 
+// Clone creates a copy of Frontier that doesn't share any memory with the original.
+//
+// During sequencing in the MTCA we want to use a temporary copy of the frontier, so
+// that if we error out the original in-memory Frontier stays untouched.
+func (f *Frontier) Clone() *Frontier {
+	var hashesTiles []*hashesTile
+	for _, ht := range f.hashesTiles {
+		hashesTiles = append(hashesTiles, ht.clone())
+	}
+
+	var fullHashesTiles []*hashesTile
+	for _, ht := range f.fullHashesTiles {
+		fullHashesTiles = append(fullHashesTiles, ht.clone())
+	}
+
+	entries := f.entryTile.clone()
+
+	var fullEntryTiles []*entryTile
+	for _, et := range f.fullEntryTiles {
+		fullEntryTiles = append(fullEntryTiles, et.clone())
+	}
+
+	return &Frontier{
+		hashesTiles:     hashesTiles,
+		entryTile:       entries,
+		dirtyLevel:      f.dirtyLevel,
+		fullHashesTiles: fullHashesTiles,
+		fullEntryTiles:  fullEntryTiles,
+		treeSize:        f.treeSize,
+	}
+}
+
 // hashesTile represents a tile containing hashes.
 // It may be empty, partial, or full. If it's full it can only
 // be part of fullHashesTiles.
@@ -97,6 +130,13 @@ type hashesTile struct {
 	coords tlog.Tile
 	// Invariant: len(data) == coords.W
 	data []tlog.Hash
+}
+
+func (h *hashesTile) clone() *hashesTile {
+	return &hashesTile{
+		coords: h.coords,
+		data:   slices.Clone(h.data),
+	}
 }
 
 func (h *hashesTile) append(val tlog.Hash) {
@@ -111,6 +151,16 @@ type entryTile struct {
 	coords tlog.Tile
 	// data contains an entry bundle with coords.W entries.
 	data []byte
+}
+
+func (e *entryTile) clone() *entryTile {
+	if e == nil {
+		return nil
+	}
+	return &entryTile{
+		coords: e.coords,
+		data:   bytes.Clone(e.data),
+	}
 }
 
 func (e *entryTile) append(val []byte) {
@@ -345,13 +395,39 @@ func (f *Frontier) appendHash(val tlog.Hash, level int) {
 	f.dirtyLevel = max(f.dirtyLevel, level)
 }
 
-// Flush writes all dirty tiles to storage and clears their dirty status.
+// Stage writes all dirty tiles to storage but does not clear their dirty status.
 //
-// If it errors partway, dirty status is not reset but subsequent flushes
-// will likely fail (duplicate writes).
+// Tiles are written to a prefix determined by the tree size and root hash, so as
+// not to conflict with live-published tiles.
 //
 // Errors if the tree is empty.
-func (f *Frontier) Flush(ctx context.Context, s3c simpleS3, prefix string) error {
+func (f *Frontier) Stage(ctx context.Context, s3c simpleS3, prefix string) error {
+	rootHash := f.RootHash()
+	return f.store(ctx, s3c,
+		fmt.Sprintf("pending/%s/%d-%s", prefix, f.TreeSize(),
+			hex.EncodeToString(rootHash[:])))
+}
+
+// Publish writes all dirty tiles to storage and clears their dirty status.
+//
+// Errors if the tree is empty.
+//
+// TODO(#8902): This should use CopyObject, and allow overwriting.
+func (f *Frontier) Publish(ctx context.Context, s3c simpleS3, prefix string) error {
+	err := f.store(ctx, s3c, prefix)
+	if err != nil {
+		return err
+	}
+
+	f.fullHashesTiles = nil
+	f.fullEntryTiles = nil
+	f.dirtyLevel = -1
+
+	return nil
+}
+
+// store stores all tiles to the given prefix.
+func (f *Frontier) store(ctx context.Context, s3c simpleS3, prefix string) error {
 	if f.treeSize == 0 {
 		return fmt.Errorf("an empty tree has nothing to write")
 	}
@@ -386,9 +462,6 @@ func (f *Frontier) Flush(ctx context.Context, s3c simpleS3, prefix string) error
 		}
 	}
 
-	f.fullHashesTiles = nil
-	f.fullEntryTiles = nil
-	f.dirtyLevel = -1
 	return nil
 }
 
@@ -523,7 +596,7 @@ func getTile(ctx context.Context, s3c simpleS3, coords tlog.Tile, prefix string)
 		Key:    &key,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetching s3://%s/%s: %w", bucket, key, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
