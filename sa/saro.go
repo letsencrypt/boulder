@@ -292,20 +292,6 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 // and borp.DbMap.SelectOne.
 type oneSelectorFunc func(ctx context.Context, holder any, query string, args ...any) error
 
-// checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
-// for the given names exists.
-func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents identifier.ACMEIdentifiers) (bool, error) {
-	namehash := core.HashIdentifiers(idents)
-	var exists bool
-	err := selector(
-		ctx,
-		&exists,
-		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
-		namehash,
-	)
-	return exists, err
-}
-
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if req == nil || req.Id == 0 {
