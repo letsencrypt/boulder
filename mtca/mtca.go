@@ -292,6 +292,25 @@ func (m *mtca) mtcLogID() string {
 	return fmt.Sprintf("%s.0.%d", m.mtcaID, m.logNumber)
 }
 
+// tileStoragePrefix returns the path within a bucket where we will store tiles.
+//
+// https://github.com/C2SP/C2SP/blob/main/mtc-tlog.md#serving-issuance-logs
+//
+// "Each log's prefix URL is the concatenation of the CA prefix URL and the log number, encoded as an
+// ASCII decimal integer with no additional leading zeros:
+//
+// <CA prefix URL>/<log number>"
+//
+// We assume we will serve directly from tile storage (likely sync'ed somewhere), so we
+// want to store tiles compatible with that pattern, with log number as the last component
+// of the path before "tile/".
+//
+// As a matter of local convention we will put the MTCA ID as the path component right before
+// log number.
+func (m *mtca) tileStoragePrefix() string {
+	return fmt.Sprintf("%s/%d", m.mtcaID, m.logNumber)
+}
+
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
 // and a new checkpoint signed by the CA. It does not wait for a mirror cosignature.
 //
@@ -500,7 +519,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// (but before publishing a new checkpoint signed note), we will flush
 	// to the live location. This ensures we've persisted the tiles before
 	// committing to a tree hash by signing it.
-	err = candidate.Stage(ctx, m.s3c, m.mtcLogID())
+	err = candidate.Stage(ctx, m.s3c, m.tileStoragePrefix())
 	if err != nil {
 		return fmt.Errorf("staging candidate tiles: %s", err)
 	}
@@ -598,7 +617,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Once we add publishing of checkpoints as signed notes, publication of the signed note
 	// should come after this flush succeeds, so monitors don't try to fetch tiles that aren't
 	// yet available.
-	err = candidate.Publish(ctx, m.s3c, m.mtcLogID())
+	err = candidate.Publish(ctx, m.s3c, m.tileStoragePrefix())
 	if err != nil {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}

@@ -72,7 +72,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		OmitClientAuth:      true,
 		OmitSKID:            true,
 		MTC:                 true,
-		MaxValidityPeriod:   config.Duration{time.Hour},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		LintConfig:          "",
 		IgnoredLints: []string{
 			"w_ext_subject_key_identifier_missing_sub_cert",
