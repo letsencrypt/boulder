@@ -38,42 +38,6 @@ func SigAlgEncoded() []byte {
 	return builder.BytesOrPanic()
 }
 
-// SubtreeSignature represents the struct of that name in
-// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format.
-//
-// Standalone certificates carry two or more of these in addition to their inclusion proof. Landmark-relative certificates
-// carry none.
-//
-// /* From Section 4.1 of draft-ietf-tls-trust-anchor-ids */
-// opaque TrustAnchorID<1..2^8-1>;
-//
-// opaque HashValue[HASH_SIZE];
-//
-//	struct {
-//	    TrustAnchorID cosigner_id;
-//	    opaque signature<0..2^16-1>;
-//	} SubtreeSignature;
-type SubtreeSignature struct {
-	CosignerID []byte
-	Signature  []byte
-}
-
-// Marshal serializes the bytes of a SubtreeSignature.
-func (ms *SubtreeSignature) Marshal() ([]byte, error) {
-	var builder cryptobyte.Builder
-	if len(ms.CosignerID) == 0 {
-		// TrustAnchorID is defined as minimum 1 byte.
-		return nil, fmt.Errorf("empty cosigner ID")
-	}
-	builder.AddUint8LengthPrefixed(func(builder *cryptobyte.Builder) {
-		builder.AddBytes(ms.CosignerID)
-	})
-	builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
-		builder.AddBytes(ms.Signature)
-	})
-	return builder.Bytes()
-}
-
 // MTCProof represents the MTCProof structure from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format
 //
@@ -247,4 +211,40 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 		InclusionProof: inclusionProof,
 		Signatures:     signatures,
 	}, nil
+}
+
+// SubtreeSignature represents the struct of that name in
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format.
+//
+// Standalone certificates carry two or more of these in addition to their inclusion proof. Landmark-relative certificates
+// carry none.
+//
+// /* From Section 4.1 of draft-ietf-tls-trust-anchor-ids */
+// opaque TrustAnchorID<1..2^8-1>;
+//
+// opaque HashValue[HASH_SIZE];
+//
+//	struct {
+//	    TrustAnchorID cosigner_id;
+//	    opaque signature<0..2^16-1>;
+//	} SubtreeSignature;
+type SubtreeSignature struct {
+	CosignerID []byte
+	Signature  []byte
+}
+
+// Marshal serializes the bytes of a SubtreeSignature.
+func (ms *SubtreeSignature) Marshal() ([]byte, error) {
+	var builder cryptobyte.Builder
+	if len(ms.CosignerID) == 0 {
+		// TrustAnchorID is defined as minimum 1 byte.
+		return nil, fmt.Errorf("empty cosigner ID")
+	}
+	builder.AddUint8LengthPrefixed(func(builder *cryptobyte.Builder) {
+		builder.AddBytes(ms.CosignerID)
+	})
+	builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
+		builder.AddBytes(ms.Signature)
+	})
+	return builder.Bytes()
 }
