@@ -232,7 +232,7 @@ func (m *mtca) Preflight(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	frontier, err := tiles.LoadFrontier(ctx, m.s3c, latest.TreeSize, m.mtcLogID())
+	frontier, err := tiles.LoadFrontier(ctx, m.s3c, latest.TreeSize, m.tileStoragePrefix())
 	if err != nil {
 		return err
 	}
@@ -617,7 +617,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Once we add publishing of checkpoints as signed notes, publication of the signed note
 	// should come after this flush succeeds, so monitors don't try to fetch tiles that aren't
 	// yet available.
-	err = candidate.Publish(ctx, m.s3c, m.tileStoragePrefix())
+	err = m.frontier.Publish(ctx, m.s3c, m.tileStoragePrefix())
 	if err != nil {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}

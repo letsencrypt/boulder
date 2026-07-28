@@ -89,6 +89,10 @@ type Frontier struct {
 	treeSize int64
 }
 
+// Clone creates a copy of Frontier that doesn't share any memory with the original.
+//
+// During sequencing in the MTCA we want to use a temporary copy of the frontier, so
+// that if we error out the original in-memory Frontier stays untouched.
 func (f *Frontier) Clone() *Frontier {
 	var hashesTiles []*hashesTile
 	for _, ht := range f.hashesTiles {
@@ -400,8 +404,8 @@ func (f *Frontier) appendHash(val tlog.Hash, level int) {
 func (f *Frontier) Stage(ctx context.Context, s3c simpleS3, prefix string) error {
 	rootHash := f.RootHash()
 	return f.store(ctx, s3c,
-		fmt.Sprintf("%s/pending-%d-%s", prefix, f.TreeSize(),
-			hex.EncodeToString(rootHash[:])))
+		fmt.Sprintf("pending/%d-%s/%s", f.TreeSize(),
+			hex.EncodeToString(rootHash[:]), prefix))
 }
 
 // Publish writes all dirty tiles to storage and clears their dirty status.

@@ -304,7 +304,7 @@ func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *checkpoint {
 			memHash, base64.StdEncoding.EncodeToString(latest.RootHash))
 	}
 
-	loaded, err := tiles.LoadFrontier(t.Context(), fs3, latest.TreeSize, m.mtcLogID())
+	loaded, err := tiles.LoadFrontier(t.Context(), fs3, latest.TreeSize, m.tileStoragePrefix())
 	if err != nil {
 		t.Fatalf("loading frontier from tile storage: %s", err)
 	}
@@ -445,7 +445,7 @@ func TestSequence(t *testing.T) {
 
 	// Each client's returned index must point at its own entry in the
 	// published entries tile.
-	validateStoredEntries(t, fs3, mtca.mtcLogID(), latest.TreeSize, got)
+	validateStoredEntries(t, fs3, mtca.tileStoragePrefix(), latest.TreeSize, got)
 }
 
 // TestSequenceStorageFailure checks that a failed sequencing pass leaves the
@@ -498,7 +498,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 	latest := verifyStores(t, mtca, fs3)
 	verifyCheckpoint(t, mtca, latest)
 
-	validateStoredEntries(t, fs3, mtca.mtcLogID(), latest.TreeSize, got)
+	validateStoredEntries(t, fs3, mtca.tileStoragePrefix(), latest.TreeSize, got)
 }
 
 func TestInitLog(t *testing.T) {
