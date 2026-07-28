@@ -13,7 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/mod/sumdb/tlog"
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte/asn1"
 
 	"github.com/letsencrypt/boulder/trees/proof"
 )
@@ -80,7 +81,7 @@ AQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUgPmX4p5B3cSQ2bkaNcye
 	}
 }
 
-func TestToMTC(t *testing.T) {
+func TestToTBSCertificate(t *testing.T) {
 	input := mustDecodeB64(t, testCertB64)
 	spki := mustDecodeB64(t, testSPKIB64)
 
@@ -89,24 +90,24 @@ func TestToMTC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sig := proof.MTCProof{
-		Start: 123,
-		End:   456,
-		InclusionProof: []tlog.Hash{
-			{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		},
-	}
-
-	out, err := mtcle.ToMTC(123, spki, crypto.SHA256, sig)
+	out, err := mtcle.ToTBSCertificate(8675309, spki, crypto.SHA256)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Rather than comparing against golden bytes, check the output
-	// structurally: it must be a well-formed X.509 certificate whose issuer,
-	// validity, subject, SPKI, and extensions match the original certificate,
-	// with the caller-provided serial and signature.
-	cert, err := x509.ParseCertificate(out)
+	// Turn it into something that will parse with crypto/x509
+	var builder cryptobyte.Builder
+	builder.AddASN1(asn1.SEQUENCE, func(certificate *cryptobyte.Builder) {
+		// tbsCertificate
+		certificate.AddBytes(out)
+		// signatureAlgorithm
+		certificate.AddBytes(proof.SigAlgEncoded())
+		// signature
+		certificate.AddASN1BitString(nil)
+	})
+	certBytes := builder.BytesOrPanic()
+
+	cert, err := x509.ParseCertificate(certBytes)
 	if err != nil {
 		t.Fatalf("parsing ToMTC() output: %s", err)
 	}
@@ -115,8 +116,8 @@ func TestToMTC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if cert.SerialNumber.Cmp(big.NewInt(123)) != 0 {
-		t.Errorf("serialNumber: got %v, want 123", cert.SerialNumber)
+	if cert.SerialNumber.Cmp(big.NewInt(8675309)) != 0 {
+		t.Errorf("serialNumber: got %v, want 8675309", cert.SerialNumber)
 	}
 	if !bytes.Equal(cert.RawIssuer, orig.RawIssuer) {
 		t.Errorf("issuer: got %x, want %x", cert.RawIssuer, orig.RawIssuer)
@@ -135,22 +136,8 @@ func TestToMTC(t *testing.T) {
 		t.Errorf("extensions: got %v, want %v", cert.Extensions, orig.Extensions)
 	}
 
-	// The signature must be the marshaled MTCProof.
-	sigBytes, err := sig.Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(cert.Signature, sigBytes) {
-		t.Errorf("signature: got %x, want %x", cert.Signature, sigBytes)
-	}
-
-	// Both the TBSCertificate signature field and the Certificate
-	// signatureAlgorithm field must be the experimental id-alg-mtcProof
-	// AlgorithmIdentifier (1.3.6.1.4.1.44363.47.0) with parameters omitted.
-	// x509.ParseCertificate already checks that the two are equal.
-	sigAlg := proof.SigAlgEncoded()
-	if got := bytes.Count(out, sigAlg); got != 2 {
-		t.Errorf("id-alg-mtcProof AlgorithmIdentifier: found %d copies, want 2", got)
+	if !bytes.Contains(out, proof.SigAlgEncoded()) {
+		t.Errorf("output didn't contain id-alg-mtcProof")
 	}
 }
 
@@ -206,7 +193,7 @@ func TestToMTCMalformed(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.mtcle.ToMTC(123, tc.spki, tc.hash, proof.MTCProof{})
+			_, err := tc.mtcle.ToTBSCertificate(123, tc.spki, tc.hash)
 			if err == nil {
 				t.Errorf("ToMTC(): got nil err, want error")
 			}
@@ -214,7 +201,7 @@ func TestToMTCMalformed(t *testing.T) {
 	}
 
 	// serialNumber must be a positive integer (RFC 5280 4.1.2.2).
-	if _, err := valid.ToMTC(0, spki, crypto.SHA256, proof.MTCProof{}); err == nil {
+	if _, err := valid.ToTBSCertificate(0, spki, crypto.SHA256); err == nil {
 		t.Errorf("ToMTC() with zero serial: got nil err, want error")
 	}
 }

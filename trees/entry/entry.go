@@ -358,22 +358,20 @@ func (br *BundleReader) ReadEntry() (*MTCLogEntry, []byte, error) {
 	return mtcle, body, nil
 }
 
-// ToMTC generates a Merkle Tree Certificate.
+// ToTBSCertificate generates a TBSCertificate corresponding to a TBSCertificateLogEntry.
 //
 // `serial` must be the entry index combined with log number: (log_number << 48) | index.
 // `subjectPublicKeyInfo` must be a DER-encoded subjectPublicKeyInfo (including tag and length).
 // `hash` must be the CA's hash function.
-// `inclusionProof` is an MTCProof that will be marshaled into the signature field.
 //
 // If the MTCLogEntry does not contain a TBSCertificateLogEntry, error.
 //
 // Checks `subjectPublicKeyInfo` against `subjectPublicKeyInfoHash` and `subjectPublicKeyAlgorithm`
-// from the TBSCertificateLogEntry. Does not verify the inclusionProof.
-func (mtcle *MTCLogEntry) ToMTC(
+// from the TBSCertificateLogEntry.
+func (mtcle *MTCLogEntry) ToTBSCertificate(
 	serial uint64,
 	subjectPublicKeyInfo []byte,
 	hash crypto.Hash,
-	inclusionProof proof.MTCProof,
 ) ([]byte, error) {
 	if mtcle == nil || mtcle.typ != typeTBSCertEntry {
 		return nil, fmt.Errorf("MTCLogEntry type was not tbs_cert_entry")
@@ -392,15 +390,6 @@ func (mtcle *MTCLogEntry) ToMTC(
 	var subjectPublicKeyAlgorithmFromSPKI cryptobyte.String
 	if !spkiInner.ReadASN1(&subjectPublicKeyAlgorithmFromSPKI, asn1.SEQUENCE) {
 		return nil, fmt.Errorf("malformed SPKI")
-	}
-
-	if !bytes.Equal(mtcle.extensions, inclusionProof.Extensions) {
-		return nil, fmt.Errorf("MTCLogEntry extensions don't match signature")
-	}
-
-	inclusionProofBytes, err := inclusionProof.Marshal()
-	if err != nil {
-		return nil, fmt.Errorf("marshaling MTC proof: %w", err)
 	}
 
 	tbsCertificateLogEntry := cryptobyte.String(mtcle.TBS())
@@ -498,36 +487,30 @@ func (mtcle *MTCLogEntry) ToMTC(
 	//      					 -- If present, version MUST be v3 --  }
 	var builder cryptobyte.Builder
 
-	builder.AddASN1(asn1.SEQUENCE, func(certificate *cryptobyte.Builder) {
-		certificate.AddASN1(asn1.SEQUENCE, func(tbsCertificate *cryptobyte.Builder) {
-			// version
-			tbsCertificate.AddASN1(asn1.Tag(0).Constructed().ContextSpecific(), func(child *cryptobyte.Builder) {
-				child.AddASN1Int64(2)
-			})
-
-			// serialNumber
-			tbsCertificate.AddASN1Uint64(serial)
-
-			// signature
-			tbsCertificate.AddBytes(proof.SigAlgEncoded())
-
-			// issuer, validity, subject
-			for _, f := range fields {
-				// The fields were read with ReadASN1Element so they still include
-				// their tag and length. Add them straight to the builder.
-				tbsCertificate.AddBytes(f)
-			}
-
-			// subjectPublicKeyInfo
-			tbsCertificate.AddBytes(subjectPublicKeyInfo)
-
-			// extensions
-			tbsCertificate.AddBytes(extensions)
+	builder.AddASN1(asn1.SEQUENCE, func(tbsCertificate *cryptobyte.Builder) {
+		// version
+		tbsCertificate.AddASN1(asn1.Tag(0).Constructed().ContextSpecific(), func(child *cryptobyte.Builder) {
+			child.AddASN1Int64(2)
 		})
-		// signatureAlgorithm
-		certificate.AddBytes(proof.SigAlgEncoded())
+
+		// serialNumber
+		tbsCertificate.AddASN1Uint64(serial)
+
 		// signature
-		certificate.AddASN1BitString(inclusionProofBytes)
+		tbsCertificate.AddBytes(proof.SigAlgEncoded())
+
+		// issuer, validity, subject
+		for _, f := range fields {
+			// The fields were read with ReadASN1Element so they still include
+			// their tag and length. Add them straight to the builder.
+			tbsCertificate.AddBytes(f)
+		}
+
+		// subjectPublicKeyInfo
+		tbsCertificate.AddBytes(subjectPublicKeyInfo)
+
+		// extensions
+		tbsCertificate.AddBytes(extensions)
 	})
 
 	return builder.Bytes()
