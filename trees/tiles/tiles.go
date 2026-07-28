@@ -404,8 +404,8 @@ func (f *Frontier) appendHash(val tlog.Hash, level int) {
 func (f *Frontier) Stage(ctx context.Context, s3c simpleS3, prefix string) error {
 	rootHash := f.RootHash()
 	return f.store(ctx, s3c,
-		fmt.Sprintf("pending/%d-%s/%s", f.TreeSize(),
-			hex.EncodeToString(rootHash[:]), prefix))
+		fmt.Sprintf("pending/%s/%d-%s", prefix, f.TreeSize(),
+			hex.EncodeToString(rootHash[:])))
 }
 
 // Publish writes all dirty tiles to storage and clears their dirty status.
