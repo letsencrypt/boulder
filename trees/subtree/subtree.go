@@ -1,6 +1,7 @@
 package subtree
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math/bits"
 
@@ -264,4 +265,20 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 		tn >>= 1
 	}
 	return tn == 0 && fr == nodeHash && sr == rootHash
+}
+
+// MTH emits the Merkle Tree Hash of its inputs, as defined in RFC 9162 section 2.1.1.
+//
+// https://www.rfc-editor.org/info/rfc9162/#name-definition-of-the-merkle-tr
+func MTH(leaves []tlog.Hash) tlog.Hash {
+	switch len(leaves) {
+	case 0:
+		return tlog.Hash(sha256.Sum256(nil))
+	case 1:
+		return leaves[0]
+	default:
+		// RFC 6962: split at the largest power of two smaller than n.
+		k := 1 << (bits.Len(uint(len(leaves)-1)) - 1) //nolint:gosec // G115: the default case means len(leaves) >= 2, so len(leaves)-1 is positive.
+		return tlog.NodeHash(MTH(leaves[:k]), MTH(leaves[k:]))
+	}
 }

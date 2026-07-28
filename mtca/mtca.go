@@ -4,6 +4,7 @@ package mtca
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -14,14 +15,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/cosigned"
+	"github.com/letsencrypt/boulder/trees/entry"
 )
 
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
@@ -30,7 +34,15 @@ var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
 var _ mtcapb.MTCAServer = &mtca{}
 
 // New creates a new MTCA service.
-func New(issuer *issuance.Issuer, sequencingPeriod time.Duration, dbMap *borp.DbMap, logger blog.Logger) (*mtca, error) {
+func New(
+	issuer *issuance.Issuer,
+	profiles map[string]*issuance.Profile,
+	sequencingPeriod time.Duration,
+	dbMap *borp.DbMap,
+	s3c simpleS3,
+	logger blog.Logger,
+	clk clock.Clock,
+) (*mtca, error) {
 	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
 	if err != nil {
 		return nil, err
@@ -41,8 +53,9 @@ func New(issuer *issuance.Issuer, sequencingPeriod time.Duration, dbMap *borp.Db
 	}
 
 	return &mtca{
-		issuer: issuer,
-		mtcaID: mtcaID,
+		issuer:   issuer,
+		profiles: profiles,
+		mtcaID:   mtcaID,
 		// TODO: collect this from config
 		logNumber: 44,
 		pool:      &pool{maxSize: 100},
@@ -50,16 +63,21 @@ func New(issuer *issuance.Issuer, sequencingPeriod time.Duration, dbMap *borp.Db
 		sequencingPeriod: sequencingPeriod,
 
 		db:  initDB(dbMap),
+		s3c: s3c,
 		log: logger,
+		clk: clk,
 	}, nil
 }
 
 type mtca struct {
 	mtcapb.UnimplementedMTCAServer
 
-	issuer    *issuance.Issuer
-	mtcaID    string
+	issuer   *issuance.Issuer
+	profiles map[string]*issuance.Profile
+	mtcaID   string
+
 	logNumber uint16
+	pool      *pool
 
 	sequencingPeriod time.Duration
 
@@ -67,9 +85,17 @@ type mtca struct {
 	// TODO: decide whether we want to route this through the SA or an SA-like object,
 	// or keep a direct DB connection from the MTCA.
 	db  *db.WrappedMap
+	s3c simpleS3
 	log blog.Logger
+	clk clock.Clock
+}
 
-	pool *pool
+// simpleS3 matches the subset of the s3.Client interface which we use, to allow
+// simpler mocking in tests.
+type simpleS3 interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
 }
 
 func getMTCAID(issuerCert *x509.Certificate) (string, error) {
@@ -175,18 +201,17 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 type pool struct {
 	sync.RWMutex
-	entries []entry
+	entries []pendingEntry
 	maxSize int
 }
 
-// entry represents an entry in the pool, along with a channel to notify a pending RPC.
-type entry struct {
-	pubkey      []byte
-	identifiers []*corepb.Identifier
-	ch          chan<- int64
+// pendingEntry represents an pending entry in the pool, along with a channel to notify a pending RPC.
+type pendingEntry struct {
+	mtcle *entry.MTCLogEntry
+	ch    chan<- int64
 }
 
-func (p *pool) take() []entry {
+func (p *pool) take() []pendingEntry {
 	p.Lock()
 	defer p.Unlock()
 	ret := p.entries
@@ -200,7 +225,7 @@ func (p *pool) len() int {
 	return len(p.entries)
 }
 
-func (p *pool) append(e entry) error {
+func (p *pool) append(e pendingEntry) error {
 	p.Lock()
 	defer p.Unlock()
 	if len(p.entries) >= p.maxSize {
@@ -220,13 +245,49 @@ func (m *mtca) mtcLogID() string {
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
 // and a new checkpoint signed by the CA. It does not wait for a mirror cosignature.
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
+	key, err := x509.ParsePKIXPublicKey(req.Pubkey)
+	if err != nil {
+		return nil, fmt.Errorf("parsing public key: %s", err)
+	}
+
+	profile, ok := m.profiles[req.Profile]
+	if !ok {
+		return nil, fmt.Errorf("unrecognized profile name: %q", req.Profile)
+	}
+
+	notBefore, notAfter := profile.GenerateValidity(m.clk.Now())
+
+	dnsNames, ipAddresses, err := identifier.FromProtoSlice(req.Identifiers).ToValues()
+	if err != nil {
+		return nil, err
+	}
+
+	// Placeholder serial; will be omitted from the TBSCertificateLogEntry.
+	serial := [18]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
+
+	lintCertBytes, _, err := m.issuer.Prepare(profile, &issuance.IssuanceRequest{
+		PublicKey:   issuance.MarshalablePublicKey{PublicKey: key},
+		Serial:      issuance.HexMarshalableBytes(serial[:]),
+		NotBefore:   notBefore,
+		NotAfter:    notAfter,
+		DNSNames:    dnsNames,
+		IPAddresses: ipAddresses,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("preparing x509 certificate: %s", err)
+	}
+
+	mtcle, err := entry.FromX509(lintCertBytes, crypto.SHA256)
+	if err != nil {
+		return nil, fmt.Errorf("generating MTCLogEntry: %s '%x'", err, lintCertBytes)
+	}
+
 	// We'll get notification of sequencing on this channel. Buffer it so `sequence()` doesn't
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan int64, 1)
-	err := m.pool.append(entry{
-		pubkey:      req.Pubkey,
-		identifiers: req.Identifiers,
-		ch:          ch,
+	err = m.pool.append(pendingEntry{
+		mtcle: mtcle,
+		ch:    ch,
 	})
 	if err != nil {
 		return nil, err
@@ -356,7 +417,8 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Simulate writing to tile storage
 	latestTreeSize := latest.TreeSize
 	var entryIndexes []int64
-	for range entries {
+	for _, e := range entries {
+		m.log.AuditInfo("Preparing to issue: %x", e)
 		entryIndexes = append(entryIndexes, latestTreeSize)
 		latestTreeSize++
 	}

@@ -603,6 +603,75 @@ func TestIssueCommonName(t *testing.T) {
 	test.AssertEquals(t, cert.Subject.CommonName, "")
 }
 
+func TestPrepareMTC(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
+	pc := defaultProfileConfig()
+	pc.MTC = true
+	pc.IgnoredLints = []string{
+		// Reduce the lint ignores to just the minimal (SCT-related) set.
+		"w_ct_sct_policy_count_unsatisfied",
+		// Ignore the warning about *not* including the SubjectKeyIdentifier extension:
+		// zlint has both lints (one enforcing RFC5280, the other the BRs).
+		"w_ext_subject_key_identifier_missing_sub_cert",
+	}
+	prof, err := NewProfile(pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = signer.Prepare(prof, &IssuanceRequest{
+		IncludeCTPoison: false,
+		sctList:         nil,
+
+		PublicKey: MarshalablePublicKey{pk.Public()},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	if err != nil {
+		t.Errorf("Prepare() of req with !IncludeCTPoison && !sctList: %s", err)
+	}
+
+	_, _, err = signer.Prepare(prof, &IssuanceRequest{
+		IncludeCTPoison: true,
+
+		PublicKey: MarshalablePublicKey{pk.Public()},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	if err == nil {
+		t.Errorf("Prepare() of req with IncludeCTPoison: got nil err, want error")
+	}
+
+	_, _, err = signer.Prepare(prof, &IssuanceRequest{
+		sctList: []ct.SignedCertificateTimestamp{{SCTVersion: 1}},
+
+		PublicKey: MarshalablePublicKey{pk.Public()},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	if err == nil {
+		t.Errorf("Prepare() of req with sctList: got nil err, want error")
+	}
+}
+
 func TestIssueOmissions(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())

@@ -225,8 +225,12 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		return nil, err
 	}
 
-	serial := make([]byte, 16)
-	_, err = randReader.Read(serial)
+	// We want 128 bits of random number, plus a prefix to ensure that the serial is
+	// never shorter than that, even if the CSPRNG generates lots of leading zeroes.
+	const randBits = 128
+	serial := make([]byte, randBits/8+1)
+	serial[0] = 0x01
+	_, err = randReader.Read(serial[1:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate serial number: %s", err)
 	}
