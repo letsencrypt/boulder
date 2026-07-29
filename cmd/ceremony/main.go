@@ -94,9 +94,13 @@ func postIssuanceLinting(fc, issuer, existing *x509.Certificate, skipLints []str
 	if err != nil {
 		return fmt.Errorf("unable to create lint config: %s", err)
 	}
-	registry, err := linter.NewRegistryWithConfig(skipLints, lintConfig)
+	registry, err := linter.NewRegistry(skipLints)
 	if err != nil {
 		return fmt.Errorf("unable to create zlint registry: %s", err)
+	}
+	registry, err = linter.ConfigureRegistry(registry, lintConfig)
+	if err != nil {
+		return fmt.Errorf("unable to configure zlint registry: %s", err)
 	}
 	lintRes := zlint.LintCertificateEx(parsed, registry)
 	err = linter.ProcessResultSet(lintRes)

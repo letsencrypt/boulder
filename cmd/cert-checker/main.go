@@ -32,6 +32,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -125,7 +126,9 @@ type certChecker struct {
 	issuedReport                report
 	checkPeriod                 time.Duration
 	acceptableValidityDurations map[time.Duration]bool
+	issuers                     map[string]*issuance.Certificate
 	lints                       lint.Registry
+	lintConfig                  linter.Config
 	logger                      blog.Logger
 }
 
@@ -135,7 +138,9 @@ func newChecker(saDbMap certDB,
 	kp goodkey.KeyPolicy,
 	period time.Duration,
 	avd map[time.Duration]bool,
+	issuers map[string]*issuance.Certificate,
 	lints lint.Registry,
+	lintConfig linter.Config,
 	logger blog.Logger,
 ) certChecker {
 	precertGetter := func(ctx context.Context, serial string) ([]byte, error) {
@@ -154,7 +159,9 @@ func newChecker(saDbMap certDB,
 		clock:                       clk,
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
+		issuers:                     issuers,
 		lints:                       lints,
+		lintConfig:                  lintConfig,
 		logger:                      logger,
 	}
 }
@@ -373,8 +380,29 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 		sans = append(sans, ip.String())
 	}
 
+	// Configure zlint.
+	lintConfig := c.lintConfig
+	if len(c.issuers) > 0 {
+		issuer, ok := c.issuers[parsedCert.Issuer.CommonName]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("Unrecognized issuer: %q", parsedCert.Issuer.CommonName))
+			return nil, problems
+		}
+
+		lintConfig, err = c.lintConfig.WithIssuer(issuer.Certificate)
+		if err != nil {
+			problems = append(problems, "Couldn't configure lints with issuer")
+			return nil, problems
+		}
+	}
+	registry, err := linter.ConfigureRegistry(c.lints, lintConfig)
+	if err != nil {
+		problems = append(problems, "Couldn't create lint registry")
+		return nil, problems
+	}
+
 	// Run zlint checks.
-	results := zlint.LintCertificateEx(parsedCert, c.lints)
+	results := zlint.LintCertificateEx(parsedCert, registry)
 	for name, res := range results.Results {
 		if res.Status <= lint.Pass {
 			continue
@@ -592,6 +620,12 @@ type Config struct {
 		// configured to submit SCTs to test logs.
 		CTIncludeTestLogs bool
 
+		// IssuerCerts are paths to all intermediate certificates which may have
+		// been used to issue certificates in the last 90 days. These are used to
+		// configure our CP/CPS-specific lints.
+		// TODO(#5492): Change this to `"min=1,dive,required"`
+		IssuerCerts []string `validate:"omitempty"`
+
 		Features features.Config
 	}
 	PA     cmd.PAConfig
@@ -699,10 +733,18 @@ func main() {
 
 	lints, err := linter.NewRegistry(config.CertChecker.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
+
+	lintConfig := linter.Config{}
 	if config.CertChecker.LintConfig != "" {
-		lintconfig, err := lint.NewConfigFromFile(config.CertChecker.LintConfig)
+		lintConfig, err = linter.LoadConfigFile(config.CertChecker.LintConfig)
 		cmd.FailOnError(err, "Failed to load zlint config file")
-		lints.SetConfiguration(lintconfig)
+	}
+
+	issuers := make(map[string]*issuance.Certificate)
+	for _, issuerCertPath := range config.CertChecker.IssuerCerts {
+		issuer, err := issuance.LoadCertificate(issuerCertPath)
+		cmd.FailOnError(err, "Failed to load issuer cert file")
+		issuers[issuer.Subject.CommonName] = issuer
 	}
 
 	checker := newChecker(
@@ -712,7 +754,9 @@ func main() {
 		kp,
 		config.CertChecker.CheckPeriod.Duration,
 		acceptableValidityDurations,
+		issuers,
 		lints,
+		lintConfig,
 		logger,
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
