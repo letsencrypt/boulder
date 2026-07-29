@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -126,6 +127,18 @@ func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, re
 		// fake lint signing key, so that everything lines up as it should.
 		lintPubKey = l.signer.Public()
 		if len(tbs.SubjectKeyId) != 0 {
+			// This is a dumb hack. Because we're replacing the SKID with a fake one
+			// derived from the lint key, none of the lints will actually inspect the
+			// real SKID. So to make up for it, do the most critical check here and
+			// now.
+			realSKID, err := core.GenerateSKID(subjectPubKey)
+			if err != nil {
+				return nil, err
+			}
+			if !bytes.Equal(tbs.SubjectKeyId, realSKID) {
+				return nil, errors.New("self-signed certificate's subjectKeyIdentifier was not computed from its subjectPublicKey per RFC 7093 Section 2(1)")
+			}
+
 			lintSKID, err := core.GenerateSKID(lintPubKey)
 			if err != nil {
 				return nil, err
