@@ -51,6 +51,14 @@ var BuildHost string
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
 
+// DefaultMaxRead is for use by ErrOnLimitReader when to conveniently limit
+// reads to less than half a MB, which should be most of the time
+var DefaultMaxRead int64 = 300_000
+
+// ErrReaderLimitReached as an exported error type allows callers to check for
+// this error type after Read
+var ErrReaderLimitReached error = errors.New("reader size limit reached")
+
 func init() {
 	expvar.NewString("BuildID").Set(BuildID)
 	expvar.NewString("BuildTime").Set(BuildTime)
@@ -430,4 +438,40 @@ func NormalizeIssuerDomainName(name string) (string, error) {
 		return "", fmt.Errorf("issuer domain name %q exceeds 253 octets (%d)", name, len(name))
 	}
 	return name, nil
+}
+
+// An ErrOnLimitedReader reads from R but limits the amount of data returned to
+// just N bytes. Each call to Read updates N to reflect the new amount
+// remaining.
+// Read returns ErrReaderLimitExceeded when N <= 0, or EOF when the underlying R
+// returns EOF.
+type ErrOnLimitedReader struct {
+	R io.Reader
+	N int64
+}
+
+// ErrOnLimitReader returns a Reader that reads from r but stops with
+// ErrReaderLimitExceeded after n bytes.
+// The underlying implementation is a *ErrOnLimitedReader.
+//
+// If LimitedReader gets an Err field, we can switch to use that
+// https://github.com/golang/go/issues/51115
+func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
+	return &ErrOnLimitedReader{r, n}
+}
+
+func (ltdR *ErrOnLimitedReader) Read(b []byte) (n int, err error) {
+	// Important: when an ErrOnLimitedReader reads _exactly_ the limit amount,
+	// it results in the LimitReached Error
+	if ltdR.N <= 0 {
+		return 0, ErrReaderLimitReached
+	}
+
+	if int64(len(b)) > ltdR.N {
+		b = b[0:ltdR.N]
+	}
+
+	n, err = ltdR.R.Read(b)
+	ltdR.N -= int64(n)
+	return
 }

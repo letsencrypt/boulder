@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/zmap/zlint/v3/lint"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // Config holds configuration for linting both certs and CRLs using PKIMetal.
@@ -80,7 +82,8 @@ func (pkim *Client) Execute(endpoint string, der []byte) (*lint.LintResult, erro
 		return nil, fmt.Errorf("got status %d (%s) from pkimetal API", resp.StatusCode, resp.Status)
 	}
 
-	resJSON, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 300_000})
+	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead)
+	resJSON, err := io.ReadAll(lmr)
 	if err != nil {
 		return nil, fmt.Errorf("reading response from pkimetal API: %s", err)
 	}

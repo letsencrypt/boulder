@@ -3,6 +3,8 @@ package core
 import (
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/go-jose/go-jose/v4"
@@ -79,4 +81,39 @@ func TestFingerprint(t *testing.T) {
 	if digest != base64.RawURLEncoding.EncodeToString(out) {
 		t.Errorf("Incorrect SHA-256 fingerprint: %v", digest)
 	}
+}
+
+func TestErrOnLimitReader(t *testing.T) {
+	// test a read where the limit is larger than the source
+	strReader := strings.NewReader("foo bar baz bot")
+	lmr := ErrOnLimitReader(strReader, 21)
+
+	strOut01, err := io.ReadAll(lmr)
+
+	// should return no err, and the full source
+	test.AssertNotError(t, err, "unexpectedly errored")
+	test.AssertEquals(t, string(strOut01), "foo bar baz bot")
+
+	// test a read where the limit exactly matches source size
+	strReader = strings.NewReader("foo bar baz bot")
+	lmr = ErrOnLimitReader(strReader, 15)
+
+	strOut02, err := io.ReadAll(lmr)
+
+	// should return an error, and the full source
+	test.AssertError(t, err, "unexpectedly succeeded")
+	test.AssertEquals(t, err, ErrReaderLimitReached)
+	test.AssertEquals(t, string(strOut02), "foo bar baz bot")
+
+	// test a read where the limit is lower than the source
+	strReader = strings.NewReader("foo bar baz bot")
+	lmr = ErrOnLimitReader(strReader, 9)
+
+	strOut03, err := io.ReadAll(lmr)
+
+	// should return an error, and a partial read result
+	test.AssertError(t, err, "unexpectedly succeeded")
+	test.AssertEquals(t, err, ErrReaderLimitReached)
+	test.AssertEquals(t, string(strOut03), "foo bar b")
+
 }

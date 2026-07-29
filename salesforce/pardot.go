@@ -118,7 +118,8 @@ func (pc *SalesforceClientImpl) updateToken() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, readErr := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 300_000})
+		lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead)
+		body, readErr := io.ReadAll(lmr)
 		if readErr != nil {
 			return fmt.Errorf("token request failed with status %d; while reading body: %w", resp.StatusCode, readErr)
 		}
@@ -126,7 +127,8 @@ func (pc *SalesforceClientImpl) updateToken() error {
 	}
 
 	var respJSON oauthTokenResp
-	err = json.NewDecoder(resp.Body).Decode(&respJSON)
+	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead)
+	err = json.NewDecoder(lmr).Decode(&respJSON)
 	if err != nil {
 		return fmt.Errorf("failed to decode token response: %w", err)
 	}
@@ -203,7 +205,8 @@ func (pc *SalesforceClientImpl) SendContact(email string) error {
 			return nil
 		}
 
-		body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 300_000})
+		lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead)
+		body, err := io.ReadAll(lmr)
 		resp.Body.Close()
 
 		if err != nil {

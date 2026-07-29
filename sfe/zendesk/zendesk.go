@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 const (
@@ -177,7 +179,8 @@ func (c *Client) doJSONRequest(method, reqURL string, body []byte) ([]byte, erro
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 300_000})
+	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead)
+	respBody, err := io.ReadAll(lmr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read zendesk response body: %w", err)
 	}

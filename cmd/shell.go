@@ -504,7 +504,8 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	// Register custom types for use with existing validation tags.
 	validate.RegisterCustomTypeFunc(config.DurationCustomTypeFunc, config.Duration{})
 
-	inBytes, err := io.ReadAll(&io.LimitedReader{R: in, N: 300_000})
+	lmr := core.ErrOnLimitReader(in, core.DefaultMaxRead)
+	inBytes, err := io.ReadAll(lmr)
 	if err != nil {
 		return err
 	}

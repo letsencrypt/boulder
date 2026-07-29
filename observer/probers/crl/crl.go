@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/idp"
 	"github.com/letsencrypt/boulder/observer/obsclient"
 )
@@ -47,7 +48,8 @@ func (p CRLProbe) Probe(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 1_000_000_000})
+	lmr := core.ErrOnLimitReader(resp.Body, 1_000_000_000)
+	body, err := io.ReadAll(lmr)
 	if err != nil {
 		return err
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -375,7 +376,9 @@ func (d *dohExchanger) ExchangeContext(ctx context.Context, query *dns.Msg, serv
 		return nil, d.clk.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
 	}
 
-	b, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 300_000})
+	// DNS response over 65535 is malformed https://datatracker.ietf.org/doc/html/rfc8484#section-6
+	lmr := core.ErrOnLimitReader(resp.Body, 65_535)
+	b, err := io.ReadAll(lmr)
 	if err != nil {
 		return nil, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
 	}
