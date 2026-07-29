@@ -21,7 +21,7 @@ import (
 
 type crossCertifiedSubordinateCACertificateMatchesCPSProfile struct {
 	// Config is filled from the shared [Global] stanza of the lint
-	// configuration; see IssuingCAConfig.
+	// configuration; see SharedConfig.
 	Config *SharedConfig
 }
 
@@ -76,9 +76,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1019
 	// |     `version`                        | See [Section 7.1.1](#711-version-numbers) |
-	// Section 7.1.1 says "All certificates use X.509 version 3". Note that
-	// unlike crypto/x509, zcrypto's Version field is one-indexed: it holds 3
-	// (not the raw encoded value 2) for a v3 certificate.
+	// Section 7.1.1 says "All certificates use X.509 version 3".
 	if c.Version != 3 {
 		return errResult("version is not v3")
 	}
@@ -126,19 +124,8 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1024
 	// |     `subject`                        | Byte-for-byte identical to the `subject` field of the existing CA Certificate |
-	// The shape checks below are implied by the byte-for-byte comparison, but
-	// produce more useful error messages.
 	if !bytes.Equal(c.RawSubject, existing.RawSubject) {
 		return errResult("subject is not byte-for-byte identical to the subject of the configured existing CA Certificate")
-	}
-	if len(c.Subject.Names) != 3 {
-		return errResult("subject does not contain exactly C, O, and CN attributes")
-	}
-	if len(c.Subject.Country) != 1 || c.Subject.Country[0] != "US" {
-		return errResult("subject countryName is not US")
-	}
-	if c.Subject.CommonName == "" {
-		return errResult("subject commonName is empty")
 	}
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1025

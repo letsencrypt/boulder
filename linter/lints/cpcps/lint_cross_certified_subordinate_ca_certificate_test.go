@@ -154,7 +154,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "authorityInformationAccess caIssuers URI is not an http URL",
 		},
 		{
-			name: "aia_unparseable",
+			name: "aia_unparsable",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.IssuingCertificateURL = []string{"http://x99.i.lencr.org/%zz"}
 			},
@@ -186,7 +186,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "crlDistributionPoints URI is not an http URL",
 		},
 		{
-			name: "crldp_unparseable",
+			name: "crldp_unparsable",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.CRLDistributionPoints = []string{"http://x99.c.lencr.org/%zz"}
 			},
@@ -302,7 +302,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 				t.Fatalf("creating existing CA certificate: %s", err)
 			}
 
-			pub := crypto.PublicKey(crossKey.Public())
+			pub := crossKey.Public()
 			if tc.pub != nil {
 				pub = tc.pub
 			}

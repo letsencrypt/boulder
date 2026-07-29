@@ -26,7 +26,7 @@ import (
 
 type subscriberServerCertificateMatchesCPSProfile struct {
 	// Config is filled from the shared [Global] stanza of the lint
-	// configuration; see IssuingCAConfig.
+	// configuration; see SharedConfig.
 	Config *SharedConfig
 }
 
@@ -89,7 +89,7 @@ func (l *subscriberServerCertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	}
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1093
-	// |         Any other extensions              | Not present |
+	// |         Any other extension              | Not present |
 	extensions := map[string]bool{
 		authorityInformationAccessOID.String(): false,
 		authorityKeyIdentifierOID.String():     false,
@@ -145,9 +145,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1073
 	// |     `version`                            | See [Section 7.1.1](#711-version-numbers) |
-	// Section 7.1.1 says "All certificates use X.509 version 3". Note that
-	// unlike crypto/x509, zcrypto's Version field is one-indexed: it holds 3
-	// (not the raw encoded value 2) for a v3 certificate.
+	// Section 7.1.1 says "All certificates use X.509 version 3".
 	if c.Version != 3 {
 		return errResult("version is not v3")
 	}

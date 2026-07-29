@@ -12,7 +12,7 @@ import (
 
 type precertificateMatchesCPSProfile struct {
 	// Config is filled from the shared [Global] stanza of the lint
-	// configuration; see IssuingCAConfig.
+	// configuration; see SharedConfig.
 	Config *SharedConfig
 }
 

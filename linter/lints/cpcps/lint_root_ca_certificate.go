@@ -51,9 +51,7 @@ func (l *rootCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) b
 func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L997
 	// |     `version`                  | See [Section 7.1.1](#711-version-numbers) |
-	// Section 7.1.1 says "All certificates use X.509 version 3". Note that
-	// unlike crypto/x509, zcrypto's Version field is one-indexed: it holds 3
-	// (not the raw encoded value 2) for a v3 certificate.
+	// Section 7.1.1 says "All certificates use X.509 version 3".
 	if c.Version != 3 {
 		return errResult("version is not v3")
 	}

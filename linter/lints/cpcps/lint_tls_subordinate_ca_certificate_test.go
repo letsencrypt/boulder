@@ -156,7 +156,7 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "authorityInformationAccess caIssuers URI is not an http URL",
 		},
 		{
-			name: "aia_unparseable",
+			name: "aia_unparsable",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.IssuingCertificateURL = []string{"http://x99.i.lencr.org/%zz"}
 			},
@@ -188,7 +188,7 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "crlDistributionPoints URI is not an http URL",
 		},
 		{
-			name: "crldp_unparseable",
+			name: "crldp_unparsable",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.CRLDistributionPoints = []string{"http://x99.c.lencr.org/%zz"}
 			},
@@ -325,7 +325,7 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			if curve == nil {
 				curve = elliptic.P384()
 			}
-			pub := crypto.PublicKey(testKey(t, curve).Public())
+			pub := testKey(t, curve).Public()
 			if tc.pub != nil {
 				pub = tc.pub
 			}

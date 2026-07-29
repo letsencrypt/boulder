@@ -73,8 +73,8 @@ var (
 // package can emit configuration using these keys.
 const (
 	// GlobalConfigNamespace is the name of the TOML stanza from which
-	// IssuingCAConfig is deserialized. It must match the namespace of zlint's
-	// lint.Global higher-scoped configuration, which IssuingCAConfig embeds.
+	// SharedConfig is deserialized. It must match the namespace of zlint's
+	// lint.Global higher-scoped configuration, which SharedConfig embeds.
 	GlobalConfigNamespace = "Global"
 	// IssuerCertificateConfigKey configures the Issuing CA's certificate.
 	IssuerCertificateConfigKey = "issuer_certificate"
@@ -83,9 +83,9 @@ const (
 	ExistingCertificateConfigKey = "existing_certificate"
 )
 
-// globalNamespace aliases zlint's lint.Global so that IssuingCAConfig can
+// globalNamespace aliases zlint's lint.Global so that SharedConfig can
 // embed it under an unexported field name. The promoted (unexported)
-// namespace method is what routes deserialization of IssuingCAConfig to the
+// namespace method is what routes deserialization of SharedConfig to the
 // shared [Global] stanza, via zlint's "higher-scoped configuration"
 // mechanism; the unexported field name makes zlint's reflection-based config
 // resolver skip the embedded field itself, which it could not deserialize.
