@@ -679,7 +679,6 @@ func TestIssueOmissions(t *testing.T) {
 	pc := defaultProfileConfig()
 	pc.OmitCommonName = true
 	pc.OmitKeyEncipherment = true
-	pc.OmitClientAuth = true
 	pc.OmitSKID = true
 	pc.IgnoredLints = []string{
 		// Reduce the lint ignores to just the minimal (SCT-related) set.
