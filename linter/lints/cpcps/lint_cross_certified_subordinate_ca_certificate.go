@@ -48,7 +48,10 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Configure() an
 }
 
 func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool {
-	return util.IsSubCA(c) && isCrossCertified(c)
+	// If an existing cert is configured, then we assume this is a cross-sign.
+	// This condition must exactly match the condition in
+	// certMatchesExactlyOneCPSProfile.Execute().
+	return util.IsSubCA(c) && len(l.Config.existingPEM()) > 0
 }
 
 // Execute checks the given certificate against the Cross-Certified Subordinate

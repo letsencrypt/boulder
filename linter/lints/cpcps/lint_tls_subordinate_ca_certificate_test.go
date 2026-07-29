@@ -363,19 +363,27 @@ func TestTLSSubordinateCACertificateMatchesCPSProfileCheckApplies(t *testing.T) 
 	rootKey := testKey(t, elliptic.P384())
 	rootTmpl := testRootTemplate(t, rootKey.Public())
 
-	l := NewTLSSubordinateCACertificateMatchesCPSProfile()
-
-	// A cross-certified subordinate CA certificate (subject O=ISRG) is covered
-	// by the cross-certified profile, not this one.
-	crossKey := testKey(t, elliptic.P384())
-	crossTmpl := testIntermediateTemplate(t, crossKey.Public())
-	crossTmpl.Subject.Organization = []string{"ISRG"}
-	crossDER, err := x509.CreateCertificate(rand.Reader, crossTmpl, rootTmpl, crossKey.Public(), rootKey)
+	intKey := testKey(t, elliptic.P384())
+	intDER, err := x509.CreateCertificate(rand.Reader, testIntermediateTemplate(t, intKey.Public()), rootTmpl, intKey.Public(), rootKey)
 	if err != nil {
 		t.Fatalf("creating test certificate: %s", err)
 	}
-	if l.CheckApplies(testParseZCert(t, crossDER)) {
-		t.Error("lint applies to cross-certified (subject O=ISRG) certificate")
+	intCert := testParseZCert(t, intDER)
+
+	// When an existing certificate is configured, a subordinate CA
+	// certificate is a cross-sign, covered by the cross-certified profile,
+	// not this one. CheckApplies only inspects the config's presence, so any
+	// non-empty value suffices here.
+	withExisting := &tlsSubordinateCACertificateMatchesCPSProfile{Config: &SharedConfig{ExistingCertificatePEM: "existing"}}
+	if withExisting.CheckApplies(intCert) {
+		t.Error("lint applies to subordinate CA despite an existing certificate being configured")
+	}
+
+	// With no existing certificate configured (here, not even a config), a
+	// subordinate CA certificate is covered by this profile.
+	unconfigured := &tlsSubordinateCACertificateMatchesCPSProfile{}
+	if !unconfigured.CheckApplies(intCert) {
+		t.Error("lint does not apply to subordinate CA with no existing certificate configured")
 	}
 
 	// A self-signed root is covered by the root profile, not this one.
@@ -383,7 +391,7 @@ func TestTLSSubordinateCACertificateMatchesCPSProfileCheckApplies(t *testing.T) 
 	if err != nil {
 		t.Fatalf("creating test certificate: %s", err)
 	}
-	if l.CheckApplies(testParseZCert(t, rootDER)) {
+	if unconfigured.CheckApplies(testParseZCert(t, rootDER)) {
 		t.Error("lint applies to self-signed root certificate")
 	}
 }

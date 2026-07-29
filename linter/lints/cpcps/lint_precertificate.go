@@ -39,6 +39,8 @@ func (l *precertificateMatchesCPSProfile) Configure() any {
 }
 
 func (l *precertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool {
+	// This condition must exactly match the condition in
+	// certMatchesExactlyOneCPSProfile.Execute().
 	return util.IsSubscriberCert(c) && util.IsServerAuthCert(c) && util.IsExtInCert(c, util.CtPoisonOID)
 }
 

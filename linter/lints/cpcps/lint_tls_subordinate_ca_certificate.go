@@ -49,19 +49,11 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Configure() any {
 	return l
 }
 
-// isCrossCertified is a heuristic for distinguishing the two kinds of
-// subordinate CA certificates that ISRG issues. A Cross-Certified Subordinate
-// CA Certificate confers a second issuance path upon an existing CA, so its
-// subject is byte-for-byte identical to that existing CA Certificate's
-// subject; in practice the existing CA is always an ISRG root (subject
-// O=ISRG), while TLS Subordinate CA Certificates are required to have subject
-// O=Let's Encrypt.
-func isCrossCertified(c *x509.Certificate) bool {
-	return len(c.Subject.Organization) == 1 && c.Subject.Organization[0] == "ISRG"
-}
-
 func (l *tlsSubordinateCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool {
-	return util.IsSubCA(c) && !isCrossCertified(c)
+	// If no existing cert is configured, then we assume this is not a cross-sign.
+	// This condition must exactly match the condition in
+	// certMatchesExactlyOneCPSProfile.Execute().
+	return util.IsSubCA(c) && len(l.Config.existingPEM()) == 0
 }
 
 // Execute checks the given certificate against the TLS Subordinate CA

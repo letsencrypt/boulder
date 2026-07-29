@@ -53,7 +53,9 @@ func (l *subscriberServerCertificateMatchesCPSProfile) Configure() any {
 }
 
 func (l *subscriberServerCertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool {
-	// Precertificates are covered by the Precertificate Profile instead.
+	// End-entity certs without the CTPoison extension are subscriber certs.
+	// This condition must exactly match the condition in
+	// certMatchesExactlyOneCPSProfile.Execute().
 	return util.IsSubscriberCert(c) && util.IsServerAuthCert(c) && !util.IsExtInCert(c, util.CtPoisonOID)
 }
 

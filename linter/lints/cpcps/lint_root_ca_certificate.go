@@ -39,6 +39,8 @@ func NewRootCACertificateMatchesCPSProfile() lint.CertificateLintInterface {
 }
 
 func (l *rootCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool {
+	// This condition must exactly match the condition in
+	// certMatchesExactlyOneCPSProfile.Execute().
 	return util.IsRootCA(c)
 }
 
