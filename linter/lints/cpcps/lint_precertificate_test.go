@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/zmap/zlint/v3/lint"
+	"github.com/zmap/zlint/v3/util"
 )
 
 // testPrecertTemplate returns a template matching the Precertificate Profile
@@ -93,7 +94,7 @@ func TestPrecertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "duplicate_extension",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
+				duplicateExt(t, tmpl, asn1.ObjectIdentifier(util.KeyUsageOID))
 			},
 			want:       lint.Error,
 			wantSubStr: "duplicate extension 2.5.29.15",

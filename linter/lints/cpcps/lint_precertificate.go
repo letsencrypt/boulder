@@ -75,16 +75,16 @@ func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.Lin
 	// set here differs from the Subscriber (Server) Certificate Profile's by
 	// exactly that substitution.
 	extensions := map[string]bool{
-		authorityInformationAccessOID.String(): false,
-		authorityKeyIdentifierOID.String():     false,
-		basicConstraintsOID.String():           false,
-		certificatePoliciesOID.String():        false,
-		crlDistributionPointsOID.String():      false,
-		extKeyUsageOID.String():                false,
-		keyUsageOID.String():                   false,
-		util.CtPoisonOID.String():              false,
-		subjectAltNameOID.String():             false,
-		subjectKeyIdentifierOID.String():       false,
+		util.AiaOID.String():                  false,
+		util.AuthkeyOID.String():              false,
+		util.BasicConstOID.String():           false,
+		util.CertPolicyOID.String():           false,
+		util.CrlDistOID.String():              false,
+		util.EkuSynOid.String():               false,
+		util.KeyUsageOID.String():             false,
+		util.CtPoisonOID.String():             false,
+		util.SubjectAlternateNameOID.String(): false,
+		util.SubjectKeyIdentityOID.String():   false,
 	}
 	for _, ext := range c.Extensions {
 		seen, allowed := extensions[ext.Id.String()]
@@ -98,7 +98,7 @@ func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.Lin
 	}
 	for oid, seen := range extensions {
 		// The subjectKeyIdentifier extension is optional, so missing it is ok.
-		if !seen && oid != subjectKeyIdentifierOID.String() {
+		if !seen && oid != util.SubjectKeyIdentityOID.String() {
 			return errResult(fmt.Sprintf("missing extension %s", oid))
 		}
 	}

@@ -189,7 +189,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1007
 	// |         `basicConstraints`     | Critical, with `cA` set to true |
-	bcExt := getExtension(c, basicConstraintsOID)
+	bcExt := getExtension(c, util.BasicConstOID)
 	if bcExt == nil {
 		return errResult("basicConstraints extension is not present")
 	}
@@ -205,7 +205,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1008
 	// |         `keyUsage`             | Critical, with only the `keyCertSign` (5) and `cRLSign` (6) bits set |
-	kuExt := getExtension(c, keyUsageOID)
+	kuExt := getExtension(c, util.KeyUsageOID)
 	if kuExt == nil {
 		return errResult("keyUsage extension is not present")
 	}
@@ -218,7 +218,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1009
 	// |         `subjectKeyIdentifier` | Contains a truncated hash of the `subjectPublicKey`, per Section 2(1) of RFC 7093 |
-	skidExt := getExtension(c, subjectKeyIdentifierOID)
+	skidExt := getExtension(c, util.SubjectKeyIdentityOID)
 	if skidExt == nil {
 		return errResult("subjectKeyIdentifier extension is not present")
 	}
@@ -241,9 +241,9 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1010
 	// |         Any other extension    | Not present |
 	extensions := map[string]bool{
-		basicConstraintsOID.String():     false,
-		keyUsageOID.String():             false,
-		subjectKeyIdentifierOID.String(): false,
+		util.BasicConstOID.String():         false,
+		util.KeyUsageOID.String():           false,
+		util.SubjectKeyIdentityOID.String(): false,
 	}
 	for _, ext := range c.Extensions {
 		seen, allowed := extensions[ext.Id.String()]

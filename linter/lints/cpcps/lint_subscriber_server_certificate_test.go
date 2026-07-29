@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/zmap/zlint/v3/lint"
+	"github.com/zmap/zlint/v3/util"
 )
 
 func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
@@ -324,7 +325,7 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "critical_aia",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(authorityInformationAccessOID))
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(util.AiaOID))
 			},
 			want:       lint.Error,
 			wantSubStr: "authorityInformationAccess extension is critical",
@@ -332,7 +333,7 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "critical_certificate_policies",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(certificatePoliciesOID))
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(util.CertPolicyOID))
 			},
 			want:       lint.Error,
 			wantSubStr: "certificatePolicies extension is critical",
@@ -340,7 +341,7 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "critical_crldp",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(crlDistributionPointsOID))
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(util.CrlDistOID))
 			},
 			want:       lint.Error,
 			wantSubStr: "crlDistributionPoints extension is critical",
@@ -348,7 +349,7 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "critical_eku",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(extKeyUsageOID))
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(util.EkuSynOid))
 			},
 			want:       lint.Error,
 			wantSubStr: "extKeyUsage extension is critical",
@@ -356,7 +357,7 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "critical_sct_list",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(sctListOID))
+				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(util.TimestampOID))
 			},
 			want:       lint.Error,
 			wantSubStr: "signedCertificateTimestampList extension is critical",
@@ -364,7 +365,7 @@ func TestSubscriberServerCertificateMatchesCPSProfile(t *testing.T) {
 		{
 			name: "duplicate_extension",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
-				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
+				duplicateExt(t, tmpl, asn1.ObjectIdentifier(util.KeyUsageOID))
 			},
 			want:       lint.Error,
 			wantSubStr: "duplicate extension 2.5.29.15",

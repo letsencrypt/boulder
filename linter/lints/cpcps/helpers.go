@@ -48,24 +48,6 @@ var (
 	spkiAlgorithmP256 = "301306072a8648ce3d020106082a8648ce3d030107"
 	spkiAlgorithmP384 = "301006072a8648ce3d020106052b81040022"
 	spkiAlgorithmP521 = "301006072a8648ce3d020106052b81040023"
-
-	// Extension OIDs used by the profile lints.
-	authorityInformationAccessOID = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1}
-	authorityKeyIdentifierOID     = asn1.ObjectIdentifier{2, 5, 29, 35}
-	basicConstraintsOID           = asn1.ObjectIdentifier{2, 5, 29, 19}
-	certificatePoliciesOID        = asn1.ObjectIdentifier{2, 5, 29, 32}
-	crlDistributionPointsOID      = asn1.ObjectIdentifier{2, 5, 29, 31}
-	extKeyUsageOID                = asn1.ObjectIdentifier{2, 5, 29, 37}
-	keyUsageOID                   = asn1.ObjectIdentifier{2, 5, 29, 15}
-	subjectAltNameOID             = asn1.ObjectIdentifier{2, 5, 29, 17}
-	subjectKeyIdentifierOID       = asn1.ObjectIdentifier{2, 5, 29, 14}
-	sctListOID                    = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
-
-	// The Baseline Requirements Domain Validated Reserved Policy Identifier.
-	domainValidatedOID = asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}
-
-	// Subject attribute type OIDs.
-	commonNameOID = asn1.ObjectIdentifier{2, 5, 4, 3}
 )
 
 // Keys within the shared configuration stanza. These must match the toml

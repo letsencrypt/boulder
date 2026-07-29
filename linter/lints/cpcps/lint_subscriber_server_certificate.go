@@ -75,7 +75,7 @@ func (l *subscriberServerCertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	// We can't map log IDs to operators here, but SCTs from different
 	// operators necessarily come from different logs, so we can check that at
 	// least two distinct logs are present.
-	sctExt := getExtension(c, sctListOID)
+	sctExt := getExtension(c, util.TimestampOID)
 	if sctExt == nil {
 		return errResult("signedCertificateTimestampList extension is not present")
 	}
@@ -93,16 +93,16 @@ func (l *subscriberServerCertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1093
 	// |         Any other extension              | Not present |
 	extensions := map[string]bool{
-		authorityInformationAccessOID.String(): false,
-		authorityKeyIdentifierOID.String():     false,
-		basicConstraintsOID.String():           false,
-		certificatePoliciesOID.String():        false,
-		crlDistributionPointsOID.String():      false,
-		extKeyUsageOID.String():                false,
-		keyUsageOID.String():                   false,
-		sctListOID.String():                    false,
-		subjectAltNameOID.String():             false,
-		subjectKeyIdentifierOID.String():       false,
+		util.AiaOID.String():                  false,
+		util.AuthkeyOID.String():              false,
+		util.BasicConstOID.String():           false,
+		util.CertPolicyOID.String():           false,
+		util.CrlDistOID.String():              false,
+		util.EkuSynOid.String():               false,
+		util.KeyUsageOID.String():             false,
+		util.TimestampOID.String():            false,
+		util.SubjectAlternateNameOID.String(): false,
+		util.SubjectKeyIdentityOID.String():   false,
 	}
 	for _, ext := range c.Extensions {
 		seen, allowed := extensions[ext.Id.String()]
@@ -116,7 +116,7 @@ func (l *subscriberServerCertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	}
 	for oid, seen := range extensions {
 		// The subjectKeyIdentifier extension is optional, so missing it is ok.
-		if !seen && oid != subjectKeyIdentifierOID.String() {
+		if !seen && oid != util.SubjectKeyIdentityOID.String() {
 			return errResult(fmt.Sprintf("missing extension %s", oid))
 		}
 	}
@@ -196,7 +196,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1078
 	// |     `subject`                            | CN omitted, or optionally contains one of the values from the Subject Alternative Name extension |
 	for _, atv := range c.Subject.Names {
-		if !atv.Type.Equal(commonNameOID) {
+		if !atv.Type.Equal(util.CommonNameOID) {
 			return errResult(fmt.Sprintf("subject contains an attribute other than commonName: %s", atv.Type.String()))
 		}
 		cn, ok := atv.Value.(string)
@@ -310,7 +310,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 	// observable here, but the extension must contain exactly one caIssuers
 	// entry with an http URI and nothing else (in particular, no OCSP
 	// entries).
-	aiaExt := getExtension(c, authorityInformationAccessOID)
+	aiaExt := getExtension(c, util.AiaOID)
 	if aiaExt == nil {
 		return errResult("authorityInformationAccess extension is not present")
 	}
@@ -334,7 +334,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1084
 	// |         `authorityKeyIdentifier`         | Contains a `keyIdentifier` byte-for-byte identical to the `subjectKeyIdentifier` of the Issuing CA |
-	akidExt := getExtension(c, authorityKeyIdentifierOID)
+	akidExt := getExtension(c, util.AuthkeyOID)
 	if akidExt == nil {
 		return errResult("authorityKeyIdentifier extension is not present")
 	}
@@ -350,7 +350,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1085
 	// |         `basicConstraints`               | Critical, with `cA` set to false |
-	bcExt := getExtension(c, basicConstraintsOID)
+	bcExt := getExtension(c, util.BasicConstOID)
 	if bcExt == nil {
 		return errResult("basicConstraints extension is not present")
 	}
@@ -363,14 +363,14 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1086
 	// |         `certificatePolicies`            | Contains only the Baseline Requirements Domain Validated Reserved Policy Identifier (OID 2.23.140.1.2.1) |
-	cpExt := getExtension(c, certificatePoliciesOID)
+	cpExt := getExtension(c, util.CertPolicyOID)
 	if cpExt == nil {
 		return errResult("certificatePolicies extension is not present")
 	}
 	if cpExt.Critical {
 		return errResult("certificatePolicies extension is critical")
 	}
-	if len(c.PolicyIdentifiers) != 1 || !c.PolicyIdentifiers[0].Equal(domainValidatedOID) {
+	if len(c.PolicyIdentifiers) != 1 || !c.PolicyIdentifiers[0].Equal(util.BRDomainValidatedOID) {
 		return errResult("certificatePolicies does not contain exactly the Domain Validated Reserved Policy Identifier")
 	}
 
@@ -378,7 +378,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 	// |         `crlDistributionPoints`          | Contains the HTTP URI of a CRL issued by the Issuing CA whose scope includes this certificate |
 	// Whether the CRL's scope actually includes this certificate is not
 	// observable here.
-	crldpExt := getExtension(c, crlDistributionPointsOID)
+	crldpExt := getExtension(c, util.CrlDistOID)
 	if crldpExt == nil {
 		return errResult("crlDistributionPoints extension is not present")
 	}
@@ -399,7 +399,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1088
 	// |         `extKeyUsage`                    | Contains only `id-kp-serverAuth` (OID 1.3.6.1.5.5.7.3.1) |
-	ekuExt := getExtension(c, extKeyUsageOID)
+	ekuExt := getExtension(c, util.EkuSynOid)
 	if ekuExt == nil {
 		return errResult("extKeyUsage extension is not present")
 	}
@@ -412,7 +412,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1089
 	// |         `keyUsage`                       | Critical, with only the `digitalSignature` (0) bit (and optionally the `keyEncipherment` (2) bit, for RSA keys) set |
-	kuExt := getExtension(c, keyUsageOID)
+	kuExt := getExtension(c, util.KeyUsageOID)
 	if kuExt == nil {
 		return errResult("keyUsage extension is not present")
 	}
@@ -433,7 +433,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1091
 	// |         `subjectAltName`                 | A sequence of 1 to 100 names of type `dNSName` or `ipAddress` (critical if CN omitted) |
-	sanExt := getExtension(c, subjectAltNameOID)
+	sanExt := getExtension(c, util.SubjectAlternateNameOID)
 	if sanExt == nil {
 		return errResult("subjectAltName extension is not present")
 	}
@@ -454,7 +454,7 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1092
 	// |         `subjectKeyIdentifier`           | Optionally contains a truncated hash of the `subjectPublicKey`, per Section 2(1) of RFC 7093 |
-	skidExt := getExtension(c, subjectKeyIdentifierOID)
+	skidExt := getExtension(c, util.SubjectKeyIdentityOID)
 	if skidExt != nil {
 		if skidExt.Critical {
 			return errResult("subjectKeyIdentifier extension is critical")

@@ -213,7 +213,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 	// observable here, but the extension must contain exactly one caIssuers
 	// entry with an http URI and nothing else (in particular, no OCSP
 	// entries).
-	aiaExt := getExtension(c, authorityInformationAccessOID)
+	aiaExt := getExtension(c, util.AiaOID)
 	if aiaExt == nil {
 		return errResult("authorityInformationAccess extension is not present")
 	}
@@ -237,7 +237,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1030
 	// |         `authorityKeyIdentifier`     | Contains a `keyIdentifier` byte-for-byte identical to the `subjectKeyIdentifier` of the Issuing CA |
-	akidExt := getExtension(c, authorityKeyIdentifierOID)
+	akidExt := getExtension(c, util.AuthkeyOID)
 	if akidExt == nil {
 		return errResult("authorityKeyIdentifier extension is not present")
 	}
@@ -253,7 +253,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1031
 	// |         `basicConstraints`           | Critical, with `cA` set to true and `pathLenConstraint` identical to the existing CA Certificate |
-	bcExt := getExtension(c, basicConstraintsOID)
+	bcExt := getExtension(c, util.BasicConstOID)
 	if bcExt == nil {
 		return errResult("basicConstraints extension is not present")
 	}
@@ -269,14 +269,14 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1032
 	// |         `certificatePolicies`        | Contains only the Baseline Requirements Domain Validated Reserved Policy Identifier (OID 2.23.140.1.2.1) |
-	cpExt := getExtension(c, certificatePoliciesOID)
+	cpExt := getExtension(c, util.CertPolicyOID)
 	if cpExt == nil {
 		return errResult("certificatePolicies extension is not present")
 	}
 	if cpExt.Critical {
 		return errResult("certificatePolicies extension is critical")
 	}
-	if len(c.PolicyIdentifiers) != 1 || !c.PolicyIdentifiers[0].Equal(domainValidatedOID) {
+	if len(c.PolicyIdentifiers) != 1 || !c.PolicyIdentifiers[0].Equal(util.BRDomainValidatedOID) {
 		return errResult("certificatePolicies does not contain exactly the Domain Validated Reserved Policy Identifier")
 	}
 
@@ -284,7 +284,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 	// |         `crlDistributionPoints`      | Contains the HTTP URI of a CRL issued by the Issuing CA whose scope includes this certificate |
 	// Whether the CRL's scope actually includes this certificate is not
 	// observable here.
-	crldpExt := getExtension(c, crlDistributionPointsOID)
+	crldpExt := getExtension(c, util.CrlDistOID)
 	if crldpExt == nil {
 		return errResult("crlDistributionPoints extension is not present")
 	}
@@ -305,7 +305,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1034
 	// |         `extKeyUsage`                | Contains only `id-kp-serverAuth` (OID 1.3.6.1.5.5.7.3.1) |
-	ekuExt := getExtension(c, extKeyUsageOID)
+	ekuExt := getExtension(c, util.EkuSynOid)
 	if ekuExt == nil {
 		return errResult("extKeyUsage extension is not present")
 	}
@@ -318,7 +318,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1035
 	// |         `keyUsage`                   | Critical, with only the `keyCertSign` (5) and `cRLSign` (6) bits set |
-	kuExt := getExtension(c, keyUsageOID)
+	kuExt := getExtension(c, util.KeyUsageOID)
 	if kuExt == nil {
 		return errResult("keyUsage extension is not present")
 	}
@@ -334,7 +334,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 	// Unlike the other profiles we cannot assume the RFC 7093 construction
 	// here, because the existing CA Certificate's subjectKeyIdentifier may
 	// have been computed by any method.
-	skidExt := getExtension(c, subjectKeyIdentifierOID)
+	skidExt := getExtension(c, util.SubjectKeyIdentityOID)
 	if skidExt == nil {
 		return errResult("subjectKeyIdentifier extension is not present")
 	}
@@ -351,14 +351,14 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1037
 	// |         Any other extension          | Not present |
 	extensions := map[string]bool{
-		authorityInformationAccessOID.String(): false,
-		authorityKeyIdentifierOID.String():     false,
-		basicConstraintsOID.String():           false,
-		certificatePoliciesOID.String():        false,
-		crlDistributionPointsOID.String():      false,
-		extKeyUsageOID.String():                false,
-		keyUsageOID.String():                   false,
-		subjectKeyIdentifierOID.String():       false,
+		util.AiaOID.String():                false,
+		util.AuthkeyOID.String():            false,
+		util.BasicConstOID.String():         false,
+		util.CertPolicyOID.String():         false,
+		util.CrlDistOID.String():            false,
+		util.EkuSynOid.String():             false,
+		util.KeyUsageOID.String():           false,
+		util.SubjectKeyIdentityOID.String(): false,
 	}
 	for _, ext := range c.Extensions {
 		seen, allowed := extensions[ext.Id.String()]

@@ -26,6 +26,7 @@ import (
 	zx509 "github.com/zmap/zcrypto/x509"
 	zpkix "github.com/zmap/zcrypto/x509/pkix"
 	"github.com/zmap/zlint/v3/lint"
+	"github.com/zmap/zlint/v3/util"
 )
 
 var (
@@ -550,20 +551,20 @@ func TestGetExtension(t *testing.T) {
 
 	cert := &zx509.Certificate{
 		Extensions: []zpkix.Extension{
-			{Id: keyUsageOID, Critical: true, Value: []byte{0x01}},
-			{Id: basicConstraintsOID, Critical: false, Value: []byte{0x02}},
+			{Id: util.KeyUsageOID, Critical: true, Value: []byte{0x01}},
+			{Id: util.BasicConstOID, Critical: false, Value: []byte{0x02}},
 		},
 	}
 
-	got := getExtension(cert, keyUsageOID)
+	got := getExtension(cert, util.KeyUsageOID)
 	if got == nil {
 		t.Fatal("got nil, want keyUsage extension")
 	}
-	if !got.Id.Equal(keyUsageOID) || !got.Critical || !bytes.Equal(got.Value, []byte{0x01}) {
+	if !got.Id.Equal(util.KeyUsageOID) || !got.Critical || !bytes.Equal(got.Value, []byte{0x01}) {
 		t.Errorf("got %+v, want the keyUsage extension with its criticality and value preserved", got)
 	}
 
-	if getExtension(cert, subjectAltNameOID) != nil {
+	if getExtension(cert, util.SubjectAlternateNameOID) != nil {
 		t.Error("got an extension for an absent OID, want nil")
 	}
 }
