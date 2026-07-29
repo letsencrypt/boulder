@@ -18,7 +18,8 @@ import (
 
 // testCrossCertTemplate returns a template matching the Cross-Certified
 // Subordinate CA Certificate Profile from CP/CPS Section 7.1: a certificate
-// conferring a second issuance path upon an existing ISRG root.
+// conferring a second issuance path upon an existing CA Certificate, shaped
+// by default like an ISRG root.
 func testCrossCertTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate {
 	t.Helper()
 	notBefore := time.Date(2025, time.November, 1, 0, 0, 0, 0, time.UTC)
@@ -27,8 +28,9 @@ func testCrossCertTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate
 		Subject: pkix.Name{
 			Country:      []string{"US"},
 			Organization: []string{"ISRG"},
-			CommonName:   "ISRG Root X100",
+			CommonName:   "Root X",
 		},
+		PublicKey: pub,
 		NotBefore: notBefore,
 		// 1098 days, inclusive of the final second.
 		NotAfter: notBefore.AddDate(0, 0, 1098).Add(-time.Second),
@@ -50,27 +52,67 @@ func testCrossCertTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate
 func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 	t.Parallel()
 
-	rootKey := testKey(t, elliptic.P384())
-	rootTmpl := testRootTemplate(t, rootKey.Public())
-	rootDER, err := x509.CreateCertificate(rand.Reader, rootTmpl, rootTmpl, rootKey.Public(), rootKey)
+	// This is the issuer of the existing cert which we're cross-signing.
+	existingIssuerKey := testKey(t, elliptic.P384())
+	existingIssuerTmpl := testRootTemplate(t, existingIssuerKey.Public())
+	_, err := x509.CreateCertificate(rand.Reader, existingIssuerTmpl, existingIssuerTmpl, existingIssuerKey.Public(), existingIssuerKey)
 	if err != nil {
 		t.Fatalf("creating test issuer: %s", err)
+	}
+
+	// This is the CA which is doing the cross-signing.
+	issuerKey := testKey(t, elliptic.P384())
+	issuerTmpl := testRootTemplate(t, issuerKey.Public())
+	issuerDER, err := x509.CreateCertificate(rand.Reader, issuerTmpl, issuerTmpl, issuerKey.Public(), issuerKey)
+	if err != nil {
+		t.Fatalf("creating test issuer: %s", err)
+	}
+
+	// A real RSA key to exercise Section 6.1.6's RSA requirements, since most
+	// test cases use ECDSA for speed.
+	rsa2048Key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generating RSA test key: %s", err)
 	}
 
 	testCases := []struct {
 		name       string
 		pub        crypto.PublicKey
-		mod        func(t *testing.T, tmpl *x509.Certificate)
+		mod        func(t *testing.T, tmpl, existing *x509.Certificate)
 		want       lint.LintStatus
 		wantSubStr string
 	}{
 		{
-			name: "good",
+			name: "good_root",
 			want: lint.Pass,
 		},
 		{
+			name: "good_intermediate",
+			pub:  rsa2048Key.Public(),
+			mod: func(t *testing.T, tmpl, existing *x509.Certificate) {
+				for _, cert := range []*x509.Certificate{tmpl, existing} {
+					cert.Subject = pkix.Name{
+						Country:      []string{"US"},
+						Organization: []string{"Let's Encrypt"},
+						CommonName:   "E100",
+					}
+					cert.MaxPathLen = 0
+					cert.MaxPathLenZero = true
+				}
+			},
+			want: lint.Pass,
+		},
+		{
+			name: "spki_mismatch",
+			mod: func(t *testing.T, tmpl, existing *x509.Certificate) {
+				existing.PublicKey = testKey(t, elliptic.P384()).Public()
+			},
+			want:       lint.Error,
+			wantSubStr: "subjectPublicKeyInfo is not byte-for-byte identical to that of the configured existing CA Certificate",
+		},
+		{
 			name: "good_minimal_serial",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				// Exactly 101 bits, the smallest permitted length.
 				tmpl.SerialNumber = new(big.Int).Lsh(big.NewInt(1), 100)
 			},
@@ -78,7 +120,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "serial_too_short",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				// Exactly 100 bits, one bit short of the required minimum.
 				tmpl.SerialNumber = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 100), big.NewInt(1))
 			},
@@ -87,7 +129,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "pathlen_mismatch",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				// The existing CA Certificate has no pathLenConstraint, so
 				// including one in the cross-certificate is a mismatch.
 				tmpl.MaxPathLen = 0
@@ -98,7 +140,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "validity_too_long",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				// One second past the maximum 1098-day validity period.
 				tmpl.NotAfter = tmpl.NotBefore.AddDate(0, 0, 1098)
 			},
@@ -107,7 +149,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "validity_negative",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.NotAfter = tmpl.NotBefore.Add(-time.Second)
 			},
 			want:       lint.Error,
@@ -115,7 +157,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "extra_key_usage_bit",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.KeyUsage |= x509.KeyUsageDigitalSignature
 			},
 			want:       lint.Error,
@@ -123,7 +165,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "missing_country",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.Subject.Country = nil
 			},
 			want:       lint.Error,
@@ -131,7 +173,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "extra_eku",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
 			},
 			want:       lint.Error,
@@ -139,7 +181,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "missing_aia",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.IssuingCertificateURL = nil
 			},
 			want:       lint.Error,
@@ -147,7 +189,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "https_aia",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.IssuingCertificateURL = []string{"https://x99.i.lencr.org/"}
 			},
 			want:       lint.Error,
@@ -155,7 +197,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "aia_unparsable",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.IssuingCertificateURL = []string{"http://x99.i.lencr.org/%zz"}
 			},
 			want:       lint.Error,
@@ -163,7 +205,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "aia_no_hostname",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.IssuingCertificateURL = []string{"http:///x99.crt"}
 			},
 			want:       lint.Error,
@@ -171,7 +213,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "aia_bad_tld",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.IssuingCertificateURL = []string{"http://x99.i.lencr.invalid/"}
 			},
 			want:       lint.Error,
@@ -179,7 +221,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "https_crldp",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.CRLDistributionPoints = []string{"https://x99.c.lencr.org/1.crl"}
 			},
 			want:       lint.Error,
@@ -187,7 +229,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "crldp_unparsable",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.CRLDistributionPoints = []string{"http://x99.c.lencr.org/%zz"}
 			},
 			want:       lint.Error,
@@ -195,7 +237,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "crldp_no_hostname",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.CRLDistributionPoints = []string{"http:///1.crl"}
 			},
 			want:       lint.Error,
@@ -203,7 +245,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "crldp_bad_tld",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				tmpl.CRLDistributionPoints = []string{"http://x99.c.lencr.invalid/1.crl"}
 			},
 			want:       lint.Error,
@@ -248,8 +290,17 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "RSA encoded modulus size 4088 is not allowed",
 		},
 		{
+			// Only the Root CA (4096) and Subordinate CA (2048) RSA sizes
+			// from Section 6.1.5 are allowed; the Subscriber-only 3072 size
+			// is not.
+			name:       "rsa_modulus_size_3072",
+			pub:        &rsa.PublicKey{N: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 3071), big.NewInt(1)), E: 65537},
+			want:       lint.Error,
+			wantSubStr: "RSA encoded modulus size 3072 is not allowed",
+		},
+		{
 			name: "critical_aia",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(authorityInformationAccessOID))
 			},
 			want:       lint.Error,
@@ -257,7 +308,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "critical_certificate_policies",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(certificatePoliciesOID))
 			},
 			want:       lint.Error,
@@ -265,7 +316,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "critical_crldp",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(crlDistributionPointsOID))
 			},
 			want:       lint.Error,
@@ -273,7 +324,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "critical_eku",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				criticalizeExt(t, tmpl, asn1.ObjectIdentifier(extKeyUsageOID))
 			},
 			want:       lint.Error,
@@ -281,7 +332,7 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		},
 		{
 			name: "duplicate_extension",
-			mod: func(t *testing.T, tmpl *x509.Certificate) {
+			mod: func(t *testing.T, tmpl, _ *x509.Certificate) {
 				duplicateExt(t, tmpl, asn1.ObjectIdentifier(keyUsageOID))
 			},
 			want:       lint.Error,
@@ -293,33 +344,33 @@ func TestCrossCertifiedSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// The existing CA Certificate being cross-signed: self-signed by
-			// the same key, with the same subject, SKID, and (absent)
-			// pathLenConstraint as the unmodified cross-certificate template.
-			crossKey := testKey(t, elliptic.P384())
-			existingDER, err := x509.CreateCertificate(rand.Reader, testCrossCertTemplate(t, crossKey.Public()), testCrossCertTemplate(t, crossKey.Public()), crossKey.Public(), crossKey)
+			subjectKey := testKey(t, elliptic.P384())
+
+			// The existing CA Certificate being cross-signed and the
+			// cross-certificate template start out identical; tc.mod may modify both.
+			existingTmpl := testCrossCertTemplate(t, subjectKey.Public())
+			crossTmpl := testCrossCertTemplate(t, subjectKey.Public())
+			if tc.pub != nil {
+				existingTmpl.PublicKey = tc.pub
+				crossTmpl.PublicKey = tc.pub
+			}
+			if tc.mod != nil {
+				tc.mod(t, crossTmpl, existingTmpl)
+			}
+
+			existingDER, err := x509.CreateCertificate(rand.Reader, existingTmpl, existingIssuerTmpl, existingTmpl.PublicKey, existingIssuerKey)
 			if err != nil {
 				t.Fatalf("creating existing CA certificate: %s", err)
 			}
 
-			pub := crossKey.Public()
-			if tc.pub != nil {
-				pub = tc.pub
-			}
-
-			tmpl := testCrossCertTemplate(t, pub)
-			if tc.mod != nil {
-				tc.mod(t, tmpl)
-			}
-
-			der, err := x509.CreateCertificate(rand.Reader, tmpl, rootTmpl, pub, rootKey)
+			crossDER, err := x509.CreateCertificate(rand.Reader, crossTmpl, issuerTmpl, crossTmpl.PublicKey, issuerKey)
 			if err != nil {
 				t.Fatalf("creating test certificate: %s", err)
 			}
-			cert := testParseZCert(t, der)
+			cert := testParseZCert(t, crossDER)
 
 			l := &crossCertifiedSubordinateCACertificateMatchesCPSProfile{Config: &SharedConfig{
-				IssuerCertificatePEM:   testPEM(t, rootDER),
+				IssuerCertificatePEM:   testPEM(t, issuerDER),
 				ExistingCertificatePEM: testPEM(t, existingDER),
 			}}
 			if !l.CheckApplies(cert) {

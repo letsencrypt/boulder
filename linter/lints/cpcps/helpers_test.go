@@ -214,7 +214,7 @@ func testLeafTemplate(t *testing.T) *x509.Certificate {
 func synthesizeExt(t *testing.T, tmpl *x509.Certificate, oid asn1.ObjectIdentifier) pkix.Extension {
 	t.Helper()
 	key := testKey(t, elliptic.P256())
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, testRootTemplate(t, key.Public()), key.Public(), key)
 	if err != nil {
 		t.Fatalf("creating throwaway certificate: %s", err)
 	}

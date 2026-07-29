@@ -132,15 +132,18 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 	}
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1025
-	// |     `subjectPublicKeyInfo`           | See Sections [6.1.5](#615-key-sizes), [6.1.6](#616-public-key-parameters-generation-and-quality-checking), and [7.1.3.1](#7131-subjectpublickeyinfo) |
-	// The subject of a cross-certificate is an existing ISRG root, so Section
-	// 6.1.5's Root CA requirements apply to its key: "either RSA keys whose
-	// encoded modulus size is 4096 bits, or ECDSA keys which are a valid
-	// point on the NIST P-384 elliptic curve". Section 6.1.6 requires the key
-	// parameter quality checks performed inline below. Section 7.1.3.1
-	// requires the AlgorithmIdentifier to be byte-for-byte identical to a BRs
-	// Section 7.1.3.1 encoding. Point-on-curve validation is also performed
-	// by zcrypto at parse time.
+	// |     `subjectPublicKeyInfo`           | Byte-for-byte identical to the `subjectPublicKeyInfo` field of the existing CA Certificate. See also Sections [6.1.5](#615-key-sizes), [6.1.6](#616-public-key-parameters-generation-and-quality-checking), and [7.1.3.1](#7131-subjectpublickeyinfo) |
+	if !bytes.Equal(c.RawSubjectPublicKeyInfo, existing.RawSubjectPublicKeyInfo) {
+		return errResult("subjectPublicKeyInfo is not byte-for-byte identical to that of the configured existing CA Certificate")
+	}
+	// The existing CA Certificate may be either a Root or a Subordinate, so the
+	// checks below allow both sets of key sizes allowed by Section 6.1.5: RSA
+	// keys whose encoded modulus size is 4096 bits (Root CA) or 2048 bits
+	// (Subordinate CA), or ECDSA keys which are a valid point on the NIST P-384
+	// elliptic curve. Section 6.1.6 requires the key parameter quality checks
+	// performed inline below. Section 7.1.3.1 requires the AlgorithmIdentifier to
+	// be byte-for-byte identical to a BRs Section 7.1.3.1 encoding.
+	// Point-on-curve validation is also performed by zcrypto at parse time.
 	spkiAlgID, err := util.GetPublicKeyAidEncoded(c)
 	if err != nil {
 		return errResult("failed to parse subjectPublicKeyInfo algorithm")
@@ -150,7 +153,7 @@ func (l *crossCertifiedSubordinateCACertificateMatchesCPSProfile) Execute(c *x50
 		// DER INTEGERs are minimal-length, so the encoded modulus size is its
 		// bit length rounded up to a whole number of octets.
 		encodedModulusBits := len(key.N.Bytes()) * 8
-		if encodedModulusBits != 4096 {
+		if encodedModulusBits != 2048 && encodedModulusBits != 4096 {
 			return errResult(fmt.Sprintf("RSA encoded modulus size %d is not allowed", encodedModulusBits))
 		}
 		if hex.EncodeToString(spkiAlgID) != spkiAlgorithmRSA {
