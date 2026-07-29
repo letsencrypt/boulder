@@ -27,7 +27,7 @@ const (
 var (
 	CPSV20Date           = time.Date(2017, time.April, 13, 0, 0, 0, 0, time.UTC)
 	CPSV33Date           = time.Date(2021, time.June, 8, 0, 0, 0, 0, time.UTC)
-	CPSV62Date           = time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC) // TKTK: Speculative!
+	CPSV62Date           = time.Date(2026, time.July, 25, 0, 0, 0, 0, time.UTC) // TKTK: Speculative!
 	MozillaPolicy281Date = time.Date(2023, time.February, 15, 0, 0, 0, 0, time.UTC)
 )
 
