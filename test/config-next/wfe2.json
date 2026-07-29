@@ -122,6 +122,7 @@
 					}
 				],
 				"lookupDNSAuthority": "consul.service.consul",
+				"dialerRetries": 1,
 				"readTimeout": "250ms",
 				"writeTimeout": "250ms",
 				"poolSize": 100,

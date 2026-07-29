@@ -15,10 +15,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -386,7 +386,7 @@ func (l *limitRegistry) loadOverrides(ctx context.Context) error {
 
 	if len(newOverrides) < 1 {
 		// If it's an empty set, don't replace any current overrides.
-		l.logger.Warn(ctx, "loading overrides: no valid overrides")
+		l.logger.Warning("loading overrides: no valid overrides")
 		return nil
 	}
 
@@ -430,7 +430,7 @@ func (l *limitRegistry) loadOverridesWithRetry(ctx context.Context) error {
 		if err == nil {
 			return nil
 		}
-		l.logger.Error(ctx, "loading overrides", err)
+		l.logger.Errf("loading overrides: %v", err)
 		retries++
 		select {
 		case <-time.After(core.RetryBackoff(retries, time.Second/6, time.Second*15, 2)):
@@ -448,7 +448,7 @@ func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc 
 	go func() {
 		err := l.loadOverridesWithRetry(ctx)
 		if err != nil {
-			l.logger.Error(ctx, "loading overrides (initial)", err)
+			l.logger.Errf("loading overrides (initial): %v", err)
 		}
 
 		ticker := time.NewTicker(interval)
@@ -458,7 +458,7 @@ func (l *limitRegistry) NewRefresher(interval time.Duration) context.CancelFunc 
 			case <-ticker.C:
 				err := l.loadOverridesWithRetry(ctx)
 				if err != nil {
-					l.logger.Error(ctx, "loading overrides (refresh)", err)
+					l.logger.Errf("loading overrides (refresh): %v", err)
 				}
 			case <-ctx.Done():
 				return

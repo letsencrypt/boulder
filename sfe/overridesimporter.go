@@ -3,7 +3,6 @@ package sfe
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -13,8 +12,8 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	rl "github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
@@ -80,7 +79,7 @@ func (im *OverridesImporter) Start(ctx context.Context) {
 func (im *OverridesImporter) tick(ctx context.Context) {
 	tickets, err := im.zendesk.FindTickets(map[string]string{ReviewStatusFieldName: reviewStatusApproved}, "open")
 	if err != nil {
-		im.log.Error(ctx, "while searching zendesk for solved and approved tickets", err)
+		im.log.Errf("while searching zendesk for solved and approved tickets: %s", err)
 		return
 	}
 
@@ -100,16 +99,13 @@ func (im *OverridesImporter) tick(ctx context.Context) {
 
 		err = im.processTicket(ctx, id, fields)
 		if err != nil {
-			im.log.Error(ctx, "while processing ticket", err, slog.Int64("ticket", id))
+			im.log.Errf("while processing ticket %d: %s", id, err)
 			failures++
 			continue
 		}
 		processed++
 	}
-	im.log.Info(ctx, "overrides importer tick complete",
-		slog.Int("processed", processed),
-		slog.Int("failures", failures),
-	)
+	im.log.Infof("overrides importer processed %d tickets with %d failures", processed, failures)
 }
 
 func accountURIToID(s string) (int64, error) {
@@ -124,7 +120,7 @@ func accountURIToID(s string) (int64, error) {
 // transitionToPendingWithComment sets the status of the given ticket to
 // "pending" and adds a private comment with the given cause. If updating the
 // ticket fails, the error is logged.
-func (im *OverridesImporter) transitionToPendingWithComment(ctx context.Context, ticketID int64, cause string) {
+func (im *OverridesImporter) transitionToPendingWithComment(ticketID int64, cause string) {
 	privateBody := fmt.Sprintf(
 		"A failure occurred while importing this override:\n\n%s\n\n"+
 			"This ticket's status has been set to pending.\n\n"+
@@ -133,7 +129,7 @@ func (im *OverridesImporter) transitionToPendingWithComment(ctx context.Context,
 	)
 	err := im.zendesk.UpdateTicketStatus(ticketID, "pending", privateBody, false)
 	if err != nil {
-		im.log.Error(ctx, "failed to update ticket", err, slog.Int64("ticket", ticketID))
+		im.log.Errf("failed to update ticket %d: %s", ticketID, err)
 	}
 }
 
@@ -250,7 +246,7 @@ func (im *OverridesImporter) processTicket(ctx context.Context, ticketID int64, 
 	req, accountDomainOrIP, err := makeAddOverrideRequest(fields[RateLimitFieldName], fields)
 	if err != nil {
 		// Move to "pending" so the next tick won't comment again.
-		im.transitionToPendingWithComment(ctx, ticketID, err.Error())
+		im.transitionToPendingWithComment(ticketID, err.Error())
 		return fmt.Errorf("preparing override request: %w", err)
 	}
 
@@ -281,12 +277,12 @@ ignore the request entirely.`,
 				resp.Existing.Period.AsDuration(),
 				resp.Existing.Comment,
 			)
-			im.transitionToPendingWithComment(ctx, ticketID, privateBody)
+			im.transitionToPendingWithComment(ticketID, privateBody)
 			return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is lower than existing override", rateLimit, accountDomainOrIP)
 		}
 
 		// Move to "pending" so the next tick won't comment again.
-		im.transitionToPendingWithComment(ctx, ticketID, "An existing override for this limit and requester is currently administratively disabled.")
+		im.transitionToPendingWithComment(ticketID, "An existing override for this limit and requester is currently administratively disabled.")
 		return fmt.Errorf("override for rate limit %s and account/domain/IP: %s is administratively disabled", rateLimit, accountDomainOrIP)
 	}
 

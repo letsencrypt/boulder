@@ -14,10 +14,10 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -306,7 +306,7 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 				joinWithColon(CertificatesPerDomain.EnumString(), "example.com"): {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
 				joinWithColon(CertificatesPerDomain.EnumString(), "example.net"): {Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}, Name: CertificatesPerDomain, emissionInterval: 1000000000, burstOffset: 1000000000, isOverride: true},
 			},
-			expectLog:            fmt.Sprintf(`msg="Hydrating override" limit=CertificatesPerDomain bucketKey=%s error="invalid burst '0', must be > 0"`, joinWithColon(CertificatesPerDomain.EnumString(), "bad-example.com")),
+			expectLog:            fmt.Sprintf("ERR: hydrating CertificatesPerDomain override with key %q: invalid burst '0', must be > 0", joinWithColon(CertificatesPerDomain.EnumString(), "bad-example.com")),
 			expectOverrideErrors: 4,
 		},
 	}
@@ -326,10 +326,7 @@ func TestNewTransactionBuilderFromDatabase(t *testing.T) {
 				test.AssertNotError(t, err, tc.name)
 
 				if tc.expectLog != "" {
-					got := mockLog.GetAllMatching(tc.expectLog)
-					if len(got) == 0 {
-						t.Errorf("Expected log line containing %q, got: %v", tc.expectLog, mockLog.GetAll())
-					}
+					test.AssertSliceContains(t, mockLog.GetAll(), tc.expectLog)
 				}
 
 				for bucketKey, limit := range tc.expectOverrides {

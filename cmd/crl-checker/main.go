@@ -1,21 +1,17 @@
 package notmain
 
 import (
-	"context"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/checker"
@@ -53,9 +49,8 @@ func main() {
 	save := flag.Bool("save", false, "save CRLs to files named after the URL")
 	flag.Parse()
 
-	logger := cmd.NewLogger(blog.Config{StdoutLevel: 6, SyslogLevel: -1})
+	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1})
 	cmd.LogStartup(logger)
-	ctx := context.Background()
 
 	urlFileContents, err := os.ReadFile(*urlFile)
 	cmd.FailOnError(err, "Reading CRL URLs file")
@@ -73,7 +68,7 @@ func main() {
 		issuer, err = core.LoadCert(*issuerFile)
 		cmd.FailOnError(err, "Loading issuer certificate")
 	} else {
-		logger.Warn(ctx, "CRL signature validation disabled")
+		logger.Warning("CRL signature validation disabled")
 	}
 
 	ageLimit, err := time.ParseDuration(*ageLimitStr)
@@ -84,25 +79,23 @@ func main() {
 	totalBytes := 0
 	oldestTimestamp := time.Time{}
 	for _, u := range urls {
-		ctx := blog.ContextWith(ctx, slog.String("url", u))
-
 		crl, err := downloadShard(u)
 		if err != nil {
 			errCount += 1
-			logger.Error(ctx, "fetching CRL failed", err)
+			logger.Errf("fetching CRL %q failed: %s", u, err)
 			continue
 		}
 
 		if *save {
 			parsedURL, err := url.Parse(u)
 			if err != nil {
-				logger.Error(ctx, "parsing url", err)
+				logger.Errf("parsing url: %s", err)
 				continue
 			}
 			filename := fmt.Sprintf("%s%s", parsedURL.Host, strings.ReplaceAll(parsedURL.Path, "/", "_"))
 			err = os.WriteFile(filename, crl.Raw, 0660)
 			if err != nil {
-				logger.Error(ctx, "writing file", err)
+				logger.Errf("writing file: %s", err)
 				continue
 			}
 		}
@@ -112,14 +105,14 @@ func main() {
 		zcrl, err := x509.ParseRevocationList(crl.Raw)
 		if err != nil {
 			errCount += 1
-			logger.Error(ctx, "parsing CRL failed", err)
+			logger.Errf("parsing CRL %q failed: %s", u, err)
 			continue
 		}
 
 		err = checker.Validate(zcrl, issuer, ageLimit)
 		if err != nil {
 			errCount += 1
-			logger.Error(ctx, "checking CRL failed", err)
+			logger.Errf("checking CRL %q failed: %s", u, err)
 			continue
 		}
 
@@ -131,7 +124,7 @@ func main() {
 			serial := core.SerialToString(c.SerialNumber)
 			if _, seen := seenSerials[serial]; seen {
 				errCount += 1
-				logger.Error(ctx, "serial seen in multiple shards", errors.New("duplicate serial"), blog.Serial(serial))
+				logger.Errf("serial seen in multiple shards: %s", serial)
 				continue
 			}
 			seenSerials[serial] = struct{}{}
@@ -148,12 +141,12 @@ func main() {
 		cmd.Fail(fmt.Sprintf("Encountered %d errors", errCount))
 	}
 
-	logger.AuditInfo(ctx, "CRL checking complete",
-		slog.Int("numCRLs", len(urls)),
-		slog.Int("numSerials", len(seenSerials)),
-		slog.Int("numBytes", totalBytes),
-		slog.Time("oldestCRL", oldestTimestamp),
-	)
+	logger.AuditInfo("CRL checking complete", map[string]string{
+		"numCRLs":    fmt.Sprintf("%d", len(urls)),
+		"numSerials": fmt.Sprintf("%d", len(seenSerials)),
+		"numBytes":   fmt.Sprintf("%d", totalBytes),
+		"oldestCRL":  oldestTimestamp.Format(time.RFC3339),
+	})
 }
 
 func init() {

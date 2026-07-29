@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/web"
@@ -126,20 +124,12 @@ func (smi *serverMetadataInterceptor) Unary(
 		return nil, status.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
 	}
 
-	ctx, cancel := context.WithDeadline(ctx, deadline)
+	localCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 
-	// Attach the gRPC service and method to the context, so it will be included
-	// in all log lines output during handling.
-	service, method := splitMethodName(info.FullMethod)
-	ctx = blog.ContextWith(ctx, slog.Group("grpc",
-		slog.String("service", service),
-		slog.String("method", method),
-	))
-
-	resp, err := handler(ctx, req)
+	resp, err := handler(localCtx, req)
 	if err != nil {
-		err = wrapError(ctx, err)
+		err = wrapError(localCtx, err)
 	}
 	return resp, err
 }
@@ -199,20 +189,12 @@ func (smi *serverMetadataInterceptor) Stream(
 
 	// Server stream interceptors are synchronous (they return their error, if
 	// any, when the stream is done) so defer cancel() is safe here.
-	ctx, cancel := context.WithDeadline(ctx, deadline)
+	localCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 
-	// Attach the gRPC service and method to the context, so it will be included
-	// in all log lines output during handling.
-	service, method := splitMethodName(info.FullMethod)
-	ctx = blog.ContextWith(ctx, slog.Group("grpc",
-		slog.String("service", service),
-		slog.String("method", method),
-	))
-
-	err := handler(srv, interceptedServerStream{ss, ctx})
+	err := handler(srv, interceptedServerStream{ss, localCtx})
 	if err != nil {
-		err = wrapError(ctx, err)
+		err = wrapError(localCtx, err)
 	}
 	return err
 }

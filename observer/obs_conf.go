@@ -1,15 +1,12 @@
 package observer
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
 )
@@ -27,9 +24,9 @@ var (
 
 // ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
-	DebugAddr     string      `yaml:"debugaddr" validate:"omitempty,hostname_port"`
-	Buckets       []float64   `yaml:"buckets" validate:"min=1,dive"`
-	Syslog        blog.Config `yaml:"syslog"`
+	DebugAddr     string           `yaml:"debugaddr" validate:"omitempty,hostname_port"`
+	Buckets       []float64        `yaml:"buckets" validate:"min=1,dive"`
+	Syslog        cmd.SyslogConfig `yaml:"syslog"`
 	OpenTelemetry cmd.OpenTelemetryConfig
 	MonConfs      []*MonConf `yaml:"monitors" validate:"min=1,dive"`
 }
@@ -103,15 +100,17 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	metrics.MustRegister(countMonitors)
 	metrics.MustRegister(histObservations)
 	cmd.LogStartup(logger)
-
-	ctx := context.Background()
-	logger.Debug(ctx, "Using config", slog.Any("config", c))
+	logger.Infof("Initializing boulder-observer daemon")
+	logger.Debugf("Using config: %+v", c)
 
 	monitors, errs, err := c.makeMonitors(metrics)
 	if len(errs) != 0 {
+		logger.Errf("%d of %d monitors failed validation", len(errs), len(c.MonConfs))
 		for _, err := range errs {
-			logger.Error(ctx, "Monitor failed config validation", err)
+			logger.Errf("%s", err)
 		}
+	} else {
+		logger.Info("all monitors passed validation")
 	}
 	if err != nil {
 		return nil, err

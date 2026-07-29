@@ -18,12 +18,12 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -244,28 +244,6 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 	}
 
 	return certStatus, nil
-}
-
-// GetRevocationStatus takes a hexadecimal string representing the full serial
-// number of a certificate and returns a minimal set of data about that cert's
-// current validity.
-func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *sapb.Serial) (*sapb.RevocationStatus, error) {
-	if req.Serial == "" {
-		return nil, errIncompleteRequest
-	}
-	if !core.ValidSerial(req.Serial) {
-		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
-	}
-
-	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
-		}
-		return nil, err
-	}
-
-	return status, nil
 }
 
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
@@ -903,10 +881,7 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 		if errors.Is(err, berrors.NotFound) {
 			// The existing replacement order has been deleted. This should
 			// never happen.
-			ssa.log.Error(ctx, "replacement order not found", err,
-				blog.Order(replacement.OrderID),
-				blog.Serial(req.Serial),
-			)
+			ssa.log.Errf("replacement order %d for serial %q not found", replacement.OrderID, req.Serial)
 			return &sapb.Exists{Exists: false}, nil
 		}
 	}

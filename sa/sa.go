@@ -19,13 +19,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/unpause"
@@ -111,6 +111,9 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 		return nil, err
 	}
 
+	// Ensure that the fields are correct for a new account creation.
+	reg.ID = 0
+	reg.Status = string(core.StatusValid)
 	reg.CreatedAt = ssa.clk.Now()
 
 	err = ssa.dbMap.Insert(ctx, reg)
@@ -146,10 +149,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 
 	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx,
-			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? LIMIT 1",
+			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? AND status = ? LIMIT 1",
 			req.Jwk,
 			sha,
 			req.RegistrationID,
+			string(core.StatusValid),
 		)
 		if err != nil {
 			if db.IsDuplicate(err) {
@@ -264,7 +268,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			IsExpired:             false,
 			IssuerID:              req.IssuerNameID,
 		}
-		err = ssa.dbMap.Insert(ctx, cs)
+		err = tx.Insert(ctx, cs)
 		if err != nil {
 			return nil, err
 		}
@@ -370,7 +374,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// but don't return an error from AddCertificate.
 	if fqdnTransactionErr != nil {
 		ssa.rateLimitWriteErrors.Inc()
-		ssa.log.Error(ctx, "failed AddCertificate FQDN sets insert transaction", fqdnTransactionErr)
+		ssa.log.Errf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -597,6 +601,36 @@ func containsDuplicates(ids []int64) bool {
 	return false
 }
 
+// SetAuthzProcessing sets the "beganProcessing" bool for an authorization.
+// This does not affect its public-facing status (unlike orders, authzs do not
+// have an RFC 8555 "processing" state), but does prevent further requests to
+// the challenge endpoint from kicking off parallel validation attempts.
+func (ssa *SQLStorageAuthority) SetAuthzProcessing(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
+	result, err := ssa.dbMap.ExecContext(ctx, `
+		UPDATE authz2
+		SET beganProcessing = ?
+		WHERE id = ?
+		AND beganProcessing = ?`,
+		true,
+		req.Id,
+		false,
+	)
+	if err != nil {
+		return nil, berrors.InternalServerError("error updating authz to beganProcessing status")
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return nil, berrors.ConflictError("Authorization is already being validated. This may indicate your client attempted the same challenge multiple times, possibly due to a client bug.")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 // SetOrderProcessing updates an order from pending status to processing
 // status by updating the `beganProcessing` field of the corresponding
 // Order table row in the DB.
@@ -604,29 +638,25 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
-		result, err := tx.ExecContext(ctx, `
+
+	result, err := ssa.dbMap.ExecContext(ctx, `
 		UPDATE orders
 		SET beganProcessing = ?
 		WHERE id = ?
 		AND beganProcessing = ?`,
-			true,
-			req.Id,
-			false)
-		if err != nil {
-			return nil, berrors.InternalServerError("error updating order to beganProcessing status")
-		}
-
-		n, err := result.RowsAffected()
-		if err != nil || n == 0 {
-			return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
-		}
-
-		return nil, nil
-	})
-	if overallError != nil {
-		return nil, overallError
+		true,
+		req.Id,
+		false,
+	)
+	if err != nil {
+		return nil, berrors.InternalServerError("error updating order to beganProcessing status")
 	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -1601,7 +1631,7 @@ func (ssa *SQLStorageAuthority) updateRateLimitOverride(
 				UPDATE overrides
 				SET comment = :comment,
 					periodNS = :periodNS,
-					count = :count,		
+					count = :count,
 					burst = :burst,
 					updatedAt = :updatedAt,
 					enabled = :enabled

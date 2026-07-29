@@ -21,7 +21,6 @@ import (
 	"os"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +34,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -43,6 +41,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -51,6 +50,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
+var log = blog.UseMock()
 var ctx = context.Background()
 
 var (
@@ -106,7 +106,7 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 	fc := clock.NewFake()
 	fc.Set(mustTime("2015-03-04 05:00"))
 
-	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 0, fc, blog.NewMock())
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 0, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -1263,6 +1263,35 @@ func TestNewOrderAndAuthzs_Profile(t *testing.T) {
 	}
 	if gotAuthz.CertificateProfileName != "test" {
 		t.Errorf("authz.CertificateProfileName = %v, want %v", gotAuthz.CertificateProfileName, "test")
+	}
+}
+
+func TestSetAuthzProcessing(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("TestSetAuthzProcessing requires config-next")
+	}
+
+	sa, fc := initSA(t)
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Add one valid authz
+	expires := fc.Now().Add(time.Hour)
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires)
+
+	// Set the authz to processing
+	_, err := sa.SetAuthzProcessing(t.Context(), &sapb.AuthorizationID2{Id: authzID})
+	if err != nil {
+		t.Fatalf("SetAuthzProcessing = %q, but want success", err)
+	}
+
+	// Try to set the same authz to be processing again. We should get an error.
+	_, err = sa.SetAuthzProcessing(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	if err == nil {
+		t.Fatal("SetAuthzProcessing again succeeded, but want error")
+	}
+	if !errors.Is(err, berrors.Conflict) {
+		t.Errorf("SetAuthzProcessing = %T, but want berrors.Conflict", err)
 	}
 }
 
@@ -2441,7 +2470,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 		if !ok {
 			t.Errorf("output had element for %q, an identifier not present in input", authzPB.Identifier.Value)
 		}
-		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
+		test.AssertEquals(t, authzPB.Id, model.ID)
 		test.AssertEquals(t, authzPB.Identifier.Type, string(uintToIdentifierType[model.IdentifierType]))
 		test.AssertEquals(t, authzPB.Identifier.Value, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
@@ -2531,8 +2560,8 @@ func TestGetOrderAuthorizations(t *testing.T) {
 		}
 		for _, a := range authzPBs.Authzs {
 			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
-			if fmt.Sprintf("%d", identsToCheck[ident]) != a.Id {
-				t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
+			if identsToCheck[ident] != a.Id {
+				t.Fatalf("incorrect identifier %q with id %d", a.Identifier.Value, a.Id)
 			}
 			test.AssertEquals(t, a.Expires.AsTime(), expires)
 			delete(identsToCheck, ident)
@@ -2689,11 +2718,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 
 			var gotIDs []int64
 			for _, authz := range got.Authzs {
-				id, err := strconv.Atoi(authz.Id)
-				if err != nil {
-					t.Fatalf("parsing authz id: %s", err)
-				}
-				gotIDs = append(gotIDs, int64(id))
+				gotIDs = append(gotIDs, authz.Id)
 			}
 
 			slices.Sort(gotIDs)
@@ -4366,6 +4391,7 @@ func newAcctKey(t *testing.T) []byte {
 }
 
 func TestUpdateRegistrationKey(t *testing.T) {
+	t.Parallel()
 	sa, _ := initSA(t)
 
 	_, err := sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{})
@@ -4399,6 +4425,8 @@ func TestUpdateRegistrationKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			reg, err := sa.NewRegistration(ctx, &corepb.Registration{
 				Key: newAcctKey(t),
 			})

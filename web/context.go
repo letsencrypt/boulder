@@ -5,16 +5,16 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/netip"
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 type userAgentContextKey struct{}
@@ -37,19 +37,17 @@ func WithUserAgent(ctx context.Context, ua string) context.Context {
 // single web request. It is generated when a request is received, passed to
 // the request handler which can populate its fields as appropriate, and then
 // logged when the request completes.
-//
-// If new fields are added to this struct, they MUST be added to logEvent below.
 type RequestEvent struct {
 	// These fields are not rendered in JSON; instead, they are rendered
 	// whitespace-separated ahead of the JSON. This saves bytes in the logs since
 	// we don't have to include field names, quotes, or commas -- all of these
 	// fields are known to not include whitespace.
-	Method    string        `json:"-"`
-	Endpoint  string        `json:"-"`
-	Requester int64         `json:"-"`
-	Code      int           `json:"-"`
-	Latency   time.Duration `json:"-"`
-	RealIP    string        `json:"-"`
+	Method    string  `json:"-"`
+	Endpoint  string  `json:"-"`
+	Requester int64   `json:"-"`
+	Code      int     `json:"-"`
+	Latency   float64 `json:"-"`
+	RealIP    string  `json:"-"`
 
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
@@ -193,73 +191,27 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// to 200 itself when writing to the wire
 			logEvent.Code = http.StatusOK
 		}
-		logEvent.Latency = time.Since(begin)
-		th.logEvent(r.Context(), logEvent)
+		logEvent.Latency = time.Since(begin).Seconds()
+		th.logEvent(logEvent)
 	}()
 	th.wfe.ServeHTTP(logEvent, rwws, r)
 }
 
-// logEvent converts a RequestEvent into a message and collection of slog.Attr,
-// and logs the result.
-//
-// This function MUST handle any new fields added to RequestEvent.
-func (th *TopHandler) logEvent(ctx context.Context, logEvent *RequestEvent) {
+func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	if logEvent.suppressed {
 		return
 	}
-
-	// These first attributes are guaranteed to be set on every RequestEvent. They
-	// are set during initial construction in TopHandler.ServeHTTP, by the wrapper
-	// code in wfe.HandleFunc, or by the deferred func also in ServeHTTP.
-	attrs := []slog.Attr{
-		slog.String("method", logEvent.Method),
-		slog.String("endpoint", logEvent.Endpoint),
-		slog.String("ip", logEvent.RealIP),
-		slog.String("ua", logEvent.UserAgent),
-		slog.String("origin", logEvent.Origin),
-		slog.Int("code", logEvent.Code),
-		slog.Duration("latency", logEvent.Latency),
+	jsonEvent, err := json.Marshal(logEvent)
+	if err != nil {
+		th.log.Errf("%s %s %d %d %d %s JSON={\"InternalErrors\": %q}",
+			logEvent.Method, logEvent.Endpoint, logEvent.Requester, logEvent.Code,
+			int(logEvent.Latency*1000), logEvent.RealIP,
+			fmt.Errorf("failed to marshal json log event: %w", err).Error())
+		return
 	}
-
-	// These attributes are only sometimes set, depending on the handler.
-	if logEvent.Slug != "" {
-		attrs = append(attrs, slog.String("slug", logEvent.Slug))
-	}
-	if logEvent.Requester != 0 {
-		attrs = append(attrs, blog.Acct(logEvent.Requester))
-	}
-	if len(logEvent.Identifiers) != 0 {
-		attrs = append(attrs, blog.Idents(logEvent.Identifiers...))
-	}
-	if logEvent.ChallengeType != "" {
-		attrs = append(attrs, slog.String("challengeType", logEvent.ChallengeType))
-	}
-	if logEvent.Created != "" {
-		attrs = append(attrs, slog.String("created", logEvent.Created))
-	}
-	if logEvent.Status != "" {
-		attrs = append(attrs, slog.String("status", logEvent.Status))
-	}
-
-	// The "Extra" field was a hack to avoid having to create a bunch of new
-	// fields on the RequestEvent struct. Elevate these to the top-level.
-	for k, v := range logEvent.Extra {
-		attrs = append(attrs, slog.Any(k, v))
-	}
-
-	// There's a long-standing TODO to treat IgnoredRateLimitError the same as
-	// other InternalErrors, so just join them together here.
-	errs := logEvent.InternalErrors
-	if logEvent.IgnoredRateLimitError != "" {
-		errs = append(errs, logEvent.IgnoredRateLimitError)
-	}
-	if len(errs) != 0 {
-		attrs = append(attrs, slog.Any("internalErrors", errs))
-	}
-
-	// The WFE always logs at info level, even if there was an error processing
-	// the request, because we have successfully supplied an HTTP response.
-	th.log.Info(ctx, "", attrs...)
+	th.log.Infof("%s %s %d %d %d %s JSON=%s",
+		logEvent.Method, logEvent.Endpoint, logEvent.Requester, logEvent.Code,
+		int(logEvent.Latency*1000), logEvent.RealIP, jsonEvent)
 }
 
 func KeyTypeToString(pub crypto.PublicKey) string {

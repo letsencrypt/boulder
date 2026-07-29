@@ -149,7 +149,7 @@ if CONFIG_NEXT:
     SERVICES.extend([
         Service('boulder-mtca-1',
             8010, 9396, 'mtca.boulder',
-            ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010'),
+            ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010', '-init-log-for-test'),
             None),
         Service('boulder-mtpublisher-1',
             8025, None, None,
@@ -190,7 +190,7 @@ def install(race_detection, coverage=False):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
-    go_build_flags='-tags "integration"'
+    go_build_flags=''
     if race_detection:
         go_build_flags += ' -race'
 

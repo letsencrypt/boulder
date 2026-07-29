@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -434,7 +433,7 @@ func setOverrideRequestFormHeaders(w http.ResponseWriter) {
 // method that allows it to be used as an http.HandlerFunc.
 func (sfe *SelfServiceFrontEndImpl) makeOverrideRequestFormHandler(formHTML template.HTML, rateLimit, displayRateLimit string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sfe.overrideRequestHandler(r.Context(), w, formHTML, rateLimit, displayRateLimit)
+		sfe.overrideRequestHandler(w, formHTML, rateLimit, displayRateLimit)
 	}
 }
 
@@ -444,9 +443,9 @@ func (sfe *SelfServiceFrontEndImpl) makeOverrideRequestFormHandler(formHTML temp
 // is the limit that will be displayed to the user in the form. These are
 // typically the same, but can differ in cases where multiple forms are used for
 // the same rate limit.
-func (sfe *SelfServiceFrontEndImpl) overrideRequestHandler(ctx context.Context, w http.ResponseWriter, formHTML template.HTML, rateLimit, displayRateLimit string) {
+func (sfe *SelfServiceFrontEndImpl) overrideRequestHandler(w http.ResponseWriter, formHTML template.HTML, rateLimit, displayRateLimit string) {
 	setOverrideRequestFormHeaders(w)
-	sfe.renderTemplate(ctx, w, "overrideForm.html", map[string]any{
+	sfe.renderTemplate(w, "overrideForm.html", map[string]any{
 		"FormHTML":                    formHTML,
 		"RateLimit":                   rateLimit,
 		"DisplayRateLimit":            displayRateLimit,
@@ -476,7 +475,7 @@ func (sfe *SelfServiceFrontEndImpl) validateOverrideFieldHandler(w http.Response
 	var req validationRequest
 	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, validateOverrideFieldBodyLimit)).Decode(&req)
 	if err != nil {
-		sfe.log.Error(r.Context(), "failed to decode validation request", err)
+		sfe.log.Errf("failed to decode validation request: %s", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -495,7 +494,7 @@ func (sfe *SelfServiceFrontEndImpl) validateOverrideFieldHandler(w http.Response
 		Error: message,
 	})
 	if err != nil {
-		sfe.log.Error(r.Context(), "failed to encode validation response", err)
+		sfe.log.Errf("failed to encode validation response: %s", err)
 		http.Error(w, "failed to encode validation response", http.StatusInternalServerError)
 		return
 	}
@@ -504,14 +503,14 @@ func (sfe *SelfServiceFrontEndImpl) validateOverrideFieldHandler(w http.Response
 // overrideAutoApprovedSuccessHandler renders the success page after a
 // successful override request submission which was automatically approved.
 func (sfe *SelfServiceFrontEndImpl) overrideAutoApprovedSuccessHandler(w http.ResponseWriter, r *http.Request) {
-	sfe.renderTemplate(r.Context(), w, "overrideAutoApprovedSuccess.html", nil)
+	sfe.renderTemplate(w, "overrideAutoApprovedSuccess.html", nil)
 }
 
 // overrideRequestSubmittedSuccessHandler renders the success page after a
 // successful override request submission created a Zendesk ticket for manual
 // review.
 func (sfe *SelfServiceFrontEndImpl) overrideRequestSubmittedSuccessHandler(w http.ResponseWriter, r *http.Request) {
-	sfe.renderTemplate(r.Context(), w, "overrideRequestSubmittedSuccess.html", nil)
+	sfe.renderTemplate(w, "overrideRequestSubmittedSuccess.html", nil)
 }
 
 type overrideRequest struct {
@@ -533,26 +532,25 @@ type overrideRequest struct {
 // either the form logic is flawed or the requester has bypassed the form and
 // submitting (malformed) requests directly to this endpoint.
 func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	var refundLimits func()
 	if sfe.limiter != nil && sfe.txnBuilder != nil {
 		requesterIP, err := web.ExtractRequesterIP(r)
 		if err != nil {
-			sfe.log.Error(ctx, "failed to determine requester IP address", err)
+			sfe.log.Errf("failed to determine requester IP address: %s", err)
 			http.Error(w, "failed to determine the IP address of the requester", http.StatusInternalServerError)
 			return
 		}
 
 		txns, err := sfe.txnBuilder.LimitOverrideRequestsPerIPAddressTransaction(requesterIP)
 		if err != nil {
-			sfe.log.Error(ctx, "failed to build transaction for override request form limits", err)
+			sfe.log.Errf("failed to build transaction for override request form limits: %s", err)
 			http.Error(w, "failed to build transaction for override request form limits", http.StatusInternalServerError)
 			return
 		}
 
-		d, err := sfe.limiter.Spend(ctx, txns)
+		d, err := sfe.limiter.Spend(r.Context(), txns)
 		if err != nil {
-			sfe.log.Error(ctx, "failed to spend transaction for override request form limits", err)
+			sfe.log.Errf("failed to spend transaction for override request form limits: %s", err)
 			http.Error(w, "failed to spend transaction for override request form limits", http.StatusInternalServerError)
 			return
 		}
@@ -564,15 +562,15 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 				http.Error(w, bErr.Detail, http.StatusTooManyRequests)
 				return
 			}
-			sfe.log.Error(ctx, "failed to determine result of override request form limits transaction", err)
+			sfe.log.Errf("failed to determine result of override request form limits transaction: %s", err)
 			http.Error(w, "failed to determine result of override request form limits transaction", http.StatusInternalServerError)
 			return
 		}
 
 		refundLimits = func() {
-			_, err := sfe.limiter.Refund(ctx, txns)
+			_, err := sfe.limiter.Refund(r.Context(), txns)
 			if err != nil {
-				sfe.log.Error(ctx, "failed to refund transaction for override request form limits", err)
+				sfe.log.Errf("failed to refund transaction for override request form limits: %s", err)
 			}
 		}
 	}
@@ -586,7 +584,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	var req overrideRequest
 	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, submitOverrideRequestBodyLimit)).Decode(&req)
 	if err != nil {
-		sfe.log.Error(ctx, "failed to decode override request", err)
+		sfe.log.Errf("failed to decode override request: %s", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -630,12 +628,12 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		}
 		req, _, err := makeAddOverrideRequest(rateLimitFieldValue, fields)
 		if err != nil {
-			sfe.log.Error(ctx, "failed to create automatically approved override request", err)
+			sfe.log.Errf("failed to create automatically approved override request: %s", err)
 			return false, nil
 		}
 		resp, err := sfe.ra.AddRateLimitOverride(ctx, req)
 		if err != nil {
-			sfe.log.Error(ctx, "failed to create automatically approved override request", err)
+			sfe.log.Errf("failed to create automatically approved override request: %s", err)
 			return false, nil
 		}
 		return resp.Enabled, resp.Existing
@@ -652,7 +650,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[AccountURIFieldName] = accountURI
 
 		if validFields[TierFieldName] == newOrdersPerAccountTierOptions[0] {
-			requestHandled, existingOverride = autoApproveOverride(ctx, req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomainPerAccount.String():
@@ -664,7 +662,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[AccountURIFieldName] = accountURI
 
 		if validFields[TierFieldName] == certificatesPerDomainPerAccountTierOptions[0] {
-			requestHandled, existingOverride = autoApproveOverride(ctx, req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perDNSNameSuffix:
@@ -676,7 +674,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[RegisteredDomainFieldName] = registeredDomain
 
 		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
-			requestHandled, existingOverride = autoApproveOverride(ctx, req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	case rl.CertificatesPerDomain.String() + perIPSuffix:
@@ -688,7 +686,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[IPAddressFieldName] = ipAddress
 
 		if validFields[TierFieldName] == certificatesPerDomainTierOptions[0] {
-			requestHandled, existingOverride = autoApproveOverride(ctx, req.RateLimit, validFields)
+			requestHandled, existingOverride = autoApproveOverride(r.Context(), req.RateLimit, validFields)
 		}
 
 	default:
@@ -697,14 +695,14 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 	}
 
 	if sfe.ee != nil && validFields[mailingListFieldName] == "true" {
-		_, err := sfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
+		_, err := sfe.ee.SendContacts(r.Context(), &emailpb.SendContactsRequest{Emails: []string{validFields[emailAddressFieldName]}})
 		if err != nil {
-			sfe.log.Error(ctx, "failed to send contact to email-exporter", err)
+			sfe.log.Errf("failed to send contact to email-exporter: %s", err)
 		}
 	}
 
 	if requestHandled {
-		sfe.log.Info(ctx, "automatically approved override request", slog.String("organization", validFields[OrganizationFieldName]))
+		sfe.log.Infof("automatically approved override request for %s", validFields[OrganizationFieldName])
 		w.WriteHeader(http.StatusCreated)
 		return
 	}
@@ -724,7 +722,7 @@ func (sfe *SelfServiceFrontEndImpl) submitOverrideRequestHandler(w http.Response
 		validFields[IPAddressFieldName],
 	)
 	if err != nil {
-		sfe.log.Error(ctx, "failed to create override request Zendesk ticket", err)
+		sfe.log.Errf("failed to create override request Zendesk ticket: %s", err)
 		http.Error(w, "failed to create support ticket", http.StatusInternalServerError)
 		return
 	}
@@ -753,13 +751,13 @@ Requester-provided email: %s`,
 		)
 		err := sfe.zendeskClient.AddComment(ticketID, privateBody, false)
 		if err != nil {
-			sfe.log.Error(ctx, "failed to add Zendesk comment to ticket", err, slog.Int64("ticketID", ticketID))
+			sfe.log.Errf("failed to add Zendesk comment to ticket %d: %s", ticketID, err)
 		}
 	}
 
 	// If we got here the request has either been auto-approved or a Zendesk
 	// ticket has been created for manual review, so a refund is not needed.
 	requestHandled = true
-	sfe.log.Info(ctx, "created override request Zendesk ticket", slog.Int64("ticketID", ticketID))
+	sfe.log.Infof("created override request Zendesk ticket %d", ticketID)
 	w.WriteHeader(http.StatusAccepted)
 }

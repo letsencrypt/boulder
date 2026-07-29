@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"math/big"
 	"slices"
 	"time"
@@ -23,11 +22,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -35,12 +34,12 @@ import (
 type simpleS3 interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
 }
 
 type crlStorer struct {
 	cspb.UnsafeCRLStorerServer
 	s3Client         simpleS3
-	s3Bucket         string
 	issuers          map[issuance.NameID]*issuance.Certificate
 	uploadCount      *prometheus.CounterVec
 	latencyHistogram *prometheus.HistogramVec
@@ -53,7 +52,6 @@ var _ cspb.CRLStorerServer = (*crlStorer)(nil)
 func New(
 	issuers []*issuance.Certificate,
 	s3Client simpleS3,
-	s3Bucket string,
 	stats prometheus.Registerer,
 	log blog.Logger,
 	clk clock.Clock,
@@ -77,7 +75,6 @@ func New(
 	return &crlStorer{
 		issuers:          issuersByNameID,
 		s3Client:         s3Client,
-		s3Bucket:         s3Bucket,
 		uploadCount:      uploadCount,
 		latencyHistogram: latencyHistogram,
 		log:              log,
@@ -140,12 +137,6 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		return errors.New("got no metadata message")
 	}
 
-	ctx := blog.ContextWith(stream.Context(),
-		slog.String("issuer", issuer.Subject.CommonName),
-		slog.Int64("shard", shardIdx),
-		slog.String("number", crlNumber.String()),
-	)
-
 	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
 
 	crl, err := x509.ParseRevocationList(crlBytes)
@@ -169,8 +160,9 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	// these checks if we found a CRL, so we don't block uploading brand new CRLs.
 	var prevEtag *string
 	filename := fmt.Sprintf("%d/%d.crl", issuer.NameID(), shardIdx)
+	bucket := cs.s3Client.Bucket()
 	prevObj, err := cs.s3Client.GetObject(stream.Context(), &s3.GetObjectInput{
-		Bucket: &cs.s3Bucket,
+		Bucket: &bucket,
 		Key:    &filename,
 	})
 	if err != nil {
@@ -178,7 +170,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		if !ok || smithyErr.HTTPStatusCode() != 404 {
 			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
 		}
-		cs.log.Info(ctx, "Proceeding because no previous CRL found")
+		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)
 	} else {
 		defer prevObj.Body.Close()
 		prevBytes, err := io.ReadAll(&io.LimitedReader{R: prevObj.Body, N: 1_000_000_000})
@@ -228,7 +220,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
 	_, err = cs.s3Client.PutObject(stream.Context(), &s3.PutObjectInput{
-		Bucket:            &cs.s3Bucket,
+		Bucket:            &bucket,
 		Key:               &filename,
 		Body:              bytes.NewReader(crlBytes),
 		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
@@ -245,18 +237,18 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 
 	if err != nil {
 		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
-		cs.log.AuditError(ctx, "CRL upload failed", err)
+		cs.log.AuditErr("CRL upload failed", err, map[string]any{"id": crlId})
 		return fmt.Errorf("uploading to S3: %w", err)
 	}
 
 	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
-	cs.log.AuditInfo(ctx, "CRL uploaded",
-		slog.Time("thisUpdate", crl.ThisUpdate),
-		slog.Time("nextUpdate", crl.NextUpdate),
-		slog.Int("numEntries", len(crl.RevokedCertificateEntries)),
-		slog.Int("size", len(crlBytes)),
-		slog.String("sha256", fmt.Sprintf("%x", checksum)),
-	)
+	cs.log.AuditInfo("CRL uploaded", map[string]any{
+		"id":         crlId,
+		"issuerCN":   issuer.Subject.CommonName,
+		"thisUpdate": crl.ThisUpdate.Format(time.RFC3339),
+		"nextUpdate": crl.NextUpdate.Format(time.RFC3339),
+		"numEntries": len(crl.RevokedCertificateEntries),
+	})
 
 	return stream.SendAndClose(&emptypb.Empty{})
 }

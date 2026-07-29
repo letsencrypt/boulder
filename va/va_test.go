@@ -24,12 +24,12 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -94,7 +94,7 @@ func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core
 		},
 		Authz: &vapb.AuthzMeta{
 			RegID: 1,
-			IdInt: 1,
+			Id:    1,
 		},
 		ExpectedKeyAuthorization: expectedKeyAuthorization,
 	}
@@ -339,43 +339,6 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
 }
 
-// TODO(#8722): Remove this whole function when Authz IDs are int-only
-func TestPerformValidationWithAuthzIDMatrix(t *testing.T) {
-	t.Parallel()
-
-	va, _ := setup(nil, "", nil, &txtFakeDNS{})
-
-	// create a challenge with well known token
-	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	// manipulate Authz ID for this validation attempt
-	req.Authz.Id = ""
-	req.Authz.IdInt = 0
-	_, err := va.DoDCV(context.Background(), req)
-	test.AssertError(t, err, "expected error upon validation request with empty authz ID fields")
-
-	// repeat
-	req = createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	req.Authz.Id = "1"
-	req.Authz.IdInt = 0
-	res, err := va.DoDCV(context.Background(), req)
-	test.AssertNotError(t, err, "domain validation request failed")
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-
-	req = createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	req.Authz.Id = ""
-	req.Authz.IdInt = 1
-	res, err = va.DoDCV(context.Background(), req)
-	test.AssertNotError(t, err, "domain validation request failed")
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-
-	req = createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
-	req.Authz.Id = "1"
-	req.Authz.IdInt = 1
-	res, err = va.DoDCV(context.Background(), req)
-	test.AssertNotError(t, err, "domain validation request failed")
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-}
-
 func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 	t.Parallel()
 
@@ -460,7 +423,7 @@ func TestExperimentalVAConcurrence(t *testing.T) {
 			// The addressesResolved and addressUsed fields are checked here to make sure they are not accidentally
 			// base64-encoded (which can happen if we log the protobuf `corepb.ValidationRecord` instead of the nicely
 			// JSON-serializable struct `core.ValidationRecord`)
-			expectLog: `Primary VA disagreed with experimental VA.*AddressesResolved:\[127.0.0.1\] AddressUsed:127.0.0.1`,
+			expectLog: `Primary VA disagreed with experimental VA.*"addressesResolved":\["127.0.0.1"\],"addressUsed":"127.0.0.1"`,
 		},
 		{
 			name:            "both fail",
@@ -551,6 +514,17 @@ func TestExperimentalVAZeroSample(t *testing.T) {
 	}, 0)
 }
 
+func TestPerformValidationWithEmptyAuthzID(t *testing.T) {
+	t.Parallel()
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
+
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
+	req.Authz.Id = 0
+	_, err := va.DoDCV(context.Background(), req)
+	test.AssertError(t, err, "validation unexpectedly succeeded")
+	test.AssertEquals(t, err.Error(), "Incomplete validation request")
+}
+
 func TestPerformValidationInvalid(t *testing.T) {
 	t.Parallel()
 	va, _ := setup(nil, "", nil, &txtFakeDNS{})
@@ -572,12 +546,13 @@ func TestInternalErrorLogged(t *testing.T) {
 
 	va, mockLog := setup(nil, "", nil, &ipFakeDNS{})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 	req := createValidationRequest(identifier.NewDNS("nonexistent.com"), core.ChallengeTypeHTTP01)
 	_, err := va.DoDCV(ctx, req)
 	test.AssertNotError(t, err, "failed validation should not be an error")
-	matchingLogs := mockLog.GetAllMatching(`Validation result.*internalErr=".*: connection refused"`)
+	matchingLogs := mockLog.GetAllMatching(
+		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
 	test.AssertEquals(t, len(matchingLogs), 1)
 }
 
@@ -602,7 +577,7 @@ func TestPerformValidationValid(t *testing.T) {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
 
-	if !strings.Contains(resultLog[0], `{Type:dns Value:good-dns01.com}`) {
+	if !strings.Contains(resultLog[0], `"Identifier":{"type":"dns","value":"good-dns01.com"}`) {
 		t.Error("PerformValidation didn't log validation identifier.")
 	}
 }
@@ -632,12 +607,12 @@ func TestPerformValidationWildcard(t *testing.T) {
 	}
 
 	// We expect that the top level Identifier reflect the wildcard name
-	if !strings.Contains(resultLog[0], `{Type:dns Value:*.good-dns01.com}`) {
+	if !strings.Contains(resultLog[0], `"Identifier":{"type":"dns","value":"*.good-dns01.com"}`) {
 		t.Errorf("PerformValidation didn't log correct validation identifier.")
 	}
 	// We expect that the ValidationRecord contain the correct non-wildcard
 	// hostname that was validated
-	if !strings.Contains(resultLog[0], `Hostname:good-dns01.com`) {
+	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
 		t.Errorf("PerformValidation didn't log correct validation record hostname.")
 	}
 }
