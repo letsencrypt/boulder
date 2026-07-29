@@ -59,7 +59,7 @@ func verifyECDSA(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey, msgHash has
 
 // Load decodes and parses a private key from the provided file path and returns
 // the private key as crypto.Signer. keyPath is expected to be a PEM formatted
-// RSA or ECDSA private key in a PKCS #1, PKCS# 8, or SEC 1 container. The
+// RSA, ECDSA, or ML-DSA private key in a PKCS #1, PKCS# 8, or SEC 1 container. The
 // embedded PublicKey of the provided private key will be verified as an actual
 // match for the private key and returned as a crypto.PublicKey. This function
 // is only intended for use in administrative tooling and tests.
