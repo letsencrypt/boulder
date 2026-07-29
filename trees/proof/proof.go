@@ -1,4 +1,4 @@
-// Package proof implements the MTCProof and MTCSignature types from
+// Package proof implements the MTCProof and SubtreeSignature types from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format.
 //
 // These are used to generate the signature field of MTCs.
@@ -38,39 +38,6 @@ func SigAlgEncoded() []byte {
 	return builder.BytesOrPanic()
 }
 
-// MTCSignature represents the MTCSignature structure from
-// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format:
-//
-// /* From Section 4.1 of draft-ietf-tls-trust-anchor-ids */
-// opaque TrustAnchorID<1..2^8-1>;
-//
-// opaque HashValue[HASH_SIZE];
-//
-//	struct {
-//	    TrustAnchorID cosigner_id;
-//	    opaque signature<0..2^16-1>;
-//	} MTCSignature;
-type MTCSignature struct {
-	CosignerID []byte
-	Signature  []byte
-}
-
-// Marshal serializes the bytes of an MTCSignature.
-func (ms *MTCSignature) Marshal() ([]byte, error) {
-	var builder cryptobyte.Builder
-	if len(ms.CosignerID) == 0 {
-		// TrustAnchorID is defined as minimum 1 byte.
-		return nil, fmt.Errorf("empty cosigner ID")
-	}
-	builder.AddUint8LengthPrefixed(func(builder *cryptobyte.Builder) {
-		builder.AddBytes(ms.CosignerID)
-	})
-	builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
-		builder.AddBytes(ms.Signature)
-	})
-	return builder.Bytes()
-}
-
 // MTCProof represents the MTCProof structure from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format
 //
@@ -79,13 +46,13 @@ func (ms *MTCSignature) Marshal() ([]byte, error) {
 //	    uint48 start;
 //	    uint48 end;
 //	    HashValue inclusion_proof<0..2^16-1>;
-//	    MTCSignature signatures<0..2^16-1>;
+//	    SubtreeSignature signatures<0..2^16-1>;
 //	} MTCProof;
 type MTCProof struct {
 	Extensions     []byte
 	Start, End     uint64
 	InclusionProof []tlog.Hash
-	Signatures     []*MTCSignature
+	Signatures     []*SubtreeSignature
 }
 
 // Marshal serializes the bytes of an MTCProof.
@@ -117,7 +84,7 @@ func (m *MTCProof) Marshal() ([]byte, error) {
 
 	// Elements [of the signatures field] MUST be ordered by cosigner_id.
 	signatures := slices.Clone(m.Signatures)
-	slices.SortFunc(signatures, func(a, b *MTCSignature) int {
+	slices.SortFunc(signatures, func(a, b *SubtreeSignature) int {
 		if len(a.CosignerID) != len(b.CosignerID) {
 			return len(a.CosignerID) - len(b.CosignerID)
 		}
@@ -197,7 +164,7 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 		return nil, fmt.Errorf("trailing bytes")
 	}
 
-	var signatures []*MTCSignature
+	var signatures []*SubtreeSignature
 	var previousCosignerID cryptobyte.String
 	for !signaturesBytes.Empty() {
 		var cosignerID cryptobyte.String
@@ -231,7 +198,7 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 			return nil, fmt.Errorf("malformed signature")
 		}
 
-		signatures = append(signatures, &MTCSignature{
+		signatures = append(signatures, &SubtreeSignature{
 			CosignerID: cosignerID,
 			Signature:  sig,
 		})
@@ -244,4 +211,40 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 		InclusionProof: inclusionProof,
 		Signatures:     signatures,
 	}, nil
+}
+
+// SubtreeSignature represents the struct of that name in
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format.
+//
+// Standalone certificates carry two or more of these in addition to their inclusion proof. Landmark-relative certificates
+// carry none.
+//
+// /* From Section 4.1 of draft-ietf-tls-trust-anchor-ids */
+// opaque TrustAnchorID<1..2^8-1>;
+//
+// opaque HashValue[HASH_SIZE];
+//
+//	struct {
+//	    TrustAnchorID cosigner_id;
+//	    opaque signature<0..2^16-1>;
+//	} SubtreeSignature;
+type SubtreeSignature struct {
+	CosignerID []byte
+	Signature  []byte
+}
+
+// Marshal serializes the bytes of a SubtreeSignature.
+func (ms *SubtreeSignature) Marshal() ([]byte, error) {
+	var builder cryptobyte.Builder
+	if len(ms.CosignerID) == 0 {
+		// TrustAnchorID is defined as minimum 1 byte.
+		return nil, fmt.Errorf("empty cosigner ID")
+	}
+	builder.AddUint8LengthPrefixed(func(builder *cryptobyte.Builder) {
+		builder.AddBytes(ms.CosignerID)
+	})
+	builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
+		builder.AddBytes(ms.Signature)
+	})
+	return builder.Bytes()
 }

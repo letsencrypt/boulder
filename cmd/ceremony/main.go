@@ -534,30 +534,28 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, lintCert lintCert, subjectP
 	return cert, nil
 }
 
-// loadPubKey loads a PEM public key specified by filename. It returns a
-// crypto.PublicKey, the PEM bytes of the public key, and an error. If an error
-// exists, no public key or bytes are returned. The public key is checked by the
-// GoodKey package.
-func loadPubKey(filename string) (crypto.PublicKey, []byte, error) {
+// loadPubKey loads a PEM public key specified by filename. The public key is
+// checked by the GoodKey package.
+func loadPubKey(filename string) (crypto.PublicKey, error) {
 	keyPEM, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	log.Printf("Loaded public key from %s\n", filename)
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {
-		return nil, nil, fmt.Errorf("no data in cert PEM file %q", filename)
+		return nil, fmt.Errorf("no data in cert PEM file %q", filename)
 	}
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	err = kp.GoodKey(context.Background(), key)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return key, block.Bytes, nil
+	return key, nil
 }
 
 func rootCeremony(configBytes []byte) error {
@@ -584,7 +582,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
-	template, err := makeTemplate(newRandReader(session), &config.CertProfile, keyInfo.der, nil, rootCert)
+	template, err := makeTemplate(newRandReader(session), &config.CertProfile, keyInfo.key, nil, rootCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -616,7 +614,7 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
+	pub, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
@@ -628,7 +626,7 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, nil, intermediateCert)
+	template, err := makeTemplate(randReader, &config.CertProfile, pub, nil, intermediateCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -668,7 +666,7 @@ func crossCertCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
+	pub, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
@@ -684,7 +682,7 @@ func crossCertCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, toBeCrossSigned, crossCert)
+	template, err := makeTemplate(randReader, &config.CertProfile, pub, toBeCrossSigned, crossCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -770,7 +768,7 @@ func csrCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	pub, _, err := loadPubKey(config.Inputs.PublicKeyPath)
+	pub, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}

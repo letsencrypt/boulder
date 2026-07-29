@@ -36,12 +36,10 @@ type generateArgs struct {
 }
 
 // keyInfo is a struct used to pass around information about the public key
-// associated with the generated private key. der contains the DER encoding
-// of the SubjectPublicKeyInfo structure for the public key. id contains the
-// HSM key pair object ID.
+// associated with the generated private key. id contains the HSM key pair
+// object ID.
 type keyInfo struct {
 	key crypto.PublicKey
-	der []byte
 	id  []byte
 }
 
@@ -81,5 +79,5 @@ func generateKey(session *pkcs11helpers.Session, label string, outputPath string
 	}
 	log.Printf("Public key written to %q\n", outputPath)
 
-	return &keyInfo{key: pubKey, der: der, id: keyID}, nil
+	return &keyInfo{key: pubKey, id: keyID}, nil
 }

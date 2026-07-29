@@ -36,7 +36,6 @@
 					"mtc": true,
 					"omitCommonName": true,
 					"omitKeyEncipherment": true,
-					"omitClientAuth": true,
 					"omitSKID": true,
 					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",
@@ -68,7 +67,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 4,
+		"stdoutlevel": 6,
 		"sysloglevel": -1
 	},
 	"openTelemetry": {
