@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -21,16 +20,6 @@ import (
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
 )
-
-// samplePubkey returns a slice of bytes containing an encoded
-// SubjectPublicKeyInfo for an example public key.
-func samplePubkey() []byte {
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	if err != nil {
-		panic(err)
-	}
-	return pubKey
-}
 
 func realRand(_ pkcs11.SessionHandle, length int) ([]byte, error) {
 	r := make([]byte, length)
@@ -55,8 +44,12 @@ func TestMakeSubject(t *testing.T) {
 func TestMakeTemplateEnforcesRootNoEKUs(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	randReader := newRandReader(s)
-	pubKey := samplePubkey()
 	ctx.GenerateRandomFunc = realRand
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
 
 	workingRootProfile := &certProfile{
 		EKUs:               "",
@@ -65,27 +58,27 @@ func TestMakeTemplateEnforcesRootNoEKUs(t *testing.T) {
 		NotBefore:          "2026-05-11 00:00:00",
 		NotAfter:           "2026-05-12 00:00:00",
 	}
-	_, err := makeTemplate(randReader, workingRootProfile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, workingRootProfile, key.Public(), nil, rootCert)
 	if err != nil {
 		t.Fatalf("makeTemplate with workingRootProfile: %s", err)
 	}
 
 	workingRootProfile.EKUs = "none"
-	_, err = makeTemplate(randReader, workingRootProfile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, workingRootProfile, key.Public(), nil, rootCert)
 	if err != nil {
 		t.Fatalf("makeTemplate with workingRootProfile: %s", err)
 	}
 
 	brokenRootProfile := *workingRootProfile
 	brokenRootProfile.EKUs = "both"
-	_, err = makeTemplate(randReader, &brokenRootProfile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, &brokenRootProfile, key.Public(), nil, rootCert)
 	if err == nil {
 		t.Errorf("makeTemplate with brokenRootProfile: got nil error, want error")
 	}
 
 	brokenRootProfile = *workingRootProfile
 	brokenRootProfile.EKUs = "unintelligible"
-	_, err = makeTemplate(randReader, &brokenRootProfile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, &brokenRootProfile, key.Public(), nil, rootCert)
 	if err == nil {
 		t.Errorf("makeTemplate with brokenRootProfile: got nil error, want error")
 	}
@@ -94,8 +87,12 @@ func TestMakeTemplateEnforcesRootNoEKUs(t *testing.T) {
 func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	randReader := newRandReader(s)
-	pubKey := samplePubkey()
 	ctx.GenerateRandomFunc = realRand
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
 
 	tbcsCert := &x509.Certificate{
 		SerialNumber: big.NewInt(666),
@@ -117,7 +114,7 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 		NotAfter:           "2026-05-12 00:00:00",
 	}
 
-	template, err := makeTemplate(randReader, crossCertProfile, pubKey, tbcsCert, crossCert)
+	template, err := makeTemplate(randReader, crossCertProfile, key.Public(), tbcsCert, crossCert)
 	if err != nil {
 		t.Fatalf("makeTemplate with crossCertProfile: %s", err)
 	}
@@ -128,7 +125,7 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 	}
 
 	crossCertProfile.EKUs = "server"
-	_, err = makeTemplate(randReader, crossCertProfile, pubKey, tbcsCert, crossCert)
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), tbcsCert, crossCert)
 	if err != nil {
 		t.Fatalf("makeTemplate with crossCertProfile: %s", err)
 	}
@@ -139,7 +136,7 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 
 	// This will error because the tbcsCert has [serverAuth], but "both" means [serverAuth, clientAuth] on the cross sign
 	crossCertProfile.EKUs = "both"
-	_, err = makeTemplate(randReader, crossCertProfile, pubKey, tbcsCert, crossCert)
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), tbcsCert, crossCert)
 	if err == nil {
 		t.Fatalf("makeTemplate with \"both\" and to-be-cross-signed certificate that has \"serverAuth\": got nil error, want error")
 	}
@@ -148,7 +145,7 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 	liberalTBCS := *tbcsCert
 	liberalTBCS.ExtKeyUsage = nil
 	crossCertProfile.EKUs = "both"
-	_, err = makeTemplate(randReader, crossCertProfile, pubKey, &liberalTBCS, crossCert)
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), &liberalTBCS, crossCert)
 	if err != nil {
 		t.Errorf("makeTemplate with \"both\" and liberal to-be-cross-signed certificate: %s", err)
 	}
@@ -157,7 +154,7 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 	crossCertProfile.EKUs = "both"
 	crossCertProfile.NotBefore = "2027-05-11 00:00:00"
 	crossCertProfile.NotAfter = "2027-05-12 00:00:00"
-	_, err = makeTemplate(randReader, crossCertProfile, pubKey, &liberalTBCS, crossCert)
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), &liberalTBCS, crossCert)
 	if err == nil {
 		t.Fatalf("makeTemplate with \"both\" and late notBefore: go nil error, want error")
 	}
@@ -169,8 +166,12 @@ func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
 func TestMakeTemplateIntermediateEKUs(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	randReader := newRandReader(s)
-	pubKey := samplePubkey()
 	ctx.GenerateRandomFunc = realRand
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
 
 	intermediateProfile := &certProfile{
 		EKUs:               "",
@@ -180,7 +181,7 @@ func TestMakeTemplateIntermediateEKUs(t *testing.T) {
 		NotAfter:           "2026-05-12 00:00:00",
 	}
 
-	template, err := makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	template, err := makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
 	if err != nil {
 		t.Fatalf("makeTemplate with intermediateProfile: %s", err)
 	}
@@ -191,7 +192,7 @@ func TestMakeTemplateIntermediateEKUs(t *testing.T) {
 	}
 
 	intermediateProfile.EKUs = "server"
-	template, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	template, err = makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
 	if err != nil {
 		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"server\": %s", err)
 	}
@@ -202,7 +203,7 @@ func TestMakeTemplateIntermediateEKUs(t *testing.T) {
 	}
 
 	intermediateProfile.EKUs = "both"
-	template, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	template, err = makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
 	if err != nil {
 		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"both\": %s", err)
 	}
@@ -213,7 +214,7 @@ func TestMakeTemplateIntermediateEKUs(t *testing.T) {
 	}
 
 	intermediateProfile.EKUs = "unintelligible"
-	_, err = makeTemplate(randReader, intermediateProfile, pubKey, nil, intermediateCert)
+	_, err = makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
 	if err == nil {
 		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"unintelligible\": got nil error, want error")
 	}
@@ -223,42 +224,46 @@ func TestMakeTemplateRoot(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	profile := &certProfile{}
 	randReader := newRandReader(s)
-	pubKey := samplePubkey()
 	ctx.GenerateRandomFunc = realRand
 
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
+
 	profile.NotBefore = "1234"
-	_, err := makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
 	profile.NotAfter = "1234"
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not after")
 
 	profile.NotAfter = "2018-05-18 11:31:00"
 	profile.SignatureAlgorithm = "nope"
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")
 
 	profile.SignatureAlgorithm = "SHA256WithRSA"
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("bad")
 	}
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
 	ctx.GenerateRandomFunc = realRand
 
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
 
 	profile.KeyUsages = []string{"asd"}
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
 	profile.Policies = []policyInfoConfig{{}}
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid (empty) policy OID")
 
 	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4"}}
@@ -267,7 +272,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	profile.Country = "country"
 	profile.CRLURL = "crl"
 	profile.IssuerURL = "issuer"
-	cert, err := makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	cert, err := makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.AssertEquals(t, cert.Subject.CommonName, profile.CommonName)
 	test.AssertEquals(t, len(cert.Subject.Organization), 1)
@@ -282,7 +287,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	test.AssertEquals(t, len(cert.Policies), 2)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
-	cert, err = makeTemplate(randReader, profile, pubKey, nil, intermediateCert)
+	cert, err = makeTemplate(randReader, profile, key.Public(), nil, intermediateCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, cert.MaxPathLenZero, "MaxPathLenZero not set in intermediate template")
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
@@ -293,7 +298,12 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	ctx.GenerateRandomFunc = realRand
 	randReader := newRandReader(s)
-	pubKey := samplePubkey()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
+
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -318,7 +328,7 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 		BasicConstraintsValid: true,
 	}
 
-	cert, err := makeTemplate(randReader, profile, pubKey, &tbcsCert, crossCert)
+	cert, err := makeTemplate(randReader, profile, key.Public(), &tbcsCert, crossCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, !cert.MaxPathLenZero, "MaxPathLenZero was set in cross-sign")
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
@@ -574,11 +584,4 @@ func TestLoadCert(t *testing.T) {
 
 	_, err = loadCert("../../test/hierarchy/int-e1.key.pem")
 	test.AssertError(t, err, "should have failed when trying to parse a private key")
-}
-
-func TestGenerateSKID(t *testing.T) {
-	sha256skid, err := generateSKID(samplePubkey())
-	test.AssertNotError(t, err, "Error generating SKID")
-	test.AssertEquals(t, len(sha256skid), 20)
-	test.AssertEquals(t, cap(sha256skid), 20)
 }
