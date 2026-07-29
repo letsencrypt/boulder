@@ -79,7 +79,7 @@
 					"omitCommonName": true,
 					"omitKeyEncipherment": true,
 					"omitSKID": true,
-					"maxValidityPeriod": "583200s",
+					"maxValidityPeriod": "1080h",
 					"maxValidityBackdate": "1h5m",
 					"maxCertificateSize": 10000,
 					"lintConfig": "test/config-next/zlint.toml",

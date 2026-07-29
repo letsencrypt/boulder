@@ -81,7 +81,7 @@
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
 					"omitSKID": true,
-					"maxValidityPeriod": "583200s",
+					"maxValidityPeriod": "1080h",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [

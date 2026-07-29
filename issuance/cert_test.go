@@ -322,6 +322,7 @@ func TestGenerateTemplate(t *testing.T) {
 		SignatureAlgorithm:    x509.SHA256WithRSA,
 		IssuingCertificateURL: []string{"http://issuer"},
 		Policies:              []x509.OID{domainValidatedOID},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		// This field is computed based on the serial, so is not included in the template.
 		CRLDistributionPoints: nil,
 	}
