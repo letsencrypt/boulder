@@ -16,6 +16,7 @@ import (
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
 	_ "github.com/letsencrypt/boulder/linter/lints/chrome"
+	_ "github.com/letsencrypt/boulder/linter/lints/cpcps"
 	_ "github.com/letsencrypt/boulder/linter/lints/rfc"
 )
 
