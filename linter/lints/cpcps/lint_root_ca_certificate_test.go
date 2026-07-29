@@ -70,6 +70,15 @@ func TestRootCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "validity is negative",
 		},
 		{
+			name: "pathlen_present",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.MaxPathLen = 0
+				tmpl.MaxPathLenZero = true
+			},
+			want:       lint.Error,
+			wantSubStr: "basicConstraints contains a pathLenConstraint",
+		},
+		{
 			name: "wrong_organization",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.Subject.Organization = []string{"Internet Security Research Group"}

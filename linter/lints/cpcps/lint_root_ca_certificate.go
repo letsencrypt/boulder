@@ -199,6 +199,9 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 	if !c.IsCA {
 		return errResult("basicConstraints cA is not true")
 	}
+	if c.MaxPathLen > 0 || c.MaxPathLenZero {
+		return errResult("basicConstraints contains a pathLenConstraint")
+	}
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1008
 	// |         `keyUsage`             | Critical, with only the `keyCertSign` (5) and `cRLSign` (6) bits set |
