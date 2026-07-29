@@ -6,8 +6,7 @@
 //
 // Entry bundles contain MTCLogEntry. MTCLogEntry contains (typically) TBSCertificateLogEntry.
 //
-// TBSCertificateLogEntry is part of the X.509 layer. It will be used to build certificates
-// (TODO: implement TBSCertificateLogEntry.ToX509).
+// TBSCertificateLogEntry is part of the X.509 layer. It will be used to build certificates.
 //
 // MTCLogEntry is part of the Merkle tree layer and is what gets hashed. It provides type switching
 // (needed for null_entry) and extensibility.
@@ -28,6 +27,8 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/trees/proof"
 )
 
 const typeNullEntry = 0
@@ -55,6 +56,9 @@ type MTCLogEntry struct {
 
 // TBS returns the TBSCertificateLogEntry bytes if Type is tbs_cert_entry, or nil otherwise.
 func (mtcle *MTCLogEntry) TBS() []byte {
+	if mtcle == nil {
+		return nil
+	}
 	if mtcle.typ == typeTBSCertEntry {
 		return mtcle.value
 	}
@@ -227,7 +231,7 @@ func FromX509(in []byte, hash crypto.Hash) (*MTCLogEntry, error) {
 		return nil, fmt.Errorf("malformed algorithmIdentifier")
 	}
 
-	// Read the extensions.
+	// Read the extensions. We consider them required in practice.
 	//
 	// Note that we've ignored issuerUniqueID and subjectUniqueID, which are OPTIONAL and
 	// forbidden by the BRs. Since those fields have encoding instructions ([1] and [2]),
@@ -352,4 +356,162 @@ func (br *BundleReader) ReadEntry() (*MTCLogEntry, []byte, error) {
 	}
 
 	return mtcle, body, nil
+}
+
+// ToTBSCertificate generates a TBSCertificate corresponding to a TBSCertificateLogEntry.
+//
+// `serial` must be the entry index combined with log number: (log_number << 48) | index.
+// `subjectPublicKeyInfo` must be a DER-encoded subjectPublicKeyInfo (including tag and length).
+// `hash` must be the CA's hash function.
+//
+// If the MTCLogEntry does not contain a TBSCertificateLogEntry, error.
+//
+// Checks `subjectPublicKeyInfo` against `subjectPublicKeyInfoHash` and `subjectPublicKeyAlgorithm`
+// from the TBSCertificateLogEntry.
+func (mtcle *MTCLogEntry) ToTBSCertificate(
+	serial uint64,
+	subjectPublicKeyInfo []byte,
+	hash crypto.Hash,
+) ([]byte, error) {
+	if mtcle == nil || mtcle.typ != typeTBSCertEntry {
+		return nil, fmt.Errorf("MTCLogEntry type was not tbs_cert_entry")
+	}
+
+	if serial == 0 {
+		return nil, fmt.Errorf("serial number was zero")
+	}
+
+	var spkiInner cryptobyte.String
+	spkiString := cryptobyte.String(subjectPublicKeyInfo)
+	if !spkiString.ReadASN1(&spkiInner, asn1.SEQUENCE) {
+		return nil, fmt.Errorf("malformed SPKI")
+	}
+
+	var subjectPublicKeyAlgorithmFromSPKI cryptobyte.String
+	if !spkiInner.ReadASN1(&subjectPublicKeyAlgorithmFromSPKI, asn1.SEQUENCE) {
+		return nil, fmt.Errorf("malformed SPKI")
+	}
+
+	tbsCertificateLogEntry := cryptobyte.String(mtcle.TBS())
+
+	// TBSCertificateLogEntry ::= SEQUENCE {
+	//      version               [0] EXPLICIT Version DEFAULT v1,
+	//      issuer                    Name,
+	//      validity                  Validity,
+	//      subject                   Name,
+	//      subjectPublicKeyAlgorithm AlgorithmIdentifier{PUBLIC-KEY,
+	//      							{PublicKeyAlgorithms}},
+	//      subjectPublicKeyInfoHash  OCTET STRING,
+	//      issuerUniqueID        [1] IMPLICIT UniqueIdentifier OPTIONAL,
+	//      subjectUniqueID       [2] IMPLICIT UniqueIdentifier OPTIONAL,
+	//      extensions            [3] EXPLICIT Extensions{{CertExtensions}}
+	//      									OPTIONAL
+	// }
+	var version cryptobyte.String
+	if !tbsCertificateLogEntry.ReadASN1(&version, asn1.Tag(0).Constructed().ContextSpecific()) {
+		return nil, fmt.Errorf("failed to read version")
+	}
+	// Version should always be v3, which is represented as an ASN.1 INTEGER 2.
+	// That's tag 2, length 1, value 2.
+	if !bytes.Equal(version, []byte{2, 1, 2}) {
+		return nil, fmt.Errorf("invalid X.509 version")
+	}
+	var fields []cryptobyte.String
+	// issuer, validity, subject
+	for range 3 {
+		var fieldElement cryptobyte.String
+		var fieldTag asn1.Tag
+
+		if !tbsCertificateLogEntry.ReadAnyASN1Element(&fieldElement, &fieldTag) {
+			return nil, fmt.Errorf("failed to read field")
+		}
+
+		fields = append(fields, fieldElement)
+	}
+
+	// Read and validate subjectPublicKeyAlgorithmFromTBS and subjectPublicKeyInfoHash.
+	var subjectPublicKeyAlgorithmFromTBS cryptobyte.String
+	if !tbsCertificateLogEntry.ReadASN1(&subjectPublicKeyAlgorithmFromTBS, asn1.SEQUENCE) {
+		return nil, fmt.Errorf("malformed subjectPublicKeyAlgorithm")
+	}
+
+	if !bytes.Equal(subjectPublicKeyAlgorithmFromSPKI, subjectPublicKeyAlgorithmFromTBS) {
+		return nil, fmt.Errorf("mismatched subjectPublicKeyAlgorithm in TBS (%x) and in SPKI (%x)",
+			subjectPublicKeyAlgorithmFromTBS, subjectPublicKeyAlgorithmFromSPKI)
+	}
+
+	var subjectPublicKeyInfoHash cryptobyte.String
+	if !tbsCertificateLogEntry.ReadASN1(&subjectPublicKeyInfoHash, asn1.OCTET_STRING) {
+		return nil, fmt.Errorf("malformed subjectPublicKeyInfoHash")
+	}
+
+	h := hash.New()
+	h.Write(subjectPublicKeyInfo)
+	spkiHash := h.Sum(nil)
+
+	if !bytes.Equal([]byte(subjectPublicKeyInfoHash), spkiHash) {
+		return nil, fmt.Errorf("mismatched subjectPublicKeyInfoHash: %x vs %x",
+			subjectPublicKeyInfoHash, spkiHash)
+	}
+
+	// Read the extensions. We consider them required in practice.
+	//
+	// Note that we've ignored issuerUniqueID and subjectUniqueID, which are OPTIONAL and
+	// forbidden by the BRs. Since those fields have encoding instructions ([1] and [2]),
+	// if by some chance they are present we will error when trying to read extensions,
+	// which has an encoding instruction of [3].
+	var extensions cryptobyte.String
+	extensionsTag := asn1.Tag(3).Constructed().ContextSpecific()
+	if !tbsCertificateLogEntry.ReadASN1Element(&extensions, extensionsTag) {
+		return nil, fmt.Errorf("error reading extensions")
+	}
+
+	if !tbsCertificateLogEntry.Empty() {
+		return nil, fmt.Errorf("extra bytes at end")
+	}
+
+	// https://datatracker.ietf.org/doc/html/rfc5280#page-117
+	// TBSCertificate  ::=  SEQUENCE  {
+	//      version         [0]  Version DEFAULT v1,
+	//      serialNumber         CertificateSerialNumber,
+	//      signature            AlgorithmIdentifier,
+	//      issuer               Name,
+	//      validity             Validity,
+	//      subject              Name,
+	//      subjectPublicKeyInfo SubjectPublicKeyInfo,
+	//      issuerUniqueID  [1]  IMPLICIT UniqueIdentifier OPTIONAL,
+	//      					 -- If present, version MUST be v2 or v3
+	//      subjectUniqueID [2]  IMPLICIT UniqueIdentifier OPTIONAL,
+	//      					 -- If present, version MUST be v2 or v3
+	//      extensions      [3]  Extensions OPTIONAL
+	//      					 -- If present, version MUST be v3 --  }
+	var builder cryptobyte.Builder
+
+	builder.AddASN1(asn1.SEQUENCE, func(tbsCertificate *cryptobyte.Builder) {
+		// version
+		tbsCertificate.AddASN1(asn1.Tag(0).Constructed().ContextSpecific(), func(child *cryptobyte.Builder) {
+			child.AddASN1Int64(2)
+		})
+
+		// serialNumber
+		tbsCertificate.AddASN1Uint64(serial)
+
+		// signature
+		tbsCertificate.AddBytes(proof.SigAlgEncoded())
+
+		// issuer, validity, subject
+		for _, f := range fields {
+			// The fields were read with ReadASN1Element so they still include
+			// their tag and length. Add them straight to the builder.
+			tbsCertificate.AddBytes(f)
+		}
+
+		// subjectPublicKeyInfo
+		tbsCertificate.AddBytes(subjectPublicKeyInfo)
+
+		// extensions
+		tbsCertificate.AddBytes(extensions)
+	})
+
+	return builder.Bytes()
 }
