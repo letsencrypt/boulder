@@ -8,6 +8,8 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -112,6 +114,9 @@ func KeyDigest(key crypto.PublicKey) (Sha256Digest, error) {
 	case jose.JSONWebKey:
 		return KeyDigest(t.Key)
 	default:
+		// Marshalling the key to DER ensures that this has the exact same result
+		// as computing the hash over the RawSubjectPublicKeyInfo of a cert with
+		// the same key.
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
 			return Sha256Digest{}, err
@@ -128,6 +133,15 @@ func KeyDigestB64(key crypto.PublicKey) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(digest[:]), nil
+}
+
+// CertKeyDigest is exactly the same as KeyDigest, except that it computes its
+// hash over the SubjectPublicKeyInfo of a certificate, rather than an in-memory
+// crypto.PublicKey. This is here to ensure that the methods used to compute
+// hashes of cert keys and account keys never diverge, since bad-key-revoker
+// checks both when a new key is blocked.
+func CertKeyDigest(cert *x509.Certificate) Sha256Digest {
+	return sha256.Sum256(cert.RawSubjectPublicKeyInfo)
 }
 
 // KeyDigestEquals determines whether two public keys have the same digest.
@@ -152,6 +166,29 @@ func PublicKeysEqual(a, b crypto.PublicKey) (bool, error) {
 	default:
 		return false, fmt.Errorf("unsupported public key type %T", ak)
 	}
+}
+
+// GenerateSKID computes the Subject Key Identifier using one of the methods in
+// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
+// The keyIdentifier [may be] composed of the leftmost 160-bits of the
+// SHA-256 hash of the value of the BIT STRING subjectPublicKey
+// (excluding the tag, length, and number of unused bits).
+func GenerateSKID(pub crypto.PublicKey) ([]byte, error) {
+	pkBytes, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, err
+	}
+
+	var pkixPublicKey struct {
+		Algo      pkix.AlgorithmIdentifier
+		BitString asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(pkBytes, &pkixPublicKey); err != nil {
+		return nil, err
+	}
+
+	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+	return skid[0:20:20], nil
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String

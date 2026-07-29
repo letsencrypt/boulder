@@ -291,7 +291,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	}
 
 	return &corepb.Authorization{
-		IdInt:                  authz.ID,
+		Id:                     authz.ID,
 		Identifier:             authz.Identifier.ToProto(),
 		RegistrationID:         authz.RegistrationID,
 		Status:                 string(authz.Status),
@@ -302,7 +302,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 }
 
 func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
-	if pb.IdInt == 0 {
+	if pb.Id == 0 {
 		return core.Authorization{}, ErrMissingParameters
 	}
 
@@ -321,7 +321,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	}
 
 	authz := core.Authorization{
-		ID:                     pb.IdInt,
+		ID:                     pb.Id,
 		Identifier:             identifier.FromProto(pb.Identifier),
 		RegistrationID:         pb.RegistrationID,
 		Status:                 core.AcmeStatus(pb.Status),

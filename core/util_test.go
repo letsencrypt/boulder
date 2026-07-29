@@ -2,6 +2,12 @@ package core
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,6 +121,64 @@ func TestKeyDigestEquals(t *testing.T) {
 	test.Assert(t, !KeyDigestEquals(jwk1, jwk2), "Key digests for different keys should not match")
 	test.Assert(t, !KeyDigestEquals(jwk1, struct{}{}), "Unknown key types should not match anything")
 	test.Assert(t, !KeyDigestEquals(struct{}{}, struct{}{}), "Unknown key types should not match anything")
+}
+
+func TestGenerateSKID(t *testing.T) {
+	t.Parallel()
+
+	// Test basics with a random key.
+	key1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Error generating key")
+	skid, err := GenerateSKID(key1.Public())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(skid), 20)
+	test.AssertEquals(t, cap(skid), 20)
+
+	// Test specific output with the known test vector from RFC 7093 Section 3:
+	spkiDER, err := hex.DecodeString(
+		"3059301306072a8648ce3d020106082a8648ce3d030107034200047f7f35a79794c950060b8029fc8f363a28f11159692d9d34e6ac948190434735f833b1a66652dc514337aff7f5c9c75d670c019d95a5d639b72744c64a9128bb")
+	test.AssertNotError(t, err, "Error decoding test vector SPKI")
+	key2, err := x509.ParsePKIXPublicKey(spkiDER)
+	test.AssertNotError(t, err, "Error parsing test vector SPKI")
+	skid, err = GenerateSKID(key2)
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, hex.EncodeToString(skid), "bf37b3e5808fd46d54b28e846311bcce1cad2e1a")
+}
+
+// TestCertKeyDigest ensures that CertKeyDigest (which hashes a certificate's
+// SubjectPublicKeyInfo) and KeyDigest (which hashes an in-memory public key,
+// usually from a parsed JWK) produce the same result for the same underlying
+// key. bad-key-revoker relies on these two paths never diverging.
+func TestCertKeyDigest(t *testing.T) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating ECDSA key: %s", err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "example.com"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		BasicConstraintsValid: true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("self-signing certificate: %s", err)
+	}
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("parsing certificate: %s", err)
+	}
+
+	keyDigest, err := KeyDigest(&priv.PublicKey)
+	if err != nil {
+		t.Fatalf("computing KeyDigest of public key: %s", err)
+	}
+
+	if CertKeyDigest(cert) != keyDigest {
+		t.Errorf("CertKeyDigest = %x, want %x (KeyDigest of same key)", CertKeyDigest(cert), keyDigest)
+	}
 }
 
 func TestIsAnyNilOrZero(t *testing.T) {

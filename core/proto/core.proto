@@ -95,7 +95,7 @@ message Registration {
 message Authorization {
   // Next unused field number: 13
   reserved 1, 5, 7, 8;
-  int64 idInt = 12; // TODO(#8722): rename
+  int64 id = 12;
   int64 registrationID = 3;
   // Fields specified by RFC 8555, Section 7.1.4
   reserved 2; // Previously dnsName

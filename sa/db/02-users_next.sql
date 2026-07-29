@@ -71,10 +71,10 @@ GRANT SELECT ON precertificates TO 'cert_checker'@'%';
 
 -- Bad Key Revoker
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'%';
+GRANT SELECT,UPDATE ON registrations TO 'badkeyrevoker'@'%';
 GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'%';
 GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'%';
 GRANT SELECT ON precertificates TO 'badkeyrevoker'@'%';
-GRANT SELECT ON registrations TO 'badkeyrevoker'@'%';
 
 -- ProxySQL --
 GRANT ALL PRIVILEGES ON monitor TO 'proxysql'@'%';

@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -232,6 +234,22 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
 	logEvent["keyHash"] = fmt.Sprintf("%x", unchecked.KeyHash)
 	logEvent["revokedBy"] = unchecked.RevokedBy
 
+	if features.Get().RevokeBadKeyAccounts {
+		// Revoke the account, if any, which uses this key. The registrations
+		// table ensures that jwk_sha256 is unique. However, it stores the jwk_sha256
+		// column in base64, unlike the keyHashToSerial table. We do this before the
+		// certs so that we can still early-exit if there are zero certs to process.
+		_, err = bkr.dbMap.ExecContext(
+			ctx, "UPDATE registrations SET status = ? WHERE jwk_sha256 = ? AND status = ? LIMIT 1",
+			string(core.StatusRevoked),
+			base64.StdEncoding.EncodeToString(unchecked.KeyHash),
+			string(core.StatusValid),
+		)
+		if err != nil {
+			return false, fmt.Errorf("deactivating corresponding account: %w", err)
+		}
+	}
+
 	// select all unrevoked, unexpired serials associated with the blocked key hash
 	unrevokedCerts, err := bkr.findUnrevoked(ctx, unchecked)
 	if err != nil {
@@ -301,6 +319,8 @@ type Config struct {
 		// the database's maximum replication lag, and always well under 24
 		// hours.
 		MaxExpectedReplicationLag config.Duration `validate:"-"`
+
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -319,6 +339,8 @@ func main() {
 	var config Config
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
+
+	features.Set(config.BadKeyRevoker.Features)
 
 	if *debugAddr != "" {
 		config.BadKeyRevoker.DebugAddr = *debugAddr

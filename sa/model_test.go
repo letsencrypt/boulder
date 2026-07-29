@@ -64,7 +64,7 @@ func TestAuthzModel(t *testing.T) {
 	// customize them after calling this.
 	newTestAuthzPB := func(validated time.Time) *corepb.Authorization {
 		return &corepb.Authorization{
-			IdInt:          1,
+			Id:             1,
 			Identifier:     identifier.NewDNS("example.com").ToProto(),
 			RegistrationID: 1,
 			Status:         string(core.StatusValid),
@@ -120,7 +120,7 @@ func TestAuthzModel(t *testing.T) {
 
 	// PB with zero-value ID should error
 	authzPB = newTestAuthzPB(clk.Now())
-	authzPB.IdInt = 0
+	authzPB.Id = 0
 	_, err = authzPBToModel(authzPB)
 	test.AssertError(t, err, "authzPBToModel with zero-value ID should error")
 	test.AssertEquals(t, err.Error(), "authorization is missing an ID value")
