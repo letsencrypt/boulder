@@ -79,6 +79,12 @@ type Config struct {
 	// unnecessary work due to parallel validations, but requires a database
 	// change to work.
 	SetAuthzProcessing bool
+
+	// UnsignLintCerts controls whether the linting package returns RFC 9925
+	// Unsigned versions of the linting precerts it checks. This in turn controls
+	// the the contents of the precertificates table (which actually stores
+	// linting precerts), saving on storage volume by dropping fake signatures.
+	UnsignLintCerts bool
 }
 
 var fMu = new(sync.RWMutex)

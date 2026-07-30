@@ -13,6 +13,8 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/unsigned"
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
 	_ "github.com/letsencrypt/boulder/linter/lints/chrome"
@@ -51,6 +53,9 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 		return nil, err
 	}
 
+	if features.Get().UnsignLintCerts {
+		return unsigned.Design(lintCertBytes, false)
+	}
 	return lintCertBytes, nil
 }
 
@@ -135,6 +140,9 @@ func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, re
 		return nil, err
 	}
 
+	if features.Get().UnsignLintCerts {
+		return unsigned.Design(lintCertBytes, false)
+	}
 	return lintCertBytes, nil
 }
 
