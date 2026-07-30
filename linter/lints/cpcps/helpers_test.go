@@ -29,20 +29,6 @@ import (
 	"github.com/zmap/zlint/v3/util"
 )
 
-var (
-	testDomainValidatedOID = x509.OID{}
-	testSCTListOID         = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
-	testCTPoisonOID        = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 3}
-)
-
-func init() {
-	var err error
-	testDomainValidatedOID, err = x509.OIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
-	if err != nil {
-		panic(err)
-	}
-}
-
 // testKey generates an ECDSA key on the given curve.
 func testKey(t *testing.T, curve elliptic.Curve) *ecdsa.PrivateKey {
 	t.Helper()
@@ -124,6 +110,7 @@ func testRootTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate {
 // Certificate Profile from CP/CPS Section 7.1.
 func testIntermediateTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate {
 	t.Helper()
+	dvOID, _ := x509.OIDFromASN1OID(asn1.ObjectIdentifier(util.BRDomainValidatedOID))
 	notBefore := time.Date(2025, time.November, 1, 0, 0, 0, 0, time.UTC)
 	return &x509.Certificate{
 		SerialNumber: testSerial(t, 16),
@@ -141,7 +128,7 @@ func testIntermediateTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certific
 		MaxPathLenZero:        true,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		Policies:              []x509.OID{testDomainValidatedOID},
+		Policies:              []x509.OID{dvOID},
 		IssuingCertificateURL: []string{"http://x99.i.lencr.org/"},
 		CRLDistributionPoints: []string{"http://x99.c.lencr.org/1.crl"},
 		SubjectKeyId:          testRFC7093SKID(t, pub),
@@ -176,7 +163,7 @@ func testSCTListExtension(t *testing.T, logIDs ...[32]byte) pkix.Extension {
 	if err != nil {
 		t.Fatalf("marshalling SCT list: %s", err)
 	}
-	return pkix.Extension{Id: testSCTListOID, Value: value}
+	return pkix.Extension{Id: asn1.ObjectIdentifier(util.TimestampOID), Value: value}
 }
 
 // testLeafTemplate returns a template matching the Subscriber (Server)
@@ -184,6 +171,7 @@ func testSCTListExtension(t *testing.T, logIDs ...[32]byte) pkix.Extension {
 // distinct logs.
 func testLeafTemplate(t *testing.T) *x509.Certificate {
 	t.Helper()
+	dvOID, _ := x509.OIDFromASN1OID(asn1.ObjectIdentifier(util.BRDomainValidatedOID))
 	notBefore := time.Date(2025, time.December, 1, 0, 0, 0, 0, time.UTC)
 	return &x509.Certificate{
 		SerialNumber: testSerial(t, 18),
@@ -197,7 +185,7 @@ func testLeafTemplate(t *testing.T) *x509.Certificate {
 		IsCA:                  false,
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		Policies:              []x509.OID{testDomainValidatedOID},
+		Policies:              []x509.OID{dvOID},
 		IssuingCertificateURL: []string{"http://e99.i.lencr.org/"},
 		CRLDistributionPoints: []string{"http://e99.c.lencr.org/1.crl"},
 		ExtraExtensions: []pkix.Extension{

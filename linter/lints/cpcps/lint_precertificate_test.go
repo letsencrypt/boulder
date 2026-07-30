@@ -22,7 +22,7 @@ func testPrecertTemplate(t *testing.T) *x509.Certificate {
 	t.Helper()
 	tmpl := testLeafTemplate(t)
 	tmpl.ExtraExtensions = []pkix.Extension{
-		{Id: testCTPoisonOID, Critical: true, Value: []byte{0x05, 0x00}},
+		{Id: asn1.ObjectIdentifier(util.CtPoisonOID), Critical: true, Value: []byte{0x05, 0x00}},
 	}
 	return tmpl
 }
@@ -51,7 +51,7 @@ func TestPrecertificateMatchesCPSProfile(t *testing.T) {
 			name: "poison_not_critical",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.ExtraExtensions = []pkix.Extension{
-					{Id: testCTPoisonOID, Critical: false, Value: []byte{0x05, 0x00}},
+					{Id: asn1.ObjectIdentifier(util.CtPoisonOID), Critical: false, Value: []byte{0x05, 0x00}},
 				}
 			},
 			want:       lint.Error,

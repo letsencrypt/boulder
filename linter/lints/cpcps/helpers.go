@@ -24,7 +24,7 @@ var (
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1117
 	// When used in the context of a signature, fields of type `AlgorithmIdentifier` of all objects signed by ISRG CAs are byte-for-byte identical with one of the hexadecimal encodings specified by Section 7.1.3.2 of the Baseline Requirements.
 	// These are the AlgorithmIdentifier encodings specified by Section
-	// 7.1.3.2 of the Baseline Requirements, execpt the RSASSA-PSS ones, which
+	// 7.1.3.2 of the Baseline Requirements, except the RSASSA-PSS ones, which
 	// we never use.
 	brSignatureAlgorithmIdentifiers = map[string]bool{
 		// sha256WithRSAEncryption

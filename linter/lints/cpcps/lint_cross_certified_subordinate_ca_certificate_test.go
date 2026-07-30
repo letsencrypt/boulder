@@ -23,6 +23,7 @@ import (
 // by default like an ISRG root.
 func testCrossCertTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate {
 	t.Helper()
+	dvOID, _ := x509.OIDFromASN1OID(asn1.ObjectIdentifier(util.BRDomainValidatedOID))
 	notBefore := time.Date(2025, time.November, 1, 0, 0, 0, 0, time.UTC)
 	return &x509.Certificate{
 		SerialNumber: testSerial(t, 16),
@@ -43,7 +44,7 @@ func testCrossCertTemplate(t *testing.T, pub crypto.PublicKey) *x509.Certificate
 		// Cross-certificates assert only the keyCertSign and cRLSign bits.
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		Policies:              []x509.OID{testDomainValidatedOID},
+		Policies:              []x509.OID{dvOID},
 		IssuingCertificateURL: []string{"http://x99.i.lencr.org/"},
 		CRLDistributionPoints: []string{"http://x99.c.lencr.org/1.crl"},
 		SubjectKeyId:          testRFC7093SKID(t, pub),

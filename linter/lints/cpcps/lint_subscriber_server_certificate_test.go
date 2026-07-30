@@ -475,7 +475,7 @@ func TestSubscriberServerCertificateMatchesCPSProfileCheckApplies(t *testing.T) 
 	leafKey := testKey(t, elliptic.P256())
 	tmpl := testLeafTemplate(t)
 	tmpl.ExtraExtensions = []pkix.Extension{
-		{Id: testCTPoisonOID, Critical: true, Value: []byte{0x05, 0x00}},
+		{Id: asn1.ObjectIdentifier(util.CtPoisonOID), Critical: true, Value: []byte{0x05, 0x00}},
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, intTmpl, leafKey.Public(), intKey)

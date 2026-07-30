@@ -657,7 +657,7 @@ func TestPrepareMTC(t *testing.T) {
 		sctList:         nil,
 
 		PublicKey: MarshalablePublicKey{pk.Public()},
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
@@ -670,7 +670,7 @@ func TestPrepareMTC(t *testing.T) {
 		IncludeCTPoison: true,
 
 		PublicKey: MarshalablePublicKey{pk.Public()},
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
@@ -683,7 +683,7 @@ func TestPrepareMTC(t *testing.T) {
 		sctList: []ct.SignedCertificateTimestamp{{SCTVersion: 1}},
 
 		PublicKey: MarshalablePublicKey{pk.Public()},
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
