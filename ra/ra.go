@@ -1531,6 +1531,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("cannot validate challenge: %s", cErr.Error())
 	}
 
+	// Set the authorization to "processing", to prevent parallel attempts.
+	if features.Get().SetAuthzProcessing {
+		_, err = ra.SA.SetAuthzProcessing(ctx, &sapb.AuthorizationID2{Id: authz.ID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to mark authz as processing: %w", err)
+		}
+	}
+
 	// Dispatch to the VA for service
 	ra.drainWG.Go(func() {
 		ctx := context.WithoutCancel(ctx)
@@ -1587,13 +1595,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// parallel-validation race: a different validation attempt has already
 				// updated this authz, so we failed to find a *pending* authz with the
 				// given ID to update.
-				ra.log.InfoObject("Failed to record validation (likely parallel validation race)", map[string]any{
+				ra.log.InfoObject("Failed to record validation (authz no longer pending)", map[string]any{
 					"requester": authz.RegistrationID,
 					"authz":     authz.ID,
 					"error":     err.Error(),
 				})
 			} else {
-				ra.log.AuditErr("Failed to record validation (likely parallel validation race)", err, map[string]any{
+				ra.log.AuditErr("Failed to record validation", err, map[string]any{
 					"requester": authz.RegistrationID,
 					"authz":     authz.ID,
 				})

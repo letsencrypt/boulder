@@ -39,6 +39,7 @@ type ProfileConfig struct {
 	OmitKeyEncipherment bool
 	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
 	// to be omitted from the EKU extension.
+	// Deprecated: This has no effect, and we always omit the clientAuth EKU.
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
@@ -68,7 +69,6 @@ type ProfileConfig struct {
 type Profile struct {
 	omitCommonName      bool
 	omitKeyEncipherment bool
-	omitClientAuth      bool
 	omitSKID            bool
 	mtc                 bool
 
@@ -77,7 +77,14 @@ type Profile struct {
 
 	maxCertificateSize int
 
+	// lints is the registry of lints to run against certificates issued under
+	// this profile. It carries no lint configuration of its own: at issuance
+	// time it is combined with a configuration derived from lintConfig.
 	lints lint.Registry
+	// lintConfig is the in-memory contents of this profile's zlint config
+	// file. At issuance time it is augmented with the issuing Issuer's
+	// certificate via WithIssuer.
+	lintConfig linter.Config
 }
 
 // NewProfile converts the profile config into a usable profile.
@@ -94,30 +101,22 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
-	// CQRP: clientAuth is MUST NOT.
-	// https://docs.google.com/document/d/1bC958-AaZ7ePCPFVyP9Sg2VZ3DcC2-PqwsMly8oIJSU/edit?tab=t.0#heading=h.kbidyave6lzr
-	if profileConfig.MTC {
-		profileConfig.OmitClientAuth = true
-	}
-
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
-	if profileConfig.LintConfig != "" {
-		lintconfig, err := lint.NewConfigFromFile(profileConfig.LintConfig)
-		cmd.FailOnError(err, "Failed to load zlint config file")
-		lints.SetConfiguration(lintconfig)
-	}
+
+	lintConfig, err := linter.LoadConfigFile(profileConfig.LintConfig)
+	cmd.FailOnError(err, "Failed to load zlint config file")
 
 	sp := &Profile{
 		omitCommonName:      profileConfig.OmitCommonName,
 		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
-		omitClientAuth:      profileConfig.OmitClientAuth,
 		omitSKID:            profileConfig.OmitSKID,
 		mtc:                 profileConfig.MTC,
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
 		maxCertificateSize:  profileConfig.MaxCertificateSize,
 		lints:               lints,
+		lintConfig:          lintConfig,
 	}
 
 	return sp, nil
@@ -199,6 +198,7 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		SignatureAlgorithm:    i.sigAlg,
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
 		Policies: []x509.OID{domainValidatedOID},
 	}
@@ -318,17 +318,6 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	// generate template from the issuer's data
 	template := i.generateTemplate()
 
-	ekus := []x509.ExtKeyUsage{
-		x509.ExtKeyUsageServerAuth,
-		x509.ExtKeyUsageClientAuth,
-	}
-	if prof.omitClientAuth {
-		ekus = []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-		}
-	}
-	template.ExtKeyUsage = ekus
-
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
@@ -386,7 +375,11 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints)
+	lintConfig, err := prof.lintConfig.WithIssuer(i.Cert.Certificate)
+	if err != nil {
+		return nil, nil, fmt.Errorf("building lint config: %w", err)
+	}
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints, lintConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}

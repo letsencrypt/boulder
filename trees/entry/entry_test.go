@@ -3,17 +3,25 @@ package entry
 import (
 	"bytes"
 	"crypto"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"io"
+	"math/big"
+	"reflect"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/trees/proof"
 )
 
-func TestFromX509(t *testing.T) {
-	// Bytes from an example generated test/certs/ipki/wfe.boulder/cert.pem
-	input, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
+// testCertB64 contains an example certificate generated from
+// test/certs/ipki/wfe.boulder/cert.pem.
+const testCertB64 = `
 MIIB4TCCAWegAwIBAgIIJuDkMteShO8wCgYIKoZIzj0EAwMwIDEeMBwGA1UEAxMV
 bWluaWNhIHJvb3QgY2EgNGU0YjFkMB4XDTI2MDYyOTA1NDUyNloXDTI4MDcyOTA1
 NDUyNlowFjEUMBIGA1UEAxMLd2ZlLmJvdWxkZXIwdjAQBgcqhkjOPQIBBgUrgQQA
@@ -24,10 +32,26 @@ KwYBBQUHAwIwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBSA+ZfinkHdxJDZuRo1
 zJ7mHOmaCDAWBgNVHREEDzANggt3ZmUuYm91bGRlcjAKBggqhkjOPQQDAwNoADBl
 AjEApE8cwaAQ6hnGtUM/TWAb54E5/29ZVy5E/UY8mEzoE021pl3tq1fEof5qz5n/
 KrL4AjAuEpVOjRrRWWMnRJxd05Pfxq7gZmxgwppjnE9JZ9P6WRP7ZWqZcc9p8YLM
-YhKuXQo=`, "\n", ""))
+YhKuXQo=`
+
+// testSPKIB64 contains the SubjectPublicKeyInfo from testCertB64.
+const testSPKIB64 = `
+MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEy5GNcAaxpffo4UePh0snEb+ZL1VfC1Dt
+8WNbLcrvPqvZGkotN8K3R+y1H6yZEROkutF81V5Hqi/Tf/4zlxbGjPSW7G3hxUaA
+MfpgRFevFbuvXW5cbVyACjZTDOXWr+Vz`
+
+// mustDecodeB64 decodes a base64 string that may contain embedded newlines.
+func mustDecodeB64(t *testing.T, in string) []byte {
+	t.Helper()
+	out, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(in, "\n", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
+	return out
+}
+
+func TestFromX509(t *testing.T) {
+	input := mustDecodeB64(t, testCertB64)
 
 	mtcle, err := FromX509(input, crypto.SHA256)
 	if err != nil {
@@ -57,22 +81,133 @@ AQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUgPmX4p5B3cSQ2bkaNcye
 	}
 }
 
-func TestFromX509Malformed(t *testing.T) {
-	valid, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
-MIIB4TCCAWegAwIBAgIIJuDkMteShO8wCgYIKoZIzj0EAwMwIDEeMBwGA1UEAxMV
-bWluaWNhIHJvb3QgY2EgNGU0YjFkMB4XDTI2MDYyOTA1NDUyNloXDTI4MDcyOTA1
-NDUyNlowFjEUMBIGA1UEAxMLd2ZlLmJvdWxkZXIwdjAQBgcqhkjOPQIBBgUrgQQA
-IgNiAATLkY1wBrGl9+jhR4+HSycRv5kvVV8LUO3xY1styu8+q9kaSi03wrdH7LUf
-rJkRE6S60XzVXkeqL9N//jOXFsaM9JbsbeHFRoAx+mBEV68Vu69dblxtXIAKNlMM
-5dav5XOjeDB2MA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEFBQcDAQYI
-KwYBBQUHAwIwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBSA+ZfinkHdxJDZuRo1
-zJ7mHOmaCDAWBgNVHREEDzANggt3ZmUuYm91bGRlcjAKBggqhkjOPQQDAwNoADBl
-AjEApE8cwaAQ6hnGtUM/TWAb54E5/29ZVy5E/UY8mEzoE021pl3tq1fEof5qz5n/
-KrL4AjAuEpVOjRrRWWMnRJxd05Pfxq7gZmxgwppjnE9JZ9P6WRP7ZWqZcc9p8YLM
-YhKuXQo=`, "\n", ""))
+func TestToTBSCertificate(t *testing.T) {
+	input := mustDecodeB64(t, testCertB64)
+	spki := mustDecodeB64(t, testSPKIB64)
+
+	mtcle, err := FromX509(input, crypto.SHA256)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	out, err := mtcle.ToTBSCertificate(8675309, spki, crypto.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Turn it into something that will parse with crypto/x509
+	var builder cryptobyte.Builder
+	builder.AddASN1(asn1.SEQUENCE, func(certificate *cryptobyte.Builder) {
+		// tbsCertificate
+		certificate.AddBytes(out)
+		// signatureAlgorithm
+		certificate.AddBytes(proof.SigAlgEncoded())
+		// signature
+		certificate.AddASN1BitString(nil)
+	})
+	certBytes := builder.BytesOrPanic()
+
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("parsing ToMTC() output: %s", err)
+	}
+	orig, err := x509.ParseCertificate(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cert.SerialNumber.Cmp(big.NewInt(8675309)) != 0 {
+		t.Errorf("serialNumber: got %v, want 8675309", cert.SerialNumber)
+	}
+	if !bytes.Equal(cert.RawIssuer, orig.RawIssuer) {
+		t.Errorf("issuer: got %x, want %x", cert.RawIssuer, orig.RawIssuer)
+	}
+	if !cert.NotBefore.Equal(orig.NotBefore) || !cert.NotAfter.Equal(orig.NotAfter) {
+		t.Errorf("validity: got %s/%s, want %s/%s",
+			cert.NotBefore, cert.NotAfter, orig.NotBefore, orig.NotAfter)
+	}
+	if !bytes.Equal(cert.RawSubject, orig.RawSubject) {
+		t.Errorf("subject: got %x, want %x", cert.RawSubject, orig.RawSubject)
+	}
+	if !bytes.Equal(cert.RawSubjectPublicKeyInfo, spki) {
+		t.Errorf("subjectPublicKeyInfo: got %x, want %x", cert.RawSubjectPublicKeyInfo, spki)
+	}
+	if !reflect.DeepEqual(cert.Extensions, orig.Extensions) {
+		t.Errorf("extensions: got %v, want %v", cert.Extensions, orig.Extensions)
+	}
+
+	if !bytes.Contains(out, proof.SigAlgEncoded()) {
+		t.Errorf("output didn't contain id-alg-mtcProof")
+	}
+}
+
+func TestToMTCMalformed(t *testing.T) {
+	input := mustDecodeB64(t, testCertB64)
+	spki := mustDecodeB64(t, testSPKIB64)
+
+	valid, err := FromX509(input, crypto.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// mutatedTBS returns a tbs_cert_entry whose TBSCertificateLogEntry bytes
+	// are a copy of the valid entry's, transformed by f.
+	mutatedTBS := func(f func([]byte) []byte) *MTCLogEntry {
+		return &MTCLogEntry{
+			typ:   typeTBSCertEntry,
+			value: f(bytes.Clone(valid.value)),
+		}
+	}
+
+	// mutatedSPKI returns a copy of spki with the byte at index i flipped.
+	mutatedSPKI := func(i int) []byte {
+		out := bytes.Clone(spki)
+		out[i] ^= 0xff
+		return out
+	}
+
+	type testCase struct {
+		name  string
+		mtcle *MTCLogEntry
+		spki  []byte
+		hash  crypto.Hash
+	}
+
+	testCases := []testCase{
+		{"null entry", &MTCLogEntry{}, spki, crypto.SHA256},
+		{"truncated TBS", mutatedTBS(func(v []byte) []byte { return v[:len(v)-2] }), spki, crypto.SHA256},
+		{"trailing byte in TBS", mutatedTBS(func(v []byte) []byte { return append(v, 0) }), spki, crypto.SHA256},
+		// The version is the first field of the TBSCertificateLogEntry,
+		// encoded as a0 03 02 01 02; overwrite the value byte (v2 not v3).
+		{"wrong version", mutatedTBS(func(v []byte) []byte { v[4] = 1; return v }), spki, crypto.SHA256},
+		{"empty SPKI", valid, nil, crypto.SHA256},
+		{"truncated SPKI", valid, spki[:8], crypto.SHA256},
+		// Index 8 is inside the id-ecPublicKey OID within the SPKI's
+		// AlgorithmIdentifier, so it must fail the algorithm comparison.
+		{"SPKI with different algorithm", valid, mutatedSPKI(8), crypto.SHA256},
+		// The last byte is inside the public key BIT STRING, so the
+		// AlgorithmIdentifiers match but the hash must not.
+		{"SPKI with different key", valid, mutatedSPKI(len(spki) - 1), crypto.SHA256},
+		{"wrong hash function", valid, spki, crypto.SHA384},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.mtcle.ToTBSCertificate(123, tc.spki, tc.hash)
+			if err == nil {
+				t.Errorf("ToMTC(): got nil err, want error")
+			}
+		})
+	}
+
+	// serialNumber must be a positive integer (RFC 5280 4.1.2.2).
+	if _, err := valid.ToTBSCertificate(0, spki, crypto.SHA256); err == nil {
+		t.Errorf("ToMTC() with zero serial: got nil err, want error")
+	}
+}
+
+func TestFromX509Malformed(t *testing.T) {
+	valid := mustDecodeB64(t, testCertB64)
 
 	shortValid := valid[:len(valid)-2]
 	longValid := append(valid, 0)

@@ -97,7 +97,7 @@ func TestMakeIssuer(t *testing.T) {
 
 	ee := &x509.Certificate{}
 
-	lintCertBytes, err := linter.Check(ee, eeKey.Public(), nil)
+	lintCertBytes, err := linter.Check(ee, eeKey.Public(), nil, Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

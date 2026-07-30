@@ -601,6 +601,36 @@ func containsDuplicates(ids []int64) bool {
 	return false
 }
 
+// SetAuthzProcessing sets the "beganProcessing" bool for an authorization.
+// This does not affect its public-facing status (unlike orders, authzs do not
+// have an RFC 8555 "processing" state), but does prevent further requests to
+// the challenge endpoint from kicking off parallel validation attempts.
+func (ssa *SQLStorageAuthority) SetAuthzProcessing(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
+	if req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
+	result, err := ssa.dbMap.ExecContext(ctx, `
+		UPDATE authz2
+		SET beganProcessing = ?
+		WHERE id = ?
+		AND beganProcessing = ?`,
+		true,
+		req.Id,
+		false,
+	)
+	if err != nil {
+		return nil, berrors.InternalServerError("error updating authz to beganProcessing status")
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return nil, berrors.ConflictError("Authorization is already being validated. This may indicate your client attempted the same challenge multiple times, possibly due to a client bug.")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 // SetOrderProcessing updates an order from pending status to processing
 // status by updating the `beganProcessing` field of the corresponding
 // Order table row in the DB.
@@ -608,29 +638,25 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
-		result, err := tx.ExecContext(ctx, `
+
+	result, err := ssa.dbMap.ExecContext(ctx, `
 		UPDATE orders
 		SET beganProcessing = ?
 		WHERE id = ?
 		AND beganProcessing = ?`,
-			true,
-			req.Id,
-			false)
-		if err != nil {
-			return nil, berrors.InternalServerError("error updating order to beganProcessing status")
-		}
-
-		n, err := result.RowsAffected()
-		if err != nil || n == 0 {
-			return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
-		}
-
-		return nil, nil
-	})
-	if overallError != nil {
-		return nil, overallError
+		true,
+		req.Id,
+		false,
+	)
+	if err != nil {
+		return nil, berrors.InternalServerError("error updating order to beganProcessing status")
 	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
+	}
+
 	return &emptypb.Empty{}, nil
 }
 

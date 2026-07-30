@@ -1266,6 +1266,35 @@ func TestNewOrderAndAuthzs_Profile(t *testing.T) {
 	}
 }
 
+func TestSetAuthzProcessing(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("TestSetAuthzProcessing requires config-next")
+	}
+
+	sa, fc := initSA(t)
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Add one valid authz
+	expires := fc.Now().Add(time.Hour)
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires)
+
+	// Set the authz to processing
+	_, err := sa.SetAuthzProcessing(t.Context(), &sapb.AuthorizationID2{Id: authzID})
+	if err != nil {
+		t.Fatalf("SetAuthzProcessing = %q, but want success", err)
+	}
+
+	// Try to set the same authz to be processing again. We should get an error.
+	_, err = sa.SetAuthzProcessing(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	if err == nil {
+		t.Fatal("SetAuthzProcessing again succeeded, but want error")
+	}
+	if !errors.Is(err, berrors.Conflict) {
+		t.Errorf("SetAuthzProcessing = %T, but want berrors.Conflict", err)
+	}
+}
+
 func TestSetOrderProcessing(t *testing.T) {
 	sa, fc := initSA(t)
 

@@ -326,6 +326,10 @@ func UnknownSerialError() error {
 	return newf(UnknownSerial, "unknown serial")
 }
 
+func ConflictError(msg string, args ...any) error {
+	return newf(Conflict, msg, args...)
+}
+
 func InvalidProfileError(msg string, args ...any) error {
 	return newf(InvalidProfile, msg, args...)
 }

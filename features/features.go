@@ -74,6 +74,12 @@ type Config struct {
 	// blockedKeys table.
 	RevokeBadKeyAccounts bool
 
+	// SetAuthzProcessing controls whether the RA attempts to mark authorizations
+	// as "processing" before dispatching validation to the VA. This reduces
+	// unnecessary work due to parallel validations, but requires a database
+	// change to work.
+	SetAuthzProcessing bool
+  
 	// UnsignLintCerts controls whether the linting package returns RFC 9925
 	// Unsigned versions of the linting precerts it checks. This in turn controls
 	// the the contents of the precertificates table (which actually stores

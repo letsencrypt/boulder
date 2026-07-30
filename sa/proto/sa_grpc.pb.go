@@ -1131,6 +1131,7 @@ const (
 	StorageAuthority_NewOrderAndAuthzs_FullMethodName            = "/sa.StorageAuthority/NewOrderAndAuthzs"
 	StorageAuthority_NewRegistration_FullMethodName              = "/sa.StorageAuthority/NewRegistration"
 	StorageAuthority_RevokeCertificate_FullMethodName            = "/sa.StorageAuthority/RevokeCertificate"
+	StorageAuthority_SetAuthzProcessing_FullMethodName           = "/sa.StorageAuthority/SetAuthzProcessing"
 	StorageAuthority_SetOrderError_FullMethodName                = "/sa.StorageAuthority/SetOrderError"
 	StorageAuthority_SetOrderProcessing_FullMethodName           = "/sa.StorageAuthority/SetOrderProcessing"
 	StorageAuthority_UpdateRegistrationKey_FullMethodName        = "/sa.StorageAuthority/UpdateRegistrationKey"
@@ -1189,6 +1190,7 @@ type StorageAuthorityClient interface {
 	NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
 	RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SetAuthzProcessing(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SetOrderError(ctx context.Context, in *SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SetOrderProcessing(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpdateRegistrationKey(ctx context.Context, in *UpdateRegistrationKeyRequest, opts ...grpc.CallOption) (*proto.Registration, error)
@@ -1625,6 +1627,16 @@ func (c *storageAuthorityClient) RevokeCertificate(ctx context.Context, in *Revo
 	return out, nil
 }
 
+func (c *storageAuthorityClient) SetAuthzProcessing(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StorageAuthority_SetAuthzProcessing_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) SetOrderError(ctx context.Context, in *SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -1780,6 +1792,7 @@ type StorageAuthorityServer interface {
 	NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error)
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
 	RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
+	SetAuthzProcessing(context.Context, *AuthorizationID2) (*emptypb.Empty, error)
 	SetOrderError(context.Context, *SetOrderErrorRequest) (*emptypb.Empty, error)
 	SetOrderProcessing(context.Context, *OrderRequest) (*emptypb.Empty, error)
 	UpdateRegistrationKey(context.Context, *UpdateRegistrationKeyRequest) (*proto.Registration, error)
@@ -1911,6 +1924,9 @@ func (UnimplementedStorageAuthorityServer) NewRegistration(context.Context, *pro
 }
 func (UnimplementedStorageAuthorityServer) RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RevokeCertificate not implemented")
+}
+func (UnimplementedStorageAuthorityServer) SetAuthzProcessing(context.Context, *AuthorizationID2) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetAuthzProcessing not implemented")
 }
 func (UnimplementedStorageAuthorityServer) SetOrderError(context.Context, *SetOrderErrorRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetOrderError not implemented")
@@ -2597,6 +2613,24 @@ func _StorageAuthority_RevokeCertificate_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_SetAuthzProcessing_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthorizationID2)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).SetAuthzProcessing(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_SetAuthzProcessing_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).SetAuthzProcessing(ctx, req.(*AuthorizationID2))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_SetOrderError_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetOrderErrorRequest)
 	if err := dec(in); err != nil {
@@ -2929,6 +2963,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeCertificate",
 			Handler:    _StorageAuthority_RevokeCertificate_Handler,
+		},
+		{
+			MethodName: "SetAuthzProcessing",
+			Handler:    _StorageAuthority_SetAuthzProcessing_Handler,
 		},
 		{
 			MethodName: "SetOrderError",

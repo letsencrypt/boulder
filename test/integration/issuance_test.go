@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/eggsampler/acme/v3"
 
@@ -145,31 +146,38 @@ func TestIssuanceProfiles(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")
 
-	// Create a set of identifiers to request.
-	idents := []acme.Identifier{
-		{Type: "dns", Value: random_domain()},
-	}
-
 	// Get one cert for each profile that we know the test server advertises.
-	res, err := authAndIssue(client, key, idents, true, "legacy")
+	res, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "legacy")
 	test.AssertNotError(t, err, "failed to issue under legacy profile")
 	test.AssertEquals(t, res.Order.Profile, "legacy")
 	legacy := res.certs[0]
 
-	res, err = authAndIssue(client, key, idents, true, "modern")
+	res, err = authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "modern")
 	test.AssertNotError(t, err, "failed to issue under modern profile")
 	test.AssertEquals(t, res.Order.Profile, "modern")
 	modern := res.certs[0]
 
-	// Check that each profile worked as expected.
-	test.AssertEquals(t, legacy.Subject.CommonName, idents[0].Value)
-	test.AssertEquals(t, modern.Subject.CommonName, "")
+	res, err = authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "shortlived")
+	test.AssertNotError(t, err, "failed to issue under shortlived profile")
+	test.AssertEquals(t, res.Order.Profile, "shortlived")
+	shortlived := res.certs[0]
 
-	test.AssertDeepEquals(t, legacy.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
+	// Check that each profile worked as expected.
+	test.Assert(t, len(legacy.Subject.CommonName) > 0, "legacy profile should have CN")
+	test.AssertEquals(t, modern.Subject.CommonName, "")
+	test.AssertEquals(t, shortlived.Subject.CommonName, "")
+
+	test.AssertDeepEquals(t, legacy.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
 	test.AssertDeepEquals(t, modern.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
+	test.AssertDeepEquals(t, shortlived.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
 
 	test.AssertEquals(t, len(legacy.SubjectKeyId), 20)
 	test.AssertEquals(t, len(modern.SubjectKeyId), 0)
+	test.AssertEquals(t, len(shortlived.SubjectKeyId), 0)
+
+	test.AssertEquals(t, legacy.NotAfter.Add(time.Second).Sub(legacy.NotBefore), 90*24*time.Hour)
+	test.AssertEquals(t, modern.NotAfter.Add(time.Second).Sub(modern.NotBefore), 45*24*time.Hour)
+	test.AssertEquals(t, shortlived.NotAfter.Add(time.Second).Sub(shortlived.NotBefore), 160*time.Hour)
 }
 
 // TestIssuanceMTC issues from an MTC profile.

@@ -24,21 +24,21 @@ func TestLoadPubKey(t *testing.T) {
 	tmp := t.TempDir()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
-	_, _, err := loadPubKey(path.Join(tmp, "does", "not", "exist"))
+	_, err := loadPubKey(path.Join(tmp, "does", "not", "exist"))
 	test.AssertError(t, err, "should fail on non-existent file")
 	test.AssertErrorIs(t, err, fs.ErrNotExist)
 
-	_, _, err = loadPubKey("../../test/hierarchy/README.md")
+	_, err = loadPubKey("../../test/hierarchy/README.md")
 	test.AssertError(t, err, "should fail on non-PEM file")
 
 	priv, _ := x509.MarshalPKCS8PrivateKey(key)
 	_ = os.WriteFile(path.Join(tmp, "priv.pem"), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: priv}), 0644)
-	_, _, err = loadPubKey(path.Join(tmp, "priv.pem"))
+	_, err = loadPubKey(path.Join(tmp, "priv.pem"))
 	test.AssertError(t, err, "should fail on non-pubkey PEM")
 
 	pub, _ := x509.MarshalPKIXPublicKey(key.Public())
 	_ = os.WriteFile(path.Join(tmp, "pub.pem"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}), 0644)
-	_, _, err = loadPubKey(path.Join(tmp, "pub.pem"))
+	_, err = loadPubKey(path.Join(tmp, "pub.pem"))
 	test.AssertNotError(t, err, "should not have errored")
 }
 
@@ -1292,7 +1292,7 @@ func TestSignAndWriteNoLintCert(t *testing.T) {
 
 func TestPostIssuanceLinting(t *testing.T) {
 	clk := clock.New()
-	err := postIssuanceLinting(nil, nil)
+	err := postIssuanceLinting(nil, nil, nil, nil)
 	test.AssertError(t, err, "should have failed because no certificate was provided")
 
 	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -1306,6 +1306,6 @@ func TestPostIssuanceLinting(t *testing.T) {
 	test.AssertNotError(t, err, "unable to create certificate")
 	parsedCert, err := x509.ParseCertificate(certDer)
 	test.AssertNotError(t, err, "unable to parse DER bytes")
-	err = postIssuanceLinting(parsedCert, nil)
+	err = postIssuanceLinting(parsedCert, nil, nil, nil)
 	test.AssertNotError(t, err, "should not have errored")
 }
