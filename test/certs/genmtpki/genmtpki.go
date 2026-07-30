@@ -87,12 +87,12 @@ func main2() error {
 		return err
 	}
 
-	unsigned, err := unsigned.Design(certBytes, true)
+	unsignedBytes, err := unsigned.Design(certBytes, true)
 	if err != nil {
 		return err
 	}
 
-	_, err = x509.ParseCertificate(unsigned)
+	_, err = x509.ParseCertificate(unsignedBytes)
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func main2() error {
 	}
 	defer certFile.Close()
 
-	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: unsigned})
+	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: unsignedBytes})
 	if err != nil {
 		return err
 	}

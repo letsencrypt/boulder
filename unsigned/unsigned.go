@@ -49,7 +49,7 @@ func Design(cert []byte, replaceSigAlg bool) ([]byte, error) {
 
 	var versionElement cryptobyte.String
 	if !tbsCertificate.ReadASN1Element(&versionElement, asn1.Tag(0).Constructed().ContextSpecific()) {
-		return nil, fmt.Errorf("failed to read version: %x", tbsCertificate)
+		return nil, fmt.Errorf("failed to read version")
 	}
 
 	var serialNumberElement cryptobyte.String
@@ -65,7 +65,7 @@ func Design(cert []byte, replaceSigAlg bool) ([]byte, error) {
 	// back out to the certificate
 	var signatureAlgorithm cryptobyte.String
 	if !certificateInner.ReadASN1Element(&signatureAlgorithm, asn1.SEQUENCE) {
-		return nil, fmt.Errorf("failed to read signatureAlgorithm: %x", certificate)
+		return nil, fmt.Errorf("failed to read signatureAlgorithm")
 	}
 
 	var signature cryptobyte.String

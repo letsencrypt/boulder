@@ -180,7 +180,9 @@
 		"goodkey": {},
 		"ocspLogMaxLength": 4000,
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
-		"features": {}
+		"features": {
+			"UnsignLintCerts": true
+		}
 	},
 	"pa": {
 		"challenges": {

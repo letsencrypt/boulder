@@ -73,6 +73,12 @@ type Config struct {
 	// to find and revoke accounts using keys which have been added to the
 	// blockedKeys table.
 	RevokeBadKeyAccounts bool
+
+	// UnsignLintCerts controls whether the linting package returns RFC 9925
+	// Unsigned versions of the linting precerts it checks. This in turn controls
+	// the the contents of the precertificates table (which actually stores
+	// linting precerts), saving on storage volume by dropping fake signatures.
+	UnsignLintCerts bool
 }
 
 var fMu = new(sync.RWMutex)
