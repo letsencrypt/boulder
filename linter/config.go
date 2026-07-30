@@ -106,12 +106,15 @@ func (r configuredRegistry) GetConfiguration() lint.Configuration {
 	return r.config
 }
 
-// NewRegistryWithConfig is like NewRegistry, but the returned registry also
-// carries the contents of the given Config.
-func NewRegistryWithConfig(skipLints []string, config Config) (lint.Registry, error) {
-	reg, err := NewRegistry(skipLints)
-	if err != nil {
-		return nil, err
+// ConfigureRegistry combines the given registry with the given config. This is
+// useful for reusing the same registry (which can be expensive to build) with
+// many different configs.
+func ConfigureRegistry(reg lint.Registry, config Config) (lint.Registry, error) {
+	if reg == nil {
+		// Normally zlint would replace a nil registry with the global registry on
+		// its own, but of course a configuredRegistry *isn't* nil even if the
+		// registry it wraps is, so we need to do this fallback ourselves.
+		reg = lint.GlobalRegistry()
 	}
 	lintConfig, err := config.build()
 	if err != nil {
