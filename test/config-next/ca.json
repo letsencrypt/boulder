@@ -51,7 +51,6 @@
 				"legacy": {
 					"omitCommonName": false,
 					"omitKeyEncipherment": false,
-					"omitClientAuth": false,
 					"omitSKID": false,
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m",
@@ -66,7 +65,6 @@
 				"shortlived": {
 					"omitCommonName": true,
 					"omitKeyEncipherment": true,
-					"omitClientAuth": true,
 					"omitSKID": true,
 					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",
@@ -80,9 +78,8 @@
 				"modern": {
 					"omitCommonName": true,
 					"omitKeyEncipherment": true,
-					"omitClientAuth": true,
 					"omitSKID": true,
-					"maxValidityPeriod": "583200s",
+					"maxValidityPeriod": "1080h",
 					"maxValidityBackdate": "1h5m",
 					"maxCertificateSize": 10000,
 					"lintConfig": "test/config-next/zlint.toml",

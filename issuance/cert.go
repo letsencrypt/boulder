@@ -39,6 +39,7 @@ type ProfileConfig struct {
 	OmitKeyEncipherment bool
 	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
 	// to be omitted from the EKU extension.
+	// Deprecated: This has no effect, and we always omit the clientAuth EKU.
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
@@ -68,7 +69,6 @@ type ProfileConfig struct {
 type Profile struct {
 	omitCommonName      bool
 	omitKeyEncipherment bool
-	omitClientAuth      bool
 	omitSKID            bool
 	mtc                 bool
 
@@ -101,12 +101,6 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
-	// CQRP: clientAuth is MUST NOT.
-	// https://docs.google.com/document/d/1bC958-AaZ7ePCPFVyP9Sg2VZ3DcC2-PqwsMly8oIJSU/edit?tab=t.0#heading=h.kbidyave6lzr
-	if profileConfig.MTC {
-		profileConfig.OmitClientAuth = true
-	}
-
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
 
@@ -116,7 +110,6 @@ func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 	sp := &Profile{
 		omitCommonName:      profileConfig.OmitCommonName,
 		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
-		omitClientAuth:      profileConfig.OmitClientAuth,
 		omitSKID:            profileConfig.OmitSKID,
 		mtc:                 profileConfig.MTC,
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
@@ -205,6 +198,7 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		SignatureAlgorithm:    i.sigAlg,
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
 		Policies: []x509.OID{domainValidatedOID},
 	}
@@ -323,17 +317,6 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	// generate template from the issuer's data
 	template := i.generateTemplate()
-
-	ekus := []x509.ExtKeyUsage{
-		x509.ExtKeyUsageServerAuth,
-		x509.ExtKeyUsageClientAuth,
-	}
-	if prof.omitClientAuth {
-		ekus = []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-		}
-	}
-	template.ExtKeyUsage = ekus
 
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
