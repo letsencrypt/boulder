@@ -373,6 +373,11 @@ func checkSubscriberProfile(c *x509.Certificate, issuerPEM string) *lint.LintRes
 	if len(c.PolicyIdentifiers) != 1 || !c.PolicyIdentifiers[0].Equal(util.BRDomainValidatedOID) {
 		return errResult("certificatePolicies does not contain exactly the Domain Validated Reserved Policy Identifier")
 	}
+	for _, qualifiers := range c.QualifierId {
+		if len(qualifiers) != 0 {
+			return errResult("certificatePolicies contains a policyQualifier")
+		}
+	}
 
 	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1087
 	// |         `crlDistributionPoints`          | Contains the HTTP URI of a CRL issued by the Issuing CA whose scope includes this certificate |
