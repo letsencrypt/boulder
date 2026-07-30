@@ -636,6 +636,10 @@ func TestPrepareMTC(t *testing.T) {
 		// Ignore the warning about *not* including the SubjectKeyIdentifier extension:
 		// zlint has both lints (one enforcing RFC5280, the other the BRs).
 		"w_ext_subject_key_identifier_missing_sub_cert",
+		// MTCs are not (yet) subject to our CPS profiles, and will likely be
+		// subject to a *different* profile when we get around to issuing them
+		// from prod. Ignore our CPS-specific lint for now.
+		"e_subscriber_server_certificate_matches_cps_profile",
 	}
 	prof, err := NewProfile(pc)
 	if err != nil {
