@@ -72,7 +72,7 @@ func init() {
 }
 
 func BenchmarkCheckCert(b *testing.B) {
-	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -108,7 +108,7 @@ func TestCheckWildcardCert(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
-	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 	issued := checker.clock.Now().Add(-time.Minute)
 	goodExpiry := issued.Add(testValidityDuration - time.Second)
 	serial := big.NewInt(1337)
@@ -151,7 +151,7 @@ func TestCheckCertReturnsSANs(t *testing.T) {
 	defer func() {
 		saCleanup()
 	}()
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 
 	certPEM, err := os.ReadFile("testdata/quite_invalid.pem")
 	if err != nil {
@@ -218,7 +218,7 @@ func TestCheckCert(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testKey, _ := tc.key.genKey()
 
-			checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+			checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 
 			// Create a RFC 7633 OCSP Must Staple Extension.
 			// OID 1.3.6.1.5.5.7.1.24
@@ -340,7 +340,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc.Set(fc.Now().Add(time.Hour))
 
 	mocklog := blog.NewMock()
-	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, mocklog)
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, mocklog)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, 0, fc, blog.NewMock(), metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetBoulderTestDatabase(t)
@@ -426,7 +426,7 @@ func (db mismatchedCountDB) SelectOne(_ context.Context, holder any, _ string, _
 func TestGetCertsEmptyResults(t *testing.T) {
 	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
@@ -453,7 +453,7 @@ func (db emptyDB) SelectOne(_ context.Context, holder any, _ string, _ ...any) e
 // expected if the DB finds no certificates to match the SELECT query and
 // should return an error.
 func TestGetCertsNullResults(t *testing.T) {
-	checker := newChecker(emptyDB{}, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(emptyDB{}, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 
 	err := checker.getCerts(context.Background())
 	test.AssertError(t, err, "Should have gotten error from empty DB")
@@ -499,7 +499,7 @@ func TestGetCertsLate(t *testing.T) {
 	clk := clock.NewFake()
 	db := &lateDB{issuedTime: clk.Now().Add(-time.Hour)}
 	checkPeriod := 24 * time.Hour
-	checker := newChecker(db, clk, pa, kp, checkPeriod, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(db, clk, pa, kp, checkPeriod, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 
 	err := checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "getting certs")
@@ -560,7 +560,7 @@ func TestIgnoredLint(t *testing.T) {
 	err = loglist.InitLintList("../../test/ct-test-srv/log_list.json", false)
 	test.AssertNotError(t, err, "failed to load ct log list")
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 	serial := big.NewInt(1337)
 
 	x509OID, err := x509.OIDFromInts([]uint64{1, 2, 3})
@@ -642,7 +642,7 @@ func TestIgnoredLint(t *testing.T) {
 }
 
 func TestPrecertCorrespond(t *testing.T) {
-	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, nil, blog.NewMock())
+	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 	checker.getPrecert = func(_ context.Context, _ string) ([]byte, error) {
 		return []byte("hello"), nil
 	}
