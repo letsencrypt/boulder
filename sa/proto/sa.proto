@@ -80,6 +80,7 @@ service StorageAuthority {
   rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
+  rpc SetAuthzProcessing(AuthorizationID2) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}

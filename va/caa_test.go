@@ -527,7 +527,7 @@ func TestDoCAAErrMessage(t *testing.T) {
 	domain := "caa-timeout.com"
 	resp, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
 		Identifier:       identifier.NewDNS(domain).ToProto(),
-		AuthzIDInt:       123,
+		AuthzID:          123,
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 		AccountURIID:     12345,
 	})
@@ -553,7 +553,7 @@ func TestDoCAAParams(t *testing.T) {
 	_, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
 		Identifier:   identifier.NewDNS("present.com").ToProto(),
 		AccountURIID: 12345,
-		AuthzIDInt:   678910,
+		AuthzID:      678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
 
@@ -562,7 +562,7 @@ func TestDoCAAParams(t *testing.T) {
 		Identifier:       identifier.NewDNS("present.com").ToProto(),
 		ValidationMethod: "tls-sni-01",
 		AccountURIID:     12345,
-		AuthzIDInt:       678910,
+		AuthzID:          678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
 
@@ -570,7 +570,7 @@ func TestDoCAAParams(t *testing.T) {
 	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
 		Identifier:       identifier.NewDNS("present.com").ToProto(),
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
-		AuthzIDInt:       678910,
+		AuthzID:          678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
 
@@ -579,7 +579,7 @@ func TestDoCAAParams(t *testing.T) {
 		Identifier:       identifier.NewIP(netip.MustParseAddr("127.0.0.1")).ToProto(),
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 		AccountURIID:     12345,
-		AuthzIDInt:       678910,
+		AuthzID:          678910,
 	})
 	test.AssertError(t, err, "calling IsCAAValid with a non-DNS identifier type")
 
@@ -1070,7 +1070,7 @@ func TestMultiCAARechecking(t *testing.T) {
 
 			isValidRes, err := va.DoCAA(context.TODO(), &vapb.IsCAAValidRequest{
 				Identifier:       tc.ident.ToProto(),
-				AuthzIDInt:       123,
+				AuthzID:          123,
 				ValidationMethod: string(core.ChallengeTypeDNS01),
 				AccountURIID:     1,
 			})

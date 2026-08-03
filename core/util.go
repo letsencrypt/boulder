@@ -8,6 +8,8 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -164,6 +166,29 @@ func PublicKeysEqual(a, b crypto.PublicKey) (bool, error) {
 	default:
 		return false, fmt.Errorf("unsupported public key type %T", ak)
 	}
+}
+
+// GenerateSKID computes the Subject Key Identifier using one of the methods in
+// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
+// The keyIdentifier [may be] composed of the leftmost 160-bits of the
+// SHA-256 hash of the value of the BIT STRING subjectPublicKey
+// (excluding the tag, length, and number of unused bits).
+func GenerateSKID(pub crypto.PublicKey) ([]byte, error) {
+	pkBytes, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, err
+	}
+
+	var pkixPublicKey struct {
+		Algo      pkix.AlgorithmIdentifier
+		BitString asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(pkBytes, &pkixPublicKey); err != nil {
+		return nil, err
+	}
+
+	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+	return skid[0:20:20], nil
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String

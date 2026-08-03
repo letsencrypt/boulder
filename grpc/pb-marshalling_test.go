@@ -230,7 +230,7 @@ func TestAuthz(t *testing.T) {
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
 
 	// zero-value ID in PB should cause PBToAuthz to return ErrMissingParameters
-	pbAuthz.IdInt = 0
+	pbAuthz.Id = 0
 	_, err = PBToAuthz(pbAuthz)
 	test.AssertEquals(t, err, ErrMissingParameters)
 

@@ -133,14 +133,14 @@ func createFinalizedAuthorization(t *testing.T, saClient sapb.StorageAuthorityCl
 	t.Helper()
 	pending := createPendingAuthorization(t, saClient, regID, ident, exp)
 	_, err := saClient.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:          pending.IdInt,
+		Id:          pending.Id,
 		Status:      "valid",
 		Expires:     timestamppb.New(exp),
 		Attempted:   string(chall),
 		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
-	return pending.IdInt
+	return pending.Id
 }
 
 func getAuthorization(t *testing.T, id int64, sa sapb.StorageAuthorityClient) *corepb.Authorization {
@@ -200,7 +200,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		Identifier:       req.Identifier,
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
-		AuthzIDInt:       req.Authz.IdInt,
+		AuthzID:          req.Authz.Id,
 	})
 	if err != nil {
 		return nil, err
@@ -571,7 +571,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		// Sleep so the RA has a chance to write to the SA
 		time.Sleep(100 * time.Millisecond)
 
-		dbAuthzPB := getAuthorization(t, authzPB.IdInt, sa)
+		dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
 		t.Log("dbAuthz:", dbAuthzPB)
 
 		// Verify that the responses are reflected
@@ -787,7 +787,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
 
-	dbAuthzPB := getAuthorization(t, authzPB.IdInt, sa)
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
@@ -898,7 +898,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	// The first deactivation of a pending authz should work and nothing should
 	// get paused.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		IdInt:          1,
+		Id:             1,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
@@ -908,7 +908,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 
 	// Deactivating a valid authz shouldn't increment any limits or pause anything.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		IdInt:          2,
+		Id:             2,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusValid),
@@ -919,7 +919,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	// Deactivating a second pending authz should surpass the limit and result
 	// in a pause request.
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
-		IdInt:          3,
+		Id:             3,
 		RegistrationID: registration.Id,
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
@@ -3612,7 +3612,7 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 
 	for _, ident := range req.Identifiers {
 		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{
-			IdInt:      mrand.Int64(),
+			Id:         mrand.Int64(),
 			Identifier: ident,
 		})
 	}

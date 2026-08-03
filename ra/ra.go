@@ -781,7 +781,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
-				AuthzIDInt:       authz.ID,
+				AuthzID:          authz.ID,
 			})
 			if err != nil {
 				ra.log.AuditErr("Rechecking CAA", err, map[string]any{
@@ -1469,7 +1469,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.IdInt, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1531,6 +1531,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("cannot validate challenge: %s", cErr.Error())
 	}
 
+	// Set the authorization to "processing", to prevent parallel attempts.
+	if features.Get().SetAuthzProcessing {
+		_, err = ra.SA.SetAuthzProcessing(ctx, &sapb.AuthorizationID2{Id: authz.ID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to mark authz as processing: %w", err)
+		}
+	}
+
 	// Dispatch to the VA for service
 	ra.drainWG.Go(func() {
 		ctx := context.WithoutCancel(ctx)
@@ -1540,14 +1548,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
-				Authz:                    &vapb.AuthzMeta{IdInt: authz.ID, RegID: authz.RegistrationID},
+				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
 				ValidationMethod: string(ch.Type),
 				AccountURIID:     authz.RegistrationID,
-				AuthzIDInt:       authz.ID,
+				AuthzID:          authz.ID,
 			},
 		)
 		if err != nil {
@@ -1587,13 +1595,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// parallel-validation race: a different validation attempt has already
 				// updated this authz, so we failed to find a *pending* authz with the
 				// given ID to update.
-				ra.log.InfoObject("Failed to record validation (likely parallel validation race)", map[string]any{
+				ra.log.InfoObject("Failed to record validation (authz no longer pending)", map[string]any{
 					"requester": authz.RegistrationID,
 					"authz":     authz.ID,
 					"error":     err.Error(),
 				})
 			} else {
-				ra.log.AuditErr("Failed to record validation (likely parallel validation race)", err, map[string]any{
+				ra.log.AuditErr("Failed to record validation", err, map[string]any{
 					"requester": authz.RegistrationID,
 					"authz":     authz.ID,
 				})
@@ -2114,10 +2122,10 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
 	ident := identifier.FromProto(req.Identifier)
 
-	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID, req.IdInt) {
+	if core.IsAnyNilOrZero(ident, req.Status, req.RegistrationID, req.Id) {
 		return nil, errIncompleteGRPCRequest
 	}
-	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: req.IdInt}); err != nil {
+	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: req.Id}); err != nil {
 		return nil, err
 	}
 	if req.Status == string(core.StatusPending) {

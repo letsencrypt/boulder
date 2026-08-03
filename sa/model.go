@@ -588,14 +588,14 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
-	if authz.IdInt == 0 {
+	if authz.Id == 0 {
 		return nil, errors.New("authorization is missing an ID value")
 	}
 
 	ident := identifier.FromProto(authz.Identifier)
 
 	am := &authzModel{
-		ID:              authz.IdInt,
+		ID:              authz.Id,
 		IdentifierType:  identifierTypeToUint[ident.ToProto().Type],
 		IdentifierValue: ident.Value,
 		RegistrationID:  authz.RegistrationID,
@@ -739,7 +739,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	}
 
 	pb := &corepb.Authorization{
-		IdInt:                  am.ID,
+		Id:                     am.ID,
 		Status:                 string(uintToStatus[am.Status]),
 		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),
 		RegistrationID:         am.RegistrationID,

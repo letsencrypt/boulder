@@ -1356,6 +1356,35 @@ func TestNewOrderAndAuthzs_Profile(t *testing.T) {
 	}
 }
 
+func TestSetAuthzProcessing(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("TestSetAuthzProcessing requires config-next")
+	}
+
+	sa, fc := initSA(t)
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Add one valid authz
+	expires := fc.Now().Add(time.Hour)
+	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires)
+
+	// Set the authz to processing
+	_, err := sa.SetAuthzProcessing(t.Context(), &sapb.AuthorizationID2{Id: authzID})
+	if err != nil {
+		t.Fatalf("SetAuthzProcessing = %q, but want success", err)
+	}
+
+	// Try to set the same authz to be processing again. We should get an error.
+	_, err = sa.SetAuthzProcessing(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	if err == nil {
+		t.Fatal("SetAuthzProcessing again succeeded, but want error")
+	}
+	if !errors.Is(err, berrors.Conflict) {
+		t.Errorf("SetAuthzProcessing = %T, but want berrors.Conflict", err)
+	}
+}
+
 func TestSetOrderProcessing(t *testing.T) {
 	sa, fc := initSA(t)
 
@@ -2531,7 +2560,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 		if !ok {
 			t.Errorf("output had element for %q, an identifier not present in input", authzPB.Identifier.Value)
 		}
-		test.AssertEquals(t, authzPB.IdInt, model.ID)
+		test.AssertEquals(t, authzPB.Id, model.ID)
 		test.AssertEquals(t, authzPB.Identifier.Type, string(uintToIdentifierType[model.IdentifierType]))
 		test.AssertEquals(t, authzPB.Identifier.Value, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
@@ -2621,8 +2650,8 @@ func TestGetOrderAuthorizations(t *testing.T) {
 		}
 		for _, a := range authzPBs.Authzs {
 			ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
-			if identsToCheck[ident] != a.IdInt {
-				t.Fatalf("incorrect identifier %q with id %d", a.Identifier.Value, a.IdInt)
+			if identsToCheck[ident] != a.Id {
+				t.Fatalf("incorrect identifier %q with id %d", a.Identifier.Value, a.Id)
 			}
 			test.AssertEquals(t, a.Expires.AsTime(), expires)
 			delete(identsToCheck, ident)
@@ -2779,7 +2808,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 
 			var gotIDs []int64
 			for _, authz := range got.Authzs {
-				gotIDs = append(gotIDs, authz.IdInt)
+				gotIDs = append(gotIDs, authz.Id)
 			}
 
 			slices.Sort(gotIDs)
