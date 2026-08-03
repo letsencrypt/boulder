@@ -3699,8 +3699,7 @@ func TestRevokeAuthorizations_FeatureDisabled(t *testing.T) {
 	features.Set(features.Config{RevokeAuthzsUponRevokeCert: false})
 	defer features.Reset()
 
-	mockSA := mockSARecordAuthzRevocation{}
-	mockSA.recv = make(map[string]int64)
+	mockSA := mockSARecordAuthzRevocation{recv: make(map[string]int64)}
 	ra.SA = &mockSA
 
 	_, cert := test.ThrowAwayCert(t, clk)
@@ -3721,9 +3720,7 @@ func TestRevokeAuthorizations_FeatureEnabled(t *testing.T) {
 	features.Set(features.Config{RevokeAuthzsUponRevokeCert: true})
 	defer features.Reset()
 
-	mockSA := mockSARecordAuthzRevocation{}
-	mockSA.clk = clk
-	mockSA.recv = make(map[string]int64)
+	mockSA := mockSARecordAuthzRevocation{clk: clk, recv: make(map[string]int64)}
 	ra.SA = &mockSA
 
 	_, cert := test.ThrowAwayCert(t, clk)

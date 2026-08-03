@@ -465,8 +465,6 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req
 		return nil, errIncompleteRequest
 	}
 
-	rowsReport := &sapb.RevokeAuthorizationsForResponse{}
-
 	// Uses the `regID_identifier_status_expires_idx` index on the Authz2 table
 	result, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE authz2 SET status = :revoked
@@ -496,8 +494,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req
 		return nil, err
 	}
 
-	rowsReport.RevokedCount = rowsAffected
-	return rowsReport, nil
+	return &sapb.RevokedAuthorizationsForResponse{RevokedCount: rowsAffected}, nil
 }
 
 // NewOrderAndAuthzs creates an order in the database.
