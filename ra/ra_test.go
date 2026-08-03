@@ -3663,6 +3663,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 // requests.
 type mockSARecordAuthzRevocation struct {
 	sapb.StorageAuthorityClient
+	clk  clock.Clock
 	recv map[string]int64
 }
 
@@ -3672,6 +3673,23 @@ func (msa *mockSARecordAuthzRevocation) RevokeAuthorizationsFor(ctx context.Cont
 	fauxResp := &sapb.RevokeAuthorizationsForResponse{}
 	fauxResp.RevokedCount = 3
 	return fauxResp, nil
+}
+
+// Return a clock-relative, but consistent Serial Metadata
+func (msa *mockSARecordAuthzRevocation) GetSerialMetadata(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	now := msa.clk.Now()
+	created := now.Add(-1 * time.Hour)
+	expires := now.Add(2159 * time.Hour)
+	return &sapb.SerialMetadata{
+		Serial:         req.Serial,
+		RegistrationID: 333,
+		Created:        timestamppb.New(created),
+		Expires:        timestamppb.New(expires),
+	}, nil
+}
+
+func (msa *mockSARecordAuthzRevocation) RevokeCertificate(_ context.Context, _ *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func TestRevokeAuthorizations_FeatureDisabled(t *testing.T) {
@@ -3690,6 +3708,8 @@ func TestRevokeAuthorizations_FeatureDisabled(t *testing.T) {
 	meta := &sapb.SerialMetadata{RegistrationID: 333}
 
 	ra.revokeAuthorizations(context.Background(), cert, meta.RegistrationID)
+	// wait for RA to complete work
+	ra.drainWG.Wait()
 	// mockSA should not have received ANY requests
 	test.AssertEquals(t, len(mockSA.recv), 0)
 }
@@ -3702,6 +3722,7 @@ func TestRevokeAuthorizations_FeatureEnabled(t *testing.T) {
 	defer features.Reset()
 
 	mockSA := mockSARecordAuthzRevocation{}
+	mockSA.clk = clk
 	mockSA.recv = make(map[string]int64)
 	ra.SA = &mockSA
 
@@ -3710,7 +3731,22 @@ func TestRevokeAuthorizations_FeatureEnabled(t *testing.T) {
 
 	meta := &sapb.SerialMetadata{RegistrationID: 333}
 
+	// A subscriber revoking their own certificate should NOT cause authz revocation
+	_, err := ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  int64(revocation.Unspecified),
+		RegID: 333,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	// wait for RA to complete work
+	ra.drainWG.Wait()
+	// mockSA should not have received ANY requests
+	test.AssertEquals(t, len(mockSA.recv), 0)
+
+	// now directly request authorization revocation
 	ra.revokeAuthorizations(context.Background(), cert, meta.RegistrationID)
+	// wait for RA to complete work
+	ra.drainWG.Wait()
 	// mockSA should have received requests for each of the certificate identifiers
 	for _, ident := range idents {
 		test.AssertEquals(t, mockSA.recv[ident.Value], meta.RegistrationID)

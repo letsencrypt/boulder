@@ -734,31 +734,6 @@ func waitForAuthzStatusChange(t *testing.T, aClient *client, authzs []string, wa
 	t.Fatalf("exhausted authz polling attempts, status values still not as desired")
 }
 
-// waitForAuthzStatusStable uses an acme client to poll some (a slice of)
-// authorizations to remain stable with a supplied status. It will repeatedly
-// fetch the authorizations five times, accumulating ~5 seconds total wait time
-// with backoff+jitter (which is intended to be _just_ longer than the
-// revokeAuthorizations function custom context), before reporting success.
-// Observed status change of ANY authorization is fatal, ending the loop.
-func waitForAuthzStatusStable(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
-	t.Helper()
-
-	for try := range 5 {
-		time.Sleep(core.RetryBackoff(try, time.Second, 2*time.Second, 1.5))
-
-		for authz := range authzs {
-			respAuth, err := aClient.FetchAuthorization(aClient.Account, authzs[authz])
-			t.Logf("Authorization fetched: %v", respAuth)
-			test.AssertNotError(t, err, "FetchAuthorization Failed")
-
-			if respAuth.Status != string(wantStatus) {
-				// Failure, an Authz status has strayed from expected
-				t.Fatalf("Status an authz is now %q, was expected to stay %q", respAuth.Status, string(wantStatus))
-			}
-		}
-	}
-}
-
 func TestRevokeAuthzUponRevokeCert(t *testing.T) {
 	t.Parallel()
 
@@ -788,8 +763,6 @@ func TestRevokeAuthzUponRevokeCert(t *testing.T) {
 	// Both clients issue certs for the shared-control set of domains
 	res, err := authAndIssue(clientRed, certKeyRed, redVsBlueIdents, true, "")
 	test.AssertNotError(t, err, "authAndIssue failed")
-	certRed := res.certs[0]
-	authzRed := res.Order.Authorizations
 
 	res, err = authAndIssue(clientBlue, certKeyBlue, redVsBlueIdents, true, "")
 	test.AssertNotError(t, err, "authAndIssue failed")
@@ -803,12 +776,4 @@ func TestRevokeAuthzUponRevokeCert(t *testing.T) {
 	// Authorizations for shared-control domains held by Blue client should be revoked
 	t.Logf("Blue cert revoked by Red client, poll authz for Idents: %v", redVsBlueIdents)
 	waitForAuthzStatusChange(t, clientBlue, authzBlue, core.StatusRevoked)
-
-	// Red client revokes its own certificate with reason "Unspecified"
-	err = clientRed.RevokeCertificate(clientRed.Account, certRed, clientRed.PrivateKey, int(revocation.Unspecified))
-	test.AssertNotError(t, err, "failed to revoke certificate")
-
-	// Authorizations for single-client domains should not be revoked
-	t.Logf("Red cert revoked by Red client, poll authz for Idents: %v", redVsBlueIdents)
-	waitForAuthzStatusStable(t, clientRed, authzRed, core.StatusValid)
 }

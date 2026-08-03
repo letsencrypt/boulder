@@ -1830,7 +1830,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	// revoked certificate which are held by the RegID from cert metadata,
 	// confirmed above to be different than requester ID.
 	if requestAuthzRevocation {
-		go ra.revokeAuthorizations(ctx, cert, metadata.RegistrationID)
+		ra.drainWG.Go(func() {
+			ra.revokeAuthorizations(ctx, cert, metadata.RegistrationID)
+		})
 	}
 
 	return &emptypb.Empty{}, nil

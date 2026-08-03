@@ -467,8 +467,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req
 
 	rowsReport := &sapb.RevokeAuthorizationsForResponse{}
 
-	// Aim to leverage the `regID_identifier_status_expires_idx` index on the
-	// Authz2 table
+	// Uses the `regID_identifier_status_expires_idx` index on the Authz2 table
 	result, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE authz2 SET status = :revoked
 		WHERE registrationID = :registrationID
