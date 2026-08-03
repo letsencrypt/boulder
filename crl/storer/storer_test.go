@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
@@ -70,7 +71,7 @@ func setupTestUploadCRL(t *testing.T) (*crlStorer, *issuance.Issuer) {
 	storer, err := New(
 		[]*issuance.Certificate{r3, issuerE1.Cert},
 		nil,
-		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
+		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(), core.DefaultMaxCRLRead,
 	)
 	test.AssertNotError(t, err, "creating test crl-storer")
 
@@ -164,6 +165,35 @@ func TestUploadCRLMultipleMetadata(t *testing.T) {
 	err := <-errs
 	test.AssertError(t, err, "can't upload CRL with multiple metadata")
 	test.AssertContains(t, err.Error(), "more than one")
+}
+
+// Test that we get an error when a CRL is too large
+func TestUploadCRLTooManyBytes(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	storer.maxCRLSize = 3
+	errs := make(chan error, 1)
+
+	ins := make(chan *cspb.UploadCRLRequest)
+	go func() {
+		errs <- storer.UploadCRL(&fakeUploadCRLServerStream{input: ins})
+	}()
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_Metadata{
+			Metadata: &cspb.CRLMetadata{
+				IssuerNameID: int64(iss.Cert.NameID()),
+				Number:       1,
+			},
+		},
+	}
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_CrlChunk{
+			CrlChunk: []byte("just more bytes than configured above"),
+		},
+	}
+	close(ins)
+	err := <-errs
+	test.AssertError(t, err, "can't upload oversized CRL")
+	test.AssertContains(t, err.Error(), "exceeds CRL parser size")
 }
 
 // Test that we get an error when a malformed CRL is sent.

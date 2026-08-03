@@ -35,7 +35,7 @@ func getBody(ctx context.Context, url string) ([]byte, error) {
 	}
 
 	// Read up to ~1G of response body to return to caller
-	lmr := core.ErrOnLimitReader(resp.Body, 1_000_000_000)
+	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead)
 	body, err := io.ReadAll(lmr)
 	if err != nil {
 		return nil, err

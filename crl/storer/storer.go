@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
@@ -45,6 +46,7 @@ type crlStorer struct {
 	latencyHistogram *prometheus.HistogramVec
 	log              blog.Logger
 	clk              clock.Clock
+	maxCRLSize       int64
 }
 
 var _ cspb.CRLStorerServer = (*crlStorer)(nil)
@@ -55,6 +57,7 @@ func New(
 	stats prometheus.Registerer,
 	log blog.Logger,
 	clk clock.Clock,
+	maxCRLSize int64,
 ) (*crlStorer, error) {
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate, len(issuers))
 	for _, issuer := range issuers {
@@ -79,6 +82,7 @@ func New(
 		latencyHistogram: latencyHistogram,
 		log:              log,
 		clk:              clk,
+		maxCRLSize:       maxCRLSize,
 	}, nil
 }
 
@@ -137,6 +141,11 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		return errors.New("got no metadata message")
 	}
 
+	// don't upload a CRL larger than we are willing to read
+	if int64(len(crlBytes)) > cs.maxCRLSize {
+		return fmt.Errorf("crl size: %d, exceeds CRL parser size: %d", len(crlBytes), cs.maxCRLSize)
+	}
+
 	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
 
 	crl, err := x509.ParseRevocationList(crlBytes)
@@ -173,7 +182,8 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)
 	} else {
 		defer prevObj.Body.Close()
-		prevBytes, err := io.ReadAll(&io.LimitedReader{R: prevObj.Body, N: 1_000_000_000})
+		lmr := core.ErrOnLimitReader(prevObj.Body, core.DefaultMaxCRLRead)
+		prevBytes, err := io.ReadAll(lmr)
 		if err != nil {
 			return fmt.Errorf("downloading previous CRL for %s: %w", crlId, err)
 		}

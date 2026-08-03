@@ -117,7 +117,7 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 	}
 	defer resp.Body.Close()
 
-	lmr := core.ErrOnLimitReader(resp.Body, 1_000_000_000)
+	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead)
 	der, err := io.ReadAll(lmr)
 	if err != nil {
 		return false, fmt.Errorf("reading CRL: %w", err)

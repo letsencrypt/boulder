@@ -53,9 +53,13 @@ var BuildHost string
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
 
-// DefaultMaxRead is for use by ErrOnLimitReader when to conveniently limit
-// reads to less than half a MB, which should be most of the time
+// DefaultMaxRead is for use by ErrOnLimitReader when it is appropriate to limit
+// a Reader to less than half a MB, which should be most of the time
 var DefaultMaxRead int64 = 300_000
+
+// DefaultMaxCRLRead is for use by ErrOnLimitReader to limit a Reader to 1
+// billion bytes, which is a generous value for CRLs
+var DefaultMaxCRLRead int64 = 1_000_000_000
 
 // ErrReaderLimitReached as an exported error type allows callers to check for
 // this error type after Read

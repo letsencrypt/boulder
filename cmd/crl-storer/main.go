@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/storer"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/features"
@@ -29,6 +30,9 @@ type Config struct {
 		bs3.Config
 
 		Features features.Config
+
+		// Max CRL Size
+		MaxCRLSize int64
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -57,6 +61,9 @@ func main() {
 	if *debugAddr != "" {
 		c.CRLStorer.DebugAddr = *debugAddr
 	}
+	if c.CRLStorer.MaxCRLSize == 0 {
+		c.CRLStorer.MaxCRLSize = core.DefaultMaxCRLRead
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
 	defer oTelShutdown(context.Background())
@@ -76,7 +83,7 @@ func main() {
 	s3client, err := bs3.FromConfig(c.CRLStorer.Config, logger)
 	cmd.FailOnError(err, "Initializing S3 client")
 
-	csi, err := storer.New(issuers, s3client, scope, logger, clk)
+	csi, err := storer.New(issuers, s3client, scope, logger, clk, c.CRLStorer.MaxCRLSize)
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
 	start, err := bgrpc.NewServer(c.CRLStorer.GRPC, logger).Add(

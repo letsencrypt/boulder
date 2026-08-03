@@ -17,7 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/crl/checker"
 )
 
-func downloadShard(url string) (*x509.RevocationList, error) {
+func downloadShard(url string, maxCRLSize int64) (*x509.RevocationList, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("downloading crl: %w", err)
@@ -28,7 +28,7 @@ func downloadShard(url string) (*x509.RevocationList, error) {
 		return nil, fmt.Errorf("downloading crl: http status %d", resp.StatusCode)
 	}
 
-	lmr := core.ErrOnLimitReader(resp.Body, 1_000_000_000)
+	lmr := core.ErrOnLimitReader(resp.Body, maxCRLSize)
 	crlBytes, err := io.ReadAll(lmr)
 	if err != nil {
 		return nil, fmt.Errorf("reading CRL bytes: %w", err)
@@ -48,6 +48,7 @@ func main() {
 	ageLimitStr := flag.String("ageLimit", "168h", "maximum allowable age of a CRL shard")
 	emitRevoked := flag.Bool("emitRevoked", false, "emit revoked serial numbers on stdout, one per line, hex-encoded")
 	save := flag.Bool("save", false, "save CRLs to files named after the URL")
+	maxCRLSize := flag.Int64("maxCRLSize", core.DefaultMaxCRLRead, "maximum CRL size. Should match or exceed CRL Storer maxCRLSize")
 	flag.Parse()
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1})
@@ -80,7 +81,7 @@ func main() {
 	totalBytes := 0
 	oldestTimestamp := time.Time{}
 	for _, u := range urls {
-		crl, err := downloadShard(u)
+		crl, err := downloadShard(u, *maxCRLSize)
 		if err != nil {
 			errCount += 1
 			logger.Errf("fetching CRL %q failed: %s", u, err)
