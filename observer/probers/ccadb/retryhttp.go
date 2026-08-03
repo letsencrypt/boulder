@@ -25,8 +25,7 @@ func getBody(ctx context.Context, url string) ([]byte, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		// Read up to 400 bytes of response body to include in error logs
-		lmr := core.ErrOnLimitReader(resp.Body, 400)
-		body, err := io.ReadAll(lmr)
+		body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, 400))
 		if err != nil && err != core.ErrReaderLimitReached {
 			return nil, err
 		}
@@ -35,8 +34,7 @@ func getBody(ctx context.Context, url string) ([]byte, error) {
 	}
 
 	// Read up to ~1G of response body to return to caller
-	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead)
-	body, err := io.ReadAll(lmr)
+	body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead))
 	if err != nil {
 		return nil, err
 	}

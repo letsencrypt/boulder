@@ -32,7 +32,7 @@ type Config struct {
 		Features features.Config
 
 		// Max CRL Size
-		MaxCRLSize int64
+		MaxCRLSize int64 `validate:"omitempty,min=1"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -83,7 +83,7 @@ func main() {
 	s3client, err := bs3.FromConfig(c.CRLStorer.Config, logger)
 	cmd.FailOnError(err, "Initializing S3 client")
 
-	csi, err := storer.New(issuers, s3client, scope, logger, clk, c.CRLStorer.MaxCRLSize)
+	csi, err := storer.New(issuers, s3client, c.CRLStorer.MaxCRLSize, scope, logger, clk)
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
 	start, err := bgrpc.NewServer(c.CRLStorer.GRPC, logger).Add(

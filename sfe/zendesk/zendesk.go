@@ -179,8 +179,7 @@ func (c *Client) doJSONRequest(method, reqURL string, body []byte) ([]byte, erro
 	}
 	defer resp.Body.Close()
 
-	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead)
-	respBody, err := io.ReadAll(lmr)
+	respBody, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read zendesk response body: %w", err)
 	}

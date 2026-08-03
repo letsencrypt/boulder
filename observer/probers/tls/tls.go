@@ -87,8 +87,7 @@ func checkOCSP(ctx context.Context, cert, issuer *x509.Certificate, want int) (b
 	}
 	defer res.Body.Close()
 
-	lmr := core.ErrOnLimitReader(res.Body, core.DefaultMaxRead)
-	output, err := io.ReadAll(lmr)
+	output, err := io.ReadAll(core.ErrOnLimitReader(res.Body, core.DefaultMaxRead))
 	if err != nil {
 		return false, err
 	}
@@ -117,8 +116,7 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 	}
 	defer resp.Body.Close()
 
-	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead)
-	der, err := io.ReadAll(lmr)
+	der, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead))
 	if err != nil {
 		return false, fmt.Errorf("reading CRL: %w", err)
 	}

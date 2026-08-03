@@ -377,8 +377,7 @@ func (d *dohExchanger) ExchangeContext(ctx context.Context, query *dns.Msg, serv
 	}
 
 	// DNS response over 65535 is malformed https://datatracker.ietf.org/doc/html/rfc8484#section-6
-	lmr := core.ErrOnLimitReader(resp.Body, 65_535)
-	b, err := io.ReadAll(lmr)
+	b, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, 65_535))
 	if err != nil {
 		return nil, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
 	}

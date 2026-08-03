@@ -469,38 +469,38 @@ func NormalizeIssuerDomainName(name string) (string, error) {
 	return name, nil
 }
 
-// An ErrOnLimitedReader reads from R but limits the amount of data returned to
-// just N bytes. Each call to Read updates N to reflect the new amount
+// errOnLimitedReader reads from Reader r but limits the amount of data returned
+// to just n bytes. Each call to Read updates n to reflect the new amount
 // remaining.
-// Read returns ErrReaderLimitExceeded when N <= 0, or EOF when the underlying R
+// Read returns ErrReaderLimitExceeded when n <= 0, or EOF when the underlying r
 // returns EOF.
-type ErrOnLimitedReader struct {
-	R io.Reader
-	N int64
+type errOnLimitedReader struct {
+	r io.Reader
+	n int64
 }
 
 // ErrOnLimitReader returns a Reader that reads from r but stops with
 // ErrReaderLimitExceeded after n bytes.
-// The underlying implementation is a *ErrOnLimitedReader.
+// The underlying implementation is a *errOnLimitedReader.
 //
 // If LimitedReader gets an Err field, we can switch to use that
 // https://github.com/golang/go/issues/51115
 func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
-	return &ErrOnLimitedReader{r, n}
+	return &errOnLimitedReader{r, n}
 }
 
-func (ltdR *ErrOnLimitedReader) Read(b []byte) (n int, err error) {
+func (ltdR *errOnLimitedReader) Read(b []byte) (n int, err error) {
 	// Important: when an ErrOnLimitedReader reads _exactly_ the limit amount,
 	// it results in the LimitReached Error
-	if ltdR.N <= 0 {
+	if ltdR.n <= 0 {
 		return 0, ErrReaderLimitReached
 	}
 
-	if int64(len(b)) > ltdR.N {
-		b = b[0:ltdR.N]
+	if int64(len(b)) > ltdR.n {
+		b = b[0:ltdR.n]
 	}
 
-	n, err = ltdR.R.Read(b)
-	ltdR.N -= int64(n)
+	n, err = ltdR.r.Read(b)
+	ltdR.n -= int64(n)
 	return
 }

@@ -71,7 +71,8 @@ func setupTestUploadCRL(t *testing.T) (*crlStorer, *issuance.Issuer) {
 	storer, err := New(
 		[]*issuance.Certificate{r3, issuerE1.Cert},
 		nil,
-		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(), core.DefaultMaxCRLRead,
+		core.DefaultMaxCRLRead,
+		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "creating test crl-storer")
 
@@ -193,7 +194,7 @@ func TestUploadCRLTooManyBytes(t *testing.T) {
 	close(ins)
 	err := <-errs
 	test.AssertError(t, err, "can't upload oversized CRL")
-	test.AssertContains(t, err.Error(), "exceeds CRL parser size")
+	test.AssertContains(t, err.Error(), "crl too large")
 }
 
 // Test that we get an error when a malformed CRL is sent.

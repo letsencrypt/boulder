@@ -48,8 +48,7 @@ func (p CRLProbe) Probe(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	lmr := core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead)
-	body, err := io.ReadAll(lmr)
+	body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead))
 	if err != nil {
 		return err
 	}
