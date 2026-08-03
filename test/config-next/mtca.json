@@ -46,7 +46,8 @@
 						"e_signature_algorithm_not_supported",
 						"e_ext_authority_key_identifier_no_key_identifier",
 						"w_ext_subject_key_identifier_missing_sub_cert",
-						"w_ct_sct_policy_count_unsatisfied"
+						"w_ct_sct_policy_count_unsatisfied",
+						"e_subscriber_server_certificate_matches_cps_profile"
 					]
 				}
 			},
