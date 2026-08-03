@@ -494,7 +494,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req
 		return nil, err
 	}
 
-	return &sapb.RevokedAuthorizationsForResponse{RevokedCount: rowsAffected}, nil
+	return &sapb.RevokeAuthorizationsForResponse{RevokedCount: rowsAffected}, nil
 }
 
 // NewOrderAndAuthzs creates an order in the database.

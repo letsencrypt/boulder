@@ -1698,10 +1698,10 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 // logged line will include the affected row count from the gRPC response when
 // successful, or an error.
 func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, regId int64) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-
 	if features.Get().RevokeAuthzsUponRevokeCert {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+
 		idents := identifier.FromCert(cert)
 		for _, ident := range idents {
 			// We expect a limit of 100 to be be rarely, if ever, reached. We
