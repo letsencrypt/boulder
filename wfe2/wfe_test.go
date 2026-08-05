@@ -4079,6 +4079,7 @@ func TestOrderMatchesReplacement(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create test certificate")
 
 	wfe.sa = &mockSAForARI{
+		StorageAuthorityReadOnlyClient: wfe.sa,
 		cert: &corepb.Certificate{
 			RegistrationID: 1,
 			Serial:         expectSerial.String(),
@@ -4246,6 +4247,7 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 
 	// MockSA that returns the certificate with the expected serial.
 	wfe.sa = &mockSAForARI{
+		StorageAuthorityReadOnlyClient: wfe.sa,
 		cert: &corepb.Certificate{
 			RegistrationID: 1,
 			Serial:         core.SerialToString(expectSerial),
@@ -4312,6 +4314,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 
 	// Mock SA that returns the certificate with the expected serial.
 	wfe.sa = &mockSAForARI{
+		StorageAuthorityReadOnlyClient: wfe.sa,
 		cert: &corepb.Certificate{
 			RegistrationID: 1,
 			Serial:         core.SerialToString(extantCert.SerialNumber),

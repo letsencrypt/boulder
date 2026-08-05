@@ -107,6 +107,22 @@ func TestCacheExpires(t *testing.T) {
 	test.AssertEquals(t, len(backend.requests), 2)
 }
 
+func TestCachePurgeRegistration(t *testing.T) {
+	ctx := context.Background()
+	backend := &recordingBackend{}
+	cache := NewAccountCache(backend, 10, time.Second, clock.NewFake(), metrics.NoopRegisterer)
+
+	_, err := cache.GetRegistration(ctx, &sapb.RegistrationID{Id: 1234})
+	test.AssertNotError(t, err, "getting registration")
+	test.AssertEquals(t, len(backend.requests), 1)
+
+	cache.purgeRegistration(1234)
+
+	_, err = cache.GetRegistration(ctx, &sapb.RegistrationID{Id: 1234})
+	test.AssertNotError(t, err, "getting registration")
+	test.AssertEquals(t, len(backend.requests), 2)
+}
+
 type wrongIDBackend struct{}
 
 func (wib wrongIDBackend) GetRegistration(

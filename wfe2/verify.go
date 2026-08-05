@@ -489,9 +489,10 @@ func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request)
 // authentication and does not contain an embedded JWK. Callers should have
 // acquired headers from a bJSONWebSignature.
 func (wfe *WebFrontEndImpl) lookupJWK(
-	header jose.Header,
 	ctx context.Context,
+	header jose.Header,
 	request *http.Request,
+	accountGetter AccountGetter,
 	logEvent *web.RequestEvent) (*jose.JSONWebKey, *core.Registration, error) {
 	// We expect the request to be using an embedded Key ID auth type and to not
 	// contain the mutually exclusive embedded JWK.
@@ -506,8 +507,8 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		return nil, nil, err
 	}
 
-	// Try to find the account for this account ID
-	account, err := wfe.accountGetter.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
+	// Try to find the account for this account ID.
+	account, err := accountGetter.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
 	if err != nil {
 		// If the account isn't found, return a suitable error
 		if errors.Is(err, berrors.NotFound) {
@@ -601,12 +602,13 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 // JSONWebSignature, and a pointer to the JWK's associated account. If any of
 // these conditions are not met or an error occurs only a error is returned.
 func (wfe *WebFrontEndImpl) validJWSForAccount(
+	ctx context.Context,
 	jws *bJSONWebSignature,
 	request *http.Request,
-	ctx context.Context,
+	accountGetter AccountGetter,
 	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, error) {
 	// Lookup the account and JWK for the key ID that authenticated the JWS
-	pubKey, account, err := wfe.lookupJWK(jws.Signatures[0].Header, ctx, request, logEvent)
+	pubKey, account, err := wfe.lookupJWK(ctx, jws.Signatures[0].Header, request, accountGetter, logEvent)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -620,43 +622,62 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	return payload, jws, account, nil
 }
 
-// validPOSTForAccount checks that a given POST request has a valid JWS
-// using `validJWSForAccount`. If valid, the authenticated JWS body and the
-// registration that authenticated the body are returned. Otherwise a error is
-// returned. The returned JWS body may be empty if the request is a POST-as-GET
-// request.
+// validPOSTForAccount checks that a given POST request has a valid JWS using
+// `validJWSForAccount` and the WFE's database/SA connection. If valid, the
+// authenticated JWS body and the registration that authenticated the body are
+// returned. Otherwise an error is returned.
+//
+// This function is not ideal for validating POST-as-GET requests; although it
+// will work correctly, it will not validate that the request body is empty.
+// Those requests should be validated via validPOSTAsGETForAccount.
 func (wfe *WebFrontEndImpl) validPOSTForAccount(
-	request *http.Request,
 	ctx context.Context,
+	request *http.Request,
 	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, error) {
 	// Parse the JWS from the POST request
 	jws, err := wfe.parseJWSRequest(request)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
+
+	// Use wfe.sa (i.e. the real database) as the AccountGetter for all POST
+	// requests, as POSTs may modify the database. This prevents a stale account
+	// cache from letting an old key perform mutating operations, like rotating
+	// to a new key.
+	return wfe.validJWSForAccount(ctx, jws, request, wfe.sa, logEvent)
 }
 
 // validPOSTAsGETForAccount checks that a given POST request is valid using
-// `validPOSTForAccount`. It additionally validates that the JWS request payload
-// is empty, indicating that it is a POST-as-GET request per ACME draft 15+
-// section 6.3 "GET and POST-as-GET requests". If a non empty payload is
-// provided in the JWS the invalidPOSTAsGETErr error is returned. This
-// function is useful only for endpoints that do not need to handle both POSTs
-// with a body and POST-as-GET requests (e.g. Order, Certificate).
+// `validJWSForAccount` and the wfe's read-through account cache. It
+// additionally validates that the JWS request payload is empty. If a non empty
+// payload is provided, it returns MalformedError.
+//
+// This function must only be used to validate POST-as-GET requests, it must
+// not be used to validate mutating POST requests.
 func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
-	request *http.Request,
 	ctx context.Context,
+	request *http.Request,
 	logEvent *web.RequestEvent) (*core.Registration, error) {
-	// Call validPOSTForAccount to verify the JWS and extract the body.
-	body, _, reg, err := wfe.validPOSTForAccount(request, ctx, logEvent)
+	// Parse the JWS from the POST request
+	jws, err := wfe.parseJWSRequest(request)
 	if err != nil {
 		return nil, err
 	}
+
+	// Use the account cache to look up the account. We are willing to accept
+	// idempotent read-only POST-as-GET requests authenticated by a key in the
+	// possibly-stale account cache, because such requests are relatively safe
+	// and relatively high-volume.
+	body, _, reg, err := wfe.validJWSForAccount(ctx, jws, request, wfe.accountCache, logEvent)
+	if err != nil {
+		return nil, err
+	}
+
 	// Verify the POST-as-GET payload is empty
 	if string(body) != "" {
 		return nil, berrors.MalformedError("POST-as-GET requests must have an empty payload")
 	}
+
 	// To make log analysis easier we choose to elevate the pseudo ACME HTTP
 	// method "POST-as-GET" to the logEvent's Method, replacing the
 	// http.MethodPost value.
