@@ -66,8 +66,8 @@ communication model can be found in the [gRPC
 documentation](https://www.grpc.io/docs/).
 
 The full details of how the various ACME operations happen in Boulder are
-laid out in
-[DESIGN.md](https://github.com/letsencrypt/boulder/blob/main/docs/DESIGN.md).
+laid out in the
+[Boulder implementation details](./docs/acme-implementation_details.md).
 
 ## Setting up Boulder
 
