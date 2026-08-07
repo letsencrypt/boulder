@@ -85,6 +85,15 @@ type Config struct {
 	// the the contents of the precertificates table (which actually stores
 	// linting precerts), saving on storage volume by dropping fake signatures.
 	UnsignLintCerts bool
+
+	// RevokeAuthzsUponRevokeCert controls whether the RA will call for
+	// revocation of Authorizations for identifiers in a certificate that is
+	// successfully revoked by a requester that is DIFFERENT than the one that
+	// was originally granted the certificate. In this scenario, the new
+	// requester has demonstrated control over the requisite set of identifiers,
+	// so we can avoid the possibility of Authz re-use by the original
+	// requester via Authz revocation.
+	RevokeAuthzsUponRevokeCert bool
 }
 
 var fMu = new(sync.RWMutex)

@@ -1690,6 +1690,36 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	return nil
 }
 
+// revokeAuthorizations must be called as a background goroutine as it uses a
+// custom context timeout and is not cancelled by its parent. It sends off an
+// asynchronous request to the SA to revoke authorizations for all Identifiers
+// from the provided cert which are held by the provided RegistrationID. It will
+// log each Identifier and RegistrationID pair attempted against the SA. The
+// logged line will include the affected row count from the gRPC response when
+// successful, or an error.
+func (ra *RegistrationAuthorityImpl) revokeAuthorizations(ctx context.Context, cert *x509.Certificate, regId int64) {
+	if features.Get().RevokeAuthzsUponRevokeCert {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+
+		idents := identifier.FromCert(cert)
+		for _, ident := range idents {
+			// We expect a limit of 100 to be be rarely, if ever, reached. We
+			// can add re-fire logic if we see evidence otherwise.
+			response, err := ra.SA.RevokeAuthorizationsFor(ctx, &sapb.RevokeAuthorizationsForRequest{
+				RegistrationID: regId,
+				Identifier:     ident.ToProto(),
+				RevokeLimit:    100,
+			})
+			if err != nil {
+				ra.log.Errf("Authz revocation error encountered for identifier %q, held by regId %d: %v", ident, regId, err)
+			} else {
+				ra.log.Infof("Authz revocation succeeded with %d affected rows for identifier %q, held by regId %d", response.RevokedCount, ident, regId)
+			}
+		}
+	}
+}
+
 // RevokeCertByApplicant revokes the certificate in question. It allows any
 // revocation reason from (0, 1, 3, 4, 5, 9), because Subscribers are allowed to
 // request any revocation reason for their own certificates. However, if the
@@ -1724,6 +1754,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		Method:       "applicant",
 		Requester:    req.RegID,
 	}
+
+	// By default, do not revoke Authorizations held for the revoked-cert
+	// identifiers.
+	requestAuthzRevocation := false
 
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
 	// nested scope. Doing so will create a new `err` variable that is not
@@ -1777,11 +1811,28 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// domain names in the certificate". Override the reason code to match.
 		reasonCode = revocation.CessationOfOperation
 		logEvent.Reason = reasonCode
+
+		// We have confirmed that the requester RegistrationID is NOT the same
+		// as the original subscriber. Requester has demonstrated control over
+		// the set of identifiers sufficient for certificate revocation. Given
+		// BOTH, enable this boolean to signal that authorizations held by the
+		// original subscriber RegID should be revoked after certificate
+		// revocation.
+		requestAuthzRevocation = true
 	}
 
 	err = ra.revokeCertificate(ctx, cert, reasonCode)
 	if err != nil {
 		return nil, err
+	}
+
+	// Asynchronously request to revoke authorizations for identifiers from this
+	// revoked certificate which are held by the RegID from cert metadata,
+	// confirmed above to be different than requester ID.
+	if requestAuthzRevocation {
+		ra.drainWG.Go(func() {
+			ra.revokeAuthorizations(ctx, cert, metadata.RegistrationID)
+		})
 	}
 
 	return &emptypb.Empty{}, nil

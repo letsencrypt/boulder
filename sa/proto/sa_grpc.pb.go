@@ -1104,6 +1104,7 @@ const (
 	StorageAuthority_AddRateLimitOverride_FullMethodName         = "/sa.StorageAuthority/AddRateLimitOverride"
 	StorageAuthority_DisableRateLimitOverride_FullMethodName     = "/sa.StorageAuthority/DisableRateLimitOverride"
 	StorageAuthority_EnableRateLimitOverride_FullMethodName      = "/sa.StorageAuthority/EnableRateLimitOverride"
+	StorageAuthority_RevokeAuthorizationsFor_FullMethodName      = "/sa.StorageAuthority/RevokeAuthorizationsFor"
 )
 
 // StorageAuthorityClient is the client API for StorageAuthority service.
@@ -1162,6 +1163,7 @@ type StorageAuthorityClient interface {
 	AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error)
 	DisableRateLimitOverride(ctx context.Context, in *DisableRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnableRateLimitOverride(ctx context.Context, in *EnableRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RevokeAuthorizationsFor(ctx context.Context, in *RevokeAuthorizationsForRequest, opts ...grpc.CallOption) (*RevokeAuthorizationsForResponse, error)
 }
 
 type storageAuthorityClient struct {
@@ -1697,6 +1699,16 @@ func (c *storageAuthorityClient) EnableRateLimitOverride(ctx context.Context, in
 	return out, nil
 }
 
+func (c *storageAuthorityClient) RevokeAuthorizationsFor(ctx context.Context, in *RevokeAuthorizationsForRequest, opts ...grpc.CallOption) (*RevokeAuthorizationsForResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeAuthorizationsForResponse)
+	err := c.cc.Invoke(ctx, StorageAuthority_RevokeAuthorizationsFor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StorageAuthorityServer is the server API for StorageAuthority service.
 // All implementations must embed UnimplementedStorageAuthorityServer
 // for forward compatibility.
@@ -1753,6 +1765,7 @@ type StorageAuthorityServer interface {
 	AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error)
 	DisableRateLimitOverride(context.Context, *DisableRateLimitOverrideRequest) (*emptypb.Empty, error)
 	EnableRateLimitOverride(context.Context, *EnableRateLimitOverrideRequest) (*emptypb.Empty, error)
+	RevokeAuthorizationsFor(context.Context, *RevokeAuthorizationsForRequest) (*RevokeAuthorizationsForResponse, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
 
@@ -1906,6 +1919,9 @@ func (UnimplementedStorageAuthorityServer) DisableRateLimitOverride(context.Cont
 }
 func (UnimplementedStorageAuthorityServer) EnableRateLimitOverride(context.Context, *EnableRateLimitOverrideRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EnableRateLimitOverride not implemented")
+}
+func (UnimplementedStorageAuthorityServer) RevokeAuthorizationsFor(context.Context, *RevokeAuthorizationsForRequest) (*RevokeAuthorizationsForResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeAuthorizationsFor not implemented")
 }
 func (UnimplementedStorageAuthorityServer) mustEmbedUnimplementedStorageAuthorityServer() {}
 func (UnimplementedStorageAuthorityServer) testEmbeddedByValue()                          {}
@@ -2757,6 +2773,24 @@ func _StorageAuthority_EnableRateLimitOverride_Handler(srv interface{}, ctx cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_RevokeAuthorizationsFor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeAuthorizationsForRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).RevokeAuthorizationsFor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_RevokeAuthorizationsFor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).RevokeAuthorizationsFor(ctx, req.(*RevokeAuthorizationsForRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StorageAuthority_ServiceDesc is the grpc.ServiceDesc for StorageAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2935,6 +2969,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EnableRateLimitOverride",
 			Handler:    _StorageAuthority_EnableRateLimitOverride_Handler,
+		},
+		{
+			MethodName: "RevokeAuthorizationsFor",
+			Handler:    _StorageAuthority_RevokeAuthorizationsFor_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
