@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/mldsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
@@ -26,9 +27,10 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
-	"github.com/letsencrypt/boulder/trees/cosigned"
+	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/tiles"
+	"golang.org/x/mod/sumdb/tlog"
 )
 
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
@@ -55,7 +57,7 @@ func New(
 		return nil, errors.New("sequencingPeriod must be non-zero")
 	}
 
-	return &mtca{
+	m := &mtca{
 		issuer:   issuer,
 		profiles: profiles,
 		mtcaID:   mtcaID,
@@ -69,7 +71,25 @@ func New(
 		s3c: s3c,
 		log: logger,
 		clk: clk,
-	}, nil
+	}
+
+	cosigner, err := cosignature.NewCosigner(mtcaID, m.mtcLogID(), issuer.Signer)
+	if err != nil {
+		return nil, fmt.Errorf("creating CA cosigner: %s", err)
+	}
+	m.cosigner = cosigner
+
+	pubKey, ok := issuer.Signer.Public().(*mldsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("issuer public key is %T, must be ML-DSA-44", issuer.Signer.Public())
+	}
+	verifier, err := cosignature.NewVerifier(mtcaID, pubKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating CA verifier: %s", err)
+	}
+	m.verifier = verifier
+
+	return m, nil
 }
 
 type mtca struct {
@@ -78,6 +98,8 @@ type mtca struct {
 	issuer   *issuance.Issuer
 	profiles map[string]*issuance.Profile
 	mtcaID   string
+	cosigner *cosignature.Cosigner
+	verifier *cosignature.Verifier
 
 	logNumber uint16
 	pool      *pool
@@ -170,17 +192,12 @@ func (m *mtca) InitLog(ctx context.Context) error {
 			RootHash: rootHash[:],
 		}
 
-		message, err := m.cosignedMessage(&firstCheckpoint)
+		caSig, err := m.signCheckpoint(&firstCheckpoint)
 		if err != nil {
 			return nil, err
 		}
 
-		sig, err := m.sign(message)
-		if err != nil {
-			return nil, err
-		}
-
-		firstCheckpoint.MTCASignature = sig
+		firstCheckpoint.MTCASignature = caSig
 
 		err = tx.Insert(ctx, &firstCheckpoint)
 		if err != nil {
@@ -531,9 +548,9 @@ func (m *mtca) sequence(ctx context.Context) error {
 		RootHash:        newRootHash[:],
 	}
 
-	message, err := m.cosignedMessage(&newCheckpoint)
+	err = newCheckpoint.valid()
 	if err != nil {
-		return err
+		return fmt.Errorf("validating checkpoint: %s", err)
 	}
 
 	// Precommit to the new checkpoint. This will allow us to do recovery if we crash between signing
@@ -567,13 +584,13 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 		// Note that we're doing HSM work while holding a database lock. That's intentional; the database lock
 		// is to prevent the possibility of a concurrent signer on the same tree.
-		sig, err := m.sign(message)
+		caSig, err := m.signCheckpoint(&newCheckpoint)
 		if err != nil {
 			return nil, err
 		}
 
 		result, err := tx.ExecContext(ctx, "UPDATE checkpoints SET mtcaSignature = ? WHERE mtcLogID = ? AND id = ?",
-			sig, m.mtcLogID(), newCheckpoint.ID)
+			caSig, m.mtcLogID(), newCheckpoint.ID)
 		if err != nil {
 			return nil, fmt.Errorf("updating checkpoint: %s", err)
 		}
@@ -698,7 +715,7 @@ func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 	return &latest, nil
 }
 
-func (m *mtca) cosignedMessage(c *checkpoint) (*cosigned.Message, error) {
+func (m *mtca) signCheckpoint(c *checkpoint) ([]byte, error) {
 	err := c.valid()
 	if err != nil {
 		return nil, fmt.Errorf("validating checkpoint: %s", err)
@@ -711,24 +728,14 @@ func (m *mtca) cosignedMessage(c *checkpoint) (*cosigned.Message, error) {
 		return nil, errors.New("already mirror-signed")
 	}
 
-	return &cosigned.Message{
-		CosignerName: fmt.Sprintf("oid/1.3.6.1.4.1.%s", m.mtcaID),
-		Timestamp:    0,
-		LogOrigin:    fmt.Sprintf("oid/1.3.6.1.4.1.%s", m.mtcLogID()),
-		Start:        0,
-		End:          uint64(c.TreeSize),
-		SubtreeHash:  [32]byte(c.RootHash),
-	}, nil
-}
-
-// sign marshals a *cosigned.Message and signs its bytes.
-//
-// Returns the signature bytes.
-func (m *mtca) sign(message *cosigned.Message) ([]byte, error) {
-	marshaled, err := message.Marshal()
+	tree := tlog.Tree{N: c.TreeSize, Hash: tlog.Hash(c.RootHash)}
+	timestampedCosignature, err := m.cosigner.CosignCheckpoint(tree)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("signing checkpoint: %s", err)
 	}
-
-	return m.issuer.Signer.Sign(nil, marshaled, nil)
+	err = m.verifier.VerifyCheckpoint(m.cosigner.Origin(), tree, timestampedCosignature)
+	if err != nil {
+		return nil, fmt.Errorf("verifying checkpoint signature: %s", err)
+	}
+	return cosignature.RawSignature(timestampedCosignature)
 }
