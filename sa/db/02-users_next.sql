@@ -100,8 +100,10 @@ USE mtcmeta_44947_4_1_0_44;
 CREATE USER IF NOT EXISTS 'mtpublisher'@'%';
 CREATE USER IF NOT EXISTS 'mtca'@'%';
 
--- MTPublisher stub: reads checkpoints awaiting a cosignature and writes one.
+-- mtpublisher stub: follows the latestCheckpoint pointer to a checkpoint
+-- awaiting a cosignature and writes one.
 GRANT SELECT,UPDATE ON checkpoints TO 'mtpublisher'@'%';
+GRANT SELECT ON latestCheckpoint TO 'mtpublisher'@'%';
 
 -- MTCA
 GRANT SELECT,INSERT,UPDATE ON checkpoints TO 'mtca'@'%';
