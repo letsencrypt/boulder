@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 var backoffSchedule = []int{0, 1000, 1250, 1562, 1953, 2441, 3051, 3814, 4768, 5960, 7450, 9313, 11641}
@@ -25,17 +27,20 @@ func getBody(ctx context.Context, url string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(&io.LimitedReader{R: resp.Body, N: 100_000_000})
-	if err != nil {
-		return nil, err
+	if resp.StatusCode != http.StatusOK {
+		// Read up to 400 bytes of response body to include in error logs
+		body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, 400))
+		if err != nil && err != core.ErrReaderLimitExceeded {
+			return nil, err
+		}
+
+		return nil, fmt.Errorf("http status %d for %q: %s", resp.StatusCode, url, string(body))
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		// Truncate the response body in case it's too big to be useful in logs.
-		if len(body) > 400 {
-			body = body[:400]
-		}
-		return nil, fmt.Errorf("http status %d for %q: %s", resp.StatusCode, url, string(body))
+	// Read up to ~1G of response body to return to caller
+	body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead))
+	if err != nil {
+		return nil, err
 	}
 
 	return body, nil

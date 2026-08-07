@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // AIAProbe is the exported 'Prober' object for monitors configured to
@@ -48,7 +50,7 @@ func (p AIAProbe) Probe(ctx context.Context) error {
 		return fmt.Errorf("certificate Content-Type is %q but want application/pkix-cert", contentType)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead))
 	if err != nil {
 		return err
 	}

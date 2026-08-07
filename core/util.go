@@ -53,6 +53,18 @@ var BuildHost string
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
 
+// DefaultMaxRead is for use by ErrOnLimitReader when it is appropriate to limit
+// a Reader to less than half a MB, which should be most of the time
+var DefaultMaxRead int64 = 300_000
+
+// DefaultMaxCRLRead is for use by ErrOnLimitReader to limit a Reader to 1
+// billion bytes, which is a generous value for CRLs
+var DefaultMaxCRLRead int64 = 1_000_000_000
+
+// ErrReaderLimitExceeded as an exported error type allows callers to check for
+// this error type after Read
+var ErrReaderLimitExceeded error = errors.New("reader size limit exceeded")
+
 func init() {
 	expvar.NewString("BuildID").Set(BuildID)
 	expvar.NewString("BuildTime").Set(BuildTime)
@@ -455,4 +467,47 @@ func NormalizeIssuerDomainName(name string) (string, error) {
 		return "", fmt.Errorf("issuer domain name %q exceeds 253 octets (%d)", name, len(name))
 	}
 	return name, nil
+}
+
+// errOnLimitedReader reads from Reader r but limits the amount of data returned
+// to just n bytes. Each call to Read updates n to reflect the new amount
+// remaining.
+// Read returns ErrReaderLimitExceeded when n <= 0, or EOF when the underlying r
+// returns EOF.
+type errOnLimitedReader struct {
+	r io.Reader
+	n int64
+}
+
+// ErrOnLimitReader returns a Reader that reads from r but stops with
+// ErrReaderLimitExceeded after n bytes.
+// The underlying implementation is a *errOnLimitedReader.
+//
+// If LimitedReader gets an Err field, we can evaluate switching
+// https://github.com/golang/go/issues/51115
+func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
+	return &errOnLimitedReader{r, n}
+}
+
+func (ltdR *errOnLimitedReader) Read(b []byte) (n int, err error) {
+	if ltdR.n < 0 {
+		return 0, ErrReaderLimitExceeded
+	}
+	if len(b) == 0 {
+		return 0, errors.New("EOF")
+	}
+
+	if int64(len(b)) > ltdR.n+1 {
+		b = b[0 : ltdR.n+1]
+	}
+
+	n, err = ltdR.r.Read(b)
+	if int64(n) <= ltdR.n {
+		ltdR.n -= int64(n)
+		return n, err
+	}
+
+	n = int(ltdR.n)
+	ltdR.n = -1
+	return n, ErrReaderLimitExceeded
 }

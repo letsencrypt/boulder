@@ -1,5 +1,6 @@
 {
 	"crlStorer": {
+		"maxCRLSize": 2000000,
 		"tls": {
 			"caCertfile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/crl-storer.boulder/cert.pem",
