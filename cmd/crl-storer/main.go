@@ -31,7 +31,13 @@ type Config struct {
 
 		Features features.Config
 
-		// Max CRL Size
+		// MaxCRLSize is a count of bytes. Before storing a CRL, the CRLStorer
+		// will check the to-be-uploaded CRL size against this configured byte
+		// count and error if this limit is exceeded. When omitted from the
+		// CRlStorer configuration, the value of core.DefaultMaxCRLRead is used
+		// instead. To avoid uploading a CRL that we would later fail to read,
+		// this value should not be configured higher than those places where we
+		// Read and validate CRLs.
 		MaxCRLSize int64 `validate:"omitempty,min=1"`
 	}
 
