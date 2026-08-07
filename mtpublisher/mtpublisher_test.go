@@ -152,15 +152,15 @@ func TestPublish(t *testing.T) {
 	}
 
 	// A pass over an empty table is a no-op.
-	err = p.publish(t.Context())
+	err = p.Publish(t.Context())
 	if err != nil {
-		t.Fatalf("p.publish() on an empty table: %s", err)
+		t.Fatalf("p.Publish() on an empty table: %s", err)
 	}
 
 	// An older checkpoint that is not cosigned, which must be left untouched.
 	olderCheckpointID := insertCheckpoint(t, dbMap, mtcLogID, 256)
 
-	// The latest checkpoint, which we expect to be cosigned by p.publish().
+	// The latest checkpoint, which we expect to be cosigned by p.Publish().
 	latestCheckpointID := insertCheckpoint(t, dbMap, mtcLogID, 512)
 	setLatest(t, dbMap, mtcLogID, latestCheckpointID)
 
@@ -182,9 +182,9 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("reading insert id: %s", err)
 	}
 
-	err = p.publish(t.Context())
+	err = p.Publish(t.Context())
 	if err != nil {
-		t.Fatalf("p.publish(): %s", err)
+		t.Fatalf("p.Publish(): %s", err)
 	}
 
 	type row struct {
@@ -248,7 +248,7 @@ func TestPublishRejectsMismatchedKey(t *testing.T) {
 	id := insertCheckpoint(t, dbMap, mtcLogID, 512)
 	setLatest(t, dbMap, mtcLogID, id)
 
-	err = p.publish(t.Context())
+	err = p.Publish(t.Context())
 	if err == nil {
 		t.Error("publish with a mismatched public key = nil error, want error")
 	}
@@ -283,9 +283,9 @@ func TestPublishWhenLatestAlreadySigned(t *testing.T) {
 	// be left untouched.
 	olderID := insertCheckpoint(t, dbMap, mtcLogID, 256)
 
-	err = p.publish(t.Context())
+	err = p.Publish(t.Context())
 	if err != nil {
-		t.Fatalf("p.publish(): %s", err)
+		t.Fatalf("p.Publish(): %s", err)
 	}
 
 	// The latest checkpoint is already cosigned, so the pass must leave both

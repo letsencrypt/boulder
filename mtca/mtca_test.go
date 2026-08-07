@@ -33,6 +33,8 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mtca/proto"
+	"github.com/letsencrypt/boulder/mtpublisher"
+	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
@@ -265,19 +267,21 @@ func (e *errorS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optF
 	return e.FakeS3.PutObject(ctx, params, optFns...)
 }
 
-// fakeMirror simulates mirror cosigning of the latest checkpoint so
-// sequencing can proceed.
-func fakeMirror(t *testing.T, m *mtca) {
+// mirrorCosign cosigns the latest checkpoint with a real mtpublisher, standing
+// in for the daemon, so sequencing can proceed.
+func mirrorCosign(t *testing.T, m *mtca) {
 	t.Helper()
-	latest, err := m.latestCheckpoint(t.Context())
+	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
 	if err != nil {
-		t.Fatalf("getting latest: %s", err)
+		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	latest.MirrorID = "fake"
-	latest.MirrorSignature = []byte("fake")
-	_, err = m.db.Update(t.Context(), latest)
+	p, err := mtpublisher.New(m.db, time.Second, m.mtcLogID(), "32473.9", privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
 	if err != nil {
-		t.Fatalf("updating checkpoint with fake mirror signature: %s", err)
+		t.Fatalf("mtpublisher.New: %s", err)
+	}
+	err = p.Publish(t.Context())
+	if err != nil {
+		t.Fatalf("mtpublisher.Publish: %s", err)
 	}
 }
 
@@ -428,7 +432,7 @@ func TestSequence(t *testing.T) {
 		t.Errorf("pool after refused sequencing: got len %d, want 5", mtca.pool.len())
 	}
 
-	fakeMirror(t, mtca)
+	mirrorCosign(t, mtca)
 
 	// Now sequencing should succeed, assigning indexes 1 through 5 (the
 	// genesis null entry occupies index 0).
@@ -457,7 +461,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 		t.Fatalf("setting up mtca: %s", err)
 	}
 	t.Cleanup(cleanup)
-	fakeMirror(t, mtca)
+	mirrorCosign(t, mtca)
 
 	mtca.pool.maxSize = 2
 	results := issueMany(t, mtca, 2)
