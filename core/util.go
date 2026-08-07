@@ -61,9 +61,9 @@ var DefaultMaxRead int64 = 300_000
 // billion bytes, which is a generous value for CRLs
 var DefaultMaxCRLRead int64 = 1_000_000_000
 
-// ErrReaderLimitReached as an exported error type allows callers to check for
+// ErrReaderLimitExceeded as an exported error type allows callers to check for
 // this error type after Read
-var ErrReaderLimitReached error = errors.New("reader size limit reached")
+var ErrReaderLimitExceeded error = errors.New("reader size limit exceeded")
 
 func init() {
 	expvar.NewString("BuildID").Set(BuildID)
@@ -483,24 +483,31 @@ type errOnLimitedReader struct {
 // ErrReaderLimitExceeded after n bytes.
 // The underlying implementation is a *errOnLimitedReader.
 //
-// If LimitedReader gets an Err field, we can switch to use that
+// If LimitedReader gets an Err field, we can evaluate switching
 // https://github.com/golang/go/issues/51115
 func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
 	return &errOnLimitedReader{r, n}
 }
 
 func (ltdR *errOnLimitedReader) Read(b []byte) (n int, err error) {
-	// Important: when an ErrOnLimitedReader reads _exactly_ the limit amount,
-	// it results in the LimitReached Error
-	if ltdR.n <= 0 {
-		return 0, ErrReaderLimitReached
+	if ltdR.n < 0 {
+		return 0, ErrReaderLimitExceeded
+	}
+	if len(b) == 0 {
+		return 0, errors.New("EOF")
 	}
 
-	if int64(len(b)) > ltdR.n {
-		b = b[0:ltdR.n]
+	if int64(len(b)) > ltdR.n+1 {
+		b = b[0 : ltdR.n+1]
 	}
 
 	n, err = ltdR.r.Read(b)
-	ltdR.n -= int64(n)
-	return
+	if int64(n) <= ltdR.n {
+		ltdR.n -= int64(n)
+		return n, err
+	}
+
+	n = int(ltdR.n)
+	ltdR.n = -1
+	return n, ErrReaderLimitExceeded
 }

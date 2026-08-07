@@ -30,7 +30,7 @@ func getBody(ctx context.Context, url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		// Read up to 400 bytes of response body to include in error logs
 		body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, 400))
-		if err != nil && err != core.ErrReaderLimitReached {
+		if err != nil && err != core.ErrReaderLimitExceeded {
 			return nil, err
 		}
 

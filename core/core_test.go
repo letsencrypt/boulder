@@ -103,7 +103,7 @@ func TestErrOnLimitReader(t *testing.T) {
 			input:   "foo bar baz qux",
 			limit:   15,
 			wantOut: "foo bar baz qux",
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:    "bytes over limit",
@@ -119,7 +119,7 @@ func TestErrOnLimitReader(t *testing.T) {
 			output, err := io.ReadAll(ErrOnLimitReader(strReader, tc.limit))
 			if tc.wantErr {
 				test.AssertError(t, err, "expected an error")
-				test.AssertEquals(t, err, ErrReaderLimitReached)
+				test.AssertEquals(t, err, ErrReaderLimitExceeded)
 			} else {
 				test.AssertNotError(t, err, "expected to succeed")
 			}
