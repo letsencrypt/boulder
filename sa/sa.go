@@ -206,6 +206,20 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
+// checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
+// for the given names exists.
+func (ssa *SQLStorageAuthority) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents identifier.ACMEIdentifiers) (bool, error) {
+	namehash := core.HashIdentifiers(idents)
+	var exists bool
+	err := selector(
+		ctx,
+		&exists,
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
+		namehash,
+	)
+	return exists, err
+}
+
 // AddPrecertificate writes a record of a linting certificate to the database.
 //
 // Note: The name "AddPrecertificate" is a historical artifact, and this is now
