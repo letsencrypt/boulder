@@ -101,10 +101,6 @@ func (sa SA) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest, 
 	return sa.Impl.AddBlockedKey(ctx, req)
 }
 
-func (sa SA) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return sa.Impl.FQDNSetExists(ctx, req)
-}
-
 func (sa SA) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
 	return sa.Impl.FQDNSetTimestampsForWindow(ctx, req)
 }

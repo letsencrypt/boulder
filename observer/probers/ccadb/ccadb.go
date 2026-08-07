@@ -12,16 +12,18 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"time"
 
-	"github.com/letsencrypt/boulder/observer/probers"
-	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/crl/checker"
 	"github.com/letsencrypt/boulder/crl/idp"
+	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/strictyaml"
 )
 
 // CCADBConf is exported to receive YAML configuration.
@@ -30,8 +32,12 @@ type CCADBConf struct {
 	CertificatePEMsURL    string `yaml:"certificatePEMsURL"`
 	CAOwner               string `yaml:"caOwner"`
 	CRLAgeLimit           string `yaml:"crlAgeLimit"`
+	// CRLRegexp is the regex used for parsing CRL URLs. It must strictly check
+	// the validity of a given CRL URL. It must also specify a capture group
+	// named crlNumber, which is the CRL shard index.
+	//
 	// Because this prober fetches URLs controlled by external input (CCADB), we
-	// check this regexp to avoid arbitrary content fetching (SSRF).
+	// rely on this regexp avoid arbitrary content fetching (SSRF).
 	CRLRegexp string `yaml:"crlRegexp"`
 }
 
@@ -80,7 +86,7 @@ func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probe
 		}
 	}
 
-	crlRegexp := `^http://[a-z0-9-]+\.c\.lencr\.org/\d+\.crl$`
+	crlRegexp := `^http://[a-z0-9-]+\.c\.lencr\.org/(?P<crlNumber>\d+)\.crl$`
 	if c.CRLRegexp != "" {
 		crlRegexp = c.CRLRegexp
 	}
@@ -118,9 +124,11 @@ func getIDP(crl *x509.RevocationList) (string, error) {
 	return "", fmt.Errorf("CRL had incorrect number of IssuingDistributionPoint URIs: %s", idps)
 }
 
-// CCADBProber fetches the AllCertificatesRecordsReport from CCADB, filters for a
-// specific CA Owner (defaults to 'Internet Security Research Group'), and
-// fetches all CRLs found.
+// CCADBProber checks the CRLs we report in CCADB for correctness.
+//
+// It determines the CRLs in scope by fetching the AllCertificatesRecordsReport
+// from CCADB, and filtering for a specific CA Owner (defaults to 'Internet
+// Security Research Group').
 //
 // It checks that the CRLs:
 //   - Are not too old
@@ -128,6 +136,9 @@ func getIDP(crl *x509.RevocationList) (string, error) {
 //     were fetched
 //   - Have a valid signature based on their issuer SKID from CCADB
 //   - Don't have duplicate serial numbers across different CRLs
+//
+// It also checks, heuristically, whether the complete corpus of CRL shards
+// are reported in CCADB.
 type CCADBProber struct {
 	allCertificatesCSVURL string
 	certificatePEMsURL    string
@@ -166,16 +177,33 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 			continue
 		}
 
+		var (
+			seenCRLShardIndices []int
+			exampleCRLShardURL  string
+		)
 		for _, url := range urls {
 			// This can happen when an issuer is not yet issuing.
 			if url == "" {
 				continue
 			}
 
-			if !c.crlRegexp.MatchString(url) {
+			matches := c.crlRegexp.FindAllStringSubmatch(url, 2)
+			if matches == nil {
 				errs = append(errs, fmt.Errorf("CRL %s does not match regexp %s", url, c.crlRegexp))
 				continue
 			}
+			match := matches[0]
+			if len(match) != 2 {
+				errs = append(errs, fmt.Errorf("CRL %s does not match regexp %s", url, c.crlRegexp))
+				continue
+			}
+			crlNumber, err := strconv.Atoi(match[1])
+			if err != nil {
+				errs = append(errs, fmt.Errorf("cannot parse CRL shard number from %s: %s", url, err))
+				continue
+			}
+			seenCRLShardIndices = append(seenCRLShardIndices, crlNumber)
+			exampleCRLShardURL = url
 
 			crl, err := checkCRL(ctx, url, issuer, c.crlAgeLimit)
 			if err != nil {
@@ -194,6 +222,31 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s", entry.SerialNumber, otherCRLURL, url))
 				}
 				serials[serialByteString] = url
+			}
+		}
+
+		if len(seenCRLShardIndices) > 0 {
+			// The max()+1th shard should not be live. This generally occurs if we have
+			// live CRL shards that are not reported in CCADB.
+			maxShardIndex := slices.Max(seenCRLShardIndices)
+			err := checkCRLShardNotFound(ctx, c.crlRegexp, exampleCRLShardURL, maxShardIndex+1)
+			if err != nil {
+				errs = append(errs, err)
+			}
+
+			// The 0th shard should not be live, because shards are 1-indexed.
+			err = checkCRLShardNotFound(ctx, c.crlRegexp, exampleCRLShardURL, 0)
+			if err != nil {
+				errs = append(errs, err)
+			}
+
+			// It is possible that the number of CRL shards shrinks, but it is highly
+			// unlikely, because we would never have any reason make that so. Therefore
+			// we do not detect this case.
+
+			err = checkAllShardIndexesPresent(seenCRLShardIndices)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("issuer %q: %w", issuer.Subject.CommonName, err))
 			}
 		}
 	}
@@ -238,6 +291,50 @@ func getCSV(ctx context.Context, url string) ([]string, *csv.Reader, error) {
 	}
 
 	return header, reader, nil
+}
+
+func checkCRLShardNotFound(ctx context.Context, re *regexp.Regexp, exampleCRLShardURL string, shardIndex int) error {
+	match := re.FindStringSubmatchIndex(exampleCRLShardURL)
+	if match == nil || len(match) != 4 || match[2] < 0 {
+		return fmt.Errorf("CRL %s does not match regexp %s", exampleCRLShardURL, re)
+	}
+	// There is mild SSRF risk because this input is derived from CCADB controlled
+	// values. This is mitigated by using a stringent regex.
+	url := exampleCRLShardURL[:match[2]] + strconv.Itoa(shardIndex) + exampleCRLShardURL[match[3]:]
+
+	err := httpGetExpectingStatusCode(ctx, url, http.StatusNotFound)
+	if err != nil {
+		return fmt.Errorf("did not get expected status 404 for %s: %w", url, err)
+	}
+	return nil
+}
+
+// checkAllShardIndexesPresent returns an error naming any index in
+// [1..max(seen)] that is absent from seen.
+func checkAllShardIndexesPresent(seen []int) error {
+	if len(seen) == 0 {
+		return nil
+	}
+	seenSet := make(map[int]struct{}, len(seen))
+	for _, index := range seen {
+		seenSet[index] = struct{}{}
+	}
+	var missing []int
+	maxIndex := slices.Max(seen)
+	if maxIndex > 100_000 {
+		// Avoid unbounded allocation via typos in CCADB, e.g. 99999999.crl
+		return fmt.Errorf("CRL corpus is unexpectedly large: %d", maxIndex)
+	}
+	for i := 1; i <= maxIndex; i++ {
+		_, ok := seenSet[i]
+		if !ok {
+			missing = append(missing, i)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("CRL shard indexes %v not reported in CCADB", missing)
+	}
+	return nil
 }
 
 func (c CCADBProber) getAllIntermediates(ctx context.Context) (map[string]*x509.Certificate, error) {

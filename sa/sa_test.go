@@ -686,31 +686,6 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertEquals(t, firstIssued, resp.Timestamps[len(resp.Timestamps)-1].AsTime())
 }
 
-func TestFQDNSetExists(t *testing.T) {
-	sa, fc := initSA(t)
-
-	idents := identifier.ACMEIdentifiers{
-		identifier.NewDNS("a.example.com"),
-		identifier.NewDNS("B.example.com"),
-	}
-
-	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Identifiers: idents.ToProtoSlice()})
-	test.AssertNotError(t, err, "Failed to check FQDN set existence")
-	test.Assert(t, !exists.Exists, "FQDN set shouldn't exist")
-
-	tx, err := sa.dbMap.BeginTx(ctx)
-	test.AssertNotError(t, err, "Failed to open transaction")
-	expires := fc.Now().Add(time.Hour * 2).UTC()
-	issued := fc.Now()
-	err = addFQDNSet(ctx, tx, idents, "serial", issued, expires)
-	test.AssertNotError(t, err, "Failed to add name set")
-	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
-
-	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Identifiers: idents.ToProtoSlice()})
-	test.AssertNotError(t, err, "Failed to check FQDN set existence")
-	test.Assert(t, exists.Exists, "FQDN set does exist")
-}
-
 type execRecorder struct {
 	valuesPerRow int
 	query        string
