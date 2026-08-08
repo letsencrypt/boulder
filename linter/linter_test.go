@@ -14,7 +14,9 @@ import (
 	"math/big"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -109,5 +111,38 @@ func TestMakeIssuer(t *testing.T) {
 
 	if !bytes.Equal(lintCert.RawIssuer, realIssuer.RawSubject) {
 		t.Errorf("linting certificate issuer: got %x, want %x", lintCert.RawIssuer, realIssuer.RawSubject)
+	}
+}
+
+func TestCheckSelfSignedSKID(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+
+	tbs := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Self-Signed Test"},
+		NotBefore:             time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		NotAfter:              time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		SubjectKeyId:          []byte{1, 2, 3, 4},
+	}
+
+	// A self-signed tbs certificate whose subjectKeyIdentifier was not
+	// computed from its public key must be rejected outright: the SKID
+	// substitution performed by Check would otherwise hide it from the lints.
+	_, err = Check(tbs, key.Public(), tbs, key, Config{}, nil)
+	test.AssertError(t, err, "linting should have failed")
+	test.AssertContains(t, err.Error(), "RFC 7093")
+
+	// With the correct subjectKeyIdentifier, linting may fail for other
+	// reasons (this minimal certificate is far from profile-compliant), but
+	// not because of the subjectKeyIdentifier check.
+	skid, err := core.GenerateSKID(key.Public())
+	test.AssertNotError(t, err, "computing SKID")
+	tbs.SubjectKeyId = skid
+	_, err = Check(tbs, key.Public(), tbs, key, Config{}, nil)
+	if err != nil && strings.Contains(err.Error(), "RFC 7093") {
+		t.Errorf("linting failed on the subjectKeyIdentifier check despite a correct SKID: %s", err)
 	}
 }
