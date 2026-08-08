@@ -99,6 +99,10 @@ func (mock *caaFakeDNS) LookupCAA(_ context.Context, domain string) (*bdns.Resul
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; validationmethods=dns-01"
 		results = append(results, &record)
+	case "present-mixedcase-validationmethods.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; ValidationMethods=dns-01"
+		results = append(results, &record)
 	case "present-http-only.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; validationmethods=http-01"
@@ -119,6 +123,10 @@ func (mock *caaFakeDNS) LookupCAA(_ context.Context, domain string) (*bdns.Resul
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321; validationmethods=http-01"
 		results = append(results, &record)
+	case "present-mixedcase-accounturi.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; AccountURI=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
 	case "present-correct-accounturi.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/123"
@@ -126,6 +134,10 @@ func (mock *caaFakeDNS) LookupCAA(_ context.Context, domain string) (*bdns.Resul
 	case "present-incorrect-accounturi.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org; accounturi=https://letsencrypt.org/acct/reg/321"
+		results = append(results, &record)
+	case "present-wildcard-mixedcase-validationmethods.com":
+		record.Tag = "issuewild"
+		record.Value = "letsencrypt.org; ValidationMethods=dns-01"
 		results = append(results, &record)
 	case "present-multiple-accounturi.com":
 		record.Tag = "issue"
@@ -310,6 +322,12 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   false,
 		},
 		{
+			Name:    "Bad (restricts to dns-01, mixed-case validationmethods tag)",
+			Domain:  "present-mixedcase-validationmethods.com",
+			FoundAt: "present-mixedcase-validationmethods.com",
+			Valid:   false,
+		},
+		{
 			Name:    "Good (restricts to http-01, tested with http-01)",
 			Domain:  "present-http-only.com",
 			FoundAt: "present-http-only.com",
@@ -352,6 +370,12 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   false,
 		},
 		{
+			Name:    "Bad (restricts to accounturi, mixed-case accounturi tag)",
+			Domain:  "present-mixedcase-accounturi.com",
+			FoundAt: "present-mixedcase-accounturi.com",
+			Valid:   false,
+		},
+		{
 			Name:    "Good (restricts to multiple accounturi, tested with a correct account)",
 			Domain:  "present-multiple-accounturi.com",
 			FoundAt: "present-multiple-accounturi.com",
@@ -388,6 +412,12 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
+			Name:    "Bad (restricts to dns-01, mixed-case validationmethods tag, wildcard)",
+			Domain:  "*.present-wildcard-mixedcase-validationmethods.com",
+			FoundAt: "present-wildcard-mixedcase-validationmethods.com",
+			Valid:   false,
+		},
+		{
 			Name:    "Good (multiple issuewild, one satisfiable)",
 			Domain:  "*.satisfiable-multi-wildcard.com",
 			FoundAt: "satisfiable-multi-wildcard.com",
@@ -413,7 +443,7 @@ func TestCAAChecking(t *testing.T) {
 		defer mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
 			ident := identifier.NewDNS(caaTest.Domain)
-			foundAt, valid, _, err := va.checkCAARecords(ctx, ident, params)
+			foundAt, valid, _, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
@@ -514,6 +544,35 @@ func TestCAALogging(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCAAMisCapitalizedStandardParameterTagFailsClosedWithHelpfulError(t *testing.T) {
+	va, _ := setup(nil, "", nil, &caaFakeDNS{})
+	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
+
+	resp, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Identifier:       identifier.NewDNS("present-mixedcase-accounturi.com").ToProto(),
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     123,
+	})
+	test.AssertNotError(t, err, "Unexpected error calling DoCAA")
+	test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
+	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
+	test.AssertContains(t, resp.Problem.Detail, "invalid capitalization")
+	test.AssertContains(t, resp.Problem.Detail, "AccountURI")
+	test.AssertContains(t, resp.Problem.Detail, "accounturi")
+
+	resp, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Identifier:       identifier.NewDNS("present-mixedcase-validationmethods.com").ToProto(),
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     123,
+	})
+	test.AssertNotError(t, err, "Unexpected error calling DoCAA")
+	test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
+	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
+	test.AssertContains(t, resp.Problem.Detail, "invalid capitalization")
+	test.AssertContains(t, resp.Problem.Detail, "ValidationMethods")
+	test.AssertContains(t, resp.Problem.Detail, "validationmethods")
 }
 
 // TestDoCAAErrMessage tests that an error result from `va.IsCAAValid`
