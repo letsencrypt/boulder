@@ -4477,6 +4477,7 @@ func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 	got, err := sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
 	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
 	test.AssertEquals(t, got.Override.Comment, "updated")
+	test.Assert(t, got.Enabled, fmt.Sprintf("expected Enabled=true after update of enabled override, got Enabled=%v", got.Enabled))
 
 	// Disable
 	_, err = sa.DisableRateLimitOverride(ctx, &sapb.DisableRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})

@@ -1549,9 +1549,13 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 				return nil, nil
 			}
 
-			// Update the existing overrides row.
+			// Update the existing overrides row. Preserve the stored enabled bit:
+			// the local `enabled` var is still false here (zero value) until we
+			// assign existing.Enabled below. Passing that zero value would write
+			// enabled=false into the DB while the response still reported the
+			// prior Enabled status.
 			updated := overrideModelForPB(req.Override, now, existing.Enabled)
-			err = ssa.updateRateLimitOverride(ctx, tx, &updated, now, enabled)
+			err = ssa.updateRateLimitOverride(ctx, tx, &updated, now, existing.Enabled)
 			if err != nil {
 				return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s: %w",
 					req.Override.LimitEnum,
