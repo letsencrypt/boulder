@@ -494,7 +494,7 @@ func (ltdR *errOnLimitedReader) Read(b []byte) (n int, err error) {
 		return 0, ErrReaderLimitExceeded
 	}
 	if len(b) == 0 {
-		return 0, errors.New("EOF")
+		return 0, nil
 	}
 
 	if int64(len(b)) > ltdR.n+1 {
