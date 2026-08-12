@@ -472,8 +472,6 @@ func NormalizeIssuerDomainName(name string) (string, error) {
 // errOnLimitedReader reads from Reader r but limits the amount of data returned
 // to just n bytes. Each call to Read updates n to reflect the new amount
 // remaining.
-// Read returns ErrReaderLimitExceeded when n <= 0, or EOF when the underlying r
-// returns EOF.
 type errOnLimitedReader struct {
 	r io.Reader
 	n int64
@@ -489,25 +487,43 @@ func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
 	return &errOnLimitedReader{r, n}
 }
 
-func (ltdR *errOnLimitedReader) Read(b []byte) (n int, err error) {
-	if ltdR.n < 0 {
+// Read for our errOnLimitedReader forks and modifies io.LimitedReader.Read.
+//
+// LimitedReader's implementation remains concise and readble, but does not
+// differentiate overrun from the underlying Reader EOF, so we can't tell from
+// the outside whether overrun actually happened.
+// see: https://cs.opensource.google/go/go/+/refs/tags/go1.26.5:src/io/io.go;l=472-482
+//
+// MaxBytesReader's implementation uses some control flow that can be confusing,
+// and it assumes you're in an HTTP stack -- using http.ResponseWriter, etc --
+// which we are often not.
+// see: https://cs.opensource.google/go/go/+/refs/tags/go1.26.5:src/net/http/request.go;l=1211-1251
+//
+// Read returns ErrReaderLimitExceeded in two cases: when n < 0, or when n == 0
+// and there is even one more byte to read. Otherwise, it will return the
+// underlying Reader error, if any.
+func (l *errOnLimitedReader) Read(p []byte) (int, error) {
+	// We've previously somehow read too many bytes, so error out now.
+	if l.n < 0 {
 		return 0, ErrReaderLimitExceeded
 	}
-	if len(b) == 0 {
-		return 0, nil
+
+	// If we've already read exactly the limit, try to read just one more byte.
+	if l.n == 0 {
+		n, err := l.r.Read(make([]byte, 1))
+		if n == 0 {
+			return n, err
+		}
+		return 0, ErrReaderLimitExceeded
 	}
 
-	if int64(len(b)) > ltdR.n+1 {
-		b = b[0 : ltdR.n+1]
+	// Otherwise, read at most the remaining limit of bytes. If there are more
+	// bytes to be read from the underlying reader, that'll get caught by the
+	// case above the next time around.
+	if int64(len(p)) > l.n {
+		p = p[0:l.n]
 	}
-
-	n, err = ltdR.r.Read(b)
-	if int64(n) <= ltdR.n {
-		ltdR.n -= int64(n)
-		return n, err
-	}
-
-	n = int(ltdR.n)
-	ltdR.n = -1
-	return n, ErrReaderLimitExceeded
+	n, err := l.r.Read(p)
+	l.n -= int64(n)
+	return n, err
 }
