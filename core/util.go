@@ -489,7 +489,7 @@ func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
 
 // Read for our errOnLimitedReader forks and modifies io.LimitedReader.Read.
 //
-// LimitedReader's implementation remains concise and readble, but does not
+// LimitedReader's implementation remains concise and readable, but does not
 // differentiate overrun from the underlying Reader EOF, so we can't tell from
 // the outside whether overrun actually happened.
 // see: https://cs.opensource.google/go/go/+/refs/tags/go1.26.5:src/io/io.go;l=472-482
