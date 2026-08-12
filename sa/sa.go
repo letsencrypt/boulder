@@ -479,19 +479,24 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req
 		return nil, errIncompleteRequest
 	}
 
+	identTypeUint, ok := identifierTypeToUint[req.Identifier.Type]
+	if !ok {
+		return nil, fmt.Errorf("unsupported identifier type %q", req.Identifier.Type)
+	}
+
 	// Uses the `regID_identifier_status_expires_idx` index on the Authz2 table
 	result, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE authz2 SET status = :revoked
 		WHERE registrationID = :registrationID
 		AND identifierType = :identifierType
 		AND identifierValue = :identifierValue
-		AND status IN (:valid)
+		AND status = :valid
 		AND :expirenow < expires
 		LIMIT :revokeLimit`,
 		map[string]any{
 			"revoked":         statusUint(core.StatusRevoked),
 			"registrationID":  req.RegistrationID,
-			"identifierType":  identifierTypeToUint[req.Identifier.Type],
+			"identifierType":  identTypeUint,
 			"identifierValue": req.Identifier.Value,
 			"valid":           statusUint(core.StatusValid),
 			"pending":         statusUint(core.StatusPending),
