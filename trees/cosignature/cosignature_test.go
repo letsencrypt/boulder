@@ -199,17 +199,17 @@ func TestVerifyCheckpointErrors(t *testing.T) {
 }
 
 func TestOriginFor(t *testing.T) {
-	origin, err := originFor("32473.2.0.42")
+	origin, err := OriginFor("32473.2.0.42")
 	if err != nil {
-		t.Fatalf("originFor: %s", err)
+		t.Fatalf("OriginFor: %s", err)
 	}
 	if origin != "oid/1.3.6.1.4.1.32473.2.0.42" {
-		t.Errorf("originFor = %q, want %q", origin, "oid/1.3.6.1.4.1.32473.2.0.42")
+		t.Errorf("OriginFor = %q, want %q", origin, "oid/1.3.6.1.4.1.32473.2.0.42")
 	}
 
-	_, err = originFor("32473..2")
+	_, err = OriginFor("32473..2")
 	if err == nil {
-		t.Error("originFor with a malformed log ID = nil error, want error")
+		t.Error("OriginFor with a malformed log ID = nil error, want error")
 	}
 }
 

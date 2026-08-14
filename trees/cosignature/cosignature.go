@@ -87,7 +87,7 @@ func checkRelativeOID(id string) error {
 	if id == "" {
 		return errors.New("empty relative OID")
 	}
-	for _, arc := range strings.Split(id, ".") {
+	for arc := range strings.SplitSeq(id, ".") {
 		if arc == "" {
 			return errors.New("empty arc")
 		}
@@ -103,12 +103,12 @@ func checkRelativeOID(id string) error {
 	return nil
 }
 
-// originFor returns the log origin derived from the log ID per mtc-tlog: log
-// ID "32473.2.0.42" has origin "oid/1.3.6.1.4.1.32473.2.0.42". It errors if
-// logID is not a dotted decimal OID.
+// OriginFor returns the log origin derived from the log ID per mtc-tlog, so
+// log ID "32473.2.0.42" has origin "oid/1.3.6.1.4.1.32473.2.0.42". It errors
+// if logID is not a dotted decimal OID.
 //
 // https://c2sp.org/mtc-tlog
-func originFor(logID string) (string, error) {
+func OriginFor(logID string) (string, error) {
 	err := checkRelativeOID(logID)
 	if err != nil {
 		return "", fmt.Errorf("invalid log ID %q: %w", logID, err)
@@ -140,7 +140,7 @@ func NewCosigner(cosignerID, logID string, signer crypto.Signer) (*Cosigner, err
 	if err != nil {
 		return nil, fmt.Errorf("invalid cosigner ID %q: %w", cosignerID, err)
 	}
-	origin, err := originFor(logID)
+	origin, err := OriginFor(logID)
 	if err != nil {
 		return nil, err
 	}
