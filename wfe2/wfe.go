@@ -2024,6 +2024,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	newKeyBytes, err := newKey.MarshalJSON()
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
+		return
 	}
 	// Check that the new key isn't already being used for an existing account
 	existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
