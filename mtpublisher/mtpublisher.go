@@ -105,9 +105,10 @@ func (p *publisher) cosign(tree tlog.Tree) (string, error) {
 	return "— " + p.mirrorName + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n", nil
 }
 
-// publish cosigns the latest checkpoint in the database if it lacks a mirror
-// cosignature and stores the raw signature in the database.
-func (p *publisher) publish(ctx context.Context) error {
+// Publish cosigns the latest checkpoint in the database if it lacks a mirror
+// cosignature and stores the raw signature in the database. Start calls it at
+// each interval.
+func (p *publisher) Publish(ctx context.Context) error {
 	var latest checkpointEntry
 	err := p.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
@@ -170,7 +171,7 @@ func (p *publisher) Start(ctx context.Context) {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
-		err := p.publish(ctx)
+		err := p.Publish(ctx)
 		if err != nil {
 			p.log.Errf("Cosigning pass failed: %s", err)
 		}

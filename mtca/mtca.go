@@ -400,8 +400,6 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 // there are no inflight RPCs from clients, which in turn ensures that we have sequenced everything
 // had in the pool.
 func (m *mtca) Loop(ctx context.Context) {
-	go m.fakePublisher(ctx)
-
 	since := time.Now()
 	ticker := time.NewTicker(m.sequencingPeriod)
 	defer ticker.Stop()
@@ -427,36 +425,6 @@ func (m *mtca) Loop(ctx context.Context) {
 			if poolSize != 0 {
 				m.log.Errf("shouldn't happen: pool has %d entries left after Loop() context canceled. ungraceful stop?", poolSize)
 			}
-			return
-		}
-	}
-}
-
-// fakePublisher simulates the role of the mtpublisher by finding checkpoints with no
-// mirrorSignature and writing a fake signature to them.
-//
-// TODO: remove once a real publisher is available in integration.
-func (m *mtca) fakePublisher(ctx context.Context) {
-	ticker := time.NewTicker(37 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			latest, err := m.latestCheckpoint(ctx)
-			if err != nil {
-				m.log.Errf("getting latest checkpoint for fake publisher: %s", err)
-				continue
-			}
-			_, err = m.db.ExecContext(ctx, `
-				UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ?
-				WHERE id = ? AND mtcLogID = ?`,
-				"fake mirror ID", []byte("fake mirror signature"),
-				latest.ID, m.mtcLogID())
-			if err != nil {
-				m.log.Errf("updating latest checkpoint with fake signature: %s", err)
-				continue
-			}
-		case <-ctx.Done():
 			return
 		}
 	}
