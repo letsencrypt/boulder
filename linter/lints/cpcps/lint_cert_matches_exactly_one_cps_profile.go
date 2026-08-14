@@ -44,7 +44,7 @@ func (l *certMatchesExactlyOneCPSProfile) CheckApplies(c *x509.Certificate) bool
 
 // Execute checks that the given certificate meets the "CheckApplies" criteria
 // of exactly one of the five lints which enforce each of our CP/CPS profiles.
-// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L990
+// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1003
 // All ISRG Certificates are issued in accordance with one of the following Certificate Profiles, which are derived from the profiles with the same names found in Section 7.1.2 of the Baseline Requirements.
 func (l *certMatchesExactlyOneCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
 	matches := 0

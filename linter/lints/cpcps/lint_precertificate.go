@@ -48,7 +48,7 @@ func (l *precertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) bool
 // first the rows shared with the Subscriber (Server) Certificate Profile
 // (whose implementation lives in lint_subscriber_server_certificate.go), then
 // the requirements specific to precertificates.
-// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1097
+// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1110
 // ### Precertificate Profile
 func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
 	res := checkSubscriberProfile(c, l.Config.issuerPEM())
@@ -56,7 +56,7 @@ func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.Lin
 		return res
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1099
+	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1112
 	// Identical to the Subscriber (Server) Certificate Profile, except that the `SignedCertificateTimestampList` extension is omitted, and a critical "CT poison" extension (OID 1.3.6.1.4.1.11129.2.4.3) is included. ISRG Precertificates are issued directly by the Issuing CA, not by a delegated Precertificate Signing CA.
 	// This check enforces the presence and criticality of the CT poison
 	// extension.
@@ -68,7 +68,7 @@ func (l *precertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.Lin
 		return errResult("CT poison extension is not critical")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1093
+	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1106
 	// |         Any other extension              | Not present |
 	// The SignedCertificateTimestampList extension is omitted from
 	// precertificates and replaced by the CT poison extension, so the allowed

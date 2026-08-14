@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1117
+	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1130
 	// When used in the context of a signature, fields of type `AlgorithmIdentifier` of all objects signed by ISRG CAs are byte-for-byte identical with one of the hexadecimal encodings specified by Section 7.1.3.2 of the Baseline Requirements.
 	// These are the AlgorithmIdentifier encodings specified by Section
 	// 7.1.3.2 of the Baseline Requirements, except the RSASSA-PSS ones, which
@@ -41,7 +41,7 @@ var (
 		"300a06082a8648ce3d040304": true,
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/TKTK-replace-with-version-tag/CP-CPS.md?plain=1#L1113
+	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1126
 	// The `AlgorithmIdentifier` field of the `SubjectPublicKeyInfo` field of ISRG Certificates is byte-for-byte identical with one of the hexadecimal encodings specified by Section 7.1.3.1 of the Baseline Requirements.
 	// These are the SubjectPublicKeyInfo AlgorithmIdentifier encodings
 	// specified by Section 7.1.3.1 of the Baseline Requirements.
