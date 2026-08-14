@@ -54,10 +54,10 @@ func keyIDFor(name string, publicKey *mldsa.PublicKey) uint32 {
 	return binary.BigEndian.Uint32(h.Sum(nil)[:keyIDSize])
 }
 
-// marshalCosignedMessage serializes the cosigned.Message for a checkpoint
+// marshalCheckpointMessage serializes the cosigned.Message for a checkpoint
 // cosignature, with start 0 and end the tree size as the MTC draft section
 // 5.3.1 requires for checkpoints. It rejects a non-positive end.
-func marshalCosignedMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
+func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
 	if end <= 0 {
 		return nil, fmt.Errorf("non-positive end %d", end)
 	}
@@ -85,7 +85,7 @@ func signatureLineFor(name string, keyID uint32, timestampedSignature []byte) st
 // "32473.2", nil otherwise.
 func checkRelativeOID(id string) error {
 	if id == "" {
-		return errors.New("empty")
+		return errors.New("empty relative OID")
 	}
 	for _, arc := range strings.Split(id, ".") {
 		if arc == "" {
@@ -103,12 +103,12 @@ func checkRelativeOID(id string) error {
 	return nil
 }
 
-// Origin returns the log origin derived from the log ID per mtc-tlog: log ID
-// "32473.2.0.42" has origin "oid/1.3.6.1.4.1.32473.2.0.42". It errors if logID
-// is not a dotted decimal OID.
+// originFor returns the log origin derived from the log ID per mtc-tlog: log
+// ID "32473.2.0.42" has origin "oid/1.3.6.1.4.1.32473.2.0.42". It errors if
+// logID is not a dotted decimal OID.
 //
 // https://c2sp.org/mtc-tlog
-func Origin(logID string) (string, error) {
+func originFor(logID string) (string, error) {
 	err := checkRelativeOID(logID)
 	if err != nil {
 		return "", fmt.Errorf("invalid log ID %q: %w", logID, err)
@@ -119,7 +119,7 @@ func Origin(logID string) (string, error) {
 // Cosigner produces cosignatures over checkpoints as an MTC cosigner for a
 // single log: the timestamp is zero, as required for cosignatures used in
 // certificates, and the key is a crypto.Signer so it may be stored in an HSM.
-// Both the CA cosigner and a mirror cosigning the CA's log take this role.
+// Both the CA cosigner and the mirror cosigner use this.
 //
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-6.2
@@ -140,7 +140,7 @@ func NewCosigner(cosignerID, logID string, signer crypto.Signer) (*Cosigner, err
 	if err != nil {
 		return nil, fmt.Errorf("invalid cosigner ID %q: %w", cosignerID, err)
 	}
-	origin, err := Origin(logID)
+	origin, err := originFor(logID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (c *Cosigner) Origin() string {
 // CosignCheckpoint cosigns the checkpoint described by tree and returns the
 // cosignature as a timestamped_signature.
 func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
-	message, err := marshalCosignedMessage(c.name, 0, c.origin, tree.N, tree.Hash)
+	message, err := marshalCheckpointMessage(c.name, 0, c.origin, tree.N, tree.Hash)
 	if err != nil {
 		return nil, err
 	}
@@ -181,17 +181,6 @@ func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
 	out := make([]byte, timestampedSignatureSize)
 	copy(out[timestampSize:], signature)
 	return out, nil
-}
-
-// CosignatureLine cosigns the checkpoint described by tree and returns the
-// cosignature as a signature line, trailing newline included. For a
-// timestamped_signature, use CosignCheckpoint.
-func (c *Cosigner) CosignatureLine(tree tlog.Tree) (string, error) {
-	signature, err := c.CosignCheckpoint(tree)
-	if err != nil {
-		return "", err
-	}
-	return signatureLineFor(c.name, c.keyID, signature), nil
 }
 
 // Verifier is a note.Verifier that verifies an MTC cosigner's ML-DSA-44
@@ -249,7 +238,7 @@ func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, timestampedSi
 	if timestamp > math.MaxInt64 {
 		return fmt.Errorf("timestamp %d exceeds 2^63-1", timestamp)
 	}
-	cosignedMessage, err := marshalCosignedMessage(v.name, timestamp, origin, tree.N, tree.Hash)
+	cosignedMessage, err := marshalCheckpointMessage(v.name, timestamp, origin, tree.N, tree.Hash)
 	if err != nil {
 		return err
 	}
@@ -283,7 +272,7 @@ func TimestampedSignature(noteText, signatureLine string, verifier *Verifier) ([
 		return nil, fmt.Errorf("opening the cosigned note: %s", err)
 	}
 	// verifier is the only verifier in the list, so every signature in n.Sigs
-	// is the cosigner's, verified and length-checked.
+	// is by the verifier's cosigner, verified and length-checked.
 	idSignature, err := base64.StdEncoding.DecodeString(n.Sigs[0].Base64)
 	if err != nil {
 		return nil, fmt.Errorf("decoding the signature by %s: %s", verifier.name, err)

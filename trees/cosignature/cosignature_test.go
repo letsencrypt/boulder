@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
@@ -32,9 +33,9 @@ const exampleCheckpoint = "example.com/behind-the-sofa\n20852163\n" + exampleHas
 const cosignerID = "32473.9"
 const cosignerName = oidPrefix + cosignerID
 
-// testKey returns a deterministic ML-DSA-44 key, so cosignature tests are
-// reproducible.
-func testKey(t *testing.T) *mldsa.PrivateKey {
+// testSigner returns a deterministic signer over a fixed-seed ML-DSA-44 key,
+// so cosignature tests are reproducible.
+func testSigner(t *testing.T) crypto.Signer {
 	t.Helper()
 	seed := make([]byte, 32)
 	for i := range seed {
@@ -44,12 +45,16 @@ func testKey(t *testing.T) *mldsa.PrivateKey {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	return key
+	return privatekey.NewDeterministicSigner(key)
 }
 
 func testPubKey(t *testing.T) *mldsa.PublicKey {
 	t.Helper()
-	return testKey(t).PublicKey()
+	publicKey, ok := testSigner(t).Public().(*mldsa.PublicKey)
+	if !ok {
+		t.Fatal("testSigner's public key is not ML-DSA")
+	}
+	return publicKey
 }
 
 func newVerifier(t *testing.T) *Verifier {
@@ -124,7 +129,7 @@ func TestNewVerifierRejects(t *testing.T) {
 // timestamped_signature is rejected when its timestamp exceeds the spec's
 // 2^63-1 bound.
 func TestVerifyRejectsOversizeTimestamp(t *testing.T) {
-	key := testKey(t)
+	signer := testSigner(t)
 	v := newVerifier(t)
 	parsed, err := checkpoint.Unmarshal(exampleCheckpoint)
 	if err != nil {
@@ -132,11 +137,11 @@ func TestVerifyRejectsOversizeTimestamp(t *testing.T) {
 	}
 
 	timestamped := func(ts uint64) []byte {
-		message, err := marshalCosignedMessage(cosignerName, ts, parsed.Origin, parsed.Tree.N, parsed.Tree.Hash)
+		message, err := marshalCheckpointMessage(cosignerName, ts, parsed.Origin, parsed.Tree.N, parsed.Tree.Hash)
 		if err != nil {
-			t.Fatalf("marshalCosignedMessage: %s", err)
+			t.Fatalf("marshalCheckpointMessage: %s", err)
 		}
-		signature, err := key.SignDeterministic(message, nil)
+		signature, err := signer.Sign(nil, message, nil)
 		if err != nil {
 			t.Fatalf("Sign: %s", err)
 		}
@@ -193,18 +198,18 @@ func TestVerifyCheckpointErrors(t *testing.T) {
 	}
 }
 
-func TestOrigin(t *testing.T) {
-	origin, err := Origin("32473.2.0.42")
+func TestOriginFor(t *testing.T) {
+	origin, err := originFor("32473.2.0.42")
 	if err != nil {
-		t.Fatalf("Origin: %s", err)
+		t.Fatalf("originFor: %s", err)
 	}
 	if origin != "oid/1.3.6.1.4.1.32473.2.0.42" {
-		t.Errorf("Origin = %q, want %q", origin, "oid/1.3.6.1.4.1.32473.2.0.42")
+		t.Errorf("originFor = %q, want %q", origin, "oid/1.3.6.1.4.1.32473.2.0.42")
 	}
 
-	_, err = Origin("32473..2")
+	_, err = originFor("32473..2")
 	if err == nil {
-		t.Error("Origin with a malformed log ID = nil error, want error")
+		t.Error("originFor with a malformed log ID = nil error, want error")
 	}
 }
 
@@ -214,7 +219,7 @@ func TestOrigin(t *testing.T) {
 // verifier against the matching checkpoint text, and reassembles into a
 // signature line that opens.
 func TestCosignerRoundTrip(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", testKey(t))
+	ca, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -268,13 +273,7 @@ func TestCosignerRoundTrip(t *testing.T) {
 		t.Error("VerifyCheckpoint accepted a cosignature over a different origin")
 	}
 
-	// ML-DSA signing through a crypto.Signer may be hedged, so
-	// CosignatureLine's line carries a fresh signature. signatureLineFor must
-	// rebuild that line byte for byte from the signature extracted out of it.
-	line, err := ca.CosignatureLine(parsed.Tree)
-	if err != nil {
-		t.Fatalf("CosignatureLine: %s", err)
-	}
+	line := signatureLineFor(ca.name, ca.keyID, signature)
 	if !strings.HasPrefix(line, noteSignatureLinePrefix+ca.name+" ") {
 		t.Errorf("line %q has unexpected prefix", line)
 	}
@@ -293,14 +292,14 @@ func TestCosignerRoundTrip(t *testing.T) {
 }
 
 func TestCosignerRejects(t *testing.T) {
-	key := testKey(t)
+	signer := testSigner(t)
 
 	for _, id := range []string{"", "has space", "32473..2", "32473.x", ".32473", "32473.", "32473.02"} {
-		_, err := NewCosigner(id, "32473.2.0.42", key)
+		_, err := NewCosigner(id, "32473.2.0.42", signer)
 		if err == nil {
 			t.Errorf("NewCosigner with cosigner ID %q = nil error, want error", id)
 		}
-		_, err = NewCosigner("32473.2", id, key)
+		_, err = NewCosigner("32473.2", id, signer)
 		if err == nil {
 			t.Errorf("NewCosigner with log ID %q = nil error, want error", id)
 		}
@@ -326,7 +325,7 @@ func TestCosignerRejects(t *testing.T) {
 		t.Error("NewCosigner with an Ed25519 key = nil error, want error")
 	}
 
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", key)
+	ca, err := NewCosigner("32473.2", "32473.2.0.42", signer)
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -365,10 +364,6 @@ func TestCosignerRejectsShortSignature(t *testing.T) {
 	_, err = ca.CosignCheckpoint(tlog.Tree{N: 1})
 	if err == nil {
 		t.Error("CosignCheckpoint with a truncated signature = nil error, want error")
-	}
-	_, err = ca.CosignatureLine(tlog.Tree{N: 1})
-	if err == nil {
-		t.Error("CosignatureLine with a truncated signature = nil error, want error")
 	}
 }
 
@@ -429,7 +424,7 @@ func TestRawSignature(t *testing.T) {
 // verifies on its own, and that extraction errors for a verifier that did not
 // sign.
 func TestTimestampedSignature(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", testKey(t))
+	ca, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -438,10 +433,11 @@ func TestTimestampedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
-	line, err := ca.CosignatureLine(parsed.Tree)
+	cosigned, err := ca.CosignCheckpoint(parsed.Tree)
 	if err != nil {
-		t.Fatalf("CosignatureLine: %s", err)
+		t.Fatalf("CosignCheckpoint: %s", err)
 	}
+	line := signatureLineFor(ca.name, ca.keyID, cosigned)
 
 	v, err := NewVerifier("32473.2", testPubKey(t))
 	if err != nil {
@@ -484,7 +480,7 @@ func TestTimestampedSignatureRejectsForeignFormat(t *testing.T) {
 // signatures from unknown keys" with a note cosigned for one log by two MTC
 // cosigners and opened by one verifier, the shape of every real exchange.
 func TestOpenIgnoresUnknownSignatures(t *testing.T) {
-	known, err := NewCosigner("32473.2", "32473.2.0.42", testKey(t))
+	known, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -497,7 +493,7 @@ func TestOpenIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	unknown, err := NewCosigner("32473.9", "32473.2.0.42", otherKey)
+	unknown, err := NewCosigner("32473.9", "32473.2.0.42", privatekey.NewDeterministicSigner(otherKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -507,14 +503,16 @@ func TestOpenIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
-	knownLine, err := known.CosignatureLine(parsed.Tree)
+	knownSignature, err := known.CosignCheckpoint(parsed.Tree)
 	if err != nil {
-		t.Fatalf("CosignatureLine: %s", err)
+		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	unknownLine, err := unknown.CosignatureLine(parsed.Tree)
+	knownLine := signatureLineFor(known.name, known.keyID, knownSignature)
+	unknownSignature, err := unknown.CosignCheckpoint(parsed.Tree)
 	if err != nil {
-		t.Fatalf("CosignatureLine: %s", err)
+		t.Fatalf("CosignCheckpoint: %s", err)
 	}
+	unknownLine := signatureLineFor(unknown.name, unknown.keyID, unknownSignature)
 	signed := []byte(text + "\n" + knownLine + unknownLine)
 
 	v, err := NewVerifier("32473.2", testPubKey(t))

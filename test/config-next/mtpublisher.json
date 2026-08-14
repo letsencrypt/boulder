@@ -6,7 +6,9 @@
 		},
 		"pollInterval": "1s",
 		"mtcLogID": "44947.4.1.0.44",
-		"mirrorID": "32473.9"
+		"mirrorID": "32473.9",
+		"mirrorKeyFile": "test/certs/mtpki/mirror.key.pem",
+		"mirrorPublicKeyFile": "test/certs/mtpki/mirror.pub.pem"
 	},
 	"syslog": {
 		"stdoutlevel": 6,
