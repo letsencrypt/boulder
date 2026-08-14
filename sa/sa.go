@@ -1549,9 +1549,8 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 				return nil, nil
 			}
 
-			// Update the existing overrides row.
 			updated := overrideModelForPB(req.Override, now, existing.Enabled)
-			err = ssa.updateRateLimitOverride(ctx, tx, &updated, now, enabled)
+			err = ssa.updateRateLimitOverride(ctx, tx, &updated, now, existing.Enabled)
 			if err != nil {
 				return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s: %w",
 					req.Override.LimitEnum,
