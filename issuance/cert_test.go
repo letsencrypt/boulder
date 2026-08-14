@@ -273,7 +273,7 @@ func TestRequestValid(t *testing.T) {
 				SubjectKeyId:    goodSKID,
 				NotBefore:       fc.Now(),
 				NotAfter:        fc.Now().Add(time.Hour),
-				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 				IncludeCTPoison: true,
 			},
 		},
@@ -290,7 +290,7 @@ func TestRequestValid(t *testing.T) {
 				SubjectKeyId: goodSKID,
 				NotBefore:    fc.Now(),
 				NotAfter:     fc.Now().Add(time.Hour),
-				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 				sctList:      []ct.SignedCertificateTimestamp{},
 			},
 		},
@@ -367,7 +367,7 @@ func TestIssue(t *testing.T) {
 			lintCertBytes, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 				PublicKey:       MarshalablePublicKey{pk.Public()},
 				SubjectKeyId:    skid,
-				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 				DNSNames:        []string{"example.com"},
 				IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
 				NotBefore:       fc.Now(),
@@ -392,7 +392,7 @@ func TestIssue(t *testing.T) {
 			// addresses back to 4 bytes. Adding .To4() both allows this test to
 			// succeed, and covers this requirement.
 			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")})
-			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
+			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
@@ -454,7 +454,7 @@ func TestIssueDNSNamesOnly(t *testing.T) {
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -497,7 +497,7 @@ func TestIssueIPAddressesOnly(t *testing.T) {
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -544,7 +544,7 @@ func TestIssueWithCRLDP(t *testing.T) {
 	_, issuanceToken, err := signer.Prepare(profile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -562,7 +562,7 @@ func TestIssueWithCRLDP(t *testing.T) {
 		t.Fatalf("x509.ParseCertificate: %s", err)
 	}
 	// Because CRL shard is calculated deterministically from serial, we know which shard will be chosen.
-	expectedCRLDP := []string{"http://crls.example.net/919.crl"}
+	expectedCRLDP := []string{"http://crls.example.net/838.crl"}
 	if !reflect.DeepEqual(cert.CRLDistributionPoints, expectedCRLDP) {
 		t.Errorf("CRLDP=%+v, want %+v", cert.CRLDistributionPoints, expectedCRLDP)
 	}
@@ -585,7 +585,7 @@ func TestIssueCommonName(t *testing.T) {
 	ir := &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com", "www.example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -636,6 +636,10 @@ func TestPrepareMTC(t *testing.T) {
 		// Ignore the warning about *not* including the SubjectKeyIdentifier extension:
 		// zlint has both lints (one enforcing RFC5280, the other the BRs).
 		"w_ext_subject_key_identifier_missing_sub_cert",
+		// MTCs are not (yet) subject to our CPS profiles, and will likely be
+		// subject to a *different* profile when we get around to issuing them
+		// from prod. Ignore our CPS-specific lint for now.
+		"e_subscriber_server_certificate_matches_cps_profile",
 	}
 	prof, err := NewProfile(pc)
 	if err != nil {
@@ -657,7 +661,7 @@ func TestPrepareMTC(t *testing.T) {
 		sctList:         nil,
 
 		PublicKey: MarshalablePublicKey{pk.Public()},
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
@@ -670,7 +674,7 @@ func TestPrepareMTC(t *testing.T) {
 		IncludeCTPoison: true,
 
 		PublicKey: MarshalablePublicKey{pk.Public()},
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
@@ -683,7 +687,7 @@ func TestPrepareMTC(t *testing.T) {
 		sctList: []ct.SignedCertificateTimestamp{{SCTVersion: 1}},
 
 		PublicKey: MarshalablePublicKey{pk.Public()},
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
@@ -722,7 +726,7 @@ func TestIssueOmissions(t *testing.T) {
 	_, issuanceToken, err := signer.Prepare(prof, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		CommonName:      "example.com",
 		IncludeCTPoison: true,
@@ -753,7 +757,7 @@ func TestIssueCTPoison(t *testing.T) {
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		IncludeCTPoison: true,
 		NotBefore:       fc.Now(),
@@ -766,7 +770,7 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse certificate")
 	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
 	test.AssertDeepEquals(t, cert.Extensions[9], ctPoisonExt)
@@ -803,7 +807,7 @@ func TestIssueSCTList(t *testing.T) {
 	_, issuanceToken, err := signer.Prepare(enforceSCTsProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -840,7 +844,7 @@ func TestIssueSCTList(t *testing.T) {
 
 	err = finalCert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, finalCert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	test.AssertByteEquals(t, finalCert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18})
 	test.AssertDeepEquals(t, finalCert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(finalCert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
 	test.AssertDeepEquals(t, finalCert.Extensions[9], pkix.Extension{
@@ -873,7 +877,7 @@ func TestIssueBadLint(t *testing.T) {
 	_, _, err = signer.Prepare(noSkipLintsProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example-com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -904,7 +908,7 @@ func TestIssuanceToken(t *testing.T) {
 	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -921,7 +925,7 @@ func TestIssuanceToken(t *testing.T) {
 	_, issuanceToken, err = signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -953,7 +957,7 @@ func TestInvalidProfile(t *testing.T) {
 	_, _, err = signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -965,7 +969,7 @@ func TestInvalidProfile(t *testing.T) {
 	_, _, err = signer.Prepare(defaultProfile(), &IssuanceRequest{
 		PublicKey:    MarshalablePublicKey{pk.Public()},
 		SubjectKeyId: skid,
-		Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:     []string{"example.com"},
 		NotBefore:    fc.Now(),
 		NotAfter:     fc.Now().Add(time.Hour - time.Second),
@@ -1004,7 +1008,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, issuanceToken, err := issuer1.Prepare(cnProfile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		CommonName:      "example.com",
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
