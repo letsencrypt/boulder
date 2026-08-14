@@ -131,7 +131,7 @@ func TestNewVerifierRejects(t *testing.T) {
 func TestVerifyRejectsOversizeTimestamp(t *testing.T) {
 	signer := testSigner(t)
 	v := newVerifier(t)
-	parsed, err := checkpoint.Unmarshal(exampleCheckpoint)
+	parsed, err := checkpoint.Unmarshal([]byte(exampleCheckpoint))
 	if err != nil {
 		t.Fatalf("Unmarshal: %s", err)
 	}
@@ -166,7 +166,7 @@ func TestVerifyRejectsOversizeTimestamp(t *testing.T) {
 // the check that rejected it.
 func TestVerifyCheckpointErrors(t *testing.T) {
 	v := newVerifier(t)
-	parsed, err := checkpoint.Unmarshal(exampleCheckpoint)
+	parsed, err := checkpoint.Unmarshal([]byte(exampleCheckpoint))
 	if err != nil {
 		t.Fatalf("Unmarshal: %s", err)
 	}
@@ -228,7 +228,7 @@ func TestCosignerRoundTrip(t *testing.T) {
 	}
 
 	text := ca.origin + "\n20852163\n" + exampleHashB64 + "\n"
-	parsed, err := checkpoint.Unmarshal(text)
+	parsed, err := checkpoint.Unmarshal([]byte(text))
 	if err != nil {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
@@ -278,7 +278,7 @@ func TestCosignerRoundTrip(t *testing.T) {
 		t.Errorf("line %q has unexpected prefix", line)
 	}
 
-	extracted, err := TimestampedSignature(text, line, v)
+	extracted, err := TimestampedSignature([]byte(text), line, v)
 	if err != nil {
 		t.Fatalf("TimestampedSignature on a reassembled note: %s", err)
 	}
@@ -429,7 +429,7 @@ func TestTimestampedSignature(t *testing.T) {
 		t.Fatalf("NewCosigner: %s", err)
 	}
 	text := ca.origin + "\n20852163\n" + exampleHashB64 + "\n"
-	parsed, err := checkpoint.Unmarshal(text)
+	parsed, err := checkpoint.Unmarshal([]byte(text))
 	if err != nil {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
@@ -443,7 +443,7 @@ func TestTimestampedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	timestampedSignature, err := TimestampedSignature(text, line, v)
+	timestampedSignature, err := TimestampedSignature([]byte(text), line, v)
 	if err != nil {
 		t.Fatalf("TimestampedSignature for the cosigner that signed the note: %s", err)
 	}
@@ -455,7 +455,7 @@ func TestTimestampedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	_, err = TimestampedSignature(text, line, other)
+	_, err = TimestampedSignature([]byte(text), line, other)
 	if err == nil {
 		t.Error("TimestampedSignature for a cosigner that did not sign the note = nil error, want error")
 	}
@@ -470,7 +470,7 @@ func TestTimestampedSignatureRejectsForeignFormat(t *testing.T) {
 	idSignature := make([]byte, keyIDSize+64)
 	binary.BigEndian.PutUint32(idSignature[:keyIDSize], v.KeyHash())
 	line := noteSignatureLinePrefix + v.Name() + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"
-	_, err := TimestampedSignature(exampleCheckpoint, line, v)
+	_, err := TimestampedSignature([]byte(exampleCheckpoint), line, v)
 	if err == nil {
 		t.Error("TimestampedSignature with a 64-byte signature body = nil error, want error")
 	}
@@ -499,7 +499,7 @@ func TestOpenIgnoresUnknownSignatures(t *testing.T) {
 	}
 
 	text := known.origin + "\n20852163\n" + exampleHashB64 + "\n"
-	parsed, err := checkpoint.Unmarshal(text)
+	parsed, err := checkpoint.Unmarshal([]byte(text))
 	if err != nil {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
