@@ -98,7 +98,7 @@ func main() {
 
 			num, err := strconv.Atoi(match[2])
 			if err != nil {
-				complain("unparseable line number %q: %s", match[2], err)
+				complain("unparsable line number %q: %s", match[2], err)
 				continue
 			}
 
