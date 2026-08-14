@@ -255,7 +255,7 @@ func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, timestampedSi
 // Verify is the note.Verifier entry point. For an already parsed checkpoint,
 // use VerifyCheckpoint.
 func (v *Verifier) Verify(noteText, signature []byte) bool {
-	parsed, err := checkpoint.Unmarshal(string(noteText))
+	parsed, err := checkpoint.Unmarshal(noteText)
 	if err != nil {
 		return false
 	}
@@ -266,8 +266,8 @@ func (v *Verifier) Verify(noteText, signature []byte) bool {
 // and returns the timestamped_signature by verifier's cosigner. An error is
 // returned if noteText and signatureLine do not form a well-formed note or if
 // verifier rejects the signature. Signatures from unknown keys are ignored.
-func TimestampedSignature(noteText, signatureLine string, verifier *Verifier) ([]byte, error) {
-	n, err := note.Open([]byte(noteText+"\n"+signatureLine), note.VerifierList(verifier))
+func TimestampedSignature(noteText []byte, signatureLine string, verifier *Verifier) ([]byte, error) {
+	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLine), note.VerifierList(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("opening the cosigned note: %s", err)
 	}
