@@ -60,6 +60,10 @@ jobs:
           - "USE_VITESS=true ./t.sh --unit --enable-race-detection"
           - "USE_VITESS=true ./tn.sh --unit --enable-race-detection"
           - "USE_VITESS=true ./t.sh --start-py"
+          # Check that code which references requirements does so correctly.
+          # This uses test.sh instead of t.sh because the docker container
+          # prevents outbound network requests to download requirements docs.
+          - "./test.sh --reqs"
 
     env:
       # This sets the docker image tag for the boulder-tools repository to
