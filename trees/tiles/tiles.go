@@ -39,12 +39,18 @@ import (
 // ErrTileExists is returned when trying to write a tile that already exists in storage.
 var ErrTileExists = errors.New("tile exists")
 
-// simpleS3 matches the subset of the bs3.Client interface which we use, to allow
-// simpler mocking in tests.
-type simpleS3 interface {
-	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+// simpleS3Reader matches the subset of the bs3.Client interface which reads
+// use, to allow simpler mocking in tests.
+type simpleS3Reader interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	Bucket() string
+}
+
+// simpleS3 matches the subset of the bs3.Client interface which writes use, to
+// allow simpler mocking in tests.
+type simpleS3 interface {
+	simpleS3Reader
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 }
 
 // Frontier contains all the tiles on the right edge of the tree,
@@ -171,7 +177,7 @@ func (e *entryTile) append(val []byte) {
 // LoadFrontier loads the current frontier from storage, given the current tree size.
 //
 // Succeeds only if all the frontier tiles for that tree size exist in storage.
-func LoadFrontier(ctx context.Context, s3c simpleS3, treeSize int64, prefix string) (*Frontier, error) {
+func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefix string) (*Frontier, error) {
 	if treeSize == 0 {
 		return nil, fmt.Errorf("can't load an empty tree")
 	}
@@ -583,7 +589,7 @@ func tilePath(coords tlog.Tile) string {
 // getTile fetches a single tile from storage, transparently decompressing if needed.
 //
 // If coords.W is zero, returns an empty tile without reading from storage.
-func getTile(ctx context.Context, s3c simpleS3, coords tlog.Tile, prefix string) ([]byte, error) {
+func getTile(ctx context.Context, s3c simpleS3Reader, coords tlog.Tile, prefix string) ([]byte, error) {
 	if coords.W == 0 {
 		// Neither write nor read an empty tile. They do not exist in storage.
 		return nil, nil
@@ -627,4 +633,87 @@ func getTile(ctx context.Context, s3c simpleS3, coords tlog.Tile, prefix string)
 	}
 
 	return body, nil
+}
+
+// TileReader reads stored hash tiles as a tlog.TileReader, for use with
+// tlog.TileHashReader.
+type TileReader struct {
+	// ctx is used for storage reads because tlog.TileReader's methods have no
+	// context parameters.
+	ctx    context.Context
+	s3c    simpleS3Reader
+	prefix string
+}
+
+// NewTileReader returns a TileReader over the tiles stored under prefix.
+func NewTileReader(ctx context.Context, s3c simpleS3Reader, prefix string) *TileReader {
+	return &TileReader{ctx: ctx, s3c: s3c, prefix: prefix}
+}
+
+// Height returns 8, the height of tiles holding 256 hashes.
+func (r *TileReader) Height() int {
+	return 8
+}
+
+// ReadTiles fetches the data for each requested tile from storage.
+func (r *TileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
+	data := make([][]byte, len(tiles))
+	for i, coords := range tiles {
+		body, err := getTile(r.ctx, r.s3c, coords, r.prefix)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(body) != coords.W*tlog.HashSize {
+			return nil, fmt.Errorf("%q: got %d bytes, expected %d",
+				tilePath(coords), len(body), coords.W*tlog.HashSize)
+		}
+
+		data[i] = body
+	}
+	return data, nil
+}
+
+// SaveTiles is a no-op.
+func (r *TileReader) SaveTiles([]tlog.Tile, [][]byte) {}
+
+// ReadEntries reads the marshaled log entries in [start, end) from the entry
+// bundles stored under prefix. treeSize determines the rightmost bundle's
+// width, and so its path.
+func ReadEntries(ctx context.Context, s3c simpleS3Reader, start, end, treeSize int64, prefix string) ([][]byte, error) {
+	if start < 0 || start >= end || end > treeSize {
+		return nil, fmt.Errorf("invalid entry interval [%d, %d) for tree size %d", start, end, treeSize)
+	}
+	var entries [][]byte
+	for bundle := start / 256; bundle*256 < end; bundle++ {
+		width := min(int64(256), treeSize-bundle*256)
+		coords := tlog.Tile{
+			L: -1, // entries layer is represented as -1.
+			N: bundle,
+			W: int(width),
+		}
+
+		body, err := getTile(ctx, s3c, coords, prefix)
+		if err != nil {
+			return nil, err
+		}
+
+		br := entry.NewBundleReader(body)
+		for i := bundle * 256; ; i++ {
+			_, raw, err := br.ReadEntry()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return nil, fmt.Errorf("parsing entries: %s", err)
+			}
+			if i >= start && i < end {
+				entries = append(entries, raw)
+			}
+		}
+	}
+	if int64(len(entries)) != end-start {
+		return nil, fmt.Errorf("reading entries [%d, %d): got %d entries, want %d", start, end, len(entries), end-start)
+	}
+	return entries, nil
 }
