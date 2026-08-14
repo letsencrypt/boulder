@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/storer"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/features"
@@ -29,6 +30,15 @@ type Config struct {
 		bs3.Config
 
 		Features features.Config
+
+		// MaxCRLSize is a count of bytes. Before storing a CRL, the CRLStorer
+		// will check the to-be-uploaded CRL size against this configured byte
+		// count and error if this limit is exceeded. When omitted from the
+		// CRlStorer configuration, the value of core.DefaultMaxCRLRead is used
+		// instead. To avoid uploading a CRL that we would later fail to read,
+		// this value should not be configured higher than those places where we
+		// Read and validate CRLs.
+		MaxCRLSize int64 `validate:"omitempty,min=1"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -57,6 +67,9 @@ func main() {
 	if *debugAddr != "" {
 		c.CRLStorer.DebugAddr = *debugAddr
 	}
+	if c.CRLStorer.MaxCRLSize == 0 {
+		c.CRLStorer.MaxCRLSize = core.DefaultMaxCRLRead
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
 	defer oTelShutdown(context.Background())
@@ -76,7 +89,7 @@ func main() {
 	s3client, err := bs3.FromConfig(c.CRLStorer.Config, logger)
 	cmd.FailOnError(err, "Initializing S3 client")
 
-	csi, err := storer.New(issuers, s3client, scope, logger, clk)
+	csi, err := storer.New(issuers, s3client, c.CRLStorer.MaxCRLSize, scope, logger, clk)
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
 	start, err := bgrpc.NewServer(c.CRLStorer.GRPC, logger).Add(

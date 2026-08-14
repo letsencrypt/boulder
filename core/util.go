@@ -53,6 +53,18 @@ var BuildHost string
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
 
+// DefaultMaxRead is for use by ErrOnLimitReader when it is appropriate to limit
+// a Reader to less than half a MB, which should be most of the time
+var DefaultMaxRead int64 = 300_000
+
+// DefaultMaxCRLRead is for use by ErrOnLimitReader to limit a Reader to 1
+// billion bytes, which is a generous value for CRLs
+var DefaultMaxCRLRead int64 = 1_000_000_000
+
+// ErrReaderLimitExceeded as an exported error type allows callers to check for
+// this error type after Read
+var ErrReaderLimitExceeded error = errors.New("reader size limit exceeded")
+
 func init() {
 	expvar.NewString("BuildID").Set(BuildID)
 	expvar.NewString("BuildTime").Set(BuildTime)
@@ -455,4 +467,63 @@ func NormalizeIssuerDomainName(name string) (string, error) {
 		return "", fmt.Errorf("issuer domain name %q exceeds 253 octets (%d)", name, len(name))
 	}
 	return name, nil
+}
+
+// errOnLimitedReader reads from Reader r but limits the amount of data returned
+// to just n bytes. Each call to Read updates n to reflect the new amount
+// remaining.
+type errOnLimitedReader struct {
+	r io.Reader
+	n int64
+}
+
+// ErrOnLimitReader returns a Reader that reads from r but stops with
+// ErrReaderLimitExceeded after n bytes.
+// The underlying implementation is a *errOnLimitedReader.
+//
+// If LimitedReader gets an Err field, we can evaluate switching
+// https://github.com/golang/go/issues/51115
+func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
+	return &errOnLimitedReader{r, n}
+}
+
+// Read for our errOnLimitedReader forks and modifies io.LimitedReader.Read.
+//
+// LimitedReader's implementation remains concise and readable, but does not
+// differentiate overrun from the underlying Reader EOF, so we can't tell from
+// the outside whether overrun actually happened.
+// see: https://cs.opensource.google/go/go/+/refs/tags/go1.26.5:src/io/io.go;l=472-482
+//
+// MaxBytesReader's implementation uses some control flow that can be confusing,
+// and it assumes you're in an HTTP stack -- using http.ResponseWriter, etc --
+// which we are often not.
+// see: https://cs.opensource.google/go/go/+/refs/tags/go1.26.5:src/net/http/request.go;l=1211-1251
+//
+// Read returns ErrReaderLimitExceeded in two cases: when n < 0, or when n == 0
+// and there is even one more byte to read. Otherwise, it will return the
+// underlying Reader error, if any.
+func (l *errOnLimitedReader) Read(p []byte) (int, error) {
+	// We've previously somehow read too many bytes, so error out now.
+	if l.n < 0 {
+		return 0, ErrReaderLimitExceeded
+	}
+
+	// If we've already read exactly the limit, try to read just one more byte.
+	if l.n == 0 {
+		n, err := l.r.Read(make([]byte, 1))
+		if n == 0 {
+			return n, err
+		}
+		return 0, ErrReaderLimitExceeded
+	}
+
+	// Otherwise, read at most the remaining limit of bytes. If there are more
+	// bytes to be read from the underlying reader, that'll get caught by the
+	// case above the next time around.
+	if int64(len(p)) > l.n {
+		p = p[0:l.n]
+	}
+	n, err := l.r.Read(p)
+	l.n -= int64(n)
+	return n, err
 }
