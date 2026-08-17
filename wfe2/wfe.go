@@ -105,11 +105,10 @@ type WebFrontEndImpl struct {
 	rnc nonce.Redeemer
 	// rncKey is the HMAC key used to derive the prefix of nonce backends used
 	// for nonce redemption.
-	rncKey        []byte
-	accountGetter AccountGetter
-	log           blog.Logger
-	clk           clock.Clock
-	stats         wfe2Stats
+	rncKey []byte
+	log    blog.Logger
+	clk    clock.Clock
+	stats  wfe2Stats
 
 	// certificateChains maps IssuerNameIDs to slice of []byte containing a leading
 	// newline and one or more PEM encoded certificates separated by a newline,
@@ -216,7 +215,6 @@ func NewWebFrontEndImpl(
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
 	rncKey []byte,
-	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	certProfiles map[string]string,
@@ -270,7 +268,6 @@ func NewWebFrontEndImpl(
 		gnc:                           gnc,
 		rnc:                           rnc,
 		rncKey:                        rncKey,
-		accountGetter:                 accountGetter,
 		limiter:                       limiter,
 		txnBuilder:                    txnBuilder,
 		certProfiles:                  certProfiles,
