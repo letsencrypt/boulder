@@ -251,7 +251,7 @@ fi
 STAGE="reqs"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Requirements Cross-Reference Checks"
-  "${GO}" run ./test/check-req-xrefs ./linter/lints/cpcps/*.go
+  "${GO}" run ./test/check-req-xrefs ./linter/lints/**/*.go
 fi
 
 #

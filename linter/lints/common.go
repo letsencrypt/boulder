@@ -22,6 +22,7 @@ const (
 	// Declare our own Sources for use in zlint registry filtering.
 	LetsEncryptCPS lint.LintSource = "LECPS"
 	ChromeCTPolicy lint.LintSource = "ChromeCT"
+	CCADBPolicy    lint.LintSource = "CCADB"
 )
 
 var (
