@@ -38,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
+	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
 )
 
@@ -90,6 +91,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
+		issuancelog.ID{CAID: "44947.4.1", LogNumber: 44},
 		100*time.Millisecond,
 		dbMap,
 		fs3,
@@ -275,7 +277,7 @@ func mirrorCosign(t *testing.T, m *mtca) {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	p, err := mtpublisher.New(m.db, time.Second, m.mtcLogID(), "32473.9", privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := mtpublisher.New(m.db, time.Second, m.logID, "32473.9", privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("mtpublisher.New: %s", err)
 	}
@@ -308,7 +310,7 @@ func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *checkpoint {
 			memHash, base64.StdEncoding.EncodeToString(latest.RootHash))
 	}
 
-	loaded, err := tiles.LoadFrontier(t.Context(), fs3, latest.TreeSize, m.tileStoragePrefix())
+	loaded, err := tiles.LoadFrontier(t.Context(), fs3, latest.TreeSize, m.logID.TilePrefix())
 	if err != nil {
 		t.Fatalf("loading frontier from tile storage: %s", err)
 	}
@@ -449,7 +451,7 @@ func TestSequence(t *testing.T) {
 
 	// Each client's returned index must point at its own entry in the
 	// published entries tile.
-	validateStoredEntries(t, fs3, mtca.tileStoragePrefix(), latest.TreeSize, got)
+	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
 }
 
 // TestSequenceStorageFailure checks that a failed sequencing pass leaves the
@@ -502,7 +504,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 	latest := verifyStores(t, mtca, fs3)
 	verifyCheckpoint(t, mtca, latest)
 
-	validateStoredEntries(t, fs3, mtca.tileStoragePrefix(), latest.TreeSize, got)
+	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
 }
 
 func TestInitLog(t *testing.T) {
@@ -537,9 +539,9 @@ func TestInitLog(t *testing.T) {
 func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
 	t.Helper()
 	message := cosigned.Message{
-		CosignerName: fmt.Sprintf("oid/1.3.6.1.4.1.%s", mtca.mtcaID),
+		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID,
 		Timestamp:    0,
-		LogOrigin:    fmt.Sprintf("oid/1.3.6.1.4.1.%s", mtca.mtcLogID()),
+		LogOrigin:    mtca.logID.Origin(),
 		Start:        0,
 		End:          uint64(checkpoint.TreeSize),
 		SubtreeHash:  [32]byte(checkpoint.RootHash),
@@ -561,7 +563,7 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
 	}
 }
 
-func TestGetMTCAID(t *testing.T) {
+func TestGetCAID(t *testing.T) {
 	certBytes, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
 MIIBRjCB9KADAgECAgF7MAoGCCqGSM49BAMCMBsxGTAXBgorBgEEAYLaSy8BDAk0
 NDk0Ny40LjEwHhcNMjYwNzE0MjIyNjIwWhcNMzYwNzExMjIyNjIwWjAbMRkwFwYK
@@ -579,13 +581,13 @@ DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
 	if err != nil {
 		t.Fatal(err)
 	}
-	mtcaID, err := getMTCAID(cert)
+	caID, err := getCAID(cert)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	expected := "44947.4.1"
-	if mtcaID != expected {
-		t.Errorf("getMTCAID(): got %s, want %s", mtcaID, expected)
+	if caID != expected {
+		t.Errorf("getCAID(): got %s, want %s", caID, expected)
 	}
 }

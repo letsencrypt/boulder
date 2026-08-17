@@ -18,12 +18,15 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/letsencrypt/boulder/trees/cosignature"
+	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
 const (
 	mtcLogID = "44947.4.1.0.44"
 	mirrorID = "32473.9"
 )
+
+var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 44}
 
 func setupDB(t *testing.T) *db.WrappedMap {
 	t.Helper()
@@ -110,7 +113,7 @@ func testKey(t *testing.T) *mldsa.PrivateKey {
 // trees/cosignature and yields the timestamped_signature it encodes.
 func TestCosign(t *testing.T) {
 	key := testKey(t)
-	p, err := New(nil, time.Second, mtcLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
@@ -146,7 +149,7 @@ func TestCosign(t *testing.T) {
 func TestPublish(t *testing.T) {
 	dbMap := setupDB(t)
 	key := testKey(t)
-	p, err := New(dbMap, time.Second, mtcLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := New(dbMap, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
@@ -240,7 +243,7 @@ func TestPublishRejectsMismatchedKey(t *testing.T) {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
 
-	p, err := New(dbMap, time.Second, mtcLogID, mirrorID, privatekey.NewDeterministicSigner(testKey(t)), otherKey.PublicKey(), blog.NewMock())
+	p, err := New(dbMap, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(testKey(t)), otherKey.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
@@ -260,7 +263,7 @@ func TestPublishRejectsMismatchedKey(t *testing.T) {
 func TestPublishWhenLatestAlreadySigned(t *testing.T) {
 	dbMap := setupDB(t)
 	key := testKey(t)
-	p, err := New(dbMap, time.Second, mtcLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := New(dbMap, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
