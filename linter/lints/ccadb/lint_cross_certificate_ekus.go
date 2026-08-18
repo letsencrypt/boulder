@@ -56,7 +56,7 @@ func (l *crossCertificatesNeedEKUs) Execute(c *x509.Certificate) *lint.LintResul
 	// This is actually stricter than CCADB requires, because it makes the
 	// assumption that all CA certs issued by LE will be dedicated to single-
 	// purpose TLS Server Auth hierarchies.
-	if len(c.ExtKeyUsage) != 0 || c.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
+	if len(c.ExtKeyUsage) != 1 || c.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
 		return &lint.LintResult{Status: lint.Error, Details: "extKeyUsage does not contain exactly id-kp-serverAuth"}
 	}
 
