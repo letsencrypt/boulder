@@ -2,11 +2,11 @@ package mirror
 
 import (
 	"bytes"
-	"encoding/binary"
 	"reflect"
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 )
 
@@ -175,15 +175,17 @@ func TestEntryPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EntryPackage: %s", err)
 	}
-	var expect bytes.Buffer
-	expect.Write([]byte{0, 3})
-	expect.WriteString("abc")
-	expect.Write([]byte{0, 2})
-	expect.WriteString("de")
-	expect.WriteByte(1)
-	expect.Write(proof[0][:])
-	if !bytes.Equal(body, expect.Bytes()) {
-		t.Errorf("EntryPackage = %x, want %x", body, expect.Bytes())
+	var expect cryptobyte.Builder
+	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes([]byte("abc"))
+	})
+	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes([]byte("de"))
+	})
+	expect.AddUint8(1)
+	expect.AddBytes(proof[0][:])
+	if !bytes.Equal(body, expect.BytesOrPanic()) {
+		t.Errorf("EntryPackage = %x, want %x", body, expect.BytesOrPanic())
 	}
 
 	_, err = EntryPackage(nil, proof)
@@ -208,22 +210,18 @@ func TestAddEntriesRequest(t *testing.T) {
 		t.Fatalf("AddEntriesRequest: %s", err)
 	}
 
-	var expect bytes.Buffer
-	var u16 [2]byte
-	var u64 [8]byte
-	binary.BigEndian.PutUint16(u16[:], uint16(len(origin))) //nolint:gosec // G115: origin is a short constant.
-	expect.Write(u16[:])
-	expect.WriteString(origin)
-	binary.BigEndian.PutUint64(u64[:], 300)
-	expect.Write(u64[:])
-	binary.BigEndian.PutUint64(u64[:], 700)
-	expect.Write(u64[:])
-	binary.BigEndian.PutUint16(u16[:], 6)
-	expect.Write(u16[:])
-	expect.WriteString("ticket")
-	expect.Write(pkg)
-	if !bytes.Equal(body, expect.Bytes()) {
-		t.Errorf("AddEntriesRequest = %x, want %x", body, expect.Bytes())
+	var expect cryptobyte.Builder
+	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes([]byte(origin))
+	})
+	expect.AddUint64(300)
+	expect.AddUint64(700)
+	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes([]byte("ticket"))
+	})
+	expect.AddBytes(pkg)
+	if !bytes.Equal(body, expect.BytesOrPanic()) {
+		t.Errorf("AddEntriesRequest = %x, want %x", body, expect.BytesOrPanic())
 	}
 
 	_, err = AddEntriesRequest("", 0, 1, nil, nil)

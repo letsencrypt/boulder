@@ -3,12 +3,12 @@ package mirror
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 )
 
@@ -167,21 +167,20 @@ func EntryPackage(entries [][]byte, proof []tlog.Hash) ([]byte, error) {
 	if len(proof) > maxPackageProofHashes {
 		return nil, fmt.Errorf("entry package has %d proof hashes, want at most %d", len(proof), maxPackageProofHashes)
 	}
-	var b bytes.Buffer
+	var b cryptobyte.Builder
 	for _, entry := range entries {
 		if len(entry) > 0xFFFF {
 			return nil, fmt.Errorf("entry is %d bytes, want at most %d", len(entry), 0xFFFF)
 		}
-		var length [2]byte
-		binary.BigEndian.PutUint16(length[:], uint16(len(entry))) //nolint:gosec // G115: the check above rejects entries over 0xFFFF bytes.
-		b.Write(length[:])
-		b.Write(entry)
+		b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+			child.AddBytes(entry)
+		})
 	}
-	b.WriteByte(byte(len(proof)))
+	b.AddUint8(uint8(len(proof))) //nolint:gosec // G115: the check above rejects proofs over maxPackageProofHashes hashes.
 	for _, h := range proof {
-		b.Write(h[:])
+		b.AddBytes(h[:])
 	}
-	return b.Bytes(), nil
+	return b.Bytes()
 }
 
 // AddEntriesRequest builds the add-entries request body. The packages must be a
@@ -197,21 +196,17 @@ func AddEntriesRequest(logOrigin string, uploadStart, uploadEnd int64, ticket []
 	if len(ticket) > 0xFFFF {
 		return nil, fmt.Errorf("ticket is %d bytes, want at most %d", len(ticket), 0xFFFF)
 	}
-	var b bytes.Buffer
-	var length [2]byte
-	binary.BigEndian.PutUint16(length[:], uint16(len(logOrigin))) //nolint:gosec // G115: the check above rejects origins over 0xFFFF bytes.
-	b.Write(length[:])
-	b.WriteString(logOrigin)
-	var index [8]byte
-	binary.BigEndian.PutUint64(index[:], uint64(uploadStart))
-	b.Write(index[:])
-	binary.BigEndian.PutUint64(index[:], uint64(uploadEnd)) //nolint:gosec // G115: the check above leaves uploadEnd >= uploadStart >= 0.
-	b.Write(index[:])
-	binary.BigEndian.PutUint16(length[:], uint16(len(ticket))) //nolint:gosec // G115: the check above rejects tickets over 0xFFFF bytes.
-	b.Write(length[:])
-	b.Write(ticket)
+	var b cryptobyte.Builder
+	b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes([]byte(logOrigin))
+	})
+	b.AddUint64(uint64(uploadStart))
+	b.AddUint64(uint64(uploadEnd)) //nolint:gosec // G115: the check above leaves uploadEnd >= uploadStart >= 0.
+	b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(ticket)
+	})
 	for _, p := range packages {
-		b.Write(p)
+		b.AddBytes(p)
 	}
-	return b.Bytes(), nil
+	return b.Bytes()
 }
