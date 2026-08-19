@@ -66,7 +66,7 @@ func (mtcpk *MTCPublicKey) Marshal() ([]byte, error) {
 
 	switch mtcpk.typ {
 	case typeMTCPubkey:
-		// pkBytes is a crypto.x509 SubjectPublicKeyInfo strucuture
+		// pkBytes is a crypto.x509 SubjectPublicKeyInfo structure
 		builder.AddBytes(pkBytes)
 	case typeNilPubkey:
 		if len(pkBytes) != 0 {
