@@ -30,6 +30,7 @@ import (
 
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/trees/entry"
@@ -657,8 +658,8 @@ func (r *TileReader) Height() int {
 
 // ReadTiles fetches the data for each requested tile from storage.
 func (r *TileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
-	data := make([][]byte, len(tiles))
-	for i, coords := range tiles {
+	var data [][]byte
+	for _, coords := range tiles {
 		body, err := getTile(r.ctx, r.s3c, coords, r.prefix)
 		if err != nil {
 			return nil, err
@@ -669,7 +670,7 @@ func (r *TileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
 				tilePath(coords), len(body), coords.W*tlog.HashSize)
 		}
 
-		data[i] = body
+		data = append(data, body)
 	}
 	return data, nil
 }
@@ -677,43 +678,40 @@ func (r *TileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
 // SaveTiles is a no-op.
 func (r *TileReader) SaveTiles([]tlog.Tile, [][]byte) {}
 
-// ReadEntries reads the marshaled log entries in [start, end) from the entry
-// bundles stored under prefix. treeSize determines the rightmost bundle's
-// width, and so its path.
-func ReadEntries(ctx context.Context, s3c simpleS3Reader, start, end, treeSize int64, prefix string) ([][]byte, error) {
+// EntriesForPackage reads the entries in [start, end) from their stored entry
+// bundle, returning them unparsed in the wire form a tlog-mirror entry package
+// requires, each entry with a big-endian uint16 length prefix.
+//
+// https://c2sp.org/tlog-mirror
+func EntriesForPackage(ctx context.Context, s3c simpleS3Reader, start, end, treeSize int64, prefix string) ([]byte, error) {
 	if start < 0 || start >= end || end > treeSize {
 		return nil, fmt.Errorf("invalid entry interval [%d, %d) for tree size %d", start, end, treeSize)
 	}
-	var entries [][]byte
-	for bundle := start / 256; bundle*256 < end; bundle++ {
-		width := min(int64(256), treeSize-bundle*256)
-		coords := tlog.Tile{
-			L: -1, // entries layer is represented as -1.
-			N: bundle,
-			W: int(width),
-		}
+	bundle := start / 256
+	if (end-1)/256 != bundle {
+		return nil, fmt.Errorf("entry interval [%d, %d) spans multiple bundles", start, end)
+	}
+	coords := tlog.Tile{
+		L: -1, // entries layer is represented as -1.
+		N: bundle,
+		W: int(min(int64(256), treeSize-bundle*256)),
+	}
 
-		body, err := getTile(ctx, s3c, coords, prefix)
-		if err != nil {
-			return nil, err
-		}
+	body, err := getTile(ctx, s3c, coords, prefix)
+	if err != nil {
+		return nil, err
+	}
 
-		br := entry.NewBundleReader(body)
-		for i := bundle * 256; ; i++ {
-			_, raw, err := br.ReadEntry()
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				return nil, fmt.Errorf("parsing entries: %s", err)
-			}
-			if i >= start && i < end {
-				entries = append(entries, raw)
-			}
+	rest := cryptobyte.String(body)
+	var entriesBegin int
+	var entryData cryptobyte.String
+	for i := bundle * 256; i < end; i++ {
+		if i == start {
+			entriesBegin = len(body) - len(rest)
+		}
+		if !rest.ReadUint16LengthPrefixed(&entryData) {
+			return nil, fmt.Errorf("%q unexpectedly truncated at entry %d", tilePath(coords), i)
 		}
 	}
-	if int64(len(entries)) != end-start {
-		return nil, fmt.Errorf("reading entries [%d, %d): got %d entries, want %d", start, end, len(entries), end-start)
-	}
-	return entries, nil
+	return body[entriesBegin : len(body)-len(rest)], nil
 }

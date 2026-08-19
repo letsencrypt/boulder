@@ -587,33 +587,32 @@ func TestTileReaderTreeHash(t *testing.T) {
 	}
 }
 
-// TestReadEntries checks reading entry intervals back from stored bundles,
-// including intervals that straddle a bundle boundary, returning each entry
-// at its own index.
-func TestReadEntries(t *testing.T) {
+// TestEntriesForPackage checks reading entry intervals back from stored
+// bundles in wire form, from both full and partial bundles, and that invalid
+// and bundle-spanning intervals are rejected.
+func TestEntriesForPackage(t *testing.T) {
 	fs3 := bs3test.New()
 	f := buildFrontier(t, fs3, 700, testPrefix, 700)
 	treeSize := f.TreeSize()
 
 	for _, tc := range []struct{ start, end int64 }{
-		{0, 700},
+		{0, 256},
 		{0, 1},
-		{255, 257},
+		{200, 256},
 		{512, 700},
+		{520, 600},
 		{699, 700},
 	} {
-		entries, err := ReadEntries(t.Context(), fs3, tc.start, tc.end, treeSize, testPrefix)
+		entries, err := EntriesForPackage(t.Context(), fs3, tc.start, tc.end, treeSize, testPrefix)
 		if err != nil {
-			t.Fatalf("ReadEntries(%d, %d): %s", tc.start, tc.end, err)
+			t.Fatalf("EntriesForPackage(%d, %d): %s", tc.start, tc.end, err)
 		}
-		if int64(len(entries)) != tc.end-tc.start {
-			t.Fatalf("ReadEntries(%d, %d) returned %d entries", tc.start, tc.end, len(entries))
+		var expect []byte
+		for i := tc.start; i < tc.end; i++ {
+			expect = append(expect, bundledEntry(testEntryBody(int(i)))...)
 		}
-		for i, e := range entries {
-			want := testEntryBody(int(tc.start) + i)
-			if !bytes.Equal(e, want) {
-				t.Fatalf("ReadEntries(%d, %d) entry %d = %x, want %x", tc.start, tc.end, int(tc.start)+i, e, want)
-			}
+		if !bytes.Equal(entries, expect) {
+			t.Fatalf("EntriesForPackage(%d, %d) = %x, want %x", tc.start, tc.end, entries, expect)
 		}
 	}
 
@@ -621,11 +620,12 @@ func TestReadEntries(t *testing.T) {
 		{-1, 5},
 		{5, 5},
 		{6, 5},
-		{0, 701},
+		{699, 701},
+		{255, 257},
 	} {
-		_, err := ReadEntries(t.Context(), fs3, tc.start, tc.end, treeSize, testPrefix)
+		_, err := EntriesForPackage(t.Context(), fs3, tc.start, tc.end, treeSize, testPrefix)
 		if err == nil {
-			t.Errorf("ReadEntries(%d, %d) = nil error, want error", tc.start, tc.end)
+			t.Errorf("EntriesForPackage(%d, %d) = nil error, want error", tc.start, tc.end)
 		}
 	}
 }
