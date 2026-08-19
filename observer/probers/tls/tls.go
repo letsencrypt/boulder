@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
@@ -86,7 +87,7 @@ func checkOCSP(ctx context.Context, cert, issuer *x509.Certificate, want int) (b
 	}
 	defer res.Body.Close()
 
-	output, err := io.ReadAll(res.Body)
+	output, err := io.ReadAll(core.ErrOnLimitReader(res.Body, core.DefaultMaxRead))
 	if err != nil {
 		return false, err
 	}
@@ -115,7 +116,7 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 	}
 	defer resp.Body.Close()
 
-	der, err := io.ReadAll(resp.Body)
+	der, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead))
 	if err != nil {
 		return false, fmt.Errorf("reading CRL: %w", err)
 	}

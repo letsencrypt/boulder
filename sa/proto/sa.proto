@@ -10,7 +10,6 @@ import "google/protobuf/duration.proto";
 
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 service StorageAuthorityReadOnly {
-  rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
@@ -20,6 +19,7 @@ service StorageAuthorityReadOnly {
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
+  rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
@@ -41,7 +41,6 @@ service StorageAuthorityReadOnly {
 // StorageAuthority provides full read/write access to the database.
 service StorageAuthority {
   // Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
-  rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
@@ -51,6 +50,7 @@ service StorageAuthority {
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
+  rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
@@ -92,6 +92,7 @@ service StorageAuthority {
   rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
   rpc DisableRateLimitOverride(DisableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
   rpc EnableRateLimitOverride(EnableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
+  rpc RevokeAuthorizationsFor(RevokeAuthorizationsForRequest) returns (RevokeAuthorizationsForResponse) {}
 }
 
 // StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
@@ -167,12 +168,6 @@ message CountFQDNSetsRequest {
   repeated core.Identifier identifiers = 5;
   google.protobuf.Duration window = 3;
   int64 limit = 4;
-}
-
-message FQDNSetExistsRequest {
-  // Next unused field number: 3
-  reserved 1; // Previously dnsNames
-  repeated core.Identifier identifiers = 2;
 }
 
 message Exists {
@@ -398,6 +393,12 @@ message GetRevokedCertsByShardRequest {
   int64 shardIdx = 4;
 }
 
+message RevocationStatus {
+  int64 status = 1;
+  int64 revokedReason = 2;
+  google.protobuf.Timestamp revokedDate = 3; // Unix timestamp (nanoseconds)
+}
+
 message LeaseCRLShardRequest {
   int64 issuerNameID = 1;
   int64 minShardIdx = 2;
@@ -475,4 +476,14 @@ message RateLimitOverrideResponse {
   RateLimitOverride override  = 1;
   bool enabled  = 2;
   google.protobuf.Timestamp updatedAt = 3;
+}
+
+message RevokeAuthorizationsForRequest {
+  int64 registrationID = 1;
+  core.Identifier identifier = 2;
+  int64 revokeLimit = 3;
+}
+
+message RevokeAuthorizationsForResponse {
+  int64 revokedCount = 1;
 }

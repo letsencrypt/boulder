@@ -246,6 +246,28 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 	return certStatus, nil
 }
 
+// GetRevocationStatus takes a hexadecimal string representing the full serial
+// number of a certificate and returns a minimal set of data about that cert's
+// current validity.
+func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *sapb.Serial) (*sapb.RevocationStatus, error) {
+	if req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+	if !core.ValidSerial(req.Serial) {
+		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
+	}
+
+	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
+		}
+		return nil, err
+	}
+
+	return status, nil
+}
+
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
 // certificate, issued for a set of identifiers, during a given window of time,
 // starting from the most recent issuance.
@@ -288,37 +310,9 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 	return &sapb.Timestamps{Timestamps: results}, nil
 }
 
-// FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
-// exists in the database
-func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	idents := identifier.FromProtoSlice(req.Identifiers)
-	if len(idents) == 0 {
-		return nil, errIncompleteRequest
-	}
-	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, idents)
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Exists{Exists: exists}, nil
-}
-
 // oneSelectorFunc is a func type that matches both borp.Transaction.SelectOne
 // and borp.DbMap.SelectOne.
 type oneSelectorFunc func(ctx context.Context, holder any, query string, args ...any) error
-
-// checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
-// for the given names exists.
-func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents identifier.ACMEIdentifiers) (bool, error) {
-	namehash := core.HashIdentifiers(idents)
-	var exists bool
-	err := selector(
-		ctx,
-		&exists,
-		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
-		namehash,
-	)
-	return exists, err
-}
 
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {

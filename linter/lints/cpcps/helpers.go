@@ -1,7 +1,54 @@
 package cpcps
 
+// This file contains constants and parsing utilities shared by the lints which
+// enforce the certificate profiles found in Section 7.1 of our CP/CPS. Only
+// mechanical helpers (extracting bytes, computing hashes, constructing
+// results) live here: every actual profile check is written out inline in the
+// lint which enforces it, so that each lint can be read top-to-bottom against
+// the text of the CP/CPS, and so that the profiles can diverge independently.
+
 import (
+	"encoding/pem"
+	"fmt"
+	"math/big"
+
+	"github.com/zmap/zcrypto/encoding/asn1"
+	"github.com/zmap/zcrypto/x509"
+	"github.com/zmap/zcrypto/x509/pkix"
 	"github.com/zmap/zlint/v3/lint"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+)
+
+var (
+	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1130
+	// When used in the context of a signature, fields of type `AlgorithmIdentifier` of all objects signed by ISRG CAs are byte-for-byte identical with one of the hexadecimal encodings specified by Section 7.1.3.2 of the Baseline Requirements.
+	// These are the AlgorithmIdentifier encodings specified by Section
+	// 7.1.3.2 of the Baseline Requirements, except the RSASSA-PSS ones, which
+	// we never use.
+	brSignatureAlgorithmIdentifiers = map[string]bool{
+		// sha256WithRSAEncryption
+		"300d06092a864886f70d01010b0500": true,
+		// sha384WithRSAEncryption
+		"300d06092a864886f70d01010c0500": true,
+		// sha512WithRSAEncryption
+		"300d06092a864886f70d01010d0500": true,
+		// ecdsa-with-SHA256
+		"300a06082a8648ce3d040302": true,
+		// ecdsa-with-SHA384
+		"300a06082a8648ce3d040303": true,
+		// ecdsa-with-SHA512
+		"300a06082a8648ce3d040304": true,
+	}
+
+	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1126
+	// The `AlgorithmIdentifier` field of the `SubjectPublicKeyInfo` field of ISRG Certificates is byte-for-byte identical with one of the hexadecimal encodings specified by Section 7.1.3.1 of the Baseline Requirements.
+	// These are the SubjectPublicKeyInfo AlgorithmIdentifier encodings
+	// specified by Section 7.1.3.1 of the Baseline Requirements.
+	spkiAlgorithmRSA  = "300d06092a864886f70d0101010500"
+	spkiAlgorithmP256 = "301306072a8648ce3d020106082a8648ce3d030107"
+	spkiAlgorithmP384 = "301006072a8648ce3d020106052b81040022"
+	spkiAlgorithmP521 = "301006072a8648ce3d020106052b81040023"
 )
 
 // Keys within the shared configuration stanza. These must match the toml
@@ -9,8 +56,8 @@ import (
 // package can emit configuration using these keys.
 const (
 	// GlobalConfigNamespace is the name of the TOML stanza from which
-	// IssuingCAConfig is deserialized. It must match the namespace of zlint's
-	// lint.Global higher-scoped configuration, which IssuingCAConfig embeds.
+	// SharedConfig is deserialized. It must match the namespace of zlint's
+	// lint.Global higher-scoped configuration, which SharedConfig embeds.
 	GlobalConfigNamespace = "Global"
 	// IssuerCertificateConfigKey configures the Issuing CA's certificate.
 	IssuerCertificateConfigKey = "issuer_certificate"
@@ -19,9 +66,9 @@ const (
 	ExistingCertificateConfigKey = "existing_certificate"
 )
 
-// globalNamespace aliases zlint's lint.Global so that IssuingCAConfig can
+// globalNamespace aliases zlint's lint.Global so that SharedConfig can
 // embed it under an unexported field name. The promoted (unexported)
-// namespace method is what routes deserialization of IssuingCAConfig to the
+// namespace method is what routes deserialization of SharedConfig to the
 // shared [Global] stanza, via zlint's "higher-scoped configuration"
 // mechanism; the unexported field name makes zlint's reflection-based config
 // resolver skip the embedded field itself, which it could not deserialize.
@@ -48,7 +95,7 @@ type SharedConfig struct {
 
 // issuerPEM returns the configured Issuing CA certificate PEM, or the empty
 // string if the receiver was never configured.
-func (c *SharedConfig) issuerPEM() string { //nolint:unused // Will be used in a followup PR.
+func (c *SharedConfig) issuerPEM() string {
 	if c == nil {
 		return ""
 	}
@@ -57,9 +104,94 @@ func (c *SharedConfig) issuerPEM() string { //nolint:unused // Will be used in a
 
 // existingPEM returns the configured existing CA certificate PEM, or the
 // empty string if the receiver was never configured.
-func (c *SharedConfig) existingPEM() string { //nolint:unused // Will be used in a followup PR.
+func (c *SharedConfig) existingPEM() string {
 	if c == nil {
 		return ""
 	}
 	return c.ExistingCertificatePEM
+}
+
+// errResult is a convenience constructor for a failing lint result.
+func errResult(details string) *lint.LintResult {
+	return &lint.LintResult{Status: lint.Error, Details: details}
+}
+
+// fatalResult is a convenience constructor for a fatal lint result, used when
+// the lint's own configuration is unusable.
+func fatalResult(details string) *lint.LintResult {
+	return &lint.LintResult{Status: lint.Fatal, Details: details}
+}
+
+// getOuterSignatureAlgorithm returns the DER bytes (including tag and length)
+// of the signatureAlgorithm field of the outer Certificate sequence.
+func getOuterSignatureAlgorithm(der []byte) ([]byte, error) {
+	input := cryptobyte.String(der)
+	var certificate cryptobyte.String
+	if !input.ReadASN1(&certificate, cryptobyte_asn1.SEQUENCE) {
+		return nil, fmt.Errorf("failed to parse certificate")
+	}
+	if !certificate.SkipASN1(cryptobyte_asn1.SEQUENCE) {
+		return nil, fmt.Errorf("failed to parse tbsCertificate")
+	}
+	var signatureAlgorithm cryptobyte.String
+	if !certificate.ReadASN1Element(&signatureAlgorithm, cryptobyte_asn1.SEQUENCE) {
+		return nil, fmt.Errorf("failed to parse signatureAlgorithm")
+	}
+	return signatureAlgorithm, nil
+}
+
+// smallOddPrimesProduct is the product of all odd primes smaller than 752.
+// CP/CPS Section 6.1.6, via NIST SP 800-89 Section 5.3.3, commits us to
+// issuing only RSA keys whose moduli are odd and have no factors smaller than
+// 752; a single GCD against this product detects any such odd factor
+// (evenness is checked separately). To generate the list of primes, run:
+// primes 3 752 | tr '\n' ,
+var smallOddPrimesProduct = func() *big.Int {
+	product := big.NewInt(1)
+	for _, prime := range []int64{
+		3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47,
+		53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107,
+		109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167,
+		173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229,
+		233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283,
+		293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359,
+		367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431,
+		433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491,
+		499, 503, 509, 521, 523, 541, 547, 557, 563, 569, 571,
+		577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641,
+		643, 647, 653, 659, 661, 673, 677, 683, 691, 701, 709,
+		719, 727, 733, 739, 743, 751,
+	} {
+		product.Mul(product, big.NewInt(prime))
+	}
+	return product
+}()
+
+// getExtension returns the extension with the given OID, or nil if absent.
+func getExtension(c *x509.Certificate, oid asn1.ObjectIdentifier) *pkix.Extension {
+	for _, ext := range c.Extensions {
+		if ext.Id.Equal(oid) {
+			return &pkix.Extension{Id: ext.Id, Critical: ext.Critical, Value: ext.Value}
+		}
+	}
+	return nil
+}
+
+// parseConfiguredCertificate parses a PEM certificate provided via lint
+// configuration. It returns a nil certificate and nil error if the
+// configuration string is empty; lints which require the certificate must
+// treat that as a failure.
+func parseConfiguredCertificate(pemBytes string) (*x509.Certificate, error) {
+	if pemBytes == "" {
+		return nil, nil
+	}
+	block, _ := pem.Decode([]byte(pemBytes))
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("failed to decode configured PEM certificate")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse configured certificate: %w", err)
+	}
+	return cert, nil
 }

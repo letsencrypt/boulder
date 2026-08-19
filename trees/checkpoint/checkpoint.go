@@ -1,6 +1,7 @@
 package checkpoint
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -24,12 +25,12 @@ type Checkpoint struct {
 // checkNoteText returns an error if text cannot be a signed note's text, nil
 // otherwise. https://c2sp.org/signed-note requires note text to be valid UTF-8
 // with no ASCII control characters (those below U+0020) other than newline.
-func checkNoteText(text string) error {
+func checkNoteText(text []byte) error {
 	switch {
-	case !utf8.ValidString(text):
+	case !utf8.Valid(text):
 		return errors.New("not valid UTF-8")
 
-	case strings.ContainsFunc(text, func(r rune) bool { return r < 0x20 && r != '\n' }):
+	case bytes.ContainsFunc(text, func(r rune) bool { return r < 0x20 && r != '\n' }):
 		return errors.New("contains an ASCII control character other than newline")
 
 	default:
@@ -77,24 +78,24 @@ func (c *Checkpoint) validate() error {
 //
 //   - https://c2sp.org/tlog-checkpoint
 //   - https://c2sp.org/signed-note
-func (c *Checkpoint) Marshal() (string, error) {
+func (c *Checkpoint) Marshal() ([]byte, error) {
 	err := c.validate()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	var b strings.Builder
+	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s\n%d\n%s\n", c.Origin, c.Tree.N, c.Tree.Hash)
 	for _, ext := range c.Extensions {
 		b.WriteString(ext)
 		b.WriteByte('\n')
 	}
-	text := b.String()
-	err = checkNoteText(text)
+	noteText := b.Bytes()
+	err = checkNoteText(noteText)
 	if err != nil {
-		return "", fmt.Errorf("validating checkpoint note text: %w", err)
+		return nil, fmt.Errorf("validating checkpoint note text: %w", err)
 	}
-	return text, nil
+	return noteText, nil
 }
 
 // Unmarshal parses a checkpoint note text. The text must not have any signature
@@ -102,11 +103,12 @@ func (c *Checkpoint) Marshal() (string, error) {
 //
 //   - https://c2sp.org/tlog-checkpoint
 //   - https://c2sp.org/signed-note
-func Unmarshal(text string) (*Checkpoint, error) {
-	err := checkNoteText(text)
+func Unmarshal(noteText []byte) (*Checkpoint, error) {
+	err := checkNoteText(noteText)
 	if err != nil {
 		return nil, fmt.Errorf("validating checkpoint note text: %w", err)
 	}
+	text := string(noteText)
 	if !strings.HasSuffix(text, "\n") {
 		return nil, errors.New("checkpoint does not end in newline")
 	}
@@ -156,7 +158,7 @@ func Open(signedNote []byte, verifiers note.Verifiers) (*Checkpoint, *note.Note,
 	if err != nil {
 		return nil, nil, err
 	}
-	c, err := Unmarshal(n.Text)
+	c, err := Unmarshal([]byte(n.Text))
 	if err != nil {
 		return nil, nil, err
 	}

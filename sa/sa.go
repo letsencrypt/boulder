@@ -206,6 +206,20 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
+// checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
+// for the given names exists.
+func (ssa *SQLStorageAuthority) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents identifier.ACMEIdentifiers) (bool, error) {
+	namehash := core.HashIdentifiers(idents)
+	var exists bool
+	err := selector(
+		ctx,
+		&exists,
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
+		namehash,
+	)
+	return exists, err
+}
+
 // AddPrecertificate writes a record of a linting certificate to the database.
 //
 // Note: The name "AddPrecertificate" is a historical artifact, and this is now
@@ -452,6 +466,54 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// RevokeAuthorizationsFor revokes authorizations by Registraton ID and
+// Identifier so long as the authzs are currently valid, and unexpired. The
+// query applies a LIMIT according to the gRPC revokeLimit value to cap database
+// impact. Authorization Revocation is a best-effort operation with no
+// compliance requirement. This function responds with the number of affected
+// rows, or an error.
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsFor(ctx context.Context, req *sapb.RevokeAuthorizationsForRequest) (*sapb.RevokeAuthorizationsForResponse, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifier.Type, req.Identifier.Value) {
+		return nil, errIncompleteRequest
+	}
+
+	identTypeUint, ok := identifierTypeToUint[req.Identifier.Type]
+	if !ok {
+		return nil, fmt.Errorf("unsupported identifier type %q", req.Identifier.Type)
+	}
+
+	// Uses the `regID_identifier_status_expires_idx` index on the Authz2 table
+	result, err := ssa.dbMap.ExecContext(ctx,
+		`UPDATE authz2 SET status = :revoked
+		WHERE registrationID = :registrationID
+		AND identifierType = :identifierType
+		AND identifierValue = :identifierValue
+		AND status = :valid
+		AND :expirenow < expires
+		LIMIT :revokeLimit`,
+		map[string]any{
+			"revoked":         statusUint(core.StatusRevoked),
+			"registrationID":  req.RegistrationID,
+			"identifierType":  identTypeUint,
+			"identifierValue": req.Identifier.Value,
+			"valid":           statusUint(core.StatusValid),
+			"pending":         statusUint(core.StatusPending),
+			"expirenow":       ssa.clk.Now(),
+			"revokeLimit":     req.RevokeLimit,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	return &sapb.RevokeAuthorizationsForResponse{RevokedCount: rowsAffected}, nil
 }
 
 // NewOrderAndAuthzs creates an order in the database.
@@ -1535,9 +1597,8 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 				return nil, nil
 			}
 
-			// Update the existing overrides row.
 			updated := overrideModelForPB(req.Override, now, existing.Enabled)
-			err = ssa.updateRateLimitOverride(ctx, tx, &updated, now, enabled)
+			err = ssa.updateRateLimitOverride(ctx, tx, &updated, now, existing.Enabled)
 			if err != nil {
 				return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s: %w",
 					req.Override.LimitEnum,

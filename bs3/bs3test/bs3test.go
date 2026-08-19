@@ -23,9 +23,9 @@ type StoredObject struct {
 }
 
 // FakeS3 implements the PutObject/GetObject/Bucket subset of the S3 API
-// used by the tiles package with an in-memory map.
+// with an in-memory map.
 //
-// Calling PutObject twice for the same key result in an error.
+// PutObject fails for an existing key only when IfNoneMatch is set.
 type FakeS3 struct {
 	mu sync.Mutex
 
@@ -40,7 +40,7 @@ func (f *FakeS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFn
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	_, ok := f.Objects[*params.Key]
-	if ok {
+	if ok && params.IfNoneMatch != nil {
 		return nil, &awshttp.ResponseError{
 			ResponseError: &smithyhttp.ResponseError{
 				Response: &smithyhttp.Response{Response: &http.Response{StatusCode: http.StatusPreconditionFailed}},

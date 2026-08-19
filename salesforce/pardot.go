@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -117,7 +118,7 @@ func (pc *SalesforceClientImpl) updateToken() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, readErr := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead))
 		if readErr != nil {
 			return fmt.Errorf("token request failed with status %d; while reading body: %w", resp.StatusCode, readErr)
 		}
@@ -125,7 +126,7 @@ func (pc *SalesforceClientImpl) updateToken() error {
 	}
 
 	var respJSON oauthTokenResp
-	err = json.NewDecoder(resp.Body).Decode(&respJSON)
+	err = json.NewDecoder(core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead)).Decode(&respJSON)
 	if err != nil {
 		return fmt.Errorf("failed to decode token response: %w", err)
 	}
@@ -202,7 +203,7 @@ func (pc *SalesforceClientImpl) SendContact(email string) error {
 			return nil
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxRead))
 		resp.Body.Close()
 
 		if err != nil {

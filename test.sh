@@ -11,6 +11,8 @@ fi
 #
 # Defaults
 #
+export BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-test/config}"
+export USE_VITESS="${USE_VITESS:-false}"
 export RACE="false"
 STAGE="starting"
 STATUS="FAILURE"
@@ -122,6 +124,7 @@ Boulder test suite CLI, intended to be run inside of a Docker container:
 With no options passed, runs standard battery of tests (lint, unit, and integration)
 
     -l, --lints                           Adds lint to the list of tests to run
+    -r, --reqs                            Adds reqs (requirements-document cross-reference checks) to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
     -v, --verbose                         Enables verbose output for unit and integration tests
     -w, --unit-without-cache              Disables go test caching for unit tests
@@ -149,7 +152,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts luvwecisgnhbd:p:f:-: OPT; do
+while getopts lruvwecisgnhbd:p:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -157,6 +160,7 @@ while getopts luvwecisgnhbd:p:f:-: OPT; do
   fi
   case "$OPT" in
     l | lints )                      RUN+=("lints") ;;
+    r | reqs )                       RUN+=("reqs") ;;
     u | unit )                       RUN+=("unit") ;;
     v | verbose )                    UNIT_FLAGS+=("-v"); INTEGRATION_FLAGS+=("-v") ;;
     w | unit-without-cache )         UNIT_FLAGS+=("-count=1") ;;
@@ -239,6 +243,15 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   run_and_expect_silence typos
   # Check test JSON configs are formatted consistently
   run_and_expect_silence ./test/format-configs.py 'test/config*/*.json'
+fi
+
+#
+# Check cross-references against requirements documents.
+#
+STAGE="reqs"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
+  print_heading "Running Requirements Cross-Reference Checks"
+  "${GO}" run ./test/check-req-xrefs ./linter/lints/**/*.go
 fi
 
 #

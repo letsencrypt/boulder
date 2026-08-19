@@ -36,7 +36,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.26.3_2026-06-15
+          - go1.26.6_2026-08-13
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -60,6 +60,10 @@ jobs:
           - "USE_VITESS=true ./t.sh --unit --enable-race-detection"
           - "USE_VITESS=true ./tn.sh --unit --enable-race-detection"
           - "USE_VITESS=true ./t.sh --start-py"
+          # Check that code which references requirements does so correctly.
+          # This uses test.sh instead of t.sh because the docker container
+          # prevents outbound network requests to download requirements docs.
+          - "./test.sh --reqs"
 
     env:
       # This sets the docker image tag for the boulder-tools repository to
@@ -138,7 +142,7 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        go-version: [ '1.26.3' ]
+        go-version: [ '1.26.6' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it

@@ -33,6 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -559,13 +560,9 @@ func TestIgnoredLint(t *testing.T) {
 
 	err = loglist.InitLintList("../../test/ct-test-srv/log_list.json", false)
 	test.AssertNotError(t, err, "failed to load ct log list")
-	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
+
+	// Create a self-signed issuer certificate to use
 	serial := big.NewInt(1337)
-
-	x509OID, err := x509.OIDFromInts([]uint64{1, 2, 3})
-	test.AssertNotError(t, err, "failed to create x509.OID")
-
 	template := &x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "CPU's Cool CA",
@@ -575,27 +572,37 @@ func TestIgnoredLint(t *testing.T) {
 		NotAfter:              time.Now().Add(testValidityDuration - time.Second),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		Policies:              []x509.OID{x509OID},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IssuingCertificateURL: []string{"http://aia.example.org"},
 		SubjectKeyId:          []byte("foobar"),
 	}
 
-	// Create a self-signed issuer certificate to use
+	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	issuerDer, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
 	test.AssertNotError(t, err, "failed to create self-signed issuer cert")
 	issuerCert, err := x509.ParseCertificate(issuerDer)
 	test.AssertNotError(t, err, "failed to parse self-signed issuer cert")
+	issuer, err := issuance.NewCertificate(issuerCert)
+	test.AssertNotError(t, err, "failed to make self-signed issuer cert")
+
+	checker := newChecker(
+		saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations,
+		map[string]*issuance.Certificate{issuerCert.Subject.CommonName: issuer},
+		nil, linter.Config{}, blog.NewMock(),
+	)
 
 	// Reconfigure the template for an EE cert with a Subj. CN
-	serial = big.NewInt(1338)
+	serial, _ = big.NewInt(0).SetString("12345678901234567890123456789012", 10)
 	template.SerialNumber = serial
 	template.Subject.CommonName = "zombo.com"
 	template.DNSNames = []string{"zombo.com"}
 	template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
-	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 	template.CRLDistributionPoints = []string{"http://crl.example.org"}
+	template.SubjectKeyId, _ = core.GenerateSKID(testKey.Public())
+	dvOID, _ := x509.OIDFromASN1OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1})
+	template.Policies = []x509.OID{dvOID}
 	template.IsCA = false
 
 	subjectCertDer, err := x509.CreateCertificate(rand.Reader, template, issuerCert, testKey.Public(), testKey)
@@ -618,6 +625,7 @@ func TestIgnoredLint(t *testing.T) {
 		"zlint warn: w_ext_subject_key_identifier_not_recommended_subscriber",
 		"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 		"zlint error: e_scts_from_same_operator Certificate had too few embedded SCTs; browser policy requires 2.",
+		"zlint error: e_subscriber_server_certificate_matches_cps_profile signedCertificateTimestampList extension is not present",
 	}
 	slices.Sort(expectedProblems)
 
@@ -634,6 +642,7 @@ func TestIgnoredLint(t *testing.T) {
 		"w_ext_subject_key_identifier_not_recommended_subscriber",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
+		"e_subscriber_server_certificate_matches_cps_profile",
 	})
 	test.AssertNotError(t, err, "creating test lint registry")
 	checker.lints = lints

@@ -59,7 +59,7 @@ func TestCheckpointUnmarshalRoundTrip(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := Unmarshal(tc.text)
+			c, err := Unmarshal([]byte(tc.text))
 			if err != nil {
 				t.Fatalf("Unmarshal: %s", err)
 			}
@@ -76,7 +76,7 @@ func TestCheckpointUnmarshalRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Marshal: %s", err)
 			}
-			if got != tc.text {
+			if string(got) != tc.text {
 				t.Errorf("Marshal = %q, want %q", got, tc.text)
 			}
 		})
@@ -110,7 +110,7 @@ func TestCheckpointUnmarshalRejects(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Unmarshal(tc.text)
+			_, err := Unmarshal([]byte(tc.text))
 			if err == nil {
 				t.Error("Unmarshal = nil error, want error")
 			}
@@ -121,7 +121,7 @@ func TestCheckpointUnmarshalRejects(t *testing.T) {
 // TestCheckpointMarshal covers Marshal's validation of hand-constructed
 // Checkpoints, which bypass Unmarshal's checks.
 func TestCheckpointMarshal(t *testing.T) {
-	valid, err := Unmarshal(exampleCheckpoint)
+	valid, err := Unmarshal([]byte(exampleCheckpoint))
 	if err != nil {
 		t.Fatalf("Unmarshal: %s", err)
 	}
@@ -131,7 +131,7 @@ func TestCheckpointMarshal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Marshal: %s", err)
 		}
-		if got != exampleCheckpoint {
+		if string(got) != exampleCheckpoint {
 			t.Errorf("Marshal = %q, want %q", got, exampleCheckpoint)
 		}
 	})

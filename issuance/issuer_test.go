@@ -24,6 +24,7 @@ import (
 
 func defaultProfileConfig() ProfileConfig {
 	return ProfileConfig{
+		OmitClientAuth:      true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{

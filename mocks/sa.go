@@ -199,6 +199,11 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 	return nil, errors.New("no cert status")
 }
 
+// GetRevocationStatus is a mock
+func (sa *StorageAuthorityReadOnly) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
+	return nil, nil
+}
+
 // SerialsForIncident is a mock
 func (sa *StorageAuthorityReadOnly) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
 	return &ServerStreamClient[sapb.IncidentSerial]{}, nil
@@ -232,11 +237,6 @@ func (sa *StorageAuthorityReadOnly) GetEnabledRateLimitOverrides(_ context.Conte
 // FQDNSetTimestampsForWindow is a mock
 func (sa *StorageAuthorityReadOnly) FQDNSetTimestampsForWindow(_ context.Context, _ *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
 	return &sapb.Timestamps{}, nil
-}
-
-// FQDNSetExists is a mock
-func (sa *StorageAuthorityReadOnly) FQDNSetExists(_ context.Context, _ *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: false}, nil
 }
 
 // GetOrder is a mock
