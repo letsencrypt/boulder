@@ -30,6 +30,7 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/entry"
+	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/tiles"
 )
@@ -43,15 +44,19 @@ var _ mtcapb.MTCAServer = &mtca{}
 func New(
 	issuer *issuance.Issuer,
 	profiles map[string]*issuance.Profile,
+	logID issuancelog.ID,
 	sequencingPeriod time.Duration,
 	dbMap *borp.DbMap,
 	s3c simpleS3,
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtca, error) {
-	mtcaID, err := getMTCAID(issuer.Cert.Certificate)
+	certCAID, err := getCAID(issuer.Cert.Certificate)
 	if err != nil {
 		return nil, err
+	}
+	if certCAID != logID.CAID {
+		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID, certCAID)
 	}
 
 	if sequencingPeriod == 0 {
@@ -61,10 +66,8 @@ func New(
 	m := &mtca{
 		issuer:   issuer,
 		profiles: profiles,
-		mtcaID:   mtcaID,
-		// TODO: collect this from config
-		logNumber: 44,
-		pool:      &pool{maxSize: 100},
+		logID:    logID,
+		pool:     &pool{maxSize: 100},
 
 		sequencingPeriod: sequencingPeriod,
 
@@ -74,7 +77,7 @@ func New(
 		clk: clk,
 	}
 
-	cosigner, err := cosignature.NewCosigner(mtcaID, m.mtcLogID(), issuer.Signer)
+	cosigner, err := cosignature.NewCosigner(logID.CAID, logID.Origin(), issuer.Signer)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA cosigner: %s", err)
 	}
@@ -84,7 +87,7 @@ func New(
 	if !ok {
 		return nil, fmt.Errorf("issuer public key is %T, must be ML-DSA-44", issuer.Signer.Public())
 	}
-	verifier, err := cosignature.NewVerifier(mtcaID, pubKey)
+	verifier, err := cosignature.NewVerifier(logID.CAID, pubKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA verifier: %s", err)
 	}
@@ -98,12 +101,11 @@ type mtca struct {
 
 	issuer   *issuance.Issuer
 	profiles map[string]*issuance.Profile
-	mtcaID   string
+	logID    issuancelog.ID
 	cosigner *cosignature.Cosigner
 	verifier *cosignature.Verifier
 
-	logNumber uint16
-	pool      *pool
+	pool *pool
 
 	// frontier contains all the tiles on the right edge of the tree.
 	// It will be used to accumulate entries for writing to storage.
@@ -129,15 +131,15 @@ type simpleS3 interface {
 	Bucket() string
 }
 
-func getMTCAID(issuerCert *x509.Certificate) (string, error) {
+func getCAID(issuerCert *x509.Certificate) (string, error) {
 	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
 	for _, attribute := range issuerCert.Subject.Names {
 		if attribute.Type.Equal(testingTrustAnchorIDOID) {
-			mtcaID, ok := attribute.Value.(string)
+			caID, ok := attribute.Value.(string)
 			if !ok {
 				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
 			}
-			return mtcaID, nil
+			return caID, nil
 		}
 	}
 
@@ -167,14 +169,14 @@ func (m *mtca) InitLog(ctx context.Context) error {
 	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		var numLatestCheckpoints int64
 		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
-			m.mtcLogID())
+			m.logID.String())
 		if err != nil {
 			return nil, fmt.Errorf("getting latestCheckpoint: %s", err)
 		}
 
 		var numCheckpoints int64
 		err = tx.SelectOne(ctx, &numCheckpoints, "SELECT COUNT(*) FROM checkpoints WHERE mtcLogID = ?",
-			m.mtcLogID())
+			m.logID.String())
 		if err != nil {
 			return nil, fmt.Errorf("getting checkpoints: %s", err)
 		}
@@ -185,11 +187,11 @@ func (m *mtca) InitLog(ctx context.Context) error {
 			}
 
 			return nil, fmt.Errorf("initializing issuance log for %s: already has %d checkpoints and %d latestCheckpoint rows",
-				m.mtcLogID(), numCheckpoints, numLatestCheckpoints)
+				m.logID.String(), numCheckpoints, numLatestCheckpoints)
 		}
 
 		firstCheckpoint := checkpoint{
-			MTCLogID: m.mtcLogID(),
+			MTCLogID: m.logID.String(),
 			TreeSize: candidate.TreeSize(),
 			RootHash: rootHash[:],
 		}
@@ -207,7 +209,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		}
 
 		_, err = tx.ExecContext(ctx, "INSERT INTO latestCheckpoint (id, mtcLogID) VALUES (?, ?)",
-			firstCheckpoint.ID, m.mtcLogID())
+			firstCheckpoint.ID, m.logID.String())
 		if err != nil {
 			return nil, fmt.Errorf("inserting latestCheckpoint: %s", err)
 		}
@@ -226,7 +228,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		return err
 	}
 
-	err = candidate.Publish(ctx, m.s3c, m.tileStoragePrefix())
+	err = candidate.Publish(ctx, m.s3c, m.logID.TilePrefix())
 	if err != nil {
 		return err
 	}
@@ -248,7 +250,7 @@ func (m *mtca) Preflight(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	frontier, err := tiles.LoadFrontier(ctx, m.s3c, latest.TreeSize, m.tileStoragePrefix())
+	frontier, err := tiles.LoadFrontier(ctx, m.s3c, latest.TreeSize, m.logID.TilePrefix())
 	if err != nil {
 		return err
 	}
@@ -300,32 +302,6 @@ func (p *pool) append(e pendingEntry) error {
 	}
 	p.entries = append(p.entries, e)
 	return nil
-}
-
-// mtcLogID returns the string-formatted relative OID for this log.
-// The .0. arc relative to the MTCA ID contains log numbers.
-// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#ca-ids
-func (m *mtca) mtcLogID() string {
-	return fmt.Sprintf("%s.0.%d", m.mtcaID, m.logNumber)
-}
-
-// tileStoragePrefix returns the path within a bucket where we will store tiles.
-//
-// https://github.com/C2SP/C2SP/blob/main/mtc-tlog.md#serving-issuance-logs
-//
-// "Each log's prefix URL is the concatenation of the CA prefix URL and the log number, encoded as an
-// ASCII decimal integer with no additional leading zeros:
-//
-// <CA prefix URL>/<log number>"
-//
-// We assume we will serve directly from tile storage (likely sync'ed somewhere), so we
-// want to store tiles compatible with that pattern, with log number as the last component
-// of the path before "tile/".
-//
-// As a matter of local convention we will put the MTCA ID as the path component right before
-// log number.
-func (m *mtca) tileStoragePrefix() string {
-	return fmt.Sprintf("%s/%d", m.mtcaID, m.logNumber)
 }
 
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
@@ -395,7 +371,7 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 			return nil, errors.New("error during sequencing")
 		}
 		return &mtcapb.IssueResponse{
-			MtcLogID:      m.mtcLogID(),
+			MtcLogID:      m.logID.String(),
 			MtcEntryIndex: entryIndex,
 		}, nil
 	}
@@ -501,7 +477,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		m.log.AuditInfo("issuing", map[string]any{
 			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
 			"entryIndex":             latest.TreeSize + int64(i),
-			"mtcLogID":               m.mtcLogID(),
+			"mtcLogID":               m.logID.String(),
 			"newRootHash":            newRootHash.String(),
 		})
 	}
@@ -510,14 +486,14 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// (but before publishing a new checkpoint signed note), we will flush
 	// to the live location. This ensures we've persisted the tiles before
 	// committing to a tree hash by signing it.
-	err = candidate.Stage(ctx, m.s3c, m.tileStoragePrefix())
+	err = candidate.Stage(ctx, m.s3c, m.logID.TilePrefix())
 	if err != nil {
 		return fmt.Errorf("staging candidate tiles: %s", err)
 	}
 
 	newCheckpoint := checkpoint{
 		ID:              0,
-		MTCLogID:        m.mtcLogID(),
+		MTCLogID:        m.logID.String(),
 		MTCASignature:   nil,
 		MirrorID:        "",
 		MirrorSignature: nil,
@@ -550,7 +526,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		// https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/selecting-data/for-update
 		err := tx.SelectOne(ctx, &latestID,
 			`SELECT id from latestCheckpoint WHERE mtcLogID = ? FOR UPDATE`,
-			m.mtcLogID())
+			m.logID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -567,7 +543,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 
 		result, err := tx.ExecContext(ctx, "UPDATE checkpoints SET mtcaSignature = ? WHERE mtcLogID = ? AND id = ?",
-			caSig, m.mtcLogID(), newCheckpoint.ID)
+			caSig, m.logID.String(), newCheckpoint.ID)
 		if err != nil {
 			return nil, fmt.Errorf("updating checkpoint: %s", err)
 		}
@@ -580,7 +556,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 
 		result, err = tx.ExecContext(ctx, "UPDATE latestCheckpoint SET id = ? WHERE mtcLogID = ? AND id = ?",
-			newCheckpoint.ID, m.mtcLogID(), latestID)
+			newCheckpoint.ID, m.logID.String(), latestID)
 		if err != nil {
 			return nil, fmt.Errorf("updating latestCheckpoint: %s", err)
 		}
@@ -608,7 +584,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Once we add publishing of checkpoints as signed notes, publication of the signed note
 	// should come after this flush succeeds, so monitors don't try to fetch tiles that aren't
 	// yet available.
-	err = m.frontier.Publish(ctx, m.s3c, m.tileStoragePrefix())
+	err = m.frontier.Publish(ctx, m.s3c, m.logID.TilePrefix())
 	if err != nil {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
@@ -680,13 +656,13 @@ func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 		 USING(id)
 		 WHERE latestCheckpoint.mtcLogID = ? AND
 		       checkpoints.mtcLogID = ?`,
-		m.mtcLogID(),
-		m.mtcLogID())
+		m.logID.String(),
+		m.logID.String())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("getting latest checkpoint for %q: issuance log DB is not initialized", m.mtcLogID())
+			return nil, fmt.Errorf("getting latest checkpoint for %q: issuance log DB is not initialized", m.logID.String())
 		}
-		return nil, fmt.Errorf("getting latest checkpoint for %q: %w", m.mtcLogID(), err)
+		return nil, fmt.Errorf("getting latest checkpoint for %q: %w", m.logID.String(), err)
 	}
 
 	return &latest, nil

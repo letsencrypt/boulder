@@ -87,7 +87,7 @@ func checkRelativeOID(id string) error {
 	if id == "" {
 		return errors.New("empty relative OID")
 	}
-	for _, arc := range strings.Split(id, ".") {
+	for arc := range strings.SplitSeq(id, ".") {
 		if arc == "" {
 			return errors.New("empty arc")
 		}
@@ -101,19 +101,6 @@ func checkRelativeOID(id string) error {
 		}
 	}
 	return nil
-}
-
-// originFor returns the log origin derived from the log ID per mtc-tlog: log
-// ID "32473.2.0.42" has origin "oid/1.3.6.1.4.1.32473.2.0.42". It errors if
-// logID is not a dotted decimal OID.
-//
-// https://c2sp.org/mtc-tlog
-func originFor(logID string) (string, error) {
-	err := checkRelativeOID(logID)
-	if err != nil {
-		return "", fmt.Errorf("invalid log ID %q: %w", logID, err)
-	}
-	return oidPrefix + logID, nil
 }
 
 // Cosigner produces cosignatures over checkpoints as an MTC cosigner for a
@@ -131,18 +118,18 @@ type Cosigner struct {
 	signer crypto.Signer
 }
 
-// NewCosigner returns a Cosigner for the cosigner and log with the given IDs,
-// deriving its cosigner name and log origin per mtc-tlog: cosigner ID "32473.2"
-// signs as "oid/1.3.6.1.4.1.32473.2". It errors if either ID is not a dotted
-// decimal OID or signer's public key is not ML-DSA-44.
-func NewCosigner(cosignerID, logID string, signer crypto.Signer) (*Cosigner, error) {
+// NewCosigner returns a Cosigner for the cosigner with the given ID over the
+// log with the given log origin, deriving its cosigner name per mtc-tlog:
+// cosigner ID "32473.2" signs as "oid/1.3.6.1.4.1.32473.2". It errors if
+// cosignerID is not a dotted decimal OID, origin is empty, or signer's public
+// key is not ML-DSA-44.
+func NewCosigner(cosignerID, origin string, signer crypto.Signer) (*Cosigner, error) {
 	err := checkRelativeOID(cosignerID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid cosigner ID %q: %w", cosignerID, err)
 	}
-	origin, err := originFor(logID)
-	if err != nil {
-		return nil, err
+	if origin == "" {
+		return nil, errors.New("empty log origin")
 	}
 	pubKey, ok := signer.Public().(*mldsa.PublicKey)
 	if !ok {
@@ -159,7 +146,7 @@ func NewCosigner(cosignerID, logID string, signer crypto.Signer) (*Cosigner, err
 	}, nil
 }
 
-// Origin returns the log origin derived from the log ID.
+// Origin returns the log origin of the log the cosigner signs for.
 func (c *Cosigner) Origin() string {
 	return c.origin
 }

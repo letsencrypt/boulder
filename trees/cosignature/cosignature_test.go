@@ -198,28 +198,13 @@ func TestVerifyCheckpointErrors(t *testing.T) {
 	}
 }
 
-func TestOriginFor(t *testing.T) {
-	origin, err := originFor("32473.2.0.42")
-	if err != nil {
-		t.Fatalf("originFor: %s", err)
-	}
-	if origin != "oid/1.3.6.1.4.1.32473.2.0.42" {
-		t.Errorf("originFor = %q, want %q", origin, "oid/1.3.6.1.4.1.32473.2.0.42")
-	}
-
-	_, err = originFor("32473..2")
-	if err == nil {
-		t.Error("originFor with a malformed log ID = nil error, want error")
-	}
-}
-
 // TestCosignerRoundTrip covers the cosigner round trip: an MTC cosigner derives
 // its name and origin from the CA and log IDs (mtc-tlog's own examples), and
 // its timestamped_signature carries a zero timestamp, verifies through the note
 // verifier against the matching checkpoint text, and reassembles into a
 // signature line that opens.
 func TestCosignerRoundTrip(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -295,14 +280,14 @@ func TestCosignerRejects(t *testing.T) {
 	signer := testSigner(t)
 
 	for _, id := range []string{"", "has space", "32473..2", "32473.x", ".32473", "32473.", "32473.02"} {
-		_, err := NewCosigner(id, "32473.2.0.42", signer)
+		_, err := NewCosigner(id, "oid/1.3.6.1.4.1.32473.2.0.42", signer)
 		if err == nil {
 			t.Errorf("NewCosigner with cosigner ID %q = nil error, want error", id)
 		}
-		_, err = NewCosigner("32473.2", id, signer)
-		if err == nil {
-			t.Errorf("NewCosigner with log ID %q = nil error, want error", id)
-		}
+	}
+	_, err := NewCosigner("32473.2", "", signer)
+	if err == nil {
+		t.Error("NewCosigner with an empty origin = nil error, want error")
 	}
 
 	// An ML-DSA-65 key has an mldsa public key of the wrong size.
@@ -310,7 +295,7 @@ func TestCosignerRejects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey(MLDSA65): %s", err)
 	}
-	_, err = NewCosigner("32473.2", "32473.2.0.42", wrong)
+	_, err = NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", wrong)
 	if err == nil {
 		t.Error("NewCosigner with an ML-DSA-65 key = nil error, want error")
 	}
@@ -320,12 +305,12 @@ func TestCosignerRejects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ed25519.GenerateKey: %s", err)
 	}
-	_, err = NewCosigner("32473.2", "32473.2.0.42", edKey)
+	_, err = NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", edKey)
 	if err == nil {
 		t.Error("NewCosigner with an Ed25519 key = nil error, want error")
 	}
 
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", signer)
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", signer)
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -357,7 +342,7 @@ func (s shortSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, e
 }
 
 func TestCosignerRejectsShortSignature(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", shortSigner{pubKey: testPubKey(t)})
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", shortSigner{pubKey: testPubKey(t)})
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -382,7 +367,7 @@ func (s errSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, err
 }
 
 func TestCosignerPropagatesSignerError(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", errSigner{pubKey: testPubKey(t)})
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", errSigner{pubKey: testPubKey(t)})
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -424,7 +409,7 @@ func TestRawSignature(t *testing.T) {
 // verifies on its own, and that extraction errors for a verifier that did not
 // sign.
 func TestTimestampedSignature(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -480,7 +465,7 @@ func TestTimestampedSignatureRejectsForeignFormat(t *testing.T) {
 // signatures from unknown keys" with a note cosigned for one log by two MTC
 // cosigners and opened by one verifier, the shape of every real exchange.
 func TestOpenIgnoresUnknownSignatures(t *testing.T) {
-	known, err := NewCosigner("32473.2", "32473.2.0.42", testSigner(t))
+	known, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -493,7 +478,7 @@ func TestOpenIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	unknown, err := NewCosigner("32473.9", "32473.2.0.42", privatekey.NewDeterministicSigner(otherKey))
+	unknown, err := NewCosigner("32473.9", "oid/1.3.6.1.4.1.32473.2.0.42", privatekey.NewDeterministicSigner(otherKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}

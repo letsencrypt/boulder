@@ -1,5 +1,9 @@
 {
 	"mtca": {
+		"logID": {
+			"caID": "44947.4.1",
+			"logNumber": 44
+		},
 		"sequencingPeriod": "100ms",
 		"db": {
 			"dbConnectFile": "test/secrets/mtca1_dburl"
