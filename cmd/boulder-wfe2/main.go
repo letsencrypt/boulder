@@ -153,6 +153,8 @@ type Config struct {
 		// all identifier values in a new-order request. Default (0) means no limit.
 		MaxCumulativeIdentifierLength int `validate:"omitempty,min=1"`
 
+		// AccountCache is deprecated, and has no effect on WFE behavior.
+		// TODO(#8795): Remove this.
 		AccountCache *CacheConfig
 
 		Limiter struct {
@@ -230,6 +232,8 @@ type Config struct {
 	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
+// CacheConfig is deprecated.
+// TODO(#8795): Remove this.
 type CacheConfig struct {
 	Size int
 	TTL  config.Duration
@@ -447,16 +451,6 @@ func main() {
 		cmd.FailOnError(err, "Couldn't load blocked accounts file")
 	}
 
-	var accountGetter wfe2.AccountGetter
-	if c.WFE.AccountCache != nil {
-		accountGetter = wfe2.NewAccountCache(sac,
-			c.WFE.AccountCache.Size,
-			c.WFE.AccountCache.TTL.Duration,
-			clk,
-			stats)
-	} else {
-		accountGetter = sac
-	}
 	wfe, err := wfe2.NewWebFrontEndImpl(
 		stats,
 		clk,
@@ -474,7 +468,6 @@ func main() {
 		gnc,
 		rnc,
 		noncePrefixKey,
-		accountGetter,
 		limiter,
 		txnBuilder,
 		c.WFE.CertProfiles,

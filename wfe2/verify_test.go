@@ -1497,7 +1497,6 @@ func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.Re
 func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 	wfe.sa = &mockSADifferentStoredKey{}
-	wfe.accountGetter = wfe.sa
 	event := newRequestEvent()
 
 	payload := `{"resource":"ima-payload"}`
