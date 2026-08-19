@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	mtca "github.com/letsencrypt/boulder/mtca"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
+	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
 type Config struct {
@@ -33,9 +34,13 @@ type Config struct {
 		DB cmd.DBConfig `validate:"required"`
 		S3 bs3.Config   `validate:"required"`
 
+		// LogID identifies the issuance log this MTCA sequences. Its CA ID must
+		// match the issuer certificate's.
+		LogID issuancelog.ID `validate:"required"`
+
 		Issuance struct {
 			CertProfiles map[string]issuance.ProfileConfig `validate:"required,dive,keys,alphanum,min=1,max=32,endkeys"`
-			// Issuers holds the configuration for a single MTCA instance with a single mtcaID.
+			// Issuers holds the configuration for a single MTCA instance with a single CA ID.
 			// We run a separate process for each issuer.
 			// TODO: the issuance package parses the CA certificate as a self-signed X.509
 			// certificate, but per MTC draft, a CA SHOULD be represented by an RFC 9925
@@ -115,6 +120,7 @@ func main() {
 	mtcaImpl, err := mtca.New(
 		issuer,
 		profiles,
+		c.MTCA.LogID,
 		c.MTCA.SequencingPeriod.Duration,
 		dbMap,
 		s3c,

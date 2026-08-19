@@ -20,6 +20,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
+	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
 // publisher polls the MTC issuance log and cosigns the latest checkpoint if it
@@ -40,13 +41,14 @@ type publisher struct {
 	log            blog.Logger
 }
 
-// New returns a publisher that cosigns as the mirror with mirrorID using
-// signer, verifying each cosignature against pubKey before storing it.
-func New(dbMap *db.WrappedMap, interval time.Duration, mtcLogID, mirrorID string, signer crypto.Signer, pubKey *mldsa.PublicKey, log blog.Logger) (*publisher, error) {
+// New returns a publisher for the issuance log logID. It cosigns as the mirror
+// with mirrorID using signer, and verifies each cosignature against pubKey
+// before storing it.
+func New(dbMap *db.WrappedMap, interval time.Duration, logID issuancelog.ID, mirrorID string, signer crypto.Signer, pubKey *mldsa.PublicKey, log blog.Logger) (*publisher, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("interval must be positive, got %s", interval)
 	}
-	cosigner, err := cosignature.NewCosigner(mirrorID, mtcLogID, signer)
+	cosigner, err := cosignature.NewCosigner(mirrorID, logID.Origin(), signer)
 	if err != nil {
 		return nil, fmt.Errorf("creating mirror cosigner: %s", err)
 	}
@@ -68,7 +70,7 @@ func New(dbMap *db.WrappedMap, interval time.Duration, mtcLogID, mirrorID string
 	return &publisher{
 		db:             dbMap,
 		interval:       interval,
-		mtcLogID:       mtcLogID,
+		mtcLogID:       logID.String(),
 		origin:         cosigner.Origin(),
 		mirrorID:       mirrorID,
 		mirrorName:     mirrorName,

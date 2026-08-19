@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
 type Config struct {
@@ -28,10 +29,9 @@ type Config struct {
 		// lack a mirror cosignature.
 		PollInterval config.Duration `validate:"required"`
 
-		// MTCLogID is the log this MTPublisher operates on (e.g.
-		// "44947.4.1.0.44"). Used as a guard on the `mtcLogID` column of the
-		// connected checkpoints table.
-		MTCLogID string `validate:"required"`
+		// LogID identifies the issuance log this publisher operates on. It must
+		// match the mtca's.
+		LogID issuancelog.ID `validate:"required"`
 
 		// MirrorID identifies the cosigner this publisher writes alongside each
 		// cosignature (e.g. "32473.9").
@@ -99,7 +99,7 @@ func main() {
 	pubKey, err := loadMLDSAPublicKey(c.MTPublisher.MirrorPublicKeyFile)
 	cmd.FailOnError(err, "Loading cosigner public key")
 
-	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.MTCLogID, c.MTPublisher.MirrorID, signer, pubKey, logger)
+	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, c.MTPublisher.MirrorID, signer, pubKey, logger)
 	cmd.FailOnError(err, "Failed to create MTPublisher stub")
 
 	ctx, cancel := context.WithCancel(context.Background())
