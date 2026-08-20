@@ -31,10 +31,14 @@ const basename = "mtca1"
 
 func main2() error {
 	outputDir := flag.String("output-dir", "", "Directory to write outputs to")
+	tlogPrefixURL := flag.String("tlog-prefix-url", "", "URL for tlog tile serving")
 	flag.Parse()
 
 	if *outputDir == "" {
 		return errors.New("-output-dir flag required")
+	}
+	if *tlogPrefixURL == "" {
+		return errors.New("-tlog-prefix-url flag required")
 	}
 
 	basepath := path.Join(*outputDir, basename)
@@ -60,7 +64,12 @@ func main2() error {
 		return err
 	}
 
-	extn, err := mtcaExtension()
+	mtcaExtn, err := mtcaExtension()
+	if err != nil {
+		return err
+	}
+
+	tlogPrefixExtn, err := tlogPrefixExtn(*tlogPrefixURL)
 	if err != nil {
 		return err
 	}
@@ -80,7 +89,7 @@ func main2() error {
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		IsCA:                  true,
 		BasicConstraintsValid: true,
-		ExtraExtensions:       []pkix.Extension{extn},
+		ExtraExtensions:       []pkix.Extension{mtcaExtn, tlogPrefixExtn},
 	}
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 	if err != nil {
@@ -199,6 +208,31 @@ func mtcaExtension() (pkix.Extension, error) {
 	return pkix.Extension{
 		Id:       extnOID,
 		Critical: true,
+		Value:    extnMarshaled,
+	}, nil
+}
+
+// tlogPrefixExtn returns the extension containing the CA prefix URL.
+//
+// https://c2sp.org/mtc-tlog#parameters
+//
+//	id-mtcTlogPrefixURL OBJECT IDENTIFIER ::= {
+//	    iso(1) org(3) dod(6) internet(1) private(4) enterprise(1) C2SP(64829)
+//	    mtc-tlog(2) 1 }
+//
+//	ext-mtcTlogPrefixURL EXTENSION ::= {
+//	    SYNTAX IA5String
+//	    IDENTIFIED BY id-mtcTlogPrefixURL
+//	    CRITICALITY FALSE
+//	}
+func tlogPrefixExtn(url string) (pkix.Extension, error) {
+	extnMarshaled, err := asn1.MarshalWithParams(url, "ia5")
+	if err != nil {
+		return pkix.Extension{}, err
+	}
+	return pkix.Extension{
+		Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 64829, 2, 1},
+		Critical: false,
 		Value:    extnMarshaled,
 	}, nil
 }
