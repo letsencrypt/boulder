@@ -90,14 +90,14 @@ func (field DropdownField) RenderField() template.HTML {
 		reqAttr = `required="required"`
 	}
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 <div class="form-field">
 	<label for="%[1]s">%[2]s</label>
 	<small class="field-description">%[3]s</small><br>
 	<select id="%[1]s" name="%[1]s" %[4]s>
-		<option value="" selected></option>`, field.name, field.displayName, field.description, reqAttr))
+		<option value="" selected></option>`, field.name, field.displayName, field.description, reqAttr)
 	for _, o := range field.options {
-		b.WriteString(fmt.Sprintf(`<option value="%[1]s">%[1]s</option>`, o))
+		fmt.Fprintf(&b, `<option value="%[1]s">%[1]s</option>`, o)
 	}
 	b.WriteString(`</select>
 	<div class="error-message"></div>

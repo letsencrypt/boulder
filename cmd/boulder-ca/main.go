@@ -63,9 +63,7 @@ type Config struct {
 		// ensure that the first bit in the prefix byte is not set. The validate
 		// library cannot enforce mix/max values on strings, so that is done in
 		// NewCertificateAuthorityImpl.
-		//
-		// TODO(#7213): Replace `required_without` with `required` when SerialPrefix is removed.
-		SerialPrefixHex string `validate:"required_without=SerialPrefix,omitempty,hexadecimal,len=2"`
+		SerialPrefixHex string `validate:"required,hexadecimal,len=2"`
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
 		// The value supplied MUST be greater than 0 and no more than 100. These

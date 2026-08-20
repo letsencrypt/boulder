@@ -375,7 +375,7 @@ func TestIncidentSerialModel(t *testing.T) {
 
 	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	defer test.ResetIncidentsTestDatabase(t)
+	defer test.ResetIncidentsTestDatabase(t)()
 
 	// Inserting and retrieving a row with only the serial populated should work.
 	_, err = testIncidentsDbMap.ExecContext(ctx,

@@ -42,7 +42,7 @@ func main() {
 
 	issuer, err := core.LoadCert(*caPath)
 	if err != nil {
-		log.Fatalf("Failed to load issuer certificate from %q: %s", os.Args[1], err)
+		log.Fatalf("Failed to load issuer certificate from %q: %s", os.Args[1], err) //nolint:gosec // log injection from command line is okay, this is a tool
 	}
 
 	if len(issuer.Subject.CommonName) > 63 || !rfc1035label.MatchString(issuer.Subject.CommonName) {
