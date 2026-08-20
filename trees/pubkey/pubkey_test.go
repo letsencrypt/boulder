@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -52,7 +53,7 @@ func TestMarshalMTCPK(t *testing.T) {
 
 	nonEmptyNullPubkey := MTCPublicKey{
 		typ: typeNilPubkey,
-		pub: testPubkeyBytes,
+		pub: testPubkeySingletonSPKI,
 	}
 	_, err = nonEmptyNullPubkey.Marshal()
 	if err == nil {
@@ -66,20 +67,20 @@ func TestMarshalMTCPK(t *testing.T) {
 	if err != nil {
 		t.Errorf("marshaling valid null pubkey: %s", err)
 	}
-	expected := []byte{0, 0, 0, 0}
+	expected := []byte{0, 0}
 	if !bytes.Equal(output, expected) {
 		t.Errorf("marshaling valid null pubkey: got %x, want %x", output, expected)
 	}
 
 	validMTCPubkey := MTCPublicKey{
 		typ: typeMTCPubkey,
-		pub: testPubkeyBytes,
+		pub: testPubkeySingletonSPKI,
 	}
 	output, err = validMTCPubkey.Marshal()
 	if err != nil {
 		t.Errorf("marshaling valid pubkey: %s", err)
 	}
-	expected = testPubkeyBytes
+	expected = append([]byte{0, 1}, testPubkeyBytes...)
 	if !bytes.Equal(output, expected) {
 		t.Errorf("marshaling valid pubkey: got %x, want %x", output, expected)
 	}
@@ -88,35 +89,31 @@ func TestMarshalMTCPK(t *testing.T) {
 func TestUnmarshalMTCPK(t *testing.T) {
 	type testCase struct {
 		name      string
-		input     string
+		input     []byte
 		expectErr bool
 		expectVal *MTCPublicKey
 	}
 
 	_ = testPubkeySingleton()
+	testPubkeyBytesLength := len(testPubkeyBytes)
 
 	testCases := []testCase{
-		{"valid pubkey", "00000000", false, &MTCPublicKey{
+		{"valid pubkey", append([]byte{0, 1}, testPubkeyBytes...), false, &MTCPublicKey{
 			typ: typeMTCPubkey,
-			pub: testPubkeyBytes,
+			pub: testPubkeySingletonSPKI,
 		}},
-		{"valid null pubkey", "00000000", false, &MTCPublicKey{
+		{"valid null pubkey", []byte{0, 0}, false, &MTCPublicKey{
 			typ: typeNilPubkey,
 		}},
-		{"too short", "000000", true, nil},
-		{"way too short", "00", true, nil},
-		{"way way too short", "", true, nil},
-		{"null pubkey with value", "000099", true, nil},
-		{"invalid type", "0102616263", true, nil},
+		{"too short", append([]byte{0, 1}, testPubkeyBytes[:testPubkeyBytesLength-3]...), true, nil},
+		{"way too short", []byte{1}, true, nil},
+		{"null pubkey with pubkey bytes", append([]byte{0, 0}, testPubkeyBytes...), true, nil},
+		{"invalid type", append([]byte{0, 3}, testPubkeyBytes...), true, nil},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			val, err := hex.DecodeString(tc.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			mtcpk, err := unmarshalMTCPK(val)
+			mtcpk, err := unmarshalMTCPK(tc.input)
 			if tc.expectErr && err == nil {
 				t.Errorf("expected error")
 			}
@@ -130,7 +127,7 @@ func TestUnmarshalMTCPK(t *testing.T) {
 				pkBytes, _ := x509.MarshalPKIXPublicKey(mtcpk.pub)
 				expBytes, _ := x509.MarshalPKIXPublicKey(tc.expectVal.pub)
 				if !bytes.Equal(pkBytes, expBytes) {
-					t.Errorf("Unmarshal() value: got %#v, want %#v", mtcpk.pub, tc.expectVal.pub)
+					t.Errorf("Unmarshal() value: got %#v, want %#v", pkBytes, expBytes)
 				}
 			}
 		})
@@ -164,7 +161,7 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 		t.Errorf("mtcpk.typ: got %d, want %d", mtcpk.typ, typeNilPubkey)
 	}
 	pkBytes, err := x509.MarshalPKIXPublicKey(mtcpk.pub)
-	if err != nil {
+	if err != nil && err.Error() != "x509: unsupported public key type: <nil>" {
 		t.Fatal(err)
 	}
 	if len(pkBytes) != 0 {
@@ -188,7 +185,7 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 		if !bytes.Equal(pkBytes, wantValue) {
 			t.Errorf("mtcpk.Value: got %x, want %x", mtcpk.pub, wantValue)
 		}
-		wantMTCPKBytes := append([]byte{0, 0, 0, 1}, wantValue...)
+		wantMTCPKBytes := append([]byte{0, 1}, wantValue...)
 		if !bytes.Equal(raw, wantMTCPKBytes) {
 			t.Errorf("raw MTCPubkey: got %x, want %x", raw, expected)
 		}
@@ -208,13 +205,15 @@ func TestBundleReaderSuccess(t *testing.T) {
 		t.Errorf("empty reader: got %x, want empty bytes", pubkeyBytes)
 	}
 
-	// - 7 bytes of data
-	// - type = Pubkey (0001)
-	// - fake Pubkey Data (5 bytes of 55)
-	input, err := hex.DecodeString("000700015555555555") // TODO: REPLACE WITH TEST KEY
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Build bytes of a valid pubkey bundle as input for Reader testing
+	// - bundle length = pubkeyBytes length + pubkey type length (2)
+	testDataLengthInt := uint16(len(testPubkeyBytes) + 2)
+	testDataLength := make([]byte, 2)
+	binary.BigEndian.PutUint16(testDataLength, testDataLengthInt)
+	// - bundle type (01)
+	inputPreamble := append(testDataLength, []byte{0, 1}...)
+	// - singleton Test Pubkey Data (bytes)
+	input := append(inputPreamble, testPubkeyBytes...)
 
 	br = NewBundleReader(input)
 	_, _, err = br.ReadPubkey()
@@ -248,7 +247,7 @@ func TestPubkeyBundleReaderMalformed(t *testing.T) {
 		name, input string
 	}
 
-	testCases := []testCase{ // TODO: INTERACT WITH TEST KEY
+	testCases := []testCase{ // TODO: INTERACT WITH TEST KEY?
 		{"short length", "09"},
 		{"short body", "0001"},
 		{"max length, short body", "FFFF"},

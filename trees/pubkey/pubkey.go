@@ -82,7 +82,7 @@ func (mtcpk *MTCPublicKey) Marshal() ([]byte, error) {
 // unmarshalMTCPK parses a MTCPubkey and returns it.
 //
 // Rejects unknown MTCPubkey Types with an error. Also errors if the pubkey
-// bytes fail not parse.
+// bytes fail to parse.
 func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 	val := cryptobyte.String(input)
 
