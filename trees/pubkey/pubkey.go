@@ -97,6 +97,11 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 		if len(val) > 0 {
 			return nil, fmt.Errorf("null_pubkey with non-empty value")
 		}
+
+		return &MTCPublicKey{
+			typ: typ,
+			pub: nil,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown MTCPubkey type %d", typ)
 	}
