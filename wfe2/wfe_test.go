@@ -436,7 +436,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		gnc,
 		rnc,
 		rncKey,
-		mockSA,
 		limiter,
 		txnBuilder,
 		map[string]string{"default": "a test profile"},
@@ -4034,6 +4033,10 @@ func Test_sendErrorInternalServerError(t *testing.T) {
 type mockSAForARI struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert *corepb.Certificate
+}
+
+func (sa *mockSAForARI) GetRegistration(ctx context.Context, in *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{Id: in.Id, Key: []byte(test1KeyPublicJSON), Status: string(core.StatusValid)}, nil
 }
 
 func (sa *mockSAForARI) FQDNSetTimestampsForWindow(ctx context.Context, in *sapb.CountFQDNSetsRequest, opts ...grpc.CallOption) (*sapb.Timestamps, error) {

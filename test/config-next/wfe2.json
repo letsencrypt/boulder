@@ -50,10 +50,6 @@
 			"noWaitForReady": true,
 			"hostOverride": "email-exporter.boulder"
 		},
-		"accountCache": {
-			"size": 9000,
-			"ttl": "5s"
-		},
 		"getNonceService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
