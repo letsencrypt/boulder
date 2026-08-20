@@ -36,6 +36,7 @@ jobs:
       matrix:
         GO_VERSION:
           - "1.26.6"
+          - "1.27.0"
     runs-on: ubuntu-24.04
     permissions:
       contents: write
