@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	// maxRedirect is the maximum number of redirects the VA will follow
-	// processing an HTTP-01 challenge.
-	maxRedirect = 10
+	// maxRequests is the maximum number of HTTP requests the VA will make while
+	// processing a single HTTP-01 challenge.
+	maxRequests = 10
 	// maxResponseSize holds the maximum number of bytes that will be read from an
 	// HTTP-01 challenge response. The expected payload should be ~87 bytes. Since
 	// it may be padded by whitespace which we previously allowed accept up to 128
@@ -42,7 +42,7 @@ const (
 // using the pre-resolved IP/port when used for the correct host.
 type preresolvedDialer struct {
 	ip       netip.Addr
-	port     int
+	port     string
 	hostname string
 	timeout  time.Duration
 }
@@ -53,14 +53,14 @@ type dialerMismatchError struct {
 	// The original dialer information
 	dialerHost string
 	dialerIP   string
-	dialerPort int
+	dialerPort string
 	// The host that the dialer was incorrectly used with
 	host string
 }
 
 func (e *dialerMismatchError) Error() string {
 	return fmt.Sprintf(
-		"preresolvedDialer mismatch: dialer is for %q (ip: %q port: %d) not %q",
+		"preresolvedDialer mismatch: dialer is for %q (ip: %q port: %s) not %q",
 		e.dialerHost, e.dialerIP, e.dialerPort, e.host)
 }
 
@@ -108,6 +108,7 @@ func (d *preresolvedDialer) DialContext(
 	if err != nil {
 		return nil, err
 	}
+
 	// If the hostname we're dialing isn't equal to the hostname the dialer was
 	// constructed for then a bug has occurred where we've mismatched the
 	// preresolved dialer.
@@ -121,7 +122,7 @@ func (d *preresolvedDialer) DialContext(
 	}
 
 	// Make a new dial address using the pre-resolved IP and port.
-	targetAddr := net.JoinHostPort(d.ip.String(), strconv.Itoa(d.port))
+	targetAddr := net.JoinHostPort(d.ip.String(), d.port)
 
 	// Create a throw-away dialer using default values and the dialer timeout
 	// (populated from the VA singleDialTimeout).
@@ -156,167 +157,166 @@ func httpTransport(df dialerFunc) *http.Transport {
 	}
 }
 
-// httpValidationTarget bundles all of the information needed to make an HTTP-01
-// validation request against a target.
-type httpValidationTarget struct {
-	// the host being validated
-	host string
-	// the port for the validation request
-	port int
-	// the path for the validation request
-	path string
-	// query data for validation request (potentially populated when
-	// following redirects)
-	query string
-	// all of the IP addresses available for the host
-	available []netip.Addr
-	// the IP addresses that were tried for validation previously that were cycled
-	// out of cur by calls to nextIP()
-	tried []netip.Addr
-	// the IP addresses that will be drawn from by calls to nextIP() to set curIP
-	next []netip.Addr
-	// the current IP address being used for validation (if any)
-	cur netip.Addr
-	// the DNS resolver(s) that were used to look up the host's IP addresses
-	resolvers []string
-}
-
-// nextIP changes the cur IP by removing the first entry from the next slice and
-// setting it to cur. If cur was previously set the value will be added to the
-// tried slice to keep track of IPs that were previously used. If nextIP() is
-// called but vt.next is empty an error is returned.
-func (vt *httpValidationTarget) nextIP() error {
-	if len(vt.next) == 0 {
-		return fmt.Errorf(
-			"host %q has no IP addresses remaining to use",
-			vt.host)
+// newValidationRecord creates a ValidationRecord for a validation request
+// against the given identifier, on the given port, for the given URL. This
+// involves querying DNS for the identifier's IP addresses. The record's
+// AddressUsed is the host's first IPv6 address, or its first IPv4 address if
+// it has no IPv6 addresses.
+func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, typ identifier.IdentifierType, url url.URL) (core.ValidationRecord, error) {
+	// If the URL's host is a bare IPv6 address, enclose it in square brackets
+	// so that its colons aren't mistaken for a port separator by url.Hostname().
+	bareIP, err := netip.ParseAddr(url.Host)
+	if err == nil && bareIP.Is6() {
+		url.Host = "[" + url.Host + "]"
 	}
-	vt.tried = append(vt.tried, vt.cur)
-	vt.cur = vt.next[0]
-	vt.next = vt.next[1:]
-	return nil
-}
 
-// newHTTPValidationTarget creates a httpValidationTarget for the given host,
-// port, and path. This involves querying DNS for the IP addresses for the host.
-// An error is returned if there are no usable IP addresses or if the DNS
-// lookups fail.
-func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
-	ctx context.Context,
-	ident identifier.ACMEIdentifier,
-	port int,
-	path string,
-	query string) (*httpValidationTarget, error) {
+	// Use the URL's explicit port if it has one, and the VA's port
+	// corresponding to the URL's scheme otherwise. Callers guarantee that the
+	// scheme is http or https, and that any explicit port has already been
+	// checked against the VA's ports.
+	port := url.Port()
+	if port == "" {
+		if url.Scheme == "https" {
+			port = strconv.Itoa(va.httpsPort)
+		} else {
+			port = strconv.Itoa(va.httpPort)
+		}
+	}
+
+	host := url.Hostname()
+
 	var addrs []netip.Addr
 	var resolvers []string
-	switch ident.Type {
+	switch typ {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier
-		dnsAddrs, dnsResolvers, err := va.getAddrs(ctx, ident.Value)
+		var err error
+		addrs, resolvers, err = va.getAddrs(ctx, host)
 		if err != nil {
-			return nil, err
+			return core.ValidationRecord{}, err
 		}
-		addrs, resolvers = dnsAddrs, dnsResolvers
 	case identifier.TypeIP:
-		netIP, err := netip.ParseAddr(ident.Value)
+		netIP, err := netip.ParseAddr(host)
 		if err != nil {
-			return nil, fmt.Errorf("can't parse IP address %q: %s", ident.Value, err)
+			return core.ValidationRecord{}, fmt.Errorf("can't parse IP address %q: %s", host, err)
 		}
 		addrs = []netip.Addr{netIP}
 	default:
-		return nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
+		return core.ValidationRecord{}, fmt.Errorf("unknown identifier type: %s", typ)
 	}
 
-	target := &httpValidationTarget{
-		host:      ident.Value,
-		port:      port,
-		path:      path,
-		query:     query,
-		available: addrs,
-		resolvers: resolvers,
-	}
-
-	// Separate the addresses into the available v4 and v6 addresses
+	// Prefer the first IPv6 address, falling back to the first IPv4 address.
 	v4Addrs, v6Addrs := availableAddresses(addrs)
-	hasV6Addrs := len(v6Addrs) > 0
-	hasV4Addrs := len(v4Addrs) > 0
-
-	if !hasV6Addrs && !hasV4Addrs {
-		// If there are no v6 addrs and no v4addrs there was a bug with getAddrs or
-		// availableAddresses and we need to return an error.
-		return nil, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", ident.Value)
-	} else if !hasV6Addrs && hasV4Addrs {
-		// If there are no v6 addrs and there are v4 addrs then use the first v4
-		// address. There's no fallback address.
-		target.next = []netip.Addr{v4Addrs[0]}
-	} else if hasV6Addrs && hasV4Addrs {
-		// If there are both v6 addrs and v4 addrs then use the first v6 address and
-		// fallback with the first v4 address.
-		target.next = []netip.Addr{v6Addrs[0], v4Addrs[0]}
-	} else if hasV6Addrs && !hasV4Addrs {
-		// If there are just v6 addrs then use the first v6 address. There's no
-		// fallback address.
-		target.next = []netip.Addr{v6Addrs[0]}
+	var addressUsed netip.Addr
+	if len(v6Addrs) > 0 {
+		addressUsed = v6Addrs[0]
+	} else if len(v4Addrs) > 0 {
+		addressUsed = v4Addrs[0]
+	} else {
+		return core.ValidationRecord{}, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
 	}
 
-	// Advance the target using nextIP to populate the cur IP before returning
-	_ = target.nextIP()
-	return target, nil
+	record := core.ValidationRecord{
+		URL:               url.String(),
+		Hostname:          host,
+		Port:              port,
+		AddressesResolved: addrs,
+		AddressUsed:       addressUsed,
+		ResolverAddrs:     resolvers,
+	}
+
+	return record, nil
 }
 
-// extractRequestTarget extracts the host and port specified in the provided
-// HTTP redirect request. If the request's URL's protocol schema is not HTTP or
-// HTTPS an error is returned. If an explicit port is specified in the request's
-// URL and it isn't the VA's HTTP or HTTPS port, an error is returned.
-func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (identifier.ACMEIdentifier, int, error) {
-	// A nil request is certainly not a valid redirect and has no port to extract.
-	if req == nil {
-		return identifier.ACMEIdentifier{}, 0, fmt.Errorf("redirect HTTP request was nil")
+// newValidationRecordFromFallback returns true and a copy of the given record
+// with its AddressUsed replaced by the host's first IPv4 address if an
+// IPv6-to-IPv4 fallback is possible. If fallback is not possible (either
+// because the previous request already was to an IPv4 address, or no IPv4
+// addresses are available), it returns an empty record and false.
+func newValidationRecordFromFallback(record core.ValidationRecord) (core.ValidationRecord, bool) {
+	// If the previous request was already IPv4, there's no fallback to do.
+	if record.AddressUsed.Is4() {
+		return core.ValidationRecord{}, false
 	}
 
-	reqScheme := req.URL.Scheme
+	v4s, _ := availableAddresses(record.AddressesResolved)
+	if len(v4s) == 0 {
+		return core.ValidationRecord{}, false
+	}
 
-	// The redirect request must use HTTP or HTTPs protocol schemes regardless of the port..
-	if reqScheme != "http" && reqScheme != "https" {
-		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
+	// Modifying in-place is safe because we're passing records by value.
+	record.AddressUsed = v4s[0]
+	return record, true
+}
+
+// newValidationRecordFromRedirect constructs (including DNS resolution, if
+// necessary) and returns a ValidationRecord representing the target of the
+// redirect. It enforces our redirect policies (only specific HTTP status codes,
+// no loops, etc.), and returns an empty record and an error if any policies are
+// violated or DNS lookups fail.
+func (va *ValidationAuthorityImpl) newValidationRecordFromRedirect(ctx context.Context, resp *http.Response, records []core.ValidationRecord) (core.ValidationRecord, error) {
+	redirURL, err := resp.Location()
+	if err != nil {
+		return core.ValidationRecord{}, &url.Error{
+			Op:  "Get",
+			URL: resp.Request.URL.String(),
+			Err: berrors.ConnectionFailureError("Invalid Location header in %d redirect", resp.StatusCode),
+		}
+	}
+	va.log.Debugf("processing a HTTP redirect from the server to %q", redirURL.String())
+	va.metrics.http01Redirects.Inc()
+
+	// badRedirect wraps an error in a url.Error naming the rejected redirect
+	// target. This mirrors the stdlib's redirect error behavior.
+	badRedirect := func(err error) error {
+		return &url.Error{Op: "Get", URL: redirURL.String(), Err: err}
+	}
+
+	if resp.TLS != nil && resp.TLS.Version < tls.VersionTLS12 {
+		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
+			"validation attempt was redirected to an HTTPS server that doesn't " +
+				"support TLSv1.2 or better. See " +
+				"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144"))
+	}
+
+	// The four allowed redirect status codes are defined explicitly in BRs
+	// Section 3.2.2.4.19; anything else (e.g. an HTTP 303) must not be
+	// followed.
+	if resp.StatusCode != 301 && resp.StatusCode != 302 && resp.StatusCode != 307 && resp.StatusCode != 308 {
+		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("received disallowed redirect status code"))
+	}
+
+	// Lowercase the redirect host immediately, as the dialer and redirect
+	// validation expect it to have been lowercased already.
+	redirURL.Host = strings.ToLower(redirURL.Host)
+
+	// The redirect target must use the HTTP or HTTPS protocol scheme,
+	// regardless of the port.
+	if redirURL.Scheme != "http" && redirURL.Scheme != "https" {
+		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
 			"Invalid protocol scheme in redirect target. "+
-				`Only "http" and "https" protocol schemes are supported, not %q`, reqScheme)
+				`Only "http" and "https" protocol schemes are supported, not %q`, redirURL.Scheme))
 	}
 
-	// Try to parse an explicit port number from the request URL host. If there
-	// is one, we need to make sure its a valid port. If there isn't one we need
-	// to pick the port based on the reqScheme default port.
-	reqHost := req.URL.Hostname()
-	var reqPort int
-	// URL.Port() will return "" for an invalid port, not just an empty port. To
-	// reject invalid ports, we rely on the calling function having used
-	// URL.Parse(), which does enforce validity.
-	if req.URL.Port() != "" {
-		parsedPort, err := strconv.Atoi(req.URL.Port())
+	// If the redirect URL has an explicit port, it must match the VA's
+	// configured HTTP or HTTPS port. Implicit ports are filled in from the
+	// scheme by newValidationRecord below.
+	if redirURL.Port() != "" {
+		parsedPort, err := strconv.Atoi(redirURL.Port())
 		if err != nil {
-			return identifier.ACMEIdentifier{}, 0, err
+			return core.ValidationRecord{}, badRedirect(err)
 		}
 
-		// The explicit port must match the VA's configured HTTP or HTTPS port.
 		if parsedPort != va.httpPort && parsedPort != va.httpsPort {
-			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
+			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
 				"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
-				va.httpPort, va.httpsPort, parsedPort)
+				va.httpPort, va.httpsPort, parsedPort))
 		}
-
-		reqPort = parsedPort
-	} else if reqScheme == "http" {
-		reqPort = va.httpPort
-	} else if reqScheme == "https" {
-		reqPort = va.httpsPort
-	} else {
-		// This shouldn't happen but defensively return an internal server error in
-		// case it does.
-		return identifier.ACMEIdentifier{}, 0, fmt.Errorf("unable to determine redirect HTTP request port")
 	}
 
-	if reqHost == "" {
-		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid empty host in redirect target")
+	redirHost := redirURL.Hostname()
+	if redirHost == "" {
+		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid empty host in redirect target"))
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -327,116 +327,79 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 	// Will produce an invalid HTTP-01 redirect target like:
 	//   https://bad-redirect.org.well-known/acme-challenge/xxxx
 	// This happens frequently enough we want to return a distinct error message
-	// for this case by detecting the reqHost ending in ".well-known".
-	if strings.HasSuffix(reqHost, ".well-known") {
-		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
+	// for this case by detecting the redirHost ending in ".well-known".
+	if strings.HasSuffix(redirHost, ".well-known") {
+		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
 			"Invalid host in redirect target %q. Check webserver config for missing '/' in redirect target.",
-			reqHost,
-		)
+			redirHost,
+		))
 	}
 
-	reqIP, err := netip.ParseAddr(reqHost)
+	// Determine whether the redirect target's host is an IP address or a DNS
+	// name, and enforce the corresponding policy.
+	var redirType identifier.IdentifierType
+	redirIP, err := netip.ParseAddr(redirHost)
 	if err == nil {
 		// Reject IPv6 addresses with a scope zone (RFCs 4007 & 6874)
-		if reqIP.Zone() != "" {
-			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: contains scope zone")
+		if redirIP.Zone() != "" {
+			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid host in redirect target: contains scope zone"))
 		}
-		err := va.isReservedIPFunc(reqIP)
+		err := va.isReservedIPFunc(redirIP)
 		if err != nil {
-			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: %s", err)
+			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid host in redirect target: %s", err))
 		}
-		return identifier.NewIP(reqIP), reqPort, nil
+		redirType = identifier.TypeIP
+	} else {
+		_, err := iana.ExtractSuffix(redirHost)
+		if err != nil {
+			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid host in redirect target, must end in IANA registered TLD"))
+		}
+		redirType = identifier.TypeDNS
 	}
 
-	if _, err := iana.ExtractSuffix(reqHost); err != nil {
-		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target, must end in IANA registered TLD")
+	if len(redirURL.Path) > maxPathSize {
+		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Redirect target too long"))
 	}
 
-	return identifier.NewDNS(reqHost), reqPort, nil
+	// Check for a redirect loop. If any URL is requested twice before the
+	// request limit, return error.
+	for _, record := range records {
+		if redirURL.String() == record.URL {
+			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Redirect loop detected"))
+		}
+	}
+
+	// Create a validation record for a request to the redirect target. This
+	// will resolve IP addresses for the host explicitly.
+	redirRecord, err := va.newValidationRecord(ctx, redirType, *redirURL)
+	if err != nil {
+		return core.ValidationRecord{}, badRedirect(err)
+	}
+
+	return redirRecord, nil
 }
 
-// setupHTTPValidation sets up a preresolvedDialer and a validation record for
-// the given request URL and httpValidationTarget. If the req URL is empty, or
-// the validation target is nil or has no available IP addresses, an error will
-// be returned.
-func (va *ValidationAuthorityImpl) setupHTTPValidation(
-	reqURL string,
-	target *httpValidationTarget) (*preresolvedDialer, core.ValidationRecord, error) {
-	if reqURL == "" {
-		return nil,
-			core.ValidationRecord{},
-			fmt.Errorf("reqURL can not be nil")
-	}
-	if target == nil {
-		// This is the only case where returning an empty validation record makes
-		// sense - we can't construct a better one, something has gone quite wrong.
-		return nil,
-			core.ValidationRecord{},
-			fmt.Errorf("httpValidationTarget can not be nil")
-	}
-
-	// Construct a base validation record with the validation target's
-	// information.
-	record := core.ValidationRecord{
-		Hostname:          target.host,
-		Port:              strconv.Itoa(target.port),
-		AddressesResolved: target.available,
-		URL:               reqURL,
-		ResolverAddrs:     target.resolvers,
-	}
-
-	// Get the target IP to build a preresolved dialer with
-	targetIP := target.cur
-	if (targetIP == netip.Addr{}) {
-		return nil,
-			record,
-			fmt.Errorf(
-				"host %q has no IP addresses remaining to use",
-				target.host)
-	}
-
+// doValidationRequest makes a single HTTP-01 validation request: a GET for
+// the given validation record's URL, connecting to the record's AddressUsed
+// and Port no matter what hostname the URL contains. If referer is non-empty
+// it is sent as the Referer header.
+func (va *ValidationAuthorityImpl) doValidationRequest(ctx context.Context, record core.ValidationRecord, referer string) (*http.Response, error) {
 	// This is a backstop check to avoid connecting to reserved IP addresses.
 	// They should have been caught and excluded by `bdns.LookupHost`.
-	err := va.isReservedIPFunc(targetIP)
+	err := va.isReservedIPFunc(record.AddressUsed)
 	if err != nil {
-		return nil, record, err
+		return nil, err
 	}
 
-	record.AddressUsed = targetIP
-
-	dialer := &preresolvedDialer{
-		ip:       targetIP,
-		port:     target.port,
-		hostname: target.host,
-		timeout:  va.singleDialTimeout,
+	req, err := http.NewRequestWithContext(ctx, "GET", record.URL, nil)
+	if err != nil {
+		return nil, err
 	}
-	return dialer, record, nil
-}
 
-// fallbackErr returns true only for net.OpError instances where the op is equal
-// to "dial", or url.Error instances wrapping such an error. fallbackErr returns
-// false for all other errors. By policy, only dial errors (not read or write
-// errors) are eligible for fallback from an IPv6 to an IPv4 address.
-func fallbackErr(err error) bool {
-	// Err shouldn't ever be nil if we're considering it for fallback
-	if err == nil {
-		return false
-	}
-	// Net OpErrors are fallback errs only if the operation was a "dial"
-	netOpError, ok := errors.AsType[*net.OpError](err)
-	if ok && netOpError.Op == "dial" {
-		return true
-	}
-	// All other errs are not fallback errs
-	return false
-}
-
-// setHTTP01RequestHeaders sets the headers Boulder sends on every HTTP-01
-// request, including each fallback retry.
-func (va *ValidationAuthorityImpl) setHTTP01RequestHeaders(req *http.Request) {
 	if va.userAgent != "" {
 		req.Header.Set("User-Agent", va.userAgent)
 	}
+
 	// Some of our users use mod_security. Mod_security sees a lack of Accept
 	// headers as bot behavior and rejects requests. While this is a bug in
 	// mod_security's rules (given that the HTTP specs disagree with that
@@ -447,54 +410,68 @@ func (va *ValidationAuthorityImpl) setHTTP01RequestHeaders(req *http.Request) {
 	// because it's a one-line fix with no downside. We're not likely to want to
 	// do many more things to satisfy misunderstandings around HTTP.
 	req.Header.Set("Accept", "*/*")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+
+	dialer := &preresolvedDialer{
+		ip:       record.AddressUsed,
+		port:     record.Port,
+		hostname: record.Hostname,
+		timeout:  va.singleDialTimeout,
+	}
+	client := &http.Client{
+		Transport: httpTransport(dialer.DialContext),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			// Return redirect responses to us, rather than following them.
+			return http.ErrUseLastResponse
+		},
+	}
+	return client.Do(req)
 }
 
-// processHTTPValidation performs an HTTP validation for the given host, port
-// and path. If successful the body of the HTTP response is returned along with
-// the validation records created during the validation. If not successful
-// a non-nil error and potentially some ValidationRecords are returned.
+// fallbackErr returns true only for errors that occurred during net.Dial.
+func fallbackErr(err error) bool {
+	// Err shouldn't ever be nil if we're considering it for fallback
+	if err == nil {
+		return false
+	}
+
+	// Net OpErrors are fallback errs only if the operation was a "dial"
+	netOpError, ok := errors.AsType[*net.OpError](err)
+	if ok && netOpError.Op == "dial" {
+		return true
+	}
+
+	// All other errs are not fallback errs
+	return false
+}
+
+// processHTTPValidation performs an HTTP validation for the given identifier
+// and path. If successful, the body of the final HTTP response is returned
+// along with the ValidationRecords created during the validation. If not
+// successful, a non-nil error and potentially some ValidationRecords are
+// returned.
 func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	path string) ([]byte, []core.ValidationRecord, error) {
-	// Create a target for the host, port and path with no query parameters
-	target, err := va.newHTTPValidationTarget(ctx, ident, va.httpPort, path, "")
+	// Create a record for the initial request: an http URL for the given path
+	// under the identifier itself, with no query parameters.
+	initialURL := url.URL{
+		Scheme: "http",
+		Host:   ident.Value,
+		Path:   path,
+	}
+	record, err := va.newValidationRecord(ctx, ident.Type, initialURL)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// When constructing a URL, bare IPv6 addresses must be enclosed in square
-	// brackets. Otherwise, a colon may be interpreted as a port separator.
-	host := ident.Value
-	if ident.Type == identifier.TypeIP {
-		netipHost, err := netip.ParseAddr(host)
-		if err != nil {
-			return nil, nil, fmt.Errorf("couldn't parse IP address from identifier")
-		}
-		if !netipHost.Is4() {
-			host = "[" + host + "]"
-		}
-	}
-
-	// Create an initial GET Request
-	initialURL := url.URL{
-		Scheme: "http",
-		Host:   host,
-		Path:   path,
-	}
-	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
-	if err != nil {
-		return nil, nil, newIPError(target.cur, err)
-	}
-
-	// Add a context to the request. Shave some time from the
-	// overall context deadline so that we are not racing with gRPC when the
-	// HTTP server is timing out. This avoids returning ServerInternal
-	// errors when we should be returning Connection errors. This may fix a flaky
-	// integration test: https://github.com/letsencrypt/boulder/issues/4087
-	// Note: The gRPC interceptor in grpc/interceptors.go already shaves some time
-	// off RPCs, but this takes off additional time because HTTP-related timeouts
-	// are so common (and because it might fix a flaky build).
+	// Shave some time from the overall context deadline so that we are not
+	// racing with gRPC when the HTTP server is timing out. This avoids
+	// returning ServerInternal errors when we should be returning Connection
+	// errors.
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		return nil, nil, fmt.Errorf("processHTTPValidation had no deadline")
@@ -503,195 +480,81 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
-	initialReq = initialReq.WithContext(ctx)
-	va.setHTTP01RequestHeaders(initialReq)
 
-	// Set up the initial validation request and a base validation record
-	dialer, baseRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
-	if err != nil {
-		return nil, []core.ValidationRecord{}, newIPError(target.cur, err)
-	}
+	// referer holds the Referer header for the next request. We track this
+	// ourselves so that we can send the referer header for both redirects and
+	// IPv4 fallbacks of those redirects.
+	referer := ""
 
-	// Build a transport for this validation that will use the preresolvedDialer's
-	// DialContext function
-	transport := httpTransport(dialer.DialContext)
+	// Make requests until one of them yields a final (non-redirect) response, a
+	// final (non-fallback) error, or we run out of retries. Each iteration of
+	// this loop makes one request and appends one ValidationRecord.
+	var records []core.ValidationRecord
+	for range maxRequests {
+		records = append(records, record)
 
-	// Create a closure around records & numRedirects we can use with a HTTP
-	// client to process redirects per our own policy (e.g. resolving IP
-	// addresses explicitly, not following redirects to ports != [80,443], etc)
-	records := []core.ValidationRecord{baseRecord}
-	numRedirects := 0
-
-	// Track the target and URL selected for dialing so fallback retries the
-	// request that failed, including redirect targets.
-	// See https://github.com/letsencrypt/boulder/issues/8029.
-	currentTarget := target
-	currentReqURL := initialReq.URL.String()
-	processRedirect := func(req *http.Request, via []*http.Request) error {
-		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
-		// Only process up to maxRedirect redirects
-		if numRedirects > maxRedirect {
-			return berrors.ConnectionFailureError("Too many redirects")
-		}
-		numRedirects++
-		va.metrics.http01Redirects.Inc()
-
-		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
-			return berrors.ConnectionFailureError(
-				"validation attempt was redirected to an HTTPS server that doesn't " +
-					"support TLSv1.2 or better. See " +
-					"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144")
-		}
-
-		// If the response contains an HTTP 303 or any other forbidden redirect,
-		// do not follow it. The four allowed redirect status codes are defined
-		// explicitly in BRs Section 3.2.2.4.19. Although the go stdlib currently
-		// limits redirects to a set of status codes with only one additional
-		// entry (303), we capture the full list of allowed codes here in case the
-		// go stdlib expands the set of redirects it follows in the future.
-		acceptableRedirects := map[int]struct{}{
-			301: {}, 302: {}, 307: {}, 308: {},
-		}
-		if _, present := acceptableRedirects[req.Response.StatusCode]; !present {
-			return berrors.ConnectionFailureError("received disallowed redirect status code")
-		}
-
-		// Lowercase the redirect host immediately, as the dialer and redirect
-		// validation expect it to have been lowercased already.
-		req.URL.Host = strings.ToLower(req.URL.Host)
-
-		// Extract the redirect target's host and port. This will return an error if
-		// the redirect request scheme, host or port is not acceptable.
-		redirHost, redirPort, err := va.extractRequestTarget(req)
+		resp, err := va.doValidationRequest(ctx, record, referer)
 		if err != nil {
-			return err
-		}
-
-		redirPath := req.URL.Path
-		if len(redirPath) > maxPathSize {
-			return berrors.ConnectionFailureError("Redirect target too long")
-		}
-
-		// If the redirect URL has query parameters we need to preserve
-		// those in the redirect path
-		redirQuery := ""
-		if req.URL.RawQuery != "" {
-			redirQuery = req.URL.RawQuery
-		}
-
-		// Check for a redirect loop. If any URL is found twice before the
-		// redirect limit, return error.
-		for _, record := range records {
-			if req.URL.String() == record.URL {
-				return berrors.ConnectionFailureError("Redirect loop detected")
+			if fallbackErr(err) && ctx.Err() == nil {
+				fallbackRecord, ok := newValidationRecordFromFallback(record)
+				if ok {
+					va.metrics.http01Fallbacks.Inc()
+					record = fallbackRecord
+					continue
+				}
 			}
+			return nil, records, newIPError(record.AddressUsed, err)
 		}
 
-		// Create a validation target for the redirect host. This will resolve IP
-		// addresses for the host explicitly.
-		redirTarget, err := va.newHTTPValidationTarget(ctx, redirHost, redirPort, redirPath, redirQuery)
+		// These are the redirect status codes that the stdlib http.Client is
+		// willing to follow for a GET request. Any other status code,
+		// including any other 3xx, is handled below as a final response.
+		isRedirect := resp.StatusCode == 301 || resp.StatusCode == 302 ||
+			resp.StatusCode == 303 || resp.StatusCode == 307 || resp.StatusCode == 308
+		if isRedirect {
+			_ = resp.Body.Close()
+
+			redirRecord, redirErr := va.newValidationRecordFromRedirect(ctx, resp, records)
+			if redirErr != nil {
+				// redirErr is already wrapped in a url.Error naming the
+				// rejected redirect target.
+				return nil, records, newIPError(record.AddressUsed, redirErr)
+			}
+			va.log.Debugf("following redirect to %q", redirRecord.URL)
+
+			// Like the stdlib http.Client, don't send a Referer header when
+			// following a redirect from an HTTPS URL to an HTTP URL, and
+			// never include userinfo in it.
+			if resp.Request.URL.Scheme == "https" && strings.HasPrefix(redirRecord.URL, "http://") {
+				referer = ""
+			} else {
+				refererURL := *resp.Request.URL
+				refererURL.User = nil
+				referer = refererURL.String()
+			}
+
+			record = redirRecord
+			continue
+		}
+
+		// This is the final response: check its status code and return its body.
+		if resp.StatusCode != 200 {
+			_ = resp.Body.Close()
+			return nil, records, newIPError(record.AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %d", record.URL, resp.StatusCode))
+		}
+
+		body, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, maxResponseSize))
+		_ = resp.Body.Close()
 		if err != nil {
-			return err
+			return nil, records, newIPError(record.AddressUsed, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
 		}
 
-		// Setup validation for the target. This will produce a preresolved dialer we can
-		// assign to the client transport in order to connect to the redirect target using
-		// the IP address we selected.
-		redirDialer, redirRecord, err := va.setupHTTPValidation(req.URL.String(), redirTarget)
-		records = append(records, redirRecord)
-		if err != nil {
-			return err
-		}
-
-		va.log.Debugf("following redirect to host %q url %q", req.Host, req.URL.String())
-		// Replace the transport's DialContext with the new preresolvedDialer for
-		// the redirect.
-		transport.DialContext = redirDialer.DialContext
-		currentTarget = redirTarget
-		currentReqURL = req.URL.String()
-		return nil
+		return body, records, nil
 	}
 
-	// Create a new HTTP client configured to use the customized transport and
-	// to check HTTP redirects encountered with processRedirect
-	client := http.Client{
-		Transport:     transport,
-		CheckRedirect: processRedirect,
-	}
-
-	// Make the initial validation request. This may result in redirects being
-	// followed.
-	httpResponse, err := client.Do(initialReq)
-	// If there was an error and its a kind of error we consider a fallback error,
-	// then try to fallback. A fallback retry may itself dial a redirect target
-	// reached via processRedirect, so loop to allow a further fallback for
-	// that target rather than giving up after a single retry. Each target's
-	// own nextIP() bounds how many times it can be retried.
-	for err != nil && fallbackErr(err) {
-		// Try to advance to another IP for the target we were dialing when
-		// the failure occurred: the initial target, or the most recent
-		// redirect target. If there was an error advancing we don't have a
-		// fallback address to use and must return the original error.
-		advanceTargetIPErr := currentTarget.nextIP()
-		if advanceTargetIPErr != nil {
-			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
-		}
-
-		// setup another validation to retry the current target with the new
-		// IP and append the retry record.
-		retryDialer, retryRecord, setupErr := va.setupHTTPValidation(currentReqURL, currentTarget)
-		if setupErr != nil {
-			return nil, records, newIPError(records[len(records)-1].AddressUsed, setupErr)
-		}
-
-		records = append(records, retryRecord)
-		va.metrics.http01Fallbacks.Inc()
-		// Replace the transport's dialer with the preresolvedDialer for the retry
-		// host.
-		transport.DialContext = retryDialer.DialContext
-
-		// Resume from the request whose dial failed. Replaying initialReq would
-		// repeat earlier redirects and trip loop detection.
-		retryReq, retryReqErr := http.NewRequestWithContext(ctx, "GET", currentReqURL, nil)
-		if retryReqErr != nil {
-			return nil, records, newIPError(records[len(records)-1].AddressUsed, retryReqErr)
-		}
-		va.setHTTP01RequestHeaders(retryReq)
-
-		// Perform the retry. This may itself follow further redirects via
-		// processRedirect, which updates currentTarget and currentReqURL; if
-		// the resulting dial fails, the loop condition re-evaluates
-		// fallbackErr(err) against that new target.
-		httpResponse, err = client.Do(retryReq)
-	}
-	if err != nil {
-		// if the error was not (or was no longer) a fallbackErr, return
-		// immediately.
-		return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
-	}
-
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode != 200 {
-		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %d",
-			records[len(records)-1].URL, httpResponse.StatusCode))
-	}
-
-	// At this point we've made a successful request (be it from a retry or
-	// otherwise) and can read and process the response body.
-	body, err := io.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
-	if err != nil {
-		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
-	}
-
-	// io.LimitedReader will silently truncate a Reader so if the
-	// resulting payload is the same size as maxResponseSize fail
-	if len(body) >= maxResponseSize {
-		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %q",
-			records[len(records)-1].URL, body))
-	}
-
-	return body, records, nil
+	// If we made it to the end of the loop without returning, we maxed out the
+	// number of requests we're willing to make.
+	return nil, records, berrors.ConnectionFailureError("Too many hops")
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
