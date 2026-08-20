@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"math"
 	"testing"
 )
 
@@ -206,8 +207,12 @@ func TestBundleReaderSuccess(t *testing.T) {
 	}
 
 	// Build bytes of a valid pubkey bundle as input for Reader testing
+	testPubkeyBytesLength := len(testPubkeyBytes)
+	if testPubkeyBytesLength < 0 || testPubkeyBytesLength+2 > math.MaxUint16 {
+		t.Errorf("pubkey data length %d+2 is out of bounds for uint16 (0 - %d)", testPubkeyBytesLength, math.MaxUint16)
+	}
 	// - bundle length = pubkeyBytes length + pubkey type length (2)
-	testDataLengthInt := uint16(len(testPubkeyBytes) + 2)
+	testDataLengthInt := uint16(testPubkeyBytesLength + 2) // #nosec G115: bounds check performed above
 	testDataLength := make([]byte, 2)
 	binary.BigEndian.PutUint16(testDataLength, testDataLengthInt)
 	// - bundle type (01)
