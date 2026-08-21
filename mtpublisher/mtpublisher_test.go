@@ -4,21 +4,34 @@ package mtpublisher
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/mldsa"
 	"encoding/base64"
-	"fmt"
+	"encoding/binary"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/bs3/bs3test"
+
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/privatekey"
+	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
+	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
-	"github.com/letsencrypt/boulder/trees/treedb"
+	"github.com/letsencrypt/boulder/trees/pubkey"
+	"github.com/letsencrypt/boulder/trees/tiles"
 )
 
 const (
@@ -28,52 +41,104 @@ const (
 
 var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 44}
 
-type mockTreeDB struct {
-	latestCheckpoint *treedb.CheckpointModel
-}
-
-func newMockDB(mtcLogID string) *mockTreeDB {
-	var rootHash [32]byte
-	return &mockTreeDB{
-		latestCheckpoint: &treedb.CheckpointModel{
-			ID:       1,
-			RootHash: rootHash[:],
-			TreeSize: 1,
-			MTCLogID: mtcLogID,
-		},
-	}
-}
-
-func (m *mockTreeDB) LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
-	return m.latestCheckpoint, nil
-}
-
-func (m *mockTreeDB) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
-	if m.latestCheckpoint.ID != id {
-		return fmt.Errorf("test assumption error: tried to add mirror signature for the wrong ID")
-	}
-	if m.latestCheckpoint.MTCLogID != mtcLogID {
-		return fmt.Errorf("test assumption error: tried to add mirror signature for the wrong MTCLogID (%s vs %s)", m.latestCheckpoint.MTCLogID, mtcLogID)
-	}
-	m.latestCheckpoint.MirrorID = &mirrorID
-	m.latestCheckpoint.MirrorSignature = mirrorSignature
-	return nil
-}
-
-func insertCheckpoint(t *testing.T, mockDB *mockTreeDB, logID string, treeSize int64) {
+func setupDB(t *testing.T) *db.WrappedMap {
 	t.Helper()
 
-	mockDB.latestCheckpoint = &treedb.CheckpointModel{
-		ID:            mockDB.latestCheckpoint.ID + 1,
-		MTCLogID:      logID,
-		MTCASignature: []byte("mtca-signature"),
-		TreeSize:      treeSize,
-		RootHash:      make([]byte, 32),
+	dbMap, err := sa.DBMapForTest(vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
+	if err != nil {
+		t.Fatalf("opening mtcmeta dbMap: %s", err)
+	}
+	truncate := func(ctx context.Context) error {
+		_, err := dbMap.ExecContext(ctx, "TRUNCATE TABLE checkpoints")
+		if err != nil {
+			return err
+		}
+		_, err = dbMap.ExecContext(ctx, "TRUNCATE TABLE latestCheckpoint")
+		return err
+	}
+	err = truncate(t.Context())
+	if err != nil {
+		t.Fatalf("truncating tables: %s", err)
+	}
+	t.Cleanup(func() {
+		err := truncate(context.Background())
+		if err != nil {
+			t.Logf("cleaning up tables: %s", err)
+		}
+	})
+	return dbMap
+}
+
+// setLatest points latestCheckpoint at the checkpoint with the given id, as the
+// sequencer does when it adopts a checkpoint.
+func setLatest(t *testing.T, dbMap *db.WrappedMap, logID string, id int64) {
+	t.Helper()
+	_, err := dbMap.ExecContext(t.Context(),
+		"REPLACE INTO latestCheckpoint (mtcLogID, id) VALUES (?, ?)", logID, id)
+	if err != nil {
+		t.Fatalf("pointing latestCheckpoint at %d: %s", id, err)
 	}
 }
 
-func lacksCosignature(mockDB *mockTreeDB) bool {
-	return mockDB.latestCheckpoint.MirrorID == nil && len(mockDB.latestCheckpoint.MirrorSignature) == 0
+// testCAKey returns a deterministic ML-DSA-44 key standing in for the mtca's
+// checkpoint signing key.
+func testCAKey(t *testing.T) *mldsa.PrivateKey {
+	t.Helper()
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i + 101)
+	}
+	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), seed)
+	if err != nil {
+		t.Fatalf("NewPrivateKey: %s", err)
+	}
+	return key
+}
+
+// caSignature returns the raw MTCA signature for a checkpoint of treeSize with
+// a zero root hash, as insertCheckpoint stores.
+func caSignature(t *testing.T, treeSize int64) []byte {
+	t.Helper()
+	ca, err := cosignature.NewCosigner(testLogID.CAID, testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	timestamped, err := ca.CosignCheckpoint(tlog.Tree{N: treeSize})
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	raw, err := cosignature.RawSignature(timestamped)
+	if err != nil {
+		t.Fatalf("RawSignature: %s", err)
+	}
+	return raw
+}
+
+func insertCheckpoint(t *testing.T, dbMap *db.WrappedMap, logID string, treeSize int64) int64 {
+	t.Helper()
+
+	res, err := dbMap.ExecContext(t.Context(),
+		"INSERT INTO checkpoints (mtcLogID, mtcaSignature, treeSize, rootHash) VALUES (?, ?, ?, ?)",
+		logID, caSignature(t, treeSize), treeSize, make([]byte, 32))
+	if err != nil {
+		t.Fatalf("inserting checkpoint (%s size %d): %s", logID, treeSize, err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("reading insert id: %s", err)
+	}
+	return id
+}
+
+func lacksCosignature(t *testing.T, dbMap *db.WrappedMap, id int64) bool {
+	t.Helper()
+	var count int64
+	err := dbMap.SelectOne(t.Context(), &count,
+		"SELECT COUNT(*) FROM checkpoints WHERE id = ? AND mirrorID IS NULL AND mirrorSignature IS NULL", id)
+	if err != nil {
+		t.Fatalf("querying checkpoint %d: %s", id, err)
+	}
+	return count == 1
 }
 
 // testKey returns a deterministic ML-DSA-44 key so the test can verify the
@@ -91,52 +156,23 @@ func testKey(t *testing.T) *mldsa.PrivateKey {
 	return key
 }
 
-// TestCosign checks that the mirror's cosignature line verifies through
-// trees/cosignature and yields the timestamped_signature it encodes.
-func TestCosign(t *testing.T) {
-	key := testKey(t)
-	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+// testMirror returns a LocalMirror that cosigns with key.
+func testMirror(t *testing.T, key *mldsa.PrivateKey) *mtpublishertest.TestMirror {
+	t.Helper()
+	mirror, err := mtpublishertest.NewTestMirror(mirrorID, testLogID.Origin(), privatekey.NewDeterministicSigner(key))
 	if err != nil {
-		t.Fatalf("New: %s", err)
+		t.Fatalf("NewTestMirror: %s", err)
 	}
-
-	line, err := p.cosign(tlog.Tree{N: 512})
-	if err != nil {
-		t.Fatalf("cosign: %s", err)
-	}
-	if !strings.HasPrefix(line, "— oid/1.3.6.1.4.1."+mirrorID+" ") || !strings.HasSuffix(line, "\n") {
-		t.Errorf("line %q is not a cosignature line for the mirror", line)
-	}
-
-	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
-	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
-	}
-	text := p.origin + "\n512\n" + base64.StdEncoding.EncodeToString(make([]byte, 32)) + "\n"
-	timestampedSignature, err := cosignature.TimestampedSignature([]byte(text), []byte(line), verifier)
-	if err != nil {
-		t.Fatalf("TimestampedSignature: %s", err)
-	}
-	_, err = cosignature.RawSignature(timestampedSignature)
-	if err != nil {
-		t.Errorf("RawSignature: %s", err)
-	}
-
-	_, err = p.cosign(tlog.Tree{})
-	if err == nil {
-		t.Error("cosign with an empty tree = nil error, want error")
-	}
+	return mirror
 }
 
 func TestPublish(t *testing.T) {
+	dbMap := setupDB(t)
 	key := testKey(t)
-	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := New(dbMap, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
-
-	mockDB := newMockDB(mtcLogID)
-	p.treedb = mockDB
 
 	// A pass over an empty table is a no-op.
 	err = p.Publish(t.Context())
@@ -144,26 +180,53 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("p.Publish() on an empty table: %s", err)
 	}
 
+	// An older checkpoint that is not cosigned, which must be left untouched.
+	olderCheckpointID := insertCheckpoint(t, dbMap, mtcLogID, 256)
+
 	// The latest checkpoint, which we expect to be cosigned by p.Publish().
-	insertCheckpoint(t, mockDB, mtcLogID, 512)
+	latestCheckpointID := insertCheckpoint(t, dbMap, mtcLogID, 512)
+	setLatest(t, dbMap, mtcLogID, latestCheckpointID)
+
+	// A checkpoint for another log that was somehow inserted into this table,
+	// which must be left untouched thanks to the mtcLogID guard.
+	otherLogCheckpointID := insertCheckpoint(t, dbMap, "44947.4.2.0.99", 1024)
+
+	// A precommitted checkpoint the CA has not signed yet, which must be left
+	// untouched because latestCheckpoint does not reference it, even though its
+	// tree is the largest.
+	res, err := dbMap.ExecContext(t.Context(),
+		"INSERT INTO checkpoints (mtcLogID, treeSize, rootHash) VALUES (?, ?, ?)",
+		mtcLogID, int64(2048), make([]byte, 32))
+	if err != nil {
+		t.Fatalf("inserting precommitted checkpoint: %s", err)
+	}
+	precommitID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("reading insert id: %s", err)
+	}
 
 	err = p.Publish(t.Context())
 	if err != nil {
 		t.Fatalf("p.Publish(): %s", err)
 	}
 
-	cosigned, err := mockDB.LatestCheckpoint(context.Background(), mtcLogID)
+	type row struct {
+		MirrorID  string `db:"mirrorID"`
+		MirrorSig []byte `db:"mirrorSignature"`
+	}
+	var cosigned row
+	err = dbMap.SelectOne(t.Context(), &cosigned, "SELECT mirrorID, mirrorSignature FROM checkpoints WHERE id = ?", latestCheckpointID)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("selecting the latest checkpoint: %s", err)
 	}
 
 	// Check that the latest checkpoint was cosigned, and the others were
 	// untouched.
-	if cosigned.MirrorID == nil || *cosigned.MirrorID != mirrorID {
-		t.Errorf("mirrorID = %v, want %q", cosigned.MirrorID, mirrorID)
+	if cosigned.MirrorID != mirrorID {
+		t.Errorf("mirrorID = %q, want %q", cosigned.MirrorID, mirrorID)
 	}
-	if len(cosigned.MirrorSignature) != mldsa.MLDSA44SignatureSize {
-		t.Fatalf("latest checkpoint's mirrorSignature is %d bytes, want %d", len(cosigned.MirrorSignature), mldsa.MLDSA44SignatureSize)
+	if len(cosigned.MirrorSig) != mldsa.MLDSA44SignatureSize {
+		t.Fatalf("latest checkpoint's mirrorSignature is %d bytes, want %d", len(cosigned.MirrorSig), mldsa.MLDSA44SignatureSize)
 	}
 
 	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
@@ -171,70 +234,389 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("NewVerifier: %s", err)
 	}
 	text := "oid/1.3.6.1.4.1." + mtcLogID + "\n512\n" + base64.StdEncoding.EncodeToString(make([]byte, 32)) + "\n"
-	timestampedSignature := append(make([]byte, 8), cosigned.MirrorSignature...)
+	timestampedSignature := append(make([]byte, 8), cosigned.MirrorSig...)
 	if !verifier.Verify([]byte(text), timestampedSignature) {
 		t.Error("stored mirror cosignature does not verify against the checkpoint text")
 	}
+	if !lacksCosignature(t, dbMap, olderCheckpointID) {
+		t.Error("older checkpoint was cosigned, only the latest should be")
+	}
+	if !lacksCosignature(t, dbMap, otherLogCheckpointID) {
+		t.Errorf("another log's checkpoint (id=%d) was cosigned, despite the mtcLogID guard", otherLogCheckpointID)
+	}
+	if !lacksCosignature(t, dbMap, precommitID) {
+		t.Error("precommitted checkpoint was cosigned before the CA signed it")
+	}
 }
 
-// TestPublishRejectsMismatchedKey checks that a cosignature that fails to
-// verify against the configured public key is not stored.
-func TestPublishRejectsMismatchedKey(t *testing.T) {
-	otherSeed := make([]byte, 32)
-	for i := range otherSeed {
-		otherSeed[i] = byte(255 - i)
-	}
-	otherKey, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), otherSeed)
-	if err != nil {
-		t.Fatalf("NewPrivateKey: %s", err)
-	}
-
-	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(testKey(t)), otherKey.PublicKey(), blog.NewMock())
+// TestPublishRejectsBadMTCASignature checks that a checkpoint whose stored
+// MTCA signature does not verify is neither submitted nor cosigned.
+func TestPublishRejectsBadMTCASignature(t *testing.T) {
+	dbMap := setupDB(t)
+	key := testKey(t)
+	p, err := New(dbMap, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
 
-	mockDB := newMockDB(mtcLogID)
-	p.treedb = mockDB
-
-	insertCheckpoint(t, mockDB, mtcLogID, 512)
+	// A well-formed MTCA signature over the wrong tree size.
+	res, err := dbMap.ExecContext(t.Context(),
+		"INSERT INTO checkpoints (mtcLogID, mtcaSignature, treeSize, rootHash) VALUES (?, ?, ?, ?)",
+		mtcLogID, caSignature(t, 999), int64(512), make([]byte, 32))
+	if err != nil {
+		t.Fatalf("inserting checkpoint: %s", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("reading insert id: %s", err)
+	}
+	setLatest(t, dbMap, mtcLogID, id)
 
 	err = p.Publish(t.Context())
 	if err == nil {
-		t.Error("publish with a mismatched public key = nil error, want error")
+		t.Error("publish with a bad MTCA signature = nil error, want error")
 	}
-	if !lacksCosignature(mockDB) {
-		t.Error("cosignature was stored despite failing verification")
+	if !lacksCosignature(t, dbMap, id) {
+		t.Error("cosignature was stored despite the MTCA signature failing verification")
 	}
 }
 
 func TestPublishWhenLatestAlreadySigned(t *testing.T) {
+	dbMap := setupDB(t)
 	key := testKey(t)
-	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := New(dbMap, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
 
-	mockDB := newMockDB(mtcLogID)
-	p.treedb = mockDB
-
 	// Insert a checkpoint that is already cosigned, which must be left
 	// untouched.
-	insertCheckpoint(t, mockDB, mtcLogID, 512)
-	existing := "existing.cosigner"
-	mockDB.latestCheckpoint.MirrorID = &existing
-	mockDB.latestCheckpoint.MirrorSignature = []byte("already-signed-bruh")
+	res, err := dbMap.ExecContext(t.Context(),
+		"INSERT INTO checkpoints (mtcLogID, mtcaSignature, treeSize, rootHash, mirrorID, mirrorSignature) VALUES (?, ?, ?, ?, ?, ?)",
+		mtcLogID, caSignature(t, 512), int64(512), make([]byte, 32), "existing.cosigner", []byte("already-signed-bruh"))
+	if err != nil {
+		t.Fatalf("inserting cosigned checkpoint: %s", err)
+	}
+	cosignedID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("reading insert id: %s", err)
+	}
+	setLatest(t, dbMap, mtcLogID, cosignedID)
+
+	// Insert an older (non-latest) checkpoint that is not cosigned, which must
+	// be left untouched.
+	olderID := insertCheckpoint(t, dbMap, mtcLogID, 256)
 
 	err = p.Publish(t.Context())
 	if err != nil {
 		t.Fatalf("p.Publish(): %s", err)
 	}
 
-	// The latest checkpoint was already cosigned, so the pass must leave it untouched.
-	if !bytes.Equal(mockDB.latestCheckpoint.MirrorSignature, []byte("already-signed-bruh")) {
-		t.Errorf("MirrorSignature: got %x, want %x", mockDB.latestCheckpoint.MirrorSignature, []byte("already-signed-bruh"))
+	// The latest checkpoint is already cosigned, so the pass must leave both
+	// checkpoints untouched.
+	if !lacksCosignature(t, dbMap, olderID) {
+		t.Error("older checkpoint was cosigned, the pass should have stopped at the signed latest")
 	}
-	if mockDB.latestCheckpoint.MirrorID == nil || *mockDB.latestCheckpoint.MirrorID != "existing.cosigner" {
-		t.Errorf("MirrorID: got %v, want %s", mockDB.latestCheckpoint.ID, "existing.cosigner")
+	var mirrorCosignature []byte
+	err = dbMap.SelectOne(t.Context(), &mirrorCosignature, "SELECT mirrorSignature FROM checkpoints WHERE mtcLogID = ? AND treeSize = 512", mtcLogID)
+	if err != nil {
+		t.Fatalf("selecting the cosigned checkpoint: %s", err)
+	}
+	if string(mirrorCosignature) != "already-signed-bruh" {
+		t.Errorf("existing cosignature was replaced: %q", mirrorCosignature)
+	}
+}
+
+// sourceLog is a published source log in fake tile storage, with an earlier
+// published tree so tests can exercise consistency proofs between the two.
+type sourceLog struct {
+	fs3        *bs3test.FakeS3
+	older      tlog.Tree
+	newer      tlog.Tree
+	cp         *checkpoint.Checkpoint
+	signedNote []byte
+
+	// mirrorKey signs cosigLine, the mirror's signature line over the newer
+	// tree, which carries the raw cosignature rawCosig.
+	mirrorKey *mldsa.PrivateKey
+	cosigLine []byte
+	rawCosig  []byte
+}
+
+const testTilePrefix = "44947.4.1/44"
+
+// newSourceLog publishes a 300 entry tree and grows it to 700 entries,
+// returning the storage and the newer tree's checkpoint text.
+func newSourceLog(t *testing.T) *sourceLog {
+	t.Helper()
+	fs3 := bs3test.New()
+	f := &tiles.Frontier{}
+	grow := func(n int64) tlog.Tree {
+		t.Helper()
+		for range n {
+			err := f.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+			if err != nil {
+				t.Fatalf("AppendEntry: %s", err)
+			}
+		}
+		err := f.Publish(t.Context(), fs3, testTilePrefix)
+		if err != nil {
+			t.Fatalf("Publish: %s", err)
+		}
+		return tlog.Tree{N: f.TreeSize(), Hash: f.RootHash()}
+	}
+	older := grow(300)
+	newer := grow(400)
+	cp := &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1." + mtcLogID, Tree: newer}
+
+	caSeed := make([]byte, 32)
+	for i := range caSeed {
+		caSeed[i] = byte(i + 101)
+	}
+	caKey, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), caSeed)
+	if err != nil {
+		t.Fatalf("NewPrivateKey: %s", err)
+	}
+	ca, err := cosignature.NewCosigner(testLogID.CAID, testLogID.Origin(), privatekey.NewDeterministicSigner(caKey))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	timestampedCA, err := ca.CosignCheckpoint(newer)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	rawCA, err := cosignature.RawSignature(timestampedCA)
+	if err != nil {
+		t.Fatalf("RawSignature: %s", err)
+	}
+	caVerifier, err := cosignature.NewVerifier(testLogID.CAID, caKey.PublicKey())
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+	caLine, err := caVerifier.SignatureLine(cp.Origin, newer, rawCA)
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	signedNote, err := cp.SignedNoteForMirror(caLine)
+	if err != nil {
+		t.Fatalf("SignedNoteForMirror: %s", err)
+	}
+
+	mirrorSeed := make([]byte, 32)
+	for i := range mirrorSeed {
+		mirrorSeed[i] = byte(i + 201)
+	}
+	mirrorKey, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), mirrorSeed)
+	if err != nil {
+		t.Fatalf("NewPrivateKey: %s", err)
+	}
+	mirrorCosigner, err := cosignature.NewCosigner(mirrorID, cp.Origin, privatekey.NewDeterministicSigner(mirrorKey))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	timestamped, err := mirrorCosigner.CosignCheckpoint(newer)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	rawCosig, err := cosignature.RawSignature(timestamped)
+	if err != nil {
+		t.Fatalf("RawSignature: %s", err)
+	}
+	mirrorVerifier, err := cosignature.NewVerifier(mirrorID, mirrorKey.PublicKey())
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+	cosigLine, err := mirrorVerifier.SignatureLine(cp.Origin, newer, rawCosig)
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	return &sourceLog{
+		fs3: fs3, older: older, newer: newer, cp: cp, signedNote: signedNote,
+		mirrorKey: mirrorKey, cosigLine: cosigLine, rawCosig: rawCosig,
+	}
+}
+
+// requestBody reads a request body, requiring gzip compression on add-entries
+// requests.
+func requestBody(t *testing.T, r *http.Request) []byte {
+	t.Helper()
+	if r.URL.Path == "/add-entries" && r.Header.Get("Content-Encoding") != "gzip" {
+		t.Error("add-entries request is not gzip compressed")
+	}
+	reader := io.Reader(r.Body)
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		zr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			t.Fatalf("opening request body: %s", err)
+		}
+		reader = zr
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("reading request body: %s", err)
+	}
+	return body
+}
+
+// parseUploadHeader pulls upload_start and the ticket out of an add-entries
+// request body.
+func parseUploadHeader(t *testing.T, body []byte) (int64, []byte) {
+	t.Helper()
+	originLen := int(binary.BigEndian.Uint16(body[:2]))
+	rest := body[2+originLen:]
+	uploadStart := int64(binary.BigEndian.Uint64(rest[:8]))
+	ticketLen := int(binary.BigEndian.Uint16(rest[16:18]))
+	return uploadStart, rest[18 : 18+ticketLen]
+}
+
+// TestMirrorCosign drives the client through a scripted exchange. The mirror
+// answers the first add-checkpoint with "409 Conflict" at size 300 so the
+// client must prove consistency from there, then answers the first add-entries
+// with "202 Accepted" at entry 512 and a ticket the client must echo before the
+// "200 Success" carrying the cosignature line.
+func TestMirrorCosign(t *testing.T) {
+	source := newSourceLog(t)
+	line := string(source.cosigLine)
+
+	var addCheckpointCalls, addEntriesCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := requestBody(t, r)
+		switch r.URL.Path {
+		case "/add-checkpoint":
+			addCheckpointCalls++
+			switch addCheckpointCalls {
+			case 1:
+				if !bytes.HasPrefix(body, []byte("old 0\n\n")) {
+					t.Errorf("first add-checkpoint body %q does not claim old size 0 with an empty proof", body)
+				}
+				w.Header().Set("Content-Type", "text/x.tlog.size")
+				w.WriteHeader(http.StatusConflict)
+				io.WriteString(w, "300\n")
+			default:
+				header, _, ok := bytes.Cut(body, []byte("\n\n"))
+				lines := strings.Split(string(header), "\n")
+				if !ok || lines[0] != "old 300" {
+					t.Fatalf("second add-checkpoint body %q does not claim old size 300", body)
+				}
+				proof := make(tlog.TreeProof, len(lines)-1)
+				for i, l := range lines[1:] {
+					h, err := tlog.ParseHash(l)
+					if err != nil {
+						t.Fatalf("proof line %q: %s", l, err)
+					}
+					proof[i] = h
+				}
+				err := tlog.CheckTree(proof, source.newer.N, source.newer.Hash, source.older.N, source.older.Hash)
+				if err != nil {
+					t.Errorf("client's consistency proof does not verify: %s", err)
+				}
+			}
+		case "/add-entries":
+			addEntriesCalls++
+			uploadStart, ticket := parseUploadHeader(t, body)
+			switch addEntriesCalls {
+			case 1:
+				if uploadStart != 0 || len(ticket) != 0 {
+					t.Errorf("first add-entries upload_start = %d ticket = %q, want 0 and empty", uploadStart, ticket)
+				}
+				w.Header().Set("Content-Type", "text/x.tlog.mirror-info")
+				w.WriteHeader(http.StatusAccepted)
+				io.WriteString(w, "700\n512\n"+base64.StdEncoding.EncodeToString([]byte("resume"))+"\n")
+			default:
+				if uploadStart != 512 || string(ticket) != "resume" {
+					t.Errorf("second add-entries upload_start = %d ticket = %q, want 512 and \"resume\"", uploadStart, ticket)
+				}
+				io.WriteString(w, line)
+			}
+		default:
+			t.Errorf("unexpected request to %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	m, err := NewMirrorClient(srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	got, err := m.Cosign(t.Context(), source.cp, source.signedNote)
+	if err != nil {
+		t.Fatalf("Cosign: %s", err)
+	}
+	if !bytes.Equal(got, source.rawCosig) {
+		t.Errorf("Cosign = %x, want the mirror's raw cosignature %x", got, source.rawCosig)
+	}
+	if addCheckpointCalls != 2 || addEntriesCalls != 2 {
+		t.Errorf("mirror saw %d add-checkpoint and %d add-entries calls, want 2 and 2", addCheckpointCalls, addEntriesCalls)
+	}
+}
+
+// TestMirrorCosignErrors covers the client's failure paths, with a mirror that
+// refuses the checkpoint, a mirror demanding an upload_end the checkpoint
+// cannot satisfy, and an unreachable mirror.
+func TestMirrorCosignErrors(t *testing.T) {
+	_, err := NewMirrorClient("", NewSource(nil, testTilePrefix), mirrorID, testKey(t).PublicKey())
+	if err == nil {
+		t.Error("NewMirrorClient with an empty base URL = nil error, want error")
+	}
+
+	source := newSourceLog(t)
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "checkpoint refused", http.StatusForbidden)
+	}))
+	defer refusing.Close()
+	m, err := NewMirrorClient(refusing.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = m.Cosign(t.Context(), source.cp, source.signedNote)
+	if err == nil {
+		t.Fatal("Cosign against a refusing mirror = nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "checkpoint refused") {
+		t.Errorf("Cosign error %q does not carry the mirror's response", err)
+	}
+
+	mismatched := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/add-checkpoint" {
+			return
+		}
+		w.Header().Set("Content-Type", "text/x.tlog.mirror-info")
+		w.WriteHeader(http.StatusConflict)
+		io.WriteString(w, "9000\n0\n\n")
+	}))
+	defer mismatched.Close()
+	m, err = NewMirrorClient(mismatched.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = m.Cosign(t.Context(), source.cp, source.signedNote)
+	if err == nil || !strings.Contains(err.Error(), "upload_end") {
+		t.Errorf("Cosign against a mismatched mirror = %s, want an upload_end error", err)
+	}
+
+	unreachable, err := NewMirrorClient("http://127.0.0.1:1", NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = unreachable.Cosign(t.Context(), source.cp, source.signedNote)
+	if err == nil {
+		t.Error("Cosign against an unreachable mirror = nil error, want error")
+	}
+
+	// A mirror whose cosignature does not verify against the configured key.
+	lying := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/add-checkpoint" {
+			return
+		}
+		w.Write(source.cosigLine)
+	}))
+	defer lying.Close()
+	m, err = NewMirrorClient(lying.URL, NewSource(source.fs3, testTilePrefix), mirrorID, testKey(t).PublicKey())
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = m.Cosign(t.Context(), source.cp, source.signedNote)
+	if err == nil || !strings.Contains(err.Error(), "verification") {
+		t.Errorf("Cosign with a mismatched key = %s, want a verification error", err)
 	}
 }
