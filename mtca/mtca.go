@@ -7,9 +7,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/mldsa"
-	"crypto/sha256"
 	"crypto/x509"
-	"database/sql"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
@@ -33,6 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
@@ -148,7 +147,7 @@ func getCAID(issuerCert *x509.Certificate) (string, error) {
 }
 
 func initDB(dbMap *borp.DbMap) *db.WrappedMap {
-	dbMap.AddTableWithName(checkpoint{}, "checkpoints").SetKeys(true, "ID")
+	dbMap.AddTableWithName(treedb.CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
 	return db.NewWrappedMap(dbMap)
 }
 
@@ -189,20 +188,20 @@ func (m *mtca) InitLog(ctx context.Context) error {
 				m.logID.String(), numCheckpoints, numLatestCheckpoints)
 		}
 
-		firstCheckpoint := checkpoint{
+		firstCheckpoint := &treedb.CheckpointModel{
 			MTCLogID: m.logID.String(),
 			TreeSize: candidate.TreeSize(),
 			RootHash: rootHash[:],
 		}
 
-		caSig, err := m.signCheckpoint(&firstCheckpoint)
+		caSig, err := m.signCheckpoint(firstCheckpoint)
 		if err != nil {
 			return nil, err
 		}
 
 		firstCheckpoint.MTCASignature = caSig
 
-		err = tx.Insert(ctx, &firstCheckpoint)
+		err = tx.Insert(ctx, firstCheckpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +233,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 	m.frontier = candidate
 
-	_, err = m.latestCheckpoint(ctx)
+	_, err = treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return fmt.Errorf("fetching first checkpoint: %s", err)
 	}
@@ -245,7 +244,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 // Preflight gets the latest checkpoint from the database and reads the corresponding
 // frontier tiles from storage. It must be called on startup, before Loop().
 func (m *mtca) Preflight(ctx context.Context) error {
-	latest, err := m.latestCheckpoint(ctx)
+	latest, err := treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return err
 	}
@@ -428,12 +427,12 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return nil
 	}
 
-	latest, err := m.latestCheckpoint(ctx)
+	latest, err := treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return err
 	}
 
-	if !latest.mirrored() {
+	if !latest.Mirrored() {
 		return fmt.Errorf("temporary: checkpoint ID %d (tree size %d): %w",
 			latest.ID, latest.TreeSize, ErrCheckpointNotReady)
 	}
@@ -483,7 +482,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("staging candidate tiles: %s", err)
 	}
 
-	newCheckpoint := checkpoint{
+	newCheckpoint := &treedb.CheckpointModel{
 		ID:              0,
 		MTCLogID:        m.logID.String(),
 		MTCASignature:   nil,
@@ -493,7 +492,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		RootHash:        newRootHash[:],
 	}
 
-	err = newCheckpoint.valid()
+	err = newCheckpoint.Valid()
 	if err != nil {
 		return fmt.Errorf("validating checkpoint: %s", err)
 	}
@@ -506,7 +505,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// the previous, signed, checkpoint, MTCA should try to re-sign the checkpoint and proceed from there.
 	//
 	// Note: Insert() updates the ID field of its parameter due to SetKeys(true, "ID")
-	err = m.db.Insert(ctx, &newCheckpoint)
+	err = m.db.Insert(ctx, newCheckpoint)
 	if err != nil {
 		return err
 	}
@@ -529,7 +528,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 		// Note that we're doing HSM work while holding a database lock. That's intentional; the database lock
 		// is to prevent the possibility of a concurrent signer on the same tree.
-		caSig, err := m.signCheckpoint(&newCheckpoint)
+		caSig, err := m.signCheckpoint(newCheckpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -591,81 +590,8 @@ func (m *mtca) sequence(ctx context.Context) error {
 	return nil
 }
 
-// checkpoint represents the database storage of a checkpoint and associated signatures.
-//
-// For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Message`.
-type checkpoint struct {
-	ID              int64   `db:"id"`
-	MTCLogID        string  `db:"mtcLogID"`
-	MTCASignature   []byte  `db:"mtcaSignature"`
-	MirrorID        *string `db:"mirrorID"`
-	MirrorSignature []byte  `db:"mirrorSignature"`
-	TreeSize        int64   `db:"treeSize"`
-	RootHash        []byte  `db:"rootHash"`
-}
-
-func (c *checkpoint) valid() error {
-	if len(c.MTCLogID) == 0 {
-		return errors.New("MTCLogID is empty")
-	}
-	if c.TreeSize == 0 {
-		return errors.New("TreeSize is 0")
-	}
-	if len(c.RootHash) == 0 {
-		return errors.New("RootHash is empty")
-	}
-	if len(c.RootHash) != sha256.Size {
-		return fmt.Errorf("RootHash is %d bytes", len(c.RootHash))
-	}
-
-	return nil
-}
-
-func (c *checkpoint) mirrored() bool {
-	return len(c.MTCASignature) > 0 && len(c.MirrorSignature) > 0
-}
-
-// String returns a string that is reasonable to print in logs, omitting the (large) signatures.
-func (c *checkpoint) String() string {
-	caSig := "empty"
-	if len(c.MTCASignature) > 0 {
-		caSig = "non-empty"
-	}
-	mirrorSig := "empty"
-	if len(c.MirrorSignature) > 0 {
-		mirrorSig = "non-empty"
-	}
-	var mirrorID string
-	if c.MirrorID != nil {
-		mirrorID = *c.MirrorID
-	}
-	return fmt.Sprintf("ID:%d MTCLogID:%s MTCASignature:%s MirrorID:%s MirrorSignature:%s TreeSize:%d RootHash:%x",
-		c.ID, c.MTCLogID, caSig, mirrorID, mirrorSig, c.TreeSize, c.RootHash)
-}
-
-func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
-	var latest checkpoint
-	err := m.db.SelectOne(ctx, &latest,
-		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash
-		 FROM latestCheckpoint JOIN checkpoints
-		 USING(id)
-		 WHERE latestCheckpoint.mtcLogID = ? AND
-		       checkpoints.mtcLogID = ?`,
-		m.logID.String(),
-		m.logID.String())
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("getting latest checkpoint for %q: issuance log DB is not initialized", m.logID.String())
-		}
-		return nil, fmt.Errorf("getting latest checkpoint for %q: %w", m.logID.String(), err)
-	}
-
-	return &latest, nil
-}
-
-func (m *mtca) signCheckpoint(c *checkpoint) ([]byte, error) {
-	err := c.valid()
+func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, error) {
+	err := c.Valid()
 	if err != nil {
 		return nil, fmt.Errorf("validating checkpoint: %s", err)
 	}
