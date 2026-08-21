@@ -81,7 +81,7 @@ func New(dbMap *db.WrappedMap, interval time.Duration, logID issuancelog.ID, mir
 	}, nil
 }
 
-type checkpointEntry struct {
+type checkpointRow struct {
 	ID              int64  `db:"id"`
 	MTCLogID        string `db:"mtcLogID"`
 	MTCASignature   []byte `db:"mtcaSignature"`
@@ -111,7 +111,7 @@ func (p *publisher) cosign(tree tlog.Tree) (string, error) {
 // cosignature and stores the raw signature in the database. Start calls it at
 // each interval.
 func (p *publisher) Publish(ctx context.Context) error {
-	var latest checkpointEntry
+	var latest checkpointRow
 	err := p.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
 		        mirrorSignature, treeSize, rootHash

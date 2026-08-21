@@ -150,16 +150,16 @@ func TestPool(t *testing.T) {
 func TestCheckpointValid(t *testing.T) {
 	type testCase struct {
 		name  string
-		value checkpoint
+		value checkpointRow
 	}
 
 	rootHash := [32]byte{}
 
 	testCases := []testCase{
-		{"no MTCLogID", checkpoint{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
-		{"no TreeSize", checkpoint{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
-		{"short RootHash", checkpoint{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
-		{"no RootHash", checkpoint{ID: 7, MTCLogID: "TestLog", TreeSize: 9}},
+		{"no MTCLogID", checkpointRow{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
+		{"no TreeSize", checkpointRow{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
+		{"short RootHash", checkpointRow{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
+		{"no RootHash", checkpointRow{ID: 7, MTCLogID: "TestLog", TreeSize: 9}},
 	}
 
 	for _, tc := range testCases {
@@ -171,7 +171,7 @@ func TestCheckpointValid(t *testing.T) {
 		})
 	}
 
-	goodCheckpoint := checkpoint{
+	goodCheckpoint := checkpointRow{
 		ID:       7,
 		MTCLogID: "TestLog",
 		TreeSize: 9,
@@ -293,7 +293,7 @@ func mirrorCosign(t *testing.T, m *mtca) {
 //   - m.frontier
 //   - m.latestCheckpoint()
 //   - fake tile storage
-func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *checkpoint {
+func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *checkpointRow {
 	t.Helper()
 	latest, err := m.latestCheckpoint(t.Context())
 	if err != nil {
@@ -536,7 +536,7 @@ func TestInitLog(t *testing.T) {
 	verifyCheckpoint(t, mtca, latest)
 }
 
-func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
+func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *checkpointRow) {
 	t.Helper()
 	message := cosigned.Message{
 		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID,

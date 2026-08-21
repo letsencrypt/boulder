@@ -147,7 +147,7 @@ func getCAID(issuerCert *x509.Certificate) (string, error) {
 }
 
 func initDB(dbMap *borp.DbMap) *db.WrappedMap {
-	dbMap.AddTableWithName(checkpoint{}, "checkpoints").SetKeys(true, "ID")
+	dbMap.AddTableWithName(checkpointRow{}, "checkpoints").SetKeys(true, "ID")
 	return db.NewWrappedMap(dbMap)
 }
 
@@ -188,7 +188,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 				m.logID.String(), numCheckpoints, numLatestCheckpoints)
 		}
 
-		firstCheckpoint := checkpoint{
+		firstCheckpoint := checkpointRow{
 			MTCLogID: m.logID.String(),
 			TreeSize: candidate.TreeSize(),
 			RootHash: rootHash[:],
@@ -482,7 +482,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("staging candidate tiles: %s", err)
 	}
 
-	newCheckpoint := checkpoint{
+	newCheckpoint := checkpointRow{
 		ID:              0,
 		MTCLogID:        m.logID.String(),
 		MTCASignature:   nil,
@@ -593,7 +593,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 // checkpoint represents the database storage of a checkpoint and associated signatures.
 //
 // For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Message`.
-type checkpoint struct {
+type checkpointRow struct {
 	ID              int64  `db:"id"`
 	MTCLogID        string `db:"mtcLogID"`
 	MTCASignature   []byte `db:"mtcaSignature"`
@@ -603,7 +603,7 @@ type checkpoint struct {
 	RootHash        []byte `db:"rootHash"`
 }
 
-func (c *checkpoint) valid() error {
+func (c *checkpointRow) valid() error {
 	if len(c.MTCLogID) == 0 {
 		return errors.New("MTCLogID is empty")
 	}
@@ -620,12 +620,12 @@ func (c *checkpoint) valid() error {
 	return nil
 }
 
-func (c *checkpoint) mirrored() bool {
+func (c *checkpointRow) mirrored() bool {
 	return len(c.MTCASignature) > 0 && len(c.MirrorSignature) > 0
 }
 
 // String returns a string that is reasonable to print in logs, omitting the (large) signatures.
-func (c *checkpoint) String() string {
+func (c *checkpointRow) String() string {
 	caSig := "empty"
 	if len(c.MTCASignature) > 0 {
 		caSig = "non-empty"
@@ -638,8 +638,8 @@ func (c *checkpoint) String() string {
 		c.ID, c.MTCLogID, caSig, c.MirrorID, mirrorSig, c.TreeSize, c.RootHash)
 }
 
-func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
-	var latest checkpoint
+func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpointRow, error) {
+	var latest checkpointRow
 	err := m.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
 		        mirrorSignature, treeSize, rootHash
@@ -659,7 +659,7 @@ func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 	return &latest, nil
 }
 
-func (m *mtca) signCheckpoint(c *checkpoint) ([]byte, error) {
+func (m *mtca) signCheckpoint(c *checkpointRow) ([]byte, error) {
 	err := c.valid()
 	if err != nil {
 		return nil, fmt.Errorf("validating checkpoint: %s", err)
