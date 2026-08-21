@@ -90,6 +90,10 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	}
 
 	fs3 := bs3test.New()
+	mirrorKey, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
@@ -97,6 +101,8 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		100*time.Millisecond,
 		dbMap,
 		fs3,
+		"32473.9",
+		mirrorKey.PublicKey(),
 		logger,
 		clk)
 	if err != nil {
@@ -478,6 +484,13 @@ func TestSequenceStorageFailure(t *testing.T) {
 	}
 	t.Cleanup(cleanup)
 	mirrorCosign(t, mtca)
+
+	// Serve the cosigned checkpoint while storage is healthy, so the failure
+	// below lands on staging.
+	err = mtca.sequence(t.Context())
+	if err != nil {
+		t.Fatalf("sequencing to serve the cosigned checkpoint: %s", err)
+	}
 
 	mtca.pool.maxSize = 2
 	results := issueMany(t, mtca, 2)

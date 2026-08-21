@@ -5,6 +5,10 @@
 			"logNumber": 44
 		},
 		"sequencingPeriod": "100ms",
+		"mirror": {
+			"id": "32473.9",
+			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem"
+		},
 		"db": {
 			"dbConnectFile": "test/secrets/mtca1_dburl"
 		},
