@@ -253,7 +253,7 @@ func (v *Verifier) Verify(noteText, signature []byte) bool {
 // and returns the timestamped_signature by verifier's cosigner. An error is
 // returned if noteText and signatureLine do not form a well-formed note or if
 // verifier rejects the signature. Signatures from unknown keys are ignored.
-func TimestampedSignature(noteText []byte, signatureLine string, verifier *Verifier) ([]byte, error) {
+func TimestampedSignature(noteText, signatureLine []byte, verifier *Verifier) ([]byte, error) {
 	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLine), note.VerifierList(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("opening the cosigned note: %s", err)
@@ -281,4 +281,20 @@ func RawSignature(timestampedSignature []byte) ([]byte, error) {
 		return nil, fmt.Errorf("timestamp is %d, want 0 for a cosignature used in certificates", timestamp)
 	}
 	return timestampedSignature[timestampSize:], nil
+}
+
+// SignatureLine verifies rawSignature over the checkpoint described by origin
+// and tree, and reassembles the cosigner's note signature line, restoring the
+// zero timestamp RawSignature stripped.
+func (v *Verifier) SignatureLine(origin string, tree tlog.Tree, rawSignature []byte) ([]byte, error) {
+	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
+		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
+	}
+	timestamped := make([]byte, timestampedSignatureSize)
+	copy(timestamped[timestampSize:], rawSignature)
+	err := v.VerifyCheckpoint(origin, tree, timestamped)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(signatureLineFor(v.name, v.keyID, timestamped)), nil
 }

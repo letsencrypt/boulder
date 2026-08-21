@@ -171,17 +171,15 @@ func TestPackages(t *testing.T) {
 
 func TestEntryPackage(t *testing.T) {
 	proof := []tlog.Hash{mustHash(t, "PlRNCrwHpqhGrupue0L7gxbjbMiKA9temvuZZDDpkaw=")}
-	body, err := EntryPackage([][]byte{[]byte("abc"), []byte("de")}, proof)
+	// EntryPackage carries the entries opaquely, so any bytes exercise it.
+	entries := []byte("wire form entries")
+
+	body, err := EntryPackage(entries, proof)
 	if err != nil {
 		t.Fatalf("EntryPackage: %s", err)
 	}
 	var expect cryptobyte.Builder
-	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte("abc"))
-	})
-	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte("de"))
-	})
+	expect.AddBytes(entries)
 	expect.AddUint8(1)
 	expect.AddBytes(proof[0][:])
 	if !bytes.Equal(body, expect.BytesOrPanic()) {
@@ -192,11 +190,7 @@ func TestEntryPackage(t *testing.T) {
 	if err == nil {
 		t.Error("EntryPackage with no entries = nil error, want error")
 	}
-	_, err = EntryPackage([][]byte{make([]byte, 0x10000)}, proof)
-	if err == nil {
-		t.Error("EntryPackage with an oversize entry = nil error, want error")
-	}
-	_, err = EntryPackage([][]byte{[]byte("abc")}, make([]tlog.Hash, 64))
+	_, err = EntryPackage(entries, make([]tlog.Hash, 64))
 	if err == nil {
 		t.Error("EntryPackage with 64 proof hashes = nil error, want error")
 	}
