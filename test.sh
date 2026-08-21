@@ -96,8 +96,10 @@ function run_unit_tests() {
     # The ra and sa unittests conflict because they both mutate the database.
     # Exclude the ra from our first test run, then run on its own.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go_test $(go list ./... | grep -v 'boulder\/ra$')
+    # The same issue applies to the mtca and the mtpublisher.
+    go_test $(go list ./... | grep -vE 'boulder\/(ra|mtpublisher)$')
     go_test ./ra
+    go_test ./mtpublisher
   else
     go_test "${UNIT_PACKAGES[@]}"
   fi
