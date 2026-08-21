@@ -9,9 +9,18 @@
 			"caID": "44947.4.1",
 			"logNumber": 44
 		},
-		"mirrorID": "32473.9",
-		"mirrorKeyFile": "test/certs/sunlight/mirror.key.pem",
-		"mirrorPublicKeyFile": "test/certs/sunlight/mirror.pub.pem"
+		"mtcaPublicKeyFile": "test/certs/mtpki/mtca1.pub.pem",
+		"mirror": {
+			"id": "32473.9",
+			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem"
+		},
+		"mirrorBaseURL": "http://bsunlight:4700",
+		"s3": {
+			"s3endpoint": "http://boulder-minio:9000",
+			"s3bucket": "boulder-mtc-tiles",
+			"awsConfigFile": "test/config-next/mtca-s3-config.ini",
+			"awsCredsFile": "test/secrets/mtca-s3-creds.ini"
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

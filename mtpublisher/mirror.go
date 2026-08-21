@@ -1,0 +1,263 @@
+//go:build go1.27
+
+package mtpublisher
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/mldsa"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"golang.org/x/mod/sumdb/tlog"
+
+	"github.com/letsencrypt/boulder/trees/checkpoint"
+	"github.com/letsencrypt/boulder/trees/cosignature"
+	"github.com/letsencrypt/boulder/trees/mirror"
+)
+
+// maxMirrorResponseSize caps how much of a mirror's response body the client
+// reads. The largest expected body is a few ML-DSA-44 signature lines of under
+// 4KB each.
+const maxMirrorResponseSize = 64 << 10
+
+var _ Mirror = (*MirrorClient)(nil)
+
+// MirrorClient is a Mirror that uses the c2sp.org/tlog-mirror submission
+// protocol, submitting the checkpoint to add-checkpoint and uploading the log's
+// entries to add-entries until the mirror cosigns.
+type MirrorClient struct {
+	submissionPrefix string
+	client           *http.Client
+	src              *Source
+	mirrorID         string
+	verifier         *cosignature.Verifier
+
+	// oldSize is the tree size of the mirror's latest cosigned checkpoint, the
+	// old size of the next add-checkpoint request.
+	oldSize int64
+	// nextEntry is the next entry the mirror expects to receive.
+	nextEntry int64
+	// ticket is the opaque value from the mirror's last mirror-info response,
+	// to be sent back in the next add-entries request.
+	ticket []byte
+	// lastSigned is when Cosign last succeeded.
+	lastSigned time.Time
+}
+
+// NewMirrorClient returns a MirrorClient that submits to the mirror's endpoints
+// under baseURL.
+func NewMirrorClient(baseURL string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey) (*MirrorClient, error) {
+	if baseURL == "" {
+		return nil, errors.New("empty mirror base URL")
+	}
+	verifier, err := cosignature.NewVerifier(mirrorID, mirrorPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating mirror verifier: %s", err)
+	}
+	return &MirrorClient{
+		submissionPrefix: baseURL,
+		client:           &http.Client{Timeout: 30 * time.Second},
+		src:              src,
+		mirrorID:         mirrorID,
+		verifier:         verifier,
+	}, nil
+}
+
+// ID returns the mirror's cosigner ID.
+func (m *MirrorClient) ID() string {
+	return m.mirrorID
+}
+
+// post sends body to the endpoint at path and returns the response status and
+// body. If compress is true, the body is gzip compressed.
+func (m *MirrorClient) post(ctx context.Context, path, contentType string, compress bool, body []byte) (int, []byte, error) {
+	if compress {
+		var compressed bytes.Buffer
+		zw := gzip.NewWriter(&compressed)
+		_, err := zw.Write(body)
+		if err != nil {
+			return 0, nil, err
+		}
+		err = zw.Close()
+		if err != nil {
+			return 0, nil, err
+		}
+		body = compressed.Bytes()
+	}
+	endpoint, err := url.JoinPath(m.submissionPrefix, path)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	if compress {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(http.MaxBytesReader(nil, resp.Body, maxMirrorResponseSize))
+	if err != nil {
+		return 0, nil, fmt.Errorf("reading mirror response: %s", err)
+	}
+	return resp.StatusCode, respBody, nil
+}
+
+// addCheckpoint submits the log's signed checkpoint note with a consistency
+// proof from the mirror's last known size, updating the mirror's pending
+// checkpoint. On a "409 Conflict" it adopts the size the mirror advertises and
+// retries once.
+func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
+	oldSize := m.oldSize
+	retried := false
+	for {
+		if oldSize > tree.N {
+			return fmt.Errorf("mirror already holds size %d, checkpoint size is %d", oldSize, tree.N)
+		}
+		var proof []tlog.Hash
+		if oldSize > 0 && oldSize < tree.N {
+			treeProof, err := m.src.consistencyProof(ctx, tree, oldSize)
+			if err != nil {
+				return fmt.Errorf("proving consistency from size %d: %s", oldSize, err)
+			}
+			proof = treeProof
+		}
+		body, err := mirror.AddCheckpointRequest(oldSize, proof, signedNote)
+		if err != nil {
+			return err
+		}
+		status, respBody, err := m.post(ctx, "/add-checkpoint", "", false, body)
+		if err != nil {
+			return err
+		}
+		switch status {
+		case http.StatusOK:
+			m.oldSize = tree.N
+			return nil
+		case http.StatusConflict:
+			if retried {
+				return errors.New("mirror rejected the old size twice")
+			}
+			retried = true
+			oldSize, err = mirror.ParseSizeResponse(respBody)
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("mirror returned status %d: %s", status, strings.TrimSpace(string(respBody)))
+		}
+	}
+}
+
+// maxAddEntriesRequests bounds one Cosign call's add-entries requests, each of
+// up to MaxPackagesPerRequest entry packages, so an upload terminates against a
+// mirror that never makes progress.
+const maxAddEntriesRequests = 100
+
+// addEntries uploads the entries the mirror is missing, up to the tree size,
+// and returns the cosignature lines from the mirror's "200 Success" response.
+// On "202 Accepted" and "409 Conflict" it resumes from the next entry and
+// ticket the mirror advertises.
+func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.Tree) ([]byte, error) {
+	start := min(m.nextEntry, tree.N)
+	ticket := m.ticket
+	for range maxAddEntriesRequests {
+		packages, err := mirror.Packages(start, tree.N, mirror.MaxPackagesPerRequest)
+		if err != nil {
+			return nil, err
+		}
+		var bodies [][]byte
+		for _, p := range packages {
+			body, err := m.src.entryPackage(ctx, tree, p)
+			if err != nil {
+				return nil, err
+			}
+			bodies = append(bodies, body)
+		}
+		reqBody, err := mirror.AddEntriesRequest(origin, start, tree.N, ticket, bodies)
+		if err != nil {
+			return nil, err
+		}
+		status, respBody, err := m.post(ctx, "/add-entries", "application/octet-stream", true, reqBody)
+		if err != nil {
+			return nil, err
+		}
+		switch status {
+		case http.StatusOK:
+			m.nextEntry = tree.N
+			m.ticket = nil
+			return respBody, nil
+
+		case http.StatusAccepted, http.StatusConflict:
+			info, err := mirror.ParseMirrorInfo(respBody)
+			if err != nil {
+				return nil, err
+			}
+			if info.TreeSize != tree.N {
+				return nil, fmt.Errorf("mirror wants upload_end %d, checkpoint size is %d", info.TreeSize, tree.N)
+			}
+			start = info.NextEntry
+			ticket = info.Ticket
+			m.nextEntry = info.NextEntry
+			m.ticket = bytes.Clone(info.Ticket)
+
+		default:
+			return nil, fmt.Errorf("mirror returned status %d: %s", status, strings.TrimSpace(string(respBody)))
+		}
+	}
+	return nil, fmt.Errorf("upload incomplete after %d add-entries requests", maxAddEntriesRequests)
+}
+
+// Cosign runs the c2sp.org/tlog-mirror submission protocol for the checkpoint
+// and returns the mirror's raw cosignature, verified against the mirror's key.
+func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) ([]byte, error) {
+	// Submit the checkpoint to the mirror.
+	err := m.addCheckpoint(ctx, cp.Tree, signedNoteForMirror)
+	if err != nil {
+		return nil, fmt.Errorf("add-checkpoint: %w", err)
+	}
+
+	// Upload the checkpoint's entries to the mirror until it cosigns.
+	mirrorCosignatureLines, err := m.addEntries(ctx, cp.Origin, cp.Tree)
+	if err != nil {
+		return nil, fmt.Errorf("add-entries: %w", err)
+	}
+
+	// Verify the mirror's cosignature.
+	noteText, err := cp.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
+	}
+	timestampedMirrorCosignature, err := cosignature.TimestampedSignature(noteText, mirrorCosignatureLines, m.verifier)
+	if err != nil {
+		return nil, fmt.Errorf("cosignature failed verification: %w", err)
+	}
+
+	// Finally, extract the raw cosignature we store in the database.
+	rawMirrorCosignature, err := cosignature.RawSignature(timestampedMirrorCosignature)
+	if err != nil {
+		return nil, fmt.Errorf("cosignature: %w", err)
+	}
+	m.lastSigned = time.Now()
+	return rawMirrorCosignature, nil
+}
+
+// LastSigned returns when Cosign last succeeded, zero before it has.
+func (m *MirrorClient) LastSigned() time.Time {
+	return m.lastSigned
+}

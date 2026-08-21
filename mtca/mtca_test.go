@@ -34,7 +34,9 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/mtpublisher"
+	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/privatekey"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
@@ -273,11 +275,23 @@ func (e *errorS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optF
 // in for the daemon, so sequencing can proceed.
 func mirrorCosign(t *testing.T, m *mtca) {
 	t.Helper()
+	caPub, ok := m.issuer.Signer.Public().(*mldsa.PublicKey)
+	if !ok {
+		t.Fatalf("issuer public key is %T, must be ML-DSA-44", m.issuer.Signer.Public())
+	}
 	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	p, err := mtpublisher.New(m.db, time.Second, m.logID, "32473.9", privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	mirror, err := mtpublishertest.NewTestMirror("32473.9", m.logID.Origin(), privatekey.NewDeterministicSigner(key))
+	if err != nil {
+		t.Fatalf("mtpublishertest.NewTestMirror: %s", err)
+	}
+	dbMap, err := sa.DBMapForTest(vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
+	if err != nil {
+		t.Fatalf("opening mtcmeta dbMap: %s", err)
+	}
+	p, err := mtpublisher.New(dbMap, time.Second, m.logID, caPub, mirror, blog.NewMock())
 	if err != nil {
 		t.Fatalf("mtpublisher.New: %s", err)
 	}

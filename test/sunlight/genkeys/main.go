@@ -169,20 +169,6 @@ func main2() error {
 		return err
 	}
 
-	mirrorPKCS8, err := x509.MarshalPKCS8PrivateKey(mirrorKey)
-	if err != nil {
-		return err
-	}
-	mirrorKeyFile, err := os.OpenFile(path.Join(*outputDir, "mirror.key.pem"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-	defer mirrorKeyFile.Close()
-	err = pem.Encode(mirrorKeyFile, &pem.Block{Type: "PRIVATE KEY", Bytes: mirrorPKCS8})
-	if err != nil {
-		return err
-	}
-
 	err = rootsFile(path.Join(*outputDir, "ctlog-roots.pem"))
 	if err != nil {
 		return err
