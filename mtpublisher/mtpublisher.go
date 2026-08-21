@@ -132,7 +132,7 @@ func (p *publisher) Publish(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("marshaling checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
-	timestampedMirrorCosig, err := cosignature.TimestampedSignature(text, cosigLine, p.verifier)
+	timestampedMirrorCosig, err := cosignature.TimestampedSignature(text, []byte(cosigLine), p.verifier)
 	if err != nil {
 		return fmt.Errorf("checkpoint %d cosignature failed verification before storage: %w", latest.ID, err)
 	}
