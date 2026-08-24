@@ -157,9 +157,7 @@ func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 func (m *mtca) InitLog(ctx context.Context) error {
 	candidate := &tiles.Frontier{}
 
-	nullEntry := &entry.MTCLogEntry{}
-	nullPubkey := &pubkey.MTCPublicKey{}
-	err := candidate.AppendEntry(nullEntry, nullPubkey)
+	err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 	if err != nil {
 		return err
 	}

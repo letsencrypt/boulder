@@ -2,43 +2,69 @@ package pubkey
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"io"
-	"math"
 	"testing"
+
+	"golang.org/x/crypto/cryptobyte"
 )
 
+// Broad scope var with pubkey Bytes for use in tests
 var testPubkeyBytes []byte
-var testPubkeySingletonSPKI crypto.PublicKey
 
-// testPubkey returns atest MYCPublicKey and sets some global variables to values we can use and re-use
+// testPubkeySingleton always returns the same MTCPublicKey, and sets the broad
+// scope var above for use in tests
 func testPubkeySingleton() *MTCPublicKey {
-	if testPubkeySingletonSPKI == nil {
-		generatedPubkey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
-		if err != nil {
-			panic(err)
-		}
-		testPubkeySingletonSPKI = &generatedPubkey.PublicKey
-
+	generatedPubkey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		panic(err)
 	}
+
 	if testPubkeyBytes == nil {
-		marshaledPubkeyBytes, err := x509.MarshalPKIXPublicKey(testPubkeySingletonSPKI)
+		marshaledPubkeyBytes, err := x509.MarshalPKIXPublicKey(&generatedPubkey.PublicKey)
 		if err != nil {
 			panic(err)
 		}
 		testPubkeyBytes = marshaledPubkeyBytes
 	}
-	testPubkey, err := FromCryptoPubkey(testPubkeySingletonSPKI)
+
+	testMTCPubkey, err := FromCryptoPubkey(&generatedPubkey.PublicKey)
 	if err != nil {
 		panic(err)
 	}
-	return testPubkey
+
+	return testMTCPubkey
+}
+
+// Broad scope var for a Pubkey Bundle singleton for use in tests
+var testBundleSingletonBody []byte
+var testBundleSingletonBytes []byte
+
+// testBundleSingleton always returns the same Pubkey Bundle Bytes, and sets the
+// broad scope var above to the same value for use in tests
+func testBundleSingleton() []byte {
+	if testBundleSingletonBytes == nil {
+		testMTCPK := testPubkeySingleton()
+
+		testBody, err := testMTCPK.Marshal()
+		if err != nil {
+			panic(err)
+		}
+		testBundleSingletonBody = testBody
+	}
+
+	var buf []byte
+	cbb := *cryptobyte.NewBuilder(buf)
+
+	cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(testBundleSingletonBody)
+	})
+	testBundleSingletonBytes := cbb.BytesOrPanic()
+
+	return testBundleSingletonBytes
 }
 
 func TestMarshalMTCPK(t *testing.T) {
@@ -54,7 +80,7 @@ func TestMarshalMTCPK(t *testing.T) {
 
 	nonEmptyNullPubkey := MTCPublicKey{
 		typ: typeNilPubkey,
-		pub: testPubkeySingletonSPKI,
+		pub: testPubkeyBytes,
 	}
 	_, err = nonEmptyNullPubkey.Marshal()
 	if err == nil {
@@ -75,7 +101,7 @@ func TestMarshalMTCPK(t *testing.T) {
 
 	validMTCPubkey := MTCPublicKey{
 		typ: typeMTCPubkey,
-		pub: testPubkeySingletonSPKI,
+		pub: testPubkeyBytes,
 	}
 	output, err = validMTCPubkey.Marshal()
 	if err != nil {
@@ -101,12 +127,12 @@ func TestUnmarshalMTCPK(t *testing.T) {
 	testCases := []testCase{
 		{"valid pubkey", append([]byte{0, 1}, testPubkeyBytes...), false, &MTCPublicKey{
 			typ: typeMTCPubkey,
-			pub: testPubkeySingletonSPKI,
+			pub: testPubkeyBytes,
 		}},
 		{"valid null pubkey", []byte{0, 0}, false, &MTCPublicKey{
 			typ: typeNilPubkey,
 		}},
-		{"too short", append([]byte{0, 1}, testPubkeyBytes[:testPubkeyBytesLength-3]...), true, nil},
+		{"too short", append([]byte{0, 1}, testPubkeyBytes[:testPubkeyBytesLength-6]...), true, nil},
 		{"way too short", []byte{1}, true, nil},
 		{"null pubkey with pubkey bytes", append([]byte{0, 0}, testPubkeyBytes...), true, nil},
 		{"invalid type", append([]byte{0, 3}, testPubkeyBytes...), true, nil},
@@ -139,21 +165,39 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 	testPubkey := testPubkeySingleton()
 
 	var buf []byte
-	bb := NewBundleBuilder(buf)
+	cbb := *cryptobyte.NewBuilder(buf)
 
-	bb.Add(&MTCPublicKey{})
-
-	for range 10 {
-		bb.Add(testPubkey)
+	// first marshal a null pubkey
+	nullMTCPk := &MTCPublicKey{}
+	nullPkBundle, err := nullMTCPk.Marshal()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	tile, err := bb.Bytes()
+	// and add the null MTCPubkey bytes to the bundle
+	cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(nullPkBundle)
+	})
+
+	// then add 10 copies of the test pubkey to the bundle
+	for range 10 {
+		testPkBundle, err := testPubkey.Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+			child.AddBytes(testPkBundle)
+		})
+	}
+
+	tile, err := cbb.Bytes()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	br := NewBundleReader(tile)
 
+	// read-back the null pubkey
 	mtcpk, raw, err := br.ReadPubkey()
 	if err != nil {
 		t.Fatal(err)
@@ -161,11 +205,7 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 	if mtcpk.typ != typeNilPubkey {
 		t.Errorf("mtcpk.typ: got %d, want %d", mtcpk.typ, typeNilPubkey)
 	}
-	pkBytes, err := x509.MarshalPKIXPublicKey(mtcpk.pub)
-	if err != nil && err.Error() != "x509: unsupported public key type: <nil>" {
-		t.Fatal(err)
-	}
-	if len(pkBytes) != 0 {
+	if len(mtcpk.pub) != 0 {
 		t.Errorf("mtcpk.pub: got %v, want nil", mtcpk.pub)
 	}
 	expected := []byte{0, 0}
@@ -173,6 +213,7 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 		t.Errorf("raw mtcpk: got %x, want %x", raw, expected)
 	}
 
+	// read-back the 10 test pubkeys
 	for range 10 {
 		mtcpk, raw, err := br.ReadPubkey()
 		if err != nil {
@@ -181,9 +222,8 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 		if mtcpk.typ != typeMTCPubkey {
 			t.Errorf("mtcpk.Type: got %d, want %d", mtcpk.typ, typeMTCPubkey)
 		}
-		pkBytes, _ := x509.MarshalPKIXPublicKey(mtcpk.pub)
 		wantValue := testPubkey.Pubkey()
-		if !bytes.Equal(pkBytes, wantValue) {
+		if !bytes.Equal(mtcpk.pub, wantValue) {
 			t.Errorf("mtcpk.Value: got %x, want %x", mtcpk.pub, wantValue)
 		}
 		wantMTCPKBytes := append([]byte{0, 1}, wantValue...)
@@ -206,19 +246,7 @@ func TestBundleReaderSuccess(t *testing.T) {
 		t.Errorf("empty reader: got %x, want empty bytes", pubkeyBytes)
 	}
 
-	// Build bytes of a valid pubkey bundle as input for Reader testing
-	testPubkeyBytesLength := len(testPubkeyBytes)
-	if testPubkeyBytesLength < 0 || testPubkeyBytesLength+2 > math.MaxUint16 {
-		t.Errorf("pubkey data length %d+2 is out of bounds for uint16 (0 - %d)", testPubkeyBytesLength, math.MaxUint16)
-	}
-	// - bundle length = pubkeyBytes length + pubkey type length (2)
-	testDataLengthInt := uint16(testPubkeyBytesLength + 2) // #nosec G115: bounds check performed above
-	testDataLength := make([]byte, 2)
-	binary.BigEndian.PutUint16(testDataLength, testDataLengthInt)
-	// - bundle type (01)
-	inputPreamble := append(testDataLength, []byte{0, 1}...)
-	// - singleton Test Pubkey Data (bytes)
-	input := append(inputPreamble, testPubkeyBytes...)
+	input := testBundleSingleton()
 
 	br = NewBundleReader(input)
 	_, _, err = br.ReadPubkey()
@@ -248,27 +276,30 @@ func TestBundleReaderSuccess(t *testing.T) {
 }
 
 func TestPubkeyBundleReaderMalformed(t *testing.T) {
+	testBundle := testBundleSingleton()
+
 	type testCase struct {
-		name, input string
+		name  string
+		input []byte
 	}
 
-	testCases := []testCase{ // TODO: INTERACT WITH TEST KEY?
-		{"short length", "09"},
-		{"short body", "0001"},
-		{"max length, short body", "FFFF"},
-		{"two records, short length on second", "0001FF09"},
-		{"two records, short body on second", "0001FF0001"},
+	// expecting that 0,33 is not zero, but shorter than any testPubkey
+	shortLengthBundle := append([]byte{0, 33, 0, 1}, testPubkeyBytes...)
+	// expecting that 33,255 is not MAX, but larger than any testPubkey
+	shortBodyBundle := append([]byte{33, 255, 0, 1}, testPubkeyBytes...)
+
+	testCases := []testCase{
+		{"short length", shortLengthBundle},
+		{"short body", shortBodyBundle},
+		{"max length, short body", append([]byte{255, 255, 0, 1}, testPubkeyBytes...)},
+		{"two records, short length on second", append(testBundle, shortLengthBundle...)},
+		{"two records, short body on second", append(testBundle, shortBodyBundle...)},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			in, err := hex.DecodeString(tc.input)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			br := NewBundleReader(in)
+			br := NewBundleReader(tc.input)
 			for {
-				_, _, err = br.ReadPubkey()
+				_, _, err := br.ReadPubkey()
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						t.Error("got nil error, want error")

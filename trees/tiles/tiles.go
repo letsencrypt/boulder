@@ -39,8 +39,11 @@ import (
 )
 
 // Tile Layer representation constants
-const entriesTileLayer int = -1
-const pubkeysTileLayer int = -2
+const entryTilesLayer int = -1
+const pubkeyTilesLayer int = -2
+
+// The lowest Tile Layer, for dirtyLevel tracking
+const lowestTilesLayer int = pubkeyTilesLayer
 
 // ErrTileExists is returned when trying to write a tile that already exists in storage.
 var ErrTileExists = errors.New("tile exists")
@@ -93,7 +96,8 @@ type Frontier struct {
 	// This level of hashes and all below it need writing to storage
 	// (including entries and pubkeys).
 	//
-	// The int representing the lowest level (-2) means nothing needs writing.
+	// Setting this to the int representing the lowest level (lowestTilesLayer)
+	// means nothing needs writing.
 	dirtyLevel int
 
 	// Tiles pushed off the frontier are stored here to be written. No particular order.
@@ -227,7 +231,7 @@ func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefi
 	}
 
 	entryCoords := tlog.Tile{
-		L: entriesTileLayer, // entries layer is represented as -1.
+		L: entryTilesLayer, // entries layer is represented as -1.
 		N: treeSize / 256,
 		W: int(treeSize % 256),
 	}
@@ -259,7 +263,7 @@ func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefi
 	}
 
 	pubkeyCoords := tlog.Tile{
-		L: pubkeysTileLayer, // pubkey layer is represented as -2.
+		L: pubkeyTilesLayer, // pubkey layer is represented as -2.
 		N: treeSize / 256,
 		W: int(treeSize % 256),
 	}
@@ -329,7 +333,7 @@ func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefi
 		entryTile:   entryTile,
 		pubkeyTile:  pubkeyTile,
 		treeSize:    treeSize,
-		dirtyLevel:  -2,
+		dirtyLevel:  lowestTilesLayer,
 	}, nil
 }
 
@@ -395,15 +399,15 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 	if f.entryTile == nil {
 		f.entryTile = &entryTile{
 			coords: tlog.Tile{
-				L: entriesTileLayer, // entries layer is represented as -1.
+				L: entryTilesLayer, // entries layer is represented as -1.
 			},
 		}
 		f.pubkeyTile = &pubkeyTile{
 			coords: tlog.Tile{
-				L: pubkeysTileLayer, // pubkeys layer is represented as -2.
+				L: pubkeyTilesLayer, // pubkeys layer is represented as -2.
 			},
 		}
-		f.dirtyLevel = -2
+		f.dirtyLevel = lowestTilesLayer // nothing is dirty on init
 	}
 
 	mtcleBytes, err := mtcle.Marshal()
@@ -446,7 +450,7 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 		// And set up a new, empty entry tile.
 		f.entryTile = &entryTile{
 			coords: tlog.Tile{
-				L: entriesTileLayer, // entries layer is represented as -1.
+				L: entryTilesLayer, // entries layer is represented as -1.
 				N: (f.treeSize + 1) / 256,
 				W: 0,
 			},
@@ -457,7 +461,7 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 		// And set up a new, empty pubkey tile.
 		f.pubkeyTile = &pubkeyTile{
 			coords: tlog.Tile{
-				L: pubkeysTileLayer, // pubkeys layer is represented as -2.
+				L: pubkeyTilesLayer, // pubkeys layer is represented as -2.
 				N: (f.treeSize + 1) / 256,
 				W: 0,
 			},
@@ -539,7 +543,7 @@ func (f *Frontier) Publish(ctx context.Context, s3c simpleS3, prefix string) err
 	f.fullHashesTiles = nil
 	f.fullEntryTiles = nil
 	f.fullPubkeyTiles = nil
-	f.dirtyLevel = -2
+	f.dirtyLevel = lowestTilesLayer // nothing is dirty after successful store()
 
 	return nil
 }
@@ -550,7 +554,7 @@ func (f *Frontier) store(ctx context.Context, s3c simpleS3, prefix string) error
 		return fmt.Errorf("an empty tree has nothing to write")
 	}
 
-	if f.dirtyLevel == -2 {
+	if f.dirtyLevel == lowestTilesLayer {
 		// Nothing's dirty!
 		return nil
 	}
@@ -676,9 +680,9 @@ func writeTile(
 func tilePath(coords tlog.Tile) string {
 	var out strings.Builder
 	switch coords.L {
-	case entriesTileLayer:
+	case entryTilesLayer:
 		out.WriteString("tile/entries/")
-	case pubkeysTileLayer:
+	case pubkeyTilesLayer:
 		out.WriteString("tile/pubkeys/")
 	default:
 		fmt.Fprintf(&out, "tile/%d/", coords.L)

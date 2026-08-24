@@ -3,6 +3,7 @@ package pubkey
 import (
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 
@@ -14,23 +15,25 @@ const typeMTCPubkey = 1
 
 type MTCPublicKey struct {
 	typ uint16
-	pub crypto.PublicKey // a SubjectPublicKeyInfo structure
+	pub []byte // a SubjectPublicKeyInfo structure
 }
 
 // FromCryptoPubkey feeds a crypto.PublicKey into position in an MTCPublicKey
-// struct, setting the struct "typ" to nil if the input public key is nil
+// struct, returning an error if the input public key is nil
 func FromCryptoPubkey(in crypto.PublicKey) (*MTCPublicKey, error) {
-	if in != nil {
-		return &MTCPublicKey{
-			typ: typeMTCPubkey,
-			pub: in,
-		}, nil
-	} else {
-		return &MTCPublicKey{
-			typ: typeNilPubkey,
-			pub: in,
-		}, nil
+	if in == nil {
+		return nil, errors.New("refusing to attempt x509.Marshal on nil public key input")
 	}
+
+	pkBytes, err := x509.MarshalPKIXPublicKey(in)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MTCPublicKey{
+		typ: typeMTCPubkey,
+		pub: pkBytes,
+	}, nil
 }
 
 // Pubkey returns the subjectPublicKeyInfo structure bytes of an MTCPublicKey if
@@ -40,11 +43,7 @@ func (mtcpk *MTCPublicKey) Pubkey() []byte {
 		return nil
 	}
 	if mtcpk.typ == typeMTCPubkey {
-		pkBytes, err := x509.MarshalPKIXPublicKey(mtcpk.pub)
-		if err != nil {
-			return nil
-		}
-		return pkBytes
+		return mtcpk.pub
 	}
 	return nil
 }
@@ -58,18 +57,12 @@ func (mtcpk *MTCPublicKey) Marshal() ([]byte, error) {
 	var builder cryptobyte.Builder
 	builder.AddUint16(mtcpk.typ)
 
-	pkBytes, err := x509.MarshalPKIXPublicKey(mtcpk.pub)
-	// MarshalPKIXPublicKey returns an error on nil pubkey, but we want to be able to have nil tiles
-	if err != nil && err.Error() != "x509: unsupported public key type: <nil>" {
-		return nil, err
-	}
-
 	switch mtcpk.typ {
 	case typeMTCPubkey:
 		// pkBytes is a crypto.x509 SubjectPublicKeyInfo structure
-		builder.AddBytes(pkBytes)
+		builder.AddBytes(mtcpk.pub)
 	case typeNilPubkey:
-		if len(pkBytes) != 0 {
+		if len(mtcpk.pub) != 0 {
 			return nil, fmt.Errorf("non-empty pubkey bytes for null MTCPubkey")
 		}
 		// Append nothing; the encoding of the null entry is Empty.
@@ -95,7 +88,7 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 	case typeMTCPubkey:
 	case typeNilPubkey:
 		if len(val) > 0 {
-			return nil, fmt.Errorf("null_pubkey with non-empty value")
+			return nil, fmt.Errorf("null pubkey with non-empty value")
 		}
 
 		return &MTCPublicKey{
@@ -106,46 +99,19 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 		return nil, fmt.Errorf("unknown MTCPubkey type %d", typ)
 	}
 
-	spki, err := x509.ParsePKIXPublicKey([]byte(val))
+	// mtcpk.pub just consists of the rest of the bytes, not int-prefixed
+	pub := []byte(val)
+
+	// validate bytes by parsing, but discard the result
+	_, err := x509.ParsePKIXPublicKey(pub)
 	if err != nil {
 		return nil, err
 	}
 
-	// mtcpk just consists of the rest of the bytes, not int-prefixed
 	return &MTCPublicKey{
 		typ: typ,
-		pub: spki,
+		pub: pub,
 	}, nil
-}
-
-// BundleBuilder appends a sequence of MTCPubkey to a buffer as a bundle.
-type BundleBuilder struct {
-	builder cryptobyte.Builder
-}
-
-// NewBundleBuilder returns a BundleBuilder that appends to the given buffer. Like
-// cryptobyte.Builder, the slice will be reallocated if its capacity is exceeded.
-// Use Bytes to get the final buffer.
-func NewBundleBuilder(buf []byte) *BundleBuilder {
-	return &BundleBuilder{*cryptobyte.NewBuilder(buf)}
-}
-
-// Bytes returns the bundle's bytes.
-func (b *BundleBuilder) Bytes() ([]byte, error) {
-	return b.builder.Bytes()
-}
-
-// Add appends a single MTCPubkey structure, with its length prefix, to the builder.
-func (b *BundleBuilder) Add(mtcpk *MTCPublicKey) {
-	out, err := mtcpk.Marshal()
-	if err != nil {
-		b.builder.SetError(err)
-		return
-	}
-
-	b.builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes(out)
-	})
 }
 
 // BundleReader reads records of MTCPubkey from the underlying buffer in the
