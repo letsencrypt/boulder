@@ -419,13 +419,12 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 	mtcleBuilder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes(mtcleBytes)
 	})
-
-	bundleBytes, err := mtcleBuilder.Bytes()
+	entryBytes, err := mtcleBuilder.Bytes()
 	if err != nil {
 		return err
 	}
 
-	f.entryTile.append(bundleBytes)
+	f.entryTile.append(entryBytes)
 
 	mtcpkBytes, err := mtcpk.Marshal()
 	if err != nil {
@@ -436,13 +435,12 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 	mtcpkBuilder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes(mtcpkBytes)
 	})
-
-	pkBundleBytes, err := mtcpkBuilder.Bytes()
+	pubkeyBytes, err := mtcpkBuilder.Bytes()
 	if err != nil {
 		return err
 	}
 
-	f.pubkeyTile.append(pkBundleBytes)
+	f.pubkeyTile.append(pubkeyBytes)
 
 	if f.entryTile.coords.W == 256 {
 		// Entry Tile is full. Queue it for writing.
