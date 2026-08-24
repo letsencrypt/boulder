@@ -99,10 +99,8 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 		return nil, fmt.Errorf("unknown MTCPubkey type %d", typ)
 	}
 
-	// mtcpk.pub just consists of the rest of the bytes, not int-prefixed
+	// The pubkey is just the rest of the bytes. We validate it by parsing it.
 	pub := []byte(val)
-
-	// validate bytes by parsing, but discard the result
 	_, err := x509.ParsePKIXPublicKey(pub)
 	if err != nil {
 		return nil, err
