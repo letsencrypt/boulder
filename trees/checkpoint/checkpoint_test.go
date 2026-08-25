@@ -205,6 +205,14 @@ func TestSignedNotes(t *testing.T) {
 		t.Errorf("SignedNoteForServing = %q", forServing)
 	}
 
+	forSignSubtree, err := cp.SignedNoteForSignSubtree(mirrorLine)
+	if err != nil {
+		t.Fatalf("SignedNoteForSignSubtree: %s", err)
+	}
+	if string(forSignSubtree) != string(text)+"\n"+string(mirrorLine) {
+		t.Errorf("SignedNoteForSignSubtree = %q", forSignSubtree)
+	}
+
 	_, err = cp.SignedNoteForMirror(nil)
 	if err == nil {
 		t.Error("SignedNoteForMirror without a line = nil error, want error")
@@ -216,6 +224,10 @@ func TestSignedNotes(t *testing.T) {
 	_, err = cp.SignedNoteForServing(caLine, nil)
 	if err == nil {
 		t.Error("SignedNoteForServing without the mirror line = nil error, want error")
+	}
+	_, err = cp.SignedNoteForSignSubtree(nil)
+	if err == nil {
+		t.Error("SignedNoteForSignSubtree without lines = nil error, want error")
 	}
 }
 
