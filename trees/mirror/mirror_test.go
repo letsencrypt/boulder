@@ -196,6 +196,42 @@ func TestEntryPackage(t *testing.T) {
 	}
 }
 
+func TestSignSubtreeRequest(t *testing.T) {
+	hash := mustHash(t, "CsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I=")
+	proof := []tlog.Hash{mustHash(t, "PlRNCrwHpqhGrupue0L7gxbjbMiKA9temvuZZDDpkaw=")}
+	note := []byte("example.com/log\n512\n" + hash.String() + "\n\n— example.com/log AAAA\n")
+
+	body, err := SignSubtreeRequest(256, 512, hash, proof, note)
+	if err != nil {
+		t.Fatalf("SignSubtreeRequest: %s", err)
+	}
+	expect := "subtree 256 512\n" + hash.String() + "\n" + proof[0].String() + "\n\n" + string(note)
+	if string(body) != expect {
+		t.Errorf("SignSubtreeRequest = %q, want %q", body, expect)
+	}
+
+	_, err = SignSubtreeRequest(-1, 512, hash, nil, note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with a negative start = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(512, 256, hash, nil, note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with end before start = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(512, 512, hash, nil, note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with an empty subtree = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(0, 512, hash, make([]tlog.Hash, 64), note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with 64 proof lines = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(0, 512, hash, nil, nil)
+	if err == nil {
+		t.Error("SignSubtreeRequest with an empty checkpoint = nil error, want error")
+	}
+}
+
 func TestAddEntriesRequest(t *testing.T) {
 	origin := "oid/1.3.6.1.4.1.44947.4.1.0.44"
 	pkg := []byte{0, 1, 'x', 0}

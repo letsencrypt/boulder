@@ -55,6 +55,33 @@ func AddCheckpointRequest(oldSize int64, proof []tlog.Hash, signedCheckpoint []b
 	return b.Bytes(), nil
 }
 
+// SignSubtreeRequest builds the sign-subtree request body per
+// c2sp.org/tlog-witness. The proof must be a Subtree Consistency Proof from the
+// subtree to the checkpoint, empty when the subtree is the whole tree.
+func SignSubtreeRequest(start, end int64, subtreeHash tlog.Hash, proof []tlog.Hash, signedCheckpoint []byte) ([]byte, error) {
+	if start < 0 {
+		return nil, fmt.Errorf("negative subtree start %d", start)
+	}
+	if end <= start {
+		return nil, fmt.Errorf("subtree end %d not after start %d", end, start)
+	}
+	if len(proof) > maxProofLines {
+		return nil, fmt.Errorf("consistency proof has %d lines, want at most %d", len(proof), maxProofLines)
+	}
+	if len(signedCheckpoint) == 0 {
+		return nil, errors.New("empty checkpoint")
+	}
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "subtree %d %d\n%s\n", start, end, subtreeHash)
+	for _, h := range proof {
+		b.WriteString(h.String())
+		b.WriteByte('\n')
+	}
+	b.WriteByte('\n')
+	b.Write(signedCheckpoint)
+	return b.Bytes(), nil
+}
+
 // parseDecimal parses an ASCII decimal string, accepting leading zeroes since
 // the specs require canonical decimals only in request bodies.
 func parseDecimal(s string) (int64, error) {
