@@ -157,11 +157,13 @@ services:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     volumes:
       - ./test/minio:/boulder/test/minio/
+      - mtc-data:/data
     entrypoint:
       - /boulder/test/minio/entrypoint.sh
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_DOMAIN: boulder-minio
     healthcheck:
       test: [ "CMD", "curl", "-fs", "-o", "/dev/null",
         "http://localhost:9000/boulder-mtc-tiles/index.html" ]
@@ -174,6 +176,25 @@ services:
       bouldernet:
         aliases:
           - boulder-minio
+          - boulder-sunlight.boulder-minio
+
+  bsunlight:
+    image: letsencrypt/boulder-sunlight:${BOULDER_SUNLIGHT_TAG:-latest}
+    build:
+      context: test/sunlight/
+    depends_on:
+      bminio:
+        condition: service_healthy
+    volumes:
+      - .:/boulder:cached
+      - mtc-data:/sunlight-data
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+    networks:
+      bouldernet:
+        aliases:
+          - bsunlight
 
   bvitess:
     # The `letsencrypt/boulder-vtcomboserver:latest` tag is automatically built
@@ -209,6 +230,7 @@ services:
           - boulder-vitess
 
 volumes:
+  mtc-data:
   # Shared between bpkimetal (which listens on a unix socket here) and any
   # boulder container that needs to reach pkimetal. Owned by uid 1001 so
   # the default pkimetal user in the container can create the socket.
