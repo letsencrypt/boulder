@@ -416,6 +416,10 @@ type caaParameter struct {
 // tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
 var caaParameterTagRegexp = regexp.MustCompile(`^[[:alnum:]](-*[[:alnum:]])*$`)
 
+// ASCII without whitespace/semi-colons.
+// value = *(%x21-3A / %x3C-7E)
+var caaParameterValueRegexp = regexp.MustCompile(`^[\x21-\x3a\x3c-\x7e]*$`)
+
 // parseCAARecord extracts the domain and parameters (if any) from a
 // issue/issuewild CAA record. This follows RFC 8659 Section 4.2 and Section 4.3
 // (https://www.rfc-editor.org/rfc/rfc8659.html#section-4). It returns the
@@ -459,13 +463,8 @@ func parseCAARecord(caa *dns.CAA) (string, []caaParameter, error) {
 		}
 
 		value := strings.TrimFunc(tv[1], isWSP)
-		//lint:ignore S1029,SA6003 we iterate over runes because the RFC specifies ascii codepoints.
-		for _, r := range []rune(value) {
-			// ASCII without whitespace/semi-colons.
-			// value = *(%x21-3A / %x3C-7E)
-			if r < 0x21 || (r > 0x3a && r < 0x3c) || r > 0x7e {
-				return "", nil, fmt.Errorf("value contains disallowed character: %q", value)
-			}
+		if !caaParameterValueRegexp.MatchString(value) {
+			return "", nil, fmt.Errorf("value contains disallowed character: %q", value)
 		}
 
 		caaParameters = append(caaParameters, caaParameter{
