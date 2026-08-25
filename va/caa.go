@@ -412,6 +412,10 @@ type caaParameter struct {
 	val string
 }
 
+// ASCII alpha, digits, and hyphens in the middle.
+// tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+var caaParameterTagRegexp = regexp.MustCompile(`^[[:alnum:]](-*[[:alnum:]])*$`)
+
 // parseCAARecord extracts the domain and parameters (if any) from a
 // issue/issuewild CAA record. This follows RFC 8659 Section 4.2 and Section 4.3
 // (https://www.rfc-editor.org/rfc/rfc8659.html#section-4). It returns the
@@ -450,13 +454,8 @@ func parseCAARecord(caa *dns.CAA) (string, []caaParameter, error) {
 		}
 
 		tag := strings.TrimFunc(tv[0], isWSP)
-		//lint:ignore S1029,SA6003 we iterate over runes because the RFC specifies ascii codepoints.
-		for _, r := range []rune(tag) {
-			// ASCII alpha/digits.
-			// tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
-			if r < 0x30 || (r > 0x39 && r < 0x41) || (r > 0x5a && r < 0x61) || r > 0x7a {
-				return "", nil, fmt.Errorf("tag contains disallowed character: %q", tag)
-			}
+		if !caaParameterTagRegexp.MatchString(tag) {
+			return "", nil, fmt.Errorf("tag contains disallowed character: %q", tag)
 		}
 
 		value := strings.TrimFunc(tv[1], isWSP)
