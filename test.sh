@@ -97,9 +97,8 @@ function run_unit_tests() {
     # Exclude the ra from our first test run, then run on its own.
     # https://github.com/letsencrypt/boulder/issues/1499
     # Same issue applies to the mtca and the mtpublisher.
-    go_test $(go list ./... | grep -v 'boulder\/\(ra|mtpublisher\)$')
+    go_test $(go list ./... | grep -v 'boulder/ra$')
     go_test ./ra
-    go_test ./mtpublisher
   else
     go_test "${UNIT_PACKAGES[@]}"
   fi
