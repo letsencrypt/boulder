@@ -161,9 +161,6 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 		t.Fatalf("TLSSNI didn't timeout after %s (took %s to return %#v)", timeout,
 			took, err)
 	}
-	if err == nil {
-		t.Fatalf("Connection should've timed out")
-	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 
@@ -209,9 +206,6 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 	}
 	if took > 2*timeout {
 		t.Fatalf("TLSSNI didn't timeout after %s", timeout)
-	}
-	if err == nil {
-		t.Fatalf("Connection should've timed out")
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)

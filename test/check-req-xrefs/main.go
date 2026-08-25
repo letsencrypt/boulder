@@ -43,7 +43,7 @@ var quoteLine = regexp.MustCompile(`^\s*// (.*)$`)
 
 // getDocument returns the lines of the document at the given URL.
 func getDocument(url string) ([]string, error) {
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) //nolint:gosec // G704: this is a local tool, okay to make requests based on inputs
 	if err != nil {
 		return nil, fmt.Errorf("fetching %s: %w", url, err)
 	}
@@ -71,7 +71,7 @@ func main() {
 	checked := 0
 	failed := 0
 	for _, path := range paths {
-		contents, err := os.ReadFile(path)
+		contents, err := os.ReadFile(path) //nolint:gosec // G703: this is a local tool, path traversal is okay.
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)

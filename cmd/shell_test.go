@@ -278,7 +278,7 @@ func TestFailExit(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestFailExit")
+	cmd := exec.Command(os.Args[0], "-test.run=TestFailExit") //nolint:gosec // os.Args is untrusted but we're okay with that in test code
 	cmd.Env = append(os.Environ(), "TIME_TO_DIE=1")
 	output, err := cmd.CombinedOutput()
 	test.AssertError(t, err, "running a failing program")
@@ -304,7 +304,7 @@ func TestPanicStackTrace(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace")
+	cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace") //nolint:gosec // os.Args is untrusted but we're okay with that in test code
 	cmd.Env = append(os.Environ(), "AT_THE_DISCO=1")
 	output, err := cmd.CombinedOutput()
 	test.AssertError(t, err, "running a failing program")

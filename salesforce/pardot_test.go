@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
 func defaultTokenHandler(w http.ResponseWriter, r *http.Request) {
+	//nolint:gosec // G117: The "AccessToken" field is not a real access token
 	err := json.NewEncoder(w).Encode(oauthTokenResp{
 		AccessToken: "dummy",
 		ExpiresIn:   3600,
@@ -113,6 +115,7 @@ func TestSendContactTokenExpiry(t *testing.T) {
 			token = "old_token"
 			tokenRetrieved = true
 		}
+		//nolint:gosec // G117: The "AccessToken" field is not a real access token
 		err := json.NewEncoder(w).Encode(oauthTokenResp{
 			AccessToken: token,
 			ExpiresIn:   3600,

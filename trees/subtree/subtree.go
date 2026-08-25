@@ -278,7 +278,7 @@ func MTH(leaves []tlog.Hash) tlog.Hash {
 		return leaves[0]
 	default:
 		// RFC 6962: split at the largest power of two smaller than n.
-		k := 1 << (bits.Len(uint(len(leaves)-1)) - 1) //nolint:gosec // G115: the default case means len(leaves) >= 2, so len(leaves)-1 is positive.
+		k := 1 << (bits.Len(uint(len(leaves)-1)) - 1)
 		return tlog.NodeHash(MTH(leaves[:k]), MTH(leaves[k:]))
 	}
 }

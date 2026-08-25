@@ -383,7 +383,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(status)
-	_, err = response.Write(jsonReply)
+	_, err = response.Write(jsonReply) //nolint:gosec // G705: XSS via taint analysis - not an issue because of Content-Type: application/json
 	if err != nil {
 		// Don't worry about returning this error because the caller will
 		// never handle it.

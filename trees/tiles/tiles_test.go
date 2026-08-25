@@ -476,7 +476,7 @@ func TestClone(t *testing.T) {
 	// Append more than one full tile's worth of entries, to exercise
 	// fullHashesTiles and fullEntryTiles.
 	frontier := &Frontier{}
-	for i := 0; i < 260; i++ {
+	for i := range 260 {
 		err := frontier.AppendEntry(testEntry(i))
 		if err != nil {
 			t.Fatalf("AppendEntry(%d): %s", i, err)
@@ -534,5 +534,98 @@ func TestClone(t *testing.T) {
 	}
 	if !reflect.DeepEqual(fs3f.Objects, fs3c.Objects) {
 		t.Errorf("original and clone published different tiles")
+	}
+}
+
+const testPrefix = "44947.4.1/44"
+
+// publishedTree appends n null entries to an empty log in fs3 and publishes
+// it, returning the resulting tree.
+func publishedTree(t *testing.T, fs3 *bs3test.FakeS3, n int64) tlog.Tree {
+	t.Helper()
+	f := &Frontier{}
+	for range n {
+		err := f.AppendEntry(&entry.MTCLogEntry{})
+		if err != nil {
+			t.Fatalf("AppendEntry: %s", err)
+		}
+	}
+	err := f.Publish(t.Context(), fs3, testPrefix)
+	if err != nil {
+		t.Fatalf("Publish: %s", err)
+	}
+	return tlog.Tree{N: f.TreeSize(), Hash: f.RootHash()}
+}
+
+// TestTileReaderTreeHash checks that hashes read through TileReader
+// reconstruct the published root, for both partial and full rightmost tiles,
+// and after a log grows past tiles it published as partial.
+func TestTileReaderTreeHash(t *testing.T) {
+	for _, size := range []int64{1, 5, 256, 700} {
+		fs3 := bs3test.New()
+		tree := publishedTree(t, fs3, size)
+		hash, err := tlog.TreeHash(tree.N, tlog.TileHashReader(tree, NewTileReader(t.Context(), fs3, testPrefix)))
+		if err != nil {
+			t.Fatalf("TreeHash at size %d: %s", size, err)
+		}
+		if hash != tree.Hash {
+			t.Errorf("TreeHash at size %d = %v, want %v", size, hash, tree.Hash)
+		}
+	}
+
+	fs3 := bs3test.New()
+	f := &Frontier{}
+	appendEntries(t, f, fs3, 0, 300, testPrefix, 300)
+	appendEntries(t, f, fs3, 300, 700, testPrefix, 400)
+	tree := tlog.Tree{N: f.TreeSize(), Hash: f.RootHash()}
+	hash, err := tlog.TreeHash(tree.N, tlog.TileHashReader(tree, NewTileReader(t.Context(), fs3, testPrefix)))
+	if err != nil {
+		t.Fatalf("TreeHash after growth: %s", err)
+	}
+	if hash != tree.Hash {
+		t.Errorf("TreeHash after growth = %v, want %v", hash, tree.Hash)
+	}
+}
+
+// TestEntriesForPackage checks reading entry intervals back from stored
+// bundles in wire form, from both full and partial bundles, and that invalid
+// and bundle-spanning intervals are rejected.
+func TestEntriesForPackage(t *testing.T) {
+	fs3 := bs3test.New()
+	f := buildFrontier(t, fs3, 700, testPrefix, 700)
+	treeSize := f.TreeSize()
+
+	for _, tc := range []struct{ start, end int64 }{
+		{0, 256},
+		{0, 1},
+		{200, 256},
+		{512, 700},
+		{520, 600},
+		{699, 700},
+	} {
+		entries, err := EntriesForPackage(t.Context(), fs3, tc.start, tc.end, treeSize, testPrefix)
+		if err != nil {
+			t.Fatalf("EntriesForPackage(%d, %d): %s", tc.start, tc.end, err)
+		}
+		var expect []byte
+		for i := tc.start; i < tc.end; i++ {
+			expect = append(expect, bundledEntry(testEntryBody(int(i)))...)
+		}
+		if !bytes.Equal(entries, expect) {
+			t.Fatalf("EntriesForPackage(%d, %d) = %x, want %x", tc.start, tc.end, entries, expect)
+		}
+	}
+
+	for _, tc := range []struct{ start, end int64 }{
+		{-1, 5},
+		{5, 5},
+		{6, 5},
+		{699, 701},
+		{255, 257},
+	} {
+		_, err := EntriesForPackage(t.Context(), fs3, tc.start, tc.end, treeSize, testPrefix)
+		if err == nil {
+			t.Errorf("EntriesForPackage(%d, %d) = nil error, want error", tc.start, tc.end)
+		}
 	}
 }

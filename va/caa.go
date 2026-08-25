@@ -112,7 +112,6 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			opCAA,
 			prob,
 			nil,
-			//nolint:unparam // core.ValidationRecord is always nil because we don't return those for CAA.
 			func(ctx context.Context) ([]core.ValidationRecord, *corepb.ProblemDetails, error) {
 				result, err := va.experimentalVA.DoCAA(ctx, req)
 				if err != nil {

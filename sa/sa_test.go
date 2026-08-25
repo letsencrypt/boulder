@@ -2918,7 +2918,7 @@ func TestIncidentsForSerial(t *testing.T) {
 
 	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	defer test.ResetIncidentsTestDatabase(t)
+	t.Cleanup(test.ResetIncidentsTestDatabase(t))
 
 	weekAgo := sa.clk.Now().Add(-time.Hour * 24 * 7)
 
@@ -3033,7 +3033,7 @@ func TestSerialsForIncident(t *testing.T) {
 
 	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	defer test.ResetIncidentsTestDatabase(t)
+	t.Cleanup(test.ResetIncidentsTestDatabase(t))
 
 	// Request serials from a malformed incident table name.
 	mockServerStream := &fakeServerStream[sapb.IncidentSerial]{}
@@ -3900,7 +3900,7 @@ func TestUnpauseAccount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer test.ResetBoulderTestDatabase(t)
+			t.Cleanup(test.ResetBoulderTestDatabase(t))
 
 			// Setup table state.
 			for _, state := range tt.state {
@@ -4145,7 +4145,7 @@ func TestPauseIdentifiers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer test.ResetBoulderTestDatabase(t)
+			t.Cleanup(test.ResetBoulderTestDatabase(t))
 
 			// Setup table state.
 			for _, state := range tt.state {
@@ -4283,7 +4283,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer test.ResetBoulderTestDatabase(t)
+			t.Cleanup(test.ResetBoulderTestDatabase(t))
 
 			// Setup table state.
 			for _, state := range tt.state {
@@ -4389,7 +4389,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer test.ResetBoulderTestDatabase(t)
+			t.Cleanup(test.ResetBoulderTestDatabase(t))
 
 			// Setup table state.
 			for _, state := range tt.state {
