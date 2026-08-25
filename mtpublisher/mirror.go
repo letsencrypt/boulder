@@ -223,8 +223,27 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 	return nil, fmt.Errorf("upload incomplete after %d add-entries requests", maxAddEntriesRequests)
 }
 
+// signSubtree requests the mirror's zero timestamp signature over the whole
+// tree from the c2sp.org/tlog-witness sign-subtree endpoint, presenting the
+// checkpoint note carrying the cosignature lines add-entries returned.
+func (m *MirrorClient) signSubtree(ctx context.Context, tree tlog.Tree, signedNote []byte) ([]byte, error) {
+	body, err := mirror.SignSubtreeRequest(0, tree.N, tree.Hash, nil, signedNote)
+	if err != nil {
+		return nil, err
+	}
+	status, respBody, err := m.post(ctx, "/sign-subtree", "", false, body)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("mirror returned status %d: %s", status, strings.TrimSpace(string(respBody)))
+	}
+	return respBody, nil
+}
+
 // Cosign runs the c2sp.org/tlog-mirror submission protocol for the checkpoint
-// and returns the mirror's raw cosignature, verified against the mirror's key.
+// and returns the mirror's raw signature over the whole tree from sign-subtree,
+// verified against the mirror's key.
 func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) ([]byte, error) {
 	// Submit the checkpoint to the mirror.
 	err := m.addCheckpoint(ctx, cp.Tree, signedNoteForMirror)
@@ -238,12 +257,22 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 		return nil, fmt.Errorf("add-entries: %w", err)
 	}
 
-	// Verify the mirror's cosignature.
+	// Exchange the mirror's cosignature for its subtree signature.
+	noteForSignSubtree, err := cp.SignedNoteForSignSubtree(mirrorCosignatureLines)
+	if err != nil {
+		return nil, fmt.Errorf("assembling the sign-subtree note: %w", err)
+	}
+	subtreeCosignatureLines, err := m.signSubtree(ctx, cp.Tree, noteForSignSubtree)
+	if err != nil {
+		return nil, fmt.Errorf("sign-subtree: %w", err)
+	}
+
+	// Verify the mirror's signature.
 	noteText, err := cp.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
 	}
-	timestampedMirrorCosignature, err := cosignature.TimestampedSignature(noteText, mirrorCosignatureLines, m.verifier)
+	timestampedMirrorCosignature, err := cosignature.TimestampedSignature(noteText, subtreeCosignatureLines, m.verifier)
 	if err != nil {
 		return nil, fmt.Errorf("cosignature failed verification: %w", err)
 	}
