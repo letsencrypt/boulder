@@ -131,6 +131,15 @@ func (c *Checkpoint) SignedNoteForMirror(caCosignatureLine []byte) ([]byte, erro
 	return c.signedNote(caCosignatureLine)
 }
 
+// SignedNoteForSignSubtree returns the checkpoint as a signed note carrying the
+// cosignature lines the mirror returned from add-entries.
+func (c *Checkpoint) SignedNoteForSignSubtree(mirrorCosignatureLines []byte) ([]byte, error) {
+	if len(mirrorCosignatureLines) == 0 {
+		return nil, errors.New("missing mirror cosignature lines")
+	}
+	return c.signedNote(mirrorCosignatureLines)
+}
+
 // SignedNoteForServing returns the checkpoint as a signed note carrying the
 // MTCA and mirror cosignature lines, for serving at the checkpoint path.
 func (c *Checkpoint) SignedNoteForServing(caCosignatureLine, mirrorCosignatureLine []byte) ([]byte, error) {
