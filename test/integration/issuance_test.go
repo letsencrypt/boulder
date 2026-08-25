@@ -6,10 +6,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -205,6 +209,54 @@ func TestIssuanceMTC(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "finalized order timeout") {
 		t.Fatalf("issuing certificate: expected 'finalized order timeout', got %q", err)
 	}
+
+	// The mtpublisher submits each checkpoint to the sunlight mirror, and the
+	// mtca serves it once cosigned, so the served checkpoint and the mirror's
+	// checkpoint must converge on the same tree head. They update a sequencing
+	// period apart, so poll until they agree.
+	localURL := "http://boulder-minio:9000/boulder-mtc-tiles/44947.4.1/44/checkpoint"
+	originHash := sha256.Sum256([]byte("oid/1.3.6.1.4.1.44947.4.1.0.44"))
+	mirrorURL := "http://boulder-minio:9000/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		local := checkpointText(t, localURL)
+		mirror := checkpointText(t, mirrorURL)
+		if local != "" && local == mirror {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("served checkpoint %q and mirror checkpoint %q have not converged", local, mirror)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// checkpointText fetches a signed checkpoint note from url and returns its
+// text, the part before the signature lines. It returns "" while the checkpoint
+// does not exist yet.
+func checkpointText(t *testing.T, url string) string {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("fetching %s: %s", url, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading %s: %s", url, err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fetching %s: status %d", url, resp.StatusCode)
+	}
+	text, _, ok := strings.Cut(string(body), "\n\n")
+	if !ok {
+		t.Fatalf("checkpoint at %s has no signature lines: %q", url, body)
+	}
+	return text
 }
 
 // TestIPShortLived verifies that we will allow IP address identifiers only in
