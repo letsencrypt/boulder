@@ -30,7 +30,7 @@ func (m monitor) start(ctx context.Context, logger blog.Logger) {
 
 	for {
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), m.period/2)
+			ctx, cancel := context.WithTimeout(ctx, m.period/2)
 			defer cancel()
 
 			// Attempt to probe the configured target.

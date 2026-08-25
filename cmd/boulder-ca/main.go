@@ -53,19 +53,13 @@ type Config struct {
 			Issuers    []issuance.IssuerConfig   `validate:"min=1,dive"`
 		}
 
-		// What digits we should prepend to serials after randomly generating them.
-		// Deprecated: Use SerialPrefixHex instead.
-		SerialPrefix int `validate:"required_without=SerialPrefixHex,omitempty,min=1,max=127"`
-
 		// SerialPrefixHex is the hex string to prepend to serials after randomly
 		// generating them. The minimum value is "01" to ensure that at least
 		// one bit in the prefix byte is set. The maximum value is "7f" to
 		// ensure that the first bit in the prefix byte is not set. The validate
 		// library cannot enforce mix/max values on strings, so that is done in
 		// NewCertificateAuthorityImpl.
-		//
-		// TODO(#7213): Replace `required_without` with `required` when SerialPrefix is removed.
-		SerialPrefixHex string `validate:"required_without=SerialPrefix,omitempty,hexadecimal,len=2"`
+		SerialPrefixHex string `validate:"required,omitempty,hexadecimal,len=2"`
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
 		// The value supplied MUST be greater than 0 and no more than 100. These
@@ -134,12 +128,9 @@ func main() {
 		c.CA.DebugAddr = *debugAddr
 	}
 
-	serialPrefix := byte(c.CA.SerialPrefix)
-	if c.CA.SerialPrefixHex != "" {
-		parsedSerialPrefix, err := strconv.ParseUint(c.CA.SerialPrefixHex, 16, 8)
-		cmd.FailOnError(err, "Couldn't convert SerialPrefixHex to int")
-		serialPrefix = byte(parsedSerialPrefix)
-	}
+	parsedSerialPrefix, err := strconv.ParseUint(c.CA.SerialPrefixHex, 16, 8)
+	cmd.FailOnError(err, "Couldn't convert SerialPrefixHex to int")
+	serialPrefix := byte(parsedSerialPrefix)
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
 	defer oTelShutdown(context.Background())

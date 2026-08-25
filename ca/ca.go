@@ -481,7 +481,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() *big.Int {
 	// rand.Read is guaranteed since Go 1.24 not to return error (it crashes the program instead)
 	// https://tip.golang.org/doc/go1.24#cryptorandpkgcryptorand
 	// https://pkg.go.dev/crypto/rand@master#Read
-	rand.Read(serialBytes[1:]) //nolint:errcheck //rand.Read is infallible
+	rand.Read(serialBytes[1:])
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 

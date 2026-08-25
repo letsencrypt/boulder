@@ -1323,7 +1323,7 @@ func httpSrv(t *testing.T, token string, ipv6 bool) *httptest.Server {
 			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/%s", port, path500), http.StatusMovedPermanently)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
-			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently)
+			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently) //nolint:gosec // open redirect, but that's okay, this is a test
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectInvalidPort) {
 			t.Logf("HTTPSRV: Got a port redirect req\n")
 			// Port 8080 is not the VA's httpPort or httpsPort and should be rejected
