@@ -9,6 +9,7 @@ import (
 	"crypto/mldsa"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -473,12 +474,13 @@ func parseUploadHeader(t *testing.T, body []byte) (int64, []byte) {
 // answers the first add-checkpoint with "409 Conflict" at size 300 so the
 // client must prove consistency from there, then answers the first add-entries
 // with "202 Accepted" at entry 512 and a ticket the client must echo before the
-// "200 Success" carrying the cosignature line.
+// "200 Success" carrying the cosignature line, which the client presents at
+// sign-subtree for the subtree signature over the whole tree.
 func TestMirrorCosign(t *testing.T) {
 	source := newSourceLog(t)
 	line := string(source.cosigLine)
 
-	var addCheckpointCalls, addEntriesCalls int
+	var addCheckpointCalls, addEntriesCalls, signSubtreeCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := requestBody(t, r)
 		switch r.URL.Path {
@@ -528,6 +530,17 @@ func TestMirrorCosign(t *testing.T) {
 				}
 				io.WriteString(w, line)
 			}
+		case "/sign-subtree":
+			signSubtreeCalls++
+			header, note, ok := bytes.Cut(body, []byte("\n\n"))
+			expectHeader := fmt.Sprintf("subtree 0 %d\n%s", source.newer.N, source.newer.Hash)
+			if !ok || string(header) != expectHeader {
+				t.Errorf("sign-subtree header %q, want %q", header, expectHeader)
+			}
+			if !bytes.HasSuffix(note, source.cosigLine) {
+				t.Errorf("sign-subtree note %q does not end with the add-entries cosignature line", note)
+			}
+			io.WriteString(w, line)
 		default:
 			t.Errorf("unexpected request to %s", r.URL.Path)
 		}
@@ -545,8 +558,8 @@ func TestMirrorCosign(t *testing.T) {
 	if !bytes.Equal(got, source.rawCosig) {
 		t.Errorf("Cosign = %x, want the mirror's raw cosignature %x", got, source.rawCosig)
 	}
-	if addCheckpointCalls != 2 || addEntriesCalls != 2 {
-		t.Errorf("mirror saw %d add-checkpoint and %d add-entries calls, want 2 and 2", addCheckpointCalls, addEntriesCalls)
+	if addCheckpointCalls != 2 || addEntriesCalls != 2 || signSubtreeCalls != 1 {
+		t.Errorf("mirror saw %d add-checkpoint, %d add-entries, and %d sign-subtree calls, want 2, 2, and 1", addCheckpointCalls, addEntriesCalls, signSubtreeCalls)
 	}
 }
 
