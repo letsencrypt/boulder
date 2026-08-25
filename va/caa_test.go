@@ -1704,6 +1704,16 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 			expectErrSubstr: "tag contains disallowed character",
 		},
 		{
+			name:            "empty param tag is invalid",
+			value:           "letsencrypt.org; =c",
+			expectErrSubstr: "tag contains disallowed character",
+		},
+		{
+			name:            "empty param tag between valid params is invalid",
+			value:           "letsencrypt.org; a=b; =c",
+			expectErrSubstr: "tag contains disallowed character",
+		},
+		{
 			name:            "high codepoints in params are invalid",
 			value:           "letsencrypt.org; foo=a\u2615b",
 			expectErrSubstr: "value contains disallowed character",
