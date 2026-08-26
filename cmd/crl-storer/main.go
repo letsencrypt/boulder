@@ -15,11 +15,18 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 type Config struct {
 	CRLStorer struct {
 		cmd.ServiceConfig
+
+		// SAReadOnlyService is used to look up the expiry of entries dropped
+		// from a CRL. If omitted, dropped entries are not checked.
+		//
+		// TODO(#8983): Require this once saReadOnlyService is in production configs.
+		SAReadOnlyService *cmd.GRPCClientConfig `validate:"omitempty"`
 
 		// IssuerCerts is a list of paths to issuer certificates on disk. These will
 		// be used to validate the CRLs received by this service before uploading
@@ -89,7 +96,15 @@ func main() {
 	s3client, err := bs3.FromConfig(c.CRLStorer.Config, logger)
 	cmd.FailOnError(err, "Initializing S3 client")
 
-	csi, err := storer.New(issuers, s3client, c.CRLStorer.MaxCRLSize, scope, logger, clk)
+	// TODO(#8983): Remove this once saReadOnlyService is in production configs.
+	var sac sapb.StorageAuthorityReadOnlyClient
+	if c.CRLStorer.SAReadOnlyService != nil {
+		saConn, err := bgrpc.ClientSetup(c.CRLStorer.SAReadOnlyService, tlsConfig, scope, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+		sac = sapb.NewStorageAuthorityReadOnlyClient(saConn)
+	}
+
+	csi, err := storer.New(issuers, s3client, sac, c.CRLStorer.MaxCRLSize, scope, logger, clk)
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
 	start, err := bgrpc.NewServer(c.CRLStorer.GRPC, logger).Add(

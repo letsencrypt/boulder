@@ -24,10 +24,12 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl"
+	"github.com/letsencrypt/boulder/crl/checker"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -41,6 +43,7 @@ type simpleS3 interface {
 type crlStorer struct {
 	cspb.UnsafeCRLStorerServer
 	s3Client         simpleS3
+	sa               sapb.StorageAuthorityReadOnlyClient
 	issuers          map[issuance.NameID]*issuance.Certificate
 	maxCRLSize       int64
 	uploadCount      *prometheus.CounterVec
@@ -54,6 +57,7 @@ var _ cspb.CRLStorerServer = (*crlStorer)(nil)
 func New(
 	issuers []*issuance.Certificate,
 	s3Client simpleS3,
+	sa sapb.StorageAuthorityReadOnlyClient,
 	maxCRLSize int64,
 	stats prometheus.Registerer,
 	log blog.Logger,
@@ -78,6 +82,7 @@ func New(
 	return &crlStorer{
 		issuers:          issuersByNameID,
 		s3Client:         s3Client,
+		sa:               sa,
 		maxCRLSize:       maxCRLSize,
 		uploadCount:      uploadCount,
 		latencyHistogram: latencyHistogram,
@@ -88,6 +93,35 @@ func New(
 
 // TODO(#6261): Unify all error messages to identify the shard they're working
 // on as a JSON object including issuer, crl number, and shard number.
+
+// checkRemovedEntry returns an error unless serial's certificate expired before
+// prevThisUpdate, i.e. it has already appeared on a CRL issued beyond its
+// validity period.
+func (cs *crlStorer) checkRemovedEntry(ctx context.Context, serial *big.Int, prevThisUpdate, thisUpdate time.Time) error {
+	serialString := core.SerialToString(serial)
+	metadata, err := cs.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serialString})
+	if err != nil {
+		return fmt.Errorf("looking up serial %s, which is missing from this CRL: %w", serialString, err)
+	}
+
+	expires := metadata.Expires.AsTime()
+	if expires.Before(prevThisUpdate) {
+		return nil
+	}
+
+	if !expires.Before(thisUpdate) {
+		return fmt.Errorf("serial %s appeared on the previous CRL but is missing from this one, "+
+			"and expires at %s, %s after this CRL's thisUpdate: the revocation data is "+
+			"incomplete, possibly from a lagging database replica",
+			serialString, expires.Format(time.RFC3339),
+			expires.Sub(thisUpdate).Round(time.Second))
+	}
+	return fmt.Errorf("serial %s appeared on the previous CRL but is missing from this one, "+
+		"and expired at %s, after that CRL's thisUpdate %s: the crl-updater's lookbackPeriod "+
+		"must cover the gap since that CRL (currently %s, and growing until an upload succeeds)",
+		serialString, expires.Format(time.RFC3339), prevThisUpdate.Format(time.RFC3339),
+		cs.clk.Now().Sub(prevThisUpdate).Round(time.Second))
+}
 
 // UploadCRL implements the gRPC method of the same name. It takes a stream of
 // bytes as its input, parses and runs some sanity checks on the CRL, and then
@@ -215,6 +249,21 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		}
 		if !uriMatch {
 			return fmt.Errorf("IDP does not match previous: %v !∩ %v", idpURIs, prevURIs)
+		}
+
+		diff, err := checker.Diff(prevCRL, crl)
+		if err != nil {
+			return fmt.Errorf("diffing against previous CRL for %s: %w", crlId, err)
+		}
+
+		// TODO(#8983): Remove the nil check once saReadOnlyService is in production configs.
+		if cs.sa != nil {
+			for _, serial := range diff.Removed {
+				err = cs.checkRemovedEntry(stream.Context(), serial, prevCRL.ThisUpdate, crl.ThisUpdate)
+				if err != nil {
+					return fmt.Errorf("refusing to upload %s: %w", crlId, err)
+				}
+			}
 		}
 
 		// This ensures that the CRL object hasn't been replaced since we downloaded

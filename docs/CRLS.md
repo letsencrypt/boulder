@@ -31,6 +31,15 @@ selected shard baked into the certificate as part of its CRLDistributionPoints
 extension. The shard is selected based on taking the (random) low bytes of the
 serial number modulo the number of shards produced by that certificate's issuer.
 
+## Safety checks
+
+The crl-storer diffs each CRL against the previous one for the same shard. An
+entry may only disappear once it has appeared on a CRL issued after its
+certificate expired (RFC 5280, Section 3.3), so for each missing entry the
+storer looks up the certificate's expiry (`GetSerialMetadata`) and refuses the
+upload unless it precedes the previous CRL's `thisUpdate`. The storer also
+refuses CRLs whose number does not increase or whose IDP changes.
+
 ## Storage
 
 When a certificate is revoked, the new status is written to both the

@@ -20,15 +20,33 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
+
+// fakeSA is a fake sapb.StorageAuthorityReadOnlyClient whose GetSerialMetadata
+// returns the configured expiry for known serials, and NotFound otherwise.
+type fakeSA struct {
+	sapb.StorageAuthorityReadOnlyClient
+	expires map[string]time.Time
+}
+
+func (f *fakeSA) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	expires, ok := f.expires[req.Serial]
+	if !ok {
+		return nil, berrors.NotFoundError("serial %q not found", req.Serial)
+	}
+	return &sapb.SerialMetadata{Serial: req.Serial, Expires: timestamppb.New(expires)}, nil
+}
 
 type fakeUploadCRLServerStream struct {
 	grpc.ServerStream
@@ -71,6 +89,7 @@ func setupTestUploadCRL(t *testing.T) (*crlStorer, *issuance.Issuer) {
 	storer, err := New(
 		[]*issuance.Certificate{r3, issuerE1.Cert},
 		nil,
+		&fakeSA{},
 		core.DefaultMaxCRLRead,
 		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
 	)
@@ -505,6 +524,126 @@ func TestUploadCRLBackwardsNumber(t *testing.T) {
 	err = <-errs
 	test.AssertError(t, err, "uploading out-of-order numbers should fail")
 	test.AssertContains(t, err.Error(), "crlNumber not strictly increasing")
+}
+
+// uploadWithRemovedEntry runs UploadCRL for a CRL containing serial 123 whose
+// predecessor contained serials 123 and 456, and returns the resulting error.
+func uploadWithRemovedEntry(t *testing.T, storer *crlStorer, iss *issuance.Issuer) error {
+	t.Helper()
+	errs := make(chan error, 1)
+
+	idpExt, err := idp.MakeUserCertsExt([]string{"http://c.ex.org"})
+	test.AssertNotError(t, err, "creating test IDP extension")
+
+	ins := make(chan *cspb.UploadCRLRequest)
+	go func() {
+		errs <- storer.UploadCRL(&fakeUploadCRLServerStream{input: ins})
+	}()
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_Metadata{
+			Metadata: &cspb.CRLMetadata{
+				IssuerNameID: int64(iss.Cert.NameID()),
+				Number:       2,
+			},
+		},
+	}
+
+	prevCRLBytes, err := x509.CreateRevocationList(
+		rand.Reader,
+		&x509.RevocationList{
+			ThisUpdate: storer.clk.Now(),
+			NextUpdate: storer.clk.Now().Add(time.Hour),
+			Number:     big.NewInt(1),
+			RevokedCertificateEntries: []x509.RevocationListEntry{
+				{SerialNumber: big.NewInt(123), RevocationTime: storer.clk.Now().Add(-time.Hour)},
+				{SerialNumber: big.NewInt(456), RevocationTime: storer.clk.Now().Add(-time.Hour)},
+			},
+			ExtraExtensions: []pkix.Extension{idpExt},
+		},
+		iss.Cert.Certificate,
+		iss.Signer,
+	)
+	test.AssertNotError(t, err, "creating test CRL")
+
+	storer.clk.Sleep(time.Minute)
+
+	crlBytes, err := x509.CreateRevocationList(
+		rand.Reader,
+		&x509.RevocationList{
+			ThisUpdate: storer.clk.Now(),
+			NextUpdate: storer.clk.Now().Add(time.Hour),
+			Number:     big.NewInt(2),
+			RevokedCertificateEntries: []x509.RevocationListEntry{
+				{SerialNumber: big.NewInt(123), RevocationTime: storer.clk.Now().Add(-time.Hour)},
+			},
+			ExtraExtensions: []pkix.Extension{idpExt},
+		},
+		iss.Cert.Certificate,
+		iss.Signer,
+	)
+	test.AssertNotError(t, err, "creating test CRL")
+
+	storer.s3Client = &fakeSimpleS3{prevBytes: prevCRLBytes, expectBytes: crlBytes}
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_CrlChunk{
+			CrlChunk: crlBytes,
+		},
+	}
+	close(ins)
+	return <-errs
+}
+
+// Test that an entry may be dropped once its certificate has expired.
+func TestUploadCRLRemovedExpiredEntry(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	storer.sa = &fakeSA{expires: map[string]time.Time{
+		core.SerialToString(big.NewInt(456)): storer.clk.Now().Add(-25 * time.Hour),
+	}}
+	err := uploadWithRemovedEntry(t, storer, iss)
+	test.AssertNotError(t, err, "dropping an expired entry should work")
+}
+
+// Test that we get an error when an entry is dropped before its certificate
+// has expired.
+func TestUploadCRLRemovedUnexpiredEntry(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	storer.sa = &fakeSA{expires: map[string]time.Time{
+		core.SerialToString(big.NewInt(456)): storer.clk.Now().Add(24 * time.Hour),
+	}}
+	err := uploadWithRemovedEntry(t, storer, iss)
+	test.AssertError(t, err, "dropping an unexpired entry should fail")
+	test.AssertContains(t, err.Error(), "appeared on the previous CRL but is missing from this one")
+}
+
+// Test that we get an error when an entry is dropped for a certificate which
+// expired after the previous CRL was issued.
+func TestUploadCRLRemovedRecentlyExpiredEntry(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	storer.sa = &fakeSA{expires: map[string]time.Time{
+		core.SerialToString(big.NewInt(456)): storer.clk.Now().Add(30 * time.Second),
+	}}
+	err := uploadWithRemovedEntry(t, storer, iss)
+	test.AssertError(t, err, "dropping an entry which expired after the previous CRL should fail")
+	test.AssertContains(t, err.Error(), "lookbackPeriod must cover the gap since that CRL (currently 1m0s, and growing")
+}
+
+// Test that dropped entries are not checked when no SA is configured.
+//
+// TODO(#8983): Remove this once saReadOnlyService is in production configs.
+func TestUploadCRLRemovedEntryNoSA(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	storer.sa = nil
+	err := uploadWithRemovedEntry(t, storer, iss)
+	test.AssertNotError(t, err, "dropping an entry with no SA configured should work")
+}
+
+// Test that we get an error when the SA doesn't know a dropped entry's serial.
+func TestUploadCRLRemovedUnknownEntry(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	err := uploadWithRemovedEntry(t, storer, iss)
+	test.AssertError(t, err, "dropping an unknown entry should fail")
+	test.AssertContains(t, err.Error(), "looking up serial")
+	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
 // brokenSimpleS3 implements the simpleS3 interface. It returns errors for all

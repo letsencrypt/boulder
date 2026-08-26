@@ -192,9 +192,12 @@ func TestCRLPipeline(t *testing.T) {
 	resp.Body.Close()
 
 	// Finally update the database so that the certificate expired several CRL
-	// update cycles ago. The cert should now vanish from the CRL.
+	// update cycles ago. The cert should now vanish from the CRL. The serials
+	// table must agree, since the crl-storer checks it before allowing that.
 	_, err = db.Exec("UPDATE revokedCertificates SET notAfterHour = ? WHERE serial = ?", time.Now().Add(-48*time.Hour).Truncate(time.Hour).Format(time.DateTime), serial)
 	test.AssertNotError(t, err, "updating expiry to far past")
+	_, err = db.Exec("UPDATE serials SET expires = ? WHERE serial = ?", time.Now().Add(-49*time.Hour).Format(time.DateTime), serial)
+	test.AssertNotError(t, err, "updating serial expiry to far past")
 	runUpdater(t, configFile)
 	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
 	test.AssertNotError(t, err, "s3-test-srv GET /query failed")
