@@ -40,7 +40,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 				return
 			}
 
-			atTime := cu.clk.Now()
+			atTime := cu.thisUpdate()
 			err := cu.updateShardWithRetry(ctx, atTime, issuerNameID, shardIdx)
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can

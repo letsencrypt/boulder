@@ -790,6 +790,9 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCer
 
 	atTime := req.RevokedBefore.AsTime()
 
+	// Note: the filters in the query below must match those in
+	// GetLatestRevokedCertByShard.
+
 	clauses := `
 		WHERE issuerID = ?
 		AND shardIdx = ?

@@ -3,8 +3,10 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"time"
 
@@ -18,27 +20,30 @@ import (
 	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 type crlUpdater struct {
-	issuers        map[issuance.NameID]*issuance.Certificate
-	numShards      int
-	shardWidth     time.Duration
-	lookbackPeriod time.Duration
-	updatePeriod   time.Duration
-	updateTimeout  time.Duration
-	maxParallelism int
-	maxAttempts    int
+	issuers            map[issuance.NameID]*issuance.Certificate
+	numShards          int
+	shardWidth         time.Duration
+	lookbackPeriod     time.Duration
+	thisUpdateBackdate time.Duration
+	updatePeriod       time.Duration
+	updateTimeout      time.Duration
+	maxParallelism     int
+	maxAttempts        int
 
 	cacheControl  string
 	expiresMargin time.Duration
 
-	sa sapb.StorageAuthorityClient
-	ca capb.CRLGeneratorClient
-	cs cspb.CRLStorerClient
+	sa   sapb.StorageAuthorityClient
+	saro sapb.StorageAuthorityReadOnlyClient
+	ca   capb.CRLGeneratorClient
+	cs   cspb.CRLStorerClient
 
 	tickHistogram    *prometheus.HistogramVec
 	updatedCounter   *prometheus.CounterVec
@@ -54,6 +59,7 @@ func NewUpdater(
 	numShards int,
 	shardWidth time.Duration,
 	lookbackPeriod time.Duration,
+	thisUpdateBackdate time.Duration,
 	updatePeriod time.Duration,
 	updateTimeout time.Duration,
 	maxParallelism int,
@@ -61,6 +67,7 @@ func NewUpdater(
 	cacheControl string,
 	expiresMargin time.Duration,
 	sa sapb.StorageAuthorityClient,
+	saro sapb.StorageAuthorityReadOnlyClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
 	stats prometheus.Registerer,
@@ -84,8 +91,14 @@ func NewUpdater(
 		return nil, fmt.Errorf("update timeout must be less than period: %s !< %s", updateTimeout, updatePeriod)
 	}
 
-	if lookbackPeriod < 2*updatePeriod {
-		return nil, fmt.Errorf("lookbackPeriod must be at least 2x updatePeriod: %s !< 2 * %s", lookbackPeriod, updatePeriod)
+	if thisUpdateBackdate < 0 || thisUpdateBackdate >= updatePeriod {
+		return nil, fmt.Errorf("thisUpdateBackdate must be non-negative and less than updatePeriod: got %s, updatePeriod %s", thisUpdateBackdate, updatePeriod)
+	}
+
+	// Backdating thisUpdate eats into the lookback margin which ensures every
+	// revoked cert appears on a CRL issued after its expiry.
+	if lookbackPeriod < 2*updatePeriod+thisUpdateBackdate {
+		return nil, fmt.Errorf("lookbackPeriod must be at least 2x updatePeriod plus thisUpdateBackdate: %s !< 2 * %s + %s", lookbackPeriod, updatePeriod, thisUpdateBackdate)
 	}
 
 	if maxParallelism <= 0 {
@@ -122,6 +135,7 @@ func NewUpdater(
 		numShards,
 		shardWidth,
 		lookbackPeriod,
+		thisUpdateBackdate,
 		updatePeriod,
 		updateTimeout,
 		maxParallelism,
@@ -129,6 +143,7 @@ func NewUpdater(
 		cacheControl,
 		expiresMargin,
 		sa,
+		saro,
 		ca,
 		cs,
 		tickHistogram,
@@ -138,6 +153,41 @@ func NewUpdater(
 		log,
 		clk,
 	}, nil
+}
+
+// thisUpdate returns the backdated thisUpdate timestamp for a CRL generated
+// now. Backdating gives replicas time to catch up with the primary.
+func (cu *crlUpdater) thisUpdate() time.Time {
+	return cu.clk.Now().Add(-cu.thisUpdateBackdate)
+}
+
+// checkFreshness returns an error unless the entries read from a replica
+// include the primary's most recent revocation for the shard, or neither has
+// any. If the primary in unavailable an error is returned.
+func (cu *crlUpdater) checkFreshness(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest, entries []*proto.CRLEntry) error {
+	latest, err := cu.sa.GetLatestRevokedCertByShard(ctx, req)
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			if len(entries) > 0 {
+				return fmt.Errorf("primary database has no revocations for this shard but replica "+
+					"returned %d entries, which replication lag cannot explain; the read-write and "+
+					"read-only SAs are not seeing the same data", len(entries))
+			}
+			return nil
+		}
+		return fmt.Errorf("GetLatestRevokedCertByShard: %w", err)
+	}
+
+	found := slices.ContainsFunc(entries, func(entry *proto.CRLEntry) bool {
+		return entry.Serial == latest.Serial
+	})
+	if !found {
+		return fmt.Errorf("latest revocation (serial %s, revoked at %s, %s ago) missing from "+
+			"%d entries: database replica may be lagging",
+			latest.Serial, latest.RevokedAt.AsTime().Format(time.RFC3339),
+			cu.clk.Now().Sub(latest.RevokedAt.AsTime()).Round(time.Second), len(entries))
+	}
+	return nil
 }
 
 // updateShardWithRetry calls updateShard repeatedly (with exponential backoff
@@ -222,12 +272,19 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	// up in at least one CRL, even if they expire between revocation and CRL generation.
 	expiresAfter := cu.clk.Now().Add(-cu.lookbackPeriod)
 
-	saStream, err := cu.sa.GetRevokedCertsByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
+	req := &sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  int64(issuerNameID),
 		ShardIdx:      int64(shardIdx),
 		ExpiresAfter:  timestamppb.New(expiresAfter),
 		RevokedBefore: timestamppb.New(atTime),
-	})
+	}
+
+	// TODO(#8983): Remove saClient once saReadOnlyService is in production configs.
+	var saClient sapb.StorageAuthorityReadOnlyClient = cu.sa
+	if cu.saro != nil {
+		saClient = cu.saro
+	}
+	saStream, err := saClient.GetRevokedCertsByShard(ctx, req)
 	if err != nil {
 		return fmt.Errorf("GetRevokedCertsByShard: %w", err)
 	}
@@ -245,6 +302,14 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	}
 
 	cu.log.Infof("Queried SA for CRL shard: id=[%s] shardIdx=[%d] numEntries=[%d]", crlID, shardIdx, len(crlEntries))
+
+	// TODO(#8983): Remove the nil check once saReadOnlyService is in production configs.
+	if cu.saro != nil {
+		err = cu.checkFreshness(ctx, req, crlEntries)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
@@ -312,7 +377,8 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 				Number:       atTime.UnixNano(),
 				ShardIdx:     int64(shardIdx),
 				CacheControl: cu.cacheControl,
-				Expires:      timestamppb.New(atTime.Add(cu.updatePeriod).Add(cu.expiresMargin)),
+				// Expires is relative to the wall clock, not the backdated thisUpdate.
+				Expires: timestamppb.New(atTime.Add(cu.thisUpdateBackdate).Add(cu.updatePeriod).Add(cu.expiresMargin)),
 			},
 		},
 	})

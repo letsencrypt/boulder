@@ -27,7 +27,9 @@ type Config struct {
 		// TLS client certificate, private key, and trusted root bundle.
 		TLS cmd.TLSConfig
 
-		SAService           *cmd.GRPCClientConfig
+		SAService *cmd.GRPCClientConfig
+		// TODO(#8983): Require this once saReadOnlyService is in production configs.
+		SAReadOnlyService   *cmd.GRPCClientConfig `validate:"omitempty"`
 		CRLGeneratorService *cmd.GRPCClientConfig
 		CRLStorerService    *cmd.GRPCClientConfig
 
@@ -53,10 +55,19 @@ type Config struct {
 
 		// LookbackPeriod is how far back the updater should look for revoked expired
 		// certificates. We are required to include every revoked cert in at least
-		// one CRL, even if it is revoked seconds before it expires, so this must
-		// always be greater than the UpdatePeriod, and should be increased when
-		// recovering from an outage to ensure continuity of coverage.
+		// one CRL issued after it expires, even if it is revoked seconds before it
+		// expires, so this must always be at least twice the UpdatePeriod plus the
+		// ThisUpdateBackdate, and should be increased when recovering from an
+		// outage to ensure continuity of coverage.
 		LookbackPeriod config.Duration `validate:"-"`
+
+		// ThisUpdateBackdate is how far in the past each CRL's thisUpdate is
+		// set. Backdating by a few minutes keeps ordinary replication lag from
+		// tripping our staleness check. It must be less than the UpdatePeriod
+		// and the CA's crlProfile.maxBackdate. Increasing it delays each
+		// shard's next publication by up to the size of the increase. Defaults
+		// to 5 minutes when SAReadOnlyService is set, and zero otherwise.
+		ThisUpdateBackdate config.Duration `validate:"-"`
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
 		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7:
@@ -166,10 +177,23 @@ func main() {
 	if c.CRLUpdater.UpdateTimeout.Duration == 0 {
 		c.CRLUpdater.UpdateTimeout.Duration = 10 * time.Minute
 	}
+	// TODO(#8983): Make this unconditional on SAReadOnlyService once saReadOnlyService
+	// is in production configs.
+	if c.CRLUpdater.SAReadOnlyService != nil && c.CRLUpdater.ThisUpdateBackdate.Duration == 0 {
+		c.CRLUpdater.ThisUpdateBackdate.Duration = 5 * time.Minute
+	}
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
+
+	// TODO(#8983): Remove this once saReadOnlyService is in production configs.
+	var saroc sapb.StorageAuthorityReadOnlyClient
+	if c.CRLUpdater.SAReadOnlyService != nil {
+		saroConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAReadOnlyService, tlsConfig, scope, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to read-only SA")
+		saroc = sapb.NewStorageAuthorityReadOnlyClient(saroConn)
+	}
 
 	caConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLGeneratorService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLGenerator")
@@ -184,6 +208,7 @@ func main() {
 		c.CRLUpdater.NumShards,
 		c.CRLUpdater.ShardWidth.Duration,
 		c.CRLUpdater.LookbackPeriod.Duration,
+		c.CRLUpdater.ThisUpdateBackdate.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
 		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,
@@ -191,6 +216,7 @@ func main() {
 		c.CRLUpdater.CacheControl,
 		c.CRLUpdater.ExpiresMargin.Duration,
 		sac,
+		saroc,
 		cac,
 		csc,
 		scope,
