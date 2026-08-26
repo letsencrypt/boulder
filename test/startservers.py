@@ -152,6 +152,10 @@ if CONFIG_NEXT:
             8025, None, None,
             ('./bin/boulder', 'boulder-mtpublisher', '--config', os.path.join(config_dir, 'mtpublisher.json'), '--debug-addr', ':8025'),
             None),
+        Service('boulder-mtcb',
+            8026, 9398, 'mtcb.boulder',
+            ('./bin/boulder', 'boulder-mtcb', '--config', os.path.join(config_dir, 'mtcb.json'), '--addr', ':9398', '--debug-addr', ':8026'),
+            None),
     ])
 
 def _service_toposort(services):
