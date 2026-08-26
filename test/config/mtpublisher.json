@@ -10,8 +10,8 @@
 			"logNumber": 44
 		},
 		"mirrorID": "32473.9",
-		"mirrorKeyFile": "test/certs/mtpki/mirror.key.pem",
-		"mirrorPublicKeyFile": "test/certs/mtpki/mirror.pub.pem"
+		"mirrorKeyFile": "test/certs/sunlight/mirror.key.pem",
+		"mirrorPublicKeyFile": "test/certs/sunlight/mirror.pub.pem"
 	},
 	"syslog": {
 		"stdoutlevel": 6,
