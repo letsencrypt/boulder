@@ -163,10 +163,11 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 			}
 			unrevokedCerts = append(unrevokedCerts, unrevokedCert)
 		}
+		if len(unrevokedCerts) > bkr.maxRevocations {
+			return nil, fmt.Errorf("too many certificates to revoke associated with %x: got %d, max %d", unchecked.KeyHash, len(unrevokedCerts), bkr.maxRevocations)
+		}
 	}
-	if len(unrevokedCerts) > bkr.maxRevocations {
-		return nil, fmt.Errorf("too many certificates to revoke associated with %x: got %d, max %d", unchecked.KeyHash, len(unrevokedCerts), bkr.maxRevocations)
-	}
+
 	return unrevokedCerts, nil
 }
 
