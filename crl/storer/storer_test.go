@@ -25,27 +25,34 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
 
-// fakeSA is a fake sapb.StorageAuthorityReadOnlyClient whose GetSerialMetadata
-// returns the configured expiry for known serials, and NotFound otherwise.
+// fakeSA is a fake sapb.StorageAuthorityReadOnlyClient whose GetSerialsMetadata
+// returns the configured expiry for each known serial, omitting unknown ones,
+// and records the size of each request.
 type fakeSA struct {
 	sapb.StorageAuthorityReadOnlyClient
-	expires map[string]time.Time
+	expires    map[string]time.Time
+	batchSizes []int
 }
 
-func (f *fakeSA) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	expires, ok := f.expires[req.Serial]
-	if !ok {
-		return nil, berrors.NotFoundError("serial %q not found", req.Serial)
+func (f *fakeSA) GetSerialsMetadata(_ context.Context, req *sapb.Serials, _ ...grpc.CallOption) (*sapb.SerialsMetadata, error) {
+	f.batchSizes = append(f.batchSizes, len(req.Serials))
+	result := &sapb.SerialsMetadata{}
+	for _, serial := range req.Serials {
+		expires, ok := f.expires[serial]
+		if !ok {
+			continue
+		}
+		result.Metadata = append(result.Metadata, &sapb.SerialMetadata{Serial: serial, Expires: timestamppb.New(expires)})
 	}
-	return &sapb.SerialMetadata{Serial: req.Serial, Expires: timestamppb.New(expires)}, nil
+	return result, nil
 }
 
 type fakeUploadCRLServerStream struct {
@@ -530,6 +537,14 @@ func TestUploadCRLBackwardsNumber(t *testing.T) {
 // predecessor contained serials 123 and 456, and returns the resulting error.
 func uploadWithRemovedEntry(t *testing.T, storer *crlStorer, iss *issuance.Issuer) error {
 	t.Helper()
+	return uploadWithRemovedEntries(t, storer, iss, []*big.Int{big.NewInt(456)})
+}
+
+// uploadWithRemovedEntries runs UploadCRL for a CRL containing serial 123 whose
+// predecessor contained serial 123 plus the given serials, and returns the
+// resulting error.
+func uploadWithRemovedEntries(t *testing.T, storer *crlStorer, iss *issuance.Issuer, removed []*big.Int) error {
+	t.Helper()
 	errs := make(chan error, 1)
 
 	idpExt, err := idp.MakeUserCertsExt([]string{"http://c.ex.org"})
@@ -554,10 +569,9 @@ func uploadWithRemovedEntry(t *testing.T, storer *crlStorer, iss *issuance.Issue
 			ThisUpdate: storer.clk.Now(),
 			NextUpdate: storer.clk.Now().Add(time.Hour),
 			Number:     big.NewInt(1),
-			RevokedCertificateEntries: []x509.RevocationListEntry{
-				{SerialNumber: big.NewInt(123), RevocationTime: storer.clk.Now().Add(-time.Hour)},
-				{SerialNumber: big.NewInt(456), RevocationTime: storer.clk.Now().Add(-time.Hour)},
-			},
+			RevokedCertificateEntries: append(
+				[]x509.RevocationListEntry{{SerialNumber: big.NewInt(123), RevocationTime: storer.clk.Now().Add(-time.Hour)}},
+				removedEntries(removed, storer.clk.Now().Add(-time.Hour))...),
 			ExtraExtensions: []pkix.Extension{idpExt},
 		},
 		iss.Cert.Certificate,
@@ -591,6 +605,14 @@ func uploadWithRemovedEntry(t *testing.T, storer *crlStorer, iss *issuance.Issue
 	}
 	close(ins)
 	return <-errs
+}
+
+func removedEntries(serials []*big.Int, revokedAt time.Time) []x509.RevocationListEntry {
+	var entries []x509.RevocationListEntry
+	for _, serial := range serials {
+		entries = append(entries, x509.RevocationListEntry{SerialNumber: serial, RevocationTime: revokedAt})
+	}
+	return entries
 }
 
 // Test that an entry may be dropped once its certificate has expired.
@@ -642,8 +664,25 @@ func TestUploadCRLRemovedUnknownEntry(t *testing.T) {
 	storer, iss := setupTestUploadCRL(t)
 	err := uploadWithRemovedEntry(t, storer, iss)
 	test.AssertError(t, err, "dropping an unknown entry should fail")
-	test.AssertContains(t, err.Error(), "looking up serial")
-	test.AssertErrorIs(t, err, berrors.NotFound)
+	test.AssertContains(t, err.Error(), "unknown to the SA")
+}
+
+// Test that dropped entries are looked up in batches of at most
+// sa.MaxSerialsMetadataBatch.
+func TestUploadCRLRemovedEntriesBatched(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	var removed []*big.Int
+	expires := make(map[string]time.Time)
+	for i := range sa.MaxSerialsMetadataBatch + 1 {
+		serial := big.NewInt(int64(1000 + i))
+		removed = append(removed, serial)
+		expires[core.SerialToString(serial)] = storer.clk.Now().Add(-25 * time.Hour)
+	}
+	fsa := &fakeSA{expires: expires}
+	storer.sa = fsa
+	err := uploadWithRemovedEntries(t, storer, iss, removed)
+	test.AssertNotError(t, err, "dropping many expired entries should work")
+	test.AssertDeepEquals(t, fsa.batchSizes, []int{sa.MaxSerialsMetadataBatch, 1})
 }
 
 // brokenSimpleS3 implements the simpleS3 interface. It returns errors for all

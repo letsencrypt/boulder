@@ -33,6 +33,7 @@ const (
 	StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetRevocationStatus"
 	StorageAuthorityReadOnly_GetRevokedCertsByShard_FullMethodName       = "/sa.StorageAuthorityReadOnly/GetRevokedCertsByShard"
 	StorageAuthorityReadOnly_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetSerialMetadata"
+	StorageAuthorityReadOnly_GetSerialsMetadata_FullMethodName           = "/sa.StorageAuthorityReadOnly/GetSerialsMetadata"
 	StorageAuthorityReadOnly_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetSerialsByAccount"
 	StorageAuthorityReadOnly_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetSerialsByKey"
 	StorageAuthorityReadOnly_GetValidAuthorizations2_FullMethodName      = "/sa.StorageAuthorityReadOnly/GetValidAuthorizations2"
@@ -67,6 +68,7 @@ type StorageAuthorityReadOnlyClient interface {
 	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
 	GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
 	GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error)
+	GetSerialsMetadata(ctx context.Context, in *Serials, opts ...grpc.CallOption) (*SerialsMetadata, error)
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
@@ -214,6 +216,16 @@ func (c *storageAuthorityReadOnlyClient) GetSerialMetadata(ctx context.Context, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SerialMetadata)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetSerialMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityReadOnlyClient) GetSerialsMetadata(ctx context.Context, in *Serials, opts ...grpc.CallOption) (*SerialsMetadata, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SerialsMetadata)
+	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetSerialsMetadata_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -414,6 +426,7 @@ type StorageAuthorityReadOnlyServer interface {
 	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
 	GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
 	GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error)
+	GetSerialsMetadata(context.Context, *Serials) (*SerialsMetadata, error)
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
 	GetSerialsByKey(*SPKIHash, grpc.ServerStreamingServer[Serial]) error
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
@@ -473,6 +486,9 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetRevokedCertsByShard(*GetRe
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSerialMetadata not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetSerialsMetadata(context.Context, *Serials) (*SerialsMetadata, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSerialsMetadata not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error {
 	return status.Errorf(codes.Unimplemented, "method GetSerialsByAccount not implemented")
@@ -743,6 +759,24 @@ func _StorageAuthorityReadOnly_GetSerialMetadata_Handler(srv interface{}, ctx co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityReadOnlyServer).GetSerialMetadata(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthorityReadOnly_GetSerialsMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serials)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityReadOnlyServer).GetSerialsMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthorityReadOnly_GetSerialsMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityReadOnlyServer).GetSerialsMetadata(ctx, req.(*Serials))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1023,6 +1057,10 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_GetSerialMetadata_Handler,
 		},
 		{
+			MethodName: "GetSerialsMetadata",
+			Handler:    _StorageAuthorityReadOnly_GetSerialsMetadata_Handler,
+		},
+		{
 			MethodName: "GetValidAuthorizations2",
 			Handler:    _StorageAuthorityReadOnly_GetValidAuthorizations2_Handler,
 		},
@@ -1106,6 +1144,7 @@ const (
 	StorageAuthority_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthority/GetRevocationStatus"
 	StorageAuthority_GetRevokedCertsByShard_FullMethodName       = "/sa.StorageAuthority/GetRevokedCertsByShard"
 	StorageAuthority_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthority/GetSerialMetadata"
+	StorageAuthority_GetSerialsMetadata_FullMethodName           = "/sa.StorageAuthority/GetSerialsMetadata"
 	StorageAuthority_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthority/GetSerialsByAccount"
 	StorageAuthority_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthority/GetSerialsByKey"
 	StorageAuthority_GetValidAuthorizations2_FullMethodName      = "/sa.StorageAuthority/GetValidAuthorizations2"
@@ -1166,6 +1205,7 @@ type StorageAuthorityClient interface {
 	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
 	GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
 	GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error)
+	GetSerialsMetadata(ctx context.Context, in *Serials, opts ...grpc.CallOption) (*SerialsMetadata, error)
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
@@ -1340,6 +1380,16 @@ func (c *storageAuthorityClient) GetSerialMetadata(ctx context.Context, in *Seri
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SerialMetadata)
 	err := c.cc.Invoke(ctx, StorageAuthority_GetSerialMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) GetSerialsMetadata(ctx context.Context, in *Serials, opts ...grpc.CallOption) (*SerialsMetadata, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SerialsMetadata)
+	err := c.cc.Invoke(ctx, StorageAuthority_GetSerialsMetadata_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1791,6 +1841,7 @@ type StorageAuthorityServer interface {
 	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
 	GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
 	GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error)
+	GetSerialsMetadata(context.Context, *Serials) (*SerialsMetadata, error)
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
 	GetSerialsByKey(*SPKIHash, grpc.ServerStreamingServer[Serial]) error
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
@@ -1877,6 +1928,9 @@ func (UnimplementedStorageAuthorityServer) GetRevokedCertsByShard(*GetRevokedCer
 }
 func (UnimplementedStorageAuthorityServer) GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSerialMetadata not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetSerialsMetadata(context.Context, *Serials) (*SerialsMetadata, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSerialsMetadata not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error {
 	return status.Errorf(codes.Unimplemented, "method GetSerialsByAccount not implemented")
@@ -2221,6 +2275,24 @@ func _StorageAuthority_GetSerialMetadata_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).GetSerialMetadata(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_GetSerialsMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serials)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).GetSerialsMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_GetSerialsMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).GetSerialsMetadata(ctx, req.(*Serials))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2949,6 +3021,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSerialMetadata",
 			Handler:    _StorageAuthority_GetSerialMetadata_Handler,
+		},
+		{
+			MethodName: "GetSerialsMetadata",
+			Handler:    _StorageAuthority_GetSerialsMetadata_Handler,
 		},
 		{
 			MethodName: "GetValidAuthorizations2",

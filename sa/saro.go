@@ -181,6 +181,52 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 	}, nil
 }
 
+// MaxSerialsMetadataBatch is the most serials a GetSerialsMetadata request may
+// contain.
+const MaxSerialsMetadataBatch = 1000
+
+// GetSerialsMetadata returns the metadata for each of the provided serials, up
+// to MaxSerialsMetadataBatch. If any of the serials are invalid, an error is
+// returned for the entire request.
+func (ssa *SQLStorageAuthorityRO) GetSerialsMetadata(ctx context.Context, req *sapb.Serials) (*sapb.SerialsMetadata, error) {
+	if req == nil || len(req.Serials) == 0 {
+		return nil, errIncompleteRequest
+	}
+	if len(req.Serials) > MaxSerialsMetadataBatch {
+		return nil, fmt.Errorf("request contains %d serials, but may contain at most %d", len(req.Serials), MaxSerialsMetadataBatch)
+	}
+
+	var params []any
+	for _, serial := range req.Serials {
+		if !core.ValidSerial(serial) {
+			return nil, fmt.Errorf("invalid serial %q", serial)
+		}
+		params = append(params, serial)
+	}
+
+	var rows []recordedSerialModel
+	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
+		&rows,
+		"SELECT * FROM serials WHERE serial IN ("+db.QuestionMarks(len(params))+")",
+		params...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &sapb.SerialsMetadata{}
+	for _, row := range rows {
+		result.Metadata = append(result.Metadata, &sapb.SerialMetadata{
+			Serial:         row.Serial,
+			RegistrationID: row.RegistrationID,
+			Created:        timestamppb.New(row.Created),
+			Expires:        timestamppb.New(row.Expires),
+		})
+	}
+	return result, nil
+}
+
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
 func (ssa *SQLStorageAuthorityRO) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {

@@ -3257,6 +3257,55 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 }
 
+func TestGetSerialsMetadata(t *testing.T) {
+	sa, clk := initSA(t)
+	reg := createWorkingRegistration(t, sa)
+
+	// Two serials the SA knows about, with different expiries.
+	known := []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	for i, serial := range known {
+		_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
+			RegID:   reg.Id,
+			Serial:  serial,
+			Created: timestamppb.New(clk.Now()),
+			Expires: timestamppb.New(clk.Now().Add(time.Duration(i+1) * 24 * time.Hour)),
+		})
+		test.AssertNotError(t, err, "adding test serial")
+	}
+
+	get := func(serials []string) ([]*sapb.SerialMetadata, error) {
+		result, err := sa.GetSerialsMetadata(ctx, &sapb.Serials{Serials: serials})
+		if err != nil {
+			return nil, err
+		}
+		return result.Metadata, nil
+	}
+
+	// Empty, invalid, and oversized requests are rejected.
+	_, err := get(nil)
+	test.AssertErrorIs(t, err, errIncompleteRequest)
+	_, err = get([]string{"not a serial"})
+	test.AssertError(t, err, "invalid serial should be rejected")
+	_, err = get(make([]string, MaxSerialsMetadataBatch+1))
+	test.AssertError(t, err, "oversized request should be rejected")
+	test.AssertContains(t, err.Error(), "may contain at most")
+
+	// Known serials come back with their expiries; unknown ones are omitted.
+	results, err := get(append(known, "cccccccccccccccccccccccccccccccccccc"))
+	test.AssertNotError(t, err, "getting serials metadata")
+	test.AssertEquals(t, len(results), 2)
+	byserial := make(map[string]*sapb.SerialMetadata)
+	for _, md := range results {
+		byserial[md.Serial] = md
+	}
+	for i, serial := range known {
+		md, ok := byserial[serial]
+		test.Assert(t, ok, "missing metadata for "+serial)
+		test.AssertEquals(t, md.RegistrationID, reg.Id)
+		test.Assert(t, md.Expires.AsTime().Equal(clk.Now().Add(time.Duration(i+1)*24*time.Hour)), "wrong expiry for "+serial)
+	}
+}
+
 func TestGetLatestRevokedCertByShard(t *testing.T) {
 	sa, _ := initSA(t)
 

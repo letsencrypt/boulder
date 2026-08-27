@@ -29,6 +29,7 @@ import (
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -94,33 +95,49 @@ func New(
 // TODO(#6261): Unify all error messages to identify the shard they're working
 // on as a JSON object including issuer, crl number, and shard number.
 
-// checkRemovedEntry returns an error unless serial's certificate expired before
-// prevThisUpdate, i.e. it has already appeared on a CRL issued beyond its
-// validity period.
-func (cs *crlStorer) checkRemovedEntry(ctx context.Context, serial *big.Int, prevThisUpdate, thisUpdate time.Time) error {
-	serialString := core.SerialToString(serial)
-	metadata, err := cs.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serialString})
-	if err != nil {
-		return fmt.Errorf("looking up serial %s, which is missing from this CRL: %w", serialString, err)
+// checkRemovedEntries returns an error unless every certificate whose serial
+// is in removed expired before prevThisUpdate, i.e. unless each has already
+// appeared on a CRL issued beyond its validity period.
+func (cs *crlStorer) checkRemovedEntries(ctx context.Context, removed []*big.Int, prevThisUpdate, thisUpdate time.Time) error {
+	var serials []string
+	for _, serial := range removed {
+		serials = append(serials, core.SerialToString(serial))
 	}
 
-	expires := metadata.Expires.AsTime()
-	if expires.Before(prevThisUpdate) {
-		return nil
+	expiries := make(map[string]time.Time)
+	for batch := range slices.Chunk(serials, sa.MaxSerialsMetadataBatch) {
+		result, err := cs.sa.GetSerialsMetadata(ctx, &sapb.Serials{Serials: batch})
+		if err != nil {
+			return fmt.Errorf("looking up serials missing from this CRL: %w", err)
+		}
+		for _, metadata := range result.Metadata {
+			expiries[metadata.Serial] = metadata.Expires.AsTime()
+		}
 	}
 
-	if !expires.Before(thisUpdate) {
+	for _, serial := range serials {
+		expires, ok := expiries[serial]
+		if !ok {
+			return fmt.Errorf("serial %s is missing from this CRL and unknown to the SA", serial)
+		}
+		if expires.Before(prevThisUpdate) {
+			continue
+		}
+
+		if !expires.Before(thisUpdate) {
+			return fmt.Errorf("serial %s appeared on the previous CRL but is missing from this one, "+
+				"and expires at %s, %s after this CRL's thisUpdate: the revocation data is "+
+				"incomplete, possibly from a lagging database replica",
+				serial, expires.Format(time.RFC3339),
+				expires.Sub(thisUpdate).Round(time.Second))
+		}
 		return fmt.Errorf("serial %s appeared on the previous CRL but is missing from this one, "+
-			"and expires at %s, %s after this CRL's thisUpdate: the revocation data is "+
-			"incomplete, possibly from a lagging database replica",
-			serialString, expires.Format(time.RFC3339),
-			expires.Sub(thisUpdate).Round(time.Second))
+			"and expired at %s, after that CRL's thisUpdate %s: the crl-updater's lookbackPeriod "+
+			"must cover the gap since that CRL (currently %s, and growing until an upload succeeds)",
+			serial, expires.Format(time.RFC3339), prevThisUpdate.Format(time.RFC3339),
+			cs.clk.Now().Sub(prevThisUpdate).Round(time.Second))
 	}
-	return fmt.Errorf("serial %s appeared on the previous CRL but is missing from this one, "+
-		"and expired at %s, after that CRL's thisUpdate %s: the crl-updater's lookbackPeriod "+
-		"must cover the gap since that CRL (currently %s, and growing until an upload succeeds)",
-		serialString, expires.Format(time.RFC3339), prevThisUpdate.Format(time.RFC3339),
-		cs.clk.Now().Sub(prevThisUpdate).Round(time.Second))
+	return nil
 }
 
 // UploadCRL implements the gRPC method of the same name. It takes a stream of
@@ -258,11 +275,9 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 
 		// TODO(#8983): Remove the nil check once saReadOnlyService is in production configs.
 		if cs.sa != nil {
-			for _, serial := range diff.Removed {
-				err = cs.checkRemovedEntry(stream.Context(), serial, prevCRL.ThisUpdate, crl.ThisUpdate)
-				if err != nil {
-					return fmt.Errorf("refusing to upload %s: %w", crlId, err)
-				}
+			err = cs.checkRemovedEntries(stream.Context(), diff.Removed, prevCRL.ThisUpdate, crl.ThisUpdate)
+			if err != nil {
+				return fmt.Errorf("refusing to upload %s: %w", crlId, err)
 			}
 		}
 

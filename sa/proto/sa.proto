@@ -22,6 +22,7 @@ service StorageAuthorityReadOnly {
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
+  rpc GetSerialsMetadata(Serials) returns (SerialsMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
@@ -53,6 +54,7 @@ service StorageAuthority {
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
+  rpc GetSerialsMetadata(Serials) returns (SerialsMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
@@ -125,6 +127,14 @@ message GetValidAuthorizationsRequest {
 
 message Serial {
   string serial = 1;
+}
+
+message Serials {
+  repeated string serials = 1;
+}
+
+message SerialsMetadata {
+  repeated SerialMetadata metadata = 1;
 }
 
 message SerialMetadata {
