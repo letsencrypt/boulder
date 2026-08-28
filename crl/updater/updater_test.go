@@ -79,10 +79,10 @@ func (f *fakeSAC) GetLatestRevokedCertByShard(ctx context.Context, req *sapb.Get
 	return f.latest, nil
 }
 
-// useFakeSA installs f as both the read-write and read-only SA clients.
+// useFakeSA installs f as the SA client, with the freshness check enabled.
 func useFakeSA(cu *crlUpdater, f *fakeSAC) {
 	cu.sa = f
-	cu.saro = f
+	cu.freshnessCheck = true
 }
 
 func (f *fakeSAC) UpdateCRLShard(_ context.Context, _ *sapb.UpdateCRLShardRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -240,7 +240,7 @@ func TestNewUpdaterLookbackValidation(t *testing.T) {
 			1, 18*time.Hour, lookback, backdate,
 			6*time.Hour, time.Minute, 1, 1,
 			"stale-if-error=60", 5*time.Minute,
-			fsa, fsa, &fakeCA{}, &fakeStorer{},
+			true, fsa, &fakeCA{}, &fakeStorer{},
 			metrics.NoopRegisterer, blog.NewMock(), clk,
 		)
 		return err
@@ -285,7 +285,7 @@ func TestUpdateShard(t *testing.T) {
 		1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
-		fsa, fsa,
+		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,
@@ -445,20 +445,19 @@ func TestUpdateShard(t *testing.T) {
 	test.AssertContains(t, err.Error(), "primary database has no revocations")
 	cu.updatedCounter.Reset()
 
-	// With no read-only SA configured, the bulk read uses the read-write SA and
-	// no freshness check is made.
+	// With the freshness check disabled, a lagging replica goes unnoticed.
 	//
-	// TODO(#8983): Remove this once saReadOnlyService is in production configs.
+	// TODO(#8983): Remove this once the freshness check is unconditional.
 	cu.sa = &fakeSAC{
 		revokedCerts: revokedCertsStream{entries: []*corepb.CRLEntry{{Serial: "0311b5d430823cfa25b0fc85d14c54ee35", RevokedAt: now}}},
 		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
 		latest:       &corepb.CRLEntry{Serial: "037d6a05a0f6a975380456ae605cee9889", RevokedAt: now},
 	}
-	cu.saro = nil
+	cu.freshnessCheck = false
 	cu.ca = &fakeCA{gcc: generateCRLStream{}}
 	cu.cs = &fakeStorer{uploaderStream: &noopUploader{}}
 	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
-	test.AssertNotError(t, err, "no read-only SA")
+	test.AssertNotError(t, err, "freshness check disabled")
 	cu.updatedCounter.Reset()
 
 	// Errors from the primary should bubble up.
@@ -502,7 +501,7 @@ func TestUpdateShardWithRetry(t *testing.T) {
 		6*time.Hour, time.Minute, 1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
-		fsa, fsa,
+		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,

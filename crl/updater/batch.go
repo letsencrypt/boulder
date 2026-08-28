@@ -13,7 +13,7 @@ import (
 // It will run as many simultaneous goroutines as the configured maxParallelism.
 func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
-	atTime := cu.thisUpdate()
+	atTime := cu.clk.Now().Add(-cu.thisUpdateBackdate)
 
 	type workItem struct {
 		issuerNameID issuance.NameID

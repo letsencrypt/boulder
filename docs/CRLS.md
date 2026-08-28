@@ -36,10 +36,10 @@ serial number modulo the number of shards produced by that certificate's issuer.
 Two checks guard against publishing a CRL which is missing entries, which would
 appear to un-revoke certificates.
 
-The crl-updater reads each shard's entries from a read-only SA (a database
-replica). Before signing, it asks the read-write SA (the primary) for the
-shard's most recent revocation via `GetLatestRevokedCertByShard`; if that entry
-is missing, or the primary is unreachable, the replica is lagging and the
+The crl-updater reads each shard's entries from a database replica via
+`GetRevokedCertByShard`. Before signing, it asks the database primary for the
+shard's most recent revocation entry via `GetLatestRevokedCertByShard`; if that
+entry is missing, or the primary is unreachable, the replica is lagging and the
 update fails. The `thisUpdateBackdate` setting (default 5 minutes) shifts
 `thisUpdate`, and so the revocation cutoff, into the past so that ordinary
 replication lag does not impact this check.

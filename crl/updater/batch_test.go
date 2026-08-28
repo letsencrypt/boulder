@@ -30,7 +30,7 @@ func TestRunOnce(t *testing.T) {
 		6*time.Hour, time.Minute, 1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
-		fsa, fsa,
+		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, mockLog, clk,
@@ -60,7 +60,7 @@ func TestRunOnceBackdate(t *testing.T) {
 		6*time.Hour, time.Minute, 1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
-		fsa, fsa,
+		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: uploader},
 		metrics.NoopRegisterer, blog.NewMock(), clk,
@@ -68,7 +68,7 @@ func TestRunOnceBackdate(t *testing.T) {
 	test.AssertNotError(t, err, "building test crlUpdater")
 
 	// The CRL's number (and therefore its thisUpdate) should be backdated by
-	// the configured amount, but Expires should not be.
+	// the configured amount, but the cache expiry timestamp should not be.
 	err = cu.RunOnce(context.Background())
 	test.AssertNotError(t, err, "running updater")
 	test.AssertEquals(t, uploader.number, clk.Now().Add(-5*time.Minute).UnixNano())

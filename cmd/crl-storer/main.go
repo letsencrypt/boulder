@@ -96,7 +96,7 @@ func main() {
 	s3client, err := bs3.FromConfig(c.CRLStorer.Config, logger)
 	cmd.FailOnError(err, "Initializing S3 client")
 
-	// TODO(#8983): Remove this once saReadOnlyService is in production configs.
+	// TODO(#8983): Make this unconditional once saReadOnlyService is in production configs.
 	var sac sapb.StorageAuthorityReadOnlyClient
 	if c.CRLStorer.SAReadOnlyService != nil {
 		saConn, err := bgrpc.ClientSetup(c.CRLStorer.SAReadOnlyService, tlsConfig, scope, clk)

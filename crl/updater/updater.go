@@ -40,10 +40,14 @@ type crlUpdater struct {
 	cacheControl  string
 	expiresMargin time.Duration
 
-	sa   sapb.StorageAuthorityClient
-	saro sapb.StorageAuthorityReadOnlyClient
-	ca   capb.CRLGeneratorClient
-	cs   cspb.CRLStorerClient
+	// freshnessCheck enables checkFreshness in updateShard.
+	//
+	// TODO(#8983): Remove this once the freshness check is unconditional.
+	freshnessCheck bool
+
+	sa sapb.StorageAuthorityClient
+	ca capb.CRLGeneratorClient
+	cs cspb.CRLStorerClient
 
 	tickHistogram    *prometheus.HistogramVec
 	updatedCounter   *prometheus.CounterVec
@@ -66,8 +70,8 @@ func NewUpdater(
 	maxAttempts int,
 	cacheControl string,
 	expiresMargin time.Duration,
+	freshnessCheckEnabled bool,
 	sa sapb.StorageAuthorityClient,
-	saro sapb.StorageAuthorityReadOnlyClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
 	stats prometheus.Registerer,
@@ -142,8 +146,8 @@ func NewUpdater(
 		maxAttempts,
 		cacheControl,
 		expiresMargin,
+		freshnessCheckEnabled,
 		sa,
-		saro,
 		ca,
 		cs,
 		tickHistogram,
@@ -153,12 +157,6 @@ func NewUpdater(
 		log,
 		clk,
 	}, nil
-}
-
-// thisUpdate returns the backdated thisUpdate timestamp for a CRL generated
-// now. Backdating gives replicas time to catch up with the primary.
-func (cu *crlUpdater) thisUpdate() time.Time {
-	return cu.clk.Now().Add(-cu.thisUpdateBackdate)
 }
 
 // checkFreshness returns an error unless the entries read from a replica
@@ -279,12 +277,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		RevokedBefore: timestamppb.New(atTime),
 	}
 
-	// TODO(#8983): Remove saClient once saReadOnlyService is in production configs.
-	var saClient sapb.StorageAuthorityReadOnlyClient = cu.sa
-	if cu.saro != nil {
-		saClient = cu.saro
-	}
-	saStream, err := saClient.GetRevokedCertsByShard(ctx, req)
+	saStream, err := cu.sa.GetRevokedCertsByShard(ctx, req)
 	if err != nil {
 		return fmt.Errorf("GetRevokedCertsByShard: %w", err)
 	}
@@ -303,8 +296,8 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 
 	cu.log.Infof("Queried SA for CRL shard: id=[%s] shardIdx=[%d] numEntries=[%d]", crlID, shardIdx, len(crlEntries))
 
-	// TODO(#8983): Remove the nil check once saReadOnlyService is in production configs.
-	if cu.saro != nil {
+	// TODO(#8983): Make this unconditional once checkFreshness is in production configs.
+	if cu.freshnessCheck {
 		err = cu.checkFreshness(ctx, req, crlEntries)
 		if err != nil {
 			return err

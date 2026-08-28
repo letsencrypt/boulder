@@ -15,16 +15,6 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
-		"saReadOnlyService": {
-			"dnsAuthority": "consul.service.consul",
-			"srvLookup": {
-				"service": "sa",
-				"domain": "service.consul"
-			},
-			"timeout": "15s",
-			"noWaitForReady": true,
-			"hostOverride": "sa.boulder"
-		},
 		"crlGeneratorService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
@@ -56,6 +46,7 @@
 		"numShards": 10,
 		"shardWidth": "240h",
 		"lookbackPeriod": "24h",
+		"checkFreshness": true,
 		"thisUpdateBackdate": "1ms",
 		"updatePeriod": "10m",
 		"updateTimeout": "1m",

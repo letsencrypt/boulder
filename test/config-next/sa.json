@@ -37,7 +37,6 @@
 					"clientNames": [
 						"admin.boulder",
 						"crl-storer.boulder",
-						"crl-updater.boulder",
 						"wfe.boulder",
 						"sfe.boulder",
 						"ra.boulder"
