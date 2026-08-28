@@ -21,7 +21,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
-
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/db"
@@ -602,6 +601,8 @@ type checkpoint struct {
 	MirrorSignature []byte  `db:"mirrorSignature"`
 	TreeSize        int64   `db:"treeSize"`
 	RootHash        []byte  `db:"rootHash"`
+	SubtreeID1      *int64  `db:"subtreeID1"`
+	SubtreeID2      *int64  `db:"subtreeID2"`
 }
 
 func (c *checkpoint) valid() error {
@@ -648,6 +649,7 @@ func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 	err := m.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
 		        mirrorSignature, treeSize, rootHash
+                subtreeID1, subtreeID2,
 		 FROM latestCheckpoint JOIN checkpoints
 		 USING(id)
 		 WHERE latestCheckpoint.mtcLogID = ? AND
