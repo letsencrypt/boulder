@@ -393,7 +393,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	caLine, err := caVerifier.SignatureLine(cp.Origin, newer, rawCA)
+	caLine, err := cosignature.SignatureLine(caVerifier.Name(), caVerifier.KeyHash(), rawCA)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -426,7 +426,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	cosigLine, err := mirrorVerifier.SignatureLine(cp.Origin, newer, rawCosig)
+	cosigLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), rawCosig)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}

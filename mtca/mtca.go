@@ -15,10 +15,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"path"
 	"sync"
 	"time"
 
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/borp"
 
@@ -37,6 +41,7 @@ import (
 
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
 var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
+var ErrCheckpointChanged = errors.New("checkpoint in tile storage changed since it was last written")
 
 var _ mtcapb.MTCAServer = &mtca{}
 
@@ -119,6 +124,9 @@ type mtca struct {
 	mirrorVerifier *cosignature.Verifier
 
 	servedCheckpointID int64
+	// servedCheckpointETag is the ETag of the checkpoint object in tile storage
+	// as this MTCA last wrote or read it, nil until it has done either.
+	servedCheckpointETag *string
 
 	pool *pool
 
@@ -718,34 +726,89 @@ func (m *mtca) serveCheckpoint(ctx context.Context, latest *checkpointRow) error
 		return fmt.Errorf("checkpoint %d root hash is %d bytes, want %d", latest.ID, len(latest.RootHash), tlog.HashSize)
 	}
 
-	// Verify the MTCA cosignature and produce its signature line.
+	// Produce the signature line for the MTCA's cosignature.
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
-	caCosignatureLine, err := m.verifier.SignatureLine(m.logID.Origin(), tree, latest.MTCASignature)
+	caCosignatureLine, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), latest.MTCASignature)
 	if err != nil {
 		return fmt.Errorf("checkpoint %d MTCA signature: %s", latest.ID, err)
 	}
 
-	// Verify the mirror cosignature and produce its signature line.
+	// Produce the signature line for the mirror's cosignature.
 	if latest.MirrorID != m.mirrorID {
 		return fmt.Errorf("checkpoint %d cosigned by mirror %q, want %q", latest.ID, latest.MirrorID, m.mirrorID)
 	}
-	mirrorCosignatureLine, err := m.mirrorVerifier.SignatureLine(m.logID.Origin(), tree, latest.MirrorSignature)
+	mirrorCosignatureLine, err := cosignature.SignatureLine(m.mirrorVerifier.Name(), m.mirrorVerifier.KeyHash(), latest.MirrorSignature)
 	if err != nil {
 		return fmt.Errorf("checkpoint %d mirror cosignature: %s", latest.ID, err)
 	}
 
-	// Produce a note containing both cosgnatures.
+	// Produce a signed note containing both cosignatures.
 	cp := checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}
-	note, err := cp.SignedNoteForServing(caCosignatureLine, mirrorCosignatureLine)
+	signedNote, err := cp.SignedNoteForServing(caCosignatureLine, mirrorCosignatureLine)
 	if err != nil {
 		return err
 	}
 
-	// Finally, write it to the checkpoint path for serving.
-	err = tiles.WriteCheckpoint(ctx, m.s3c, m.logID.TilePrefix(), note)
+	// Verify the signed note containing both cosignatures.
+	_, _, err = checkpoint.Open(signedNote, m.verifier, m.mirrorVerifier)
+	if err != nil {
+		return fmt.Errorf("checkpoint %d: %s", latest.ID, err)
+	}
+
+	// Finally, write the signed note to the checkpoint path in tile storage.
+	etag, err := m.writeCheckpoint(ctx, signedNote, m.servedCheckpointETag)
 	if err != nil {
 		return fmt.Errorf("serving checkpoint %d: %s", latest.ID, err)
 	}
 	m.servedCheckpointID = latest.ID
+	m.servedCheckpointETag = etag
 	return nil
+}
+
+// writeCheckpoint stores signedNote at the log's "checkpoint" key per
+// c2sp.org/tlog-tiles, replacing the checkpoint whose ETag is prevETag, and
+// returns the new checkpoint's ETag. A nil prevETag means the current ETag is
+// unknown, so it is read first, and the note is written only if no checkpoint
+// exists when none is found. It returns ErrCheckpointChanged if the checkpoint
+// was replaced by another writer in the meantime. The note must be written
+// only after the tiles its tree covers are published.
+func (m *mtca) writeCheckpoint(ctx context.Context, signedNote []byte, prevETag *string) (*string, error) {
+	bucket := m.s3c.Bucket()
+	key := path.Join(m.logID.TilePrefix(), "checkpoint")
+	if prevETag == nil {
+		current, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &key})
+		if err == nil {
+			current.Body.Close()
+			prevETag = current.ETag
+		} else {
+			_, notFound := errors.AsType[*types.NoSuchKey](err)
+			if !notFound {
+				return nil, fmt.Errorf("reading s3://%s/%s: %w", bucket, key, err)
+			}
+		}
+	}
+
+	contentType := "text/plain; charset=utf-8"
+	cacheControl := "no-store"
+	input := &s3.PutObjectInput{
+		Bucket:       &bucket,
+		Key:          &key,
+		ContentType:  &contentType,
+		CacheControl: &cacheControl,
+		Body:         bytes.NewReader(signedNote),
+		IfMatch:      prevETag,
+	}
+	if prevETag == nil {
+		star := "*"
+		input.IfNoneMatch = &star
+	}
+	out, err := m.s3c.PutObject(ctx, input)
+	if err != nil {
+		respErr, ok := errors.AsType[*awshttp.ResponseError](err)
+		if ok && respErr.HTTPStatusCode() == http.StatusPreconditionFailed {
+			return nil, fmt.Errorf("writing s3://%s/%s: %w", bucket, key, ErrCheckpointChanged)
+		}
+		return nil, fmt.Errorf("writing s3://%s/%s: %w", bucket, key, err)
+	}
+	return out.ETag, nil
 }

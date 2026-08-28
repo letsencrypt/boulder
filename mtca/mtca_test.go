@@ -263,6 +263,54 @@ func issueMany(t *testing.T, m *mtca, n int) <-chan issueResult {
 	return ch
 }
 
+// TestWriteCheckpoint checks that writeCheckpoint replaces only the checkpoint
+// it was told about, reads the current ETag when given none, and refuses to
+// replace a checkpoint another writer stored.
+func TestWriteCheckpoint(t *testing.T) {
+	m, fs3, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+	key := m.logID.TilePrefix() + "/checkpoint"
+
+	first, err := m.writeCheckpoint(t.Context(), []byte("first note\n"), nil)
+	if err != nil {
+		t.Fatalf("writing the first checkpoint: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "first note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "first note\n")
+	}
+
+	second, err := m.writeCheckpoint(t.Context(), []byte("second note\n"), first)
+	if err != nil {
+		t.Fatalf("replacing the checkpoint: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "second note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "second note\n")
+	}
+
+	third, err := m.writeCheckpoint(t.Context(), []byte("third note\n"), nil)
+	if err != nil {
+		t.Fatalf("replacing the checkpoint with an unknown ETag: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "third note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "third note\n")
+	}
+	if *third == *second {
+		t.Error("ETag did not change with the checkpoint's contents")
+	}
+
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+	_, err = m.writeCheckpoint(t.Context(), []byte("fourth note\n"), third)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("writeCheckpoint over another writer's checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+	if string(fs3.Objects[key].Data) != "foreign note\n" {
+		t.Errorf("stored checkpoint = %q, want the other writer's %q", fs3.Objects[key].Data, "foreign note\n")
+	}
+}
+
 // errorS3 wraps a bs3test.FakeS3, failing every PutObject with `err` while
 // it is non-nil and passing through to the wrapped fake otherwise.
 type errorS3 struct {

@@ -18,7 +18,6 @@ import (
 
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
-	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 )
 
@@ -258,21 +257,27 @@ func TestCosignerRoundTrip(t *testing.T) {
 		t.Error("VerifyCheckpoint accepted a cosignature over a different origin")
 	}
 
-	line := signatureLineFor(ca.name, ca.keyID, signature)
-	if !strings.HasPrefix(line, noteSignatureLinePrefix+ca.name+" ") {
+	line, err := SignatureLine(ca.name, ca.keyID, signature[timestampSize:])
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	if !strings.HasPrefix(string(line), noteSignatureLinePrefix+ca.name+" ") {
 		t.Errorf("line %q has unexpected prefix", line)
 	}
 
-	extracted, err := TimestampedSignature([]byte(text), []byte(line), v)
+	extracted, err := v.FilterByVerify([]byte(text), line)
 	if err != nil {
 		t.Fatalf("TimestampedSignature on a reassembled note: %s", err)
 	}
 	if !v.Verify([]byte(text), extracted) {
 		t.Error("Verify rejected an extracted cosignature")
 	}
-	rebuilt := signatureLineFor(ca.name, ca.keyID, extracted)
-	if rebuilt != line {
-		t.Errorf("signatureLineFor = %q, want %q", rebuilt, line)
+	rebuilt, err := SignatureLine(ca.name, ca.keyID, extracted[timestampSize:])
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	if !bytes.Equal(rebuilt, line) {
+		t.Errorf("SignatureLine = %q, want %q", rebuilt, line)
 	}
 }
 
@@ -422,13 +427,16 @@ func TestTimestampedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	line := signatureLineFor(ca.name, ca.keyID, cosigned)
+	line, err := SignatureLine(ca.name, ca.keyID, cosigned[timestampSize:])
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
 
 	v, err := NewVerifier("32473.2", testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	timestampedSignature, err := TimestampedSignature([]byte(text), []byte(line), v)
+	timestampedSignature, err := v.FilterByVerify([]byte(text), line)
 	if err != nil {
 		t.Fatalf("TimestampedSignature for the cosigner that signed the note: %s", err)
 	}
@@ -440,7 +448,7 @@ func TestTimestampedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	_, err = TimestampedSignature([]byte(text), []byte(line), other)
+	_, err = other.FilterByVerify([]byte(text), line)
 	if err == nil {
 		t.Error("TimestampedSignature for a cosigner that did not sign the note = nil error, want error")
 	}
@@ -455,16 +463,18 @@ func TestTimestampedSignatureRejectsForeignFormat(t *testing.T) {
 	idSignature := make([]byte, keyIDSize+64)
 	binary.BigEndian.PutUint32(idSignature[:keyIDSize], v.KeyHash())
 	line := noteSignatureLinePrefix + v.Name() + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"
-	_, err := TimestampedSignature([]byte(exampleCheckpoint), []byte(line), v)
+	_, err := v.FilterByVerify([]byte(exampleCheckpoint), []byte(line))
 	if err == nil {
 		t.Error("TimestampedSignature with a 64-byte signature body = nil error, want error")
 	}
 }
 
-// TestOpenIgnoresUnknownSignatures covers signed-note's "verifiers MUST ignore
-// signatures from unknown keys" with a note cosigned for one log by two MTC
-// cosigners and opened by one verifier, the shape of every real exchange.
-func TestOpenIgnoresUnknownSignatures(t *testing.T) {
+// TestFilterByVerifyIgnoresUnknownSignatures covers signed-note's "verifiers
+// MUST ignore signatures from unknown keys" with a note cosigned for one log by
+// two MTC cosigners and filtered by one verifier, the shape of every mirror
+// exchange. checkpoint.Open, which only opens notes we assembled, rejects the
+// same note.
+func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
 	known, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
@@ -492,37 +502,42 @@ func TestOpenIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	knownLine := signatureLineFor(known.name, known.keyID, knownSignature)
+	knownLine, err := SignatureLine(known.name, known.keyID, knownSignature[timestampSize:])
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
 	unknownSignature, err := unknown.CosignCheckpoint(parsed.Tree)
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	unknownLine := signatureLineFor(unknown.name, unknown.keyID, unknownSignature)
-	signed := []byte(text + "\n" + knownLine + unknownLine)
+	unknownLine, err := SignatureLine(unknown.name, unknown.keyID, unknownSignature[timestampSize:])
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	lines := append(knownLine, unknownLine...)
 
 	v, err := NewVerifier("32473.2", testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	cp, n, err := checkpoint.Open(signed, note.VerifierList(v))
+	filtered, err := v.FilterByVerify([]byte(text), lines)
 	if err != nil {
-		t.Fatalf("checkpoint.Open: %s", err)
+		t.Fatalf("FilterByVerify: %s", err)
 	}
-	if cp.Origin != known.origin {
-		t.Errorf("Origin = %q, want %q", cp.Origin, known.origin)
+	if !bytes.Equal(filtered, knownSignature) {
+		t.Errorf("FilterByVerify = %x, want the known cosigner's signature %x", filtered, knownSignature)
 	}
-	if len(n.Sigs) != 1 || n.Sigs[0].Name != known.name {
-		t.Fatalf("Sigs = %+v, want only the known cosigner's", n.Sigs)
-	}
-	if len(n.UnverifiedSigs) != 1 || n.UnverifiedSigs[0].Name != unknown.name {
-		t.Errorf("UnverifiedSigs = %+v, want the unknown cosigner's", n.UnverifiedSigs)
+
+	_, _, err = checkpoint.Open([]byte(text+"\n"+string(lines)), v)
+	if err == nil {
+		t.Error("checkpoint.Open with a signature from an unknown key = nil error, want error")
 	}
 }
 
 // TestSignatureLineRoundTrip checks that a raw signature extracted with
-// RawSignature reassembles into a verified signature line, and that
-// reassembly rejects short signatures and checkpoints the signature does not
-// cover.
+// RawSignature reassembles into a signature line that verifies against the
+// checkpoint it covers and not against another, and that reassembly rejects
+// short signatures.
 func TestSignatureLineRoundTrip(t *testing.T) {
 	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
@@ -546,11 +561,11 @@ func TestSignatureLineRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	line, err := v.SignatureLine(ca.Origin(), parsed.Tree, raw)
+	line, err := SignatureLine(v.Name(), v.KeyHash(), raw)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
-	roundTripped, err := TimestampedSignature([]byte(text), line, v)
+	roundTripped, err := v.FilterByVerify([]byte(text), line)
 	if err != nil {
 		t.Fatalf("TimestampedSignature rejected the reassembled line: %s", err)
 	}
@@ -558,14 +573,14 @@ func TestSignatureLineRoundTrip(t *testing.T) {
 		t.Errorf("round-tripped signature = %x, want %x", roundTripped, timestamped)
 	}
 
-	_, err = v.SignatureLine(ca.Origin(), parsed.Tree, raw[1:])
+	_, err = SignatureLine(v.Name(), v.KeyHash(), raw[1:])
 	if err == nil {
 		t.Error("SignatureLine with a short signature = nil error, want error")
 	}
 
-	tampered := tlog.Tree{N: parsed.Tree.N + 1, Hash: parsed.Tree.Hash}
-	_, err = v.SignatureLine(ca.Origin(), tampered, raw)
+	tampered := ca.origin + "\n20852164\n" + exampleHashB64 + "\n"
+	_, err = v.FilterByVerify([]byte(tampered), line)
 	if err == nil {
-		t.Error("SignatureLine over a different tree = nil error, want error")
+		t.Error("TimestampedSignature accepted the reassembled line over a different tree")
 	}
 }

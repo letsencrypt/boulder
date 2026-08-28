@@ -272,7 +272,7 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
 	}
-	timestampedMirrorCosignature, err := cosignature.TimestampedSignature(noteText, subtreeCosignatureLines, m.verifier)
+	timestampedMirrorCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
 	if err != nil {
 		return nil, fmt.Errorf("cosignature failed verification: %w", err)
 	}

@@ -55,9 +55,17 @@ func TestLocalMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	_, err = verifier.SignatureLine(cp.Origin, cp.Tree, raw)
+	line, err := cosignature.SignatureLine(verifier.Name(), verifier.KeyHash(), raw)
 	if err != nil {
-		t.Errorf("SignatureLine rejected the mirror's cosignature: %s", err)
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	text, err := cp.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %s", err)
+	}
+	_, err = verifier.FilterByVerify(text, line)
+	if err != nil {
+		t.Errorf("the mirror's cosignature does not verify: %s", err)
 	}
 }
 

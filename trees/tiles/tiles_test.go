@@ -587,36 +587,6 @@ func TestTileReaderTreeHash(t *testing.T) {
 	}
 }
 
-// readCheckpoint fetches the "checkpoint" key under prefix, checking what
-// WriteCheckpoint stored. Nothing outside tests reads it back through this
-// package.
-func readCheckpoint(t *testing.T, s3c *bs3test.FakeS3, prefix string) []byte {
-	t.Helper()
-	obj, ok := s3c.Objects[prefix+"/checkpoint"]
-	if !ok {
-		t.Fatalf("no checkpoint stored under %q", prefix)
-	}
-	return obj.Data
-}
-
-// TestWriteReadCheckpoint checks the checkpoint note round trip and that a
-// newer note overwrites the previous one.
-func TestWriteReadCheckpoint(t *testing.T) {
-	fs3 := bs3test.New()
-	err := WriteCheckpoint(t.Context(), fs3, testPrefix, []byte("first note\n"))
-	if err != nil {
-		t.Fatalf("WriteCheckpoint: %s", err)
-	}
-	err = WriteCheckpoint(t.Context(), fs3, testPrefix, []byte("second note\n"))
-	if err != nil {
-		t.Fatalf("WriteCheckpoint overwriting: %s", err)
-	}
-	got := readCheckpoint(t, fs3, testPrefix)
-	if string(got) != "second note\n" {
-		t.Errorf("stored checkpoint = %q, want %q", got, "second note\n")
-	}
-}
-
 // TestEntriesForPackage checks reading entry intervals back from stored
 // bundles in wire form, from both full and partial bundles, and that invalid
 // and bundle-spanning intervals are rejected.
