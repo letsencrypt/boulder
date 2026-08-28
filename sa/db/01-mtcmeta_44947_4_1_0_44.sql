@@ -27,7 +27,7 @@ CREATE TABLE `checkpoints` (
     -- configuration errors can't result in using the wrong database/keyspace.
     `mtcLogID` varchar(255) NOT NULL,
     -- An ML-DSA-44 signature over a CosignedMessage with `timestamp` and `start` both zero.
-    -- TODO: Change this to store a signed note signature line instead, since that format can
+    -- TODO(#8991): Change this to store a signed note signature line instead, since that format can
     -- carry a nonzero `timestamp`.
     `mtcaSignature` mediumblob,
 
@@ -37,7 +37,7 @@ CREATE TABLE `checkpoints` (
     -- Note: these two fields start empty and are filled later.
     `mirrorID` varchar(255),
     -- An ML-DSA-44 signature over a CosignedMessage with `timestamp` and `start` both zero.
-    -- TODO: Change this to store a signed note signature line instead, since that format can
+    -- TODO(#8991): Change this to store a signed note signature line instead, since that format can
     -- carry a nonzero `timestamp`.
     `mirrorSignature` mediumblob,
 

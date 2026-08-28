@@ -648,8 +648,8 @@ func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {
 	var latest checkpoint
 	err := m.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash
-                subtreeID1, subtreeID2,
+                mirrorSignature, treeSize, rootHash,
+                subtreeID1, subtreeID2
 		 FROM latestCheckpoint JOIN checkpoints
 		 USING(id)
 		 WHERE latestCheckpoint.mtcLogID = ? AND
