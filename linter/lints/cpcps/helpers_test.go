@@ -27,6 +27,7 @@ import (
 	zpkix "github.com/zmap/zcrypto/x509/pkix"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
+	"golang.org/x/crypto/cryptobyte"
 )
 
 // testKey generates an ECDSA key on the given curve.
@@ -152,18 +153,23 @@ func testSCT(logID [32]byte) []byte {
 // containing one fake SCT per given log ID.
 func testSCTListExtension(t *testing.T, logIDs ...[32]byte) pkix.Extension {
 	t.Helper()
-	var list []byte
-	for _, logID := range logIDs {
-		sct := testSCT(logID)
-		list = append(list, byte(len(sct)>>8), byte(len(sct)))
-		list = append(list, sct...)
+
+	var sctList cryptobyte.Builder
+	sctList.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		for _, logID := range logIDs {
+			child.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+				child.AddBytes(testSCT(logID))
+			})
+		}
+	})
+
+	var extnValue cryptobyte.Builder
+	extnValue.AddASN1OctetString(sctList.BytesOrPanic())
+
+	return pkix.Extension{
+		Id:    asn1.ObjectIdentifier(util.TimestampOID),
+		Value: extnValue.BytesOrPanic(),
 	}
-	full := append([]byte{byte(len(list) >> 8), byte(len(list))}, list...)
-	value, err := asn1.Marshal(full)
-	if err != nil {
-		t.Fatalf("marshalling SCT list: %s", err)
-	}
-	return pkix.Extension{Id: asn1.ObjectIdentifier(util.TimestampOID), Value: value}
 }
 
 // testLeafTemplate returns a template matching the Subscriber (Server)

@@ -26,6 +26,8 @@ done;
 mc mb -q --ignore-existing local/boulder-mtc-tiles
 # Allow HTTP fetches of the tiles.
 mc anonymous -q set download local/boulder-mtc-tiles
+mc mb -q --ignore-existing local/boulder-sunlight
+mc anonymous -q set download local/boulder-sunlight
 
 # Put a simple file at the root of the bucket. This is useful for health checking.
 # Once this file exists, the bucket is fully initialized.

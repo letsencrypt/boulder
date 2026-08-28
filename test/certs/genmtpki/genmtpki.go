@@ -112,44 +112,18 @@ func main2() error {
 		return err
 	}
 
-	mirrorKey, err := mldsa.GenerateKey(mldsa.MLDSA44())
+	caSPKI, err := x509.MarshalPKIXPublicKey(key.PublicKey())
 	if err != nil {
 		return err
 	}
 
-	mirrorPKCS8, err := x509.MarshalPKCS8PrivateKey(mirrorKey)
+	caPubFile, err := os.OpenFile(basepath+".pub.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
+	defer caPubFile.Close()
 
-	mirrorKeyFile, err := os.OpenFile(path.Join(*outputDir, "mirror.key.pem"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-	defer mirrorKeyFile.Close()
-
-	err = pem.Encode(mirrorKeyFile, &pem.Block{Type: "PRIVATE KEY", Bytes: mirrorPKCS8})
-	if err != nil {
-		return err
-	}
-
-	mirrorSPKI, err := x509.MarshalPKIXPublicKey(mirrorKey.PublicKey())
-	if err != nil {
-		return err
-	}
-
-	mirrorPubFile, err := os.OpenFile(path.Join(*outputDir, "mirror.pub.pem"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer mirrorPubFile.Close()
-
-	err = pem.Encode(mirrorPubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: mirrorSPKI})
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return pem.Encode(caPubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: caSPKI})
 }
 
 func mtcaSubject() pkix.Name {

@@ -82,13 +82,13 @@ func New(dbMap *db.WrappedMap, interval time.Duration, logID issuancelog.ID, mir
 }
 
 type checkpointEntry struct {
-	ID              int64  `db:"id"`
-	MTCLogID        string `db:"mtcLogID"`
-	MTCASignature   []byte `db:"mtcaSignature"`
-	MirrorID        string `db:"mirrorID"`
-	MirrorSignature []byte `db:"mirrorSignature"`
-	TreeSize        int64  `db:"treeSize"`
-	RootHash        []byte `db:"rootHash"`
+	ID              int64   `db:"id"`
+	MTCLogID        string  `db:"mtcLogID"`
+	MTCASignature   []byte  `db:"mtcaSignature"`
+	MirrorID        *string `db:"mirrorID"`
+	MirrorSignature []byte  `db:"mirrorSignature"`
+	TreeSize        int64   `db:"treeSize"`
+	RootHash        []byte  `db:"rootHash"`
 }
 
 // cosign cosigns the checkpoint described by tree as the mirror and returns the

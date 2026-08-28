@@ -19,7 +19,7 @@ RUN gotip download
 RUN go install github.com/rubenv/sql-migrate/sql-migrate@v1.1.2
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
-RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
 RUN go install github.com/jsha/minica@v1.1.0
 
 FROM rust:latest AS rustdeps

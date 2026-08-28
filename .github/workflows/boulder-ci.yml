@@ -36,7 +36,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.26.6_2026-08-13
+          - go1.26.6_2026-08-25
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -71,6 +71,7 @@ jobs:
       # defined in the matrix.
       BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
       BOULDER_VTCOMBOSERVER_TAG: vitessv23.0.0_2026-06-09
+      BOULDER_SUNLIGHT_TAG: sunlightv0.9.0_2026-08-25
 
     # Sequence of tasks that will be executed as part of the job.
     steps:

@@ -493,7 +493,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		ID:              0,
 		MTCLogID:        m.logID.String(),
 		MTCASignature:   nil,
-		MirrorID:        "",
+		MirrorID:        nil,
 		MirrorSignature: nil,
 		TreeSize:        candidate.TreeSize(),
 		RootHash:        newRootHash[:],
@@ -601,13 +601,13 @@ func (m *mtca) sequence(ctx context.Context) error {
 //
 // For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Message`.
 type checkpoint struct {
-	ID              int64  `db:"id"`
-	MTCLogID        string `db:"mtcLogID"`
-	MTCASignature   []byte `db:"mtcaSignature"`
-	MirrorID        string `db:"mirrorID"`
-	MirrorSignature []byte `db:"mirrorSignature"`
-	TreeSize        int64  `db:"treeSize"`
-	RootHash        []byte `db:"rootHash"`
+	ID              int64   `db:"id"`
+	MTCLogID        string  `db:"mtcLogID"`
+	MTCASignature   []byte  `db:"mtcaSignature"`
+	MirrorID        *string `db:"mirrorID"`
+	MirrorSignature []byte  `db:"mirrorSignature"`
+	TreeSize        int64   `db:"treeSize"`
+	RootHash        []byte  `db:"rootHash"`
 }
 
 func (c *checkpoint) valid() error {
@@ -641,8 +641,12 @@ func (c *checkpoint) String() string {
 	if len(c.MirrorSignature) > 0 {
 		mirrorSig = "non-empty"
 	}
+	var mirrorID string
+	if c.MirrorID != nil {
+		mirrorID = *c.MirrorID
+	}
 	return fmt.Sprintf("ID:%d MTCLogID:%s MTCASignature:%s MirrorID:%s MirrorSignature:%s TreeSize:%d RootHash:%x",
-		c.ID, c.MTCLogID, caSig, c.MirrorID, mirrorSig, c.TreeSize, c.RootHash)
+		c.ID, c.MTCLogID, caSig, mirrorID, mirrorSig, c.TreeSize, c.RootHash)
 }
 
 func (m *mtca) latestCheckpoint(ctx context.Context) (*checkpoint, error) {

@@ -49,7 +49,7 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 	// runs.
 	randIP := make(net.IP, 4)
 	for i := range 4 {
-		randIP[i] = byte(rand.IntN(256))
+		randIP[i] = byte(rand.IntN(256)) //nolint:gosec // we know the integer is byte-sized
 	}
 
 	// Construct a limiter for each source.
