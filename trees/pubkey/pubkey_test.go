@@ -15,7 +15,7 @@ import (
 )
 
 // gimmeLengthPrefixedBytes returns the bytes of a length-prefixed cryptobyte
-// string over the input bytes
+// string of the input bytes
 func gimmeLengthPrefixedBytes(in []byte) []byte {
 	var buf []byte
 	cbb := *cryptobyte.NewBuilder(buf)
@@ -47,9 +47,9 @@ func testPubkey() (*MTCPublicKey, []byte) {
 	return testMTCPubkey, testPubkeyBytes
 }
 
-// testBundle is a helper tests can call to get both a valid length-prefixed
-// public key bundle, and the inner bytes of the bundle body
-func testBundle() ([]byte, []byte) {
+// testBundle is a helper tests can call to get a valid length-prefixed public
+// key bundle
+func testBundle() []byte {
 	testMTCPK, _ := testPubkey()
 
 	testBundleBody, err := testMTCPK.Marshal()
@@ -57,9 +57,7 @@ func testBundle() ([]byte, []byte) {
 		panic(err)
 	}
 
-	testBundleBytes := gimmeLengthPrefixedBytes(testBundleBody)
-
-	return testBundleBytes, testBundleBody
+	return gimmeLengthPrefixedBytes(testBundleBody)
 }
 
 func TestMarshalMTCPK(t *testing.T) {
@@ -248,7 +246,7 @@ func TestBundleReaderSuccess(t *testing.T) {
 		t.Errorf("empty reader: got %x, want empty bytes", pubkeyBytes)
 	}
 
-	input, _ := testBundle()
+	input := testBundle()
 
 	br = NewBundleReader(input)
 	_, _, err = br.ReadPubkey()
@@ -279,7 +277,7 @@ func TestBundleReaderSuccess(t *testing.T) {
 
 func TestPubkeyBundleReaderMalformed(t *testing.T) {
 	_, testPubkeyBytes := testPubkey()
-	testBundle, _ := testBundle()
+	testBundle := testBundle()
 
 	type testCase struct {
 		name  string
