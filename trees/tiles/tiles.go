@@ -13,6 +13,8 @@
 //     of complete subtrees are appended to a tile.
 //   - Any hash stored in a level L tile is equal to MTH(c), where c is a list of exactly 256
 //     hashes stored in a child tile at level L-1 (for L > 0).
+//   - Entry bundles in the entries layer have the exact same number of elements
+//     as the pubkey bundles in the pubkeys layer.
 package tiles
 
 import (
@@ -34,8 +36,16 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/trees/entry"
+	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/subtree"
 )
+
+// Tile Layer representation constants
+const entryTilesLayer int = -1
+const pubkeyTilesLayer int = -2
+
+// The lowest Tile Layer, for dirtyLevel tracking
+const lowestTilesLayer int = pubkeyTilesLayer
 
 // ErrTileExists is returned when trying to write a tile that already exists in storage.
 var ErrTileExists = errors.New("tile exists")
@@ -81,16 +91,22 @@ type Frontier struct {
 	// May be empty but never full.
 	entryTile *entryTile
 
+	// pubkeyTile contains the rightmost tile in the pubkeys layer.
+	// May be empty but never full.
+	pubkeyTile *pubkeyTile
+
 	// This level of hashes and all below it need writing to storage
-	// (including entries).
+	// (including entries and pubkeys).
 	//
-	// -1 means nothing needs writing.
+	// Setting this to the int representing the lowest level (lowestTilesLayer)
+	// means nothing needs writing.
 	dirtyLevel int
 
 	// Tiles pushed off the frontier are stored here to be written. No particular order.
 	// These have entries if and only if dirtyLevel > 0.
 	fullHashesTiles []*hashesTile
 	fullEntryTiles  []*entryTile
+	fullPubkeyTiles []*pubkeyTile
 
 	// treeSize is the current size of the tree.
 	treeSize int64
@@ -118,12 +134,21 @@ func (f *Frontier) Clone() *Frontier {
 		fullEntryTiles = append(fullEntryTiles, et.clone())
 	}
 
+	pubkeys := f.pubkeyTile.clone()
+
+	var fullPubkeyTiles []*pubkeyTile
+	for _, pkt := range f.fullPubkeyTiles {
+		fullPubkeyTiles = append(fullPubkeyTiles, pkt.clone())
+	}
+
 	return &Frontier{
 		hashesTiles:     hashesTiles,
 		entryTile:       entries,
+		pubkeyTile:      pubkeys,
 		dirtyLevel:      f.dirtyLevel,
 		fullHashesTiles: fullHashesTiles,
 		fullEntryTiles:  fullEntryTiles,
+		fullPubkeyTiles: fullPubkeyTiles,
 		treeSize:        f.treeSize,
 	}
 }
@@ -175,6 +200,30 @@ func (e *entryTile) append(val []byte) {
 	e.data = append(e.data, val...)
 }
 
+// pubkeyTile represents a tile containing pubkeys.
+// It may be empty, partial or full. If it's full it can only be
+// part of fullPubkeyTiles.
+type pubkeyTile struct {
+	coords tlog.Tile
+	// data contains a pubkey bundle with coords.W pubkeys.
+	data []byte
+}
+
+func (pk *pubkeyTile) clone() *pubkeyTile {
+	if pk == nil {
+		return nil
+	}
+	return &pubkeyTile{
+		coords: pk.coords,
+		data:   bytes.Clone(pk.data),
+	}
+}
+
+func (pk *pubkeyTile) append(val []byte) {
+	pk.coords.W++
+	pk.data = append(pk.data, val...)
+}
+
 // LoadFrontier loads the current frontier from storage, given the current tree size.
 //
 // Succeeds only if all the frontier tiles for that tree size exist in storage.
@@ -184,7 +233,7 @@ func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefi
 	}
 
 	entryCoords := tlog.Tile{
-		L: -1, // entries layer is represented as -1.
+		L: entryTilesLayer, // entries layer is represented as -1.
 		N: treeSize / 256,
 		W: int(treeSize % 256),
 	}
@@ -213,6 +262,38 @@ func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefi
 	entryTile := &entryTile{
 		coords: entryCoords,
 		data:   entryData,
+	}
+
+	pubkeyCoords := tlog.Tile{
+		L: pubkeyTilesLayer, // pubkey layer is represented as -2.
+		N: treeSize / 256,
+		W: int(treeSize % 256),
+	}
+
+	pubkeyData, err := getTile(ctx, s3c, pubkeyCoords, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	pkbr := pubkey.NewBundleReader(pubkeyData)
+	var pubkeysCount int
+	for ; ; pubkeysCount++ {
+		_, _, err = pkbr.ReadPubkey()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("parsing pubkeys: %s", err)
+		}
+	}
+	if pubkeysCount != pubkeyCoords.W {
+		return nil, fmt.Errorf("reading pubkeys from %q: got %d pubkeys, want %d",
+			tilePath(pubkeyCoords), pubkeysCount, pubkeyCoords.W)
+	}
+
+	pubkeyTile := &pubkeyTile{
+		coords: pubkeyCoords,
+		data:   pubkeyData,
 	}
 
 	var hashesTiles []*hashesTile
@@ -252,8 +333,9 @@ func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefi
 	return &Frontier{
 		hashesTiles: hashesTiles,
 		entryTile:   entryTile,
+		pubkeyTile:  pubkeyTile,
 		treeSize:    treeSize,
-		dirtyLevel:  -1,
+		dirtyLevel:  lowestTilesLayer,
 	}, nil
 }
 
@@ -314,15 +396,20 @@ func (f *Frontier) RootHash() tlog.Hash {
 // levels as needed.
 //
 // On error, the Frontier is unchanged.
-func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry) error {
+func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublicKey) error {
 	// First time appending to a zero Frontier, initialize it.
 	if f.entryTile == nil {
 		f.entryTile = &entryTile{
 			coords: tlog.Tile{
-				L: -1, // entries layer is represented as -1.
+				L: entryTilesLayer, // entries layer is represented as -1.
 			},
 		}
-		f.dirtyLevel = -1
+		f.pubkeyTile = &pubkeyTile{
+			coords: tlog.Tile{
+				L: pubkeyTilesLayer, // pubkeys layer is represented as -2.
+			},
+		}
+		f.dirtyLevel = lowestTilesLayer // nothing is dirty on init
 	}
 
 	mtcleBytes, err := mtcle.Marshal()
@@ -330,24 +417,51 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry) error {
 		return err
 	}
 
-	// TODO: this serializes the MTCLogEntry again, which is a bit silly.
-	// Refactor?
-	bb := entry.NewBundleBuilder(nil)
-	bb.Add(mtcle)
-	bundleBytes, err := bb.Bytes()
+	mtcleBuilder := cryptobyte.NewBuilder(nil)
+	mtcleBuilder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(mtcleBytes)
+	})
+	entryBytes, err := mtcleBuilder.Bytes()
 	if err != nil {
 		return err
 	}
 
-	f.entryTile.append(bundleBytes)
+	f.entryTile.append(entryBytes)
+
+	mtcpkBytes, err := mtcpk.Marshal()
+	if err != nil {
+		return err
+	}
+
+	mtcpkBuilder := cryptobyte.NewBuilder(nil)
+	mtcpkBuilder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(mtcpkBytes)
+	})
+	pubkeyBytes, err := mtcpkBuilder.Bytes()
+	if err != nil {
+		return err
+	}
+
+	f.pubkeyTile.append(pubkeyBytes)
 
 	if f.entryTile.coords.W == 256 {
-		// Tile is full. Queue it for writing.
+		// Entry tile is full. Queue it for writing.
 		f.fullEntryTiles = append(f.fullEntryTiles, f.entryTile)
-		// And set up a new, empty tile.
+		// And set up a new, empty entry tile.
 		f.entryTile = &entryTile{
 			coords: tlog.Tile{
-				L: -1, // entries layer is represented as -1.
+				L: entryTilesLayer, // entries layer is represented as -1.
+				N: (f.treeSize + 1) / 256,
+				W: 0,
+			},
+			data: nil,
+		}
+		// Pubkey tile is full. Queue it for writing.
+		f.fullPubkeyTiles = append(f.fullPubkeyTiles, f.pubkeyTile)
+		// And set up a new, empty pubkey tile.
+		f.pubkeyTile = &pubkeyTile{
+			coords: tlog.Tile{
+				L: pubkeyTilesLayer, // pubkeys layer is represented as -2.
 				N: (f.treeSize + 1) / 256,
 				W: 0,
 			},
@@ -428,7 +542,8 @@ func (f *Frontier) Publish(ctx context.Context, s3c simpleS3, prefix string) err
 
 	f.fullHashesTiles = nil
 	f.fullEntryTiles = nil
-	f.dirtyLevel = -1
+	f.fullPubkeyTiles = nil
+	f.dirtyLevel = lowestTilesLayer // nothing is dirty after successful store()
 
 	return nil
 }
@@ -439,7 +554,7 @@ func (f *Frontier) store(ctx context.Context, s3c simpleS3, prefix string) error
 		return fmt.Errorf("an empty tree has nothing to write")
 	}
 
-	if f.dirtyLevel == -1 {
+	if f.dirtyLevel == lowestTilesLayer {
 		// Nothing's dirty!
 		return nil
 	}
@@ -452,6 +567,18 @@ func (f *Frontier) store(ctx context.Context, s3c simpleS3, prefix string) error
 	}
 
 	err := writeTile(ctx, s3c, prefix, f.entryTile.coords, f.entryTile.data, true)
+	if err != nil {
+		return err
+	}
+
+	for _, t := range f.fullPubkeyTiles {
+		err := writeTile(ctx, s3c, prefix, t.coords, t.data, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = writeTile(ctx, s3c, prefix, f.pubkeyTile.coords, f.pubkeyTile.data, true)
 	if err != nil {
 		return err
 	}
@@ -543,7 +670,8 @@ func writeTile(
 
 // tilePath returns a tile path like tile/0/x001/x234/067.p/23.
 //
-// If coords.L is -1, the path starts with tile/entries/ instead of tile/L.
+// If coords.L is entriesTileLayer(-1), the path starts with tile/entries/ instead of tile/L.
+// If coords.L is pubkeyTileLayer(-2), the path starts with tile/pubkeys/ instead of tile/L.
 //
 // Note: this is similar to tlog.Tile.Path(), but Path() uses "tile/" and "tile/<H>/data/"
 // where we need "tile/" and "tile/entries/" (and don't use <H>).
@@ -551,9 +679,12 @@ func writeTile(
 // https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md
 func tilePath(coords tlog.Tile) string {
 	var out strings.Builder
-	if coords.L == -1 {
+	switch coords.L {
+	case entryTilesLayer:
 		out.WriteString("tile/entries/")
-	} else {
+	case pubkeyTilesLayer:
+		out.WriteString("tile/pubkeys/")
+	default:
 		fmt.Fprintf(&out, "tile/%d/", coords.L)
 	}
 
