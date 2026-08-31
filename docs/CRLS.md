@@ -37,12 +37,11 @@ Two checks guard against publishing a CRL which is missing entries, which would
 appear to un-revoke certificates.
 
 The crl-updater reads each shard's entries from a database replica via
-`GetRevokedCertByShard`. Before signing, it asks the database primary for the
+`GetRevokedCertsByShard`. Before signing, it asks the database primary for the
 shard's most recent revocation entry via `GetLatestRevokedCertByShard`; if that
 entry is missing, or the primary is unreachable, the replica is lagging and the
-update fails. The `thisUpdateBackdate` setting (default 5 minutes) shifts
-`thisUpdate`, and so the revocation cutoff, into the past so that ordinary
-replication lag does not impact this check.
+update fails. The check's cutoff is `lagFactor` (default 5 minutes) earlier than
+the CRL's, so ordinary replication lag does not impact it.
 
 The crl-storer diffs each CRL against the previous one for the same shard. An
 entry may only disappear once it has appeared on a CRL issued after its

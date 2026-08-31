@@ -47,7 +47,6 @@
 		"shardWidth": "240h",
 		"lookbackPeriod": "24h",
 		"checkFreshness": true,
-		"thisUpdateBackdate": "1ms",
 		"updatePeriod": "10m",
 		"updateTimeout": "1m",
 		"expiresMargin": "5m",

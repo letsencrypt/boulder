@@ -46,13 +46,12 @@ func TestRunOnce(t *testing.T) {
 	cu.tickHistogram.Reset()
 }
 
-func TestRunOnceBackdate(t *testing.T) {
+func TestRunOnceLagFactor(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 
 	clk := clock.NewFake()
 	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
-	uploader := &recordingUploader{}
 	fsa := &fakeSAC{revokedCerts: revokedCertsStream{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)}
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1},
@@ -62,17 +61,17 @@ func TestRunOnceBackdate(t *testing.T) {
 		5*time.Minute,
 		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
-		&fakeStorer{uploaderStream: uploader},
+		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,
 	)
 	test.AssertNotError(t, err, "building test crlUpdater")
 
-	// The CRL's number (and therefore its thisUpdate) should be backdated by
-	// the configured amount, but the cache expiry timestamp should not be.
+	// The freshness check's revocation cutoff is lagFactor earlier than the
+	// CRL's thisUpdate.
 	err = cu.RunOnce(context.Background())
 	test.AssertNotError(t, err, "running updater")
-	test.AssertEquals(t, uploader.number, clk.Now().Add(-5*time.Minute).UnixNano())
-	test.Assert(t, uploader.expires.Equal(clk.Now().Add(6*time.Hour).Add(5*time.Minute)), "Expires should not be backdated")
+	test.AssertEquals(t, len(fsa.latestReqs), 1)
+	test.Assert(t, fsa.latestReqs[0].RevokedBefore.AsTime().Equal(clk.Now().Add(-5*time.Minute)), "freshness check's cutoff should be lagFactor earlier than the CRL's")
 }
 
 func TestRunOnceNewIssuer(t *testing.T) {
@@ -100,7 +99,5 @@ func TestRunOnceNewIssuer(t *testing.T) {
 
 	err = cu.RunOnce(context.Background())
 	test.AssertNotError(t, err, "new issuer with no revocations must still publish CRLs")
-	// The storer received a CRL for this run: its metadata carries this run's
-	// (backdated) CRL number.
-	test.AssertEquals(t, uploader.number, clk.Now().Add(-5*time.Minute).UnixNano())
+	test.AssertEquals(t, uploader.number, clk.Now().UnixNano())
 }

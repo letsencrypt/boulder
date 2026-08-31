@@ -54,9 +54,9 @@ type Config struct {
 		// LookbackPeriod is how far back the updater should look for revoked expired
 		// certificates. We are required to include every revoked cert in at least
 		// one CRL issued after it expires, even if it is revoked seconds before it
-		// expires, so this must always be at least twice the UpdatePeriod plus the
-		// ThisUpdateBackdate, and should be increased when recovering from an
-		// outage to ensure continuity of coverage.
+		// expires, so this must always be at least twice the UpdatePeriod plus
+		// the LagFactor, and should be increased when recovering from an outage
+		// to ensure continuity of coverage.
 		LookbackPeriod config.Duration `validate:"-"`
 
 		// CheckFreshness has the updater confirm, before signing each CRL, that
@@ -68,16 +68,14 @@ type Config struct {
 		// and the freshness check is made unconditional.
 		CheckFreshness bool
 
-		// ThisUpdateBackdate is how far in the past each CRL's thisUpdate is
-		// set. Backdating by a few minutes keeps ordinary replication lag from
-		// tripping our staleness check. It must be less than the UpdatePeriod
-		// and the CA's crlProfile.maxBackdate. Increasing it delays each
-		// shard's next publication by up to the size of the increase. Defaults
-		// to 5 minutes when CheckFreshness is set, and zero otherwise.
+		// LagFactor is how much database replication lag the freshness check
+		// tolerates. It ignores revocations from the last LagFactor before each
+		// CRL's thisUpdate. It must be less than the UpdatePeriod. Defaults to
+		// 5 minutes when CheckFreshness is set, and zero otherwise.
 		//
 		// TODO(#8983): Default this field to 5 minutes once #8984 has been
 		// deployed to production and the freshness check is made unconditional.
-		ThisUpdateBackdate config.Duration `validate:"-"`
+		LagFactor config.Duration `validate:"-"`
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
 		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7:
@@ -189,8 +187,8 @@ func main() {
 	}
 	// TODO(#8983): Remove the condition on CheckFreshness once #8984 has been
 	// deployed to production and the freshness check is made unconditional.
-	if c.CRLUpdater.CheckFreshness && c.CRLUpdater.ThisUpdateBackdate.Duration == 0 {
-		c.CRLUpdater.ThisUpdateBackdate.Duration = 5 * time.Minute
+	if c.CRLUpdater.CheckFreshness && c.CRLUpdater.LagFactor.Duration == 0 {
+		c.CRLUpdater.LagFactor.Duration = 5 * time.Minute
 	}
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
@@ -210,7 +208,7 @@ func main() {
 		c.CRLUpdater.NumShards,
 		c.CRLUpdater.ShardWidth.Duration,
 		c.CRLUpdater.LookbackPeriod.Duration,
-		c.CRLUpdater.ThisUpdateBackdate.Duration,
+		c.CRLUpdater.LagFactor.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
 		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,

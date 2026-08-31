@@ -27,15 +27,15 @@ import (
 )
 
 type crlUpdater struct {
-	issuers            map[issuance.NameID]*issuance.Certificate
-	numShards          int
-	shardWidth         time.Duration
-	lookbackPeriod     time.Duration
-	thisUpdateBackdate time.Duration
-	updatePeriod       time.Duration
-	updateTimeout      time.Duration
-	maxParallelism     int
-	maxAttempts        int
+	issuers        map[issuance.NameID]*issuance.Certificate
+	numShards      int
+	shardWidth     time.Duration
+	lookbackPeriod time.Duration
+	lagFactor      time.Duration
+	updatePeriod   time.Duration
+	updateTimeout  time.Duration
+	maxParallelism int
+	maxAttempts    int
 
 	cacheControl  string
 	expiresMargin time.Duration
@@ -63,7 +63,7 @@ func NewUpdater(
 	numShards int,
 	shardWidth time.Duration,
 	lookbackPeriod time.Duration,
-	thisUpdateBackdate time.Duration,
+	lagFactor time.Duration,
 	updatePeriod time.Duration,
 	updateTimeout time.Duration,
 	maxParallelism int,
@@ -95,14 +95,15 @@ func NewUpdater(
 		return nil, fmt.Errorf("update timeout must be less than period: %s !< %s", updateTimeout, updatePeriod)
 	}
 
-	if thisUpdateBackdate < 0 || thisUpdateBackdate >= updatePeriod {
-		return nil, fmt.Errorf("thisUpdateBackdate must be non-negative and less than updatePeriod: got %s, updatePeriod %s", thisUpdateBackdate, updatePeriod)
+	if lagFactor < 0 || lagFactor >= updatePeriod {
+		return nil, fmt.Errorf("lagFactor must be non-negative and less than updatePeriod: got %s, updatePeriod %s", lagFactor, updatePeriod)
 	}
 
-	// Backdating thisUpdate eats into the lookback margin which ensures every
-	// revoked cert appears on a CRL issued after its expiry.
-	if lookbackPeriod < 2*updatePeriod+thisUpdateBackdate {
-		return nil, fmt.Errorf("lookbackPeriod must be at least 2x updatePeriod plus thisUpdateBackdate: %s !< 2 * %s + %s", lookbackPeriod, updatePeriod, thisUpdateBackdate)
+	// The freshness check ignores the last lagFactor of revocations, so keep a
+	// full updatePeriod of margin on top of it to ensure every revoked cert
+	// appears on a CRL issued after its expiry.
+	if lookbackPeriod < 2*updatePeriod+lagFactor {
+		return nil, fmt.Errorf("lookbackPeriod must be at least 2x updatePeriod plus lagFactor: %s !< 2 * %s + %s", lookbackPeriod, updatePeriod, lagFactor)
 	}
 
 	if maxParallelism <= 0 {
@@ -139,7 +140,7 @@ func NewUpdater(
 		numShards,
 		shardWidth,
 		lookbackPeriod,
-		thisUpdateBackdate,
+		lagFactor,
 		updatePeriod,
 		updateTimeout,
 		maxParallelism,
@@ -159,28 +160,34 @@ func NewUpdater(
 	}, nil
 }
 
-// checkFreshness queries the primary database's GetLatestRevokedCertByShard
-// with the given req, and errors if the provided entries doesn't contain the
-// latest revoked serial for that shard, or if the primary says there are no
-// revocations but entries is non-empty.
+// checkFreshness returns an error unless the entries read from a replica
+// include the primary database's most recent revocation for the shard. The
+// comparison ignores revocations from the last cu.lagFactor before req's
+// RevokedBefore, so replicas at most that far behind cause no false positives.
 func (cu *crlUpdater) checkFreshness(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest, entries []*proto.CRLEntry) error {
+	cutoffTime := req.RevokedBefore.AsTime().Add(-cu.lagFactor)
+	req.RevokedBefore = timestamppb.New(cutoffTime)
+
 	latest, err := cu.sa.GetLatestRevokedCertByShard(ctx, req)
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
-			if len(entries) > 0 {
-				return fmt.Errorf("primary database has no revocations for this shard but replica "+
-					"returned %d entries, which replication lag cannot explain; the read-write and "+
-					"read-only SAs are not seeing the same data", len(entries))
+			foundOlder := slices.ContainsFunc(entries, func(entry *proto.CRLEntry) bool {
+				return entry.RevokedAt.AsTime().Before(cutoffTime)
+			})
+			if foundOlder {
+				return errors.New("primary database has no revocations for this shard but the replica " +
+					"returned entries revoked more than lagFactor ago, which replication lag " +
+					"cannot explain; the primary and replica are not seeing the same data")
 			}
 			return nil
 		}
 		return fmt.Errorf("GetLatestRevokedCertByShard: %w", err)
 	}
 
-	found := slices.ContainsFunc(entries, func(entry *proto.CRLEntry) bool {
+	foundLatest := slices.ContainsFunc(entries, func(entry *proto.CRLEntry) bool {
 		return entry.Serial == latest.Serial
 	})
-	if !found {
+	if !foundLatest {
 		return fmt.Errorf("latest revocation (serial %s, revoked at %s, %s ago) missing from "+
 			"%d entries: database replica may be lagging",
 			latest.Serial, latest.RevokedAt.AsTime().Format(time.RFC3339),
@@ -371,8 +378,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 				Number:       atTime.UnixNano(),
 				ShardIdx:     int64(shardIdx),
 				CacheControl: cu.cacheControl,
-				// Expires is relative to the wall clock, not the backdated thisUpdate.
-				Expires: timestamppb.New(atTime.Add(cu.thisUpdateBackdate).Add(cu.updatePeriod).Add(cu.expiresMargin)),
+				Expires:      timestamppb.New(atTime.Add(cu.updatePeriod).Add(cu.expiresMargin)),
 			},
 		},
 	})
