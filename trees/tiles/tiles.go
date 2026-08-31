@@ -443,7 +443,7 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 	f.pubkeyTile.append(pubkeyBytes)
 
 	if f.entryTile.coords.W == 256 {
-		// Entry Tile is full. Queue it for writing.
+		// Entry tile is full. Queue it for writing.
 		f.fullEntryTiles = append(f.fullEntryTiles, f.entryTile)
 		// And set up a new, empty entry tile.
 		f.entryTile = &entryTile{
@@ -454,7 +454,7 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 			},
 			data: nil,
 		}
-		// Pubkey Tile is full. Queue it for writing.
+		// Pubkey tile is full. Queue it for writing.
 		f.fullPubkeyTiles = append(f.fullPubkeyTiles, f.pubkeyTile)
 		// And set up a new, empty pubkey tile.
 		f.pubkeyTile = &pubkeyTile{
