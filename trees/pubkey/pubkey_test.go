@@ -14,18 +14,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// gimmeLengthPrefixedBytes returns the bytes of a length-prefixed cryptobyte
-// string of the input bytes
-func gimmeLengthPrefixedBytes(in []byte) []byte {
-	var buf []byte
-	cbb := *cryptobyte.NewBuilder(buf)
-	cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes(in)
-	})
-
-	return cbb.BytesOrPanic()
-}
-
 // testPubkey is a helper tests can call to get both a good MTCPublicKey, and
 // the structure's inner SPKI bytes
 func testPubkey() (*MTCPublicKey, []byte) {
@@ -57,7 +45,13 @@ func testBundle() []byte {
 		panic(err)
 	}
 
-	return gimmeLengthPrefixedBytes(testBundleBody)
+	var buf []byte
+	cbb := *cryptobyte.NewBuilder(buf)
+	cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(testBundleBody)
+	})
+
+	return cbb.BytesOrPanic()
 }
 
 func TestMarshalMTCPK(t *testing.T) {
@@ -100,7 +94,7 @@ func TestMarshalMTCPK(t *testing.T) {
 	if err != nil {
 		t.Errorf("marshaling valid pubkey: %s", err)
 	}
-	expected = append([]byte{0, 1}, gimmeLengthPrefixedBytes(testPubkeyBytes)...)
+	expected = append([]byte{0, 1}, testPubkeyBytes...)
 	if !bytes.Equal(output, expected) {
 		t.Errorf("marshaling valid pubkey: got %x, want %x", output, expected)
 	}
@@ -117,22 +111,18 @@ func TestUnmarshalMTCPK(t *testing.T) {
 	_, testPubkeyBytes := testPubkey()
 	// testPubkeyBytesLength := len(testPubkeyBytes)
 
-	validUnmarshalable := gimmeLengthPrefixedBytes(testPubkeyBytes)
-	validUnmarshalableLength := len(validUnmarshalable)
-
 	testCases := []testCase{
-		{"valid pubkey", append([]byte{0, 1}, validUnmarshalable...), "", &MTCPublicKey{
+		{"valid pubkey", append([]byte{0, 1}, testPubkeyBytes...), "", &MTCPublicKey{
 			typ: typeSPKI,
 			pub: testPubkeyBytes,
 		}},
 		{"valid null pubkey", []byte{0, 0}, "", &MTCPublicKey{
 			typ: typeNullPubkey,
 		}},
-		{"too short", append([]byte{0, 1}, validUnmarshalable[:validUnmarshalableLength-6]...), "malformed pubkey", nil},
 		{"way too short", []byte{1}, "malformed type", nil},
-		{"null pubkey type with pubkey bytes", append([]byte{0, 0}, validUnmarshalable...), "null pubkey with non-empty value", nil},
+		{"null pubkey type with pubkey bytes", append([]byte{0, 0}, testPubkeyBytes...), "null pubkey with non-empty value", nil},
 		{"pubkey type with no pubkey bytes", []byte{0, 1}, "non-null pubkey with empty value", nil},
-		{"unknown type", append([]byte{0, 3}, validUnmarshalable...), "unknown MTCPubkey type", nil},
+		{"unknown type", append([]byte{0, 3}, testPubkeyBytes...), "unknown MTCPubkey type", nil},
 	}
 
 	for _, tc := range testCases {
@@ -174,12 +164,12 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// and add the null MTCPubkey bytes to the bundle
+	// and bundle the null MTCPubkey bytes
 	cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes(nullPkBundle)
 	})
 
-	// then add 10 copies of the test pubkey to the bundle
+	// then bundle 10 copies of the test pubkey
 	for range 10 {
 		testPkBundle, err := testMTCPubkey.Marshal()
 		if err != nil {
@@ -226,7 +216,7 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 		if !bytes.Equal(mtcpk.pub, wantValue) {
 			t.Errorf("mtcpk.Value: got %x, want %x", mtcpk.pub, wantValue)
 		}
-		wantMTCPKBytes := append([]byte{0, 1}, gimmeLengthPrefixedBytes(wantValue)...)
+		wantMTCPKBytes := append([]byte{0, 1}, wantValue...)
 		if !bytes.Equal(raw, wantMTCPKBytes) {
 			t.Errorf("raw MTCPubkey: got %x, want %x", raw, expected)
 		}
@@ -285,9 +275,9 @@ func TestPubkeyBundleReaderMalformed(t *testing.T) {
 	}
 
 	// expecting that 0,33 is not zero, but shorter than any testPubkey
-	shortLengthBundle := append([]byte{0, 33, 0, 1}, gimmeLengthPrefixedBytes(testPubkeyBytes)...)
+	shortLengthBundle := append([]byte{0, 33, 0, 1}, testPubkeyBytes...)
 	// expecting that 33,255 is not MAX, but larger than any testPubkey
-	shortBodyBundle := append([]byte{33, 255, 0, 1}, gimmeLengthPrefixedBytes(testPubkeyBytes)...)
+	shortBodyBundle := append([]byte{33, 255, 0, 1}, testPubkeyBytes...)
 
 	testCases := []testCase{
 		{"short length", shortLengthBundle},

@@ -16,8 +16,9 @@
 // length-prefixed framing so that MTCPublicKeys can be concatenated
 // unambiguously.
 //
-// Note that the subjectPublicKeyInfo structures are written to bundles with
-// their own length prefix, to provide some error-checking when unmarshaling.
+// Note that the subjectPublicKeyInfo structures do not carry their own length
+// information since their format has its own length information, or they are
+// wrapped in a bundle with bundle-length information.
 package pubkey
 
 import (
@@ -83,9 +84,8 @@ func (mtcpk *MTCPublicKey) Marshal() ([]byte, error) {
 
 	switch mtcpk.typ {
 	case typeSPKI:
-		builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-			child.AddBytes(mtcpk.pub)
-		})
+		// mtcpk.pub is a crypto.x509 SubjectPublicKeyInfo structure
+		builder.AddBytes(mtcpk.pub)
 	case typeNullPubkey:
 		if len(mtcpk.pub) != 0 {
 			return nil, fmt.Errorf("non-empty pubkey bytes for null MTCPubkey")
@@ -103,6 +103,10 @@ func (mtcpk *MTCPublicKey) Marshal() ([]byte, error) {
 func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 	val := cryptobyte.String(input)
 
+	if val.Empty() {
+		return nil, fmt.Errorf("cannot unmarshal empty input")
+	}
+
 	var typ uint16
 	if !val.ReadUint16(&typ) {
 		return nil, fmt.Errorf("malformed type")
@@ -110,8 +114,11 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 
 	switch typ {
 	case typeSPKI:
+		if val.Empty() {
+			return nil, fmt.Errorf("non-null pubkey with empty value")
+		}
 	case typeNullPubkey:
-		if len(val) > 0 {
+		if !val.Empty() {
 			return nil, fmt.Errorf("null pubkey with non-empty value")
 		}
 
@@ -123,24 +130,10 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 		return nil, fmt.Errorf("unknown MTCPubkey type %d", typ)
 	}
 
-	if val.Empty() {
-		return nil, fmt.Errorf("non-null pubkey with empty value")
-	}
-
-	// The rest is the subjectPublicKeyInfo structure, length-prefixed
-	var pub cryptobyte.String
-	if !val.ReadUint16LengthPrefixed(&pub) {
-		return nil, fmt.Errorf("malformed pubkey")
-	}
-
-	// There should be nothing left
-	if !val.Empty() {
-		return nil, fmt.Errorf("unknown bytes remainder")
-	}
-
+	// The rest of the bytes is the subjectPublicKeyInfo structure
 	return &MTCPublicKey{
 		typ: typ,
-		pub: []byte(pub),
+		pub: []byte(val),
 	}, nil
 }
 
