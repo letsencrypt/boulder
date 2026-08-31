@@ -8,7 +8,8 @@
 		"hostnamePolicyFile": "test/ident-policy.yaml",
 		"hostnamePolicyFiles": {
 			"reasonNameOne": "test/reasonName-ident-policy.yaml",
-			"reasonNameTwo": "test/reasonName-ident-policy.yaml" },
+			"reasonNameTwo": "test/reasonName-ident-policy.yaml"
+		},
 		"grpcCA": {
 			"maxConnectionAge": "30s",
 			"services": {
