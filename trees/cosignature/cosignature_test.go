@@ -16,10 +16,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/privatekey"
-	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
+
+	"github.com/letsencrypt/boulder/privatekey"
+	"github.com/letsencrypt/boulder/trees/checkpoint"
 )
 
 // exampleCheckpoint is a canonical tlog-checkpoint note body the cosignature
@@ -382,7 +383,7 @@ func TestCosignerPropagatesSignerError(t *testing.T) {
 func TestRawSignature(t *testing.T) {
 	timestampedSignature := make([]byte, timestampedSignatureSize)
 	for i := range timestampedSignature[8:] {
-		timestampedSignature[8+i] = byte(i)
+		timestampedSignature[8+i] = byte(i) //nolint:gosec // G602 false positive on slice index
 	}
 	signature, err := RawSignature(timestampedSignature)
 	if err != nil {
