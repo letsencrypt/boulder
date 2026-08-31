@@ -127,6 +127,8 @@ func (pc PAConfig) CheckIdentifiers() error {
 // what hostnames to issue for.
 type HostnamePolicyConfig struct {
 	HostnamePolicyFile string `validate:"required"`
+
+	HostnamePolicyFiles map[string]string `validate:"omitempty"`
 }
 
 // TLSConfig represents certificates and a key for authenticated TLS.

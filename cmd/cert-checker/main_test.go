@@ -15,6 +15,7 @@ import (
 	"math/big"
 	mrand "math/rand/v2"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"slices"
@@ -24,6 +25,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/zmap/zcrypto/cryptobyte"
+	"github.com/zmap/zlint/v3/util"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -66,10 +69,80 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	err = pa.LoadIdentPolicyFile("../../test/reasonName-ident-policy.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
 	kp, err = sagoodkey.NewPolicy(nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// fakeSCTListExtValue is a test helper that will return a byte slice that is a
+// fake, parseable singedCertificateTimestampList ready to use in a
+// pkix.Extension{Value:}
+func fakeSCTListExtnValue() []byte {
+	var sctList cryptobyte.Builder
+	sctList.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		var logIDs [][32]byte
+		// Two SCTs from different logIDs
+		logIDs = append(logIDs, [32]byte{1})
+		logIDs = append(logIDs, [32]byte{2})
+		for _, logID := range logIDs {
+			var sct []byte
+			sct = append(sct, 0) // sct_version v1(0)
+			sct = append(sct, logID[:]...)
+			sct = append(sct, make([]byte, 8)...) // timestamp
+			sct = append(sct, 0, 0)               // no extensions
+			sct = append(sct, 4, 3)               // sha256, ecdsa
+			sct = append(sct, 0, 4, 1, 2, 3, 4)   // 4-byte placeholder signature
+			child.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+				child.AddBytes(sct)
+			})
+		}
+	})
+
+	var extnValue cryptobyte.Builder
+	extnValue.AddASN1OctetString(sctList.BytesOrPanic())
+
+	return extnValue.BytesOrPanic()
+}
+
+// fakeIssuer is a test helper that, when passed a crypto.PrivateKey capable of
+// signing, will generate and return an issuer certificate in DER form, an
+// issuer certificate as an x509.Certificate, and an issuance.Certificate
+// issuer. Use these in tests when generating typical subscriber certs to pass
+// more lints upfront.
+func fakeIssuer(t *testing.T, testKey crypto.PrivateKey) ([]byte, *x509.Certificate, *issuance.Certificate) {
+	t.Helper()
+	signer, ok := testKey.(crypto.Signer)
+	if !ok {
+		panic("unable to use key for test issuer")
+	}
+	// create a self-signed issuer to support EE certs
+	issuerSerial := big.NewInt(31337)
+	issuerSKID, _ := core.GenerateSKID(signer.Public())
+	issuerTemplate := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "CPU's Cool CA",
+		},
+		SerialNumber:          issuerSerial,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(testValidityDuration - time.Second),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		IssuingCertificateURL: []string{"http://aia.example.org"},
+		SubjectKeyId:          issuerSKID,
+	}
+	issuerDer, err := x509.CreateCertificate(rand.Reader, issuerTemplate, issuerTemplate, signer.Public(), signer)
+	test.AssertNotError(t, err, "failed to create self-signed issuer cert")
+	issuerCert, err := x509.ParseCertificate(issuerDer)
+	test.AssertNotError(t, err, "failed to parse self-signed issuer cert")
+	issuer, err := issuance.NewCertificate(issuerCert)
+	test.AssertNotError(t, err, "failed to make self-signed issuer cert")
+	return issuerDer, issuerCert, issuer
 }
 
 func BenchmarkCheckCert(b *testing.B) {
@@ -107,12 +180,35 @@ func TestCheckWildcardCert(t *testing.T) {
 		saCleanup()
 	}()
 
-	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
-	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
+	fc.Set(time.Now())
+
+	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	_, issuerCert, issuer := fakeIssuer(t, testKey)
+
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations,
+		map[string]*issuance.Certificate{issuerCert.Subject.CommonName: issuer},
+		nil, linter.Config{}, blog.NewMock())
+
 	issued := checker.clock.Now().Add(-time.Minute)
 	goodExpiry := issued.Add(testValidityDuration - time.Second)
-	serial := big.NewInt(1337)
+	serial, _ := big.NewInt(0).SetString("12345678901234567890123456789012", 10)
+	dvOID, _ := x509.OIDFromASN1OID(asn1.ObjectIdentifier(util.BRDomainValidatedOID))
+
+	signedCertificateTimestampList := pkix.Extension{
+		Id:       asn1.ObjectIdentifier(util.TimestampOID),
+		Critical: false,
+		Value:    fakeSCTListExtnValue(),
+	}
+
+	// ignore things we don't care about for this test
+	ignoredLints, err := linter.NewRegistry([]string{
+		"w_ext_subject_key_identifier_missing_sub_cert",
+		"w_ct_sct_policy_count_unsatisfied",
+		"w_subject_common_name_included",
+	})
+	test.AssertNotError(t, err, "creating test lint registry")
+	checker.lints = ignoredLints
 
 	wildcardCert := x509.Certificate{
 		Subject: pkix.Name{
@@ -123,12 +219,14 @@ func TestCheckWildcardCert(t *testing.T) {
 		DNSNames:              []string{"*.example.com"},
 		SerialNumber:          serial,
 		BasicConstraintsValid: true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature,
-		OCSPServer:            []string{"http://example.com/ocsp"},
 		IssuingCertificateURL: []string{"http://example.com/cert"},
+		CRLDistributionPoints: []string{"http://crl.example.com"},
+		Policies:              []x509.OID{dvOID},
+		ExtraExtensions:       []pkix.Extension{signedCertificateTimestampList},
 	}
-	wildcardCertDer, err := x509.CreateCertificate(rand.Reader, &wildcardCert, &wildcardCert, &testKey.PublicKey, testKey)
+	wildcardCertDer, err := x509.CreateCertificate(rand.Reader, &wildcardCert, issuerCert, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "Couldn't create certificate")
 	parsed, err := x509.ParseCertificate(wildcardCertDer)
 	test.AssertNotError(t, err, "Couldn't parse created certificate")
@@ -143,6 +241,28 @@ func TestCheckWildcardCert(t *testing.T) {
 	for _, p := range problems {
 		t.Error(p)
 	}
+
+	// Now the _same_ check, but using the wildcard form of a BlockedExactName
+	wildcardCert.Subject.CommonName = "*.le-test.hoffman-andrews.com"
+	wildcardCert.DNSNames = []string{"*.le-test.hoffman-andrews.com"}
+
+	blockedWildcardCertDer, err := x509.CreateCertificate(rand.Reader, &wildcardCert, issuerCert, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "Couldn't create certificate")
+	parsed, err = x509.ParseCertificate(blockedWildcardCertDer)
+	test.AssertNotError(t, err, "Couldn't parse created certificate")
+	cert = &corepb.Certificate{
+		Serial:  core.SerialToString(serial),
+		Digest:  core.Fingerprint256(blockedWildcardCertDer),
+		Expires: timestamppb.New(parsed.NotAfter),
+		Issued:  timestamppb.New(parsed.NotBefore),
+		Der:     blockedWildcardCertDer,
+	}
+	_, problems = checker.checkCert(context.Background(), cert)
+	// should have just a single problem
+	test.AssertEquals(t, len(problems), 1)
+	for _, p := range problems {
+		test.AssertContains(t, p, "Policy Authority isn't willing to issue for '*.le-test.hoffman-andrews.com'")
+	}
 }
 
 func TestCheckCertReturnsSANs(t *testing.T) {
@@ -152,7 +272,9 @@ func TestCheckCertReturnsSANs(t *testing.T) {
 	defer func() {
 		saCleanup()
 	}()
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 
 	certPEM, err := os.ReadFile("testdata/quite_invalid.pem")
 	if err != nil {
@@ -218,8 +340,14 @@ func TestCheckCert(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			testKey, _ := tc.key.genKey()
+			_, issuerCert, issuer := fakeIssuer(t, testKey)
 
-			checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
+			fc := clock.NewFake()
+			fc.Set(time.Now())
+
+			checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations,
+				map[string]*issuance.Certificate{issuerCert.Subject.CommonName: issuer},
+				nil, linter.Config{}, blog.NewMock())
 
 			// Create a RFC 7633 OCSP Must Staple Extension.
 			// OID 1.3.6.1.5.5.7.1.24
@@ -227,6 +355,12 @@ func TestCheckCert(t *testing.T) {
 				Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
 				Critical: false,
 				Value:    []uint8{0x30, 0x3, 0x2, 0x1, 0x5},
+			}
+
+			signedCertificateTimestampList := pkix.Extension{
+				Id:       asn1.ObjectIdentifier(util.TimestampOID),
+				Critical: false,
+				Value:    fakeSCTListExtnValue(),
 			}
 
 			// Create a made up PKIX extension
@@ -238,7 +372,7 @@ func TestCheckCert(t *testing.T) {
 
 			issued := checker.clock.Now().Add(-time.Minute)
 			goodExpiry := issued.Add(testValidityDuration - time.Second)
-			serial := big.NewInt(1337)
+			serial, _ := big.NewInt(0).SetString("12345678901234567890123456789012", 10)
 			longName := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com"
 			rawCert := x509.Certificate{
 				Subject: pkix.Name{
@@ -249,10 +383,18 @@ func TestCheckCert(t *testing.T) {
 				DNSNames: []string{
 					"example-a.com",
 					"foodnotbombs.mil",
+					// exmaple.net is blocked in loaded ident policy file
+					"example.net",
 					// `dev-myqnapcloud.com` is included because it is an exact private
 					// entry on the public suffix list
 					"dev-myqnapcloud.com",
 					// don't include longName in the SANs, so the unique CN gets flagged
+				},
+				IPAddresses: []net.IP{
+					// .66 is blocked in loaded ident policy file
+					netip.MustParseAddr("64.112.117.66").AsSlice(),
+					// .67 is not blocked
+					netip.MustParseAddr("64.112.117.67").AsSlice(),
 				},
 				SerialNumber:          serial,
 				BasicConstraintsValid: false,
@@ -262,7 +404,7 @@ func TestCheckCert(t *testing.T) {
 				IssuingCertificateURL: []string{"http://example.com/cert"},
 				ExtraExtensions:       []pkix.Extension{ocspMustStaple, imaginaryExtension},
 			}
-			brokenCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, testKey.Public(), testKey)
+			brokenCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, issuerCert, testKey.Public(), testKey)
 			test.AssertNotError(t, err, "Couldn't create certificate")
 			// Problems
 			//   Digest doesn't match
@@ -288,7 +430,13 @@ func TestCheckCert(t *testing.T) {
 				"Certificate has incorrect key usage extensions":                            1,
 				"Certificate has common name >64 characters long (65)":                      1,
 				"Certificate contains an unexpected extension: 1.3.3.7":                     1,
-				"Certificate Common Name does not appear in Subject Alternative Names: \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com\" !< [example-a.com foodnotbombs.mil dev-myqnapcloud.com]": 1,
+				"Certificate Common Name does not appear in Subject Alternative Names: \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com\" !< [example-a.com foodnotbombs.mil example.net dev-myqnapcloud.com]": 1,
+				"Policy Authority isn't willing to issue for '64.112.117.66': Cannot issue for \"64.112.117.66\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy":         1,
+				"Policy Authority isn't willing to issue for 'example.net': Cannot issue for \"example.net\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy":             1,
+				"zlint error: e_cert_matches_exactly_one_cps_profile cert does not match any CPS profile":                                                                                                                         1,
+				"zlint error: e_subject_common_name_max_length": 1,
+				"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.": 1,
+				"zlint warn: w_ext_subject_key_identifier_missing_sub_cert":                                                                         1,
 			}
 			for _, p := range problems {
 				_, ok := problemsMap[p]
@@ -312,14 +460,27 @@ func TestCheckCert(t *testing.T) {
 			}
 			test.Assert(t, foundInvalidSerialProblem, "Invalid certificate serial number in DB did not trigger problem.")
 
+			// ignore problems we are not going to fix for this test
+			ignoredLints, err := linter.NewRegistry([]string{
+				"w_ext_subject_key_identifier_missing_sub_cert",
+				"w_subject_common_name_included",
+			})
+			test.AssertNotError(t, err, "creating test lint registry")
+			checker.lints = ignoredLints
+
 			// Fix the problems
 			rawCert.Subject.CommonName = "example-a.com"
 			rawCert.DNSNames = []string{"example-a.com"}
+			rawCert.IPAddresses = []net.IP{netip.MustParseAddr("64.112.117.67").AsSlice()}
 			rawCert.NotAfter = goodExpiry
 			rawCert.BasicConstraintsValid = true
-			rawCert.ExtraExtensions = []pkix.Extension{ocspMustStaple}
-			rawCert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
-			goodCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, testKey.Public(), testKey)
+			rawCert.CRLDistributionPoints = []string{"http://crl.example.com"}
+			rawCert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+			rawCert.ExtraExtensions = []pkix.Extension{signedCertificateTimestampList}
+			rawCert.OCSPServer = []string{}
+			dvOID, _ := x509.OIDFromASN1OID(asn1.ObjectIdentifier(util.BRDomainValidatedOID))
+			rawCert.Policies = []x509.OID{dvOID}
+			goodCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, issuerCert, testKey.Public(), testKey)
 			test.AssertNotError(t, err, "Couldn't create certificate")
 			parsed, err := x509.ParseCertificate(goodCertDer)
 			test.AssertNotError(t, err, "Couldn't parse created certificate")
@@ -427,7 +588,9 @@ func (db mismatchedCountDB) SelectOne(_ context.Context, holder any, _ string, _
 func TestGetCertsEmptyResults(t *testing.T) {
 	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
@@ -454,7 +617,9 @@ func (db emptyDB) SelectOne(_ context.Context, holder any, _ string, _ ...any) e
 // expected if the DB finds no certificates to match the SELECT query and
 // should return an error.
 func TestGetCertsNullResults(t *testing.T) {
-	checker := newChecker(emptyDB{}, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	checker := newChecker(emptyDB{}, fc, pa, kp, time.Hour, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
 
 	err := checker.getCerts(context.Background())
 	test.AssertError(t, err, "Should have gotten error from empty DB")
@@ -498,6 +663,7 @@ func (db *lateDB) Select(_ context.Context, output any, _ string, args ...any) (
 // TestGetCertsLate checks for correct behavior when certificates exist only late in the provided window.
 func TestGetCertsLate(t *testing.T) {
 	clk := clock.NewFake()
+	clk.Set(time.Now())
 	db := &lateDB{issuedTime: clk.Now().Add(-time.Hour)}
 	checkPeriod := 24 * time.Hour
 	checker := newChecker(db, clk, pa, kp, checkPeriod, testValidityDurations, nil, nil, linter.Config{}, blog.NewMock())
@@ -579,15 +745,13 @@ func TestIgnoredLint(t *testing.T) {
 	}
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	issuerDer, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
-	test.AssertNotError(t, err, "failed to create self-signed issuer cert")
-	issuerCert, err := x509.ParseCertificate(issuerDer)
-	test.AssertNotError(t, err, "failed to parse self-signed issuer cert")
-	issuer, err := issuance.NewCertificate(issuerCert)
-	test.AssertNotError(t, err, "failed to make self-signed issuer cert")
+	_, issuerCert, issuer := fakeIssuer(t, testKey)
+
+	fc := clock.NewFake()
+	fc.Set(time.Now().UTC())
 
 	checker := newChecker(
-		saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations,
+		saDbMap, fc, pa, kp, time.Hour, testValidityDurations,
 		map[string]*issuance.Certificate{issuerCert.Subject.CommonName: issuer},
 		nil, linter.Config{}, blog.NewMock(),
 	)

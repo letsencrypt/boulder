@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
@@ -189,6 +190,19 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewIP(netip.MustParseAddr(`ff00::1`)),
 		identifier.NewIP(netip.MustParseAddr(`ff10::1`)),
 		identifier.NewIP(netip.MustParseAddr(`ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff`)),
+		identifier.NewDNS(`highvalue.website1-yday.org`),
+		identifier.NewDNS(`www.website1-yday.org`),
+		identifier.NewDNS(`website2-yday.co.uk`),
+		identifier.NewDNS(`www.website3-yday.com`),
+		identifier.NewDNS(`lots.of.labels.website4-yday.com`),
+		identifier.NewDNS(`banned.in.dc-yday.com`),
+		identifier.NewDNS(`bad.brains.banned.in.dc-yday.com`),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.69`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:669::1`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:669::1%lo`)),
+		identifier.NewIP(netip.MustParseAddr(`ff11::1`)),
+		identifier.NewIP(netip.MustParseAddr(`ff12::1`)),
+		identifier.NewIP(netip.MustParseAddr(`feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff`)),
 	}
 	blocklistContents := []string{
 		`website2.com`,
@@ -197,10 +211,36 @@ func TestWillingToIssue(t *testing.T) {
 		`website3.com`,
 		`website4.com`,
 	}
+	datedBlocklistContents := map[string]EffectiveDate{
+		// Past EffectiveDate
+		`website2-yday.com`:     {time.Now().Add(-24 * time.Hour)},
+		`website2-yday.org`:     {time.Now().Add(-24 * time.Hour)},
+		`website2-yday.co.uk`:   {time.Now().Add(-24 * time.Hour)},
+		`website3-yday.com`:     {time.Now().Add(-24 * time.Hour)},
+		`website4-yday.com`:     {time.Now().Add(-24 * time.Hour)},
+		`banned.in.dc-yday.com`: {time.Now().Add(-24 * time.Hour)},
+		// Future EffectiveDate
+		`website2-tmrw.com`:     {time.Now().Add(24 * time.Hour)},
+		`website2-tmrw.org`:     {time.Now().Add(24 * time.Hour)},
+		`website2-tmrw.co.uk`:   {time.Now().Add(24 * time.Hour)},
+		`website3-tmrw.com`:     {time.Now().Add(24 * time.Hour)},
+		`website4-tmrw.com`:     {time.Now().Add(24 * time.Hour)},
+		`banned.in.dc-tmrw.com`: {time.Now().Add(24 * time.Hour)},
+	}
 	exactBlocklistContents := []string{
 		`www.website1.org`,
 		`highvalue.website1.org`,
 		`dl.website1.org`,
+	}
+	datedBlockedExactNamesContents := map[string]EffectiveDate{
+		// Past EffectiveDate
+		`www.website1-yday.org`:       {time.Now().Add(-24 * time.Hour)},
+		`highvalue.website1-yday.org`: {time.Now().Add(-24 * time.Hour)},
+		`dl.website1-yday.org`:        {time.Now().Add(-24 * time.Hour)},
+		// Future EffectiveDate
+		`www.website1-tmrw.org`:       {time.Now().Add(24 * time.Hour)},
+		`highvalue.website1-tmrw.org`: {time.Now().Add(24 * time.Hour)},
+		`dl.website1-tmrw.org`:        {time.Now().Add(24 * time.Hour)},
 	}
 	adminBlockedNamesContents := []string{
 		`banned.in.dc.com`,
@@ -210,6 +250,18 @@ func TestWillingToIssue(t *testing.T) {
 		`224.0.0.0/4`,
 		`2602:80a:6000:666::/64`,
 		`ff00::/8`,
+	}
+	datedBlockedPrefixesContents := map[string]EffectiveDate{
+		// Past EffectiveDate
+		`64.112.117.69/32`:       {time.Now().Add(-24 * time.Hour)},
+		`240.0.0.0/8`:            {time.Now().Add(-24 * time.Hour)},
+		`2602:80a:6000:669::/64`: {time.Now().Add(-24 * time.Hour)},
+		`fe00::/8`:               {time.Now().Add(-24 * time.Hour)},
+		// Future EffectiveDate
+		`64.112.117.70/32`:       {time.Now().Add(24 * time.Hour)},
+		`241.0.0.0/8`:            {time.Now().Add(24 * time.Hour)},
+		`2602:80a:6000:671::/64`: {time.Now().Add(24 * time.Hour)},
+		`fc00::/8`:               {time.Now().Add(24 * time.Hour)},
 	}
 
 	shouldBeAccepted := identifier.ACMEIdentifiers{
@@ -222,9 +274,24 @@ func TestWillingToIssue(t *testing.T) {
 		identifier.NewDNS(`web5ite2.com`),
 		identifier.NewDNS(`www.web-site2.com`),
 		identifier.NewDNS(`www.highvalue.website1.org`),
+		identifier.NewDNS(`www.highvalue.website1-yday.org`),
+		identifier.NewDNS(`lowvalue.website1-tmrw.org`),
+		identifier.NewDNS(`website2-tmrw.org`),
+		identifier.NewDNS(`website4-tmrw.com`),
+		identifier.NewDNS(`website4-tmrw.sucks`),
+		identifier.NewDNS(`banned.in.dc-tmrw.com`),
+		identifier.NewDNS(`bad.brains.banned.in.dc-tmrw.com`),
+		identifier.NewDNS(`www.highvalue.website1-tmrw.org`),
 		identifier.NewIP(netip.MustParseAddr(`64.112.117.67`)),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.68`)),
 		identifier.NewIP(netip.MustParseAddr(`2620:fe::fe`)),
 		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:667::`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:670::1`)),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.70`)),
+		identifier.NewIP(netip.MustParseAddr(`64.112.117.71`)),
+		identifier.NewIP(netip.MustParseAddr(`2620:fe::fe`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:671::`)),
+		identifier.NewIP(netip.MustParseAddr(`2602:80a:6000:672::1`)),
 	}
 
 	policy := blockedIdentsPolicy{
@@ -232,6 +299,9 @@ func TestWillingToIssue(t *testing.T) {
 		ExactBlockedNames:    exactBlocklistContents,
 		AdminBlockedNames:    adminBlockedNamesContents,
 		AdminBlockedPrefixes: adminBlockedPrefixesContents,
+		BlockedExactNames:    datedBlockedExactNamesContents,
+		BlockedNames:         datedBlocklistContents,
+		BlockedPrefixes:      datedBlockedPrefixesContents,
 	}
 
 	yamlPolicyBytes, err := yaml.Marshal(policy)
@@ -246,24 +316,64 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.LoadIdentPolicyFile(yamlPolicyFile.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
+	// Create some duplicate entries with future EffectiveDates
+	datedBlocklistDuplicates := map[string]EffectiveDate{
+		// Future EffectiveDate in place of Past
+		`website2-yday.com`:   {time.Now().Add(36 * time.Hour)},
+		`website2-yday.org`:   {time.Now().Add(36 * time.Hour)},
+		`website2-yday.co.uk`: {time.Now().Add(36 * time.Hour)},
+		`website3-yday.com`:   {time.Now().Add(36 * time.Hour)},
+		`website4-yday.com`:   {time.Now().Add(36 * time.Hour)},
+	}
+	datedBlockedExactNamesDuplicates := map[string]EffectiveDate{
+		// Future EffectiveDate in place of Past
+		`www.website1-yday.org`:       {time.Now().Add(36 * time.Hour)},
+		`highvalue.website1-yday.org`: {time.Now().Add(36 * time.Hour)},
+		`dl.website1-yday.org`:        {time.Now().Add(36 * time.Hour)},
+	}
+	datedBlockedPrefixesDuplicates := map[string]EffectiveDate{
+		// Future EffectiveDate in place of Past
+		`64.112.117.69/32`:       {time.Now().Add(36 * time.Hour)},
+		`240.0.0.0/8`:            {time.Now().Add(36 * time.Hour)},
+		`2602:80a:6000:669::/64`: {time.Now().Add(36 * time.Hour)},
+		`fe00::/8`:               {time.Now().Add(36 * time.Hour)},
+	}
+	policyDupes := blockedIdentsPolicy{
+		BlockedExactNames: datedBlockedExactNamesDuplicates,
+		BlockedNames:      datedBlocklistDuplicates,
+		BlockedPrefixes:   datedBlockedPrefixesDuplicates,
+	}
+
+	// Load another test file with the duplicate entries which would override
+	// original entries if processIdentPolicy logic is flawed
+	yamlPolicyDupes, err := yaml.Marshal(policyDupes)
+	test.AssertNotError(t, err, "Couldn't YAML serialize blocklist")
+	yamlPolicyDupeFile, _ := os.CreateTemp("", "test-dupe-blocklist.*.yaml")
+	defer os.Remove(yamlPolicyDupeFile.Name())
+	err = os.WriteFile(yamlPolicyDupeFile.Name(), yamlPolicyDupes, 0640)
+	test.AssertNotError(t, err, "Couldn't write duplicate YAML blocklist")
+
+	err = pa.LoadIdentPolicyFile(yamlPolicyDupeFile.Name())
+	test.AssertNotError(t, err, "Couldn't load duplicate rules")
+
 	// Invalid encoding
-	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("www.xn--m.com")})
+	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("www.xn--m.com")}, time.Time{})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
 	// Invalid identifier type
-	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"}})
+	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"}}, time.Time{})
 	test.AssertError(t, err, "WillingToIssue didn't fail on an invalid identifier type")
 	// Valid encoding
-	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("www.xn--mnich-kva.com")})
+	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("www.xn--mnich-kva.com")}, time.Time{})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
 	// IDN TLD
-	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("xn--example--3bhk5a.xn--p1ai")})
+	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("xn--example--3bhk5a.xn--p1ai")}, time.Time{})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
 	// Test expected blocked identifiers
 	for _, ident := range shouldBeBlocked {
-		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
-		test.AssertError(t, err, "identifier was not correctly forbidden")
+		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident}, time.Now())
+		test.AssertError(t, err, fmt.Sprintf("identifier %q was not correctly forbidden", ident))
 		test.AssertErrorWraps[*berrors.BoulderError](t, err)
 		berr, _ := errors.AsType[*berrors.BoulderError](err)
 		test.AssertContains(t, berr.Error(), errPolicyForbidden.Error())
@@ -271,7 +381,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test acceptance of good identifiers
 	for _, ident := range shouldBeAccepted {
-		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
+		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident}, time.Now())
 		test.AssertNotError(t, err, "identifier was incorrectly forbidden")
 	}
 }
@@ -283,11 +393,21 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	exactBannedDomains := []string{
 		"highvalue.letsdecrypt.org",
 	}
+	datedBlockedNames := map[string]EffectiveDate{
+		"zombo-yday.gov.us": {time.Now().Add(-24 * time.Hour)},
+		"zombo-tmrw.gov.us": {time.Now().Add(24 * time.Hour)},
+	}
+	datedExactBlockedNames := map[string]EffectiveDate{
+		"highvalue.letsdecrypt-yday.org": {time.Now().Add(-24 * time.Hour)},
+		"highvalue.letsdecrypt-tmrw.org": {time.Now().Add(24 * time.Hour)},
+	}
 	pa := paImpl(t)
 
 	bannedBytes, err := yaml.Marshal(blockedIdentsPolicy{
 		HighRiskBlockedNames: bannedDomains,
 		ExactBlockedNames:    exactBannedDomains,
+		BlockedNames:         datedBlockedNames,
+		BlockedExactNames:    datedExactBlockedNames,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 	f, _ := os.CreateTemp("", "test-wildcard-banlist.*.yaml")
@@ -327,18 +447,56 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 			Domain:      "*.zombo.gov.us",
 			ExpectedErr: errPolicyForbidden,
 		},
-		// We should not allow getting a wildcard for that would cover an exact
+		{
+			Name:        "Forbidden base domain with a past date",
+			Domain:      "*.zombo-yday.gov.us",
+			ExpectedErr: errPolicyForbidden,
+		},
+		{
+			Name:        "Forbidden base domain with a future date",
+			Domain:      "*.zombo-tmrw.gov.us",
+			ExpectedErr: nil,
+		},
+		// We should not allow getting a wildcard that would cover an exact
 		// blocklist domain
 		{
 			Name:        "Wildcard for ExactBlocklist base domain",
 			Domain:      "*.letsdecrypt.org",
 			ExpectedErr: errPolicyForbidden,
 		},
+		// We should not allow getting a wildcard that would cover an exact
+		// blocklist domain with an EffectiveDate in the past
+		{
+			Name:        "Wildcard for ExactBlocklist base domain with a past date",
+			Domain:      "*.letsdecrypt-yday.org",
+			ExpectedErr: errPolicyForbidden,
+		},
+		// We should allow getting a wildcard that would cover an exact
+		// blocklist domain with an EffectiveDate in the future
+		{
+			Name:        "Wildcard for ExactBlocklist base domain with a future date",
+			Domain:      "*.letsdecrypt-tmrw.org",
+			ExpectedErr: nil,
+		},
 		// We should allow a wildcard for a domain that doesn't match the exact
 		// blocklist domain
 		{
 			Name:        "Wildcard for non-matching subdomain of ExactBlocklist domain",
 			Domain:      "*.lowvalue.letsdecrypt.org",
+			ExpectedErr: nil,
+		},
+		// We should allow a wildcard for a domain that doesn't match the exact
+		// blocklist domain
+		{
+			Name:        "Wildcard for non-matching subdomain of ExactBlocklist domain with a past date",
+			Domain:      "*.lowvalue.letsdecrypt-yday.org",
+			ExpectedErr: nil,
+		},
+		// We should allow a wildcard for a domain that doesn't match the exact
+		// blocklist domain
+		{
+			Name:        "Wildcard for non-matching subdomain of ExactBlocklist domain with a future date",
+			Domain:      "*.lowvalue.letsdecrypt-tmrw.org",
 			ExpectedErr: nil,
 		},
 		// We should allow getting a wildcard for an exact blocklist domain since it
@@ -348,16 +506,40 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 			Domain:      "*.highvalue.letsdecrypt.org",
 			ExpectedErr: nil,
 		},
+		// We should allow getting a wildcard for an exact blocklist domain since it
+		// only covers subdomains, not the exact name.
+		{
+			Name:        "Wildcard for ExactBlocklist domain with a past date",
+			Domain:      "*.highvalue.letsdecrypt-yday.org",
+			ExpectedErr: nil,
+		},
+		// We should allow getting a wildcard for an exact blocklist domain since it
+		// only covers subdomains, not the exact name.
+		{
+			Name:        "Wildcard for ExactBlocklist domain with a future date",
+			Domain:      "*.highvalue.letsdecrypt-tmrw.org",
+			ExpectedErr: nil,
+		},
 		{
 			Name:        "Valid wildcard domain",
 			Domain:      "*.everything.is.possible.at.zombo.com",
+			ExpectedErr: nil,
+		},
+		{
+			Name:        "Valid wildcard domain with a past date",
+			Domain:      "*.everything.is.possible.at.zombo-yday.com",
+			ExpectedErr: nil,
+		},
+		{
+			Name:        "Valid wildcard domain with a future date",
+			Domain:      "*.everything.is.possible.at.zombo-tmrw.com",
 			ExpectedErr: nil,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			err := pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(tc.Domain)})
+			err := pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(tc.Domain)}, time.Now())
 			if tc.ExpectedErr == nil {
 				test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.Domain, err))
 			} else {
@@ -398,7 +580,7 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 		identifier.NewDNS("example.comm"),            // malformed
 		identifier.NewDNS("letsdecrypt.org"),         // banned
 		identifier.NewDNS("also-perfectly-fine.com"), // fine
-	})
+	}, time.Time{})
 	test.AssertDeepEquals(t, err,
 		&berrors.BoulderError{
 			Type:   berrors.RejectedIdentifier,
@@ -427,7 +609,7 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 		identifier.NewDNS("letsdecrypt.org"),         // banned
 		identifier.NewDNS("example.com"),             // banned
 		identifier.NewDNS("also-perfectly-fine.com"), // fine
-	})
+	}, time.Time{})
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
 	test.AssertDeepEquals(t, err,
@@ -453,7 +635,7 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 		})
 
 	// Test willing to issue with only *one* bad identifier.
-	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("letsdecrypt.org")})
+	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("letsdecrypt.org")}, time.Time{})
 	test.AssertDeepEquals(t, err,
 		&berrors.BoulderError{
 			Type:   berrors.RejectedIdentifier,
@@ -802,7 +984,7 @@ func TestWillingToIssue_IdentifierType(t *testing.T) {
 
 			pa.enabledIdentifiers = tc.enabled
 
-			err = pa.WillingToIssue(identifier.ACMEIdentifiers{tc.ident})
+			err = pa.WillingToIssue(identifier.ACMEIdentifiers{tc.ident}, time.Time{})
 
 			if tc.wantErr == "" {
 				if err != nil {
