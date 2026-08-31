@@ -1,24 +1,17 @@
 // Package pubkey implements functions for managing the public keys that
-// correspond to TBSCertificateLogEntries, like marshaling them into bundles for
-// storage in tiles, unmarshaling the tile bundles into the custom MTCPublicKey
-// type, and returning the public key for cryptographic use.
+// correspond to TBSCertificateLogEntries. It provides functions for marshaling
+// them into bundles for storage in tiles, unmarshaling the tile bundles into
+// sequences of the custom MTCPublicKey type, and returning the inner
+// SubjectPublicKeyInfo.
 //
-// Pubkey bundles contain MTCPublicKey. MTCPublicKey contains RFC 5280
-// subjectPublicKeyInfo structures.
+// Pubkey bundles are sequences of uint16 length-prefixed MTCPublicKey objects.
 //
-// subjectPublicKeyInfo structures are part of the X.509 layer. They will be
+// MTCPublicKey is a custom type that provides the type switching necessary to
+// express null pubkey values in parallel with null_entry in the entries tiles,
+// and for extensibility.
+//
+// SubjectPublicKeyInfo structures are part of the X.509 layer. They will be
 // used to build certificates.
-//
-// MTCPublicKey is a custom type that provides type switching for extensibility,
-// and necessary for null entries.
-//
-// Pubkey bundles are part of the tile storage layer. They provide a simple
-// length-prefixed framing so that MTCPublicKeys can be concatenated
-// unambiguously.
-//
-// Note that the subjectPublicKeyInfo structures do not carry their own length
-// information since their format has its own length information, or they are
-// wrapped in a bundle with bundle-length information.
 package pubkey
 
 import (
@@ -34,10 +27,11 @@ import (
 const typeNullPubkey = 0
 const typeSPKI = 1
 
-// MTCPublicKey is a local data type to help us shuttle merkle certificate
-// public keys for tile storage. It is not defined in the MTC spec. This
-// struct's "typ" is used to signal whether the "pub" is null, or is populated
-// with the DER-encoded bytes of an RFC 5280 subjectPublicKeyInfo structure
+// MTCPublicKey is a local data type to store public keys alongside tlog-tiles
+// entries for constructing MTCs. It is not defined in the MTC or tlog-tiles
+// spec. This struct's "typ" is used to signal whether the "pub" is null, or is
+// populated with the DER-encoded bytes of an RFC 5280 subjectPublicKeyInfo
+// structure.
 type MTCPublicKey struct {
 	typ uint16 // typeNullPubkey or typeSPKI
 	pub []byte // RFC 5280 subjectPublicKeyInfo structure

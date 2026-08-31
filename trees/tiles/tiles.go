@@ -13,6 +13,8 @@
 //     of complete subtrees are appended to a tile.
 //   - Any hash stored in a level L tile is equal to MTH(c), where c is a list of exactly 256
 //     hashes stored in a child tile at level L-1 (for L > 0).
+//   - Entry bundles in the entries layer have the exact same number of elements
+//     as the pubkey bundles in the pubkeys layer.
 package tiles
 
 import (
