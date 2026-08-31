@@ -159,9 +159,10 @@ func NewUpdater(
 	}, nil
 }
 
-// checkFreshness returns an error unless the entries read from a replica
-// include the primary's most recent revocation for the shard, or neither has
-// any. If the primary in unavailable an error is returned.
+// checkFreshness queries the primary database's GetLatestRevokedCertByShard
+// with the given req, and errors if the provided entries doesn't contain the
+// latest revoked serial for that shard, or if the primary says there are no
+// revocations but entries is non-empty.
 func (cu *crlUpdater) checkFreshness(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest, entries []*proto.CRLEntry) error {
 	latest, err := cu.sa.GetLatestRevokedCertByShard(ctx, req)
 	if err != nil {
