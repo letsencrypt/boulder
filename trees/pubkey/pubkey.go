@@ -1,3 +1,23 @@
+// Package pubkey implements functions for managing the public keys that
+// correspond to TBSCertificateLogEntries, like marshaling them into bundles for
+// storage in tiles, unmarshaling the tile bundles into the custom MTCPublicKey
+// type, and returning the public key for cryptographic use.
+//
+// Pubkey bundles contain MTCPublicKey. MTCPublicKey contains RFC 5280
+// subjectPublicKeyInfo structures.
+//
+// subjectPublicKeyInfo structures are part of the X.509 layer. They will be
+// used to build certificates.
+//
+// MTCPublicKey is a custom type that provides type switching for extensibility,
+// and necessary for null entries.
+//
+// Pubkey bundles are part of the tile storage layer. They provide a simple
+// legnth-prefixed framing so that MTCPublicKeys can be concatenated
+// unambiguously.
+//
+// Note that the subjectPublicKeyInfo structures are written to bundles with
+// their own length prefix, to provide some error-checking when unmarshaling.
 package pubkey
 
 import (
@@ -10,12 +30,16 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 )
 
-const typeNilPubkey = 0
-const typeMTCPubkey = 1
+const typeNullPubkey = 0
+const typeSPKI = 1
 
+// MTCPublicKey is a local data type to help us shuttle merkle certificate
+// public keys for tile storage. It is not defined in the MTC spec. This
+// struct's "typ" is used to signal whether the "pub" is null, or is populated
+// with the DER-encoded bytes of an RFC 5280 subjectPublicKeyInfo structure
 type MTCPublicKey struct {
-	typ uint16
-	pub []byte // a SubjectPublicKeyInfo structure
+	typ uint16 // typeNullPubkey or typeSPKI
+	pub []byte // RFC 5280 subjectPublicKeyInfo structure
 }
 
 // FromCryptoPubkey feeds a crypto.PublicKey into position in an MTCPublicKey
@@ -31,24 +55,24 @@ func FromCryptoPubkey(in crypto.PublicKey) (*MTCPublicKey, error) {
 	}
 
 	return &MTCPublicKey{
-		typ: typeMTCPubkey,
+		typ: typeSPKI,
 		pub: pkBytes,
 	}, nil
 }
 
 // Pubkey returns the subjectPublicKeyInfo structure bytes of an MTCPublicKey if
-// type is typeMTCPubkey, or nil
+// its type is typeSPKI, otherwise nil.
 func (mtcpk *MTCPublicKey) Pubkey() []byte {
 	if mtcpk == nil {
 		return nil
 	}
-	if mtcpk.typ == typeMTCPubkey {
+	if mtcpk.typ == typeSPKI {
 		return mtcpk.pub
 	}
 	return nil
 }
 
-// Marshal returns the encoding of its receiver.
+// Marshal returns encoded pubkey bundle bytes, or an error
 //
 // Rejects unknown MTCPubkey types with an error. Also errors if the public key
 // does not Marshal, or if pub contains bytes when typ signals all should be
@@ -58,10 +82,11 @@ func (mtcpk *MTCPublicKey) Marshal() ([]byte, error) {
 	builder.AddUint16(mtcpk.typ)
 
 	switch mtcpk.typ {
-	case typeMTCPubkey:
-		// pkBytes is a crypto.x509 SubjectPublicKeyInfo structure
-		builder.AddBytes(mtcpk.pub)
-	case typeNilPubkey:
+	case typeSPKI:
+		builder.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+			child.AddBytes(mtcpk.pub)
+		})
+	case typeNullPubkey:
 		if len(mtcpk.pub) != 0 {
 			return nil, fmt.Errorf("non-empty pubkey bytes for null MTCPubkey")
 		}
@@ -72,10 +97,9 @@ func (mtcpk *MTCPublicKey) Marshal() ([]byte, error) {
 	return builder.Bytes()
 }
 
-// unmarshalMTCPK parses a MTCPubkey and returns it.
+// unmarshalMTCPK parses an MTCPubkey from a bundle and returns it.
 //
-// Rejects unknown MTCPubkey Types with an error. Also errors if the pubkey
-// bytes fail to parse.
+// Rejects unknown MTCPubkey Types with an error.
 func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 	val := cryptobyte.String(input)
 
@@ -85,8 +109,8 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 	}
 
 	switch typ {
-	case typeMTCPubkey:
-	case typeNilPubkey:
+	case typeSPKI:
+	case typeNullPubkey:
 		if len(val) > 0 {
 			return nil, fmt.Errorf("null pubkey with non-empty value")
 		}
@@ -99,16 +123,24 @@ func unmarshalMTCPK(input []byte) (*MTCPublicKey, error) {
 		return nil, fmt.Errorf("unknown MTCPubkey type %d", typ)
 	}
 
-	// The pubkey is just the rest of the bytes. We validate it by parsing it.
-	pub := []byte(val)
-	_, err := x509.ParsePKIXPublicKey(pub)
-	if err != nil {
-		return nil, err
+	if val.Empty() {
+		return nil, fmt.Errorf("non-null pubkey with empty value")
+	}
+
+	// The rest is the subjectPublicKeyInfo structure, length-prefixed
+	var pub cryptobyte.String
+	if !val.ReadUint16LengthPrefixed(&pub) {
+		return nil, fmt.Errorf("malformed pubkey")
+	}
+
+	// There should be nothing left
+	if !val.Empty() {
+		return nil, fmt.Errorf("unknown bytes remainder")
 	}
 
 	return &MTCPublicKey{
 		typ: typ,
-		pub: pub,
+		pub: []byte(pub),
 	}, nil
 }
 

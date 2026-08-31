@@ -10,25 +10,33 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/cryptobyte"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
-// Broad scope var with pubkey Bytes for use in tests
-var testPubkeyBytes []byte
+// gimmeLengthPrefixedBytes returns the bytes of a length-prefixed cryptobyte
+// string over the input bytes
+func gimmeLengthPrefixedBytes(in []byte) []byte {
+	var buf []byte
+	cbb := *cryptobyte.NewBuilder(buf)
+	cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+		child.AddBytes(in)
+	})
 
-// testPubkeySingleton always returns the same MTCPublicKey, and sets the broad
-// scope var above for use in tests
-func testPubkeySingleton() *MTCPublicKey {
+	return cbb.BytesOrPanic()
+}
+
+// testPubkey is a helper tests can call to get both a good MTCPublicKey, and
+// the structure's inner SPKI bytes
+func testPubkey() (*MTCPublicKey, []byte) {
 	generatedPubkey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
 		panic(err)
 	}
 
-	if testPubkeyBytes == nil {
-		marshaledPubkeyBytes, err := x509.MarshalPKIXPublicKey(&generatedPubkey.PublicKey)
-		if err != nil {
-			panic(err)
-		}
-		testPubkeyBytes = marshaledPubkeyBytes
+	testPubkeyBytes, err := x509.MarshalPKIXPublicKey(&generatedPubkey.PublicKey)
+	if err != nil {
+		panic(err)
 	}
 
 	testMTCPubkey, err := FromCryptoPubkey(&generatedPubkey.PublicKey)
@@ -36,40 +44,28 @@ func testPubkeySingleton() *MTCPublicKey {
 		panic(err)
 	}
 
-	return testMTCPubkey
+	return testMTCPubkey, testPubkeyBytes
 }
 
-// Broad scope var for a Pubkey Bundle singleton for use in tests
-var testBundleSingletonBody []byte
-var testBundleSingletonBytes []byte
+// testBundle is a helper tests can call to get both a valid length-prefixed
+// public key bundle, and the inner bytes of the bundle body
+func testBundle() ([]byte, []byte) {
+	testMTCPK, _ := testPubkey()
 
-// testBundleSingleton always returns the same Pubkey Bundle Bytes, and sets the
-// broad scope var above to the same value for use in tests
-func testBundleSingleton() []byte {
-	if testBundleSingletonBytes == nil {
-		testMTCPK := testPubkeySingleton()
-
-		testBody, err := testMTCPK.Marshal()
-		if err != nil {
-			panic(err)
-		}
-		testBundleSingletonBody = testBody
+	testBundleBody, err := testMTCPK.Marshal()
+	if err != nil {
+		panic(err)
 	}
 
-	var buf []byte
-	cbb := *cryptobyte.NewBuilder(buf)
+	testBundleBytes := gimmeLengthPrefixedBytes(testBundleBody)
 
-	cbb.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes(testBundleSingletonBody)
-	})
-	testBundleSingletonBytes := cbb.BytesOrPanic()
-
-	return testBundleSingletonBytes
+	return testBundleBytes, testBundleBody
 }
 
 func TestMarshalMTCPK(t *testing.T) {
-	_ = testPubkeySingleton()
+	testPubkey, testPubkeyBytes := testPubkey()
 
+	// Test an invalid MTCPublicKey type
 	invalidType := MTCPublicKey{
 		typ: 99,
 	}
@@ -78,8 +74,9 @@ func TestMarshalMTCPK(t *testing.T) {
 		t.Errorf("invalid type: got nil err, want error")
 	}
 
+	// Test an invalid null MTCPublicKey
 	nonEmptyNullPubkey := MTCPublicKey{
-		typ: typeNilPubkey,
+		typ: typeNullPubkey,
 		pub: testPubkeyBytes,
 	}
 	_, err = nonEmptyNullPubkey.Marshal()
@@ -87,10 +84,11 @@ func TestMarshalMTCPK(t *testing.T) {
 		t.Errorf("non-empty null pubkey: got nil err, want error")
 	}
 
-	validNilPubkey := MTCPublicKey{
-		typ: typeNilPubkey,
+	// Test a valid null MTCPublicKey
+	validNullPubkey := MTCPublicKey{
+		typ: typeNullPubkey,
 	}
-	output, err := validNilPubkey.Marshal()
+	output, err := validNullPubkey.Marshal()
 	if err != nil {
 		t.Errorf("marshaling valid null pubkey: %s", err)
 	}
@@ -99,15 +97,12 @@ func TestMarshalMTCPK(t *testing.T) {
 		t.Errorf("marshaling valid null pubkey: got %x, want %x", output, expected)
 	}
 
-	validMTCPubkey := MTCPublicKey{
-		typ: typeMTCPubkey,
-		pub: testPubkeyBytes,
-	}
-	output, err = validMTCPubkey.Marshal()
+	// Test the valid MTCPublicKey
+	output, err = testPubkey.Marshal()
 	if err != nil {
 		t.Errorf("marshaling valid pubkey: %s", err)
 	}
-	expected = append([]byte{0, 1}, testPubkeyBytes...)
+	expected = append([]byte{0, 1}, gimmeLengthPrefixedBytes(testPubkeyBytes)...)
 	if !bytes.Equal(output, expected) {
 		t.Errorf("marshaling valid pubkey: got %x, want %x", output, expected)
 	}
@@ -117,32 +112,39 @@ func TestUnmarshalMTCPK(t *testing.T) {
 	type testCase struct {
 		name      string
 		input     []byte
-		expectErr bool
+		expectErr string
 		expectVal *MTCPublicKey
 	}
 
-	_ = testPubkeySingleton()
-	testPubkeyBytesLength := len(testPubkeyBytes)
+	_, testPubkeyBytes := testPubkey()
+	// testPubkeyBytesLength := len(testPubkeyBytes)
+
+	validUnmarshalable := gimmeLengthPrefixedBytes(testPubkeyBytes)
+	validUnmarshalableLength := len(validUnmarshalable)
 
 	testCases := []testCase{
-		{"valid pubkey", append([]byte{0, 1}, testPubkeyBytes...), false, &MTCPublicKey{
-			typ: typeMTCPubkey,
+		{"valid pubkey", append([]byte{0, 1}, validUnmarshalable...), "", &MTCPublicKey{
+			typ: typeSPKI,
 			pub: testPubkeyBytes,
 		}},
-		{"valid null pubkey", []byte{0, 0}, false, &MTCPublicKey{
-			typ: typeNilPubkey,
+		{"valid null pubkey", []byte{0, 0}, "", &MTCPublicKey{
+			typ: typeNullPubkey,
 		}},
-		{"too short", append([]byte{0, 1}, testPubkeyBytes[:testPubkeyBytesLength-6]...), true, nil},
-		{"way too short", []byte{1}, true, nil},
-		{"null pubkey with pubkey bytes", append([]byte{0, 0}, testPubkeyBytes...), true, nil},
-		{"invalid type", append([]byte{0, 3}, testPubkeyBytes...), true, nil},
+		{"too short", append([]byte{0, 1}, validUnmarshalable[:validUnmarshalableLength-6]...), "malformed pubkey", nil},
+		{"way too short", []byte{1}, "malformed type", nil},
+		{"null pubkey type with pubkey bytes", append([]byte{0, 0}, validUnmarshalable...), "null pubkey with non-empty value", nil},
+		{"pubkey type with no pubkey bytes", []byte{0, 1}, "non-null pubkey with empty value", nil},
+		{"unknown type", append([]byte{0, 3}, validUnmarshalable...), "unknown MTCPubkey type", nil},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mtcpk, err := unmarshalMTCPK(tc.input)
-			if tc.expectErr && err == nil {
+			if tc.expectErr != "" && err == nil {
 				t.Errorf("expected error")
+			}
+			if tc.expectErr != "" && err != nil {
+				test.AssertContains(t, err.Error(), tc.expectErr)
 			}
 			if tc.expectVal != nil {
 				if err != nil {
@@ -162,7 +164,7 @@ func TestUnmarshalMTCPK(t *testing.T) {
 }
 
 func TestPubkeyBundleBuildAndRead(t *testing.T) {
-	testPubkey := testPubkeySingleton()
+	testMTCPubkey, _ := testPubkey()
 
 	var buf []byte
 	cbb := *cryptobyte.NewBuilder(buf)
@@ -181,7 +183,7 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 
 	// then add 10 copies of the test pubkey to the bundle
 	for range 10 {
-		testPkBundle, err := testPubkey.Marshal()
+		testPkBundle, err := testMTCPubkey.Marshal()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,8 +204,8 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mtcpk.typ != typeNilPubkey {
-		t.Errorf("mtcpk.typ: got %d, want %d", mtcpk.typ, typeNilPubkey)
+	if mtcpk.typ != typeNullPubkey {
+		t.Errorf("mtcpk.typ: got %d, want %d", mtcpk.typ, typeNullPubkey)
 	}
 	if len(mtcpk.pub) != 0 {
 		t.Errorf("mtcpk.pub: got %v, want nil", mtcpk.pub)
@@ -219,14 +221,14 @@ func TestPubkeyBundleBuildAndRead(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if mtcpk.typ != typeMTCPubkey {
-			t.Errorf("mtcpk.Type: got %d, want %d", mtcpk.typ, typeMTCPubkey)
+		if mtcpk.typ != typeSPKI {
+			t.Errorf("mtcpk.Type: got %d, want %d", mtcpk.typ, typeSPKI)
 		}
-		wantValue := testPubkey.Pubkey()
+		wantValue := testMTCPubkey.Pubkey()
 		if !bytes.Equal(mtcpk.pub, wantValue) {
 			t.Errorf("mtcpk.Value: got %x, want %x", mtcpk.pub, wantValue)
 		}
-		wantMTCPKBytes := append([]byte{0, 1}, wantValue...)
+		wantMTCPKBytes := append([]byte{0, 1}, gimmeLengthPrefixedBytes(wantValue)...)
 		if !bytes.Equal(raw, wantMTCPKBytes) {
 			t.Errorf("raw MTCPubkey: got %x, want %x", raw, expected)
 		}
@@ -246,7 +248,7 @@ func TestBundleReaderSuccess(t *testing.T) {
 		t.Errorf("empty reader: got %x, want empty bytes", pubkeyBytes)
 	}
 
-	input := testBundleSingleton()
+	input, _ := testBundle()
 
 	br = NewBundleReader(input)
 	_, _, err = br.ReadPubkey()
@@ -276,7 +278,8 @@ func TestBundleReaderSuccess(t *testing.T) {
 }
 
 func TestPubkeyBundleReaderMalformed(t *testing.T) {
-	testBundle := testBundleSingleton()
+	_, testPubkeyBytes := testPubkey()
+	testBundle, _ := testBundle()
 
 	type testCase struct {
 		name  string
@@ -284,9 +287,9 @@ func TestPubkeyBundleReaderMalformed(t *testing.T) {
 	}
 
 	// expecting that 0,33 is not zero, but shorter than any testPubkey
-	shortLengthBundle := append([]byte{0, 33, 0, 1}, testPubkeyBytes...)
+	shortLengthBundle := append([]byte{0, 33, 0, 1}, gimmeLengthPrefixedBytes(testPubkeyBytes)...)
 	// expecting that 33,255 is not MAX, but larger than any testPubkey
-	shortBodyBundle := append([]byte{33, 255, 0, 1}, testPubkeyBytes...)
+	shortBodyBundle := append([]byte{33, 255, 0, 1}, gimmeLengthPrefixedBytes(testPubkeyBytes)...)
 
 	testCases := []testCase{
 		{"short length", shortLengthBundle},

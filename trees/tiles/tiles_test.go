@@ -3,7 +3,6 @@ package tiles
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/base64"
@@ -87,19 +86,14 @@ func testEntry(i int) *entry.MTCLogEntry {
 	return mtcle
 }
 
-// the Subject Public Key Information structure of the same key we can use and re-use
-var testPubkeySingletonSPKI crypto.PublicKey
-
-// testPubkeyBody returns the marshaled MTCPubkey bytes
-func testPubkeySingleton() *pubkey.MTCPublicKey {
-	if testPubkeySingletonSPKI == nil {
-		testPubkeyGenerated, err := ecdsa.GenerateKey(elliptic.P256(), nil)
-		if err != nil {
-			panic(err)
-		}
-		testPubkeySingletonSPKI = &testPubkeyGenerated.PublicKey
+// testPubkey is a helper tests can use to generate and return a valid MTCPublicKey
+func testPubkey() *pubkey.MTCPublicKey {
+	testPubkeyGenerated, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		panic(err)
 	}
-	testPubkey, err := pubkey.FromCryptoPubkey(testPubkeySingletonSPKI)
+
+	testPubkey, err := pubkey.FromCryptoPubkey(&testPubkeyGenerated.PublicKey)
 	if err != nil {
 		panic(err)
 	}
@@ -110,8 +104,12 @@ func testPubkeySingleton() *pubkey.MTCPublicKey {
 // flushing every `flushEvery` appends and once at the end.
 func appendEntries(t *testing.T, f *Frontier, fs3 *bs3test.FakeS3, start, end int, prefix string, flushEvery int) {
 	t.Helper()
+
+	// just generate one test pubkey to re-use for the whole range of entries
+	testPubkey := testPubkey()
+
 	for i := start; i < end; i++ {
-		err := f.AppendEntry(testEntry(i), testPubkeySingleton())
+		err := f.AppendEntry(testEntry(i), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d): %s", i, err)
 		}
@@ -415,7 +413,7 @@ func TestAppendMaxSizeEntry(t *testing.T) {
 		t.Fatalf("parsing max-size entry: %s", err)
 	}
 
-	mtcpk := testPubkeySingleton()
+	mtcpk := testPubkey()
 
 	f := &Frontier{}
 	err = f.AppendEntry(mtcle, mtcpk)
@@ -462,12 +460,13 @@ func TestRootHash(t *testing.T) {
 	n := 65792
 	const checkAllUpTo = 600
 	spotSizes := map[int]bool{65535: true, 65536: true, 65537: true, 65791: true, 65792: true}
+	testPubkey := testPubkey()
 
 	var leafHashes []tlog.Hash
 	f := &Frontier{}
 	for i := 0; i < n; i++ {
 		mtcle := testEntry(i)
-		mtcpk := testPubkeySingleton()
+		mtcpk := testPubkey
 		leafHashes = append(leafHashes, tlog.RecordHash(testEntryBody(i)))
 
 		err := f.AppendEntry(mtcle, mtcpk)
@@ -505,11 +504,13 @@ func TestWriteTileThatAlreadyExists(t *testing.T) {
 // original unchanged, and appending the same entries to the original must
 // produce an identical tree that publishes identical tiles.
 func TestClone(t *testing.T) {
+	// generate just one testing pubkey to re-use
+	testPubkey := testPubkey()
 	// Append more than one full tile's worth of entries, to exercise
 	// fullHashesTiles, fullEntryTiles, and fullPubkeyTiles.
 	frontier := &Frontier{}
 	for i := range 260 {
-		err := frontier.AppendEntry(testEntry(i), testPubkeySingleton())
+		err := frontier.AppendEntry(testEntry(i), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d): %s", i, err)
 		}
@@ -527,7 +528,7 @@ func TestClone(t *testing.T) {
 	// Add another full tile's worth of entries.
 	const growTo = 520
 	for i := clonedAt; i < growTo; i++ {
-		err := candidate.AppendEntry(testEntry(int(i)), testPubkeySingleton())
+		err := candidate.AppendEntry(testEntry(int(i)), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d) to clone: %s", i, err)
 		}
@@ -545,7 +546,7 @@ func TestClone(t *testing.T) {
 
 	// Append the same entries to the original and check for equality.
 	for i := clonedAt; i < growTo; i++ {
-		err := frontier.AppendEntry(testEntry(int(i)), testPubkeySingleton())
+		err := frontier.AppendEntry(testEntry(int(i)), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d) to original: %s", i, err)
 		}
