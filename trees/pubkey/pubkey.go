@@ -13,7 +13,7 @@
 // and necessary for null entries.
 //
 // Pubkey bundles are part of the tile storage layer. They provide a simple
-// legnth-prefixed framing so that MTCPublicKeys can be concatenated
+// length-prefixed framing so that MTCPublicKeys can be concatenated
 // unambiguously.
 //
 // Note that the subjectPublicKeyInfo structures are written to bundles with
