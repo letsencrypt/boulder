@@ -383,7 +383,7 @@ func TestCheckCert(t *testing.T) {
 				DNSNames: []string{
 					"example-a.com",
 					"foodnotbombs.mil",
-					// exmaple.net is blocked in loaded ident policy file
+					// example.net is blocked in loaded ident policy file
 					"example.net",
 					// `dev-myqnapcloud.com` is included because it is an exact private
 					// entry on the public suffix list
