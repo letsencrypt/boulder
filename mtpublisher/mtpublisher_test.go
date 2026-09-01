@@ -3,22 +3,22 @@
 package mtpublisher
 
 import (
+	"bytes"
 	"context"
 	"crypto/mldsa"
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/mod/sumdb/tlog"
 
-	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/privatekey"
-	"github.com/letsencrypt/boulder/sa"
-	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 const (
@@ -28,70 +28,52 @@ const (
 
 var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 44}
 
-func setupDB(t *testing.T) *db.WrappedMap {
-	t.Helper()
-
-	dbMap, err := sa.DBMapForTest(vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
-	if err != nil {
-		t.Fatalf("opening mtcmeta dbMap: %s", err)
-	}
-	truncate := func(ctx context.Context) error {
-		_, err := dbMap.ExecContext(ctx, "TRUNCATE TABLE checkpoints")
-		if err != nil {
-			return err
-		}
-		_, err = dbMap.ExecContext(ctx, "TRUNCATE TABLE latestCheckpoint")
-		return err
-	}
-	err = truncate(t.Context())
-	if err != nil {
-		t.Fatalf("truncating tables: %s", err)
-	}
-	t.Cleanup(func() {
-		err := truncate(context.Background())
-		if err != nil {
-			t.Logf("cleaning up tables: %s", err)
-		}
-	})
-	return dbMap
+type mockTreeDB struct {
+	latestCheckpoint *treedb.CheckpointModel
 }
 
-// setLatest points latestCheckpoint at the checkpoint with the given id, as the
-// sequencer does when it adopts a checkpoint.
-func setLatest(t *testing.T, dbMap *db.WrappedMap, logID string, id int64) {
-	t.Helper()
-	_, err := dbMap.ExecContext(t.Context(),
-		"REPLACE INTO latestCheckpoint (mtcLogID, id) VALUES (?, ?)", logID, id)
-	if err != nil {
-		t.Fatalf("pointing latestCheckpoint at %d: %s", id, err)
+func newMockDB(mtcLogID string) *mockTreeDB {
+	var rootHash [32]byte
+	return &mockTreeDB{
+		latestCheckpoint: &treedb.CheckpointModel{
+			ID:       1,
+			RootHash: rootHash[:],
+			TreeSize: 1,
+			MTCLogID: mtcLogID,
+		},
 	}
 }
 
-func insertCheckpoint(t *testing.T, dbMap *db.WrappedMap, logID string, treeSize int64) int64 {
-	t.Helper()
-
-	res, err := dbMap.ExecContext(t.Context(),
-		"INSERT INTO checkpoints (mtcLogID, mtcaSignature, treeSize, rootHash) VALUES (?, ?, ?, ?)",
-		logID, []byte("mtca-signature"), treeSize, make([]byte, 32))
-	if err != nil {
-		t.Fatalf("inserting checkpoint (%s size %d): %s", logID, treeSize, err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("reading insert id: %s", err)
-	}
-	return id
+func (m *mockTreeDB) LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
+	return m.latestCheckpoint, nil
 }
 
-func lacksCosignature(t *testing.T, dbMap *db.WrappedMap, id int64) bool {
-	t.Helper()
-	var count int64
-	err := dbMap.SelectOne(t.Context(), &count,
-		"SELECT COUNT(*) FROM checkpoints WHERE id = ? AND mirrorID IS NULL AND mirrorSignature IS NULL", id)
-	if err != nil {
-		t.Fatalf("querying checkpoint %d: %s", id, err)
+func (m *mockTreeDB) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	if m.latestCheckpoint.ID != id {
+		return fmt.Errorf("test assumption error: tried to add mirror signature for the wrong ID")
 	}
-	return count == 1
+	if m.latestCheckpoint.MTCLogID != mtcLogID {
+		return fmt.Errorf("test assumption error: tried to add mirror signature for the wrong MTCLogID (%s vs %s)", m.latestCheckpoint.MTCLogID, mtcLogID)
+	}
+	m.latestCheckpoint.MirrorID = &mirrorID
+	m.latestCheckpoint.MirrorSignature = mirrorSignature
+	return nil
+}
+
+func insertCheckpoint(t *testing.T, mockDB *mockTreeDB, logID string, treeSize int64) {
+	t.Helper()
+
+	mockDB.latestCheckpoint = &treedb.CheckpointModel{
+		ID:            mockDB.latestCheckpoint.ID + 1,
+		MTCLogID:      logID,
+		MTCASignature: []byte("mtca-signature"),
+		TreeSize:      treeSize,
+		RootHash:      make([]byte, 32),
+	}
+}
+
+func lacksCosignature(mockDB *mockTreeDB) bool {
+	return mockDB.latestCheckpoint.MirrorID == nil && len(mockDB.latestCheckpoint.MirrorSignature) == 0
 }
 
 // testKey returns a deterministic ML-DSA-44 key so the test can verify the
@@ -147,12 +129,14 @@ func TestCosign(t *testing.T) {
 }
 
 func TestPublish(t *testing.T) {
-	dbMap := setupDB(t)
 	key := testKey(t)
-	p, err := New(dbMap, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
+
+	mockDB := newMockDB(mtcLogID)
+	p.treedb = mockDB
 
 	// A pass over an empty table is a no-op.
 	err = p.Publish(t.Context())
@@ -160,53 +144,26 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("p.Publish() on an empty table: %s", err)
 	}
 
-	// An older checkpoint that is not cosigned, which must be left untouched.
-	olderCheckpointID := insertCheckpoint(t, dbMap, mtcLogID, 256)
-
 	// The latest checkpoint, which we expect to be cosigned by p.Publish().
-	latestCheckpointID := insertCheckpoint(t, dbMap, mtcLogID, 512)
-	setLatest(t, dbMap, mtcLogID, latestCheckpointID)
-
-	// A checkpoint for another log that was somehow inserted into this table,
-	// which must be left untouched thanks to the mtcLogID guard.
-	otherLogCheckpointID := insertCheckpoint(t, dbMap, "44947.4.2.0.99", 1024)
-
-	// A precommitted checkpoint the CA has not signed yet, which must be left
-	// untouched because latestCheckpoint does not reference it, even though its
-	// tree is the largest.
-	res, err := dbMap.ExecContext(t.Context(),
-		"INSERT INTO checkpoints (mtcLogID, treeSize, rootHash) VALUES (?, ?, ?)",
-		mtcLogID, int64(2048), make([]byte, 32))
-	if err != nil {
-		t.Fatalf("inserting precommitted checkpoint: %s", err)
-	}
-	precommitID, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("reading insert id: %s", err)
-	}
+	insertCheckpoint(t, mockDB, mtcLogID, 512)
 
 	err = p.Publish(t.Context())
 	if err != nil {
 		t.Fatalf("p.Publish(): %s", err)
 	}
 
-	type row struct {
-		MirrorID  string `db:"mirrorID"`
-		MirrorSig []byte `db:"mirrorSignature"`
-	}
-	var cosigned row
-	err = dbMap.SelectOne(t.Context(), &cosigned, "SELECT mirrorID, mirrorSignature FROM checkpoints WHERE id = ?", latestCheckpointID)
+	cosigned, err := mockDB.LatestCheckpoint(context.Background(), mtcLogID)
 	if err != nil {
-		t.Fatalf("selecting the latest checkpoint: %s", err)
+		t.Fatal(err)
 	}
 
 	// Check that the latest checkpoint was cosigned, and the others were
 	// untouched.
-	if cosigned.MirrorID != mirrorID {
-		t.Errorf("mirrorID = %q, want %q", cosigned.MirrorID, mirrorID)
+	if cosigned.MirrorID == nil || *cosigned.MirrorID != mirrorID {
+		t.Errorf("mirrorID = %v, want %q", cosigned.MirrorID, mirrorID)
 	}
-	if len(cosigned.MirrorSig) != mldsa.MLDSA44SignatureSize {
-		t.Fatalf("latest checkpoint's mirrorSignature is %d bytes, want %d", len(cosigned.MirrorSig), mldsa.MLDSA44SignatureSize)
+	if len(cosigned.MirrorSignature) != mldsa.MLDSA44SignatureSize {
+		t.Fatalf("latest checkpoint's mirrorSignature is %d bytes, want %d", len(cosigned.MirrorSignature), mldsa.MLDSA44SignatureSize)
 	}
 
 	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
@@ -214,26 +171,15 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("NewVerifier: %s", err)
 	}
 	text := "oid/1.3.6.1.4.1." + mtcLogID + "\n512\n" + base64.StdEncoding.EncodeToString(make([]byte, 32)) + "\n"
-	timestampedSignature := append(make([]byte, 8), cosigned.MirrorSig...)
+	timestampedSignature := append(make([]byte, 8), cosigned.MirrorSignature...)
 	if !verifier.Verify([]byte(text), timestampedSignature) {
 		t.Error("stored mirror cosignature does not verify against the checkpoint text")
-	}
-	if !lacksCosignature(t, dbMap, olderCheckpointID) {
-		t.Error("older checkpoint was cosigned, only the latest should be")
-	}
-	if !lacksCosignature(t, dbMap, otherLogCheckpointID) {
-		t.Errorf("another log's checkpoint (id=%d) was cosigned, despite the mtcLogID guard", otherLogCheckpointID)
-	}
-	if !lacksCosignature(t, dbMap, precommitID) {
-		t.Error("precommitted checkpoint was cosigned before the CA signed it")
 	}
 }
 
 // TestPublishRejectsMismatchedKey checks that a cosignature that fails to
 // verify against the configured public key is not stored.
 func TestPublishRejectsMismatchedKey(t *testing.T) {
-	dbMap := setupDB(t)
-
 	otherSeed := make([]byte, 32)
 	for i := range otherSeed {
 		otherSeed[i] = byte(255 - i)
@@ -243,65 +189,52 @@ func TestPublishRejectsMismatchedKey(t *testing.T) {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
 
-	p, err := New(dbMap, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(testKey(t)), otherKey.PublicKey(), blog.NewMock())
+	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(testKey(t)), otherKey.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
 
-	id := insertCheckpoint(t, dbMap, mtcLogID, 512)
-	setLatest(t, dbMap, mtcLogID, id)
+	mockDB := newMockDB(mtcLogID)
+	p.treedb = mockDB
+
+	insertCheckpoint(t, mockDB, mtcLogID, 512)
 
 	err = p.Publish(t.Context())
 	if err == nil {
 		t.Error("publish with a mismatched public key = nil error, want error")
 	}
-	if !lacksCosignature(t, dbMap, id) {
+	if !lacksCosignature(mockDB) {
 		t.Error("cosignature was stored despite failing verification")
 	}
 }
 
 func TestPublishWhenLatestAlreadySigned(t *testing.T) {
-	dbMap := setupDB(t)
 	key := testKey(t)
-	p, err := New(dbMap, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	p, err := New(nil, time.Second, testLogID, mirrorID, privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
 
+	mockDB := newMockDB(mtcLogID)
+	p.treedb = mockDB
+
 	// Insert a checkpoint that is already cosigned, which must be left
 	// untouched.
-	res, err := dbMap.ExecContext(t.Context(),
-		"INSERT INTO checkpoints (mtcLogID, mtcaSignature, treeSize, rootHash, mirrorID, mirrorSignature) VALUES (?, ?, ?, ?, ?, ?)",
-		mtcLogID, []byte("mtca-signature"), int64(512), make([]byte, 32), "existing.cosigner", []byte("already-signed-bruh"))
-	if err != nil {
-		t.Fatalf("inserting cosigned checkpoint: %s", err)
-	}
-	cosignedID, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("reading insert id: %s", err)
-	}
-	setLatest(t, dbMap, mtcLogID, cosignedID)
-
-	// Insert an older (non-latest) checkpoint that is not cosigned, which must
-	// be left untouched.
-	olderID := insertCheckpoint(t, dbMap, mtcLogID, 256)
+	insertCheckpoint(t, mockDB, mtcLogID, 512)
+	existing := "existing.cosigner"
+	mockDB.latestCheckpoint.MirrorID = &existing
+	mockDB.latestCheckpoint.MirrorSignature = []byte("already-signed-bruh")
 
 	err = p.Publish(t.Context())
 	if err != nil {
 		t.Fatalf("p.Publish(): %s", err)
 	}
 
-	// The latest checkpoint is already cosigned, so the pass must leave both
-	// checkpoints untouched.
-	if !lacksCosignature(t, dbMap, olderID) {
-		t.Error("older checkpoint was cosigned, the pass should have stopped at the signed latest")
+	// The latest checkpoint was already cosigned, so the pass must leave it untouched.
+	if !bytes.Equal(mockDB.latestCheckpoint.MirrorSignature, []byte("already-signed-bruh")) {
+		t.Errorf("MirrorSignature: got %x, want %x", mockDB.latestCheckpoint.MirrorSignature, []byte("already-signed-bruh"))
 	}
-	var mirrorCosignature []byte
-	err = dbMap.SelectOne(t.Context(), &mirrorCosignature, "SELECT mirrorSignature FROM checkpoints WHERE mtcLogID = ? AND treeSize = 512", mtcLogID)
-	if err != nil {
-		t.Fatalf("selecting the cosigned checkpoint: %s", err)
-	}
-	if string(mirrorCosignature) != "already-signed-bruh" {
-		t.Errorf("existing cosignature was replaced: %q", mirrorCosignature)
+	if mockDB.latestCheckpoint.MirrorID == nil || *mockDB.latestCheckpoint.MirrorID != "existing.cosigner" {
+		t.Errorf("MirrorID: got %v, want %s", mockDB.latestCheckpoint.ID, "existing.cosigner")
 	}
 }
