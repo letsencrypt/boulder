@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -87,7 +88,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, keyPolicy *goo
 		return invalidNoIdent
 	}
 
-	err = pa.WillingToIssue(idents)
+	err = pa.WillingToIssue(idents, time.Time{})
 	if err != nil {
 		return err
 	}
