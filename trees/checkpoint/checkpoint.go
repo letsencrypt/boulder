@@ -98,6 +98,16 @@ func (c *Checkpoint) Marshal() ([]byte, error) {
 	return noteText, nil
 }
 
+// SignedNote returns the checkpoint as a signed note: the note text followed
+// by signatureLines.
+func (c *Checkpoint) SignedNote(signatureLines []byte) ([]byte, error) {
+	text, err := c.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	return append(append(text, '\n'), signatureLines...), nil
+}
+
 // signedNote returns the checkpoint as a signed note: the note text followed by
 // the given signature line(s).
 func (c *Checkpoint) signedNote(signatureLines ...[]byte) ([]byte, error) {
@@ -181,17 +191,28 @@ func Unmarshal(noteText []byte) (*Checkpoint, error) {
 }
 
 // Open opens a signed checkpoint note and parses its text. An error is returned
-// if signedNote is not a well-formed note, if any of the verifiers rejects a
-// signature (note.InvalidSignatureError), if none of the verifiers has signed
-// the note (note.UnverifiedNoteError), or if the note's text is not a
-// well-formed checkpoint. Signatures from unknown keys are ignored.
+// if signedNote is not a well-formed note, if its signature lines are not
+// exactly one verified signature per verifier and nothing else
+// (note.InvalidSignatureError for a rejected one), or if the note's text is not
+// a well-formed checkpoint.
 //
 //   - https://c2sp.org/tlog-checkpoint
 //   - https://c2sp.org/signed-note
-func Open(signedNote []byte, verifiers note.Verifiers) (*Checkpoint, *note.Note, error) {
-	n, err := note.Open(signedNote, verifiers)
+func Open(signedNote []byte, verifiers ...note.Verifier) (*Checkpoint, *note.Note, error) {
+	n, err := note.Open(signedNote, note.VerifierList(verifiers...))
 	if err != nil {
 		return nil, nil, err
+	}
+	// n.Sigs holds one verified signature per signing key in verifiers, so its
+	// length is the number of verifiers whose key signed the note.
+	if len(n.Sigs) != len(verifiers) {
+		return nil, nil, fmt.Errorf("%d of %d verifiers signed the note", len(n.Sigs), len(verifiers))
+	}
+	// note.Open ignores signatures from unknown keys and repeated signatures
+	// from known ones, so the lines themselves are counted as well.
+	signatureLines := bytes.Count(signedNote[len(n.Text)+1:], []byte("\n"))
+	if signatureLines != len(verifiers) {
+		return nil, nil, fmt.Errorf("note has %d signature lines, want %d", signatureLines, len(verifiers))
 	}
 	c, err := Unmarshal([]byte(n.Text))
 	if err != nil {
