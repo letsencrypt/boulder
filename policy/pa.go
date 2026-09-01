@@ -228,7 +228,7 @@ func (pa *AuthorityImpl) processIdentPolicy(policy blockedIdentsPolicy) error {
 		}
 		// Add the second part, the domain minus the first label, to the
 		// wildcardNameMap to block issuance for `*.`+parts[1]
-		datedWildcardFQDNMap[parts[1]] = defaultEffectiveDate
+		addOrUpdateBlockEntry(datedWildcardFQDNMap, parts[1], defaultEffectiveDate)
 	}
 	for identifier, parsedEffectiveDate := range policy.BlockedFQDNs {
 		// TODO(#8957): Carryover helpful comments from above as deprecated
