@@ -717,7 +717,7 @@ func main() {
 	kp, err := sagoodkey.NewPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
+	saDbMap, err := sa.InitDBWithSATables(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)

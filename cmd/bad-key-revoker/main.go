@@ -365,7 +365,7 @@ func main() {
 		Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
 	})
 
-	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, stats, logger)
+	dbMap, err := sa.InitDBWithSATables(config.BadKeyRevoker.DB, stats, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load(stats)

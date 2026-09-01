@@ -47,11 +47,7 @@ type DbSettings struct {
 	ConnMaxIdleTime time.Duration
 }
 
-// InitWrappedDb constructs a wrapped borp mapping object with the provided
-// settings. If scope is non-nil, Prometheus metrics will be exported. If logger
-// is non-nil, SQL debug-level logging will be enabled. The only required parameter
-// is config.
-func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
+func initWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	url, err := config.URL()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load DBConnect URL: %s", err)
@@ -77,6 +73,31 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	return dbMap, nil
 }
 
+// InitDB constructs a wrapped borp mapping object with the provided
+// settings.
+//
+// If scope is non-nil, Prometheus metrics will be exported. If logger
+// is non-nil, SQL debug-level logging will be enabled. The only required parameter
+// is config.
+func InitDB(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
+	return initWrappedDb(config, scope, logger)
+}
+
+// InitDBWithSATables constructs a wrapped borp mapping object with the provided settings,
+// and also initializes its table<->type mappings for the tables used by SA.
+//
+// If scope is non-nil, Prometheus metrics will be exported. If logger
+// is non-nil, SQL debug-level logging will be enabled. The only required parameter
+// is config.
+func InitDBWithSATables(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
+	wrappedMap, err := initWrappedDb(config, scope, logger)
+	if err != nil {
+		return nil, err
+	}
+	initTables(wrappedMap)
+	return wrappedMap, nil
+}
+
 // DBMapForTest creates a wrapped root borp mapping object. Create one of these for
 // each database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
@@ -96,7 +117,13 @@ func DBMapForTestWithLog(dbConnect string, log blog.Logger) (*boulderDB.WrappedM
 		return nil, err
 	}
 
-	return newDbMapFromMySQLConfig(config, DbSettings{}, nil, log)
+	wrappedMap, err := newDbMapFromMySQLConfig(config, DbSettings{}, nil, log)
+	if err != nil {
+		return nil, err
+	}
+
+	initTables(wrappedMap)
+	return wrappedMap, nil
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -176,7 +203,6 @@ func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings, scope pr
 		dbmap.TraceOn("SQL: ", &SQLLogger{logger})
 	}
 
-	initTables(dbmap)
 	return boulderDB.NewWrappedMap(dbmap), nil
 }
 
@@ -241,7 +267,7 @@ func (log *SQLLogger) Printf(format string, v ...any) {
 // effect in Insert() where the inserted object has its id field set to the
 // autoincremented value that resulted from the insert. See
 // https://godoc.org/github.com/coopernurse/borp#DbMap.Insert
-func initTables(dbMap *borp.DbMap) {
+func initTables(dbMap *boulderDB.WrappedMap) {
 	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
 
 	regTable.ColMap("Key").SetNotNull(true)

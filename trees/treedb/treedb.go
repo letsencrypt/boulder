@@ -64,8 +64,10 @@ type Impl struct {
 	db *db.WrappedMap
 }
 
-func New(db *db.WrappedMap) *Impl {
-	return &Impl{db}
+func New(dbMap *db.WrappedMap) *Impl {
+	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
+	dbMap.AddTableWithName(CheckpointSubtreeModel{}, "checkpointSubtrees").SetKeys(true, "ID")
+	return &Impl{dbMap}
 }
 
 func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*CheckpointModel, error) {
@@ -113,6 +115,13 @@ func (i *Impl) ContainingCheckpoint(ctx context.Context, mtcLogID string, entryI
 	return &cp, nil
 }
 
+// InsertCheckpoint inserts the given CheckpointModel into the database.
+//
+// It modifies its parameter's ID field to set the newly allocated autoincrement ID.
+func (i *Impl) InsertCheckpoint(ctx context.Context, c *CheckpointModel) error {
+	return i.db.Insert(ctx, c)
+}
+
 func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorCosig []byte, mtcLogID string) error {
 	r, err := i.db.ExecContext(ctx,
 		"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
@@ -141,4 +150,16 @@ func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSub
 	}
 
 	return model.ID, nil
+}
+
+type TxFunc = func(tx db.Executor) (any, error)
+
+// WithTransaction calls `github.com/letsencrypt/boulder/db.WithTransaction` for the given
+// transaction function, with the built-in DB. In the database-backed implementation this
+// is simply a pass-through.
+//
+// TODO(#8998): Replace TxFunc's `db.Executor` parameter with an interface that defines
+// the operations we want to perform inside a transaction, so we can mock those.
+func (i *Impl) WithTransaction(ctx context.Context, f TxFunc) (any, error) {
+	return db.WithTransaction(ctx, i.db, f)
 }

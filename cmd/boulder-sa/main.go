@@ -64,24 +64,24 @@ func main() {
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
 
-	dbMap, err := sa.InitWrappedDb(c.SA.DB, scope, logger)
+	dbMap, err := sa.InitDBWithSATables(c.SA.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	dbReadOnlyMap := dbMap
 	if c.SA.ReadOnlyDB != (cmd.DBConfig{}) {
-		dbReadOnlyMap, err = sa.InitWrappedDb(c.SA.ReadOnlyDB, scope, logger)
+		dbReadOnlyMap, err = sa.InitDBWithSATables(c.SA.ReadOnlyDB, scope, logger)
 		cmd.FailOnError(err, "While initializing dbReadOnlyMap")
 	}
 
 	dbIncidentsMap := dbMap
 	if c.SA.IncidentsDB != (cmd.DBConfig{}) {
-		dbIncidentsMap, err = sa.InitWrappedDb(c.SA.IncidentsDB, scope, logger)
+		dbIncidentsMap, err = sa.InitDBWithSATables(c.SA.IncidentsDB, scope, logger)
 		cmd.FailOnError(err, "While initializing dbIncidentsMap")
 	}
 
 	var dbIncidentsAdminMap *db.WrappedMap
 	if c.SA.IncidentsAdminDB != (cmd.DBConfig{}) {
-		dbIncidentsAdminMap, err = sa.InitWrappedDb(c.SA.IncidentsAdminDB, scope, logger)
+		dbIncidentsAdminMap, err = sa.InitDBWithSATables(c.SA.IncidentsAdminDB, scope, logger)
 		cmd.FailOnError(err, "While initializing dbIncidentsAdminMap")
 	}
 
