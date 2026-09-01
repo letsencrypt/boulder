@@ -256,31 +256,6 @@ func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) ([]byte, erro
 	return idSignature[keyIDSize:], nil
 }
 
-// signatureLineFor assembles the signature line "— <name> base64(keyID ||
-// timestamped_signature)\n".
-func signatureLineFor(name string, keyID uint32, timestampedSignature []byte) string {
-	idSignature := make([]byte, keyIDSize+len(timestampedSignature))
-	binary.BigEndian.PutUint32(idSignature[:keyIDSize], keyID)
-	copy(idSignature[keyIDSize:], timestampedSignature)
-	return noteSignatureLinePrefix + name + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"
-}
-
-// SignatureLine verifies rawSignature over the checkpoint described by origin
-// and tree, and reassembles the cosigner's note signature line, restoring the
-// zero timestamp RawSignature stripped.
-func (v *Verifier) SignatureLine(origin string, tree tlog.Tree, rawSignature []byte) ([]byte, error) {
-	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
-		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
-	}
-	timestamped := make([]byte, timestampedSignatureSize)
-	copy(timestamped[timestampSize:], rawSignature)
-	err := v.VerifyCheckpoint(origin, tree, timestamped)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(signatureLineFor(v.keyName, v.keyID, timestamped)), nil
-}
-
 // RawSignature returns the ML-DSA-44 signature from a timestamped_signature,
 // the form certificates embed. It errors if the input has the wrong length or a
 // non-zero timestamp, which certificates cannot carry.

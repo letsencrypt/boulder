@@ -129,14 +129,6 @@ type HostnamePolicyConfig struct {
 	HostnamePolicyFile string `validate:"required"`
 }
 
-// MirrorConfig identifies an MTC mirror cosigner.
-type MirrorConfig struct {
-	// ID is the mirror's ID (e.g. "32473.9").
-	ID string `validate:"required"`
-	// PublicKeyFile holds the mirror's PEM-encoded ML-DSA-44 public key.
-	PublicKeyFile string `validate:"required"`
-}
-
 // TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
 	CertFile string `validate:"required"`

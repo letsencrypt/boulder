@@ -4,13 +4,9 @@ package notmain
 
 import (
 	"context"
-	"crypto/mldsa"
-	"crypto/x509"
 	"database/sql"
-	"encoding/pem"
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -54,35 +50,10 @@ type Config struct {
 
 		// SequencingPeriod controls how frequently the MTCA sequences a batch and signs a checkpoint.
 		SequencingPeriod config.Duration `validate:"required"`
-
-		// Mirror identifies the mirror whose cosignatures must be verified
-		// before the MTCA serves them as part of a checkpoint.
-		Mirror cmd.MirrorConfig `validate:"required"`
 	}
 
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
-}
-
-// loadMLDSAPublicKey reads a PEM-encoded PKIX ML-DSA-44 public key.
-func loadMLDSAPublicKey(filename string) (*mldsa.PublicKey, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	block, _ := pem.Decode(data)
-	if block == nil || block.Type != "PUBLIC KEY" {
-		return nil, fmt.Errorf("no PUBLIC KEY PEM block in %s", filename)
-	}
-	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	pubKey, ok := parsed.(*mldsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("key in %s is %T, must be ML-DSA-44", filename, parsed)
-	}
-	return pubKey, nil
 }
 
 func main() {
@@ -146,9 +117,6 @@ func main() {
 	s3c, err := bs3.FromConfig(c.MTCA.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")
 
-	mirrorPublicKey, err := loadMLDSAPublicKey(c.MTCA.Mirror.PublicKeyFile)
-	cmd.FailOnError(err, "Loading mirror public key")
-
 	mtcaImpl, err := mtca.New(
 		issuer,
 		profiles,
@@ -156,8 +124,6 @@ func main() {
 		c.MTCA.SequencingPeriod.Duration,
 		dbMap,
 		s3c,
-		c.MTCA.Mirror.ID,
-		mirrorPublicKey,
 		logger,
 		clk)
 	cmd.FailOnError(err, "Building MTCA")

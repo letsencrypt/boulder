@@ -846,24 +846,3 @@ func EntriesForPackage(ctx context.Context, s3c simpleS3Reader, start, end, tree
 	}
 	return body[entriesBegin : len(body)-len(rest)], nil
 }
-
-// WriteCheckpoint stores the log's signed checkpoint note at the "checkpoint"
-// key under prefix per c2sp.org/tlog-tiles, overwriting the previous one. The
-// note must be written only after the tiles its tree covers are published.
-func WriteCheckpoint(ctx context.Context, s3c simpleS3, prefix string, signedNote []byte) error {
-	key := path.Join(prefix, "checkpoint")
-	contentType := "text/plain; charset=utf-8"
-	cacheControl := "no-store"
-	bucket := s3c.Bucket()
-	_, err := s3c.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:       &bucket,
-		Key:          &key,
-		ContentType:  &contentType,
-		CacheControl: &cacheControl,
-		Body:         bytes.NewReader(signedNote),
-	})
-	if err != nil {
-		return fmt.Errorf("writing s3://%s/%s: %w", bucket, key, err)
-	}
-	return nil
-}

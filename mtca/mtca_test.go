@@ -39,11 +39,13 @@ import (
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
+	"golang.org/x/mod/sumdb/tlog"
 )
 
 // setup returns a working mtca, its fake tile storage, and a cleanup
@@ -95,10 +97,6 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	}
 
 	fs3 := bs3test.New()
-	mirrorKey, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
-	if err != nil {
-		return nil, nil, nil, err
-	}
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
@@ -106,8 +104,6 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		100*time.Millisecond,
 		dbMap,
 		fs3,
-		"32473.9",
-		mirrorKey.PublicKey(),
 		logger,
 		clk)
 	if err != nil {
@@ -275,6 +271,98 @@ func issueMany(t *testing.T, m *mtca, n int) <-chan issueResult {
 	return ch
 }
 
+// TestWriteCheckpoint checks that writeCheckpoint replaces only the checkpoint
+// whose ETag is prevETag, reads the current ETag when given none, and returns
+// ErrCheckpointChanged instead of replacing a checkpoint with any other ETag.
+func TestWriteCheckpoint(t *testing.T) {
+	m, fs3, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+	key := m.logID.TilePrefix() + "/checkpoint"
+
+	first, err := m.writeCheckpoint(t.Context(), []byte("first note\n"), nil)
+	if err != nil {
+		t.Fatalf("writing the first checkpoint: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "first note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "first note\n")
+	}
+
+	second, err := m.writeCheckpoint(t.Context(), []byte("second note\n"), first)
+	if err != nil {
+		t.Fatalf("replacing the checkpoint: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "second note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "second note\n")
+	}
+
+	third, err := m.writeCheckpoint(t.Context(), []byte("third note\n"), nil)
+	if err != nil {
+		t.Fatalf("replacing the checkpoint with an unknown ETag: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "third note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "third note\n")
+	}
+	if *third == *second {
+		t.Error("ETag did not change with the checkpoint's contents")
+	}
+
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+	_, err = m.writeCheckpoint(t.Context(), []byte("fourth note\n"), third)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("writeCheckpoint over another writer's checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+	if string(fs3.Objects[key].Data) != "foreign note\n" {
+		t.Errorf("stored checkpoint = %q, want the other writer's %q", fs3.Objects[key].Data, "foreign note\n")
+	}
+}
+
+// TestPreflightServesCheckpoint checks that Preflight serves the latest
+// checkpoint, covering a process that stopped between publishing tiles and
+// serving.
+func TestPreflightServesCheckpoint(t *testing.T) {
+	m, fs3, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+
+	delete(fs3.Objects, m.logID.TilePrefix()+"/checkpoint")
+	m.servedCheckpointETag = nil
+	err = m.Preflight(t.Context())
+	if err != nil {
+		t.Fatalf("Preflight: %s", err)
+	}
+	verifyStores(t, m, fs3)
+}
+
+// TestServeCheckpointRecovers checks that when the served checkpoint is
+// replaced in storage, the next serve fails with ErrCheckpointChanged and the
+// one after it reads the current ETag and succeeds.
+func TestServeCheckpointRecovers(t *testing.T) {
+	m, fs3, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+	latest := verifyStores(t, m, fs3)
+	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
+
+	key := m.logID.TilePrefix() + "/checkpoint"
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+	err = m.serveCheckpoint(t.Context(), tree, latest.MTCASignature)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("serving over a replaced checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+	err = m.serveCheckpoint(t.Context(), tree, latest.MTCASignature)
+	if err != nil {
+		t.Fatalf("serving after the checkpoint was replaced: %s", err)
+	}
+	verifyStores(t, m, fs3)
+}
+
 // errorS3 wraps a bs3test.FakeS3, failing every PutObject with `err` while
 // it is non-nil and passing through to the wrapped fake otherwise.
 type errorS3 struct {
@@ -350,6 +438,19 @@ func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *treedb.Checkpoint
 	if !bytes.Equal(latest.RootHash, tileHash[:]) {
 		t.Errorf("tile storage RootHash %s != DB RootHash %s",
 			tileHash, base64.StdEncoding.EncodeToString(latest.RootHash))
+	}
+
+	served, ok := fs3.Objects[m.logID.TilePrefix()+"/checkpoint"]
+	if !ok {
+		t.Fatal("no checkpoint served in tile storage")
+	}
+	servedCheckpoint, _, err := checkpoint.Open(served.Data, m.verifier)
+	if err != nil {
+		t.Fatalf("opening the served checkpoint: %s", err)
+	}
+	if servedCheckpoint.Tree.N != latest.TreeSize || !bytes.Equal(servedCheckpoint.Tree.Hash[:], latest.RootHash) {
+		t.Errorf("served checkpoint is tree size %d hash %s, DB latest is size %d hash %s",
+			servedCheckpoint.Tree.N, servedCheckpoint.Tree.Hash, latest.TreeSize, base64.StdEncoding.EncodeToString(latest.RootHash))
 	}
 	return latest
 }
@@ -497,13 +598,6 @@ func TestSequenceStorageFailure(t *testing.T) {
 	t.Cleanup(cleanup)
 	mirrorCosign(t, mtca)
 
-	// Serve the cosigned checkpoint while storage is healthy, so the failure
-	// below lands on staging.
-	err = mtca.sequence(t.Context())
-	if err != nil {
-		t.Fatalf("sequencing to serve the cosigned checkpoint: %s", err)
-	}
-
 	mtca.pool.maxSize = 2
 	results := issueMany(t, mtca, 2)
 
@@ -547,7 +641,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 }
 
 func TestInitLog(t *testing.T) {
-	mtca, _, cleanup, err := setup()
+	mtca, fs3, cleanup, err := setup()
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
@@ -559,11 +653,7 @@ func TestInitLog(t *testing.T) {
 		t.Errorf("second InitLog: got nil error, want error")
 	}
 
-	latest, err := treedb.New(mtca.db).LatestCheckpoint(t.Context(), mtca.logID.String())
-	if err != nil {
-		t.Fatalf("getting latest: %s", err)
-	}
-
+	latest := verifyStores(t, mtca, fs3)
 	if latest.TreeSize != 1 {
 		t.Errorf("just-initialized log: got TreeSize %d, want 1", latest.TreeSize)
 	}
