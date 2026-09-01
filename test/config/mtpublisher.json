@@ -9,12 +9,12 @@
 			"caID": "44947.4.1",
 			"logNumber": 44
 		},
-		"mtcaPublicKeyFile": "test/certs/mtpki/mtca1.pub.pem",
+		"mtcaCertFile": "test/certs/mtpki/mtca1.cert.pem",
 		"mirror": {
 			"id": "32473.9",
-			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem"
+			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem",
+			"baseURL": "http://bsunlight:4700"
 		},
-		"mirrorBaseURL": "http://bsunlight:4700",
 		"s3": {
 			"s3endpoint": "http://boulder-minio:9000",
 			"s3bucket": "boulder-mtc-tiles",

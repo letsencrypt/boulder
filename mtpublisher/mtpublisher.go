@@ -102,15 +102,20 @@ func (p *mtpublisher) Publish(ctx context.Context) error {
 	if len(latest.MTCASignature) == 0 {
 		return fmt.Errorf("checkpoint %d (%s size %d) has no MTCA signature", latest.ID, latest.MTCLogID, latest.TreeSize)
 	}
-	caCosignatureLine, err := p.caVerifier.SignatureLine(cp.Origin, tree, latest.MTCASignature)
+	caCosignatureLine, err := cosignature.SignatureLine(p.caVerifier.Name(), p.caVerifier.KeyHash(), latest.MTCASignature)
 	if err != nil {
 		return fmt.Errorf("checkpoint %d MTCA signature: %w", latest.ID, err)
 	}
 
-	// Reconstruct the signed note for submission to the mirror.
-	signedNoteForMirror, err := cp.SignedNoteForMirror(caCosignatureLine)
+	// Reconstruct the signed note for submission to the mirror, and verify
+	// the MTCA signature before submitting it.
+	signedNoteForMirror, err := cp.SignedNote(caCosignatureLine)
 	if err != nil {
 		return fmt.Errorf("assembling checkpoint %d signed note: %w", latest.ID, err)
+	}
+	_, _, err = checkpoint.Open(signedNoteForMirror, p.caVerifier)
+	if err != nil {
+		return fmt.Errorf("checkpoint %d MTCA signature: %w", latest.ID, err)
 	}
 
 	// Submit the signed checkpoint to the mirror for cosigning.

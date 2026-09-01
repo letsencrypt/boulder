@@ -265,24 +265,6 @@ func signatureLineFor(name string, keyID uint32, timestampedSignature []byte) st
 	return noteSignatureLinePrefix + name + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"
 }
 
-// TimestampedSignature verifies signatureLine against noteText with verifier
-// and returns the timestamped_signature by verifier's cosigner. An error is
-// returned if noteText and signatureLine do not form a well-formed note or if
-// verifier rejects the signature. Signatures from unknown keys are ignored.
-func TimestampedSignature(noteText, signatureLine []byte, verifier *Verifier) ([]byte, error) {
-	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLine), note.VerifierList(verifier))
-	if err != nil {
-		return nil, fmt.Errorf("opening the cosigned note: %s", err)
-	}
-	// verifier is the only verifier in the list, so every signature in n.Sigs
-	// is by the verifier's cosigner, verified and length-checked.
-	idSignature, err := base64.StdEncoding.DecodeString(n.Sigs[0].Base64)
-	if err != nil {
-		return nil, fmt.Errorf("decoding the signature by %s: %s", verifier.keyName, err)
-	}
-	return idSignature[keyIDSize:], nil
-}
-
 // SignatureLine verifies rawSignature over the checkpoint described by origin
 // and tree, and reassembles the cosigner's note signature line, restoring the
 // zero timestamp RawSignature stripped.

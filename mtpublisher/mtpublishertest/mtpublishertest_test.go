@@ -18,7 +18,7 @@ const (
 	mirrorID = "32473.9"
 )
 
-// testMirror returns a LocalMirror and the deterministic key it cosigns with.
+// testMirror returns a TestMirror and the deterministic key it cosigns with.
 func testMirror(t *testing.T) (*TestMirror, *mldsa.PrivateKey) {
 	t.Helper()
 	seed := make([]byte, 32)
@@ -36,9 +36,9 @@ func testMirror(t *testing.T) (*TestMirror, *mldsa.PrivateKey) {
 	return mirror, key
 }
 
-// TestLocalMirrorCosign checks that the mirror's raw cosignature verifies
+// TestMirrorCosign checks that the mirror's raw cosignature verifies
 // through trees/cosignature.
-func TestLocalMirrorCosign(t *testing.T) {
+func TestMirrorCosign(t *testing.T) {
 	mirror, key := testMirror(t)
 
 	if mirror.ID() != mirrorID {
@@ -55,15 +55,23 @@ func TestLocalMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	_, err = verifier.SignatureLine(cp.Origin, cp.Tree, raw)
+	line, err := cosignature.SignatureLine(verifier.Name(), verifier.KeyHash(), raw)
 	if err != nil {
-		t.Errorf("SignatureLine rejected the mirror's cosignature: %s", err)
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	text, err := cp.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %s", err)
+	}
+	_, err = verifier.FilterByVerify(text, line)
+	if err != nil {
+		t.Errorf("the mirror's cosignature does not verify: %s", err)
 	}
 }
 
-// TestLocalMirrorCosignRejects checks that the mirror only cosigns checkpoints
+// TestMirrorCosignRejects checks that the mirror only cosigns checkpoints
 // of its own log.
-func TestLocalMirrorCosignRejects(t *testing.T) {
+func TestMirrorCosignRejects(t *testing.T) {
 	mirror, _ := testMirror(t)
 
 	_, err := mirror.Cosign(t.Context(), &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1.32473.999", Tree: tlog.Tree{N: 512}}, nil)

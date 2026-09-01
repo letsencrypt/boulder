@@ -27,6 +27,19 @@ import (
 // 4KB each.
 const maxMirrorResponseSize = 64 << 10
 
+// maxErrorBodySize caps how much of an unexpected mirror response body is
+// quoted in an error.
+const maxErrorBodySize = 400
+
+// errorBody returns respBody trimmed for quoting in an error.
+func errorBody(respBody []byte) string {
+	body := strings.TrimSpace(string(respBody))
+	if len(body) > maxErrorBodySize {
+		return body[:maxErrorBodySize] + "..."
+	}
+	return body
+}
+
 var _ Mirror = (*MirrorClient)(nil)
 
 // MirrorClient is a Mirror that uses the c2sp.org/tlog-mirror submission
@@ -121,7 +134,8 @@ func (m *MirrorClient) post(ctx context.Context, path, contentType string, compr
 // addCheckpoint submits the log's signed checkpoint note with a consistency
 // proof from the mirror's last known size, updating the mirror's pending
 // checkpoint. On a "409 Conflict" it adopts the size the mirror advertises and
-// retries once.
+// retries once. An up-to-date mirror still receives the checkpoint, with an
+// empty proof, since that is the only way to obtain its cosignature.
 func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
 	oldSize := m.oldSize
 	retried := false
@@ -150,16 +164,17 @@ func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signed
 			m.oldSize = tree.N
 			return nil
 		case http.StatusConflict:
-			if retried {
-				return errors.New("mirror rejected the old size twice")
-			}
-			retried = true
-			oldSize, err = mirror.ParseSizeResponse(respBody)
+			mirrorSize, err := mirror.ParseSizeResponse(respBody)
 			if err != nil {
 				return err
 			}
+			if retried {
+				return fmt.Errorf("add-checkpoint at tree size %d got 409 with mirror tree size %d after retrying", tree.N, mirrorSize)
+			}
+			retried = true
+			oldSize = mirrorSize
 		default:
-			return fmt.Errorf("mirror returned status %d: %s", status, strings.TrimSpace(string(respBody)))
+			return fmt.Errorf("mirror returned status %d: %s", status, errorBody(respBody))
 		}
 	}
 }
@@ -174,10 +189,9 @@ const maxAddEntriesRequests = 100
 // On "202 Accepted" and "409 Conflict" it resumes from the next entry and
 // ticket the mirror advertises.
 func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.Tree) ([]byte, error) {
-	start := min(m.nextEntry, tree.N)
-	ticket := m.ticket
+	m.nextEntry = min(m.nextEntry, tree.N)
 	for range maxAddEntriesRequests {
-		packages, err := mirror.Packages(start, tree.N, mirror.MaxPackagesPerRequest)
+		packages, err := mirror.Packages(m.nextEntry, tree.N, mirror.MaxPackagesPerRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +203,7 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 			}
 			bodies = append(bodies, body)
 		}
-		reqBody, err := mirror.AddEntriesRequest(origin, start, tree.N, ticket, bodies)
+		reqBody, err := mirror.AddEntriesRequest(origin, m.nextEntry, tree.N, m.ticket, bodies)
 		if err != nil {
 			return nil, err
 		}
@@ -199,6 +213,9 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 		}
 		switch status {
 		case http.StatusOK:
+			if len(respBody) == 0 {
+				return nil, errors.New("mirror returned no cosignature lines")
+			}
 			m.nextEntry = tree.N
 			m.ticket = nil
 			return respBody, nil
@@ -209,15 +226,21 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 				return nil, err
 			}
 			if info.TreeSize != tree.N {
+				// The spec has the client adopt the advertised tree size, but
+				// Cosign set the mirror's pending checkpoint to tree.N with
+				// add-checkpoint before uploading, so the mirror SHOULD have
+				// echoed it, and a cosignature over any other tree size is no
+				// use here.
 				return nil, fmt.Errorf("mirror wants upload_end %d, checkpoint size is %d", info.TreeSize, tree.N)
 			}
-			start = info.NextEntry
-			ticket = info.Ticket
+			if info.NextEntry > tree.N {
+				return nil, fmt.Errorf("mirror wants upload_start %d, checkpoint size is %d", info.NextEntry, tree.N)
+			}
 			m.nextEntry = info.NextEntry
 			m.ticket = bytes.Clone(info.Ticket)
 
 		default:
-			return nil, fmt.Errorf("mirror returned status %d: %s", status, strings.TrimSpace(string(respBody)))
+			return nil, fmt.Errorf("mirror returned status %d: %s", status, errorBody(respBody))
 		}
 	}
 	return nil, fmt.Errorf("upload incomplete after %d add-entries requests", maxAddEntriesRequests)
@@ -236,14 +259,17 @@ func (m *MirrorClient) signSubtree(ctx context.Context, tree tlog.Tree, signedNo
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("mirror returned status %d: %s", status, strings.TrimSpace(string(respBody)))
+		return nil, fmt.Errorf("mirror returned status %d: %s", status, errorBody(respBody))
 	}
 	return respBody, nil
 }
 
 // Cosign runs the c2sp.org/tlog-mirror submission protocol for the checkpoint
 // and returns the mirror's raw signature over the whole tree from sign-subtree,
-// verified against the mirror's key.
+// verified against the mirror's key. A mirror that is already up to date,
+// whether from an earlier submission whose cosignature was never stored or
+// from another submitter, still gets the full exchange, since that is the only
+// way to obtain its cosignature.
 func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) ([]byte, error) {
 	// Submit the checkpoint to the mirror.
 	err := m.addCheckpoint(ctx, cp.Tree, signedNoteForMirror)
@@ -258,7 +284,7 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 	}
 
 	// Exchange the mirror's cosignature for its subtree signature.
-	noteForSignSubtree, err := cp.SignedNoteForSignSubtree(mirrorCosignatureLines)
+	noteForSignSubtree, err := cp.SignedNote(mirrorCosignatureLines)
 	if err != nil {
 		return nil, fmt.Errorf("assembling the sign-subtree note: %w", err)
 	}
@@ -272,7 +298,7 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
 	}
-	timestampedMirrorCosignature, err := cosignature.TimestampedSignature(noteText, subtreeCosignatureLines, m.verifier)
+	timestampedMirrorCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
 	if err != nil {
 		return nil, fmt.Errorf("cosignature failed verification: %w", err)
 	}

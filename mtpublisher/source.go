@@ -54,7 +54,7 @@ func (s *Source) entryPackage(ctx context.Context, tree tlog.Tree, p mirror.Pack
 	}
 	proof, err := subtree.ConsistencyProof(p.SubtreeStart, p.End, tree.N, s.hashReaderForTree(ctx, tree))
 	if err != nil {
-		return nil, fmt.Errorf("proving subtree [%d, %d): %s", p.SubtreeStart, p.End, err)
+		return nil, fmt.Errorf("fetching subtree consistency proof [%d, %d), tree size %d: %s", p.SubtreeStart, p.End, tree.N, err)
 	}
 	return mirror.EntryPackage(entries, proof)
 }

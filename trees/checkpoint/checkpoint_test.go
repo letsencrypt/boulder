@@ -178,8 +178,8 @@ func TestSignedNote(t *testing.T) {
 	}
 }
 
-// TestSignedNotes checks note assembly through both exported wrappers and
-// that each rejects a missing signature line.
+// TestSignedNotes checks note assembly through SignedNoteForServing and that
+// it rejects a missing signature line.
 func TestSignedNotes(t *testing.T) {
 	cp := &Checkpoint{Origin: "example.com/log", Tree: tlog.Tree{N: 5}}
 	text, err := cp.Marshal()
@@ -189,14 +189,6 @@ func TestSignedNotes(t *testing.T) {
 	caLine := []byte("— ca sig\n")
 	mirrorLine := []byte("— mirror sig\n")
 
-	forMirror, err := cp.SignedNoteForMirror(caLine)
-	if err != nil {
-		t.Fatalf("SignedNoteForMirror: %s", err)
-	}
-	if string(forMirror) != string(text)+"\n"+string(caLine) {
-		t.Errorf("SignedNoteForMirror = %q", forMirror)
-	}
-
 	forServing, err := cp.SignedNoteForServing(caLine, mirrorLine)
 	if err != nil {
 		t.Fatalf("SignedNoteForServing: %s", err)
@@ -205,18 +197,6 @@ func TestSignedNotes(t *testing.T) {
 		t.Errorf("SignedNoteForServing = %q", forServing)
 	}
 
-	forSignSubtree, err := cp.SignedNoteForSignSubtree(mirrorLine)
-	if err != nil {
-		t.Fatalf("SignedNoteForSignSubtree: %s", err)
-	}
-	if string(forSignSubtree) != string(text)+"\n"+string(mirrorLine) {
-		t.Errorf("SignedNoteForSignSubtree = %q", forSignSubtree)
-	}
-
-	_, err = cp.SignedNoteForMirror(nil)
-	if err == nil {
-		t.Error("SignedNoteForMirror without a line = nil error, want error")
-	}
 	_, err = cp.SignedNoteForServing(nil, mirrorLine)
 	if err == nil {
 		t.Error("SignedNoteForServing without the MTCA line = nil error, want error")
@@ -224,10 +204,6 @@ func TestSignedNotes(t *testing.T) {
 	_, err = cp.SignedNoteForServing(caLine, nil)
 	if err == nil {
 		t.Error("SignedNoteForServing without the mirror line = nil error, want error")
-	}
-	_, err = cp.SignedNoteForSignSubtree(nil)
-	if err == nil {
-		t.Error("SignedNoteForSignSubtree without lines = nil error, want error")
 	}
 }
 

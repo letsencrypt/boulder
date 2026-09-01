@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
@@ -33,17 +34,27 @@ type Config struct {
 		// match the mtca's.
 		LogID issuancelog.ID `validate:"required"`
 
-		// MTCAPublicKeyFile holds the PEM-encoded ML-DSA-44 public key the mtca
-		// cosigns checkpoints with, used to reconstruct each checkpoint's
-		// signed note from the database.
-		MTCAPublicKeyFile string `validate:"required"`
+		// MTCACertFile holds the PEM-encoded certificate of the mtca, whose
+		// ML-DSA-44 public key is used to reconstruct each checkpoint's signed
+		// note from the database.
+		MTCACertFile string `validate:"required"`
 
-		// Mirror identifies the mirror this publisher submits to.
-		Mirror cmd.MirrorConfig `validate:"required"`
+		// Mirror identifies the mirror this publisher submits to. Note: this is
+		// temporary until we start loading support multiple mirrors sourced from
+		// https://www.gstatic.com/mtcs/cosigners/v1/cosigners.json (schema:
+		// https://www.gstatic.com/mtcs/cosigners/v1/cosigners_schema.json).
+		Mirror struct {
+			// ID is the mirror's ID (e.g. "32473.9").
+			ID string `validate:"required"`
 
-		// MirrorBaseURL is the base URL of the mirror's tlog-mirror submission
-		// endpoints (e.g. "http://localhost:4700").
-		MirrorBaseURL string `validate:"required,url"`
+			// PublicKeyFile holds the mirror's PEM-encoded ML-DSA-44 public
+			// key.
+			PublicKeyFile string `validate:"required"`
+
+			// BaseURL is the base URL of the mirror's tlog-mirror submission
+			// endpoints (e.g. "http://localhost:4700").
+			BaseURL string `validate:"required,url"`
+		}
 
 		// S3 locates the source log's tile storage, which the publisher reads
 		// entries and proof hashes from when submitting to the mirror.
@@ -100,12 +111,16 @@ func main() {
 
 	pubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
 	cmd.FailOnError(err, "Loading mirror public key")
-	caPubKey, err := loadMLDSAPublicKey(c.MTPublisher.MTCAPublicKeyFile)
-	cmd.FailOnError(err, "Loading MTCA public key")
+	caCert, err := issuance.LoadCertificate(c.MTPublisher.MTCACertFile)
+	cmd.FailOnError(err, "Loading MTCA certificate")
+	caPubKey, ok := caCert.PublicKey.(*mldsa.PublicKey)
+	if !ok {
+		cmd.Fail(fmt.Sprintf("MTCA certificate public key is %T, must be ML-DSA-44", caCert.PublicKey))
+	}
 	s3c, err := bs3.FromConfig(c.MTPublisher.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.MirrorBaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, pubKey)
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, pubKey)
 	cmd.FailOnError(err, "Creating mirror client")
 
 	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
