@@ -1057,6 +1057,53 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 	return &emptypb.Empty{}, nil
 }
 
+// GetLatestRevokedCertByShard returns the most recently revoked certificate
+// among those GetRevokedCertsByShard would return for the same request. Unlike
+// that method, it reads from the primary database. It returns a NotFound error
+// if no revoked certificates match.
+func (ssa *SQLStorageAuthority) GetLatestRevokedCertByShard(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest) (*corepb.CRLEntry, error) {
+	if core.IsAnyNilOrZero(req.ShardIdx, req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter) {
+		return nil, errIncompleteRequest
+	}
+
+	// BoulderTypeConverter truncates time parameters to whole seconds, so round
+	// the bound up to keep the comparison equivalent to GetRevokedCertsByShard.
+	revokedBefore := req.RevokedBefore.AsTime().Add(time.Second - time.Nanosecond).Truncate(time.Second)
+
+	// Note: the filters in the query below must match those in
+	// GetRevokedCertsByShard.
+
+	var row revokedCertModel
+	err := ssa.dbMap.SelectOne(
+		ctx,
+		&row,
+		`SELECT serial, revokedDate, revokedReason
+			FROM revokedCertificates
+			WHERE issuerID = ?
+			AND shardIdx = ?
+			AND notAfterHour >= ?
+			AND revokedDate < ?
+			ORDER BY revokedDate DESC
+			LIMIT 1`,
+		req.IssuerNameID,
+		req.ShardIdx,
+		req.ExpiresAfter.AsTime().Truncate(time.Hour),
+		revokedBefore,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, berrors.NotFoundError("no revoked certificates for issuer %d shard %d", req.IssuerNameID, req.ShardIdx)
+		}
+		return nil, fmt.Errorf("reading db: %w", err)
+	}
+
+	return &corepb.CRLEntry{
+		Serial:    row.Serial,
+		Reason:    int32(row.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
+		RevokedAt: timestamppb.New(row.RevokedDate),
+	}, nil
+}
+
 // AddBlockedKey adds a key hash to the blockedKeys table
 func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.KeyHash, req.Added, req.Source) {

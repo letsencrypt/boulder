@@ -65,7 +65,7 @@ SERVICES = [
     Service('crl-storer',
         9667, None, None,
         ('./bin/boulder', 'crl-storer', '--config', os.path.join(config_dir, 'crl-storer.json'), '--addr', ':9309', '--debug-addr', ':9667'),
-        ('s3-test-srv',)),
+        ('s3-test-srv', 'boulder-sa-1', 'boulder-sa-2')),
     Service('boulder-ra-1',
         8002, 9394, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9394', '--debug-addr', ':8002'),

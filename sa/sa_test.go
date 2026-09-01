@@ -3257,6 +3257,134 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 }
 
+func TestGetSerialsMetadata(t *testing.T) {
+	sa, clk := initSA(t)
+	reg := createWorkingRegistration(t, sa)
+
+	// Two serials the SA knows about, with different expiries.
+	known := []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	for i, serial := range known {
+		_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
+			RegID:   reg.Id,
+			Serial:  serial,
+			Created: timestamppb.New(clk.Now()),
+			Expires: timestamppb.New(clk.Now().Add(time.Duration(i+1) * 24 * time.Hour)),
+		})
+		test.AssertNotError(t, err, "adding test serial")
+	}
+
+	get := func(serials []string) ([]*sapb.SerialMetadata, error) {
+		result, err := sa.GetSerialsMetadata(ctx, &sapb.Serials{Serials: serials})
+		if err != nil {
+			return nil, err
+		}
+		return result.Metadata, nil
+	}
+
+	// Empty, invalid, and oversized requests are rejected.
+	_, err := get(nil)
+	test.AssertErrorIs(t, err, errIncompleteRequest)
+	_, err = get([]string{"not a serial"})
+	test.AssertError(t, err, "invalid serial should be rejected")
+	_, err = get(make([]string, MaxSerialsMetadataBatch+1))
+	test.AssertError(t, err, "oversized request should be rejected")
+	test.AssertContains(t, err.Error(), "may contain at most")
+
+	// Known serials come back with their expiries; unknown ones are omitted.
+	results, err := get(append(known, "cccccccccccccccccccccccccccccccccccc"))
+	test.AssertNotError(t, err, "getting serials metadata")
+	test.AssertEquals(t, len(results), 2)
+	byserial := make(map[string]*sapb.SerialMetadata)
+	for _, md := range results {
+		byserial[md.Serial] = md
+	}
+	for i, serial := range known {
+		md, ok := byserial[serial]
+		test.Assert(t, ok, "missing metadata for "+serial)
+		test.AssertEquals(t, md.RegistrationID, reg.Id)
+		test.Assert(t, md.Expires.AsTime().Equal(clk.Now().Add(time.Duration(i+1)*24*time.Hour)), "wrong expiry for "+serial)
+	}
+}
+
+func TestGetLatestRevokedCertByShard(t *testing.T) {
+	sa, _ := initSA(t)
+
+	// Incomplete requests should be rejected.
+	_, err := sa.GetLatestRevokedCertByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
+		IssuerNameID: 1,
+		ShardIdx:     9,
+	})
+	test.AssertErrorIs(t, err, errIncompleteRequest)
+
+	basicRequest := &sapb.GetRevokedCertsByShardRequest{
+		IssuerNameID:  1,
+		ShardIdx:      9,
+		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
+		RevokedBefore: mustTimestamp("2023-01-15 00:00"),
+	}
+
+	// Nothing's been revoked yet, so there is no latest revocation.
+	_, err = sa.GetLatestRevokedCertByShard(ctx, basicRequest)
+	test.AssertErrorIs(t, err, berrors.NotFound)
+
+	// Insert rows directly to control their shard, expiry, and revocation times.
+	notAfterHour := mustTime("2023-03-06 00:00")
+	for _, row := range []revokedCertModel{
+		// Two ordinary rows, the second revoked later than the first.
+		{IssuerID: 1, Serial: "aaa", ShardIdx: 9, NotAfterHour: notAfterHour, RevokedDate: mustTime("2023-01-01 00:00"), RevokedReason: 1},
+		{IssuerID: 1, Serial: "bbb", ShardIdx: 9, NotAfterHour: notAfterHour, RevokedDate: mustTime("2023-01-02 00:00"), RevokedReason: 5},
+		// Revoked most recently, but expired before ExpiresAfter.
+		{IssuerID: 1, Serial: "ccc", ShardIdx: 9, NotAfterHour: mustTime("2023-02-01 00:00"), RevokedDate: mustTime("2023-01-03 00:00"), RevokedReason: 0},
+		// Revoked most recently, but after RevokedBefore.
+		{IssuerID: 1, Serial: "ddd", ShardIdx: 9, NotAfterHour: notAfterHour, RevokedDate: mustTime("2023-02-01 00:00"), RevokedReason: 0},
+		// Revoked most recently, but in a different shard or by a different issuer.
+		{IssuerID: 1, Serial: "eee", ShardIdx: 8, NotAfterHour: notAfterHour, RevokedDate: mustTime("2023-01-04 00:00"), RevokedReason: 0},
+		{IssuerID: 2, Serial: "fff", ShardIdx: 9, NotAfterHour: notAfterHour, RevokedDate: mustTime("2023-01-04 00:00"), RevokedReason: 0},
+	} {
+		err = sa.dbMap.Insert(ctx, &row)
+		test.AssertNotError(t, err, "inserting test revokedCertificates row")
+	}
+
+	// Only "aaa" and "bbb" match every constraint, and "bbb" is the more recent.
+	entry, err := sa.GetLatestRevokedCertByShard(ctx, basicRequest)
+	test.AssertNotError(t, err, "getting latest revoked cert")
+	test.AssertEquals(t, entry.Serial, "bbb")
+	test.AssertEquals(t, entry.Reason, int32(5))
+	test.Assert(t, entry.RevokedAt.AsTime().Equal(mustTime("2023-01-02 00:00")), "wrong revokedAt")
+
+	// A RevokedBefore inside the same second as a row's revokedDate includes
+	// that row, as GetRevokedCertsByShard's comparison does, even though time
+	// parameters are truncated to whole seconds on their way to the database.
+	entry, err = sa.GetLatestRevokedCertByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
+		IssuerNameID:  basicRequest.IssuerNameID,
+		ShardIdx:      basicRequest.ShardIdx,
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		RevokedBefore: timestamppb.New(mustTime("2023-01-02 00:00").Add(500 * time.Millisecond)),
+	})
+	test.AssertNotError(t, err, "getting latest revoked cert")
+	test.AssertEquals(t, entry.Serial, "bbb")
+
+	// RevokedBefore is exclusive: a cert revoked at exactly that instant is not
+	// included, matching GetRevokedCertsByShard.
+	entry, err = sa.GetLatestRevokedCertByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
+		IssuerNameID:  basicRequest.IssuerNameID,
+		ShardIdx:      basicRequest.ShardIdx,
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		RevokedBefore: mustTimestamp("2023-01-02 00:00"),
+	})
+	test.AssertNotError(t, err, "getting latest revoked cert")
+	test.AssertEquals(t, entry.Serial, "aaa")
+
+	// Asking about a shard with no matching revocations should return NotFound.
+	_, err = sa.GetLatestRevokedCertByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
+		IssuerNameID:  basicRequest.IssuerNameID,
+		ShardIdx:      7,
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		RevokedBefore: basicRequest.RevokedBefore,
+	})
+	test.AssertErrorIs(t, err, berrors.NotFound)
+}
+
 func TestLeaseOldestCRLShard(t *testing.T) {
 	sa, clk := initSA(t)
 

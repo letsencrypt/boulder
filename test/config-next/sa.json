@@ -36,6 +36,7 @@
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
 						"admin.boulder",
+						"crl-storer.boulder",
 						"wfe.boulder",
 						"sfe.boulder",
 						"ra.boulder"

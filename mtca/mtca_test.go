@@ -25,6 +25,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/borp"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
@@ -40,6 +41,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 // setup returns a working mtca, its fake tile storage, and a cleanup
@@ -64,7 +66,10 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		return nil, nil, nil, err
 	}
 	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
-	truncateTables(db)
+	err = truncateTables(db)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	logger := blog.NewMock()
 	clk := clock.NewFake()
@@ -107,7 +112,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	}
 
 	cleanup := func() {
-		truncateTables(db)
+		_ = truncateTables(db)
 	}
 
 	return mtca, fs3, cleanup, nil
@@ -150,43 +155,50 @@ func TestPool(t *testing.T) {
 func TestCheckpointValid(t *testing.T) {
 	type testCase struct {
 		name  string
-		value checkpoint
+		value treedb.CheckpointModel
 	}
 
 	rootHash := [32]byte{}
 
 	testCases := []testCase{
-		{"no MTCLogID", checkpoint{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
-		{"no TreeSize", checkpoint{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
-		{"short RootHash", checkpoint{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
-		{"no RootHash", checkpoint{ID: 7, MTCLogID: "TestLog", TreeSize: 9}},
+		{"no MTCLogID", treedb.CheckpointModel{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
+		{"no TreeSize", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
+		{"short RootHash", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
+		{"no RootHash", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", TreeSize: 9}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.value.valid()
+			err := tc.value.Valid()
 			if err == nil {
 				t.Errorf("checkpoint.valid(): got nil, want error")
 			}
 		})
 	}
 
-	goodCheckpoint := checkpoint{
+	goodCheckpoint := treedb.CheckpointModel{
 		ID:       7,
 		MTCLogID: "TestLog",
 		TreeSize: 9,
 		RootHash: rootHash[:],
 	}
 
-	err := goodCheckpoint.valid()
+	err := goodCheckpoint.Valid()
 	if err != nil {
 		t.Errorf("goodCheckpoint.valid(): got %q, want no error", err)
 	}
 }
 
-func truncateTables(db *sql.DB) {
-	db.Exec("TRUNCATE TABLE checkpoints")
-	db.Exec("TRUNCATE TABLE latestCheckpoint")
+func truncateTables(db *sql.DB) error {
+	_, err := db.Exec("TRUNCATE TABLE checkpoints")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("TRUNCATE TABLE latestCheckpoint")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // issueResult is the outcome of one async Issue call, along with the values
@@ -293,9 +305,9 @@ func mirrorCosign(t *testing.T, m *mtca) {
 //   - m.frontier
 //   - m.latestCheckpoint()
 //   - fake tile storage
-func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *checkpoint {
+func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *treedb.CheckpointModel {
 	t.Helper()
-	latest, err := m.latestCheckpoint(t.Context())
+	latest, err := treedb.New(m.db).LatestCheckpoint(t.Context(), m.logID.String())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -475,8 +487,8 @@ func TestSequenceStorageFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("sequencing with failing storage: got nil error, want error")
 	}
-	if !strings.Contains(err.Error(), "staging") {
-		t.Errorf("sequencing with failing storage: got %q, want a staging error", err)
+	if !strings.Contains(err.Error(), "staging candidate tiles") {
+		t.Fatalf("sequencing with failing storage: got %q, want a 'staging candidate tiles' error", err)
 	}
 
 	// The waiting RPCs should get their responses.
@@ -520,7 +532,7 @@ func TestInitLog(t *testing.T) {
 		t.Errorf("second InitLog: got nil error, want error")
 	}
 
-	latest, err := mtca.latestCheckpoint(t.Context())
+	latest, err := treedb.New(mtca.db).LatestCheckpoint(t.Context(), mtca.logID.String())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -536,14 +548,14 @@ func TestInitLog(t *testing.T) {
 	verifyCheckpoint(t, mtca, latest)
 }
 
-func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
+func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointModel) {
 	t.Helper()
 	message := cosigned.Message{
 		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID,
 		Timestamp:    0,
 		LogOrigin:    mtca.logID.Origin(),
 		Start:        0,
-		End:          uint64(checkpoint.TreeSize),
+		End:          uint64(checkpoint.TreeSize), //nolint:gosec // G115: we know that tree sizes are positive in these tests
 		SubtreeHash:  [32]byte(checkpoint.RootHash),
 	}
 
