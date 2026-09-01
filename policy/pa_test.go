@@ -211,7 +211,7 @@ func TestWillingToIssue(t *testing.T) {
 		`website3.com`,
 		`website4.com`,
 	}
-	datedBlocklistContents := map[string]EffectiveDate{
+	datedBlockedPQDNContents := map[string]EffectiveDate{
 		// Past EffectiveDate
 		`website2-yday.com`:     {time.Now().Add(-24 * time.Hour)},
 		`website2-yday.org`:     {time.Now().Add(-24 * time.Hour)},
@@ -232,7 +232,7 @@ func TestWillingToIssue(t *testing.T) {
 		`highvalue.website1.org`,
 		`dl.website1.org`,
 	}
-	datedBlockedExactNamesContents := map[string]EffectiveDate{
+	datedBlockedFQDNContents := map[string]EffectiveDate{
 		// Past EffectiveDate
 		`www.website1-yday.org`:       {time.Now().Add(-24 * time.Hour)},
 		`highvalue.website1-yday.org`: {time.Now().Add(-24 * time.Hour)},
@@ -251,7 +251,7 @@ func TestWillingToIssue(t *testing.T) {
 		`2602:80a:6000:666::/64`,
 		`ff00::/8`,
 	}
-	datedBlockedPrefixesContents := map[string]EffectiveDate{
+	datedBlockedCIDRContents := map[string]EffectiveDate{
 		// Past EffectiveDate
 		`64.112.117.69/32`:       {time.Now().Add(-24 * time.Hour)},
 		`240.0.0.0/8`:            {time.Now().Add(-24 * time.Hour)},
@@ -299,9 +299,9 @@ func TestWillingToIssue(t *testing.T) {
 		ExactBlockedNames:    exactBlocklistContents,
 		AdminBlockedNames:    adminBlockedNamesContents,
 		AdminBlockedPrefixes: adminBlockedPrefixesContents,
-		BlockedExactNames:    datedBlockedExactNamesContents,
-		BlockedNames:         datedBlocklistContents,
-		BlockedPrefixes:      datedBlockedPrefixesContents,
+		BlockedFQDNs:         datedBlockedFQDNContents,
+		BlockedPQDNs:         datedBlockedPQDNContents,
+		BlockedCIDRs:         datedBlockedCIDRContents,
 	}
 
 	yamlPolicyBytes, err := yaml.Marshal(policy)
@@ -317,7 +317,7 @@ func TestWillingToIssue(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Create some duplicate entries with future EffectiveDates
-	datedBlocklistDuplicates := map[string]EffectiveDate{
+	datedBlockedPQDNDuplicates := map[string]EffectiveDate{
 		// Future EffectiveDate in place of Past
 		`website2-yday.com`:   {time.Now().Add(36 * time.Hour)},
 		`website2-yday.org`:   {time.Now().Add(36 * time.Hour)},
@@ -325,13 +325,13 @@ func TestWillingToIssue(t *testing.T) {
 		`website3-yday.com`:   {time.Now().Add(36 * time.Hour)},
 		`website4-yday.com`:   {time.Now().Add(36 * time.Hour)},
 	}
-	datedBlockedExactNamesDuplicates := map[string]EffectiveDate{
+	datedBlockedFQDNDuplicates := map[string]EffectiveDate{
 		// Future EffectiveDate in place of Past
 		`www.website1-yday.org`:       {time.Now().Add(36 * time.Hour)},
 		`highvalue.website1-yday.org`: {time.Now().Add(36 * time.Hour)},
 		`dl.website1-yday.org`:        {time.Now().Add(36 * time.Hour)},
 	}
-	datedBlockedPrefixesDuplicates := map[string]EffectiveDate{
+	datedBlockedCIDRDuplicates := map[string]EffectiveDate{
 		// Future EffectiveDate in place of Past
 		`64.112.117.69/32`:       {time.Now().Add(36 * time.Hour)},
 		`240.0.0.0/8`:            {time.Now().Add(36 * time.Hour)},
@@ -339,9 +339,9 @@ func TestWillingToIssue(t *testing.T) {
 		`fe00::/8`:               {time.Now().Add(36 * time.Hour)},
 	}
 	policyDupes := blockedIdentsPolicy{
-		BlockedExactNames: datedBlockedExactNamesDuplicates,
-		BlockedNames:      datedBlocklistDuplicates,
-		BlockedPrefixes:   datedBlockedPrefixesDuplicates,
+		BlockedFQDNs: datedBlockedFQDNDuplicates,
+		BlockedPQDNs: datedBlockedPQDNDuplicates,
+		BlockedCIDRs: datedBlockedCIDRDuplicates,
 	}
 
 	// Load another test file with the duplicate entries which would override
@@ -393,11 +393,11 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	exactBannedDomains := []string{
 		"highvalue.letsdecrypt.org",
 	}
-	datedBlockedNames := map[string]EffectiveDate{
+	datedBlockedPQDNs := map[string]EffectiveDate{
 		"zombo-yday.gov.us": {time.Now().Add(-24 * time.Hour)},
 		"zombo-tmrw.gov.us": {time.Now().Add(24 * time.Hour)},
 	}
-	datedExactBlockedNames := map[string]EffectiveDate{
+	datedBlockedFQDNs := map[string]EffectiveDate{
 		"highvalue.letsdecrypt-yday.org": {time.Now().Add(-24 * time.Hour)},
 		"highvalue.letsdecrypt-tmrw.org": {time.Now().Add(24 * time.Hour)},
 	}
@@ -406,8 +406,8 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	bannedBytes, err := yaml.Marshal(blockedIdentsPolicy{
 		HighRiskBlockedNames: bannedDomains,
 		ExactBlockedNames:    exactBannedDomains,
-		BlockedNames:         datedBlockedNames,
-		BlockedExactNames:    datedExactBlockedNames,
+		BlockedPQDNs:         datedBlockedPQDNs,
+		BlockedFQDNs:         datedBlockedFQDNs,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 	f, _ := os.CreateTemp("", "test-wildcard-banlist.*.yaml")

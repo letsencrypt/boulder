@@ -128,6 +128,8 @@ func (pc PAConfig) CheckIdentifiers() error {
 type HostnamePolicyConfig struct {
 	HostnamePolicyFile string `validate:"required"`
 
+	// TODO(#8957): make this plural form "required" and remove the singular
+	// form above when no more components are configured with the singular form.
 	HostnamePolicyFiles map[string]string `validate:"omitempty"`
 }
 

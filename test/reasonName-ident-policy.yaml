@@ -4,17 +4,18 @@
 # This is *not* a production ready policy file and not reflective of Let's
 # Encrypt's policies! It is just an example.
 
-# BlockedExactNames prevent issuance for the exact names listed, as well as
-# their wildcard form.
-BlockedExactNames:
+# BlockedFQDNs prevent issuance for the exact names listed, as well as their
+# wildcard form.
+BlockedFQDNs:
   "highrisk.le-test.hoffman-andrews.com": "2021-02-21"
   "exactblacklist.letsencrypt.org": "2021-02-21"
 
-# BlockedPrefixes is a map of names as keys, with effective block dates as their
-# value.
+# BlockedPQDNs is a map of names as keys, with effective block dates as their
+# value. All subdomains of each listed Partially Qualified Domain Name will
+# also be blocked.
 #
-# To block an exact name, place it in BlockedExactNames
-BlockedNames:
+# To block an exact name, place it in BlockedFQDNs
+BlockedPQDNs:
   # See RFC 3152
   "ip6.arpa": "2021-02-21"
   # See RFC 2317
@@ -29,12 +30,12 @@ BlockedNames:
   "test": "2021-02-21"
   "sealand": "2021-02-21"
 
-# BlockedPrefixes is a map of IP address prefixes as keys, with effective block
-# dates as their value. All IP addresses contained within the prefix are
-# blocked.
+# BlockedCIDRs is a map of IP address prefixes in CIDR notation as keys, with
+# effective block dates as their value. All IP addresses contained within the
+# prefix are blocked.
 #
 # To block a single IP, append "/32" for IPv4 or "/128" for IPv6.
-BlockedPrefixes:
+BlockedCIDRs:
   "64.112.117.66/32": "2021-02-21"
   "64.112.117.68/30": "2021-02-21"
   "224.0.0.0/4": "2021-02-21"

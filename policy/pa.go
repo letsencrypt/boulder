@@ -37,14 +37,35 @@ type EffectiveDate struct {
 	time.Time
 }
 
+// MarshalYAML returns the string format of the date as DateOnly (YYYY-MM-DD)
+func (d EffectiveDate) MarshalYAML() (any, error) {
+	return d.Format(time.DateOnly), nil
+}
+
+// UnmarshalYAML parses the string from the YAML into an EffectiveDate. If
+// parsing fails, it returns an error.
+func (d *EffectiveDate) UnmarshalYAML(value *yaml.Node) error {
+	var dateString string
+	err := value.Decode(&dateString)
+	if err != nil {
+		return err
+	}
+	parsedDate, err := time.Parse(time.DateOnly, dateString)
+	if err != nil {
+		return err
+	}
+	d.Time = parsedDate
+	return nil
+}
+
 // AuthorityImpl enforces CA policy decisions.
 type AuthorityImpl struct {
 	log blog.Logger
 
-	domainBlocklist       map[string]EffectiveDate
+	pqdnBlocklist         map[string]EffectiveDate
 	fqdnBlocklist         map[string]EffectiveDate
 	wildcardFqdnBlocklist map[string]EffectiveDate
-	ipPrefixBlocklist     map[netip.Prefix]EffectiveDate
+	cidrBlocklist         map[netip.Prefix]EffectiveDate
 	blocklistMu           sync.RWMutex
 
 	enabledChallenges  map[core.AcmeChallenge]bool
@@ -66,76 +87,60 @@ type blockedIdentsPolicy struct {
 	// Issuance for names exactly matching an entry in the list will be
 	// forbidden. (e.g. `ExactBlockedNames` containing `www.example.com` will
 	// not block `example.com`, `mail.example.com`, or `dev.www.example.com`).
-	ExactBlockedNames []string `yaml:"ExactBlockedNames"` // TODO(#8957): deprecate and delete
+	//
+	// Deprecated: replaced by BlockedExactNames, below. TODO(#8957): Remove this.
+	ExactBlockedNames []string `yaml:"ExactBlockedNames"`
 
 	// HighRiskBlockedNames is a list of domain names: like ExactBlockedNames
 	// except that issuance is blocked for subdomains as well. (e.g.
 	// BlockedNames containing `example.com` will block `www.example.com`).
 	//
 	// This list typically doesn't change with much regularity.
-	HighRiskBlockedNames []string `yaml:"HighRiskBlockedNames"` // TODO(#8957): deprecate and delete
+	//
+	// Deprecated: replaced by BlockedNames, below. TODO(#8957): Remove this.
+	HighRiskBlockedNames []string `yaml:"HighRiskBlockedNames"`
 
 	// AdminBlockedNames operates the same as HighRiskBlockedNames but is
 	// changed with more frequency based on administrative blocks/revocations
 	// that are added over time above and beyond the high-risk domains. Managing
 	// these entries separately from HighRiskBlockedNames makes it easier to vet
 	// changes accurately.
-	AdminBlockedNames []string `yaml:"AdminBlockedNames"` // TODO(#8957): deprecate and delete
+	//
+	// Deprecated: replaced by BlockedNames, below. TODO(#8957): Remove this.
+	AdminBlockedNames []string `yaml:"AdminBlockedNames"`
 
 	// AdminBlockedPrefixes is a list of IP address prefixes. All IP addresses
 	// contained within the prefix are blocked.
-	AdminBlockedPrefixes []string `yaml:"AdminBlockedPrefixes"` // TODO(#8957): deprecate and delete
+	//
+	// Deprecated: replaced by BlockedPrefixes, below. TODO(#8957): Remove this.
+	AdminBlockedPrefixes []string `yaml:"AdminBlockedPrefixes"`
 
-	// BlockedExactNames is a list of Fully Qualified Domain Names (FQDNs) with
-	// EffectiveDates for each.
-	// Issuance for names exactly matching an entry in the list will be
-	// forbidden. (e.g. `ExactBlockedNames` containing `www.example.com` will
-	// not block `example.com`, `mail.example.com`, or `dev.www.example.com`).
-	BlockedExactNames map[string]EffectiveDate `yaml:"BlockedExactNames"`
+	// BlockedFQDNs is a map of Fully Qualified Domain Names (FQDNs) to an
+	// EffectiveDate for each blocked FQDN.
+	//
+	// Issuance for names exactly matching an entry in the list, and the
+	// wildcard version of the name, will be forbidden. (e.g. `BlockedFQDNs`
+	// containing `www.example.com` will not block `example.com`,
+	// `mail.example.com`, or `dev.www.example.com`, but will block
+	// `www.example.com`, and `*.example.com`).
+	BlockedFQDNs map[string]EffectiveDate `yaml:"BlockedFQDNs"`
 
-	// BlockedNames is a list of domain names with EffectiveDates for each.
-	// This is like ExactBlockedNames except that issuance is blocked for
-	// subdomains as well.  (e.g.  BlockedNames containing `example.com` will
-	// block `www.example.com`).
-	BlockedNames map[string]EffectiveDate `yaml:"BlockedNames"`
+	// BlockedPQDNs is a map of Partially Qualified Domain Names (PQDNs) to an
+	// EffectiveDate for each blocked PQDN.
+	//
+	// This is like BlockedFQDNs except that issuance is blocked for subdomains
+	// as well. (e.g. BlockedPQDNs containing `example.com` will block
+	// `www.example.com`, and `mail.example.com`).
+	BlockedPQDNs map[string]EffectiveDate `yaml:"BlockedPQDNs"`
 
-	// BlockedPrefixes is a list of IP address prefixes with EffectiveDates for
-	// each. All IP addresses contained within the prefix are blocked.
-	BlockedPrefixes map[string]EffectiveDate `yaml:"BlockedPrefixes"`
-}
-
-// MarshalYAML returns the string format of the date as DateOnly (YYYY-MM-DD)
-func (d EffectiveDate) MarshalYAML() (any, error) {
-	return d.Format(time.DateOnly), nil
-}
-
-// UnmarshalYAML parses the string from the YAML into an EffectiveDate. If
-// parsing fails, it returns an error. If parsing results in a zero-value date,
-// it assumes defaultEffectiveDate instead so that every block item in a yaml
-// file will have a non-zero EffectiveDate.
-func (d *EffectiveDate) UnmarshalYAML(value *yaml.Node) error {
-	var dateString string
-	err := value.Decode(&dateString)
-	if err != nil {
-		return err
-	}
-	parsedDate, err := time.Parse(time.DateOnly, dateString)
-	if err != nil {
-		return err
-	}
-	// Parsing the zero-value from the file is unhelpful, and could carry the
-	// risk of a block not taking effect. We can more safely assume
-	// defaultEffectiveDate.
-	if parsedDate.IsZero() {
-		parsedDate = defaultEffectiveDate.Time
-	}
-	d.Time = parsedDate
-	return nil
+	// BlockedCIDRs is a map of IP address prefixes in CIDR notation to an
+	// EffectiveDate for each blocked CIDR. All IP addresses contained within
+	// the prefix are blocked.
+	BlockedCIDRs map[string]EffectiveDate `yaml:"BlockedCIDRs"`
 }
 
 // LoadIdentPolicyFile will load the given policy file, returning an error if it
-// fails. The boolean input is passed directly to processIdentPolicy, and
-// controls whether blocklist entry effective dates are used from the file.
+// fails.
 func (pa *AuthorityImpl) LoadIdentPolicyFile(f string) error {
 	configBytes, err := os.ReadFile(f)
 	if err != nil {
@@ -152,55 +157,61 @@ func (pa *AuthorityImpl) LoadIdentPolicyFile(f string) error {
 	// willing to process, the pipeline for creating our files on disk probably
 	// failed, and we should complain loudly.
 	if len(policy.ExactBlockedNames) == 0 &&
-		len(policy.HighRiskBlockedNames) == 0 && // TODO(#8957): deprecate and remove
-		len(policy.AdminBlockedNames) == 0 && // TODO(#8957): deprecate and remove
-		len(policy.AdminBlockedPrefixes) == 0 && // TODO(#8957): deprecate and remove
-		len(policy.BlockedExactNames) == 0 &&
-		len(policy.BlockedNames) == 0 &&
-		len(policy.BlockedPrefixes) == 0 {
+		len(policy.HighRiskBlockedNames) == 0 &&
+		len(policy.AdminBlockedNames) == 0 &&
+		len(policy.AdminBlockedPrefixes) == 0 &&
+		len(policy.BlockedFQDNs) == 0 &&
+		len(policy.BlockedPQDNs) == 0 &&
+		len(policy.BlockedCIDRs) == 0 {
 		return fmt.Errorf("policy file must contain at least one category for blocked entries")
 	}
 	return pa.processIdentPolicy(policy)
 }
 
+// addOrUpdateBlockEntry only adds the input key and date to the input blocklist
+// if not already found, OR if the input date is before the date from the map.
+//
+// Reading config blocks from multiple files runs the risk of incoming
+// duplicates. We only want the oldest effective date for a given blocklist
+// item.
+func addOrUpdateBlockEntry[T comparable](blocklist map[T]EffectiveDate, key T, date EffectiveDate) {
+	dateInMap, found := blocklist[key]
+	if !found || date.Before(dateInMap.Time) {
+		blocklist[key] = date
+	}
+}
+
 // processIdentPolicy handles loading a new blockedIdentsPolicy into the PA. All
-// of the policy.ExactBlockedNames will be added to the wildcardExactBlocklist
-// by processIdentPolicy to ensure that wildcards for exact blocked names
-// entries are forbidden. The boolean input controls whether blocklist entry
-// effective dates are used from the file. When false, all entries use
-// time.Now(), which is appropriate for components like the CA and the RA that
-// do not need to look backward in time. Cert-checker should load files with
-// `true`, because cert-checker is trying to reconcile certificate past.
+// of the policy.BlockedFQDNs will be added to the wildcardFqdnBlocklist by
+// processIdentPolicy to ensure that wildcards for exact blocked names entries
+// are forbidden.
 func (pa *AuthorityImpl) processIdentPolicy(policy blockedIdentsPolicy) error {
 	pa.blocklistMu.Lock()
 	defer pa.blocklistMu.Unlock()
 
-	datedNameMap := make(map[string]EffectiveDate)
-	maps.Copy(datedNameMap, pa.domainBlocklist)
+	datedPQDNMap := make(map[string]EffectiveDate)
+	maps.Copy(datedPQDNMap, pa.pqdnBlocklist)
 
-	// older config blocks do not have effective dates
+	// The deprecated blocklist configs do not have effective dates, so compare
+	// any date found in our maps against defaultEffectiveDate.
 	for _, v := range policy.HighRiskBlockedNames {
-		datedNameMap[v] = defaultEffectiveDate
+		addOrUpdateBlockEntry(datedPQDNMap, v, defaultEffectiveDate)
 	}
 	for _, v := range policy.AdminBlockedNames {
-		datedNameMap[v] = defaultEffectiveDate
+		addOrUpdateBlockEntry(datedPQDNMap, v, defaultEffectiveDate)
 	}
 
-	// reading config blocks from multiple files run the risk of duplicates,
-	// from which we only want the oldest effective date.
-	for identifier, parsedEffectiveDate := range policy.BlockedNames {
-		dateInMap := datedNameMap[identifier]
-		if dateInMap.IsZero() || parsedEffectiveDate.Before(dateInMap.Time) {
-			datedNameMap[identifier] = parsedEffectiveDate
-		}
+	// New-style blocklists should include dates
+	for identifier, parsedEffectiveDate := range policy.BlockedPQDNs {
+		addOrUpdateBlockEntry(datedPQDNMap, identifier, parsedEffectiveDate)
 	}
 
-	datedExactNameMap := make(map[string]EffectiveDate)
-	maps.Copy(datedExactNameMap, pa.fqdnBlocklist)
-	datedWildcardNameMap := make(map[string]EffectiveDate)
-	maps.Copy(datedWildcardNameMap, pa.wildcardFqdnBlocklist)
+	datedFQDNMap := make(map[string]EffectiveDate)
+	maps.Copy(datedFQDNMap, pa.fqdnBlocklist)
+	datedWildcardFQDNMap := make(map[string]EffectiveDate)
+	maps.Copy(datedWildcardFQDNMap, pa.wildcardFqdnBlocklist)
 	for _, v := range policy.ExactBlockedNames {
-		datedExactNameMap[v] = defaultEffectiveDate
+		addOrUpdateBlockEntry(datedFQDNMap, v, defaultEffectiveDate)
 		// Remove the leftmost label of the exact blocked names entry to make an exact
 		// wildcard block list entry that will prevent issuing a wildcard that would
 		// include the exact blocklist entry. e.g. if "highvalue.example.com" is on
@@ -217,13 +228,12 @@ func (pa *AuthorityImpl) processIdentPolicy(policy blockedIdentsPolicy) error {
 		}
 		// Add the second part, the domain minus the first label, to the
 		// wildcardNameMap to block issuance for `*.`+parts[1]
-		datedWildcardNameMap[parts[1]] = defaultEffectiveDate
+		datedWildcardFQDNMap[parts[1]] = defaultEffectiveDate
 	}
-	for identifier, parsedEffectiveDate := range policy.BlockedExactNames {
-		dateInMap := datedExactNameMap[identifier]
-		if dateInMap.IsZero() || parsedEffectiveDate.Before(dateInMap.Time) {
-			datedExactNameMap[identifier] = parsedEffectiveDate
-		}
+	for identifier, parsedEffectiveDate := range policy.BlockedFQDNs {
+		// TODO(#8957): Carryover helpful comments from above as deprecated
+		// blocklist checks are removed.
+		addOrUpdateBlockEntry(datedFQDNMap, identifier, parsedEffectiveDate)
 
 		nameParts := strings.SplitN(identifier, ".", 2)
 
@@ -231,38 +241,32 @@ func (pa *AuthorityImpl) processIdentPolicy(policy blockedIdentsPolicy) error {
 			return fmt.Errorf(
 				"malformed BLockedExactNames entry, only one label: %q", identifier)
 		}
-		dateInMap = datedWildcardNameMap[nameParts[1]]
-		if dateInMap.IsZero() || parsedEffectiveDate.Before(dateInMap.Time) {
-			datedWildcardNameMap[nameParts[1]] = parsedEffectiveDate
-		}
+		addOrUpdateBlockEntry(datedWildcardFQDNMap, nameParts[1], parsedEffectiveDate)
 	}
 
-	datedPrefixMap := make(map[netip.Prefix]EffectiveDate)
-	maps.Copy(datedPrefixMap, pa.ipPrefixBlocklist)
+	datedCIDRMap := make(map[netip.Prefix]EffectiveDate)
+	maps.Copy(datedCIDRMap, pa.cidrBlocklist)
 	for _, p := range policy.AdminBlockedPrefixes {
 		prefix, err := netip.ParsePrefix(p)
 		if err != nil {
 			return fmt.Errorf(
 				"malformed AdminBlockedPrefixes entry, not a prefix: %q", p)
 		}
-		datedPrefixMap[prefix] = defaultEffectiveDate
+		addOrUpdateBlockEntry(datedCIDRMap, prefix, defaultEffectiveDate)
 	}
-	for identifier, parsedEffectiveDate := range policy.BlockedPrefixes {
+	for identifier, parsedEffectiveDate := range policy.BlockedCIDRs {
 		prefix, err := netip.ParsePrefix(identifier)
 		if err != nil {
 			return fmt.Errorf(
 				"malformed AdminBlockedPrefixes entry, not a prefix: %q", identifier)
 		}
-		dateInMap := datedPrefixMap[prefix]
-		if dateInMap.IsZero() || parsedEffectiveDate.Before(dateInMap.Time) {
-			datedPrefixMap[prefix] = parsedEffectiveDate
-		}
+		addOrUpdateBlockEntry(datedCIDRMap, prefix, parsedEffectiveDate)
 	}
 
-	pa.domainBlocklist = datedNameMap
-	pa.fqdnBlocklist = datedExactNameMap
-	pa.wildcardFqdnBlocklist = datedWildcardNameMap
-	pa.ipPrefixBlocklist = datedPrefixMap
+	pa.pqdnBlocklist = datedPQDNMap
+	pa.fqdnBlocklist = datedFQDNMap
+	pa.wildcardFqdnBlocklist = datedWildcardFQDNMap
+	pa.cidrBlocklist = datedCIDRMap
 	return nil
 }
 
@@ -537,8 +541,14 @@ func subError(ident identifier.ACMEIdentifier, err error) berrors.SubBoulderErro
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifiers.
 //
-// It checks the criteria checked by `WellFormedIdentifiers`, and additionally
-// checks whether any identifier is on a blocklist.
+// It checks the criteria checked by `WellFormedIdentifiers`. It additionally
+// checks whether any identifier is on a blocklist, and if the identifier's
+// effective date is before the `atTime` input.
+//
+// IMPORTANT: passing the time.Time zero value as the `atTime` input will result
+// in ALL blocklist items assumed in-force REGARDLESS of their effective
+// date(s). cert-checker, for example, should pass a non-zero date to check for
+// WillingToIssue result at some point in history.
 //
 // If multiple identifiers are invalid, the error will contain suberrors
 // specific to each identifier.
@@ -659,11 +669,10 @@ func combineSubErrors(subErrors []berrors.SubBoulderError) error {
 
 // foundInBlocklist is generic over our blocklist map key types. It looks up
 // EffectiveDates in the input map using the input key and returns a boolean
-// signaling a block is found.
-// If it finds an EffectiveDate for the input key that is older than the input
-// time, it returns true.
-// If the input time is the time.Time zero-value, then the mere existence of the
-// key in the blocklist is enough to return true.
+// signaling if an entry was found. If it finds an EffectiveDate for the input
+// key that is older than the input time, it returns true. If the input time is
+// the time.Time zero-value, then the mere existence of the key in the blocklist
+// is enough to return true.
 func foundInBlocklist[T comparable](blockList map[T]EffectiveDate, key T, atTime time.Time) bool {
 	// lookup by key in the blocklist map
 	effectiveDate, found := blockList[key]
@@ -703,7 +712,7 @@ func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier, atTime
 	pa.blocklistMu.RLock()
 	defer pa.blocklistMu.RUnlock()
 
-	if pa.domainBlocklist == nil {
+	if pa.pqdnBlocklist == nil {
 		return fmt.Errorf("identifier policy not yet loaded")
 	}
 
@@ -712,7 +721,7 @@ func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier, atTime
 		labels := strings.Split(ident.Value, ".")
 		for i := range labels {
 			joined := strings.Join(labels[i:], ".")
-			if foundInBlocklist(pa.domainBlocklist, joined, atTime) {
+			if foundInBlocklist(pa.pqdnBlocklist, joined, atTime) {
 				return errPolicyForbidden
 			}
 		}
@@ -725,8 +734,8 @@ func (pa *AuthorityImpl) checkBlocklists(ident identifier.ACMEIdentifier, atTime
 		if err != nil {
 			return errIPInvalid
 		}
-		for prefix := range pa.ipPrefixBlocklist {
-			if prefix.Contains(ip.WithZone("")) && foundInBlocklist(pa.ipPrefixBlocklist, prefix, atTime) {
+		for prefix := range pa.cidrBlocklist {
+			if prefix.Contains(ip.WithZone("")) && foundInBlocklist(pa.cidrBlocklist, prefix, atTime) {
 				return errPolicyForbidden
 			}
 		}
