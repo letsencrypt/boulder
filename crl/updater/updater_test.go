@@ -84,7 +84,7 @@ func (f *fakeSAC) GetLatestRevokedCertByShard(ctx context.Context, req *sapb.Get
 // useFakeSA installs f as the SA client, with the freshness check enabled.
 func useFakeSA(cu *crlUpdater, f *fakeSAC) {
 	cu.sa = f
-	cu.freshnessCheck = true
+	cu.checkFreshness = true
 }
 
 func (f *fakeSAC) UpdateCRLShard(_ context.Context, _ *sapb.UpdateCRLShardRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -468,7 +468,7 @@ func TestUpdateShard(t *testing.T) {
 		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
 		latest:       &corepb.CRLEntry{Serial: "037d6a05a0f6a975380456ae605cee9889", RevokedAt: now},
 	}
-	cu.freshnessCheck = false
+	cu.checkFreshness = false
 	cu.ca = &fakeCA{gcc: generateCRLStream{}}
 	cu.cs = &fakeStorer{uploaderStream: &noopUploader{}}
 	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)

@@ -13,11 +13,12 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/core/proto"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -40,10 +41,10 @@ type crlUpdater struct {
 	cacheControl  string
 	expiresMargin time.Duration
 
-	// freshnessCheck enables checkFreshness in updateShard.
+	// checkFreshness enables the freshness check in updateShard.
 	//
 	// TODO(#8983): Remove this once the freshness check is unconditional.
-	freshnessCheck bool
+	checkFreshness bool
 
 	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
@@ -70,7 +71,7 @@ func NewUpdater(
 	maxAttempts int,
 	cacheControl string,
 	expiresMargin time.Duration,
-	freshnessCheckEnabled bool,
+	checkFreshness bool,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
@@ -147,7 +148,7 @@ func NewUpdater(
 		maxAttempts,
 		cacheControl,
 		expiresMargin,
-		freshnessCheckEnabled,
+		checkFreshness,
 		sa,
 		ca,
 		cs,
@@ -158,42 +159,6 @@ func NewUpdater(
 		log,
 		clk,
 	}, nil
-}
-
-// checkFreshness returns an error unless the entries read from a replica
-// include the primary database's most recent revocation for the shard. The
-// comparison ignores revocations from the last cu.lagFactor before req's
-// RevokedBefore, so replicas at most that far behind cause no false positives.
-func (cu *crlUpdater) checkFreshness(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest, entries []*proto.CRLEntry) error {
-	cutoffTime := req.RevokedBefore.AsTime().Add(-cu.lagFactor)
-	req.RevokedBefore = timestamppb.New(cutoffTime)
-
-	latest, err := cu.sa.GetLatestRevokedCertByShard(ctx, req)
-	if err != nil {
-		if errors.Is(err, berrors.NotFound) {
-			foundOlder := slices.ContainsFunc(entries, func(entry *proto.CRLEntry) bool {
-				return entry.RevokedAt.AsTime().Before(cutoffTime)
-			})
-			if foundOlder {
-				return errors.New("primary database has no revocations for this shard but the replica " +
-					"returned entries revoked more than lagFactor ago, which replication lag " +
-					"cannot explain; the primary and replica are not seeing the same data")
-			}
-			return nil
-		}
-		return fmt.Errorf("GetLatestRevokedCertByShard: %w", err)
-	}
-
-	foundLatest := slices.ContainsFunc(entries, func(entry *proto.CRLEntry) bool {
-		return entry.Serial == latest.Serial
-	})
-	if !foundLatest {
-		return fmt.Errorf("latest revocation (serial %s, revoked at %s, %s ago) missing from "+
-			"%d entries: database replica may be lagging",
-			latest.Serial, latest.RevokedAt.AsTime().Format(time.RFC3339),
-			cu.clk.Now().Sub(latest.RevokedAt.AsTime()).Round(time.Second), len(entries))
-	}
-	return nil
 }
 
 // updateShardWithRetry calls updateShard repeatedly (with exponential backoff
@@ -290,7 +255,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		return fmt.Errorf("GetRevokedCertsByShard: %w", err)
 	}
 
-	var crlEntries []*proto.CRLEntry
+	var crlEntries []*corepb.CRLEntry
 	for {
 		entry, err := saStream.Recv()
 		if err != nil {
@@ -305,10 +270,34 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	cu.log.Infof("Queried SA for CRL shard: id=[%s] shardIdx=[%d] numEntries=[%d]", crlID, shardIdx, len(crlEntries))
 
 	// TODO(#8983): Make this unconditional once checkFreshness is in production configs.
-	if cu.freshnessCheck {
-		err = cu.checkFreshness(ctx, req, crlEntries)
+	if cu.checkFreshness {
+		latestReq := proto.Clone(req).(*sapb.GetRevokedCertsByShardRequest)
+		cutoffTime := latestReq.RevokedBefore.AsTime().Add(-cu.lagFactor)
+		latestReq.RevokedBefore = timestamppb.New(cutoffTime)
+
+		latest, err := cu.sa.GetLatestRevokedCertByShard(ctx, latestReq)
 		if err != nil {
-			return err
+			if !errors.Is(err, berrors.NotFound) {
+				return fmt.Errorf("GetLatestRevokedCertByShard: %w", err)
+			}
+			foundOlder := slices.ContainsFunc(crlEntries, func(entry *corepb.CRLEntry) bool {
+				return entry.RevokedAt.AsTime().Before(cutoffTime)
+			})
+			if foundOlder {
+				return errors.New("primary database has no revocations for this shard but the replica " +
+					"returned entries revoked more than lagFactor ago, which replication lag " +
+					"cannot explain; the primary and replica are not seeing the same data")
+			}
+		} else {
+			foundLatest := slices.ContainsFunc(crlEntries, func(entry *corepb.CRLEntry) bool {
+				return entry.Serial == latest.Serial
+			})
+			if !foundLatest {
+				return fmt.Errorf("latest revocation (serial %s, revoked at %s, %s ago) missing from "+
+					"%d entries: database replica may be lagging",
+					latest.Serial, latest.RevokedAt.AsTime().Format(time.RFC3339),
+					cu.clk.Now().Sub(latest.RevokedAt.AsTime()).Round(time.Second), len(crlEntries))
+			}
 		}
 	}
 
