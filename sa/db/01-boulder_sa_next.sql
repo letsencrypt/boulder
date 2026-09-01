@@ -247,6 +247,7 @@ CREATE TABLE `serials` (
 ALTER TABLE `certificateStatus` DROP COLUMN `subscriberApproved`;
 ALTER TABLE `certificateStatus` DROP COLUMN `LockCol`;
 ALTER TABLE `revokedCertificates` ADD KEY `serial` (`serial`);
+ALTER TABLE `revokedCertificates` ADD KEY `issuerID_shardIdx_revokedDate_idx` (`issuerID`,`shardIdx`,`revokedDate`);
 
 ALTER TABLE `orders`
   ADD COLUMN `mtcLogID` varchar(255) DEFAULT NULL,

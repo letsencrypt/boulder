@@ -7,10 +7,8 @@ import (
 	"crypto"
 	"crypto/mldsa"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"time"
 
@@ -21,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 // publisher polls the MTC issuance log and cosigns the latest checkpoint if it
@@ -29,7 +28,7 @@ import (
 // as the publisher will once the mirror is a separate server. It is a stub for
 // the real MTPublisher.
 type publisher struct {
-	db             *db.WrappedMap
+	treedb         checkpointDB
 	interval       time.Duration
 	mtcLogID       string
 	origin         string
@@ -39,6 +38,11 @@ type publisher struct {
 	mirrorCosigner *cosignature.Cosigner
 	verifier       *cosignature.Verifier
 	log            blog.Logger
+}
+
+type checkpointDB interface {
+	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
+	AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
 // New returns a publisher for the issuance log logID. It cosigns as the mirror
@@ -68,7 +72,7 @@ func New(dbMap *db.WrappedMap, interval time.Duration, logID issuancelog.ID, mir
 	mirrorKeyID := binary.BigEndian.Uint32(h.Sum(nil)[:4])
 
 	return &publisher{
-		db:             dbMap,
+		treedb:         treedb.New(dbMap),
 		interval:       interval,
 		mtcLogID:       logID.String(),
 		origin:         cosigner.Origin(),
@@ -79,16 +83,6 @@ func New(dbMap *db.WrappedMap, interval time.Duration, logID issuancelog.ID, mir
 		verifier:       verifier,
 		log:            log,
 	}, nil
-}
-
-type checkpointEntry struct {
-	ID              int64   `db:"id"`
-	MTCLogID        string  `db:"mtcLogID"`
-	MTCASignature   []byte  `db:"mtcaSignature"`
-	MirrorID        *string `db:"mirrorID"`
-	MirrorSignature []byte  `db:"mirrorSignature"`
-	TreeSize        int64   `db:"treeSize"`
-	RootHash        []byte  `db:"rootHash"`
 }
 
 // cosign cosigns the checkpoint described by tree as the mirror and returns the
@@ -111,22 +105,11 @@ func (p *publisher) cosign(tree tlog.Tree) (string, error) {
 // cosignature and stores the raw signature in the database. Start calls it at
 // each interval.
 func (p *publisher) Publish(ctx context.Context) error {
-	var latest checkpointEntry
-	err := p.db.SelectOne(ctx, &latest,
-		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash
-		 FROM latestCheckpoint JOIN checkpoints
-		 USING(id)
-		 WHERE latestCheckpoint.mtcLogID = ? AND
-		       checkpoints.mtcLogID = ?`,
-		p.mtcLogID,
-		p.mtcLogID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
+	latest, err := p.treedb.LatestCheckpoint(ctx, p.mtcLogID)
 	if err != nil {
-		return fmt.Errorf("selecting the latest checkpoint: %w", err)
+		return err
 	}
+
 	if latest.MirrorSignature != nil {
 		return nil
 	}
@@ -157,9 +140,8 @@ func (p *publisher) Publish(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("checkpoint %d cosignature: %w", latest.ID, err)
 	}
-	_, err = p.db.ExecContext(ctx,
-		"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
-		p.mirrorID, mirrorCosig, latest.ID, p.mtcLogID)
+
+	err = p.treedb.AddMirrorSignature(ctx, latest.ID, p.mirrorID, mirrorCosig, p.mtcLogID)
 	if err != nil {
 		return fmt.Errorf("storing checkpoint %d cosignature (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
