@@ -25,6 +25,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/borp"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
@@ -64,7 +65,10 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		return nil, nil, nil, err
 	}
 	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
-	truncateTables(db)
+	err = truncateTables(db)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	logger := blog.NewMock()
 	clk := clock.NewFake()
@@ -107,7 +111,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	}
 
 	cleanup := func() {
-		truncateTables(db)
+		_ = truncateTables(db)
 	}
 
 	return mtca, fs3, cleanup, nil
@@ -184,9 +188,16 @@ func TestCheckpointValid(t *testing.T) {
 	}
 }
 
-func truncateTables(db *sql.DB) {
-	db.Exec("TRUNCATE TABLE checkpoints")
-	db.Exec("TRUNCATE TABLE latestCheckpoint")
+func truncateTables(db *sql.DB) error {
+	_, err := db.Exec("TRUNCATE TABLE checkpoints")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("TRUNCATE TABLE latestCheckpoint")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // issueResult is the outcome of one async Issue call, along with the values
@@ -543,7 +554,7 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
 		Timestamp:    0,
 		LogOrigin:    mtca.logID.Origin(),
 		Start:        0,
-		End:          uint64(checkpoint.TreeSize),
+		End:          uint64(checkpoint.TreeSize), //nolint:gosec // G115: we know that tree sizes are positive in these tests
 		SubtreeHash:  [32]byte(checkpoint.RootHash),
 	}
 

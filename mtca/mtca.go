@@ -20,10 +20,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/borp"
-
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/borp"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
@@ -32,6 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/tiles"
 )
 
@@ -157,8 +157,7 @@ func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 func (m *mtca) InitLog(ctx context.Context) error {
 	candidate := &tiles.Frontier{}
 
-	nullEntry := &entry.MTCLogEntry{}
-	err := candidate.AppendEntry(nullEntry)
+	err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 	if err != nil {
 		return err
 	}
@@ -275,6 +274,7 @@ type pool struct {
 // pendingEntry represents a pending entry in the pool, along with a channel to notify a pending RPC.
 type pendingEntry struct {
 	mtcle *entry.MTCLogEntry
+	mtcpk *pubkey.MTCPublicKey
 	ch    chan<- int64
 }
 
@@ -344,11 +344,17 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 		return nil, fmt.Errorf("generating MTCLogEntry: %s", err)
 	}
 
+	mtcpk, err := pubkey.FromCryptoPubkey(key)
+	if err != nil {
+		return nil, fmt.Errorf("generating MTCPubkey: %s", err)
+	}
+
 	// We'll get notification of sequencing on this channel. Buffer it so `sequence()` doesn't
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan int64, 1)
 	err = m.pool.append(pendingEntry{
 		mtcle: mtcle,
+		mtcpk: mtcpk,
 		ch:    ch,
 	})
 	if err != nil {
@@ -456,7 +462,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Add leaves to the candidate.
 	for _, e := range entries {
-		err = candidate.AppendEntry(e.mtcle)
+		err = candidate.AppendEntry(e.mtcle, e.mtcpk)
 		if err != nil {
 			return err
 		}
