@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"golang.org/x/mod/sumdb/note"
+	"golang.org/x/mod/sumdb/tlog"
 )
 
 // exampleCheckpoint is a canonical tlog-checkpoint note body the cosignature
@@ -158,6 +159,25 @@ func TestCheckpointMarshal(t *testing.T) {
 	}
 }
 
+// TestSignedNote checks that the signature lines follow the note text after a
+// blank line.
+func TestSignedNote(t *testing.T) {
+	cp := &Checkpoint{Origin: "example.com/log", Tree: tlog.Tree{N: 5}}
+	text, err := cp.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %s", err)
+	}
+	lines := []byte("— ca sig\n— mirror sig\n")
+
+	signed, err := cp.SignedNote(lines)
+	if err != nil {
+		t.Fatalf("SignedNote: %s", err)
+	}
+	if string(signed) != string(text)+"\n"+string(lines) {
+		t.Errorf("SignedNote = %q", signed)
+	}
+}
+
 // TestOpenCheckpoint covers Open's happy path and its rejection of a note no
 // trusted key signed, using a generic note signer.
 func TestOpenCheckpoint(t *testing.T) {
@@ -179,7 +199,7 @@ func TestOpenCheckpoint(t *testing.T) {
 	}
 
 	t.Run("Valid", func(t *testing.T) {
-		cp, n, err := Open(signed, note.VerifierList(verifier))
+		cp, n, err := Open(signed, verifier)
 		if err != nil {
 			t.Fatalf("Open: %s", err)
 		}
@@ -194,6 +214,48 @@ func TestOpenCheckpoint(t *testing.T) {
 		}
 	})
 
+	t.Run("Missing a verifier", func(t *testing.T) {
+		_, otherVkey, err := note.GenerateKey(rand.Reader, "example.com/other")
+		if err != nil {
+			t.Fatalf("GenerateKey: %s", err)
+		}
+		otherV, err := note.NewVerifier(otherVkey)
+		if err != nil {
+			t.Fatalf("NewVerifier: %s", err)
+		}
+		_, _, err = Open(signed, verifier, otherV)
+		if err == nil {
+			t.Error("Open with a verifier that did not sign = nil error, want error")
+		}
+	})
+
+	t.Run("Extra signature from an unknown key", func(t *testing.T) {
+		otherSkey, _, err := note.GenerateKey(rand.Reader, "example.com/other")
+		if err != nil {
+			t.Fatalf("GenerateKey: %s", err)
+		}
+		otherSigner, err := note.NewSigner(otherSkey)
+		if err != nil {
+			t.Fatalf("NewSigner: %s", err)
+		}
+		twiceSigned, err := note.Sign(&note.Note{Text: exampleCheckpoint}, signer, otherSigner)
+		if err != nil {
+			t.Fatalf("note.Sign: %s", err)
+		}
+		_, _, err = Open(twiceSigned, verifier)
+		if err == nil {
+			t.Error("Open with an extra signature from an unknown key = nil error, want error")
+		}
+	})
+
+	t.Run("Repeated signature", func(t *testing.T) {
+		repeated := append(slices.Clone(signed), signed[len(exampleCheckpoint)+1:]...)
+		_, _, err := Open(repeated, verifier)
+		if err == nil {
+			t.Error("Open with a repeated signature = nil error, want error")
+		}
+	})
+
 	t.Run("Wrong key", func(t *testing.T) {
 		_, otherVkey, err := note.GenerateKey(rand.Reader, "example.com/behind-the-sofa")
 		if err != nil {
@@ -203,7 +265,7 @@ func TestOpenCheckpoint(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewVerifier: %s", err)
 		}
-		_, _, err = Open(signed, note.VerifierList(otherV))
+		_, _, err = Open(signed, otherV)
 		if err == nil {
 			t.Error("Open with wrong key = nil error, want error")
 		}
@@ -229,7 +291,7 @@ func TestOpenRejectsNonCheckpointBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	_, _, err = Open(signed, note.VerifierList(verifier))
+	_, _, err = Open(signed, verifier)
 	if err == nil {
 		t.Error("Open of a verified non-checkpoint note = nil error, want error")
 	}

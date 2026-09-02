@@ -72,15 +72,6 @@ func marshalCheckpointMessage(name string, timestamp uint64, origin string, end 
 	return cosignedMessage.Marshal()
 }
 
-// signatureLineFor assembles the signature line "— <name> base64(keyID ||
-// timestamped_signature)\n".
-func signatureLineFor(name string, keyID uint32, timestampedSignature []byte) string {
-	idSignature := make([]byte, keyIDSize+len(timestampedSignature))
-	binary.BigEndian.PutUint32(idSignature[:keyIDSize], keyID)
-	copy(idSignature[keyIDSize:], timestampedSignature)
-	return noteSignatureLinePrefix + name + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"
-}
-
 // checkRelativeOID returns an error if id is not a dotted decimal OID like
 // "32473.2", nil otherwise.
 func checkRelativeOID(id string) error {
@@ -176,7 +167,7 @@ func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
 //   - https://c2sp.org/tlog-cosignature
 //   - https://c2sp.org/mtc-tlog
 type Verifier struct {
-	name      string
+	keyName   string
 	keyID     uint32
 	publicKey *mldsa.PublicKey
 }
@@ -195,7 +186,7 @@ func NewVerifier(cosignerID string, publicKey *mldsa.PublicKey) (*Verifier, erro
 		return nil, errors.New("public key must be ML-DSA-44")
 	}
 	return &Verifier{
-		name:      oidPrefix + cosignerID,
+		keyName:   oidPrefix + cosignerID,
 		keyID:     keyIDFor(oidPrefix+cosignerID, publicKey),
 		publicKey: publicKey,
 	}, nil
@@ -203,7 +194,7 @@ func NewVerifier(cosignerID string, publicKey *mldsa.PublicKey) (*Verifier, erro
 
 // Name satisfies note.Verifier.
 func (v *Verifier) Name() string {
-	return v.name
+	return v.keyName
 }
 
 // KeyHash satisfies note.Verifier.
@@ -225,7 +216,7 @@ func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, timestampedSi
 	if timestamp > math.MaxInt64 {
 		return fmt.Errorf("timestamp %d exceeds 2^63-1", timestamp)
 	}
-	cosignedMessage, err := marshalCheckpointMessage(v.name, timestamp, origin, tree.N, tree.Hash)
+	cosignedMessage, err := marshalCheckpointMessage(v.keyName, timestamp, origin, tree.N, tree.Hash)
 	if err != nil {
 		return err
 	}
@@ -241,28 +232,26 @@ func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, timestampedSi
 // and root hash from noteText, so extension lines do not affect the result.
 // Verify is the note.Verifier entry point. For an already parsed checkpoint,
 // use VerifyCheckpoint.
-func (v *Verifier) Verify(noteText, signature []byte) bool {
+func (v *Verifier) Verify(noteText, timestampedSignature []byte) bool {
 	parsed, err := checkpoint.Unmarshal(noteText)
 	if err != nil {
 		return false
 	}
-	return v.VerifyCheckpoint(parsed.Origin, parsed.Tree, signature) == nil
+	return v.VerifyCheckpoint(parsed.Origin, parsed.Tree, timestampedSignature) == nil
 }
 
-// TimestampedSignature verifies signatureLine against noteText with verifier
-// and returns the timestamped_signature by verifier's cosigner. An error is
-// returned if noteText and signatureLine do not form a well-formed note or if
-// verifier rejects the signature. Signatures from unknown keys are ignored.
-func TimestampedSignature(noteText []byte, signatureLine string, verifier *Verifier) ([]byte, error) {
-	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLine), note.VerifierList(verifier))
+// FilterByVerify returns the timestamped_signature by this verifier's cosigner
+// from the signatureLines over noteText, ignoring lines by other keys. It
+// errors if the two do not form a well-formed note, if no line is by that
+// cosigner, or if its signature does not verify.
+func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) ([]byte, error) {
+	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLines), note.VerifierList(v))
 	if err != nil {
-		return nil, fmt.Errorf("opening the cosigned note: %s", err)
+		return nil, fmt.Errorf("opening the cosigned note: %w", err)
 	}
-	// verifier is the only verifier in the list, so every signature in n.Sigs
-	// is by the verifier's cosigner, verified and length-checked.
 	idSignature, err := base64.StdEncoding.DecodeString(n.Sigs[0].Base64)
 	if err != nil {
-		return nil, fmt.Errorf("decoding the signature by %s: %s", verifier.name, err)
+		return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
 	}
 	return idSignature[keyIDSize:], nil
 }
@@ -281,4 +270,19 @@ func RawSignature(timestampedSignature []byte) ([]byte, error) {
 		return nil, fmt.Errorf("timestamp is %d, want 0 for a cosignature used in certificates", timestamp)
 	}
 	return timestampedSignature[timestampSize:], nil
+}
+
+// SignatureLine assembles the note signature line of the cosigner with the
+// given keyName, keyID, timestamp and rawSignature as its timestamped_signature.
+// Callers are responsible for ensuring the signature line is valid for any note
+// text they append it to.
+func SignatureLine(keyName string, keyID uint32, timestamp uint64, rawSignature []byte) ([]byte, error) {
+	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
+		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
+	}
+	idSignature := make([]byte, keyIDSize+timestampedSignatureSize)
+	binary.BigEndian.PutUint32(idSignature[:keyIDSize], keyID)
+	binary.BigEndian.PutUint64(idSignature[keyIDSize:keyIDSize+timestampSize], timestamp)
+	copy(idSignature[keyIDSize+timestampSize:], rawSignature)
+	return []byte(noteSignatureLinePrefix + keyName + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"), nil
 }

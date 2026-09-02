@@ -159,8 +159,10 @@ func Packages(uploadStart, uploadEnd, maxPackages int64) ([]Package, error) {
 	return packages, nil
 }
 
-// EntryPackage builds the wire form of one entry package.
-func EntryPackage(entries [][]byte, proof []tlog.Hash) ([]byte, error) {
+// EntryPackage builds the wire form of one entry package. entries must be the
+// package's entries already in wire form as tiles.EntriesForPackage provides
+// them, each entry with a big-endian uint16 length prefix.
+func EntryPackage(entries []byte, proof []tlog.Hash) ([]byte, error) {
 	if len(entries) == 0 {
 		return nil, errors.New("entry package with no entries")
 	}
@@ -168,14 +170,7 @@ func EntryPackage(entries [][]byte, proof []tlog.Hash) ([]byte, error) {
 		return nil, fmt.Errorf("entry package has %d proof hashes, want at most %d", len(proof), maxPackageProofHashes)
 	}
 	var b cryptobyte.Builder
-	for _, entry := range entries {
-		if len(entry) > 0xFFFF {
-			return nil, fmt.Errorf("entry is %d bytes, want at most %d", len(entry), 0xFFFF)
-		}
-		b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-			child.AddBytes(entry)
-		})
-	}
+	b.AddBytes(entries)
 	b.AddUint8(uint8(len(proof))) //nolint:gosec // G115: the check above rejects proofs over maxPackageProofHashes hashes.
 	for _, h := range proof {
 		b.AddBytes(h[:])
