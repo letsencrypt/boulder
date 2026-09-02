@@ -27,7 +27,6 @@ const (
 	clientRequestTimeKey   = "client-request-time"
 	// We use the "-bin" suffix to tell grpc's metadata package not to require the user-agent
 	// be printable ASCII. It's rare, but ACME clients can send non-ASCII user-agents.
-	// Remove `userAgentKey` once this has been deployed.
 	userAgentKey = "acme-client-user-agent-bin"
 )
 
