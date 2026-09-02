@@ -426,8 +426,14 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// If the identifier is an IPv6 address, we need to enclose it in square
 	// brackets, per RFC 3986, Section 3.2.2.
 	host := ident.Value
-	if ident.Type == identifier.TypeIP && netip.MustParseAddr(ident.Value).Is6() {
-		host = "[" + host + "]"
+	if ident.Type == identifier.TypeIP {
+		parsedIP, err := netip.ParseAddr(ident.Value)
+		if err != nil {
+			return nil, nil, fmt.Errorf("identifier contains unparsable IP addr %q: %w", ident.Value, err)
+		}
+		if parsedIP.Is6() {
+			host = "[" + host + "]"
+		}
 	}
 
 	// Create a record for the initial request: an http URL for the given path
