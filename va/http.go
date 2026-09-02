@@ -158,24 +158,36 @@ func httpTransport(df dialerFunc) *http.Transport {
 }
 
 // newValidationRecord creates a ValidationRecord for a validation request
-// against the given identifier, on the given port, for the given URL. This
-// involves querying DNS for the identifier's IP addresses. The record's
-// AddressUsed is the host's first IPv6 address, or its first IPv4 address if
-// it has no IPv6 addresses.
-func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, typ identifier.IdentifierType, url url.URL) (core.ValidationRecord, error) {
-	// If the URL's host is a bare IPv6 address, enclose it in square brackets
-	// so that its colons aren't mistaken for a port separator by url.Hostname().
-	bareIP, err := netip.ParseAddr(url.Host)
-	if err == nil && bareIP.Is6() {
-		url.Host = "[" + url.Host + "]"
+// against the given URL, including port. This may involve querying DNS for the
+// host's IP address, if the URL isn't an IP already. The resulting record's
+// AddressUsed is the host's first IPv6 address, or its first IPv4 address if it
+// has no IPv6 addresses.
+//
+// This function also enforces our policies around hosts we're unwilling to
+// connect to during validation, such as private names and addresses, reserved
+// names and addresses, non-HTTP(s) schemes, disallowed ports, and more.
+func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, url url.URL) (core.ValidationRecord, error) {
+	// The scheme must be HTTP or HTTPS.
+	if url.Scheme != "http" && url.Scheme != "https" {
+		return core.ValidationRecord{}, berrors.ConnectionFailureError(
+			`invalid protocol scheme: only "http" and "https" are supported, not %q`, url.Scheme)
 	}
 
-	// Use the URL's explicit port if it has one, and the VA's port
-	// corresponding to the URL's scheme otherwise. Callers guarantee that the
-	// scheme is http or https, and that any explicit port has already been
-	// checked against the VA's ports.
+	// The port must be one of the allowed ports, or empty. If it is empty, set
+	// it to be the default port associated with the URL's scheme.
 	port := url.Port()
-	if port == "" {
+	if port != "" {
+		parsedPort, err := strconv.Atoi(port)
+		if err != nil {
+			return core.ValidationRecord{}, berrors.ConnectionFailureError(
+				"invalid port %q: must be an integer", port)
+		}
+
+		if parsedPort != va.httpPort && parsedPort != va.httpsPort {
+			return core.ValidationRecord{}, berrors.ConnectionFailureError(
+				"invalid port %d: must be %d or %d", parsedPort, va.httpPort, va.httpsPort)
+		}
+	} else {
 		if url.Scheme == "https" {
 			port = strconv.Itoa(va.httpsPort)
 		} else {
@@ -183,26 +195,50 @@ func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, typ 
 		}
 	}
 
+	// The path must be reasonably short.
+	if len(url.Path) > maxPathSize {
+		return core.ValidationRecord{}, berrors.ConnectionFailureError(
+			"invalid url: path component too long")
+	}
+
+	// The host must be non-empty and comply with our validation policies.
 	host := url.Hostname()
+	if len(host) == 0 {
+		return core.ValidationRecord{}, berrors.ConnectionFailureError(
+			"invalid host: host must be non-empty")
+	}
 
 	var addrs []netip.Addr
 	var resolvers []string
-	switch typ {
-	case identifier.TypeDNS:
+
+	parsedIP, err := netip.ParseAddr(host)
+	isIP := err == nil
+	if isIP {
+		// Reject IPv6 addresses with a scope zone (RFCs 4007 & 6874)
+		if parsedIP.Zone() != "" {
+			return core.ValidationRecord{}, berrors.ConnectionFailureError("invalid host: contains IPv6 scope zone")
+		}
+
+		// Reject reserved IP addresses.
+		err := va.isReservedIPFunc(parsedIP)
+		if err != nil {
+			return core.ValidationRecord{}, berrors.ConnectionFailureError("invalid host: %s", err)
+		}
+
+		// No need to resolve anything.
+		addrs = []netip.Addr{parsedIP}
+	} else {
+		// Reject non-public domain names.
+		_, err = iana.ExtractSuffix(host)
+		if err != nil {
+			return core.ValidationRecord{}, berrors.ConnectionFailureError("invalid host: must end in IANA registered TLD")
+		}
+
 		// Resolve IP addresses for the identifier
-		var err error
 		addrs, resolvers, err = va.getAddrs(ctx, host)
 		if err != nil {
 			return core.ValidationRecord{}, err
 		}
-	case identifier.TypeIP:
-		netIP, err := netip.ParseAddr(host)
-		if err != nil {
-			return core.ValidationRecord{}, fmt.Errorf("can't parse IP address %q: %s", host, err)
-		}
-		addrs = []netip.Addr{netIP}
-	default:
-		return core.ValidationRecord{}, fmt.Errorf("unknown identifier type: %s", typ)
 	}
 
 	// Prefer the first IPv6 address, falling back to the first IPv4 address.
@@ -229,10 +265,10 @@ func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, typ 
 }
 
 // newValidationRecordFromFallback returns true and a copy of the given record
-// with its AddressUsed replaced by the host's first IPv4 address if an
-// IPv6-to-IPv4 fallback is possible. If fallback is not possible (either
-// because the previous request already was to an IPv4 address, or no IPv4
-// addresses are available), it returns an empty record and false.
+// with its AddressUsed replaced by the first IPv4 address from
+// AddressesResolved if an IPv6-to-IPv4 fallback is possible. If fallback is not
+// possible (either because the previous request already was to an IPv4 address,
+// or no IPv4 addresses are available), it returns an empty record and false.
 func newValidationRecordFromFallback(record core.ValidationRecord) (core.ValidationRecord, bool) {
 	// If the previous request was already IPv4, there's no fallback to do.
 	if record.AddressUsed.Is4() {
@@ -272,52 +308,9 @@ func (va *ValidationAuthorityImpl) newValidationRecordFromRedirect(ctx context.C
 		return &url.Error{Op: "Get", URL: redirURL.String(), Err: err}
 	}
 
-	if resp.TLS != nil && resp.TLS.Version < tls.VersionTLS12 {
-		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
-			"validation attempt was redirected to an HTTPS server that doesn't " +
-				"support TLSv1.2 or better. See " +
-				"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144"))
-	}
-
-	// The four allowed redirect status codes are defined explicitly in BRs
-	// Section 3.2.2.4.19; anything else (e.g. an HTTP 303) must not be
-	// followed.
-	if resp.StatusCode != 301 && resp.StatusCode != 302 && resp.StatusCode != 307 && resp.StatusCode != 308 {
-		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("received disallowed redirect status code"))
-	}
-
 	// Lowercase the redirect host immediately, as the dialer and redirect
 	// validation expect it to have been lowercased already.
 	redirURL.Host = strings.ToLower(redirURL.Host)
-
-	// The redirect target must use the HTTP or HTTPS protocol scheme,
-	// regardless of the port.
-	if redirURL.Scheme != "http" && redirURL.Scheme != "https" {
-		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
-			"Invalid protocol scheme in redirect target. "+
-				`Only "http" and "https" protocol schemes are supported, not %q`, redirURL.Scheme))
-	}
-
-	// If the redirect URL has an explicit port, it must match the VA's
-	// configured HTTP or HTTPS port. Implicit ports are filled in from the
-	// scheme by newValidationRecord below.
-	if redirURL.Port() != "" {
-		parsedPort, err := strconv.Atoi(redirURL.Port())
-		if err != nil {
-			return core.ValidationRecord{}, badRedirect(err)
-		}
-
-		if parsedPort != va.httpPort && parsedPort != va.httpsPort {
-			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
-				"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
-				va.httpPort, va.httpsPort, parsedPort))
-		}
-	}
-
-	redirHost := redirURL.Hostname()
-	if redirHost == "" {
-		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid empty host in redirect target"))
-	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
 	// missing a `/' between the FQDN and the path. E.g. in Apache using:
@@ -328,50 +321,24 @@ func (va *ValidationAuthorityImpl) newValidationRecordFromRedirect(ctx context.C
 	//   https://bad-redirect.org.well-known/acme-challenge/xxxx
 	// This happens frequently enough we want to return a distinct error message
 	// for this case by detecting the redirHost ending in ".well-known".
-	if strings.HasSuffix(redirHost, ".well-known") {
+	if strings.HasSuffix(redirURL.Hostname(), ".well-known") {
 		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. Check webserver config for missing '/' in redirect target.",
-			redirHost,
+			"invalid host in redirect target %q: check webserver config for missing '/' in redirect target",
+			redirURL.Hostname(),
 		))
-	}
-
-	// Determine whether the redirect target's host is an IP address or a DNS
-	// name, and enforce the corresponding policy.
-	var redirType identifier.IdentifierType
-	redirIP, err := netip.ParseAddr(redirHost)
-	if err == nil {
-		// Reject IPv6 addresses with a scope zone (RFCs 4007 & 6874)
-		if redirIP.Zone() != "" {
-			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid host in redirect target: contains scope zone"))
-		}
-		err := va.isReservedIPFunc(redirIP)
-		if err != nil {
-			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid host in redirect target: %s", err))
-		}
-		redirType = identifier.TypeIP
-	} else {
-		_, err := iana.ExtractSuffix(redirHost)
-		if err != nil {
-			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Invalid host in redirect target, must end in IANA registered TLD"))
-		}
-		redirType = identifier.TypeDNS
-	}
-
-	if len(redirURL.Path) > maxPathSize {
-		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Redirect target too long"))
 	}
 
 	// Check for a redirect loop. If any URL is requested twice before the
 	// request limit, return error.
 	for _, record := range records {
 		if redirURL.String() == record.URL {
-			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("Redirect loop detected"))
+			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("redirect loop detected"))
 		}
 	}
 
 	// Create a validation record for a request to the redirect target. This
 	// will resolve IP addresses for the host explicitly.
-	redirRecord, err := va.newValidationRecord(ctx, redirType, *redirURL)
+	redirRecord, err := va.newValidationRecord(ctx, *redirURL)
 	if err != nil {
 		return core.ValidationRecord{}, badRedirect(err)
 	}
@@ -456,14 +423,20 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	path string) ([]byte, []core.ValidationRecord, error) {
+	// If the identifier is an IPv6 address, we need to enclose it in square
+	// brackets, per RFC 3986, Section 3.2.2.
+	host := ident.Value
+	if ident.Type == identifier.TypeIP && netip.MustParseAddr(ident.Value).Is6() {
+		host = "[" + host + "]"
+	}
+
 	// Create a record for the initial request: an http URL for the given path
 	// under the identifier itself, with no query parameters.
-	initialURL := url.URL{
+	record, err := va.newValidationRecord(ctx, url.URL{
 		Scheme: "http",
-		Host:   ident.Value,
+		Host:   host,
 		Path:   path,
-	}
-	record, err := va.newValidationRecord(ctx, ident.Type, initialURL)
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -506,12 +479,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			return nil, records, newIPError(record.AddressUsed, err)
 		}
 
-		// These are the redirect status codes that the stdlib http.Client is
-		// willing to follow for a GET request. Any other status code,
-		// including any other 3xx, is handled below as a final response.
-		isRedirect := resp.StatusCode == 301 || resp.StatusCode == 302 ||
-			resp.StatusCode == 303 || resp.StatusCode == 307 || resp.StatusCode == 308
-		if isRedirect {
+		// The four allowed redirect status codes are defined explicitly in BRs
+		// Section 3.2.2.4.19; anything else (e.g. an HTTP 303) must not be
+		// followed.
+		allowedRedirect := resp.StatusCode == 301 || resp.StatusCode == 302 ||
+			resp.StatusCode == 307 || resp.StatusCode == 308
+		if allowedRedirect {
 			_ = resp.Body.Close()
 
 			redirRecord, redirErr := va.newValidationRecordFromRedirect(ctx, resp, records)
@@ -535,6 +508,13 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 			record = redirRecord
 			continue
+		}
+
+		// Special error case for disallowed 3xx status codes, since clients might
+		// be surprised by this particular failure case.
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			_ = resp.Body.Close()
+			return nil, records, newIPError(record.AddressUsed, berrors.ConnectionFailureError("Received disallowed redirect status code %d", resp.StatusCode))
 		}
 
 		// This is the final response: check its status code and return its body.

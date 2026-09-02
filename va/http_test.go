@@ -257,7 +257,7 @@ func TestNewValidationRecord(t *testing.T) {
 				Host:   tc.Ident.Value,
 				Path:   "/.well-known/acme-challenge/token",
 			}
-			record, err := va.newValidationRecord(t.Context(), tc.Ident.Type, exampleURL)
+			record, err := va.newValidationRecord(t.Context(), exampleURL)
 			if tc.ExpectedError != "" {
 				if err == nil {
 					t.Fatalf("newValidationRecord(%v) succeeded, want error %q", tc.Ident, tc.ExpectedError)
