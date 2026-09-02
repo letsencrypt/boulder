@@ -2189,7 +2189,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Validate that our policy allows issuing for each of the identifiers in
 	// the order
-	err = ra.PA.WillingToIssue(idents)
+	err = ra.PA.WillingToIssue(idents, time.Time{})
 	if err != nil {
 		return nil, err
 	}

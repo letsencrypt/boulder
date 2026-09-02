@@ -476,7 +476,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 	// address in the SANs. We do not check the CommonName here, as (if it exists)
 	// we already checked that it is identical to one of the DNSNames in the SAN.
 	for _, name := range parsedCert.DNSNames {
-		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)})
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)}, parsedCert.NotBefore)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			continue
@@ -497,7 +497,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 			problems = append(problems, fmt.Sprintf("SANs contain malformed IP %q", name))
 			continue
 		}
-		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)})
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)}, parsedCert.NotBefore)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			continue
@@ -725,6 +725,11 @@ func main() {
 
 	err = pa.LoadIdentPolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
+
+	for policyReason, policyFile := range config.CertChecker.HostnamePolicyFiles {
+		err = pa.LoadIdentPolicyFile(policyFile)
+		cmd.FailOnError(err, fmt.Sprintf("Failed to load identifier policy file: %q, at path: %q", policyReason, policyFile))
+	}
 
 	if config.CertChecker.CTLogListFile != "" {
 		err = loglist.InitLintList(config.CertChecker.CTLogListFile, config.CertChecker.CTIncludeTestLogs)

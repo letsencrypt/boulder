@@ -175,6 +175,11 @@ func main() {
 	err = pa.LoadIdentPolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load identifier policy file")
 
+	for policyReason, policyFile := range c.RA.HostnamePolicyFiles {
+		err = pa.LoadIdentPolicyFile(policyFile)
+		cmd.FailOnError(err, fmt.Sprintf("Could not load identifier policy file: %q, at path: %q", policyReason, policyFile))
+	}
+
 	tlsConfig, err := c.RA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
