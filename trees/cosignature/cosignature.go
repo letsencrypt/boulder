@@ -247,56 +247,13 @@ func (v *Verifier) Verify(noteText, timestampedSignature []byte) bool {
 func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) ([]byte, error) {
 	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLines), note.VerifierList(v))
 	if err != nil {
-		return nil, fmt.Errorf("opening the cosigned note: %s", err)
+		return nil, fmt.Errorf("opening the cosigned note: %w", err)
 	}
 	idSignature, err := base64.StdEncoding.DecodeString(n.Sigs[0].Base64)
 	if err != nil {
-		return nil, fmt.Errorf("decoding the signature by %s: %s", v.keyName, err)
+		return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
 	}
 	return idSignature[keyIDSize:], nil
-}
-
-// signatureLineFor assembles the signature line "— <name> base64(keyID ||
-// timestamped_signature)\n".
-func signatureLineFor(name string, keyID uint32, timestampedSignature []byte) string {
-	idSignature := make([]byte, keyIDSize+len(timestampedSignature))
-	binary.BigEndian.PutUint32(idSignature[:keyIDSize], keyID)
-	copy(idSignature[keyIDSize:], timestampedSignature)
-	return noteSignatureLinePrefix + name + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"
-}
-
-// TimestampedSignature verifies signatureLine against noteText with verifier
-// and returns the timestamped_signature by verifier's cosigner. An error is
-// returned if noteText and signatureLine do not form a well-formed note or if
-// verifier rejects the signature. Signatures from unknown keys are ignored.
-func TimestampedSignature(noteText, signatureLine []byte, verifier *Verifier) ([]byte, error) {
-	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLine), note.VerifierList(verifier))
-	if err != nil {
-		return nil, fmt.Errorf("opening the cosigned note: %s", err)
-	}
-	// verifier is the only verifier in the list, so every signature in n.Sigs
-	// is by the verifier's cosigner, verified and length-checked.
-	idSignature, err := base64.StdEncoding.DecodeString(n.Sigs[0].Base64)
-	if err != nil {
-		return nil, fmt.Errorf("decoding the signature by %s: %s", verifier.keyName, err)
-	}
-	return idSignature[keyIDSize:], nil
-}
-
-// SignatureLine verifies rawSignature over the checkpoint described by origin
-// and tree, and reassembles the cosigner's note signature line, restoring the
-// zero timestamp RawSignature stripped.
-func (v *Verifier) SignatureLine(origin string, tree tlog.Tree, rawSignature []byte) ([]byte, error) {
-	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
-		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
-	}
-	timestamped := make([]byte, timestampedSignatureSize)
-	copy(timestamped[timestampSize:], rawSignature)
-	err := v.VerifyCheckpoint(origin, tree, timestamped)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(signatureLineFor(v.keyName, v.keyID, timestamped)), nil
 }
 
 // RawSignature returns the ML-DSA-44 signature from a timestamped_signature,
@@ -316,14 +273,16 @@ func RawSignature(timestampedSignature []byte) ([]byte, error) {
 }
 
 // SignatureLine assembles the note signature line of the cosigner with the
-// given keyName, keyID, and rawSignature. Callers are responsible for ensuring
-// the signature line is valid for any note text they append it to.
-func SignatureLine(keyName string, keyID uint32, rawSignature []byte) ([]byte, error) {
+// given keyName, keyID, timestamp and rawSignature as its timestamped_signature.
+// Callers are responsible for ensuring the signature line is valid for any note
+// text they append it to.
+func SignatureLine(keyName string, keyID uint32, timestamp uint64, rawSignature []byte) ([]byte, error) {
 	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
 		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
 	}
 	idSignature := make([]byte, keyIDSize+timestampedSignatureSize)
 	binary.BigEndian.PutUint32(idSignature[:keyIDSize], keyID)
+	binary.BigEndian.PutUint64(idSignature[keyIDSize:keyIDSize+timestampSize], timestamp)
 	copy(idSignature[keyIDSize+timestampSize:], rawSignature)
 	return []byte(noteSignatureLinePrefix + keyName + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"), nil
 }

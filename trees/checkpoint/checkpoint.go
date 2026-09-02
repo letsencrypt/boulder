@@ -108,41 +108,6 @@ func (c *Checkpoint) SignedNote(signatureLines []byte) ([]byte, error) {
 	return append(append(text, '\n'), signatureLines...), nil
 }
 
-// signedNote returns the checkpoint as a signed note: the note text followed by
-// the given signature line(s).
-func (c *Checkpoint) signedNote(signatureLines ...[]byte) ([]byte, error) {
-	text, err := c.Marshal()
-	if err != nil {
-		return nil, err
-	}
-	assembled := append(text, '\n')
-	for _, line := range signatureLines {
-		assembled = append(assembled, line...)
-	}
-	return assembled, nil
-}
-
-// SignedNoteForMirror returns the checkpoint as a signed note carrying the MTCA
-// cosignature line, for submission to a mirror.
-func (c *Checkpoint) SignedNoteForMirror(caCosignatureLine []byte) ([]byte, error) {
-	if len(caCosignatureLine) == 0 {
-		return nil, errors.New("missing MTCA cosignature line")
-	}
-	return c.signedNote(caCosignatureLine)
-}
-
-// SignedNoteForServing returns the checkpoint as a signed note carrying the
-// MTCA and mirror cosignature lines, for serving at the checkpoint path.
-func (c *Checkpoint) SignedNoteForServing(caCosignatureLine, mirrorCosignatureLine []byte) ([]byte, error) {
-	if len(caCosignatureLine) == 0 {
-		return nil, errors.New("missing MTCA cosignature line")
-	}
-	if len(mirrorCosignatureLine) == 0 {
-		return nil, errors.New("missing mirror cosignature line")
-	}
-	return c.signedNote(caCosignatureLine, mirrorCosignatureLine)
-}
-
 // Unmarshal parses a checkpoint note text. The text must not have any signature
 // lines. For a signed note, use Open.
 //

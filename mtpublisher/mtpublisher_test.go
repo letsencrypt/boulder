@@ -113,9 +113,9 @@ func TestCosign(t *testing.T) {
 		t.Fatalf("NewVerifier: %s", err)
 	}
 	text := p.origin + "\n512\n" + base64.StdEncoding.EncodeToString(make([]byte, 32)) + "\n"
-	timestampedSignature, err := cosignature.TimestampedSignature([]byte(text), []byte(line), verifier)
+	timestampedSignature, err := verifier.FilterByVerify([]byte(text), []byte(line))
 	if err != nil {
-		t.Fatalf("TimestampedSignature: %s", err)
+		t.Fatalf("FilterByVerify: %s", err)
 	}
 	_, err = cosignature.RawSignature(timestampedSignature)
 	if err != nil {
