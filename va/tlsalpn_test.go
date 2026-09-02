@@ -290,7 +290,7 @@ func TestDNSError(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("always.invalid"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("no-records.example.com"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("TLS validation should have failed: what IP was used?")
 	}
