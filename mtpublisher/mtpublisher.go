@@ -29,8 +29,6 @@ type Mirror interface {
 	// Cosign submits the log's signed note for cp and returns the mirror's raw
 	// cosignature, verified against the mirror's key.
 	Cosign(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error)
-	// LastSigned returns when Cosign last succeeded, zero before it has.
-	LastSigned() time.Time
 }
 
 // mtpublisher obtains and stores its mirror's cosignature over the issuance

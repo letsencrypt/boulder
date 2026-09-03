@@ -60,8 +60,6 @@ type MirrorClient struct {
 	// ticket is the opaque value from the mirror's last mirror-info response,
 	// to be sent back in the next add-entries request.
 	ticket []byte
-	// lastSigned is when Cosign last succeeded.
-	lastSigned time.Time
 }
 
 // NewMirrorClient returns a MirrorClient that submits to the mirror's endpoints
@@ -137,8 +135,7 @@ func (m *MirrorClient) post(ctx context.Context, path, contentType string, compr
 // retries once. An up-to-date mirror still receives the checkpoint, with an
 // empty proof, since that is the only way to obtain its cosignature.
 func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
-	retried := false
-	for {
+	for range 2 {
 		if m.oldSize > tree.N {
 			return fmt.Errorf("mirror already holds size %d, checkpoint size is %d", m.oldSize, tree.N)
 		}
@@ -167,15 +164,12 @@ func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signed
 			if err != nil {
 				return err
 			}
-			if retried {
-				return fmt.Errorf("add-checkpoint at tree size %d got 409 with mirror tree size %d after retrying", tree.N, mirrorSize)
-			}
-			retried = true
 			m.oldSize = mirrorSize
 		default:
 			return fmt.Errorf("mirror returned status %d: %s", status, errorBody(respBody))
 		}
 	}
+	return fmt.Errorf("add-checkpoint at tree size %d got 409 with mirror tree size %d after retrying", tree.N, m.oldSize)
 }
 
 // maxAddEntriesRequests bounds one Cosign call's add-entries requests, each of
@@ -188,7 +182,6 @@ const maxAddEntriesRequests = 100
 // On "202 Accepted" and "409 Conflict" it resumes from the next entry and
 // ticket the mirror advertises.
 func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.Tree) ([]byte, error) {
-	m.nextEntry = min(m.nextEntry, tree.N)
 	for range maxAddEntriesRequests {
 		packages, err := mirror.Packages(m.nextEntry, tree.N, mirror.MaxPackagesPerRequest)
 		if err != nil {
@@ -307,11 +300,5 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 	if err != nil {
 		return nil, fmt.Errorf("cosignature: %w", err)
 	}
-	m.lastSigned = time.Now()
 	return rawMirrorCosignature, nil
-}
-
-// LastSigned returns when Cosign last succeeded, zero before it has.
-func (m *MirrorClient) LastSigned() time.Time {
-	return m.lastSigned
 }

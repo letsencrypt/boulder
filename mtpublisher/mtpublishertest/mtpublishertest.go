@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto"
 	"fmt"
-	"time"
 
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -19,7 +18,6 @@ import (
 type TestMirror struct {
 	cosignerID string
 	cosigner   *cosignature.Cosigner
-	lastSigned time.Time
 }
 
 // NewTestMirror returns a TestMirror that cosigns checkpoints of the log with
@@ -47,11 +45,5 @@ func (m *TestMirror) Cosign(_ context.Context, cp *checkpoint.Checkpoint, _ []by
 	if err != nil {
 		return nil, err
 	}
-	m.lastSigned = time.Now()
 	return cosignature.RawSignature(timestampedCosignature)
-}
-
-// LastSigned returns when Cosign last succeeded, zero before it has.
-func (m *TestMirror) LastSigned() time.Time {
-	return m.lastSigned
 }
