@@ -54,6 +54,9 @@ type Config struct {
 			// BaseURL is the base URL of the mirror's tlog-mirror submission
 			// endpoints (e.g. "http://localhost:4700").
 			BaseURL string `validate:"required,url"`
+
+			// Timeout bounds each request to the mirror.
+			Timeout config.Duration `validate:"required"`
 		}
 
 		// S3 locates the source log's tile storage, which the publisher reads
@@ -122,7 +125,7 @@ func main() {
 	mirrorPubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
 	cmd.FailOnError(err, "Loading mirror public key")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey)
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
 	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)

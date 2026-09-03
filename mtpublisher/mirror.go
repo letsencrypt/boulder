@@ -63,10 +63,13 @@ type MirrorClient struct {
 }
 
 // NewMirrorClient returns a MirrorClient that submits to the mirror's endpoints
-// under baseURL.
-func NewMirrorClient(baseURL string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey) (*MirrorClient, error) {
+// under baseURL, giving each request timeout to complete.
+func NewMirrorClient(baseURL string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, timeout time.Duration) (*MirrorClient, error) {
 	if baseURL == "" {
 		return nil, errors.New("empty mirror base URL")
+	}
+	if timeout <= 0 {
+		return nil, fmt.Errorf("timeout must be positive, got %s", timeout)
 	}
 	verifier, err := cosignature.NewVerifier(mirrorID, mirrorPublicKey)
 	if err != nil {
@@ -74,7 +77,7 @@ func NewMirrorClient(baseURL string, src *Source, mirrorID string, mirrorPublicK
 	}
 	return &MirrorClient{
 		submissionPrefix: baseURL,
-		client:           &http.Client{Timeout: 30 * time.Second},
+		client:           &http.Client{Timeout: timeout},
 		src:              src,
 		mirrorID:         mirrorID,
 		verifier:         verifier,

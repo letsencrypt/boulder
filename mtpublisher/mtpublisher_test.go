@@ -442,7 +442,7 @@ func TestMirrorCosign(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m, err := NewMirrorClient(srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	m, err := NewMirrorClient(srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -502,7 +502,7 @@ func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m, err := NewMirrorClient(srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	m, err := NewMirrorClient(srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -522,7 +522,7 @@ func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 // refuses the checkpoint, a mirror demanding an upload_end the checkpoint
 // cannot satisfy, and an unreachable mirror.
 func TestMirrorCosignErrors(t *testing.T) {
-	_, err := NewMirrorClient("", NewSource(nil, testTilePrefix), mirrorID, testKey(t).PublicKey())
+	_, err := NewMirrorClient("", NewSource(nil, testTilePrefix), mirrorID, testKey(t).PublicKey(), 10*time.Second)
 	if err == nil {
 		t.Error("NewMirrorClient with an empty base URL = nil error, want error")
 	}
@@ -532,7 +532,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		http.Error(w, "checkpoint refused", http.StatusForbidden)
 	}))
 	defer refusing.Close()
-	m, err := NewMirrorClient(refusing.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	m, err := NewMirrorClient(refusing.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -553,7 +553,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		fmt.Fprintf(w, "%d\n%d\n\n", source.newer.N, source.newer.N+1)
 	}))
 	defer overshooting.Close()
-	m, err = NewMirrorClient(overshooting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	m, err = NewMirrorClient(overshooting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -574,7 +574,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		fmt.Fprint(w, "9000\n0\n\n")
 	}))
 	defer mismatched.Close()
-	m, err = NewMirrorClient(mismatched.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	m, err = NewMirrorClient(mismatched.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -583,7 +583,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		t.Errorf("Cosign against a mismatched mirror = %s, want an upload_end error", err)
 	}
 
-	unreachable, err := NewMirrorClient("http://127.0.0.1:1", NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey())
+	unreachable, err := NewMirrorClient("http://127.0.0.1:1", NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -600,7 +600,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		w.Write(source.cosigLine)
 	}))
 	defer lying.Close()
-	m, err = NewMirrorClient(lying.URL, NewSource(source.fs3, testTilePrefix), mirrorID, testKey(t).PublicKey())
+	m, err = NewMirrorClient(lying.URL, NewSource(source.fs3, testTilePrefix), mirrorID, testKey(t).PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
