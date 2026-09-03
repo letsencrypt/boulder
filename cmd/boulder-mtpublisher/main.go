@@ -109,18 +109,20 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(c.MTPublisher.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	pubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
-	cmd.FailOnError(err, "Loading mirror public key")
+	s3c, err := bs3.FromConfig(c.MTPublisher.S3, logger)
+	cmd.FailOnError(err, "Loading S3 config")
+
 	caCert, err := issuance.LoadCertificate(c.MTPublisher.MTCACertFile)
 	cmd.FailOnError(err, "Loading MTCA certificate")
 	caPubKey, ok := caCert.PublicKey.(*mldsa.PublicKey)
 	if !ok {
 		cmd.Fail(fmt.Sprintf("MTCA certificate public key is %T, must be ML-DSA-44", caCert.PublicKey))
 	}
-	s3c, err := bs3.FromConfig(c.MTPublisher.S3, logger)
-	cmd.FailOnError(err, "Loading S3 config")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, pubKey)
+	mirrorPubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
+	cmd.FailOnError(err, "Loading mirror public key")
+
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey)
 	cmd.FailOnError(err, "Creating mirror client")
 
 	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)

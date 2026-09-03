@@ -137,21 +137,20 @@ func (m *MirrorClient) post(ctx context.Context, path, contentType string, compr
 // retries once. An up-to-date mirror still receives the checkpoint, with an
 // empty proof, since that is the only way to obtain its cosignature.
 func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
-	oldSize := m.oldSize
 	retried := false
 	for {
-		if oldSize > tree.N {
-			return fmt.Errorf("mirror already holds size %d, checkpoint size is %d", oldSize, tree.N)
+		if m.oldSize > tree.N {
+			return fmt.Errorf("mirror already holds size %d, checkpoint size is %d", m.oldSize, tree.N)
 		}
 		var proof []tlog.Hash
-		if oldSize > 0 && oldSize < tree.N {
-			treeProof, err := m.src.consistencyProof(ctx, tree, oldSize)
+		if m.oldSize > 0 && m.oldSize < tree.N {
+			treeProof, err := m.src.consistencyProof(ctx, tree, m.oldSize)
 			if err != nil {
-				return fmt.Errorf("proving consistency from size %d: %s", oldSize, err)
+				return fmt.Errorf("proving consistency from size %d: %s", m.oldSize, err)
 			}
 			proof = treeProof
 		}
-		body, err := mirror.AddCheckpointRequest(oldSize, proof, signedNote)
+		body, err := mirror.AddCheckpointRequest(m.oldSize, proof, signedNote)
 		if err != nil {
 			return err
 		}
@@ -172,7 +171,7 @@ func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signed
 				return fmt.Errorf("add-checkpoint at tree size %d got 409 with mirror tree size %d after retrying", tree.N, mirrorSize)
 			}
 			retried = true
-			oldSize = mirrorSize
+			m.oldSize = mirrorSize
 		default:
 			return fmt.Errorf("mirror returned status %d: %s", status, errorBody(respBody))
 		}
@@ -298,13 +297,13 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
 	}
-	timestampedMirrorCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
+	zeroTimestampMirrorCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
 	if err != nil {
 		return nil, fmt.Errorf("cosignature failed verification: %w", err)
 	}
 
 	// Finally, extract the raw cosignature we store in the database.
-	rawMirrorCosignature, err := cosignature.RawSignature(timestampedMirrorCosignature)
+	rawMirrorCosignature, err := cosignature.RawSignature(zeroTimestampMirrorCosignature)
 	if err != nil {
 		return nil, fmt.Errorf("cosignature: %w", err)
 	}
