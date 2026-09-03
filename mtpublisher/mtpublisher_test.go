@@ -689,6 +689,27 @@ func TestMirrorCosignErrors(t *testing.T) {
 		t.Errorf("Cosign against a mirror that keeps answering 409 = %s, want an error after one retry", err)
 	}
 
+	// A mirror that answers 202 without saving any package, which the spec
+	// rules out, so the upload must end rather than loop.
+	stalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/add-checkpoint" {
+			return
+		}
+		uploadStart, _ := parseUploadHeader(t, requestBody(t, r))
+		w.Header().Set("Content-Type", "text/x.tlog.mirror-info")
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprintf(w, "%d\n%d\n\n", source.newer.N, uploadStart)
+	}))
+	defer stalled.Close()
+	m, err = NewMirrorClient(stalled.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = m.Cosign(t.Context(), source.cp, source.signedNote)
+	if err == nil || !strings.Contains(err.Error(), "no progress") {
+		t.Errorf("Cosign against a mirror that accepts nothing = %s, want a no progress error", err)
+	}
+
 	// A checkpoint smaller than the mirror's last cosigned size is a rolled
 	// back log, not something to submit.
 	accepting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))

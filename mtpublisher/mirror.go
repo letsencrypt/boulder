@@ -175,17 +175,13 @@ func (m *MirrorClient) addCheckpoint(ctx context.Context, tree tlog.Tree, signed
 	return fmt.Errorf("add-checkpoint at tree size %d got 409 with mirror tree size %d after retrying", tree.N, m.oldSize)
 }
 
-// maxAddEntriesRequests bounds one Cosign call's add-entries requests, each of
-// up to MaxPackagesPerRequest entry packages, so an upload terminates against a
-// mirror that never makes progress.
-const maxAddEntriesRequests = 100
-
 // addEntries uploads the entries the mirror is missing, up to the tree size,
 // and returns the cosignature lines from the mirror's "200 Success" response.
 // On "202 Accepted" and "409 Conflict" it resumes from the next entry and
-// ticket the mirror advertises.
+// ticket the mirror advertises. The upload fails if the mirror stops advancing
+// the next entry or answers in any way the client cannot resume from.
 func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.Tree) ([]byte, error) {
-	for range maxAddEntriesRequests {
+	for {
 		packages, err := mirror.Packages(m.nextEntry, tree.N, mirror.MaxPackagesPerRequest)
 		if err != nil {
 			return nil, err
@@ -231,14 +227,17 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 			if info.NextEntry > tree.N {
 				return nil, fmt.Errorf("mirror wants upload_start %d, checkpoint size is %d", info.NextEntry, tree.N)
 			}
+			sentUploadStart := m.nextEntry
 			m.nextEntry = info.NextEntry
 			m.ticket = bytes.Clone(info.Ticket)
+			if info.NextEntry <= sentUploadStart {
+				return nil, fmt.Errorf("mirror made no progress from upload_start %d, wants %d", sentUploadStart, info.NextEntry)
+			}
 
 		default:
 			return nil, fmt.Errorf("mirror returned status %d: %s", status, errorBody(respBody))
 		}
 	}
-	return nil, fmt.Errorf("upload incomplete after %d add-entries requests", maxAddEntriesRequests)
 }
 
 // signSubtree requests the mirror's zero timestamp signature over the whole
