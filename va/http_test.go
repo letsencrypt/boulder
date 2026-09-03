@@ -11,12 +11,15 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -46,7 +49,8 @@ func (c *ipFakeDNS) LookupA(_ context.Context, hostname string) (*bdns.Result[*d
 		return res, "ipFakeDNS", nil
 	}
 
-	if strings.HasSuffix(hostname, ".invalid") {
+	// no-records.example.com has no addresses at all.
+	if hostname == "no-records.example.com" {
 		return wrapA()
 	}
 
@@ -54,13 +58,12 @@ func (c *ipFakeDNS) LookupA(_ context.Context, hostname string) (*bdns.Result[*d
 	if c.ip != nil && c.ip.To4() != nil {
 		ip = c.ip
 	}
-	// dual-homed host with an IPv6 and an IPv4 address
-	if hostname == "ipv4.and.ipv6.localhost" {
-		return wrapA(ip)
-	}
-	if hostname == "ipv6.localhost" {
+	// ipv6.example.com has no IPv4 address.
+	if hostname == "ipv6.example.com" {
 		return wrapA()
 	}
+	// All other valid test hosts, including the dual-homed hosts, have an IPv4
+	// address.
 	return wrapA(ip)
 }
 
@@ -78,11 +81,13 @@ func (c *ipFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result
 		ip = c.ip
 	}
 
-	// dual-homed host with an IPv6 and an IPv4 address
-	if hostname == "ipv4.and.ipv6.localhost" {
+	// The dual-homed test host has both an IPv6 and an IPv4 address:
+	// LookupA supplies the IPv4 address while this branch supplies the IPv6
+	// address.
+	if hostname == "ipv4.and.ipv6.example.com" {
 		return wrapAAAA(ip)
 	}
-	if hostname == "ipv6.localhost" {
+	if hostname == "ipv6.example.com" {
 		return wrapAAAA(ip)
 	}
 	return wrapAAAA()
@@ -93,7 +98,7 @@ func (c *ipFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result
 func TestDialerMismatchError(t *testing.T) {
 	d := preresolvedDialer{
 		ip:       netip.MustParseAddr("127.0.0.1"),
-		port:     1337,
+		port:     "1337",
 		hostname: "letsencrypt.org",
 	}
 
@@ -149,7 +154,7 @@ func TestDialerTimeout(t *testing.T) {
 	var took time.Duration
 	for range 20 {
 		started := time.Now()
-		_, _, err = va.processHTTPValidation(ctx, identifier.NewDNS("unroutable.invalid"), "/.well-known/acme-challenge/whatever")
+		_, _, err = va.processHTTPValidation(ctx, identifier.NewDNS("unroutable.example.com"), "/.well-known/acme-challenge/whatever")
 		took = time.Since(started)
 		if err != nil && strings.Contains(err.Error(), "network is unreachable") {
 			continue
@@ -189,396 +194,298 @@ func TestHTTPTransport(t *testing.T) {
 	test.AssertEquals(t, transport.TLSHandshakeTimeout.String(), "10s")
 }
 
-func TestHTTPValidationTarget(t *testing.T) {
+func TestNewValidationRecord(t *testing.T) {
 	testCases := []struct {
-		Name          string
-		Ident         identifier.ACMEIdentifier
-		ExpectedError error
-		ExpectedIPs   []string
+		Name              string
+		Ident             identifier.ACMEIdentifier
+		ExpectedError     string
+		ExpectedURL       string
+		ExpectedResolved  []netip.Addr
+		ExpectedUsed      netip.Addr
+		ExpectedResolvers []string
 	}{
 		{
 			Name:          "No IPs for DNS identifier",
-			Ident:         identifier.NewDNS("always.invalid"),
-			ExpectedError: berrors.DNSError("no valid A records found for always.invalid; no valid AAAA records found for always.invalid"),
+			Ident:         identifier.NewDNS("no-records.example.com"),
+			ExpectedError: "no valid A records found for no-records.example.com; no valid AAAA records found for no-records.example.com",
 		},
 		{
-			Name:        "Only IPv4 addrs for DNS identifier",
-			Ident:       identifier.NewDNS("some.example.com"),
-			ExpectedIPs: []string{"127.0.0.1"},
+			Name:              "Only IPv4 addrs for DNS identifier",
+			Ident:             identifier.NewDNS("some.example.com"),
+			ExpectedURL:       "http://some.example.com/.well-known/acme-challenge/token",
+			ExpectedResolved:  []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+			ExpectedUsed:      netip.MustParseAddr("127.0.0.1"),
+			ExpectedResolvers: []string{"ipFakeDNS", "ipFakeDNS"},
 		},
 		{
-			Name:        "Only IPv6 addrs for DNS identifier",
-			Ident:       identifier.NewDNS("ipv6.localhost"),
-			ExpectedIPs: []string{"::1"},
+			Name:              "Only IPv6 addrs for DNS identifier",
+			Ident:             identifier.NewDNS("ipv6.example.com"),
+			ExpectedURL:       "http://ipv6.example.com/.well-known/acme-challenge/token",
+			ExpectedResolved:  []netip.Addr{netip.MustParseAddr("::1")},
+			ExpectedUsed:      netip.MustParseAddr("::1"),
+			ExpectedResolvers: []string{"ipFakeDNS", "ipFakeDNS"},
 		},
 		{
-			Name:  "Both IPv6 and IPv4 addrs for DNS identifier",
-			Ident: identifier.NewDNS("ipv4.and.ipv6.localhost"),
-			// In this case we expect 1 IPv6 address first, and then 1 IPv4 address
-			ExpectedIPs: []string{"::1", "127.0.0.1"},
+			Name:        "Both IPv6 and IPv4 addrs for DNS identifier",
+			Ident:       identifier.NewDNS("ipv4.and.ipv6.example.com"),
+			ExpectedURL: "http://ipv4.and.ipv6.example.com/.well-known/acme-challenge/token",
+			// We expect the IPv6 address to be preferred for the first attempt.
+			ExpectedResolved:  []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			ExpectedUsed:      netip.MustParseAddr("::1"),
+			ExpectedResolvers: []string{"ipFakeDNS", "ipFakeDNS"},
 		},
 		{
-			Name:        "IPv4 IP address identifier",
-			Ident:       identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
-			ExpectedIPs: []string{"127.0.0.1"},
+			Name:             "IPv4 IP address identifier",
+			Ident:            identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
+			ExpectedURL:      "http://127.0.0.1/.well-known/acme-challenge/token",
+			ExpectedResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+			ExpectedUsed:     netip.MustParseAddr("127.0.0.1"),
 		},
 		{
-			Name:        "IPv6 IP address identifier",
-			Ident:       identifier.NewIP(netip.MustParseAddr("::1")),
-			ExpectedIPs: []string{"::1"},
+			Name:             "IPv6 IP address identifier",
+			Ident:            identifier.NewIP(netip.MustParseAddr("::1")),
+			ExpectedURL:      "http://[::1]/.well-known/acme-challenge/token",
+			ExpectedResolved: []netip.Addr{netip.MustParseAddr("::1")},
+			ExpectedUsed:     netip.MustParseAddr("::1"),
 		},
 	}
-
-	const (
-		examplePort  = 1234
-		examplePath  = "/.well-known/path/i/took"
-		exampleQuery = "my-path=was&my=own"
-	)
 
 	va, _ := setup(nil, "", nil, &ipFakeDNS{})
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			target, err := va.newHTTPValidationTarget(
-				context.Background(),
-				tc.Ident,
-				examplePort,
-				examplePath,
-				exampleQuery)
-			if err != nil && tc.ExpectedError == nil {
-				t.Fatalf("Unexpected error from NewHTTPValidationTarget: %v", err)
-			} else if err != nil && tc.ExpectedError != nil {
-				test.AssertMarshaledEquals(t, err, tc.ExpectedError)
-			} else if err == nil {
-				// The target should be populated.
-				test.AssertNotEquals(t, target.host, "")
-				test.AssertNotEquals(t, target.port, 0)
-				test.AssertNotEquals(t, target.path, "")
-				// Calling ip() on the target should give the expected IPs in the right
-				// order.
-				for i, expectedIP := range tc.ExpectedIPs {
-					gotIP := target.cur
-					if (gotIP == netip.Addr{}) {
-						t.Errorf("Expected IP %d to be %s got nil", i, expectedIP)
-					} else {
-						test.AssertEquals(t, gotIP.String(), expectedIP)
-					}
-					// Advance to the next IP
-					_ = target.nextIP()
+			// Mirror processHTTPValidation, which brackets bare IPv6 addresses
+			// before constructing the initial URL.
+			host := tc.Ident.Value
+			if tc.Ident.Type == identifier.TypeIP && netip.MustParseAddr(tc.Ident.Value).Is6() {
+				host = "[" + host + "]"
+			}
+			exampleURL := url.URL{
+				Scheme: "http",
+				Host:   host,
+				Path:   "/.well-known/acme-challenge/token",
+			}
+			record, err := va.newValidationRecord(t.Context(), exampleURL)
+			if tc.ExpectedError != "" {
+				if err == nil {
+					t.Fatalf("newValidationRecord(%v) succeeded, want error %q", tc.Ident, tc.ExpectedError)
 				}
+				if err.Error() != tc.ExpectedError {
+					t.Errorf("newValidationRecord(%v) returned error %q, want %q", tc.Ident, err, tc.ExpectedError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("newValidationRecord(%v) failed: %s", tc.Ident, err)
+			}
+			if record.Hostname != tc.Ident.Value {
+				t.Errorf("record.Hostname = %q, want %q", record.Hostname, tc.Ident.Value)
+			}
+			expectedPort := strconv.Itoa(va.httpPort)
+			if record.Port != expectedPort {
+				t.Errorf("record.Port = %q, want %q", record.Port, expectedPort)
+			}
+			if record.URL != tc.ExpectedURL {
+				t.Errorf("record.URL = %q, want %q", record.URL, tc.ExpectedURL)
+			}
+			if !slices.Equal(record.AddressesResolved, tc.ExpectedResolved) {
+				t.Errorf("record.AddressesResolved = %v, want %v", record.AddressesResolved, tc.ExpectedResolved)
+			}
+			if record.AddressUsed != tc.ExpectedUsed {
+				t.Errorf("record.AddressUsed = %v, want %v", record.AddressUsed, tc.ExpectedUsed)
+			}
+			if !slices.Equal(record.ResolverAddrs, tc.ExpectedResolvers) {
+				t.Errorf("record.ResolverAddrs = %v, want %v", record.ResolverAddrs, tc.ExpectedResolvers)
 			}
 		})
 	}
 }
 
-func TestExtractRequestTarget(t *testing.T) {
-	mustURL := func(rawURL string) *url.URL {
-		return must.Do(url.Parse(rawURL))
-	}
-
+func TestNewValidationRecordFromRedirect(t *testing.T) {
 	testCases := []struct {
 		Name          string
-		Req           *http.Request
-		ExpectedError error
-		ExpectedIdent identifier.ACMEIdentifier
-		ExpectedPort  int
+		Location      string
+		ExpectedError string
+		ExpectedHost  string
+		ExpectedPort  string
 	}{
 		{
-			Name:          "nil input req",
-			ExpectedError: fmt.Errorf("redirect HTTP request was nil"),
+			Name:          "missing Location header",
+			Location:      "",
+			ExpectedError: "Invalid Location header in 301 redirect",
 		},
 		{
-			Name: "invalid protocol scheme",
-			Req: &http.Request{
-				URL: mustURL("gopher://letsencrypt.org"),
-			},
-			ExpectedError: fmt.Errorf("Invalid protocol scheme in redirect target. " +
-				`Only "http" and "https" protocol schemes are supported, ` +
-				`not "gopher"`),
+			Name:          "invalid protocol scheme",
+			Location:      "gopher://letsencrypt.org",
+			ExpectedError: `invalid protocol scheme: only "http" and "https" are supported, not "gopher"`,
 		},
 		{
-			Name: "invalid explicit port",
-			Req: &http.Request{
-				URL: mustURL("https://weird.port.letsencrypt.org:9999"),
-			},
-			ExpectedError: fmt.Errorf("Invalid port in redirect target. Only ports 80 " +
-				"and 443 are supported, not 9999"),
+			Name:          "invalid explicit port",
+			Location:      "https://weird.port.letsencrypt.org:9999",
+			ExpectedError: "invalid port 9999: must be 80 or 443",
 		},
 		{
-			Name: "invalid empty host",
-			Req: &http.Request{
-				URL: mustURL("https:///who/needs/a/hostname?not=me"),
-			},
-			ExpectedError: errors.New("Invalid empty host in redirect target"),
+			Name:          "invalid empty host",
+			Location:      "https:///who/needs/a/hostname?not=me",
+			ExpectedError: "invalid host: host must be non-empty",
 		},
 		{
-			Name: "invalid .well-known hostname",
-			Req: &http.Request{
-				URL: mustURL("https://my.webserver.is.misconfigured.well-known/acme-challenge/xxx"),
-			},
-			ExpectedError: errors.New(`Invalid host in redirect target "my.webserver.is.misconfigured.well-known". Check webserver config for missing '/' in redirect target.`),
+			Name:          "invalid .well-known hostname",
+			Location:      "https://my.webserver.is.misconfigured.well-known/acme-challenge/xxx",
+			ExpectedError: `invalid host in redirect target "my.webserver.is.misconfigured.well-known": check webserver config for missing '/' in redirect target`,
 		},
 		{
-			Name: "invalid non-iana hostname",
-			Req: &http.Request{
-				URL: mustURL("https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo"),
-			},
-			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
+			Name:          "invalid non-iana hostname",
+			Location:      "https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo",
+			ExpectedError: "invalid host: must end in IANA registered TLD",
 		},
 		{
-			Name: "malformed wildcard-ish IPv4 address",
-			Req: &http.Request{
-				URL: mustURL("https://10.10.10.*"),
-			},
-			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
+			Name:          "malformed wildcard-ish IPv4 address",
+			Location:      "https://10.10.10.*",
+			ExpectedError: "invalid host: must end in IANA registered TLD",
 		},
 		{
-			Name: "bare IPv4, implicit port",
-			Req: &http.Request{
-				URL: mustURL("http://127.0.0.1"),
-			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
-			ExpectedPort:  80,
+			Name:         "bare IPv4, implicit port",
+			Location:     "http://127.0.0.1",
+			ExpectedHost: "127.0.0.1",
+			ExpectedPort: "80",
 		},
 		{
-			Name: "bare IPv4, explicit valid port",
-			Req: &http.Request{
-				URL: mustURL("http://127.0.0.1:80"),
-			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
-			ExpectedPort:  80,
+			Name:         "bare IPv4, explicit valid port",
+			Location:     "http://127.0.0.1:80",
+			ExpectedHost: "127.0.0.1",
+			ExpectedPort: "80",
 		},
 		{
-			Name: "bare IPv4, explicit invalid port",
-			Req: &http.Request{
-				URL: mustURL("http://127.0.0.1:9999"),
-			},
-			ExpectedError: fmt.Errorf("Invalid port in redirect target. Only ports 80 " +
-				"and 443 are supported, not 9999"),
+			Name:          "bare IPv4, explicit invalid port",
+			Location:      "http://127.0.0.1:9999",
+			ExpectedError: "invalid port 9999: must be 80 or 443",
 		},
 		{
-			Name: "bare IPv4, HTTPS",
-			Req: &http.Request{
-				URL: mustURL("https://127.0.0.1"),
-			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
-			ExpectedPort:  443,
+			Name:         "bare IPv4, HTTPS",
+			Location:     "https://127.0.0.1",
+			ExpectedHost: "127.0.0.1",
+			ExpectedPort: "443",
 		},
 		{
-			Name: "bare IPv4, reserved IP address",
-			Req: &http.Request{
-				URL: mustURL("http://10.10.10.10"),
-			},
-			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
-				"IP address is in a reserved address block: [RFC1918]: Private-Use"),
+			Name:     "bare IPv4, reserved IP address",
+			Location: "http://10.10.10.10",
+			ExpectedError: "invalid host: " +
+				"IP address is in a reserved address block: [RFC1918]: Private-Use",
 		},
 		{
-			Name: "bare IPv6, implicit port",
-			Req: &http.Request{
-				URL: mustURL("http://[::1]"),
-			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
-			ExpectedPort:  80,
+			Name:         "bare IPv6, implicit port",
+			Location:     "http://[::1]",
+			ExpectedHost: "::1",
+			ExpectedPort: "80",
 		},
 		{
-			Name: "bare IPv6, explicit valid port",
-			Req: &http.Request{
-				URL: mustURL("http://[::1]:80"),
-			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
-			ExpectedPort:  80,
+			Name:         "bare IPv6, explicit valid port",
+			Location:     "http://[::1]:80",
+			ExpectedHost: "::1",
+			ExpectedPort: "80",
 		},
 		{
-			Name: "bare IPv6, explicit invalid port",
-			Req: &http.Request{
-				URL: mustURL("http://[::1]:9999"),
-			},
-			ExpectedError: fmt.Errorf("Invalid port in redirect target. Only ports 80 " +
-				"and 443 are supported, not 9999"),
+			Name:          "bare IPv6, explicit invalid port",
+			Location:      "http://[::1]:9999",
+			ExpectedError: "invalid port 9999: must be 80 or 443",
 		},
 		{
-			Name: "bare IPv6, HTTPS",
-			Req: &http.Request{
-				URL: mustURL("https://[::1]"),
-			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
-			ExpectedPort:  443,
+			Name:         "bare IPv6, HTTPS",
+			Location:     "https://[::1]",
+			ExpectedHost: "::1",
+			ExpectedPort: "443",
 		},
 		{
-			Name: "bare IPv6, reserved IP address",
-			Req: &http.Request{
-				URL: mustURL("http://[3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee]"),
-			},
-			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
-				"IP address is in a reserved address block: [RFC9637]: Documentation"),
+			Name:     "bare IPv6, reserved IP address",
+			Location: "http://[3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee]",
+			ExpectedError: "invalid host: " +
+				"IP address is in a reserved address block: [RFC9637]: Documentation",
 		},
 		{
-			Name: "bare IPv6, scope zone",
-			Req: &http.Request{
-				URL: mustURL("http://[::1%25lo]"),
-			},
-			ExpectedError: fmt.Errorf("Invalid host in redirect target: " +
-				"contains scope zone"),
+			Name:          "bare IPv6, scope zone",
+			Location:      "http://[::1%25lo]",
+			ExpectedError: "invalid host: contains IPv6 scope zone",
 		},
 		{
-			Name: "valid HTTP redirect, explicit port",
-			Req: &http.Request{
-				URL: mustURL("http://cpu.letsencrypt.org:80"),
-			},
-			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort:  80,
+			Name:         "valid HTTP redirect, explicit port",
+			Location:     "http://cpu.letsencrypt.org:80",
+			ExpectedHost: "cpu.letsencrypt.org",
+			ExpectedPort: "80",
 		},
 		{
-			Name: "valid HTTP redirect, implicit port",
-			Req: &http.Request{
-				URL: mustURL("http://cpu.letsencrypt.org"),
-			},
-			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort:  80,
+			Name:         "valid HTTP redirect, implicit port",
+			Location:     "http://cpu.letsencrypt.org",
+			ExpectedHost: "cpu.letsencrypt.org",
+			ExpectedPort: "80",
 		},
 		{
-			Name: "valid HTTPS redirect, explicit port",
-			Req: &http.Request{
-				URL: mustURL("https://cpu.letsencrypt.org:443/hello.world"),
-			},
-			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort:  443,
+			Name:         "valid HTTPS redirect, explicit port",
+			Location:     "https://cpu.letsencrypt.org:443",
+			ExpectedHost: "cpu.letsencrypt.org",
+			ExpectedPort: "443",
 		},
 		{
-			Name: "valid HTTPS redirect, implicit port",
-			Req: &http.Request{
-				URL: mustURL("https://cpu.letsencrypt.org/hello.world"),
-			},
-			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort:  443,
+			Name:         "valid HTTPS redirect, implicit port",
+			Location:     "https://cpu.letsencrypt.org",
+			ExpectedHost: "cpu.letsencrypt.org",
+			ExpectedPort: "443",
+		},
+		{
+			Name:         "bare IPv4, explicit valid port with leading zero",
+			Location:     "http://127.0.0.1:080",
+			ExpectedHost: "127.0.0.1",
+			ExpectedPort: "080",
+		},
+		{
+			Name:         "valid redirect with path and query params",
+			Location:     "https://cpu.letsencrypt.org/hello?name=world",
+			ExpectedHost: "cpu.letsencrypt.org",
+			ExpectedPort: "443",
 		},
 	}
 
-	va, _ := setup(nil, "", nil, nil)
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			host, port, err := va.extractRequestTarget(tc.Req)
-			if err != nil && tc.ExpectedError == nil {
-				t.Errorf("Expected nil err got %v", err)
-			} else if err != nil && tc.ExpectedError != nil {
-				test.AssertEquals(t, err.Error(), tc.ExpectedError.Error())
-			} else if err == nil && tc.ExpectedError != nil {
-				t.Errorf("Expected err %v, got nil", tc.ExpectedError)
-			} else {
-				test.AssertEquals(t, host, tc.ExpectedIdent)
-				test.AssertEquals(t, port, tc.ExpectedPort)
-			}
-		})
-	}
-}
-
-func TestSetupHTTPValidation(t *testing.T) {
 	va, _ := setup(nil, "", nil, &ipFakeDNS{})
-
-	mustTarget := func(t *testing.T, host string, port int, path string) *httpValidationTarget {
-		target, err := va.newHTTPValidationTarget(
-			context.Background(),
-			identifier.NewDNS(host),
-			port,
-			path,
-			"")
-		if err != nil {
-			t.Fatalf("Failed to construct httpValidationTarget for %q", host)
-			return nil
-		}
-		return target
-	}
-
-	httpInputURL := "http://ipv4.and.ipv6.localhost/yellow/brick/road"
-	httpsInputURL := "https://ipv4.and.ipv6.localhost/yellow/brick/road"
-
-	testCases := []struct {
-		Name           string
-		InputURL       string
-		InputTarget    *httpValidationTarget
-		ExpectedRecord core.ValidationRecord
-		ExpectedDialer *preresolvedDialer
-		ExpectedError  error
-	}{
-		{
-			Name:          "nil target",
-			InputURL:      httpInputURL,
-			ExpectedError: fmt.Errorf("httpValidationTarget can not be nil"),
-		},
-		{
-			Name:          "empty input URL",
-			InputTarget:   &httpValidationTarget{},
-			ExpectedError: fmt.Errorf("reqURL can not be nil"),
-		},
-		{
-			Name:     "target with no IPs",
-			InputURL: httpInputURL,
-			InputTarget: &httpValidationTarget{
-				host: "ipv4.and.ipv6.localhost",
-				port: va.httpPort,
-				path: "idk",
-			},
-			ExpectedRecord: core.ValidationRecord{
-				URL:      "http://ipv4.and.ipv6.localhost/yellow/brick/road",
-				Hostname: "ipv4.and.ipv6.localhost",
-				Port:     strconv.Itoa(va.httpPort),
-			},
-			ExpectedError: fmt.Errorf(`host "ipv4.and.ipv6.localhost" has no IP addresses remaining to use`),
-		},
-		{
-			Name:        "HTTP input req",
-			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpPort, "/yellow/brick/road"),
-			InputURL:    httpInputURL,
-			ExpectedRecord: core.ValidationRecord{
-				Hostname:          "ipv4.and.ipv6.localhost",
-				Port:              strconv.Itoa(va.httpPort),
-				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
-				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
-				AddressUsed:       netip.MustParseAddr("::1"),
-				ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
-			},
-			ExpectedDialer: &preresolvedDialer{
-				ip:      netip.MustParseAddr("::1"),
-				port:    va.httpPort,
-				timeout: va.singleDialTimeout,
-			},
-		},
-		{
-			Name:        "HTTPS input req",
-			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpsPort, "/yellow/brick/road"),
-			InputURL:    httpsInputURL,
-			ExpectedRecord: core.ValidationRecord{
-				Hostname:          "ipv4.and.ipv6.localhost",
-				Port:              strconv.Itoa(va.httpsPort),
-				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
-				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
-				AddressUsed:       netip.MustParseAddr("::1"),
-				ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
-			},
-			ExpectedDialer: &preresolvedDialer{
-				ip:      netip.MustParseAddr("::1"),
-				port:    va.httpsPort,
-				timeout: va.singleDialTimeout,
-			},
-		},
-	}
-
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			outDialer, outRecord, err := va.setupHTTPValidation(tc.InputURL, tc.InputTarget)
-			if err != nil && tc.ExpectedError == nil {
-				t.Errorf("Expected nil error, got %v", err)
-			} else if err == nil && tc.ExpectedError != nil {
-				t.Errorf("Expected %v error, got nil", tc.ExpectedError)
-			} else if err != nil && tc.ExpectedError != nil {
-				test.AssertEquals(t, err.Error(), tc.ExpectedError.Error())
+			resp := &http.Response{
+				StatusCode: http.StatusMovedPermanently,
+				Header:     http.Header{},
+				Request:    &http.Request{URL: must.Do(url.Parse("http://redirected.example.com/redirect-me"))},
 			}
-			if tc.ExpectedDialer == nil && outDialer != nil {
-				t.Errorf("Expected nil dialer, got %v", outDialer)
-			} else if tc.ExpectedDialer != nil {
-				test.AssertMarshaledEquals(t, outDialer, tc.ExpectedDialer)
+			if tc.Location != "" {
+				resp.Header.Set("Location", tc.Location)
 			}
-			// In all cases we expect there to have been a validation record
-			test.AssertMarshaledEquals(t, outRecord, tc.ExpectedRecord)
+
+			record, err := va.newValidationRecordFromRedirect(t.Context(), resp, nil)
+			if tc.ExpectedError != "" {
+				// Errors come wrapped in a url.Error naming the rejected
+				// redirect target, or the requesting URL when no redirect
+				// target could be parsed.
+				wrapURL := tc.Location
+				if wrapURL == "" {
+					wrapURL = "http://redirected.example.com/redirect-me"
+				}
+				expected := fmt.Sprintf("Get %q: %s", wrapURL, tc.ExpectedError)
+				if err == nil {
+					t.Fatalf("newValidationRecordFromRedirect(%q) succeeded, want error %q", tc.Location, expected)
+				}
+				if err.Error() != expected {
+					t.Errorf("newValidationRecordFromRedirect(%q) returned error %q, want %q", tc.Location, err, expected)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("newValidationRecordFromRedirect(%q) failed: %s", tc.Location, err)
+			}
+			if record.Hostname != tc.ExpectedHost {
+				t.Errorf("record.Hostname = %q, want %q", record.Hostname, tc.ExpectedHost)
+			}
+			if record.Port != tc.ExpectedPort {
+				t.Errorf("record.Port = %q, want %q", record.Port, tc.ExpectedPort)
+			}
+			if record.URL != tc.Location {
+				t.Errorf("record.URL = %q, want %q", record.URL, tc.Location)
+			}
 		})
 	}
 }
@@ -625,9 +532,9 @@ func httpTestSrv(t *testing.T, ipv6 bool) *httptest.Server {
 	})
 
 	// A path that sequentially redirects, creating an incrementing redirect
-	// that will terminate when the redirect limit is reached and ensures each
-	// URL is different than the last.
-	for i := range maxRedirect + 2 {
+	// chain that will terminate when the request limit is reached and ensures
+	// each URL is different than the last.
+	for i := range maxRequests + 1 {
 		mux.HandleFunc(fmt.Sprintf("/max-redirect/%d", i),
 			func(resp http.ResponseWriter, req *http.Request) {
 				http.Redirect(
@@ -675,6 +582,19 @@ func httpTestSrv(t *testing.T, ipv6 bool) *httptest.Server {
 			resp,
 			req,
 			"http://[::1]/ok",
+			http.StatusMovedPermanently,
+		)
+	})
+
+	// A path that redirects to a dual-homed host (both IPv6 and IPv4
+	// addresses) whose name ends in a valid IANA-registered TLD. On the
+	// IPv4-only test server, the redirect target's preferred IPv6 address has
+	// nothing listening, forcing a fallback to its IPv4 address.
+	mux.HandleFunc("/redir-dual-host", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			fmt.Sprintf("http://ipv4.and.ipv6.example.com:%d/ok", httpPort),
 			http.StatusMovedPermanently,
 		)
 	})
@@ -893,11 +813,11 @@ func TestFetchHTTP(t *testing.T) {
 			})
 	}
 
-	// For the too many redirect test case we expect one validation record per
-	// redirect up to maxRedirect (inclusive). There is also +1 record for the
-	// base lookup, giving a termination criteria of > maxRedirect+1
+	// For the too many requests test case we expect one validation record per
+	// request, up to the maxRequests limit: the base lookup plus maxRequests-1
+	// redirects. The request that would exceed the limit is refused.
 	expectedTooManyRedirRecords := []core.ValidationRecord{}
-	for i := range maxRedirect + 2 {
+	for i := range maxRequests {
 		// The first request will not have a port # in the URL.
 		url := "http://example.com/max-redirect/0"
 		if i != 0 {
@@ -930,10 +850,10 @@ func TestFetchHTTP(t *testing.T) {
 	}{
 		{
 			Name:  "No IPs for host",
-			Ident: identifier.NewDNS("always.invalid"),
+			Ident: identifier.NewDNS("no-records.example.com"),
 			Path:  "/.well-known/whatever",
 			ExpectedProblem: probs.DNS(
-				"no valid A records found for always.invalid; no valid AAAA records found for always.invalid"),
+				"no valid A records found for no-records.example.com; no valid AAAA records found for no-records.example.com"),
 			// There are no validation records in this case because the base record
 			// is only constructed once a URL is made.
 			ExpectedRecords: nil,
@@ -961,15 +881,14 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/loop",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
-				"127.0.0.1: Fetching http://example.com:%d/loop: Redirect loop detected", httpPortIPv4)),
+				"127.0.0.1: Fetching http://example.com:%d/loop: redirect loop detected", httpPortIPv4)),
 			ExpectedRecords: expectedLoopRecords,
 		},
 		{
-			Name:  "Too many redirects",
-			Ident: identifier.NewDNS("example.com"),
-			Path:  "/max-redirect/0",
-			ExpectedProblem: probs.Connection(fmt.Sprintf(
-				"127.0.0.1: Fetching http://example.com:%d/max-redirect/12: Too many redirects", httpPortIPv4)),
+			Name:            "Too many hops",
+			Ident:           identifier.NewDNS("example.com"),
+			Path:            "/max-redirect/0",
+			ExpectedProblem: probs.Connection("Too many hops"),
 			ExpectedRecords: expectedTooManyRedirRecords,
 		},
 		{
@@ -977,9 +896,8 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/redir-bad-proto",
 			ExpectedProblem: probs.Connection(
-				"127.0.0.1: Fetching gopher://example.com: Invalid protocol scheme in " +
-					`redirect target. Only "http" and "https" protocol schemes ` +
-					`are supported, not "gopher"`),
+				"127.0.0.1: Fetching gopher://example.com: invalid protocol scheme: " +
+					`only "http" and "https" are supported, not "gopher"`),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -996,8 +914,8 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/redir-bad-port",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
-				"127.0.0.1: Fetching https://example.com:1987: Invalid port in redirect target. "+
-					"Only ports %d and 443 are supported, not 1987", httpPortIPv4)),
+				"127.0.0.1: Fetching https://example.com:1987: "+
+					"invalid port 1987: must be %d or 443", httpPortIPv4)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -1034,14 +952,14 @@ func TestFetchHTTP(t *testing.T) {
 		}, {
 			Name:         "Redirect to bare IPv6 address",
 			IPv6:         true,
-			Ident:        identifier.NewDNS("ipv6.localhost"),
+			Ident:        identifier.NewDNS("ipv6.example.com"),
 			Path:         "/redir-bare-ipv6",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "ipv6.localhost",
+					Hostname:          "ipv6.example.com",
 					Port:              strconv.Itoa(httpPortIPv6),
-					URL:               "http://ipv6.localhost/redir-bare-ipv6",
+					URL:               "http://ipv6.example.com/redir-bare-ipv6",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
 					AddressUsed:       netip.MustParseAddr("::1"),
 					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
@@ -1060,7 +978,7 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/redir-path-too-long",
 			ExpectedProblem: probs.Connection(
-				"127.0.0.1: Fetching https://example.com/this-is-too-long-01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: Redirect target too long"),
+				"127.0.0.1: Fetching https://example.com/this-is-too-long-01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: invalid url: path component too long"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -1094,7 +1012,7 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/303-see-other",
 			ExpectedProblem: probs.Connection(
-				"127.0.0.1: Fetching http://example.org/303-see-other: received disallowed redirect status code"),
+				"127.0.0.1: Received disallowed redirect status code 303"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -1110,9 +1028,9 @@ func TestFetchHTTP(t *testing.T) {
 			Name:  "Response too large",
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/resp-too-big",
-			ExpectedProblem: probs.Unauthorized(fmt.Sprintf(
-				"127.0.0.1: Invalid response from http://example.com/resp-too-big: %q", expectedTruncatedResp.String(),
-			)),
+			ExpectedProblem: probs.Unauthorized(
+				"127.0.0.1: Error reading HTTP response body: reader size limit exceeded",
+			),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -1126,15 +1044,15 @@ func TestFetchHTTP(t *testing.T) {
 		},
 		{
 			Name:  "Broken IPv6 only",
-			Ident: identifier.NewDNS("ipv6.localhost"),
+			Ident: identifier.NewDNS("ipv6.example.com"),
 			Path:  "/ok",
 			ExpectedProblem: probs.Connection(
-				"::1: Fetching http://ipv6.localhost/ok: Connection refused"),
+				"::1: Fetching http://ipv6.example.com/ok: Connection refused"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "ipv6.localhost",
+					Hostname:          "ipv6.example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
-					URL:               "http://ipv6.localhost/ok",
+					URL:               "http://ipv6.example.com/ok",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
 					AddressUsed:       netip.MustParseAddr("::1"),
 					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
@@ -1143,25 +1061,59 @@ func TestFetchHTTP(t *testing.T) {
 		},
 		{
 			Name:         "Dual homed w/ broken IPv6, working IPv4",
-			Ident:        identifier.NewDNS("ipv4.and.ipv6.localhost"),
+			Ident:        identifier.NewDNS("ipv4.and.ipv6.example.com"),
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "ipv4.and.ipv6.localhost",
+					Hostname:          "ipv4.and.ipv6.example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
-					URL:               "http://ipv4.and.ipv6.localhost/ok",
+					URL:               "http://ipv4.and.ipv6.example.com/ok",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
 					AddressUsed:   netip.MustParseAddr("::1"),
 					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 				{
-					Hostname:          "ipv4.and.ipv6.localhost",
+					Hostname:          "ipv4.and.ipv6.example.com",
 					Port:              strconv.Itoa(httpPortIPv4),
-					URL:               "http://ipv4.and.ipv6.localhost/ok",
+					URL:               "http://ipv4.and.ipv6.example.com/ok",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
+					AddressUsed:   netip.MustParseAddr("127.0.0.1"),
+					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
+				},
+			},
+		},
+		{
+			Name:         "Redirect to dual homed host with broken IPv6, working IPv4",
+			Ident:        identifier.NewDNS("example.com"),
+			Path:         "/redir-dual-host",
+			ExpectedBody: "ok",
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPortIPv4),
+					URL:               "http://example.com/redir-dual-host",
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+				},
+				{
+					Hostname:          "ipv4.and.ipv6.example.com",
+					Port:              strconv.Itoa(httpPortIPv4),
+					URL:               fmt.Sprintf("http://ipv4.and.ipv6.example.com:%d/ok", httpPortIPv4),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+					// First attempt at the redirect target used its IPv6 address.
+					AddressUsed:   netip.MustParseAddr("::1"),
+					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
+				},
+				{
+					Hostname:          "ipv4.and.ipv6.example.com",
+					Port:              strconv.Itoa(httpPortIPv4),
+					URL:               fmt.Sprintf("http://ipv4.and.ipv6.example.com:%d/ok", httpPortIPv4),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+					// The retry fell back to the redirect target's IPv4 address.
 					AddressUsed:   netip.MustParseAddr("127.0.0.1"),
 					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
 				},
@@ -1212,9 +1164,8 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/printf-verbs",
 			ExpectedProblem: &probs.ProblemDetails{
-				Type: probs.UnauthorizedProblem,
-				Detail: fmt.Sprintf("127.0.0.1: Invalid response from http://example.com/printf-verbs: %q",
-					("%2F.well-known%2F" + expectedTruncatedResp.String())[:maxResponseSize]),
+				Type:       probs.UnauthorizedProblem,
+				Detail:     "127.0.0.1: Error reading HTTP response body: reader size limit exceeded",
 				HTTPStatus: http.StatusForbidden,
 			},
 			ExpectedRecords: []core.ValidationRecord{
@@ -1256,6 +1207,169 @@ func TestFetchHTTP(t *testing.T) {
 			test.AssertMarshaledEquals(t, records, tc.ExpectedRecords)
 		})
 	}
+}
+
+// TestFetchHTTPRedirectFallbackExhaustion verifies that when a redirect target
+// exhausts all its addresses, the error is attributed to the last one tried.
+func TestFetchHTTPRedirectFallbackExhaustion(t *testing.T) {
+	// Pick a closed local port (per TestHTTPBadPort) for the redirect target so
+	// both of its addresses fail fast with connection refused instead of timing
+	// out on an unreachable IP.
+	badPort := 40000 + mrand.IntN(25000)
+
+	redirURL := fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", badPort)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/redir-to-https", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(resp, req, redirURL, http.StatusMovedPermanently)
+	})
+	testSrv := httptest.NewServer(mux)
+	defer testSrv.Close()
+	httpPort := getPort(testSrv)
+	if badPort == httpPort {
+		badPort = httpPort + 1
+		redirURL = fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", badPort)
+	}
+
+	va, _ := setup(testSrv, "", nil, &ipFakeDNS{})
+	// Accept the closed redirect port so redirect policy permits the hop.
+	va.httpsPort = badPort
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond*500)
+	defer cancel()
+
+	_, records, err := va.processHTTPValidation(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), "/redir-to-https")
+	if err == nil {
+		t.Fatal("processHTTPValidation succeeded, want failure: redirect target has no reachable address")
+	}
+
+	// The problem is attributed to the target's last address tried: 127.0.0.1.
+	prob := detailedError(err)
+	expectedProb := probs.Connection(fmt.Sprintf(
+		"127.0.0.1: Fetching %s: Connection refused", redirURL))
+	if !reflect.DeepEqual(prob, expectedProb) {
+		t.Errorf("problem = %+v, want %+v", prob, expectedProb)
+	}
+
+	// Three records: the reachable initial raw-IP request that received the
+	// redirect, the target's IPv6 attempt, and the target's IPv4 fallback.
+	expectedRecords := []core.ValidationRecord{
+		{
+			Hostname:          "127.0.0.1",
+			Port:              strconv.Itoa(httpPort),
+			URL:               "http://127.0.0.1/redir-to-https",
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(badPort),
+			URL:               redirURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("::1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(badPort),
+			URL:               redirURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+	}
+	if !reflect.DeepEqual(records, expectedRecords) {
+		t.Errorf("records = %+v, want %+v", records, expectedRecords)
+	}
+
+	// One redirect hop was followed, and the target fell back IPv6-to-IPv4 once
+	// before exhausting its addresses.
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Redirects, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Fallbacks, prometheus.Labels{}, 1)
+}
+
+// TestFetchHTTPRedirectDoubleFallback covers #8029: the initial HTTP host and
+// its HTTPS redirect target each require an independent IPv6-to-IPv4 fallback.
+func TestFetchHTTPRedirectDoubleFallback(t *testing.T) {
+	// Both servers listen on IPv4 only while ipFakeDNS prefers IPv6.
+	httpsMux := http.NewServeMux()
+	httpsMux.HandleFunc("/ok", func(resp http.ResponseWriter, req *http.Request) {
+		resp.WriteHeader(http.StatusOK)
+		fmt.Fprint(resp, "ok")
+	})
+	httpsSrv := httptest.NewTLSServer(httpsMux)
+	defer httpsSrv.Close()
+	httpsPort := getPort(httpsSrv)
+
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/redir-to-https", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", httpsPort),
+			http.StatusMovedPermanently,
+		)
+	})
+	httpSrv := httptest.NewServer(httpMux)
+	defer httpSrv.Close()
+	httpPort := getPort(httpSrv)
+
+	va, _ := setup(httpSrv, "", nil, &ipFakeDNS{})
+	// Allow the explicit HTTPS test port as a redirect target.
+	va.httpsPort = httpsPort
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond*500)
+	defer cancel()
+
+	body, records, err := va.processHTTPValidation(ctx, identifier.NewDNS("ipv4.and.ipv6.example.com"), "/redir-to-https")
+	if err != nil {
+		t.Fatalf("HTTP-to-HTTPS double fallback should have succeeded, got: %s", err)
+	}
+	if string(body) != "ok" {
+		t.Errorf("body = %q, want %q", body, "ok")
+	}
+
+	initialURL := "http://ipv4.and.ipv6.example.com/redir-to-https"
+	httpsURL := fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", httpsPort)
+	expectedRecords := []core.ValidationRecord{
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpPort),
+			URL:               initialURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("::1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpPort),
+			URL:               initialURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpsPort),
+			URL:               httpsURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("::1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpsPort),
+			URL:               httpsURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+	}
+	if !reflect.DeepEqual(records, expectedRecords) {
+		t.Errorf("records = %+v, want %+v", records, expectedRecords)
+	}
+
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Redirects, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Fallbacks, prometheus.Labels{}, 2)
 }
 
 // All paths that get assigned to tokens MUST be valid tokens
@@ -1368,7 +1482,7 @@ func TestHTTPBadPort(t *testing.T) {
 	badPort := 40000 + mrand.IntN(25000)
 	va.httpPort = badPort
 
-	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), expectedToken, expectedKeyAuthorization)
+	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), expectedToken, expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
@@ -1455,7 +1569,7 @@ func TestHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusMovedPermanently redirect")
 	}
-	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	redirectValid := `following redirect to "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 
@@ -1464,14 +1578,14 @@ func TestHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusFound redirect")
 	}
-	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	redirectMoved := `following redirect to "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
-	_, err = va.validateHTTP01(ctx, identifier.NewDNS("always.invalid"), pathFound, ka(pathFound))
+	_, err = va.validateHTTP01(ctx, identifier.NewDNS("no-records.example.com"), pathFound, ka(pathFound))
 	if err == nil {
-		t.Fatalf("Domain name is invalid.")
+		t.Fatalf("Domain name has no DNS records.")
 	}
 	prob = detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
@@ -1499,7 +1613,7 @@ func TestHTTPTimeout(t *testing.T) {
 	timeout := 250 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), pathWaitLong, ka(pathWaitLong))
+	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathWaitLong, ka(pathWaitLong))
 	if err == nil {
 		t.Fatalf("Connection should've timed out")
 	}
@@ -1515,7 +1629,7 @@ func TestHTTPTimeout(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	test.AssertEquals(t, prob.Detail, "127.0.0.1: Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect (your server may be slow or overloaded)")
+	test.AssertEquals(t, prob.Detail, "127.0.0.1: Fetching http://localhost.com/.well-known/acme-challenge/wait-long: Timeout after connect (your server may be slow or overloaded)")
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
@@ -1527,7 +1641,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, err)
 	}
-	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	redirectValid := `following redirect to "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 2)
@@ -1537,7 +1651,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, err)
 	}
-	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	redirectMoved := `following redirect to "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 3)
@@ -1547,14 +1661,14 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertError(t, err, "error for pathReLookupInvalid should not be nil")
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
 	prob := detailedError(err)
-	test.AssertDeepEquals(t, prob, probs.Connection(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid host in redirect target, must end in IANA registered TLD`))
+	test.AssertDeepEquals(t, prob, probs.Connection(`127.0.0.1: Fetching http://invalid.invalid/path: invalid host: must end in IANA registered TLD`))
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathReLookup, ka(pathReLookup))
 	if err != nil {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, err)
 	}
-	redirectPattern := `following redirect to host "" url "http://other.valid.com:\d+/path"`
+	redirectPattern := `following redirect to "http://other.valid.com:\d+/path"`
 	test.AssertEquals(t, len(log.GetAllMatching(redirectPattern)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid.com: \[127.0.0.1\]`)), 1)
@@ -1564,8 +1678,8 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertNotNil(t, err, "error for pathRedirectInvalidPort should not be nil")
 	prob = detailedError(err)
 	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		"127.0.0.1: Fetching http://other.valid.com:8080/path: Invalid port in redirect target. "+
-			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
+		"127.0.0.1: Fetching http://other.valid.com:8080/path: "+
+			"invalid port 8080: must be %d or %d", va.httpPort, va.httpsPort))
 
 	// This case will redirect from a valid host to a host that is throwing
 	// HTTP 500 errors. The test case is ensuring that the connection error
@@ -1585,7 +1699,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 	defer hs.Close()
 	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
-	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), "looper", ka("looper"))
+	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), "looper", ka("looper"))
 	if prob == nil {
 		t.Fatalf("Challenge should have failed for looper")
 	}
@@ -1597,12 +1711,12 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 	va.userAgent = rejectUserAgent
 
-	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), pathMoved, ka(pathMoved))
+	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathMoved, ka(pathMoved))
 	if prob == nil {
 		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathMoved)
 	}
 
-	_, prob = va.validateHTTP01(ctx, identifier.NewDNS("localhost"), pathFound, ka(pathFound))
+	_, prob = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathFound, ka(pathFound))
 	if prob == nil {
 		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathFound)
 	}
@@ -1632,7 +1746,7 @@ func TestValidateHTTP(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
-	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), token, ka(token))
+	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), token, ka(token))
 	test.Assert(t, prob == nil, "validation failed")
 }
 
@@ -1643,12 +1757,11 @@ func TestLimitedReader(t *testing.T) {
 	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 	defer hs.Close()
 
-	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), token, ka(token))
+	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), token, ka(token))
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.Assert(t, strings.HasPrefix(prob.Detail, "127.0.0.1: Invalid response from "),
-		"Expected failure due to truncation")
+	test.AssertContains(t, prob.Detail, "reader size limit exceeded")
 
 	if !utf8.ValidString(err.Error()) {
 		t.Errorf("Problem Detail contained an invalid UTF-8 string")
