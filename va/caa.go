@@ -493,7 +493,12 @@ func caaAccountURIMatches(caaParams []caaParameter, accountURIPrefixes []string,
 	var found bool
 	var accountURI string
 	for _, c := range caaParams {
-		if c.tag == "accounturi" {
+		// RFC 8659 Section 4.1 makes matching of Property Tags case insensitive but
+		// specifies no comparison rule for parameter tags. We lowercase the parameter
+		// tag as a safety choice: treating a differently-cased "accounturi" as an
+		// unrecognized parameter would drop the restriction the subscriber intended
+		// and make this Property match any account, a false-positive validation.
+		if strings.ToLower(c.tag) == "accounturi" {
 			if found {
 				// A Property with multiple "accounturi" parameters is
 				// unsatisfiable.
@@ -535,7 +540,8 @@ func caaValidationMethodMatches(caaParams []caaParameter, method core.AcmeChalle
 	var validationMethods string
 	var found bool
 	for _, param := range caaParams {
-		if param.tag == "validationmethods" {
+		// Match the parameter tag case insensitively, as in caaAccountURIMatches.
+		if strings.ToLower(param.tag) == "validationmethods" {
 			if found {
 				// RFC 8657 does not define what behavior to take when multiple
 				// "validationmethods" parameters exist, but we make the

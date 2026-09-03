@@ -1421,6 +1421,24 @@ func TestAccountURIMatches(t *testing.T) {
 			id:   654321,
 			want: false,
 		},
+		{
+			name:   "mixed-case tag matches the expected account",
+			params: []caaParameter{{tag: "AccountURI", val: "https://acme-v02.api.letsencrypt.org/acme/acct/123456"}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			name:   "mixed-case tag still restricts a non-matching account",
+			params: []caaParameter{{tag: "AccountURI", val: "https://acme-v02.api.letsencrypt.org/acme/acct/123456"}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/acct/",
+			},
+			id:   654321,
+			want: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -1534,6 +1552,18 @@ func TestValidationMethodMatches(t *testing.T) {
 			name:   "multiple choices, match none",
 			params: []caaParameter{{tag: "validationmethods", val: "http-01,dns-01"}},
 			method: core.ChallengeTypeTLSALPN01,
+			want:   false,
+		},
+		{
+			name:   "mixed-case tag matches the method in use",
+			params: []caaParameter{{tag: "ValidationMethods", val: "dns-01"}},
+			method: core.ChallengeTypeDNS01,
+			want:   true,
+		},
+		{
+			name:   "mixed-case tag still restricts a non-matching method",
+			params: []caaParameter{{tag: "ValidationMethods", val: "dns-01"}},
+			method: core.ChallengeTypeHTTP01,
 			want:   false,
 		},
 	}
