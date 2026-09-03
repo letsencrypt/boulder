@@ -1,0 +1,44 @@
+{
+	"mtcb": {
+		"tls": {
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/mtcb.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/mtcb.boulder/key.pem"
+		},
+		"grpcMTCB": {
+			"maxConnectionAge": "30s",
+			"services": {
+				"mtcb.MTCB": {
+					"clientNames": [
+						"wfe.boulder"
+					]
+				},
+				"grpc.health.v1.Health": {
+					"clientNames": [
+						"health-checker.boulder"
+					]
+				}
+			}
+		},
+		"db": {
+			"dbConnectFile": "test/secrets/mtcb_dburl"
+		},
+		"s3": {
+			"s3endpoint": "http://boulder-minio:9000",
+			"s3bucket": "boulder-mtc-tiles",
+			"awsConfigFile": "test/config-next/mtcb-s3-config.ini",
+			"awsCredsFile": "test/secrets/mtcb-s3-creds.ini"
+		},
+		"issuerCerts": [
+			"test/certs/mtpki/mtca1.cert.pem"
+		]
+	},
+	"syslog": {
+		"stdoutlevel": 6,
+		"sysloglevel": -1
+	},
+	"openTelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
+	}
+}
