@@ -11,10 +11,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/mtpublisher"
-	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
@@ -25,25 +26,42 @@ type Config struct {
 
 		DebugAddr string `validate:"omitempty,hostname_port"`
 
-		// PollInterval is how often the stub scans for checkpoints that still
-		// lack a mirror cosignature.
+		// PollInterval is how often the publisher scans for checkpoints that
+		// still lack a mirror cosignature.
 		PollInterval config.Duration `validate:"required"`
 
 		// LogID identifies the issuance log this publisher operates on. It must
 		// match the mtca's.
 		LogID issuancelog.ID `validate:"required"`
 
-		// MirrorID identifies the cosigner this publisher writes alongside each
-		// cosignature (e.g. "32473.9").
-		MirrorID string `validate:"required"`
+		// MTCACertFile holds the PEM-encoded certificate of the mtca, whose
+		// ML-DSA-44 public key is used to reconstruct each checkpoint's signed
+		// note from the database.
+		MTCACertFile string `validate:"required"`
 
-		// MirrorPublicKeyFile holds the PEM-encoded ML-DSA-44 public key used
-		// to verify cosignatures.
-		MirrorPublicKeyFile string `validate:"required"`
+		// Mirror identifies the mirror this publisher submits to. Note: this is
+		// temporary until we start loading support multiple mirrors sourced from
+		// https://www.gstatic.com/mtcs/cosigners/v1/cosigners.json (schema:
+		// https://www.gstatic.com/mtcs/cosigners/v1/cosigners_schema.json).
+		Mirror struct {
+			// ID is the mirror's ID (e.g. "32473.9").
+			ID string `validate:"required"`
 
-		// MirrorKeyFile holds the PEM-encoded ML-DSA-44 private key used to
-		// cosign checkpoints.
-		MirrorKeyFile string `validate:"required"`
+			// PublicKeyFile holds the mirror's PEM-encoded ML-DSA-44 public
+			// key.
+			PublicKeyFile string `validate:"required"`
+
+			// BaseURL is the base URL of the mirror's tlog-mirror submission
+			// endpoints (e.g. "http://localhost:4700").
+			BaseURL string `validate:"required,url"`
+
+			// Timeout bounds each request to the mirror.
+			Timeout config.Duration `validate:"required"`
+		}
+
+		// S3 locates the source log's tile storage, which the publisher reads
+		// entries and proof hashes from when submitting to the mirror.
+		S3 bs3.Config `validate:"required"`
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
@@ -94,13 +112,24 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(c.MTPublisher.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	signer, _, err := privatekey.Load(c.MTPublisher.MirrorKeyFile)
-	cmd.FailOnError(err, "Loading cosigner key")
-	pubKey, err := loadMLDSAPublicKey(c.MTPublisher.MirrorPublicKeyFile)
-	cmd.FailOnError(err, "Loading cosigner public key")
+	s3c, err := bs3.FromConfig(c.MTPublisher.S3, logger)
+	cmd.FailOnError(err, "Loading S3 config")
 
-	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, c.MTPublisher.MirrorID, signer, pubKey, logger)
-	cmd.FailOnError(err, "Failed to create MTPublisher stub")
+	caCert, err := issuance.LoadCertificate(c.MTPublisher.MTCACertFile)
+	cmd.FailOnError(err, "Loading MTCA certificate")
+	caPubKey, ok := caCert.PublicKey.(*mldsa.PublicKey)
+	if !ok {
+		cmd.Fail(fmt.Sprintf("MTCA certificate public key is %T, must be ML-DSA-44", caCert.PublicKey))
+	}
+
+	mirrorPubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
+	cmd.FailOnError(err, "Loading mirror public key")
+
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
+	cmd.FailOnError(err, "Creating mirror client")
+
+	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
+	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go cmd.CatchSignals(cancel)
