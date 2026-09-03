@@ -127,14 +127,10 @@ func (pc PAConfig) CheckIdentifiers() error {
 // what hostnames to issue for.
 type HostnamePolicyConfig struct {
 	HostnamePolicyFile string `validate:"required"`
-}
 
-// MirrorConfig identifies an MTC mirror cosigner.
-type MirrorConfig struct {
-	// ID is the mirror's ID (e.g. "32473.9").
-	ID string `validate:"required"`
-	// PublicKeyFile holds the mirror's PEM-encoded ML-DSA-44 public key.
-	PublicKeyFile string `validate:"required"`
+	// TODO(#8957): make this plural form "required" and remove the singular
+	// form above when no more components are configured with the singular form.
+	HostnamePolicyFiles map[string]string `validate:"omitempty"`
 }
 
 // TLSConfig represents certificates and a key for authenticated TLS.

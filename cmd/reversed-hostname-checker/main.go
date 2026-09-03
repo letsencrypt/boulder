@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/netip"
 	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/identifier"
@@ -59,7 +60,7 @@ func main() {
 		} else {
 			ident = identifier.NewDNS(n)
 		}
-		err = pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
+		err = pa.WillingToIssue(identifier.ACMEIdentifiers{ident}, time.Time{})
 		if err != nil {
 			errors = true
 			fmt.Printf("%s: %s\n", n, err)

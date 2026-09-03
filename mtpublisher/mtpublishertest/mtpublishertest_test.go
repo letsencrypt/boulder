@@ -55,7 +55,7 @@ func TestMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	line, err := cosignature.SignatureLine(verifier.Name(), verifier.KeyHash(), raw)
+	line, err := cosignature.SignatureLine(verifier.Name(), verifier.KeyHash(), 0, raw)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}

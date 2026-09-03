@@ -102,7 +102,7 @@ func (p *mtpublisher) Publish(ctx context.Context) error {
 	if len(latest.MTCASignature) == 0 {
 		return fmt.Errorf("checkpoint %d (%s size %d) has no MTCA signature", latest.ID, latest.MTCLogID, latest.TreeSize)
 	}
-	caCosignatureLine, err := cosignature.SignatureLine(p.caVerifier.Name(), p.caVerifier.KeyHash(), latest.MTCASignature)
+	caCosignatureLine, err := cosignature.SignatureLine(p.caVerifier.Name(), p.caVerifier.KeyHash(), 0, latest.MTCASignature)
 	if err != nil {
 		return fmt.Errorf("checkpoint %d MTCA signature: %w", latest.ID, err)
 	}
