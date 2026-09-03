@@ -23,6 +23,8 @@ type CheckpointModel struct {
 	MirrorSignature []byte  `db:"mirrorSignature"`
 	TreeSize        int64   `db:"treeSize"`
 	RootHash        []byte  `db:"rootHash"`
+	SubtreeID1      *int64  `db:"subtreeID1"`
+	SubtreeID2      *int64  `db:"subtreeID2"`
 }
 
 func (c *CheckpointModel) Valid() error {
@@ -54,7 +56,8 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 	latest := new(CheckpointModel)
 	err := i.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash
+		        mirrorSignature, treeSize, rootHash,
+		        subtreeID1, subtreeID2
 		 FROM latestCheckpoint JOIN checkpoints
 		 USING(id)
 		 WHERE latestCheckpoint.mtcLogID = ? AND

@@ -18,9 +18,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/borp"
 	"golang.org/x/mod/sumdb/tlog"
 
-	"github.com/letsencrypt/borp"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
