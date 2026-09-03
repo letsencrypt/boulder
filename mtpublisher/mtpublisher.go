@@ -79,6 +79,7 @@ type checkpointDB interface {
 func (p *mtpublisher) Publish(ctx context.Context) error {
 	latest, err := p.treedb.LatestCheckpoint(ctx, p.logID.String())
 	if errors.Is(err, treedb.ErrIssuanceLogNotInitialized) {
+		p.log.Infof("Issuance log %s has no checkpoint yet, waiting", p.logID)
 		return nil
 	}
 	if err != nil {
