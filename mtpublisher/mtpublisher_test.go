@@ -114,15 +114,15 @@ func caSignature(t *testing.T, treeSize int64) []byte {
 	return raw
 }
 
-// testCheckpoint returns a checkpoint of treeSize with a zero root hash, signed
-// by the MTCA and awaiting the mirror cosignature.
-func testCheckpoint(t *testing.T, treeSize int64) *treedb.CheckpointModel {
+// testCheckpoint returns a checkpoint of 512 entries with a zero root hash,
+// signed by the MTCA and awaiting the mirror cosignature.
+func testCheckpoint(t *testing.T) *treedb.CheckpointModel {
 	t.Helper()
 	return &treedb.CheckpointModel{
 		ID:            1,
 		MTCLogID:      mtcLogID,
-		MTCASignature: caSignature(t, treeSize),
-		TreeSize:      treeSize,
+		MTCASignature: caSignature(t, 512),
+		TreeSize:      512,
 		RootHash:      make([]byte, 32),
 	}
 }
@@ -164,7 +164,7 @@ func TestPublish(t *testing.T) {
 	}
 
 	// The latest checkpoint, which we expect to be cosigned by p.Publish().
-	latest := testCheckpoint(t, 512)
+	latest := testCheckpoint(t)
 	checkpoints.latest = latest
 
 	err = p.Publish(t.Context())
@@ -197,7 +197,7 @@ func TestPublish(t *testing.T) {
 // MTCA signature does not verify is neither submitted nor cosigned.
 func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	// A well-formed MTCA signature over the wrong tree size.
-	latest := testCheckpoint(t, 512)
+	latest := testCheckpoint(t)
 	latest.MTCASignature = caSignature(t, 999)
 	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest})
 
@@ -212,7 +212,7 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 
 // TestPublishMirrorError checks that a failed cosigning stores nothing.
 func TestPublishMirrorError(t *testing.T) {
-	latest := testCheckpoint(t, 512)
+	latest := testCheckpoint(t)
 	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest})
 	otherLogMirror, err := mtpublishertest.NewTestMirror(mirrorID, "oid/1.3.6.1.4.1.44947.4.2.0.99", privatekey.NewDeterministicSigner(testKey(t)))
 	if err != nil {
@@ -232,7 +232,7 @@ func TestPublishMirrorError(t *testing.T) {
 func TestPublishWhenLatestAlreadySigned(t *testing.T) {
 	// The latest checkpoint is already cosigned, which must be left untouched.
 	existingMirrorID := "existing.cosigner"
-	latest := testCheckpoint(t, 512)
+	latest := testCheckpoint(t)
 	latest.MirrorID = &existingMirrorID
 	latest.MirrorSignature = []byte("already-signed-bruh")
 	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest})
