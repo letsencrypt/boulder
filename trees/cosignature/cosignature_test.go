@@ -162,37 +162,29 @@ func TestVerifyRejectsOversizeTimestamp(t *testing.T) {
 	}
 }
 
-// TestVerifyCheckpointErrors checks that each VerifyCheckpoint failure names
-// the check that rejected it.
-func TestVerifyCheckpointErrors(t *testing.T) {
+// TestVerifyRejects checks that Verify rejects a malformed signature and a
+// malformed checkpoint.
+func TestVerifyRejects(t *testing.T) {
 	v := newVerifier(t)
-	parsed, err := checkpoint.Unmarshal([]byte(exampleCheckpoint))
-	if err != nil {
-		t.Fatalf("Unmarshal: %s", err)
-	}
 
 	oversize := make([]byte, timestampedSignatureSize)
 	binary.BigEndian.PutUint64(oversize[:8], 1<<63)
+	emptyTree := strings.Replace(exampleCheckpoint, "\n20852163\n", "\n0\n", 1)
 
 	cases := []struct {
-		name            string
-		tree            tlog.Tree
-		signature       []byte
-		expectSubstring string
+		name      string
+		noteText  string
+		signature []byte
 	}{
-		{"Short signature", parsed.Tree, make([]byte, 10), "10 bytes"},
-		{"Oversize timestamp", parsed.Tree, oversize, "2^63-1"},
-		{"Empty tree", tlog.Tree{N: 0, Hash: parsed.Tree.Hash}, make([]byte, timestampedSignatureSize), "non-positive end"},
-		{"Garbage signature", parsed.Tree, make([]byte, timestampedSignatureSize), "verifying cosignature"},
+		{"Short signature", exampleCheckpoint, make([]byte, 10)},
+		{"Oversize timestamp", exampleCheckpoint, oversize},
+		{"Empty tree", emptyTree, make([]byte, timestampedSignatureSize)},
+		{"Garbage signature", exampleCheckpoint, make([]byte, timestampedSignatureSize)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := v.VerifyCheckpoint(parsed.Origin, tc.tree, tc.signature)
-			if err == nil {
-				t.Fatal("VerifyCheckpoint = nil error, want error")
-			}
-			if !strings.Contains(err.Error(), tc.expectSubstring) {
-				t.Errorf("VerifyCheckpoint = %s, want substring %q", err, tc.expectSubstring)
+			if v.Verify([]byte(tc.noteText), tc.signature) {
+				t.Error("Verify = true, want false")
 			}
 		})
 	}
@@ -236,26 +228,19 @@ func TestCosignerRoundTrip(t *testing.T) {
 	if !v.Verify([]byte(text), signature) {
 		t.Error("Verify rejected an MTC checkpoint cosignature")
 	}
-	err = v.VerifyCheckpoint(ca.Origin(), parsed.Tree, signature)
-	if err != nil {
-		t.Errorf("VerifyCheckpoint rejected an MTC checkpoint cosignature: %s", err)
-	}
 
 	// The cosignature binds the origin and tree: a change to any of them must
 	// fail verification.
-	err = v.VerifyCheckpoint(ca.Origin(), tlog.Tree{N: parsed.Tree.N + 1, Hash: parsed.Tree.Hash}, signature)
-	if err == nil {
-		t.Error("VerifyCheckpoint accepted a cosignature over a different tree size")
+	if v.Verify([]byte(ca.origin+"\n20852164\n"+exampleHashB64+"\n"), signature) {
+		t.Error("Verify accepted a cosignature over a different tree size")
 	}
 	tamperedHash := parsed.Tree.Hash
 	tamperedHash[0] ^= 1
-	err = v.VerifyCheckpoint(ca.Origin(), tlog.Tree{N: parsed.Tree.N, Hash: tamperedHash}, signature)
-	if err == nil {
-		t.Error("VerifyCheckpoint accepted a cosignature over a different root hash")
+	if v.Verify([]byte(ca.origin+"\n20852163\n"+base64.StdEncoding.EncodeToString(tamperedHash[:])+"\n"), signature) {
+		t.Error("Verify accepted a cosignature over a different root hash")
 	}
-	err = v.VerifyCheckpoint("oid/1.3.6.1.4.1.32473.2.0.43", parsed.Tree, signature)
-	if err == nil {
-		t.Error("VerifyCheckpoint accepted a cosignature over a different origin")
+	if v.Verify([]byte("oid/1.3.6.1.4.1.32473.2.0.43\n20852163\n"+exampleHashB64+"\n"), signature) {
+		t.Error("Verify accepted a cosignature over a different origin")
 	}
 
 	line, err := SignatureLine(ca.name, ca.keyID, 0, signature[timestampSize:])

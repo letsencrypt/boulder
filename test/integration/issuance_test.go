@@ -6,11 +6,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -205,6 +210,79 @@ func TestIssuanceMTC(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "finalized order timeout") {
 		t.Fatalf("issuing certificate: expected 'finalized order timeout', got %q", err)
 	}
+
+	// The mtca serves each checkpoint as soon as it is sequenced, and the
+	// mtpublisher then submits it to the sunlight mirror, so the mirror's
+	// checkpoint must converge on the served tree head. Poll until they agree.
+	origin := "oid/1.3.6.1.4.1.44947.4.1.0.44"
+	originHash := sha256.Sum256([]byte(origin))
+	localURL := "http://boulder-minio:9000/boulder-mtc-tiles/44947.4.1/44/checkpoint"
+	mirrorURL := "http://boulder-minio:9000/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
+
+	deadline := time.Now().Add(5 * time.Second)
+	var localText string
+	var localSignatures string
+	var mirrorSignatures string
+	for {
+		var mirrorText string
+		localText, localSignatures = checkpointNote(t, localURL)
+		mirrorText, mirrorSignatures = checkpointNote(t, mirrorURL)
+		if localText != "" && localText == mirrorText {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("served checkpoint %q and mirror checkpoint %q have not converged", localText, mirrorText)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// The checkpoint names the issuance log and covers at least the genesis
+	// null entry and the entry issued above.
+	lines := strings.Split(localText, "\n")
+	if lines[0] != origin {
+		t.Errorf("checkpoint origin = %q, want %q", lines[0], origin)
+	}
+	size, err := strconv.Atoi(lines[1])
+	if err != nil || size < 2 {
+		t.Errorf("checkpoint tree size = %q, want at least 2", lines[1])
+	}
+
+	// The served checkpoint carries only the MTCA's signature. The mirror's
+	// checkpoint carries that same line.
+	caLine := "— oid/1.3.6.1.4.1.44947.4.1 "
+	if strings.Count(localSignatures, "\n") != 1 || !strings.HasPrefix(localSignatures, caLine) {
+		t.Errorf("served checkpoint signatures %q, want one line by the MTCA", localSignatures)
+	}
+	if !strings.Contains(mirrorSignatures, localSignatures) {
+		t.Errorf("mirror checkpoint signatures %q do not include the served MTCA line %q", mirrorSignatures, localSignatures)
+	}
+}
+
+// checkpointNote fetches a signed checkpoint note from url and returns its text
+// and its signature lines. It returns empty strings while the checkpoint does
+// not exist yet.
+func checkpointNote(t *testing.T, url string) (string, string) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("fetching %s: %s", url, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading %s: %s", url, err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return "", ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fetching %s: status %d", url, resp.StatusCode)
+	}
+	text, signatureLines, ok := strings.Cut(string(body), "\n\n")
+	if !ok {
+		t.Fatalf("checkpoint at %s has no signature lines: %q", url, body)
+	}
+	return text, signatureLines
 }
 
 // TestIPShortLived verifies that we will allow IP address identifiers only in

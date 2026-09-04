@@ -202,42 +202,30 @@ func (v *Verifier) KeyHash() uint32 {
 	return v.keyID
 }
 
-// VerifyCheckpoint returns nil if timestampedSignature is a valid cosignature
-// by this cosigner over the checkpoint described by origin and tree, and an
-// error naming the failure otherwise. For a checkpoint note text, use Verify.
+// Verify reports whether timestampedSignature is a valid cosignature by this
+// cosigner over the checkpoint in noteText. The signed message covers the
+// origin, tree size, and root hash from noteText, so extension lines do not
+// affect the result. Verify satisfies note.Verifier.
 //
 //   - https://c2sp.org/tlog-cosignature
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
-func (v *Verifier) VerifyCheckpoint(origin string, tree tlog.Tree, timestampedSignature []byte) error {
-	if len(timestampedSignature) != timestampedSignatureSize {
-		return fmt.Errorf("timestamped signature is %d bytes, want %d", len(timestampedSignature), timestampedSignatureSize)
-	}
-	timestamp := binary.BigEndian.Uint64(timestampedSignature[:timestampSize])
-	if timestamp > math.MaxInt64 {
-		return fmt.Errorf("timestamp %d exceeds 2^63-1", timestamp)
-	}
-	cosignedMessage, err := marshalCheckpointMessage(v.keyName, timestamp, origin, tree.N, tree.Hash)
-	if err != nil {
-		return err
-	}
-	err = mldsa.Verify(v.publicKey, cosignedMessage, timestampedSignature[timestampSize:], nil)
-	if err != nil {
-		return fmt.Errorf("verifying cosignature: %s", err)
-	}
-	return nil
-}
-
-// Verify reports whether signature is a valid cosignature by this cosigner over
-// the checkpoint in noteText. The signed message covers the origin, tree size,
-// and root hash from noteText, so extension lines do not affect the result.
-// Verify is the note.Verifier entry point. For an already parsed checkpoint,
-// use VerifyCheckpoint.
 func (v *Verifier) Verify(noteText, timestampedSignature []byte) bool {
 	parsed, err := checkpoint.Unmarshal(noteText)
 	if err != nil {
 		return false
 	}
-	return v.VerifyCheckpoint(parsed.Origin, parsed.Tree, timestampedSignature) == nil
+	if len(timestampedSignature) != timestampedSignatureSize {
+		return false
+	}
+	timestamp := binary.BigEndian.Uint64(timestampedSignature[:timestampSize])
+	if timestamp > math.MaxInt64 {
+		return false
+	}
+	cosignedMessage, err := marshalCheckpointMessage(v.keyName, timestamp, parsed.Origin, parsed.Tree.N, parsed.Tree.Hash)
+	if err != nil {
+		return false
+	}
+	return mldsa.Verify(v.publicKey, cosignedMessage, timestampedSignature[timestampSize:], nil) == nil
 }
 
 // FilterByVerify returns the timestamped_signature by this verifier's cosigner
