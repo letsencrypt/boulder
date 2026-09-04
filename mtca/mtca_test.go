@@ -271,18 +271,19 @@ func issueMany(t *testing.T, m *mtca, n int) <-chan issueResult {
 	return ch
 }
 
-// TestWriteCheckpoint checks that writeCheckpoint replaces only the checkpoint
-// whose ETag is prevETag, reads the current ETag when given none, and returns
-// ErrCheckpointChanged instead of replacing a checkpoint with any other ETag.
+// TestWriteCheckpoint checks that writeCheckpoint creates the checkpoint only
+// when given no ETag, replaces only the checkpoint whose ETag is prevETag, and
+// otherwise returns ErrCheckpointChanged without writing.
 func TestWriteCheckpoint(t *testing.T) {
 	m, fs3, cleanup, err := setup()
 	if err != nil {
 		t.Fatalf("setup: %s", err)
 	}
 	defer cleanup()
-	key := m.logID.TilePrefix() + "/checkpoint"
+	key := m.checkpointKey
+	delete(fs3.Objects, key)
 
-	first, err := m.writeCheckpoint(t.Context(), []byte("first note\n"), nil)
+	first, err := m.writeCheckpoint(t.Context(), []byte("first note\n"), "")
 	if err != nil {
 		t.Fatalf("writing the first checkpoint: %s", err)
 	}
@@ -298,19 +299,20 @@ func TestWriteCheckpoint(t *testing.T) {
 		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "second note\n")
 	}
 
-	third, err := m.writeCheckpoint(t.Context(), []byte("third note\n"), nil)
-	if err != nil {
-		t.Fatalf("replacing the checkpoint with an unknown ETag: %s", err)
-	}
-	if string(fs3.Objects[key].Data) != "third note\n" {
-		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "third note\n")
-	}
-	if *third == *second {
+	if second == first {
 		t.Error("ETag did not change with the checkpoint's contents")
 	}
 
+	_, err = m.writeCheckpoint(t.Context(), []byte("third note\n"), "")
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("writeCheckpoint creating over an existing checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+	if string(fs3.Objects[key].Data) != "second note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "second note\n")
+	}
+
 	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
-	_, err = m.writeCheckpoint(t.Context(), []byte("fourth note\n"), third)
+	_, err = m.writeCheckpoint(t.Context(), []byte("fourth note\n"), second)
 	if !errors.Is(err, ErrCheckpointChanged) {
 		t.Errorf("writeCheckpoint over another writer's checkpoint = %s, want ErrCheckpointChanged", err)
 	}
@@ -329,8 +331,8 @@ func TestPreflightServesCheckpoint(t *testing.T) {
 	}
 	defer cleanup()
 
-	delete(fs3.Objects, m.logID.TilePrefix()+"/checkpoint")
-	m.servedCheckpointETag = nil
+	delete(fs3.Objects, m.checkpointKey)
+	m.servedCheckpointETag = "\"stale\""
 	err = m.Preflight(t.Context())
 	if err != nil {
 		t.Fatalf("Preflight: %s", err)
@@ -349,13 +351,9 @@ func TestServeCheckpointRecovers(t *testing.T) {
 	defer cleanup()
 	latest := verifyStores(t, m, fs3)
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
+	key := m.checkpointKey
+	signedNote := fs3.Objects[key].Data
 
-	signedNote, err := m.checkpointNote(tree, latest.MTCASignature)
-	if err != nil {
-		t.Fatalf("checkpointNote: %s", err)
-	}
-
-	key := m.logID.TilePrefix() + "/checkpoint"
 	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
 	err = m.serveCheckpoint(t.Context(), tree, signedNote)
 	if !errors.Is(err, ErrCheckpointChanged) {
