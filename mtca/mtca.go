@@ -174,6 +174,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 	rootHash := candidate.RootHash()
 
 	var caSig []byte
+	var signedNote []byte
 	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		var numLatestCheckpoints int64
 		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
@@ -204,7 +205,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 			RootHash: rootHash[:],
 		}
 
-		caSig, err = m.signCheckpoint(firstCheckpoint)
+		caSig, signedNote, err = m.signCheckpoint(firstCheckpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -248,7 +249,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		return fmt.Errorf("fetching first checkpoint: %s", err)
 	}
 
-	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: rootHash}, caSig)
+	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: rootHash}, signedNote)
 }
 
 // Preflight gets the latest checkpoint from the database, reads the
@@ -274,7 +275,12 @@ func (m *mtca) Preflight(ctx context.Context) error {
 	}
 
 	m.frontier = frontier
-	return m.serveCheckpoint(ctx, tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}, latest.MTCASignature)
+	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
+	signedNote, err := m.checkpointNote(tree, latest.MTCASignature)
+	if err != nil {
+		return err
+	}
+	return m.serveCheckpoint(ctx, tree, signedNote)
 }
 
 type pool struct {
@@ -531,6 +537,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	}
 
 	var caSig []byte
+	var signedNote []byte
 	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
 		var latestID int64
 		// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
@@ -549,7 +556,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 		// Note that we're doing HSM work while holding a database lock. That's intentional; the database lock
 		// is to prevent the possibility of a concurrent signer on the same tree.
-		caSig, err = m.signCheckpoint(newCheckpoint)
+		caSig, signedNote, err = m.signCheckpoint(newCheckpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -605,57 +612,66 @@ func (m *mtca) sequence(ctx context.Context) error {
 	entries = nil
 
 	// Serve the new checkpoint.
-	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: newRootHash}, caSig)
+	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: newRootHash}, signedNote)
 }
 
-func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, error) {
+// signCheckpoint signs c and returns the raw MTCA signature to store and the
+// verified checkpoint carrying it.
+func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error) {
 	err := c.Valid()
 	if err != nil {
-		return nil, fmt.Errorf("validating checkpoint: %s", err)
+		return nil, nil, fmt.Errorf("validating checkpoint: %s", err)
 	}
 
 	if len(c.MTCASignature) > 0 {
-		return nil, errors.New("already MTCA-signed")
+		return nil, nil, errors.New("already MTCA-signed")
 	}
 	if len(c.MirrorSignature) > 0 {
-		return nil, errors.New("already mirror-signed")
+		return nil, nil, errors.New("already mirror-signed")
 	}
 
 	tree := tlog.Tree{N: c.TreeSize, Hash: tlog.Hash(c.RootHash)}
 	timestampedCosignature, err := m.cosigner.CosignCheckpoint(tree)
 	if err != nil {
-		return nil, fmt.Errorf("signing checkpoint: %s", err)
+		return nil, nil, fmt.Errorf("signing checkpoint: %s", err)
 	}
-	err = m.verifier.VerifyCheckpoint(m.cosigner.Origin(), tree, timestampedCosignature)
+	mtcaSignature, err := cosignature.RawSignature(timestampedCosignature)
 	if err != nil {
-		return nil, fmt.Errorf("verifying checkpoint signature: %s", err)
+		return nil, nil, err
 	}
-	return cosignature.RawSignature(timestampedCosignature)
+	signedNote, err := m.checkpointNote(tree, mtcaSignature)
+	if err != nil {
+		return nil, nil, err
+	}
+	return mtcaSignature, signedNote, nil
 }
 
-// serveCheckpoint assembles the signed note for the checkpoint of tree, carrying
-// the MTCA cosignature line, verifies it, and writes it to the checkpoint path
-// in tile storage. It must be called only after the tiles the tree covers are
-// published.
-func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, mtcaSignature []byte) error {
+// checkpointNote assembles the checkpoint of tree from its note text and the
+// MTCA's cosignature line carrying mtcaSignature, and verifies it.
+func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, error) {
 	caCosignatureLine, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), 0, mtcaSignature)
 	if err != nil {
-		return fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
-	}
-	// Produce a signed note containing the MTCA's cosignature line.
-	cp := checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}
-	signedNote, err := cp.SignedNote(caCosignatureLine)
-	if err != nil {
-		return err
+		return nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
 	}
 
-	// Verify the signed note before writing it to storage.
+	// Assemble the signed checkpoint note.
+	signedNote, err := (&checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}).SignedNote(caCosignatureLine)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify the checkpoint note.
 	_, _, err = checkpoint.Open(signedNote, m.verifier)
 	if err != nil {
-		return fmt.Errorf("verifying signed checkpoint note of tree size %d: %s", tree.N, err)
+		return nil, fmt.Errorf("verifying checkpoint of tree size %d: %s", tree.N, err)
 	}
+	return signedNote, nil
+}
 
-	// Finally, write the signed note to the checkpoint path in tile storage.
+// serveCheckpoint writes signedNote, the verified checkpoint of tree, to tile
+// storage. It must be called only after the tiles the tree covers are
+// published.
+func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
 	etag, err := m.writeCheckpoint(ctx, signedNote, m.servedCheckpointETag)
 	if err != nil {
 		// Reset the ETag so the next write reads the current one.

@@ -350,13 +350,18 @@ func TestServeCheckpointRecovers(t *testing.T) {
 	latest := verifyStores(t, m, fs3)
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
 
+	signedNote, err := m.checkpointNote(tree, latest.MTCASignature)
+	if err != nil {
+		t.Fatalf("checkpointNote: %s", err)
+	}
+
 	key := m.logID.TilePrefix() + "/checkpoint"
 	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
-	err = m.serveCheckpoint(t.Context(), tree, latest.MTCASignature)
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
 	if !errors.Is(err, ErrCheckpointChanged) {
 		t.Errorf("serving over a replaced checkpoint = %s, want ErrCheckpointChanged", err)
 	}
-	err = m.serveCheckpoint(t.Context(), tree, latest.MTCASignature)
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
 	if err != nil {
 		t.Fatalf("serving after the checkpoint was replaced: %s", err)
 	}
