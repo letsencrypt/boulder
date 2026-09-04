@@ -612,6 +612,8 @@ func (m *mtca) sequence(ctx context.Context) error {
 	//
 	// TODO(#8902): This should include indefinite retries on error. We've committed to the
 	// tree hash by signing it, so nothing can make progress until we've published the tiles.
+	// The same applies to serving the checkpoint below, which otherwise stays stale until
+	// the next sequencing pass serves a newer one.
 	err = m.frontier.Publish(ctx, m.s3c, m.logID.TilePrefix())
 	if err != nil {
 		return fmt.Errorf("publishing tiles: %s", err)
