@@ -13,7 +13,8 @@
 		"mirror": {
 			"id": "32473.9",
 			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem",
-			"baseURL": "http://bsunlight:4700"
+			"baseURL": "http://bsunlight:4700",
+			"timeout": "15s"
 		},
 		"s3": {
 			"s3endpoint": "http://boulder-minio:9000",

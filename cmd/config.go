@@ -127,6 +127,10 @@ func (pc PAConfig) CheckIdentifiers() error {
 // what hostnames to issue for.
 type HostnamePolicyConfig struct {
 	HostnamePolicyFile string `validate:"required"`
+
+	// TODO(#8957): make this plural form "required" and remove the singular
+	// form above when no more components are configured with the singular form.
+	HostnamePolicyFiles map[string]string `validate:"omitempty"`
 }
 
 // TLSConfig represents certificates and a key for authenticated TLS.

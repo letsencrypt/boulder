@@ -29,8 +29,6 @@ type Mirror interface {
 	// Cosign submits the log's signed note for cp and returns the mirror's raw
 	// cosignature, verified against the mirror's key.
 	Cosign(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error)
-	// LastSigned returns when Cosign last succeeded, zero before it has.
-	LastSigned() time.Time
 }
 
 // mtpublisher obtains and stores its mirror's cosignature over the issuance
@@ -81,6 +79,7 @@ type checkpointDB interface {
 func (p *mtpublisher) Publish(ctx context.Context) error {
 	latest, err := p.treedb.LatestCheckpoint(ctx, p.logID.String())
 	if errors.Is(err, treedb.ErrIssuanceLogNotInitialized) {
+		p.log.Infof("Issuance log %s has no checkpoint yet, waiting", p.logID)
 		return nil
 	}
 	if err != nil {
@@ -102,7 +101,7 @@ func (p *mtpublisher) Publish(ctx context.Context) error {
 	if len(latest.MTCASignature) == 0 {
 		return fmt.Errorf("checkpoint %d (%s size %d) has no MTCA signature", latest.ID, latest.MTCLogID, latest.TreeSize)
 	}
-	caCosignatureLine, err := cosignature.SignatureLine(p.caVerifier.Name(), p.caVerifier.KeyHash(), latest.MTCASignature)
+	caCosignatureLine, err := cosignature.SignatureLine(p.caVerifier.Name(), p.caVerifier.KeyHash(), 0, latest.MTCASignature)
 	if err != nil {
 		return fmt.Errorf("checkpoint %d MTCA signature: %w", latest.ID, err)
 	}

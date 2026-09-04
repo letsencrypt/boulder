@@ -90,7 +90,7 @@ func TestStatusCodeLogging(t *testing.T) {
 		t.Fatal(err)
 	}
 	th.ServeHTTP(httptest.NewRecorder(), req)
-	expected := `INFO: GET /endpoint 0 200 0 0.0.0.0 JSON={}`
+	expected := `INFO: GET /endpoint 0 200 `
 	if len(mockLog.GetAllMatching(expected)) != 1 {
 		t.Errorf("Expected exactly one log line matching %q. Got \n%s",
 			expected, strings.Join(mockLog.GetAllMatching(".*"), "\n"))

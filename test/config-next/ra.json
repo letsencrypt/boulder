@@ -27,6 +27,10 @@
 		},
 		"maxContactsPerRegistration": 3,
 		"hostnamePolicyFile": "test/ident-policy.yaml",
+		"hostnamePolicyFiles": {
+			"reasonNameOne": "test/reasonName-ident-policy.yaml",
+			"reasonNameTwo": "test/reasonName-ident-policy.yaml"
+		},
 		"goodkey": {},
 		"finalizeTimeout": "30s",
 		"issuerCerts": [

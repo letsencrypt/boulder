@@ -638,7 +638,7 @@ func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, error) {
 // in tile storage. It must be called only after the tiles the tree covers are
 // published.
 func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, mtcaSignature []byte) error {
-	caCosignatureLine, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), mtcaSignature)
+	caCosignatureLine, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), 0, mtcaSignature)
 	if err != nil {
 		return fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
 	}

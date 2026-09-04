@@ -150,6 +150,11 @@ func main() {
 	err = pa.LoadIdentPolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load identifier policy file")
 
+	for policyReason, policyFile := range c.CA.HostnamePolicyFiles {
+		err = pa.LoadIdentPolicyFile(policyFile)
+		cmd.FailOnError(err, fmt.Sprintf("Could not load identifier policy file: %q, at path: %q", policyReason, policyFile))
+	}
+
 	// Do this before creating the issuers to ensure the log list is loaded before
 	// the linters are initialized.
 	if c.CA.CTLogListFile != "" {
