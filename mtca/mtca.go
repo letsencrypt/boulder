@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"sync"
@@ -40,7 +41,7 @@ import (
 
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
 var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
-var ErrCheckpointChanged = errors.New("checkpoint in tile storage changed since it was last written")
+var ErrCheckpointChanged = errors.New("served checkpoint is not the one this MTCA last wrote")
 
 var _ mtcapb.MTCAServer = &mtca{}
 
@@ -116,8 +117,8 @@ type mtca struct {
 	// servedCheckpointETag guards writes of the checkpoint served from tile
 	// storage. It holds the ETag from the last read or write. It is used to
 	// ensure that writeCheckpoint replaces only the checkpoint this MTCA last
-	// saw. It is empty when no checkpoint is served yet. InitLog sets it when
-	// initializing the log, and Preflight sets it at every startup.
+	// saw. It is empty until the first serve, which adopts the ETag of an
+	// earlier checkpoint of ours if one is served.
 	servedCheckpointETag string
 
 	pool *pool
@@ -255,11 +256,12 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		return fmt.Errorf("fetching first checkpoint: %s", err)
 	}
 
-	m.servedCheckpointETag, err = m.readCheckpointETag(ctx)
-	if err != nil {
-		return err
+	err = m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: rootHash}, signedNote)
+	if errors.Is(err, ErrCheckpointChanged) {
+		return fmt.Errorf("initializing issuance log for %s: a checkpoint is already served at s3://%s/%s, refusing to replace it: %w",
+			m.logID.String(), m.s3c.Bucket(), m.checkpointKey, err)
 	}
-	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: rootHash}, signedNote)
+	return err
 }
 
 // Preflight gets the latest checkpoint from the database, reads the
@@ -288,10 +290,6 @@ func (m *mtca) Preflight(ctx context.Context) error {
 
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
 	signedNote, err := m.checkpointNote(tree, latest.MTCASignature)
-	if err != nil {
-		return err
-	}
-	m.servedCheckpointETag, err = m.readCheckpointETag(ctx)
 	if err != nil {
 		return err
 	}
@@ -688,25 +686,32 @@ func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, err
 // published.
 func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
 	etag, err := m.writeCheckpoint(ctx, signedNote, m.servedCheckpointETag)
-	if err != nil {
-		if errors.Is(err, ErrCheckpointChanged) {
-			// The checkpoint was replaced. Record the replacement's ETag so the
-			// next serve replaces it.
-			current, readErr := m.readCheckpointETag(ctx)
-			if readErr != nil {
-				return fmt.Errorf("serving checkpoint of tree size %d: %w, and %s", tree.N, err, readErr)
-			}
-			m.servedCheckpointETag = current
+	if errors.Is(err, ErrCheckpointChanged) {
+		// The served checkpoint may be an earlier one of ours, from before a
+		// restart or from a failed pass whose write succeeded but never
+		// responded.
+		served, servedETag, readErr := m.readCheckpoint(ctx)
+		if readErr != nil {
+			return fmt.Errorf("serving checkpoint of tree size %d: %w", tree.N, readErr)
 		}
+		cp, _, openErr := checkpoint.Open(served, m.verifier)
+		if openErr != nil || cp.Tree.N > tree.N {
+			// It is not, so another process is writing checkpoints for this
+			// log, or the checkpoint was deleted.
+			return fmt.Errorf("serving checkpoint of tree size %d: %w", tree.N, err)
+		}
+		etag, err = m.writeCheckpoint(ctx, signedNote, servedETag)
+	}
+	if err != nil {
 		return fmt.Errorf("serving checkpoint of tree size %d: %w", tree.N, err)
 	}
 	m.servedCheckpointETag = etag
 	return nil
 }
 
-// readCheckpointETag returns the ETag of the served checkpoint, or an empty
-// string when none is served yet.
-func (m *mtca) readCheckpointETag(ctx context.Context) (string, error) {
+// readCheckpoint returns the served checkpoint and its ETag, or nil and an
+// empty string when none is served yet.
+func (m *mtca) readCheckpoint(ctx context.Context) ([]byte, string, error) {
 	bucket := m.s3c.Bucket()
 	out, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &m.checkpointKey})
 	if err != nil {
@@ -714,24 +719,29 @@ func (m *mtca) readCheckpointETag(ctx context.Context) (string, error) {
 		if ok && respErr.HTTPStatusCode() == http.StatusNotFound {
 			// Nothing is served yet. A new log has no checkpoint until InitLog
 			// writes one.
-			return "", nil
+			return nil, "", nil
 		}
-		return "", fmt.Errorf("reading s3://%s/%s: %w", bucket, m.checkpointKey, err)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, m.checkpointKey, err)
 	}
+	defer out.Body.Close()
 
-	out.Body.Close()
+	served, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, m.checkpointKey, err)
+	}
 	if out.ETag == nil {
 		// This should never happen. Every read returns the ETag.
-		return "", fmt.Errorf("reading s3://%s/%s: no ETag", bucket, m.checkpointKey)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: no ETag", bucket, m.checkpointKey)
 	}
-	return *out.ETag, nil
+	return served, *out.ETag, nil
 }
 
 // writeCheckpoint stores signedNote as the served checkpoint and returns its
 // new ETag. When prevETag is empty it creates the checkpoint, otherwise it
 // replaces the checkpoint whose ETag is prevETag. It returns
 // ErrCheckpointChanged when a checkpoint is already served but prevETag is
-// empty, or when the served checkpoint's ETag is not prevETag.
+// empty, or when the served checkpoint's ETag is not prevETag, including when
+// none is served.
 func (m *mtca) writeCheckpoint(ctx context.Context, signedNote []byte, prevETag string) (string, error) {
 	bucket := m.s3c.Bucket()
 	contentType := "text/plain; charset=utf-8"
@@ -753,8 +763,9 @@ func (m *mtca) writeCheckpoint(ctx context.Context, signedNote []byte, prevETag 
 	out, err := m.s3c.PutObject(ctx, input)
 	if err != nil {
 		respErr, ok := errors.AsType[*awshttp.ResponseError](err)
-		if ok && respErr.HTTPStatusCode() == http.StatusPreconditionFailed {
-			// The served checkpoint is not the one prevETag describes.
+		if ok && (respErr.HTTPStatusCode() == http.StatusPreconditionFailed || respErr.HTTPStatusCode() == http.StatusNotFound) {
+			// The served checkpoint is not the one prevETag describes, or none
+			// is served.
 			return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, m.checkpointKey, ErrCheckpointChanged)
 		}
 		return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, m.checkpointKey, err)

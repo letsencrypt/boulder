@@ -40,6 +40,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
+	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
@@ -319,6 +320,45 @@ func TestWriteCheckpoint(t *testing.T) {
 	if string(fs3.Objects[key].Data) != "foreign note\n" {
 		t.Errorf("stored checkpoint = %q, want the other writer's %q", fs3.Objects[key].Data, "foreign note\n")
 	}
+
+	delete(fs3.Objects, key)
+	_, err = m.writeCheckpoint(t.Context(), []byte("fifth note\n"), second)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("writeCheckpoint replacing a deleted checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+}
+
+// TestInitLogRefusesServedCheckpoint checks that InitLog fails when a
+// checkpoint is already served, leaving it in place.
+func TestInitLogRefusesServedCheckpoint(t *testing.T) {
+	m, _, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+
+	db, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
+	if err != nil {
+		t.Fatalf("opening db: %s", err)
+	}
+	defer db.Close()
+	err = truncateTables(db)
+	if err != nil {
+		t.Fatalf("truncating tables: %s", err)
+	}
+	fs3 := bs3test.New()
+	m.s3c = fs3
+	m.servedCheckpointETag = ""
+	key := m.checkpointKey
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+
+	err = m.InitLog(t.Context())
+	if !errors.Is(err, ErrCheckpointChanged) || !strings.Contains(err.Error(), "already served") {
+		t.Errorf("InitLog with a checkpoint already served = %s, want ErrCheckpointChanged naming it", err)
+	}
+	if string(fs3.Objects[key].Data) != "foreign note\n" {
+		t.Errorf("stored checkpoint = %q, want the existing %q", fs3.Objects[key].Data, "foreign note\n")
+	}
 }
 
 // TestPreflightServesCheckpoint checks that Preflight serves the latest
@@ -331,19 +371,27 @@ func TestPreflightServesCheckpoint(t *testing.T) {
 	}
 	defer cleanup()
 
-	delete(fs3.Objects, m.checkpointKey)
-	m.servedCheckpointETag = "\"stale\""
+	m.servedCheckpointETag = ""
 	err = m.Preflight(t.Context())
 	if err != nil {
-		t.Fatalf("Preflight: %s", err)
+		t.Fatalf("Preflight over our served checkpoint: %s", err)
+	}
+	verifyStores(t, m, fs3)
+
+	delete(fs3.Objects, m.checkpointKey)
+	m.servedCheckpointETag = ""
+	err = m.Preflight(t.Context())
+	if err != nil {
+		t.Fatalf("Preflight with nothing served: %s", err)
 	}
 	verifyStores(t, m, fs3)
 }
 
-// TestServeCheckpointRecovers checks that when the served checkpoint is
-// replaced in storage, the next serve fails with ErrCheckpointChanged and the
-// one after it reads the current ETag and succeeds.
-func TestServeCheckpointRecovers(t *testing.T) {
+// TestServeCheckpointMismatch checks that a serve over an earlier checkpoint
+// of ours adopts its ETag and succeeds, and that a serve over nothing, another
+// writer's checkpoint, or a larger one of ours fails with ErrCheckpointChanged
+// and keeps failing.
+func TestServeCheckpointMismatch(t *testing.T) {
 	m, fs3, cleanup, err := setup()
 	if err != nil {
 		t.Fatalf("setup: %s", err)
@@ -354,16 +402,53 @@ func TestServeCheckpointRecovers(t *testing.T) {
 	key := m.checkpointKey
 	signedNote := fs3.Objects[key].Data
 
-	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
-	err = m.serveCheckpoint(t.Context(), tree, signedNote)
-	if !errors.Is(err, ErrCheckpointChanged) {
-		t.Errorf("serving over a replaced checkpoint = %s, want ErrCheckpointChanged", err)
-	}
+	fs3.Objects[key] = bs3test.StoredObject{Data: signedNote, ETag: "\"lost response\""}
 	err = m.serveCheckpoint(t.Context(), tree, signedNote)
 	if err != nil {
-		t.Fatalf("serving after the checkpoint was replaced: %s", err)
+		t.Fatalf("serving over our own checkpoint under an unknown ETag: %s", err)
 	}
-	verifyStores(t, m, fs3)
+	if m.servedCheckpointETag == "\"lost response\"" {
+		t.Error("servedCheckpointETag still holds the ETag of the replaced checkpoint")
+	}
+
+	delete(fs3.Objects, key)
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("serving after the checkpoint was deleted = %s, want ErrCheckpointChanged", err)
+	}
+	fs3.Objects[key] = bs3test.StoredObject{Data: signedNote}
+	m.servedCheckpointETag = ""
+
+	larger := tlog.Tree{N: latest.TreeSize + 1, Hash: tlog.Hash(latest.RootHash)}
+	largerSignature, err := m.cosigner.CosignCheckpoint(larger)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	largerRaw, err := cosignature.RawSignature(largerSignature)
+	if err != nil {
+		t.Fatalf("RawSignature: %s", err)
+	}
+	largerNote, err := m.checkpointNote(larger, largerRaw)
+	if err != nil {
+		t.Fatalf("checkpointNote: %s", err)
+	}
+	fs3.Objects[key] = bs3test.StoredObject{Data: largerNote, ETag: "\"larger\""}
+	m.servedCheckpointETag = ""
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("serving over a larger checkpoint of ours = %s, want ErrCheckpointChanged", err)
+	}
+
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+	for range 2 {
+		err = m.serveCheckpoint(t.Context(), tree, signedNote)
+		if !errors.Is(err, ErrCheckpointChanged) {
+			t.Errorf("serving over another writer's checkpoint = %s, want ErrCheckpointChanged", err)
+		}
+	}
+	if string(fs3.Objects[key].Data) != "foreign note\n" {
+		t.Errorf("stored checkpoint = %q, want the other writer's %q", fs3.Objects[key].Data, "foreign note\n")
+	}
 }
 
 // errorS3 wraps a bs3test.FakeS3, failing every PutObject with `err` while
