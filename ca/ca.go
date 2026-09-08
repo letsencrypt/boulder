@@ -55,6 +55,7 @@ type issuanceEvent struct {
 	OrderID         int64
 	Profile         string
 	Issuer          string
+	SPKIHash        string
 	IssuanceRequest *issuance.IssuanceRequest
 	CSR             string `json:",omitempty"`
 	Result          issuanceEventResult
@@ -252,6 +253,11 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, fmt.Errorf("computing subject key ID: %w", err)
 	}
 
+	subjectKeyDigest, err := core.KeyDigest(csr.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("computing subject key info hash: %w", err)
+	}
+
 	dnsNames, ipAddresses, err := identifier.FromCSR(csr).ToValues()
 	if err != nil {
 		return nil, err
@@ -329,6 +335,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
 		Issuer:          issuer.Name(),
+		SPKIHash:        fmt.Sprintf("%x", subjectKeyDigest[:]),
 		IssuanceRequest: precertReq,
 		CSR:             hex.EncodeToString(csr.Raw),
 	})
@@ -346,6 +353,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
 		Issuer:          issuer.Name(),
+		SPKIHash:        fmt.Sprintf("%x", subjectKeyDigest[:]),
 		IssuanceRequest: precertReq,
 		Result:          issuanceEventResult{Precertificate: hex.EncodeToString(precertDER)},
 	})
@@ -407,6 +415,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
 		Issuer:          issuer.Name(),
+		SPKIHash:        fmt.Sprintf("%x", subjectKeyDigest[:]),
 		IssuanceRequest: certReq,
 	})
 
@@ -424,6 +433,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
 		Issuer:          issuer.Name(),
+		SPKIHash:        fmt.Sprintf("%x", subjectKeyDigest[:]),
 		IssuanceRequest: certReq,
 		Result:          issuanceEventResult{Certificate: hex.EncodeToString(certDER)},
 	})
