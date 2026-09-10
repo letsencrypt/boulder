@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package mtcb;
+option go_package = "github.com/letsencrypt/boulder/mtcb/proto";
+
+// MTCB constructs already-issued MTCs from database and log data.
+service MTCB {
+  // GetStandalone requests that the MTCB return the standalone version of the
+  // certificate with the given serial number issued by the given MTCA.
+  rpc GetStandalone(StandaloneRequest) returns (StandaloneResponse) {}
+  // GetLandmarkRelative requests that the MTCB return the landmark-relative
+  // version of the certificate with the given serial number issued by the given
+  // MTCA.
+  rpc GetLandmarkRelative(LandmarkRelativeRequest) returns (LandmarkRelativeResponse) {}
+}
+
+message StandaloneRequest {
+  // Next unused field number: 3
+  string mtcaID = 1;
+  string serial = 2;
+}
+
+message StandaloneResponse {
+  // Next unused field number: 2
+  bytes certDER = 1;
+}
+
+message LandmarkRelativeRequest {
+  // Next unused field number: 3
+  string mtcaID = 1;
+  string serial = 2;
+}
+
+message LandmarkRelativeResponse {
+  // Next unused field number: 3
+  bytes certDER = 1;
+  bytes certPropList = 2;
+}

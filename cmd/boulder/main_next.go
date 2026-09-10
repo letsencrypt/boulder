@@ -4,5 +4,6 @@ package main
 
 import (
 	_ "github.com/letsencrypt/boulder/cmd/boulder-mtca"
+	_ "github.com/letsencrypt/boulder/cmd/boulder-mtcb"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-mtpublisher"
 )
