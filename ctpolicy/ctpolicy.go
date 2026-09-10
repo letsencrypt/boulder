@@ -33,6 +33,7 @@ type CTPolicy struct {
 	log              blog.Logger
 	winnerCounter    *prometheus.CounterVec
 	shardExpiryGauge *prometheus.GaugeVec
+	horizonGauge     prometheus.Gauge
 }
 
 // New creates a new CTPolicy struct
@@ -56,6 +57,15 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		}
 	}
 
+	horizonGauge := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "ct_log_horizon",
+		Help: "Earliest certificate expiry, as Unix time, for which the configured SCT logs cannot satisfy the CT policy.",
+	})
+
+	h := horizon(sctLogs, time.Now())
+	horizonGauge.Set(float64(h.Unix()))
+	log.Infof("CT log horizon: %s", h.Format(time.RFC3339))
+
 	// Stagger must be positive for time.Ticker.
 	// Default to the relatively safe value of 1 second.
 	if stagger <= 0 {
@@ -71,6 +81,7 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		log:              log,
 		winnerCounter:    winnerCounter,
 		shardExpiryGauge: shardExpiryGauge,
+		horizonGauge:     horizonGauge,
 	}
 }
 
