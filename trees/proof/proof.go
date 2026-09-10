@@ -46,7 +46,7 @@ func SigAlgEncoded() []byte {
 //	    uint48 start;
 //	    uint48 end;
 //	    HashValue inclusion_proof<0..2^16-1>;
-//	    SubtreeSignature signatures<0..2^16-1>;
+//	    SubtreeSignature signatures<0..2^24-1>;
 //	} MTCProof;
 type MTCProof struct {
 	Extensions     []byte
@@ -108,7 +108,7 @@ func (m *MTCProof) Marshal() ([]byte, error) {
 		sigBytes = append(sigBytes, sigByte)
 	}
 
-	builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
+	builder.AddUint24LengthPrefixed(func(builder *cryptobyte.Builder) {
 		for _, sb := range sigBytes {
 			builder.AddBytes(sb)
 		}
@@ -156,7 +156,7 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 	}
 
 	var signaturesBytes cryptobyte.String
-	if !input.ReadUint16LengthPrefixed(&signaturesBytes) {
+	if !input.ReadUint24LengthPrefixed(&signaturesBytes) {
 		return nil, fmt.Errorf("malformed signature bytes")
 	}
 
