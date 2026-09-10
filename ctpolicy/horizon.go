@@ -27,7 +27,7 @@ func satisfiable(logs loglist.List) bool {
 func horizon(logs loglist.List, now time.Time) time.Time {
 	candidates := []time.Time{now}
 	for _, log := range logs {
-    // We only have to check the boundaries of log boundaries
+		// We only have to check the boundaries of log boundaries
 		for _, t := range []time.Time{log.StartInclusive, log.EndExclusive} {
 			if !t.IsZero() && t.After(now) {
 				candidates = append(candidates, t)
