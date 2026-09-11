@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
@@ -911,5 +912,19 @@ func TestDetailedError(t *testing.T) {
 		if actual != tc.expected {
 			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
 		}
+	}
+
+	typeCases := []struct {
+		err      error
+		expected probs.ProblemType
+	}{
+		{berrors.DNSError("DNS problem: SERVFAIL looking up A for example.com"), probs.DNSProblem},
+		{berrors.InternalServerError("DNS problem: networking error looking up A for example.com"), probs.ServerInternalProblem},
+		{berrors.ConnectionFailureError("oops"), probs.ConnectionProblem},
+	}
+	for _, tc := range typeCases {
+		prob := detailedError(tc.err)
+		test.AssertEquals(t, prob.Type, tc.expected)
+		test.AssertEquals(t, prob.Detail, tc.err.Error())
 	}
 }

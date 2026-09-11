@@ -3,6 +3,7 @@ package va
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
 	"testing"
 	"time"
@@ -11,7 +12,9 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/bdns"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -191,6 +194,57 @@ func TestDNS01ValidationNoServer(t *testing.T) {
 	_, err = va.validateDNS01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization)
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
+}
+
+// unreachableDNSClient returns a real bdns.Client configured to talk to a DoH
+// resolver on a localhost port that nothing is listening on, so that every
+// lookup fails with a transport-level error rather than a DNS response.
+func unreachableDNSClient(t *testing.T) bdns.Client {
+	t.Helper()
+
+	// Grab a port that nothing is listening on by listening and then
+	// immediately closing. There's a small window in which something else
+	// could claim the port, but that's vanishingly unlikely in tests.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	test.AssertNotError(t, err, "Couldn't listen on localhost")
+	addr := l.Addr().String()
+	l.Close()
+
+	staticProvider, err := bdns.NewStaticProvider([]string{addr})
+	test.AssertNotError(t, err, "Couldn't make new static provider")
+
+	return bdns.New(
+		time.Second,
+		staticProvider,
+		metrics.NoopRegisterer,
+		clock.New(),
+		1,
+		"",
+		blog.NewMock(),
+		nil)
+}
+
+func TestDNS01ValidationResolverUnreachable(t *testing.T) {
+	va, _ := setup(nil, "", nil, unreachableDNSClient(t))
+
+	_, err := va.validateDNS01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization)
+	test.AssertError(t, err, "expected validation to fail")
+	test.AssertErrorIs(t, err, berrors.InternalServer)
+	prob := detailedError(err)
+	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
+	test.AssertContains(t, prob.Detail, "DNS problem: networking error looking up TXT")
+}
+
+func TestGetAddrsResolverUnreachable(t *testing.T) {
+	va, _ := setup(nil, "", nil, unreachableDNSClient(t))
+
+	_, _, err := va.getAddrs(ctx, "localhost")
+	test.AssertError(t, err, "expected lookup to fail")
+	test.AssertErrorIs(t, err, berrors.InternalServer)
+	prob := detailedError(err)
+	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
+	test.AssertContains(t, prob.Detail, "DNS problem: networking error looking up A")
+	test.AssertContains(t, prob.Detail, "DNS problem: networking error looking up AAAA")
 }
 
 func TestDNS01ValidationOK(t *testing.T) {

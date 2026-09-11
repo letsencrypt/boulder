@@ -160,7 +160,7 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPersistPrefix, ident.Value)
 	txts, resolver, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		return nil, berrors.DNSError("Retrieving TXT records for DNS-PERSIST-01 challenge: %s", err)
+		return nil, dnsError(err, "Retrieving TXT records for DNS-PERSIST-01 challenge: %s", err)
 	}
 	if len(txts.Final) == 0 {
 		return nil, berrors.UnauthorizedError("No TXT record found for DNS-PERSIST-01 challenge")
