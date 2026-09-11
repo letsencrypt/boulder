@@ -447,6 +447,17 @@ func (d *dnsPersistMultiStringDNS) LookupTXT(_ context.Context, _ string) (*bdns
 	return &bdns.Result[*dns.TXT]{Final: []*dns.TXT{rr}}, "dnsPersistMultiStringDNS", nil
 }
 
+func TestDNSPersist01ResolverUnreachable(t *testing.T) {
+	va, _ := setup(nil, "", nil, unreachableDNSClient(t))
+
+	_, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS("localhost"), accountURIPrefixes[0]+"1", false)
+	test.AssertError(t, err, "expected validation to fail")
+	test.AssertErrorIs(t, err, berrors.InternalServer)
+	prob := detailedError(err)
+	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
+	test.AssertContains(t, prob.Detail, "Retrieving TXT records for DNS-PERSIST-01 challenge: DNS problem: networking error looking up TXT")
+}
+
 func TestDNSPersist01MultiStringTXTRecord(t *testing.T) {
 	t.Parallel()
 

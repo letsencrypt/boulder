@@ -162,6 +162,28 @@ func (d Error) Error() string {
 	return result
 }
 
+// ResolverUnreachable returns true if this error represents a failure to
+// communicate with the resolver at all: a network timeout, a connection
+// refused, a DNS-over-HTTPS transport failure, etc. It returns false when the
+// resolver did respond, even if that response was an error (e.g. SERVFAIL or
+// NXDOMAIN) or was truncated. It also returns false when the failure was
+// caused by the caller's context being canceled or exceeding its deadline,
+// since those don't necessarily indicate a problem with the resolver.
+//
+// Callers can use this to distinguish problems with the CA's own
+// infrastructure from problems with the subscriber's DNS.
+func (d Error) ResolverUnreachable() bool {
+	if d.underlying == nil {
+		return false
+	}
+	if errors.Is(d.underlying, context.Canceled) || errors.Is(d.underlying, context.DeadlineExceeded) {
+		return false
+	}
+	_, isNetErr := errors.AsType[*net.OpError](d.underlying)
+	_, isURLErr := errors.AsType[*url.Error](d.underlying)
+	return isNetErr || isURLErr
+}
+
 const detailDNSTimeout = "query timed out"
 const detailCanceled = "query timed out (and was canceled)"
 const detailDNSNetFailure = "networking error"

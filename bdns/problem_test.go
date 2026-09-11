@@ -65,6 +65,80 @@ func TestError(t *testing.T) {
 	}
 }
 
+func TestResolverUnreachable(t *testing.T) {
+	testCases := []struct {
+		name     string
+		err      Error
+		expected bool
+	}{
+		{
+			name:     "net error",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: &net.OpError{Err: errors.New("connection refused")}},
+			expected: true,
+		},
+		{
+			name:     "net timeout",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: &net.OpError{Err: dohTimeoutError{}}},
+			expected: true,
+		},
+		{
+			name:     "url error",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: &url.Error{Op: "POST", URL: "https://example.com/", Err: errors.New("connection refused")}},
+			expected: true,
+		},
+		{
+			name:     "url timeout",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: &url.Error{Op: "POST", URL: "https://example.com/", Err: dohTimeoutError{}}},
+			expected: true,
+		},
+		{
+			name:     "url error wrapping context deadline",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: &url.Error{Op: "POST", URL: "https://example.com/", Err: context.DeadlineExceeded}},
+			expected: false,
+		},
+		{
+			name:     "context deadline",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: context.DeadlineExceeded},
+			expected: false,
+		},
+		{
+			name:     "context canceled",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: context.Canceled},
+			expected: false,
+		},
+		{
+			name:     "other underlying error",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", underlying: errors.New("doh: http status 500")},
+			expected: false,
+		},
+		{
+			name:     "servfail",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", rCode: dns.RcodeServerFailure},
+			expected: false,
+		},
+		{
+			name:     "nxdomain",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", rCode: dns.RcodeNameError},
+			expected: false,
+		},
+		{
+			name:     "servfail with extended error",
+			err:      Error{recordType: dns.TypeA, hostname: "hostname", rCode: dns.RcodeServerFailure, extended: &dns.EDNS0_EDE{InfoCode: 6}},
+			expected: false,
+		},
+		{
+			name:     "truncated",
+			err:      Error{recordType: dns.TypeCAA, hostname: "hostname", truncated: true},
+			expected: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			test.AssertEquals(t, tc.err.ResolverUnreachable(), tc.expected)
+		})
+	}
+}
+
 type dohTimeoutError struct{}
 
 func (dohTimeoutError) Error() string {
