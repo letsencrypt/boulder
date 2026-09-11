@@ -94,6 +94,10 @@ type Config struct {
 	// so we can avoid the possibility of Authz re-use by the original
 	// requester via Authz revocation.
 	RevokeAuthzsUponRevokeCert bool
+
+	// OrderModelHasMTCFields tells the SA that the necessary migration has been
+	// applied for the order model to have the new fields needed for MTCs.
+	OrderModelHasMTCFields bool
 }
 
 var fMu = new(sync.RWMutex)

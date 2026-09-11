@@ -31,8 +31,8 @@ func (c *CheckpointModel) Valid() error {
 	if len(c.MTCLogID) == 0 {
 		return errors.New("MTCLogID is empty")
 	}
-	if c.TreeSize == 0 {
-		return errors.New("TreeSize is 0")
+	if c.TreeSize <= 0 {
+		return fmt.Errorf("TreeSize of %d is invalid", c.TreeSize)
 	}
 	if len(c.RootHash) == 0 {
 		return errors.New("RootHash is empty")
