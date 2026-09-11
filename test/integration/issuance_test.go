@@ -187,6 +187,7 @@ func TestIssuanceProfiles(t *testing.T) {
 
 // TestIssuanceMTC issues from an MTC profile.
 func TestIssuanceMTC(t *testing.T) {
+	t.Skip("temporarily disabled until an S3 backend is available in CI again")
 	t.Parallel()
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		t.Skip("MTC issuance only available in config-next")
