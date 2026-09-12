@@ -68,10 +68,6 @@ services:
         condition: service_started
       bpkimetal:
         condition: service_started
-      bminio:
-        condition: service_healthy
-      bsunlight:
-        condition: service_started
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -154,49 +150,6 @@ services:
       - pkimetal-socket:/var/run/pkimetal
       - ./test/pkimetal-config.yaml:/config/config.yaml:ro
     network_mode: none
-
-  bminio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    volumes:
-      - ./test/minio:/boulder/test/minio/
-      - mtc-data:/data
-    entrypoint:
-      - /boulder/test/minio/entrypoint.sh
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      MINIO_DOMAIN: boulder-minio
-    healthcheck:
-      test: [ "CMD", "curl", "-fs", "-o", "/dev/null",
-        "http://localhost:9000/boulder-mtc-tiles/index.html" ]
-      start_period: 30s
-      start_interval: 0.1s
-      interval: 30s
-      timeout: 2s
-      retries: 3
-    networks:
-      bouldernet:
-        aliases:
-          - boulder-minio
-          - boulder-sunlight.boulder-minio
-
-  bsunlight:
-    image: letsencrypt/boulder-sunlight:${BOULDER_SUNLIGHT_TAG:-latest}
-    build:
-      context: test/sunlight/
-    depends_on:
-      bminio:
-        condition: service_healthy
-    volumes:
-      - .:/boulder:cached
-      - mtc-data:/sunlight-data
-    environment:
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-    networks:
-      bouldernet:
-        aliases:
-          - bsunlight
 
   bvitess:
     # The `letsencrypt/boulder-vtcomboserver:latest` tag is automatically built
