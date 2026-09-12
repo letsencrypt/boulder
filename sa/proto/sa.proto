@@ -79,6 +79,7 @@ service StorageAuthority {
   rpc DeactivateRegistration(RegistrationID) returns (core.Registration) {}
   rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (google.protobuf.Empty) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (google.protobuf.Empty) {}
+  rpc FinalizeMTCOrder(FinalizeMTCOrderRequest) returns (google.protobuf.Empty) {}
   rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
@@ -280,6 +281,13 @@ message GetOrderForNamesRequest {
 message FinalizeOrderRequest {
   int64 id = 1;
   string certificateSerial = 2;
+}
+
+message FinalizeMTCOrderRequest {
+  int64 id = 1;
+  string mtcLogID = 2;
+  uint64 mtcSerialNumber = 3;
+  uint64 mtcSubtreeID = 4;
 }
 
 message GetAuthorizationsRequest {

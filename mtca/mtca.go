@@ -43,6 +43,8 @@ var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initiali
 var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
 var ErrCheckpointChanged = errors.New("served checkpoint is not the one this MTCA last wrote")
 
+const maxLogSize = 1<<48 - 1
+
 var _ mtcapb.MTCAServer = &mtca{}
 
 // New creates a new MTCA service.
@@ -306,7 +308,7 @@ type pool struct {
 type pendingEntry struct {
 	mtcle *entry.MTCLogEntry
 	mtcpk *pubkey.MTCPublicKey
-	ch    chan<- int64
+	ch    chan<- issuanceNotification
 }
 
 func (p *pool) take() []pendingEntry {
@@ -331,6 +333,13 @@ func (p *pool) append(e pendingEntry) error {
 	}
 	p.entries = append(p.entries, e)
 	return nil
+}
+
+type issuanceNotification struct {
+	serialNumber uint64
+	// A reference to a row in the mtcmeta subtrees table.
+	subtreeID uint64
+	errored   bool
 }
 
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
@@ -382,7 +391,7 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 
 	// We'll get notification of sequencing on this channel. Buffer it so `sequence()` doesn't
 	// block if this method has already returned (e.g. due to timeout).
-	ch := make(chan int64, 1)
+	ch := make(chan issuanceNotification, 1)
 	err = m.pool.append(pendingEntry{
 		mtcle: mtcle,
 		mtcpk: mtcpk,
@@ -395,13 +404,14 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case entryIndex := <-ch:
-		if entryIndex < 0 {
-			return nil, errors.New("error during sequencing")
+	case res := <-ch:
+		if res.errored {
+			return nil, fmt.Errorf("error during sequencing")
 		}
 		return &mtcapb.IssueResponse{
-			MtcLogID:      m.logID.String(),
-			MtcEntryIndex: entryIndex,
+			MtcLogID:        m.logID.String(),
+			MtcSerialNumber: res.serialNumber,
+			MtcSubtreeID:    res.subtreeID,
 		}, nil
 	}
 }
@@ -470,6 +480,10 @@ func (m *mtca) sequence(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	err = latest.Valid()
+	if err != nil {
+		return fmt.Errorf("validating latest checkpoint: %s", err)
+	}
 
 	if !latest.Mirrored() {
 		return fmt.Errorf("temporary: checkpoint ID %d (tree size %d): %w",
@@ -486,9 +500,16 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// the waiting RPCs of either a success or a failure.
 	defer func() {
 		for _, e := range entries {
-			e.ch <- -1
+			e.ch <- issuanceNotification{
+				// We don't send the specific error to clients because that will be in the MTCA logs.
+				errored: true,
+			}
 		}
 	}()
+
+	if latest.TreeSize+int64(len(entries)) > maxLogSize {
+		return fmt.Errorf("log is full")
+	}
 
 	candidate := m.frontier.Clone()
 
@@ -620,8 +641,13 @@ func (m *mtca) sequence(ctx context.Context) error {
 	}
 
 	// Notify waiting RPCs.
-	for i, e := range entries {
-		e.ch <- latest.TreeSize + int64(i)
+	serial := uint64(m.logID.LogNumber)<<48 | uint64(latest.TreeSize) //nolint:gosec // G115: TreeSize is guaranteed positive by calling Valid().
+	for _, e := range entries {
+		e.ch <- issuanceNotification{
+			serialNumber: serial,
+			subtreeID:    0, // TODO(#9020): calculate subtreeIDs and persist them.
+		}
+		serial++
 	}
 	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil

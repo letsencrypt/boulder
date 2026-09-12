@@ -91,7 +91,9 @@ func (s *fakeServerStream[T]) Context() context.Context {
 // Database clean ups automatically at the end of the test.
 func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 	t.Helper()
-	features.Reset()
+
+	t.Cleanup(test.ResetBoulderTestDatabase(t))
+	t.Cleanup(features.Reset)
 
 	dbMap, err := DBMapForTest(vars.DBConnSA)
 	if err != nil {
@@ -115,8 +117,6 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock) {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-
-	t.Cleanup(test.ResetBoulderTestDatabase(t))
 
 	return sa, fc
 }
@@ -1399,6 +1399,64 @@ func TestSetOrderProcessing(t *testing.T) {
 	_, err = sa.SetOrderProcessing(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertError(t, err, "Set the same order processing twice. This should have been an error.")
 	test.AssertErrorIs(t, err, berrors.OrderNotReady)
+}
+
+func TestFinalizeMTCOrder(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("skipping test because migrations are not available in this environment")
+	}
+	features.Set(features.Config{OrderModelHasMTCFields: true})
+
+	sa, fc := initSA(t)
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(time.Hour)
+	attemptedAt := fc.Now()
+	authzID := createFinalizedAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
+
+	// Add a new order in pending status with no certificate serial
+	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(expires1Year),
+			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
+			V2Authorizations: []int64{authzID},
+		},
+	})
+	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+
+	// Set the order to processing so it can be finalized
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "SetOrderProcessing failed")
+
+	// Finalize the order with MTC data.
+	_, err = sa.FinalizeMTCOrder(context.Background(), &sapb.FinalizeMTCOrderRequest{
+		Id:              order.Id,
+		MtcLogID:        "44947.4.1.0.44",
+		MtcSerialNumber: 23,
+		MtcSubtreeID:    99,
+	})
+	test.AssertNotError(t, err, "FinalizeMTCOrder failed")
+
+	// GetOrder and check the MTC-related fields.
+	updatedOrder, err := sa.GetOrder(
+		context.Background(),
+		&sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "GetOrder failed")
+	test.AssertEquals(t, updatedOrder.MtcLogID, "44947.4.1.0.44")
+	test.AssertEquals(t, updatedOrder.MtcSerialNumber, uint64(23))
+	test.AssertEquals(t, updatedOrder.MtcSubtreeID, uint64(99))
+
+	test.AssertEquals(t, updatedOrder.Status, string(core.StatusProcessing))
+
+	_, err = sa.FinalizeMTCOrder(context.Background(), &sapb.FinalizeMTCOrderRequest{
+		Id:              order.Id,
+		MtcLogID:        "44947.4.1.0.44",
+		MtcSerialNumber: 71,
+		MtcSubtreeID:    101,
+	})
+	test.AssertError(t, err, "FinalizeMTCOrder failed")
 }
 
 func TestFinalizeOrder(t *testing.T) {
