@@ -148,7 +148,7 @@ def test_http_challenge_broken_redirect():
         redirect)
 
     # Expect the specialized error message
-    expectedError = "64.112.117.122: Fetching {0}: Invalid host in redirect target \"{1}.well-known\". Check webserver config for missing '/' in redirect target.".format(redirect, d)
+    expectedError = "64.112.117.122: Fetching {0}: invalid host in redirect target \"{1}.well-known\": check webserver config for missing '/' in redirect target".format(redirect, d)
 
     # NOTE(@cpu): Can't use chisel2.expect_problem here because it doesn't let
     # us interrogate the detail message easily.

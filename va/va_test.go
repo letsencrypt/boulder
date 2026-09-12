@@ -621,7 +621,7 @@ func TestMultiVA(t *testing.T) {
 	t.Parallel()
 
 	// Create a new challenge to use for the httpSrv
-	req := createValidationRequest(identifier.NewDNS("localhost"), core.ChallengeTypeHTTP01)
+	req := createValidationRequest(identifier.NewDNS("localhost.com"), core.ChallengeTypeHTTP01)
 
 	brokenVA := RemoteClients{
 		VAClient:  brokenRemoteVA{},
