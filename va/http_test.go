@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -54,13 +55,12 @@ func (c *ipFakeDNS) LookupA(_ context.Context, hostname string) (*bdns.Result[*d
 	if c.ip != nil && c.ip.To4() != nil {
 		ip = c.ip
 	}
-	// dual-homed host with an IPv6 and an IPv4 address
-	if hostname == "ipv4.and.ipv6.localhost" {
-		return wrapA(ip)
-	}
+	// ipv6.localhost has no IPv4 address.
 	if hostname == "ipv6.localhost" {
 		return wrapA()
 	}
+	// All other valid test hosts, including the dual-homed hosts, have an IPv4
+	// address.
 	return wrapA(ip)
 }
 
@@ -78,8 +78,10 @@ func (c *ipFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result
 		ip = c.ip
 	}
 
-	// dual-homed host with an IPv6 and an IPv4 address
-	if hostname == "ipv4.and.ipv6.localhost" {
+	// The dual-homed test hosts have both an IPv6 and an IPv4 address:
+	// LookupA supplies the IPv4 address while this branch supplies the IPv6
+	// address.
+	if hostname == "ipv4.and.ipv6.localhost" || hostname == "ipv4.and.ipv6.example.com" {
 		return wrapAAAA(ip)
 	}
 	if hostname == "ipv6.localhost" {
@@ -679,6 +681,19 @@ func httpTestSrv(t *testing.T, ipv6 bool) *httptest.Server {
 		)
 	})
 
+	// A path that redirects to a dual-homed host (both IPv6 and IPv4
+	// addresses) whose name ends in a valid IANA-registered TLD. On the
+	// IPv4-only test server, the redirect target's preferred IPv6 address has
+	// nothing listening, forcing a fallback to its IPv4 address.
+	mux.HandleFunc("/redir-dual-host", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			fmt.Sprintf("http://ipv4.and.ipv6.example.com:%d/ok", httpPort),
+			http.StatusMovedPermanently,
+		)
+	})
+
 	mux.HandleFunc("/bad-status-code", func(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(http.StatusGone)
 		fmt.Fprint(resp, "sorry, I'm gone")
@@ -1168,6 +1183,40 @@ func TestFetchHTTP(t *testing.T) {
 			},
 		},
 		{
+			Name:         "Redirect to dual homed host with broken IPv6, working IPv4",
+			Ident:        identifier.NewDNS("example.com"),
+			Path:         "/redir-dual-host",
+			ExpectedBody: "ok",
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPortIPv4),
+					URL:               "http://example.com/redir-dual-host",
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+				},
+				{
+					Hostname:          "ipv4.and.ipv6.example.com",
+					Port:              strconv.Itoa(httpPortIPv4),
+					URL:               fmt.Sprintf("http://ipv4.and.ipv6.example.com:%d/ok", httpPortIPv4),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+					// First attempt at the redirect target used its IPv6 address.
+					AddressUsed:   netip.MustParseAddr("::1"),
+					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
+				},
+				{
+					Hostname:          "ipv4.and.ipv6.example.com",
+					Port:              strconv.Itoa(httpPortIPv4),
+					URL:               fmt.Sprintf("http://ipv4.and.ipv6.example.com:%d/ok", httpPortIPv4),
+					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+					// The retry fell back to the redirect target's IPv4 address.
+					AddressUsed:   netip.MustParseAddr("127.0.0.1"),
+					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
+				},
+			},
+		},
+		{
 			Name:         "Working IPv4 only",
 			Ident:        identifier.NewDNS("example.com"),
 			Path:         "/ok",
@@ -1256,6 +1305,156 @@ func TestFetchHTTP(t *testing.T) {
 			test.AssertMarshaledEquals(t, records, tc.ExpectedRecords)
 		})
 	}
+}
+
+// TestFetchHTTPRedirectFallbackExhaustion verifies that when a redirect target
+// exhausts all its addresses, the error is attributed to the last one tried.
+func TestFetchHTTPRedirectFallbackExhaustion(t *testing.T) {
+	// Pick a closed local port (per TestHTTPBadPort) for the redirect target so
+	// both of its addresses fail fast with connection refused instead of timing
+	// out on an unreachable IP.
+	badPort := 40000 + mrand.IntN(25000)
+
+	redirURL := fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", badPort)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/redir-to-https", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(resp, req, redirURL, http.StatusMovedPermanently)
+	})
+	testSrv := httptest.NewServer(mux)
+	defer testSrv.Close()
+	httpPort := getPort(testSrv)
+	if badPort == httpPort {
+		badPort = httpPort + 1
+		redirURL = fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", badPort)
+	}
+
+	va, _ := setup(testSrv, "", nil, &ipFakeDNS{})
+	// Accept the closed redirect port so redirect policy permits the hop.
+	va.httpsPort = badPort
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer cancel()
+
+	_, records, err := va.processHTTPValidation(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), "/redir-to-https")
+	test.AssertError(t, err, "redirect target with no reachable address should fail")
+
+	// The problem is attributed to the target's last address tried: 127.0.0.1.
+	prob := detailedError(err)
+	test.AssertMarshaledEquals(t, prob, probs.Connection(fmt.Sprintf(
+		"127.0.0.1: Fetching %s: Connection refused", redirURL)))
+
+	// Three records: the reachable initial raw-IP request that received the
+	// redirect, the target's IPv6 attempt, and the target's IPv4 fallback.
+	expectedRecords := []core.ValidationRecord{
+		{
+			Hostname:          "127.0.0.1",
+			Port:              strconv.Itoa(httpPort),
+			URL:               "http://127.0.0.1/redir-to-https",
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(badPort),
+			URL:               redirURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("::1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(badPort),
+			URL:               redirURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+	}
+	test.AssertMarshaledEquals(t, records, expectedRecords)
+
+	// One redirect hop was followed, and the target fell back IPv6-to-IPv4 once
+	// before exhausting its addresses.
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Redirects, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Fallbacks, prometheus.Labels{}, 1)
+}
+
+// TestFetchHTTPRedirectDoubleFallback covers #8029: the initial HTTP host and
+// its HTTPS redirect target each require an independent IPv6-to-IPv4 fallback.
+func TestFetchHTTPRedirectDoubleFallback(t *testing.T) {
+	// Both servers listen on IPv4 only while ipFakeDNS prefers IPv6.
+	httpsMux := http.NewServeMux()
+	httpsMux.HandleFunc("/ok", func(resp http.ResponseWriter, req *http.Request) {
+		resp.WriteHeader(http.StatusOK)
+		fmt.Fprint(resp, "ok")
+	})
+	httpsSrv := httptest.NewTLSServer(httpsMux)
+	defer httpsSrv.Close()
+	httpsPort := getPort(httpsSrv)
+
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/redir-to-https", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", httpsPort),
+			http.StatusMovedPermanently,
+		)
+	})
+	httpSrv := httptest.NewServer(httpMux)
+	defer httpSrv.Close()
+	httpPort := getPort(httpSrv)
+
+	va, _ := setup(httpSrv, "", nil, &ipFakeDNS{})
+	// Allow the explicit HTTPS test port as a redirect target.
+	va.httpsPort = httpsPort
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer cancel()
+
+	body, records, err := va.processHTTPValidation(ctx, identifier.NewDNS("ipv4.and.ipv6.example.com"), "/redir-to-https")
+	test.AssertNotError(t, err, "HTTP-to-HTTPS double fallback should have succeeded")
+	test.AssertEquals(t, string(body), "ok")
+
+	initialURL := "http://ipv4.and.ipv6.example.com/redir-to-https"
+	httpsURL := fmt.Sprintf("https://ipv4.and.ipv6.example.com:%d/ok", httpsPort)
+	expectedRecords := []core.ValidationRecord{
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpPort),
+			URL:               initialURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("::1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpPort),
+			URL:               initialURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpsPort),
+			URL:               httpsURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("::1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+		{
+			Hostname:          "ipv4.and.ipv6.example.com",
+			Port:              strconv.Itoa(httpsPort),
+			URL:               httpsURL,
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
+			ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
+		},
+	}
+	test.AssertMarshaledEquals(t, records, expectedRecords)
+
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Redirects, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, va.metrics.http01Fallbacks, prometheus.Labels{}, 2)
 }
 
 // All paths that get assigned to tokens MUST be valid tokens

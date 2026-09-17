@@ -431,6 +431,24 @@ func fallbackErr(err error) bool {
 	return false
 }
 
+// setHTTP01RequestHeaders sets the headers Boulder sends on every HTTP-01
+// request, including each fallback retry.
+func (va *ValidationAuthorityImpl) setHTTP01RequestHeaders(req *http.Request) {
+	if va.userAgent != "" {
+		req.Header.Set("User-Agent", va.userAgent)
+	}
+	// Some of our users use mod_security. Mod_security sees a lack of Accept
+	// headers as bot behavior and rejects requests. While this is a bug in
+	// mod_security's rules (given that the HTTP specs disagree with that
+	// requirement), we add the Accept header now in order to fix our
+	// mod_security users' mysterious breakages. See
+	// <https://github.com/SpiderLabs/owasp-modsecurity-crs/issues/265> and
+	// <https://github.com/letsencrypt/boulder/issues/1019>. This was done
+	// because it's a one-line fix with no downside. We're not likely to want to
+	// do many more things to satisfy misunderstandings around HTTP.
+	req.Header.Set("Accept", "*/*")
+}
+
 // processHTTPValidation performs an HTTP validation for the given host, port
 // and path. If successful the body of the HTTP response is returned along with
 // the validation records created during the validation. If not successful
@@ -486,19 +504,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	initialReq = initialReq.WithContext(ctx)
-	if va.userAgent != "" {
-		initialReq.Header.Set("User-Agent", va.userAgent)
-	}
-	// Some of our users use mod_security. Mod_security sees a lack of Accept
-	// headers as bot behavior and rejects requests. While this is a bug in
-	// mod_security's rules (given that the HTTP specs disagree with that
-	// requirement), we add the Accept header now in order to fix our
-	// mod_security users' mysterious breakages. See
-	// <https://github.com/SpiderLabs/owasp-modsecurity-crs/issues/265> and
-	// <https://github.com/letsencrypt/boulder/issues/1019>. This was done
-	// because it's a one-line fix with no downside. We're not likely to want to
-	// do many more things to satisfy misunderstandings around HTTP.
-	initialReq.Header.Set("Accept", "*/*")
+	va.setHTTP01RequestHeaders(initialReq)
 
 	// Set up the initial validation request and a base validation record
 	dialer, baseRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
@@ -515,6 +521,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// addresses explicitly, not following redirects to ports != [80,443], etc)
 	records := []core.ValidationRecord{baseRecord}
 	numRedirects := 0
+
+	// Track the target and URL selected for dialing so fallback retries the
+	// request that failed, including redirect targets.
+	// See https://github.com/letsencrypt/boulder/issues/8029.
+	currentTarget := target
+	currentReqURL := initialReq.URL.String()
 	processRedirect := func(req *http.Request, via []*http.Request) error {
 		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
 		// Only process up to maxRedirect redirects
@@ -595,6 +607,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// Replace the transport's DialContext with the new preresolvedDialer for
 		// the redirect.
 		transport.DialContext = redirDialer.DialContext
+		currentTarget = redirTarget
+		currentReqURL = req.URL.String()
 		return nil
 	}
 
@@ -609,20 +623,25 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// followed.
 	httpResponse, err := client.Do(initialReq)
 	// If there was an error and its a kind of error we consider a fallback error,
-	// then try to fallback.
-	if err != nil && fallbackErr(err) {
-		// Try to advance to another IP. If there was an error advancing we don't
-		// have a fallback address to use and must return the original error.
-		advanceTargetIPErr := target.nextIP()
+	// then try to fallback. A fallback retry may itself dial a redirect target
+	// reached via processRedirect, so loop to allow a further fallback for
+	// that target rather than giving up after a single retry. Each target's
+	// own nextIP() bounds how many times it can be retried.
+	for err != nil && fallbackErr(err) {
+		// Try to advance to another IP for the target we were dialing when
+		// the failure occurred: the initial target, or the most recent
+		// redirect target. If there was an error advancing we don't have a
+		// fallback address to use and must return the original error.
+		advanceTargetIPErr := currentTarget.nextIP()
 		if advanceTargetIPErr != nil {
 			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 		}
 
-		// setup another validation to retry the target with the new IP and append
-		// the retry record.
-		retryDialer, retryRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
-		if err != nil {
-			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
+		// setup another validation to retry the current target with the new
+		// IP and append the retry record.
+		retryDialer, retryRecord, setupErr := va.setupHTTPValidation(currentReqURL, currentTarget)
+		if setupErr != nil {
+			return nil, records, newIPError(records[len(records)-1].AddressUsed, setupErr)
 		}
 
 		records = append(records, retryRecord)
@@ -631,15 +650,23 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// host.
 		transport.DialContext = retryDialer.DialContext
 
-		// Perform the retry
-		httpResponse, err = client.Do(initialReq)
-		// If the retry still failed there isn't anything more to do, return the
-		// error immediately.
-		if err != nil {
-			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
+		// Resume from the request whose dial failed. Replaying initialReq would
+		// repeat earlier redirects and trip loop detection.
+		retryReq, retryReqErr := http.NewRequestWithContext(ctx, "GET", currentReqURL, nil)
+		if retryReqErr != nil {
+			return nil, records, newIPError(records[len(records)-1].AddressUsed, retryReqErr)
 		}
-	} else if err != nil {
-		// if the error was not a fallbackErr then return immediately.
+		va.setHTTP01RequestHeaders(retryReq)
+
+		// Perform the retry. This may itself follow further redirects via
+		// processRedirect, which updates currentTarget and currentReqURL; if
+		// the resulting dial fails, the loop condition re-evaluates
+		// fallbackErr(err) against that new target.
+		httpResponse, err = client.Do(retryReq)
+	}
+	if err != nil {
+		// if the error was not (or was no longer) a fallbackErr, return
+		// immediately.
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 	}
 
