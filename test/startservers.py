@@ -183,8 +183,6 @@ def install(race_detection, coverage=False):
         go_build_flags += ' -cover' # https://go.dev/blog/integration-test-coverage
 
     cmd = ["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]
-    if CONFIG_NEXT:
-        cmd.append("GO=gotip")
     return subprocess.call(cmd) == 0
 
 def run(cmd, coverage_dir=None):

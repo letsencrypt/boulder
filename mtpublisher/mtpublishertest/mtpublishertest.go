@@ -1,5 +1,3 @@
-//go:build go1.27
-
 // Package mtpublishertest provides an in-process cosigner for unit tests of the
 // mtca and the mtpublisher.
 package mtpublishertest
