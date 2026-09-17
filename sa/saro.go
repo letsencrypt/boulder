@@ -600,7 +600,10 @@ func (ssa *SQLStorageAuthorityRO) GetOrderAuthorizations(ctx context.Context, re
 		return nil, errIncompleteRequest
 	}
 
-	om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModel{}, req.Id)
+	var authzIDsPacked []byte
+	err := ssa.dbReadOnlyMap.SelectOne(ctx, &authzIDsPacked,
+		`SELECT authzs FROM orders WHERE id = ?`,
+		req.Id)
 	// Nonexistent orders should return no error, with an empty list of authorizations
 	if errors.Is(err, sql.ErrNoRows) {
 		return &sapb.Authorizations{}, nil
@@ -609,17 +612,17 @@ func (ssa *SQLStorageAuthorityRO) GetOrderAuthorizations(ctx context.Context, re
 		return nil, err
 	}
 
-	order, err := modelToOrder(om.(*orderModel))
+	authzIDs, err := unpackAuthzIDs(authzIDsPacked)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(order.V2Authorizations) == 0 {
+	if len(authzIDs) == 0 {
 		return nil, fmt.Errorf("invalid order: no authorization IDs")
 	}
 
 	// Fetch the fully-hydrated Authorization objects and return them.
-	authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
+	authzs, err := ssa.getAuthorizationsByID(ctx, authzIDs)
 	if err != nil {
 		return nil, err
 	}

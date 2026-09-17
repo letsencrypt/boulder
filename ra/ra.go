@@ -984,12 +984,21 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		Identifiers: order.Identifiers,
 		Profile:     profileName,
 	})
-
 	if err != nil {
 		return fmt.Errorf("issuing MTC: %s", err)
 	}
 
-	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcEntryIndex)
+	_, err = ra.SA.FinalizeMTCOrder(ctx, &sapb.FinalizeMTCOrderRequest{
+		Id:              order.Id,
+		MtcLogID:        resp.MtcLogID,
+		MtcSerialNumber: resp.MtcSerialNumber,
+		MtcSubtreeID:    resp.MtcSubtreeID,
+	})
+	if err != nil {
+		return fmt.Errorf("finalizing MTC order: %s", err)
+	}
+
+	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcSerialNumber)
 	return nil
 }
 
@@ -1170,7 +1179,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	if ra.isMTC(order) {
 		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
 		if err != nil {
-			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
+			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Issuing MTC"))
 			return nil, err
 		}
 

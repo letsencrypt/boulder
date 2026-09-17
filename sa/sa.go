@@ -23,6 +23,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -750,6 +751,61 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 		n, err := result.RowsAffected()
 		if err != nil || n == 0 {
 			return nil, fmt.Errorf("no order updated with new error field: %s", err)
+		}
+
+		return nil, nil
+	})
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// FinalizeMTCOrder finalizes a provided *corepb.Order after an MTC issuance,
+// by persisting the MTC-relevant fields and a valid status to the database.
+func (ssa *SQLStorageAuthority) FinalizeMTCOrder(ctx context.Context, req *sapb.FinalizeMTCOrderRequest) (*emptypb.Empty, error) {
+	if !features.Get().OrderModelHasMTCFields {
+		return nil, fmt.Errorf("MTC fields not yet available in database")
+	}
+	// TODO(#9020): check that req.SubtreeID is nonzero
+	if core.IsAnyNilOrZero(req.Id, req.MtcLogID, req.MtcSerialNumber) {
+		return nil, errIncompleteRequest
+	}
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
+		result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET mtcLogID = ?,
+		    mtcSubtreeID = ?,
+		    mtcSerialNumber = ?
+		WHERE id = ? AND
+		      certificateSerial = "" AND
+		      mtcLogID IS NULL AND
+		      mtcSubtreeID IS NULL AND
+		      mtcSerialNumber IS NULL AND
+		      beganProcessing = true`,
+			req.MtcLogID,
+			req.MtcSubtreeID,
+			req.MtcSerialNumber,
+			req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		n, err := result.RowsAffected()
+		if err != nil || n == 0 {
+			return nil, fmt.Errorf("no order updated for finalization")
+		}
+
+		// Delete the orderFQDNSet row for the order now that it has been finalized.
+		// We use this table for order reuse and should not reuse a finalized order.
+		err = deleteOrderFQDNSet(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		err = setReplacementOrderFinalized(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
 		}
 
 		return nil, nil

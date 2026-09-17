@@ -73,6 +73,10 @@ func (sa SA) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest, _ .
 	return sa.Impl.SetOrderProcessing(ctx, req)
 }
 
+func (sa SA) FinalizeMTCOrder(ctx context.Context, req *sapb.FinalizeMTCOrderRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return sa.Impl.FinalizeMTCOrder(ctx, req)
+}
+
 func (sa SA) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.FinalizeOrder(ctx, req)
 }

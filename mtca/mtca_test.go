@@ -28,6 +28,8 @@ import (
 
 	"github.com/letsencrypt/borp"
 
+	"golang.org/x/mod/sumdb/tlog"
+
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/config"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -46,8 +48,9 @@ import (
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
-	"golang.org/x/mod/sumdb/tlog"
 )
+
+const logNumber = 44
 
 // setup returns a working mtca, its fake tile storage, and a cleanup
 // function, or an error.
@@ -101,7 +104,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
-		issuancelog.ID{CAID: "44947.4.1", LogNumber: 44},
+		issuancelog.ID{CAID: "44947.4.1", LogNumber: logNumber},
 		100*time.Millisecond,
 		dbMap,
 		fs3,
@@ -604,11 +607,16 @@ func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, 
 			t.Errorf("Issue: %s", res.err)
 			continue
 		}
-		_, ok := got[res.MtcEntryIndex]
-		if ok {
-			t.Errorf("entryIndex %d returned twice", res.MtcEntryIndex)
+		if res.MtcSerialNumber>>48 != logNumber {
+			t.Errorf("MTC serial number of %016x does not have expected logNumber %04x",
+				res.MtcSerialNumber, logNumber)
 		}
-		got[res.MtcEntryIndex] = res
+		entryIndex := int64(res.MtcSerialNumber & (1<<48 - 1))
+		_, ok := got[entryIndex]
+		if ok {
+			t.Errorf("entryIndex %d returned twice", entryIndex)
+		}
+		got[entryIndex] = res
 	}
 	for i := firstIndex; i < firstIndex+int64(n); i++ {
 		_, ok := got[i]
@@ -704,7 +712,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		res := <-results
 		if res.err == nil {
-			t.Errorf("Issue with failing storage: got entryIndex %d, want error", res.MtcEntryIndex)
+			t.Errorf("Issue with failing storage: got entryIndex %d, want error", res.MtcSerialNumber)
 		}
 	}
 
