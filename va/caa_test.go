@@ -1112,6 +1112,17 @@ func TestMultiCAARechecking(t *testing.T) {
 	}
 }
 
+func TestCAAResolverUnreachable(t *testing.T) {
+	va, _ := setup(nil, "", nil, unreachableDNSClient(t))
+
+	err := va.checkCAA(ctx, identifier.NewDNS("localhost"), &caaParams{1, core.ChallengeTypeHTTP01})
+	test.AssertError(t, err, "expected CAA check to fail")
+	test.AssertErrorIs(t, err, berrors.InternalServer)
+	prob := detailedError(err)
+	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
+	test.AssertContains(t, prob.Detail, "DNS problem: networking error looking up CAA")
+}
+
 func TestCAAFailure(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()

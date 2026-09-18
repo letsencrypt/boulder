@@ -151,7 +151,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 
 	foundAt, valid, response, err := va.checkCAARecords(ctx, ident, params)
 	if err != nil {
-		return berrors.DNSError("%s", err)
+		return dnsError(err, "%s", err)
 	}
 
 	va.log.AuditInfo("Checked CAA records", map[string]any{
