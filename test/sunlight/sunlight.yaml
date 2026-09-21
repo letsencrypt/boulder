@@ -6,12 +6,13 @@ listen:
 # The checkpoint lock database, stored in the same volume as the MinIO data.
 checkpoints: /sunlight-data/checkpoints.db
 witness:
-  name: bsunlight
+  name: acoolmirror
   secret: /boulder/test/certs/sunlight/seed.bin
-  monitoringprefix: http://boulder-minio:9000/boulder-sunlight
+  submissionprefix: https://boulder-sunlight/
+  monitoringprefix: http://boulder-seaweedfs:8333/boulder-sunlight
   s3region: us-east-1
   s3bucket: boulder-sunlight
-  s3endpoint: http://boulder-minio:9000
+  s3endpoint: http://boulder-seaweedfs:8333
   mirrorname: oid/1.3.6.1.4.1.32473.9
   mirrorloglists:
     - /boulder/test/certs/sunlight/mtc-logs.txt
@@ -21,14 +22,14 @@ witness:
 logs:
   - shortname: bsunlight-ctlog
     inception: "@INCEPTION@"
-    submissionprefix: https://bsunlight/ctlog
-    monitoringprefix: http://boulder-minio:9000/boulder-sunlight/ctlog
+    submissionprefix: https://boulder-sunlight/ctlog
+    monitoringprefix: http://boulder-seaweedfs:8333/boulder-sunlight/ctlog
     roots: /boulder/test/certs/sunlight/ctlog-roots.pem
     secret: /boulder/test/certs/sunlight/seed.bin
     cache: /tmp/ctlog-cache.db
     s3region: us-east-1
     s3bucket: boulder-sunlight
     s3keyprefix: ctlog/
-    s3endpoint: http://boulder-minio:9000
+    s3endpoint: http://boulder-seaweedfs:8333
     notafterstart: "2020-01-01T00:00:00Z"
     notafterlimit: "2040-01-01T00:00:00Z"
