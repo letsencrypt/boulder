@@ -3259,10 +3259,10 @@ func TestGetOrder(t *testing.T) {
 		},
 		{
 			Name:    "Zero acct ID",
-			Request: makeGet("1/0"),
+			Request: makeGet("0/1"),
 			Response: `{
               "type": "urn:ietf:params:acme:error:malformed",
-              "detail": "No order for ID 0",
+              "detail": "No order for ID 1",
               "status": 404
             }`,
 		},
