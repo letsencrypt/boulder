@@ -3,7 +3,10 @@
 # https://github.com/FiloSottile/sunlight/blob/v0.9.0/cmd/sunlight/sunlight.go#L67
 listen:
   - ":4700"
-# The checkpoint lock database, stored in the same volume as the MinIO data.
+# The checkpoint lock database, stored in the same volume as the S3-compatible tile storage
+# (but not part of tile storage itself). This is for developer ergonomics: it makes it
+# harder to clear the tile storage without also clearing Sunlight's checkpoints.db, or
+# vice versa.
 checkpoints: /sunlight-data/checkpoints.db
 witness:
   name: acoolmirror
