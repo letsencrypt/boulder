@@ -1814,7 +1814,7 @@ func TestGetAuthorizationHandler(t *testing.T) {
 		Method: "GET",
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`malformed","detail":"Invalid authorization ID","status":400}`)
+		`{"type":"`+probs.ErrorNS+`malformed","detail":"not found","status":404}`)
 
 	_, _, jwsBody := signer.byKeyID(1, nil, "http://localhost/1/1", "")
 	postAsGet := makePostRequestWithPath("1/1", jwsBody)
@@ -1976,7 +1976,7 @@ func TestAccount(t *testing.T) {
 	request = makePostRequestWithPath("/a/bunch/of/garbage/1", body)
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertContains(t, responseWriter.Body.String(), "400")
+	test.AssertContains(t, responseWriter.Body.String(), "404")
 	test.AssertContains(t, responseWriter.Body.String(), probs.ErrorNS+"malformed")
 	responseWriter.Body.Reset()
 
@@ -3031,7 +3031,7 @@ func TestFinalizeOrder(t *testing.T) {
 		{
 			Name:         "Bad acct ID in path",
 			Request:      signAndPost(signer, "a/1", "http://localhost/a/1", "{}"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"not found","status":404}`,
 		},
 		{
 			Name: "Mismatched acct ID in path/JWS",
@@ -3046,7 +3046,7 @@ func TestFinalizeOrder(t *testing.T) {
 		{
 			Name:         "Order ID is invalid",
 			Request:      signAndPost(signer, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"not found","status":404}`,
 		},
 		{
 			Name: "Order doesn't exist",
@@ -3253,7 +3253,7 @@ func TestGetOrder(t *testing.T) {
 			Request: makeGet("1/0"),
 			Response: `{
               "type": "urn:ietf:params:acme:error:malformed",
-              "detail": "No order for ID 0",
+              "detail": "not found",
               "status": 404
             }`,
 		},
@@ -3262,7 +3262,7 @@ func TestGetOrder(t *testing.T) {
 			Request: makeGet("0/1"),
 			Response: `{
               "type": "urn:ietf:params:acme:error:malformed",
-              "detail": "No order for ID 1",
+              "detail": "not found",
               "status": 404
             }`,
 		},
@@ -3284,12 +3284,12 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Invalid account ID",
 			Request:  makeGet("asd/asd"),
-			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"not found","status":404}`,
 		},
 		{
 			Name:     "Invalid order ID",
 			Request:  makeGet("1/asd"),
-			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"not found","status":404}`,
 		},
 		{
 			Name:     "Real request, wrong account",

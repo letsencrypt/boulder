@@ -1188,9 +1188,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 	request *http.Request,
 	authorizationIDStr string,
 	challengeID string) {
-	authorizationID, err := strconv.ParseInt(authorizationIDStr, 10, 64)
+	authorizationID, err := parsePositiveInt(authorizationIDStr)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
+		wfe.sendError(response, logEvent, err, nil)
 		return
 	}
 	authzPB, err := wfe.ra.GetAuthorization(ctx, &rapb.GetAuthorizationRequest{Id: authorizationID})
@@ -1449,12 +1449,9 @@ func (wfe *WebFrontEndImpl) Account(
 	// Requests to this handler should have a path that leads to a known
 	// account
 	idStr := request.URL.Path
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := parsePositiveInt(idStr)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed(fmt.Sprintf("Account ID must be an integer, was %q", idStr)), err)
-		return
-	} else if id <= 0 {
-		wfe.sendError(response, logEvent, probs.Malformed(fmt.Sprintf("Account ID must be a positive non-zero integer, was %d", id)), nil)
+		wfe.sendError(response, logEvent, err, nil)
 		return
 	} else if id != currAcct.ID {
 		wfe.sendError(response, logEvent, probs.Unauthorized("Request signing key did not match account key"), nil)
@@ -1603,9 +1600,9 @@ func (wfe *WebFrontEndImpl) Authorization(
 		requestBody = body
 	}
 
-	authzID, err := strconv.ParseInt(authzIDStr, 10, 64)
+	authzID, err := parsePositiveInt(authzIDStr)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
+		wfe.sendError(response, logEvent, err, nil)
 		return
 	}
 
@@ -2562,19 +2559,14 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 		return
 	}
-	acctID, err := strconv.ParseInt(fields[0], 10, 64)
+	acctID, err := parsePositiveInt(fields[0])
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), err)
+		wfe.sendError(response, logEvent, err, nil)
 		return
 	}
-	orderID, err := strconv.ParseInt(fields[1], 10, 64)
+	orderID, err := parsePositiveInt(fields[1])
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), err)
-		return
-	}
-
-	if orderID == 0 || acctID == 0 {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), nil)
+		wfe.sendError(response, logEvent, err, nil)
 		return
 	}
 
@@ -2644,14 +2636,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, probs.NotFound("Invalid request path"), nil)
 		return
 	}
-	acctID, err := strconv.ParseInt(fields[0], 10, 64)
+	acctID, err := parsePositiveInt(fields[0])
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), nil)
+		wfe.sendError(response, logEvent, err, nil)
 		return
 	}
-	orderID, err := strconv.ParseInt(fields[1], 10, 64)
+	orderID, err := parsePositiveInt(fields[1])
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), nil)
+		wfe.sendError(response, logEvent, err, nil)
 		return
 	}
 
@@ -2879,4 +2871,17 @@ func looksLikeRecursiveOnDemandRequest(idents identifier.ACMEIdentifiers, blocke
 		}
 	}
 	return nil
+}
+
+// parsePositiveInt returns the input parsed as an int64 > 0,
+// or a berrors.NotFoundError on parse failure, zero, or negative numbers.
+func parsePositiveInt(v string) (int64, error) {
+	parsed, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, berrors.NotFoundError("")
+	}
+	if parsed <= 0 {
+		return 0, berrors.NotFoundError("")
+	}
+	return parsed, nil
 }
