@@ -3349,6 +3349,76 @@ func TestIssueCertificateOuter(t *testing.T) {
 	}
 }
 
+type mockSAWithFinalizeMTC struct {
+	sapb.StorageAuthorityClient
+
+	storage struct {
+		orderID         int64
+		mtcLogID        string
+		mtcSerialNumber uint64
+		mtcSubtreeID    uint64
+	}
+}
+
+func (sa *mockSAWithFinalizeMTC) FinalizeMTCOrder(_ context.Context, req *sapb.FinalizeMTCOrderRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	sa.storage.orderID = req.Id
+	sa.storage.mtcLogID = req.MtcLogID
+	sa.storage.mtcSerialNumber = req.MtcSerialNumber
+	sa.storage.mtcSubtreeID = req.MtcSubtreeID
+	return &emptypb.Empty{}, nil
+}
+
+// mockMTCA always returns fixed values in response to Issue()
+type mockMTCA struct{}
+
+func (mtca mockMTCA) Issue(_ context.Context, req *mtcapb.IssueRequest, _ ...grpc.CallOption) (*mtcapb.IssueResponse, error) {
+	return &mtcapb.IssueResponse{
+		MtcLogID:        "44947.4.1.0.44",
+		MtcSerialNumber: 56,
+		MtcSubtreeID:    34,
+	}, nil
+}
+
+func TestIssueMTC(t *testing.T) {
+	_, _, ra, _, fc, registration, cleanup := initAuthorities(t)
+	defer cleanup()
+	mockSA := &mockSAWithFinalizeMTC{}
+	ra.SA = mockSA
+	ra.profileToMTCA["mtcshortlived"] = mockMTCA{}
+
+	// Create a pubkey to issue for
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	testKeyBytes, err := x509.MarshalPKIXPublicKey(testKey.Public())
+	test.AssertNotError(t, err, "marshaling test key")
+
+	order := &corepb.Order{
+		Id:                     1234,
+		RegistrationID:         registration.Id,
+		Expires:                timestamppb.New(fc.Now().Add(24 * time.Hour)),
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
+		CertificateProfileName: "mtcshortlived",
+	}
+
+	err = ra.issueMTC(t.Context(), order, testKeyBytes)
+	if err != nil {
+		t.Fatalf("issuing MTC: %s", err)
+	}
+
+	if mockSA.storage.orderID != 1234 {
+		t.Errorf("orderID: got %d, want %d", mockSA.storage.orderID, 1234)
+	}
+	if mockSA.storage.mtcLogID != "44947.4.1.0.44" {
+		t.Errorf("mtcLogID: got %q, want %q", mockSA.storage.mtcLogID, "44947.4.1.0.44")
+	}
+	if mockSA.storage.mtcSerialNumber != 56 {
+		t.Errorf("mtcSerialNumber: got %d, want %d", mockSA.storage.mtcSerialNumber, 56)
+	}
+	if mockSA.storage.mtcSubtreeID != 34 {
+		t.Errorf("mtcSubtreeID: got %d, want %d", mockSA.storage.mtcSubtreeID, 34)
+	}
+}
+
 func TestNewOrderMaxNames(t *testing.T) {
 	_, _, ra, _, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()

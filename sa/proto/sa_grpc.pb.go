@@ -1167,6 +1167,7 @@ const (
 	StorageAuthority_DeactivateRegistration_FullMethodName       = "/sa.StorageAuthority/DeactivateRegistration"
 	StorageAuthority_FinalizeAuthorization2_FullMethodName       = "/sa.StorageAuthority/FinalizeAuthorization2"
 	StorageAuthority_FinalizeOrder_FullMethodName                = "/sa.StorageAuthority/FinalizeOrder"
+	StorageAuthority_FinalizeMTCOrder_FullMethodName             = "/sa.StorageAuthority/FinalizeMTCOrder"
 	StorageAuthority_NewOrderAndAuthzs_FullMethodName            = "/sa.StorageAuthority/NewOrderAndAuthzs"
 	StorageAuthority_NewRegistration_FullMethodName              = "/sa.StorageAuthority/NewRegistration"
 	StorageAuthority_RevokeCertificate_FullMethodName            = "/sa.StorageAuthority/RevokeCertificate"
@@ -1229,6 +1230,7 @@ type StorageAuthorityClient interface {
 	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error)
 	FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	FinalizeMTCOrder(ctx context.Context, in *FinalizeMTCOrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
 	RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1652,6 +1654,16 @@ func (c *storageAuthorityClient) FinalizeOrder(ctx context.Context, in *Finalize
 	return out, nil
 }
 
+func (c *storageAuthorityClient) FinalizeMTCOrder(ctx context.Context, in *FinalizeMTCOrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StorageAuthority_FinalizeMTCOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Order)
@@ -1865,6 +1877,7 @@ type StorageAuthorityServer interface {
 	DeactivateRegistration(context.Context, *RegistrationID) (*proto.Registration, error)
 	FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*emptypb.Empty, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*emptypb.Empty, error)
+	FinalizeMTCOrder(context.Context, *FinalizeMTCOrderRequest) (*emptypb.Empty, error)
 	NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error)
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
 	RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
@@ -1997,6 +2010,9 @@ func (UnimplementedStorageAuthorityServer) FinalizeAuthorization2(context.Contex
 }
 func (UnimplementedStorageAuthorityServer) FinalizeOrder(context.Context, *FinalizeOrderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinalizeOrder not implemented")
+}
+func (UnimplementedStorageAuthorityServer) FinalizeMTCOrder(context.Context, *FinalizeMTCOrderRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FinalizeMTCOrder not implemented")
 }
 func (UnimplementedStorageAuthorityServer) NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewOrderAndAuthzs not implemented")
@@ -2665,6 +2681,24 @@ func _StorageAuthority_FinalizeOrder_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_FinalizeMTCOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FinalizeMTCOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).FinalizeMTCOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_FinalizeMTCOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).FinalizeMTCOrder(ctx, req.(*FinalizeMTCOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_NewOrderAndAuthzs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NewOrderAndAuthzsRequest)
 	if err := dec(in); err != nil {
@@ -3097,6 +3131,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FinalizeOrder",
 			Handler:    _StorageAuthority_FinalizeOrder_Handler,
+		},
+		{
+			MethodName: "FinalizeMTCOrder",
+			Handler:    _StorageAuthority_FinalizeMTCOrder_Handler,
 		},
 		{
 			MethodName: "NewOrderAndAuthzs",

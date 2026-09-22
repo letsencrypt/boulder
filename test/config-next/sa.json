@@ -56,7 +56,9 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {}
+		"features": {
+			"OrderModelHasMTCFields": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
