@@ -8,6 +8,8 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -27,6 +29,8 @@ import (
 	"unicode"
 
 	"github.com/go-jose/go-jose/v4"
+	"golang.org/x/net/idna"
+	"golang.org/x/text/unicode/norm"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -48,6 +52,18 @@ var BuildHost string
 
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
+
+// DefaultMaxRead is for use by ErrOnLimitReader when it is appropriate to limit
+// a Reader to less than half a MB, which should be most of the time
+var DefaultMaxRead int64 = 300_000
+
+// DefaultMaxCRLRead is for use by ErrOnLimitReader to limit a Reader to 1
+// billion bytes, which is a generous value for CRLs
+var DefaultMaxCRLRead int64 = 1_000_000_000
+
+// ErrReaderLimitExceeded as an exported error type allows callers to check for
+// this error type after Read
+var ErrReaderLimitExceeded error = errors.New("reader size limit exceeded")
 
 func init() {
 	expvar.NewString("BuildID").Set(BuildID)
@@ -110,6 +126,9 @@ func KeyDigest(key crypto.PublicKey) (Sha256Digest, error) {
 	case jose.JSONWebKey:
 		return KeyDigest(t.Key)
 	default:
+		// Marshalling the key to DER ensures that this has the exact same result
+		// as computing the hash over the RawSubjectPublicKeyInfo of a cert with
+		// the same key.
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
 			return Sha256Digest{}, err
@@ -126,6 +145,15 @@ func KeyDigestB64(key crypto.PublicKey) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(digest[:]), nil
+}
+
+// CertKeyDigest is exactly the same as KeyDigest, except that it computes its
+// hash over the SubjectPublicKeyInfo of a certificate, rather than an in-memory
+// crypto.PublicKey. This is here to ensure that the methods used to compute
+// hashes of cert keys and account keys never diverge, since bad-key-revoker
+// checks both when a new key is blocked.
+func CertKeyDigest(cert *x509.Certificate) Sha256Digest {
+	return sha256.Sum256(cert.RawSubjectPublicKeyInfo)
 }
 
 // KeyDigestEquals determines whether two public keys have the same digest.
@@ -150,6 +178,29 @@ func PublicKeysEqual(a, b crypto.PublicKey) (bool, error) {
 	default:
 		return false, fmt.Errorf("unsupported public key type %T", ak)
 	}
+}
+
+// GenerateSKID computes the Subject Key Identifier using one of the methods in
+// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
+// The keyIdentifier [may be] composed of the leftmost 160-bits of the
+// SHA-256 hash of the value of the BIT STRING subjectPublicKey
+// (excluding the tag, length, and number of unused bits).
+func GenerateSKID(pub crypto.PublicKey) ([]byte, error) {
+	pkBytes, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, err
+	}
+
+	var pkixPublicKey struct {
+		Algo      pkix.AlgorithmIdentifier
+		BitString asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(pkBytes, &pkixPublicKey); err != nil {
+		return nil, err
+	}
+
+	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+	return skid[0:20:20], nil
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String
@@ -397,4 +448,82 @@ func IsCanceled(err error) bool {
 
 func Command() string {
 	return path.Base(os.Args[0])
+}
+
+// NormalizeIssuerDomainName normalizes an RFC 8659 issuer-domain-name per the
+// recommended algorithm in draft-ietf-acme-dns-persist-01, Section 9.2:
+// case-fold to lowercase, apply Unicode NFC normalization, convert to A-label
+// (Punycode), remove any trailing dot, and ensure the result is no more than
+// 253 octets in length. If normalization fails, an error is returned.
+func NormalizeIssuerDomainName(name string) (string, error) {
+	name = strings.ToLower(name)
+	name = norm.NFC.String(name)
+	name, err := idna.Lookup.ToASCII(name)
+	if err != nil {
+		return "", fmt.Errorf("converting issuer domain name %q to ASCII: %w", name, err)
+	}
+	name = strings.TrimSuffix(name, ".")
+	if len(name) > 253 {
+		return "", fmt.Errorf("issuer domain name %q exceeds 253 octets (%d)", name, len(name))
+	}
+	return name, nil
+}
+
+// errOnLimitedReader reads from Reader r but limits the amount of data returned
+// to just n bytes. Each call to Read updates n to reflect the new amount
+// remaining.
+type errOnLimitedReader struct {
+	r io.Reader
+	n int64
+}
+
+// ErrOnLimitReader returns a Reader that reads from r but stops with
+// ErrReaderLimitExceeded after n bytes.
+// The underlying implementation is a *errOnLimitedReader.
+//
+// If LimitedReader gets an Err field, we can evaluate switching
+// https://github.com/golang/go/issues/51115
+func ErrOnLimitReader(r io.Reader, n int64) io.Reader {
+	return &errOnLimitedReader{r, n}
+}
+
+// Read for our errOnLimitedReader forks and modifies io.LimitedReader.Read.
+//
+// LimitedReader's implementation remains concise and readable, but does not
+// differentiate overrun from the underlying Reader EOF, so we can't tell from
+// the outside whether overrun actually happened.
+// see: https://cs.opensource.google/go/go/+/refs/tags/go1.26.5:src/io/io.go;l=472-482
+//
+// MaxBytesReader's implementation uses some control flow that can be confusing,
+// and it assumes you're in an HTTP stack -- using http.ResponseWriter, etc --
+// which we are often not.
+// see: https://cs.opensource.google/go/go/+/refs/tags/go1.26.5:src/net/http/request.go;l=1211-1251
+//
+// Read returns ErrReaderLimitExceeded in two cases: when n < 0, or when n == 0
+// and there is even one more byte to read. Otherwise, it will return the
+// underlying Reader error, if any.
+func (l *errOnLimitedReader) Read(p []byte) (int, error) {
+	// We've previously somehow read too many bytes, so error out now.
+	if l.n < 0 {
+		return 0, ErrReaderLimitExceeded
+	}
+
+	// If we've already read exactly the limit, try to read just one more byte.
+	if l.n == 0 {
+		n, err := l.r.Read(make([]byte, 1))
+		if n == 0 {
+			return n, err
+		}
+		return 0, ErrReaderLimitExceeded
+	}
+
+	// Otherwise, read at most the remaining limit of bytes. If there are more
+	// bytes to be read from the underlying reader, that'll get caught by the
+	// case above the next time around.
+	if int64(len(p)) > l.n {
+		p = p[0:l.n]
+	}
+	n, err := l.r.Read(p)
+	l.n -= int64(n)
+	return n, err
 }

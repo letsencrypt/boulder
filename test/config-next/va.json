@@ -63,8 +63,10 @@
 			"http://boulder.service.consul:4001/acme/acct/",
 			"http://boulder.service.consul:4000/acme/reg/"
 		],
+		"slowRemoteTimeout": "2s",
 		"features": {
-			"DNSAccount01Enabled": true
+			"DNSAccount01Enabled": true,
+			"DNSPersist01Enabled": true
 		}
 	},
 	"syslog": {

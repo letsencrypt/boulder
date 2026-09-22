@@ -84,7 +84,7 @@ func main() {
 	httpOneAddresses := filterEmpty(strings.Split(*httpOneBind, ","))
 	httpsOneAddresses := filterEmpty(strings.Split(*httpsOneBind, ","))
 	dohAddresses := filterEmpty(strings.Split(*dohBind, ","))
-	dnsOneAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
+	dnsAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
 	tlsAlpnOneAddresses := filterEmpty(strings.Split(*tlsAlpnOneBind, ","))
 
 	logger := log.New(os.Stdout, "chall-test-srv - ", log.Ldate|log.Ltime)
@@ -96,7 +96,7 @@ func main() {
 		DOHAddrs:        dohAddresses,
 		DOHCert:         *dohCert,
 		DOHCertKey:      *dohCertKey,
-		DNSOneAddrs:     dnsOneAddresses,
+		DNSAddrs:        dnsAddresses,
 		TLSALPNOneAddrs: tlsAlpnOneAddresses,
 		Log:             logger,
 	})

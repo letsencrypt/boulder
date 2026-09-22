@@ -8,19 +8,23 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test/vars"
 
 	"github.com/letsencrypt/boulder/core"
@@ -60,7 +64,7 @@ func TestAuthzModel(t *testing.T) {
 	// customize them after calling this.
 	newTestAuthzPB := func(validated time.Time) *corepb.Authorization {
 		return &corepb.Authorization{
-			Id:             "1",
+			Id:             1,
 			Identifier:     identifier.NewDNS("example.com").ToProto(),
 			RegistrationID: 1,
 			Status:         string(core.StatusValid),
@@ -110,13 +114,23 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 	test.AssertEquals(t, authzPBOut.CertificateProfileName, authzPB.CertificateProfileName)
 
+	// Complete authz -> model -> authz round-trip should keep everything intact
+	// aside from the hostname and port exceptions tested above
+	test.AssertDeepEquals(t, authzPB, authzPBOut)
+
+	// PB with zero-value ID should error
+	authzPB = newTestAuthzPB(clk.Now())
+	authzPB.Id = 0
+	_, err = authzPBToModel(authzPB)
+	test.AssertError(t, err, "authzPBToModel with zero-value ID should error")
+	test.AssertEquals(t, err.Error(), "authorization is missing an ID value")
+
 	authzPB = newTestAuthzPB(clk.Now())
 
 	validationErr := probs.Connection("weewoo")
 
 	authzPB.Challenges[0].Status = string(core.StatusInvalid)
-	authzPB.Challenges[0].Error, err = grpc.ProblemDetailsToPB(validationErr)
-	test.AssertNotError(t, err, "grpc.ProblemDetailsToPB failed")
+	authzPB.Challenges[0].Error = grpc.ProblemDetailsToPB(validationErr)
 	model, err = authzPBToModel(authzPB)
 	test.AssertNotError(t, err, "authzPBToModel failed")
 
@@ -218,29 +232,45 @@ func TestModelToOrderBadJSON(t *testing.T) {
 		Error: badJSON,
 	})
 	test.AssertError(t, err, "expected error from modelToOrderv2")
-	var badJSONErr errBadJSON
-	test.AssertErrorWraps(t, err, &badJSONErr)
+	test.AssertErrorWraps[errBadJSON](t, err)
+	badJSONErr, _ := errors.AsType[errBadJSON](err)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 }
 
-func TestOrderModelThereAndBackAgain(t *testing.T) {
-	clk := clock.New()
-	now := clk.Now()
-	order := &corepb.Order{
-		Id:                     1,
-		RegistrationID:         2024,
-		Expires:                timestamppb.New(now.Add(24 * time.Hour)),
-		Created:                timestamppb.New(now),
-		Error:                  nil,
-		CertificateSerial:      "2",
-		BeganProcessing:        true,
-		CertificateProfileName: "phljny",
+// TestModelToOrderAuthzs tests that the Authzs field is properly decoded and
+// assigned to V2Authorizations.
+func TestModelToOrderAuthzs(t *testing.T) {
+	expectedAuthzIDs := []int64{1, 2, 3, 42}
+	encodedAuthzs, err := proto.Marshal(&sapb.Authzs{AuthzIDs: expectedAuthzIDs})
+	test.AssertNotError(t, err, "failed to marshal authzs")
+
+	testCases := []struct {
+		name             string
+		model            *orderModel
+		expectedAuthzIDs []int64
+	}{
+		{
+			name:             "with authzs",
+			model:            &orderModel{Authzs: encodedAuthzs},
+			expectedAuthzIDs: expectedAuthzIDs,
+		},
+		{
+			name:             "without authzs",
+			model:            &orderModel{},
+			expectedAuthzIDs: nil,
+		},
 	}
-	model, err := orderToModel(order)
-	test.AssertNotError(t, err, "orderToModelv2 should not have errored")
-	returnOrder, err := modelToOrder(model)
-	test.AssertNotError(t, err, "modelToOrderv2 should not have errored")
-	test.AssertDeepEquals(t, order, returnOrder)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			order, err := modelToOrder(tc.model)
+			if err != nil {
+				t.Fatalf("modelToOrder(%v) = %s, want success", tc.model, err)
+			}
+			if !slices.Equal(order.V2Authorizations, tc.expectedAuthzIDs) {
+				t.Errorf("modelToOrder(%v) = %v, want %v", tc.model, order.V2Authorizations, tc.expectedAuthzIDs)
+			}
+		})
+	}
 }
 
 // TestPopulateAttemptedFieldsBadJSON tests that populating a challenge from an
@@ -270,8 +300,8 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			err := populateAttemptedFields(*tc.Model, &corepb.Challenge{})
 			test.AssertError(t, err, "expected error from populateAttemptedFields")
-			var badJSONErr errBadJSON
-			test.AssertErrorWraps(t, err, &badJSONErr)
+			test.AssertErrorWraps[errBadJSON](t, err)
+			badJSONErr, _ := errors.AsType[errBadJSON](err)
 			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 		})
 	}
@@ -280,8 +310,7 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 func TestCertificatesTableContainsDuplicateSerials(t *testing.T) {
 	ctx := context.Background()
 
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, fc := initSA(t)
 
 	serialString := core.SerialToString(big.NewInt(1337))
 
@@ -329,6 +358,7 @@ func insertCertificate(ctx context.Context, dbMap *db.WrappedMap, fc clock.FakeC
 	}
 	cert := &core.Certificate{
 		RegistrationID: regID,
+		Issued:         fc.Now(),
 		Serial:         serialString,
 		Expires:        template.NotAfter,
 		DER:            certDer,
@@ -345,7 +375,7 @@ func TestIncidentSerialModel(t *testing.T) {
 
 	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	defer test.ResetIncidentsTestDatabase(t)
+	t.Cleanup(test.ResetIncidentsTestDatabase(t))
 
 	// Inserting and retrieving a row with only the serial populated should work.
 	_, err = testIncidentsDbMap.ExecContext(ctx,
@@ -394,8 +424,7 @@ func TestIncidentSerialModel(t *testing.T) {
 }
 
 func TestAddReplacementOrder(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	oldCertSerial := "1234567890"
 	orderId := int64(1337)
@@ -439,8 +468,7 @@ func TestAddReplacementOrder(t *testing.T) {
 }
 
 func TestSetReplacementOrderFinalized(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
+	sa, _ := initSA(t)
 
 	oldCertSerial := "1234567890"
 	orderId := int64(1337)

@@ -31,13 +31,19 @@ var CodedError = status.Errorf
 
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
-// checker is an interface for checking the health of a grpc service
-// implementation.
+// checker can be implemented by services to receive health checks via polling.
 type checker interface {
 	// Health returns nil if the service is healthy, or an error if it is not.
 	// If the passed context is canceled, it should return immediately with an
 	// error.
 	Health(context.Context) error
+}
+
+// onHealthy can be implemented by services to report health to gRPC by callbacks.
+type onHealthy interface {
+	// During server setup, OnHealthy will be passed a callback. The implementation
+	// should arrange for this callback to be invoked once the service is healthy.
+	OnHealthy(func())
 }
 
 // service represents a single gRPC service that can be registered with a gRPC
@@ -214,12 +220,17 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	healthCtx, stopHealthChecks := context.WithCancel(context.Background())
 	for _, s := range sb.services {
 		check, ok := s.impl.(checker)
-		if !ok {
-			continue
+		if ok {
+			sb.initLongRunningCheck(healthCtx, s.desc.ServiceName, check.Health)
 		}
-		sb.initLongRunningCheck(healthCtx, s.desc.ServiceName, check.Health)
-	}
 
+		registerReady, ok := s.impl.(onHealthy)
+		if ok {
+			registerReady.OnHealthy(func() {
+				sb.healthSrv.SetServingStatus(s.desc.ServiceName, healthpb.HealthCheckResponse_SERVING)
+			})
+		}
+	}
 	// Start a goroutine which listens for a termination signal, and then
 	// gracefully stops the gRPC server. This in turn causes the start() function
 	// to exit, allowing its caller (generally a main() function) to exit.
@@ -252,6 +263,7 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 		var next healthpb.HealthCheckResponse_ServingStatus
 		err := checkImpl(checkImplCtx)
 		if err != nil {
+			sb.logger.Infof("health check of gRPC service %q failed: %s", service, err)
 			next = healthpb.HealthCheckResponse_NOT_SERVING
 		} else {
 			next = healthpb.HealthCheckResponse_SERVING
@@ -263,8 +275,8 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 		}
 
 		if next != healthpb.HealthCheckResponse_SERVING {
-			sb.logger.Errf("transitioning overall health from %q to %q, due to: %s", last, next, err)
-			sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
+			sb.logger.Warningf("transitioning overall health from %q to %q, due to: %s", last, next, err)
+			sb.logger.Warningf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
 		} else {
 			sb.logger.Infof("transitioning overall health from %q to %q", last, next)
 			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)
@@ -315,8 +327,8 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	)
 	err := stats.Register(grpcMetrics)
 	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			grpcMetrics = are.ExistingCollector.(*grpc_prometheus.ServerMetrics)
 		} else {
 			return serverMetrics{}, err
@@ -333,8 +345,8 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 		})
 	err = stats.Register(rpcLag)
 	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			rpcLag = are.ExistingCollector.(prometheus.Histogram)
 		} else {
 			return serverMetrics{}, err

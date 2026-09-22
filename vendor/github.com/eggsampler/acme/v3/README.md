@@ -6,7 +6,7 @@
 
 ## About
 
-`eggsampler/acme` is a Go client library implementation for [RFC8555](https://tools.ietf.org/html/rfc8555) (previously ACME v2). This library can be used with the [Let's Encrypt](https://letsencrypt.org/) Certificate Authority (CA), but also other ACME compliant CA's such as [ZeroSSL](https://zerossl.com/). 
+`eggsampler/acme` is a Go client library implementation for [RFC8555](https://tools.ietf.org/html/rfc8555) (previously ACME v2). This library can be used with the [Let's Encrypt](https://letsencrypt.org/) Certificate Authority (CA), but also other ACME compliant CA's such as [ZeroSSL](https://zerossl.com/), [Google Trust Services](https://pki.goog/) and others listed at https://acmeclients.com/certificate-authorities/. 
 
 The library is designed to provide a zero external dependency wrapper over exposed directory endpoints and provide objects in easy to use structures.
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -18,13 +19,14 @@ import (
 type Config struct {
 	SA struct {
 		cmd.ServiceConfig
-		DB          cmd.DBConfig
-		ReadOnlyDB  cmd.DBConfig `validate:"-"`
-		IncidentsDB cmd.DBConfig `validate:"-"`
+		DB               cmd.DBConfig
+		ReadOnlyDB       cmd.DBConfig `validate:"-"`
+		IncidentsDB      cmd.DBConfig `validate:"-"`
+		IncidentsAdminDB cmd.DBConfig `validate:"-"`
 
 		Features features.Config
 
-		// Max simultaneous SQL queries caused by a single RPC.
+		// Deprecated and unused.
 		ParallelismPerRPC int `validate:"omitempty,min=1"`
 		// LagFactor is how long to sleep before retrying a read request that may
 		// have failed solely due to replication lag.
@@ -60,7 +62,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	dbMap, err := sa.InitWrappedDb(c.SA.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
@@ -77,24 +79,39 @@ func main() {
 		cmd.FailOnError(err, "While initializing dbIncidentsMap")
 	}
 
-	clk := clock.New()
+	var dbIncidentsAdminMap *db.WrappedMap
+	if c.SA.IncidentsAdminDB != (cmd.DBConfig{}) {
+		dbIncidentsAdminMap, err = sa.InitWrappedDb(c.SA.IncidentsAdminDB, scope, logger)
+		cmd.FailOnError(err, "While initializing dbIncidentsAdminMap")
+	}
 
-	parallel := max(c.SA.ParallelismPerRPC, 1)
+	clk := clock.New()
 
 	tls, err := c.SA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	saroi, err := sa.NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.Duration, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, scope, c.SA.LagFactor.Duration, clk, logger)
 	cmd.FailOnError(err, "Failed to create read-only SA impl")
 
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	start, err := bgrpc.NewServer(c.SA.GRPC, logger).WithCheckInterval(c.SA.HealthCheckInterval.Duration).Add(
+	var saai *sa.SQLStorageAuthorityAdmin
+	if dbIncidentsAdminMap != nil {
+		saai, err = sa.NewSQLStorageAuthorityAdmin(dbMap, dbIncidentsAdminMap, logger)
+		cmd.FailOnError(err, "Failed to create SA admin impl")
+	}
+
+	server := bgrpc.NewServer(c.SA.GRPC, logger).WithCheckInterval(c.SA.HealthCheckInterval.Duration).Add(
 		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
-		&sapb.StorageAuthority_ServiceDesc, sai).Build(
-		tls, scope, clk)
+		&sapb.StorageAuthority_ServiceDesc, sai)
+
+	if dbIncidentsAdminMap != nil {
+		server = server.Add(&sapb.StorageAuthorityAdmin_ServiceDesc, saai)
+	}
+
+	start, err := server.Build(tls, scope, clk)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 
 	cmd.FailOnError(start(), "SA gRPC service failed")

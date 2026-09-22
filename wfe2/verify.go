@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
 	nb "github.com/letsencrypt/boulder/grpc/noncebalancer"
+	nbv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -182,27 +183,26 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) error {
 	return nil
 }
 
-// nonceWellFormed checks a JWS' Nonce header to ensure it is well-formed,
-// otherwise a bad nonce error is returned. This avoids unnecessary RPCs to
-// the nonce redemption service.
-func nonceWellFormed(nonceHeader string, prefixLen int) error {
-	errBadNonce := berrors.BadNonceError("JWS has an invalid anti-replay nonce: %q", nonceHeader)
+// nonceWellFormed checks whether a JWS' Nonce header is well-formed, returning
+// false if it is not. This avoids unnecessary RPCs to the nonce redemption
+// service.
+func nonceWellFormed(nonceHeader string, prefixLen int) bool {
 	if len(nonceHeader) <= prefixLen {
 		// Nonce header was an unexpected length because there is either:
 		// 1) no nonce, or
 		// 2) no nonce material after the prefix.
-		return errBadNonce
+		return false
 	}
 	body, err := base64.RawURLEncoding.DecodeString(nonceHeader[prefixLen:])
 	if err != nil {
 		// Nonce was not valid base64url.
-		return errBadNonce
+		return false
 	}
 	if len(body) != nonce.NonceLen {
 		// Nonce was an unexpected length.
-		return errBadNonce
+		return false
 	}
-	return nil
+	return true
 }
 
 // validNonce checks a JWS' Nonce header to ensure it is one that the
@@ -215,10 +215,9 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		return berrors.BadNonceError("JWS has no anti-replay nonce")
 	}
 
-	err := nonceWellFormed(header.Nonce, nonce.PrefixLen)
-	if err != nil {
+	if !nonceWellFormed(header.Nonce, nonce.PrefixLen) {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
-		return err
+		return berrors.BadNonceError("JWS has a malformed anti-replay nonce: %q", header.Nonce)
 	}
 
 	// Populate the context with the nonce prefix and HMAC key. These are
@@ -230,22 +229,34 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 	resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
 	if err != nil {
 		rpcStatus, ok := status.FromError(err)
-		if !ok || rpcStatus != nb.ErrNoBackendsMatchPrefix {
-			return fmt.Errorf("failed to redeem nonce: %w", err)
+		if ok && (rpcStatus == nb.ErrNoBackendsMatchPrefix || rpcStatus == nbv1.ErrNoBackendsMatchPrefix) {
+			// Getting our sentinel ErrNoBackendsMatchPrefix status.Status means that
+			// the nonce backend which issued this nonce is presently unreachable or
+			// unrecognized by this WFE. As this is a transient failure, the client
+			// should retry their request with a fresh nonce.
+			wfe.stats.nonceNoMatchingBackendCount.Inc()
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSNoBackendNonce"}).Inc()
+			return berrors.BadNonceError("JWS has a nonce whose prefix matches no nonce service: %q", header.Nonce)
 		}
 
-		// ErrNoBackendsMatchPrefix suggests that the nonce backend, which
-		// issued this nonce, is presently unreachable or unrecognized by
-		// this WFE. As this is a transient failure, the client should retry
-		// their request with a fresh nonce.
-		resp = &noncepb.ValidMessage{Valid: false}
-		wfe.stats.nonceNoMatchingBackendCount.Inc()
+		if errors.Is(err, berrors.BadNonce) {
+			// Getting a berrors.BadNonce means that the nonce service itself had
+			// something to say about why the nonce was invalid; no need to wrap it.
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnredeemableNonce"}).Inc()
+			return err
+		}
+
+		// We don't recognize this error, so just pass it upwards.
+		return fmt.Errorf("failed to redeem nonce: %w", err)
 	}
 
+	// TODO: Remove this clause, as we're updating the NonceService to return an
+	// error rather than Valid=false when redemption fails.
 	if !resp.Valid {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
-		return berrors.BadNonceError("JWS has an invalid anti-replay nonce: %q", header.Nonce)
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnredeemableNonce"}).Inc()
+		return berrors.BadNonceError("JWS has an expired anti-replay nonce: %q", header.Nonce)
 	}
+
 	return nil
 }
 
@@ -363,8 +374,8 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, error) {
 	bodyStr := string(body)
 	parsedJWS, err := jose.ParseSigned(bodyStr, getSupportedAlgs())
 	if err != nil {
-		var unexpectedSignAlgoErr *jose.ErrUnexpectedSignatureAlgorithm
-		if errors.As(err, &unexpectedSignAlgoErr) {
+		unexpectedSignAlgoErr, ok := errors.AsType[*jose.ErrUnexpectedSignatureAlgorithm](err)
+		if ok {
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
 			return nil, berrors.BadSignatureAlgorithmError(
 				"JWS signature header contains unsupported algorithm %q, expected one of %s",
@@ -449,7 +460,7 @@ func (wfe *WebFrontEndImpl) extractJWK(header jose.Header) (*jose.JSONWebKey, er
 func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request) (int64, error) {
 	// For normal ACME v2 accounts we expect the account URL has a prefix composed
 	// of the Host header and the acctPath.
-	expectedURLPrefix := web.RelativeEndpoint(request, acctPath)
+	expectedURLPrefix := web.RelativeEndpoint(request, acctPath) + "/"
 
 	// Process the acctURL to find only the trailing numeric account ID. Both the
 	// expected URL prefix and a legacy URL prefix are permitted in order to allow
@@ -496,7 +507,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	}
 
 	// Try to find the account for this account ID
-	account, err := wfe.accountGetter.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
+	account, err := wfe.sa.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
 	if err != nil {
 		// If the account isn't found, return a suitable error
 		if errors.Is(err, berrors.NotFound) {
@@ -512,7 +523,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		return nil, nil, berrors.InternalServerError("Error retrieving account %q: %s", accountURL, err)
 	}
 
-	// Verify the account is not deactivated
+	// Verify the account is not deactivated or revoked.
 	if core.AcmeStatus(account.Status) != core.StatusValid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDAccountInvalid"}).Inc()
 		return nil, nil, berrors.UnauthorizedError("Account is not valid, has status %q", account.Status)

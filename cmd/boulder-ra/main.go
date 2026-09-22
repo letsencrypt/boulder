@@ -3,13 +3,16 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/jmhodges/clock"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -18,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
@@ -39,17 +43,12 @@ type Config struct {
 
 		MaxContactsPerRegistration int
 
+		ProfileToMTCA map[string]*cmd.GRPCClientConfig
+
 		SAService        *cmd.GRPCClientConfig
 		VAService        *cmd.GRPCClientConfig
 		CAService        *cmd.GRPCClientConfig
 		PublisherService *cmd.GRPCClientConfig
-
-		// Deprecated: TODO(#8345): Remove this.
-		AkamaiPurgerService *cmd.GRPCClientConfig
-
-		// Deprecated: TODO(#8349): Remove this when removing the corresponding
-		// service from the CA.
-		OCSPService *cmd.GRPCClientConfig
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
@@ -69,28 +68,22 @@ type Config struct {
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
-			// this field is not set, all requesters will be subject to the
-			// default rate limits. Overrides passed in this file must be
-			// identical to those in the WFE.
+			// neither this field nor OverridesFromDB is set, all requesters
+			// will be subject to the default rate limits. Overrides passed in
+			// this file must be identical to those in the WFE.
 			//
 			// Note: At this time, only the Failed Authorizations overrides are
 			// necessary in the RA.
 			Overrides string
-		}
 
-		// MaxNames is the maximum number of subjectAltNames in a single cert.
-		// The value supplied MUST be greater than 0 and no more than 100. These
-		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
-		// Subscriber Certificate". The value must match the CA and WFE
-		// configurations.
-		//
-		// Deprecated: Set ValidationProfiles[*].MaxNames instead.
-		MaxNames int `validate:"omitempty,min=1,max=100"`
+			// OverridesFromDB causes the WFE and RA to retrieve rate limit overrides
+			// from the database, instead of from a file.
+			OverridesFromDB bool
+		}
 
 		// ValidationProfiles is a map of validation profiles to their
 		// respective issuance allow lists. If a profile is not included in this
-		// mapping, it cannot be used by any account. If this field is left
-		// empty, all profiles are open to all accounts.
+		// mapping, it cannot be used by any account.
 		ValidationProfiles map[string]*ra.ValidationProfileConfig `validate:"required"`
 
 		// DefaultProfileName sets the profile to use if one wasn't provided by the
@@ -99,15 +92,6 @@ type Config struct {
 		// configured in the CA or finalization will fail for orders using this
 		// default.
 		DefaultProfileName string `validate:"required"`
-
-		// MustStapleAllowList specified the path to a YAML file containing a
-		// list of account IDs permitted to request certificates with the OCSP
-		// Must-Staple extension.
-		//
-		// Deprecated: This field no longer has any effect, all Must-Staple requests
-		// are rejected.
-		// TODO(#8345): Remove this field.
-		MustStapleAllowList string `validate:"omitempty"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -169,7 +153,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RA.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
@@ -178,11 +162,23 @@ func main() {
 	pa, err := policy.New(c.PA.Identifiers, c.PA.Challenges, logger)
 	cmd.FailOnError(err, "Couldn't create PA")
 
+	if features.Get().DNSAccount01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
+		cmd.Fail("Feature flag DNSAccount01Enabled and PA dns-account-01 challenge must both be enabled or disabled")
+	}
+	if features.Get().DNSPersist01Enabled != pa.ChallengeTypeEnabled(core.ChallengeTypeDNSPersist01) {
+		cmd.Fail("Feature flag DNSPersist01Enabled and PA dns-persist-01 challenge must both be enabled or disabled")
+	}
+
 	if c.RA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile must be provided.")
 	}
 	err = pa.LoadIdentPolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load identifier policy file")
+
+	for policyReason, policyFile := range c.RA.HostnamePolicyFiles {
+		err = pa.LoadIdentPolicyFile(policyFile)
+		cmd.FailOnError(err, fmt.Sprintf("Could not load identifier policy file: %q, at path: %q", policyReason, policyFile))
+	}
 
 	tlsConfig, err := c.RA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -193,6 +189,14 @@ func main() {
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := vapb.NewVAClient(vaConn)
 	caaClient := vapb.NewCAAClient(vaConn)
+
+	profileToMTCA := make(map[string]mtcapb.MTCAClient)
+	for profile, clientConfig := range c.RA.ProfileToMTCA {
+		mtcaConn, err := bgrpc.ClientSetup(clientConfig, tlsConfig, scope, clk)
+		cmd.FailOnError(err, fmt.Sprintf("Unable to create MTCA client for profile %s", profile))
+		mtcaClient := mtcapb.NewMTCAClient(mtcaConn)
+		profileToMTCA[profile] = mtcaClient
+	}
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
@@ -240,16 +244,11 @@ func main() {
 		cmd.Fail("At least one profile must be configured")
 	}
 
-	// TODO(#7993): Remove this fallback and make ValidationProfile.MaxNames a
-	// required config field. We don't do any validation on the value of this
-	// top-level MaxNames because that happens inside the call to
-	// NewValidationProfiles below.
-	for _, pc := range c.RA.ValidationProfiles {
-		if pc.MaxNames == 0 {
-			pc.MaxNames = c.RA.MaxNames
+	for name, profile := range c.RA.ValidationProfiles {
+		if profile.MTC && c.RA.ProfileToMTCA[name] == nil {
+			cmd.Fail(fmt.Sprintf("profile %q is configured for MTC but has no MTCA backend", name))
 		}
 	}
-
 	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)
 	cmd.FailOnError(err, "Failed to load validation profiles")
 
@@ -271,8 +270,21 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, scope)
 		limiter, err = ratelimits.NewLimiter(clk, source, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides)
+		if c.RA.Limiter.OverridesFromDB {
+			if c.RA.Limiter.Overrides != "" {
+				cmd.Fail("OverridesFromDB and an overrides file were both defined, but are mutually exclusive")
+			}
+			saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.RA.Limiter.Defaults, saroc.GetEnabledRateLimitOverrides, scope, logger)
+		} else {
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides, scope, logger)
+		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+
+		// The 30 minute period here must be kept in sync with the promise
+		// (successCommentBody) made to requesters in sfe/overridesimporter.go
+		overrideRefresherShutdown := txnBuilder.NewRefresher(30 * time.Minute)
+		defer overrideRefresherShutdown()
 	}
 
 	rai := ra.NewRegistrationAuthorityImpl(
@@ -283,12 +295,12 @@ func main() {
 		kp,
 		limiter,
 		txnBuilder,
-		c.RA.MaxNames,
 		validationProfiles,
 		pubc,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		issuerCerts,
+		profileToMTCA,
 	)
 	defer rai.Drain()
 

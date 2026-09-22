@@ -1,6 +1,8 @@
 package observer
 
 import (
+	"context"
+	"math/rand/v2"
 	"strconv"
 	"time"
 
@@ -13,26 +15,50 @@ type monitor struct {
 	prober probers.Prober
 }
 
-// start spins off a 'Prober' goroutine on an interval of `m.period`
-// with a timeout of half `m.period`
-func (m monitor) start(logger blog.Logger) {
-	ticker := time.NewTicker(m.period)
-	timeout := m.period / 2
+// start spins off a 'Prober' goroutine approximately once per `m.period`,
+// with a timeout of half `m.period`. The probe attempts start after a random
+// delay and have 20% jitter around the configured period, to prevent many
+// monitors with the same period from all waking up at the same time.
+func (m monitor) start(ctx context.Context, logger blog.Logger) {
+	// Wait a random duration of at most one period before the first probe,
+	// so that monitors don't all fire at once when the process starts.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(rand.N(m.period)):
+	}
+
 	for {
 		go func() {
+			ctx, cancel := context.WithTimeout(ctx, m.period/2)
+			defer cancel()
+
 			// Attempt to probe the configured target.
-			success, dur := m.prober.Probe(timeout)
+			start := time.Now()
+			err := m.prober.Probe(ctx)
+			dur := time.Since(start)
 
 			// Produce metrics to be scraped by Prometheus.
 			histObservations.WithLabelValues(
-				m.prober.Name(), m.prober.Kind(), strconv.FormatBool(success),
+				m.prober.Name(), m.prober.Kind(), strconv.FormatBool(err == nil),
 			).Observe(dur.Seconds())
 
 			// Log the outcome of the probe attempt.
-			logger.Infof(
-				"kind=[%s] success=[%v] duration=[%f] name=[%s]",
-				m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
+			if err != nil {
+				logger.Errf("kind=[%s] success=[%t] duration=[%f] name=[%s] error=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name(), err)
+			} else {
+				logger.Infof("kind=[%s] success=[%t] duration=[%f] name=[%s]",
+					m.prober.Kind(), err == nil, dur.Seconds(), m.prober.Name())
+			}
 		}()
-		<-ticker.C
+
+		// This jitter is equivalent to 1 +/- 0.2*rand.Float64().
+		jitter := 0.8 + 0.4*rand.Float64()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(float64(m.period) * jitter)):
+		}
 	}
 }

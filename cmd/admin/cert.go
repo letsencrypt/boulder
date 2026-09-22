@@ -116,7 +116,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	case "-serials-file":
 		serials, err = a.serialsFromFile(ctx, s.serialsFile)
 	case "-private-key":
-		serials, err = a.serialsFromPrivateKey(ctx, s.privKey)
+		serials, err = a.serialsFromPrivateKeys(ctx, s.privKey)
 	case "-reg-id":
 		serials, err = a.serialsFromRegID(ctx, s.regID)
 	case "-cert-file":
@@ -202,6 +202,7 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 	if err != nil {
 		return nil, fmt.Errorf("opening serials file: %w", err)
 	}
+	defer file.Close()
 
 	var serials []string
 	scanner := bufio.NewScanner(file)
@@ -212,31 +213,38 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 		}
 		serials = append(serials, serial)
 	}
+	err = scanner.Err()
+	if err != nil {
+		return nil, fmt.Errorf("error while reading serials file: %w", err)
+	}
 
 	return serials, nil
 }
 
-func (a *admin) serialsFromPrivateKey(ctx context.Context, privkeyFile string) ([]string, error) {
-	spkiHash, err := a.spkiHashFromPrivateKey(privkeyFile)
+func (a *admin) serialsFromPrivateKeys(ctx context.Context, privkeyFile string) ([]string, error) {
+	spkiHashes, err := a.spkiHashesFromPrivateKeys(privkeyFile)
 	if err != nil {
 		return nil, err
 	}
 
-	stream, err := a.saroc.GetSerialsByKey(ctx, &sapb.SPKIHash{KeyHash: spkiHash})
-	if err != nil {
-		return nil, fmt.Errorf("setting up stream of serials from SA: %s", err)
-	}
-
 	var serials []string
-	for {
-		serial, err := stream.Recv()
+
+	for _, spkiHash := range spkiHashes {
+		stream, err := a.saroc.GetSerialsByKey(ctx, &sapb.SPKIHash{KeyHash: spkiHash})
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, fmt.Errorf("streaming serials from SA: %s", err)
+			return nil, fmt.Errorf("setting up stream of serials from SA: %s", err)
 		}
-		serials = append(serials, serial.Serial)
+
+		for {
+			serial, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return nil, fmt.Errorf("streaming serials from SA: %s", err)
+			}
+			serials = append(serials, serial.Serial)
+		}
 	}
 
 	return serials, nil
@@ -329,7 +337,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 				if err != nil {
 					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
-						a.log.Errf("not revoking %q: already revoked", serial)
+						a.log.Warningf("not revoking %q: already revoked", serial)
 					} else {
 						a.log.Errf("failed to revoke %q: %s", serial, err)
 					}

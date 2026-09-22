@@ -11,6 +11,7 @@ outputs:
     public-key-path: test/certs/webpki/root-rsa.pubkey.pem
     certificate-path: test/certs/webpki/root-rsa.cert.pem
 certificate-profile:
+    policy-url: https://github.com/letsencrypt/cp-cps/blob/v6.1/CP-CPS.md#root-ca-certificate-profile
     signature-algorithm: SHA256WithRSA
     common-name: root rsa
     organization: good guys

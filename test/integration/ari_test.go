@@ -6,9 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/x509/pkix"
-	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -16,14 +13,6 @@ import (
 
 	"github.com/letsencrypt/boulder/test"
 )
-
-// certID matches the ASN.1 structure of the CertID sequence defined by RFC6960.
-type certID struct {
-	HashAlgorithm  pkix.AlgorithmIdentifier
-	IssuerNameHash []byte
-	IssuerKeyHash  []byte
-	SerialNumber   *big.Int
-}
 
 func TestARIAndReplacement(t *testing.T) {
 	t.Parallel()
@@ -46,7 +35,10 @@ func TestARIAndReplacement(t *testing.T) {
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, ari.SuggestedWindow.Start.Sub(time.Now()).Round(time.Hour), 1418*time.Hour)
 	test.AssertEquals(t, ari.SuggestedWindow.End.Sub(time.Now()).Round(time.Hour), 1461*time.Hour)
-	test.AssertEquals(t, ari.RetryAfter.Sub(time.Now()).Round(time.Hour), 6*time.Hour)
+	lowerRetryAfterLimit := 17280 * time.Second
+	upperRetryAfterLimit := 25920 * time.Second
+	retryAfter := ari.RetryAfter.Sub(time.Now()).Round(time.Second)
+	test.Assert(t, retryAfter >= lowerRetryAfterLimit && retryAfter <= upperRetryAfterLimit, "retry after amount is not within expected range")
 
 	// Make a new order which indicates that it replaces the cert issued above,
 	// and verify that the replacement order succeeds.
@@ -60,11 +52,7 @@ func TestARIAndReplacement(t *testing.T) {
 	// Retrieve the order and verify that it has the correct replaces field.
 	resp, err := client.FetchOrder(client.Account, order.URL)
 	test.AssertNotError(t, err, "failed to fetch order")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		test.AssertEquals(t, resp.Replaces, order.Replaces)
-	} else {
-		test.AssertEquals(t, resp.Replaces, "")
-	}
+	test.AssertEquals(t, resp.Replaces, order.Replaces)
 
 	// Try another replacement order and verify that it fails.
 	_, order, err = makeClientAndOrder(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "", cert)
@@ -94,7 +82,10 @@ func TestARIShortLived(t *testing.T) {
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, ari.SuggestedWindow.Start.Sub(time.Now()).Round(time.Hour), 78*time.Hour)
 	test.AssertEquals(t, ari.SuggestedWindow.End.Sub(time.Now()).Round(time.Hour), 81*time.Hour)
-	test.AssertEquals(t, ari.RetryAfter.Sub(time.Now()).Round(time.Hour), 6*time.Hour)
+	lowerRetryAfterLimit := 17280 * time.Second
+	upperRetryAfterLimit := 25920 * time.Second
+	retryAfter := ari.RetryAfter.Sub(time.Now()).Round(time.Second)
+	test.Assert(t, retryAfter >= lowerRetryAfterLimit && retryAfter <= upperRetryAfterLimit, "retry after amount is not within expected range")
 }
 
 func TestARIRevoked(t *testing.T) {

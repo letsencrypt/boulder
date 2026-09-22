@@ -37,20 +37,12 @@ func (sa SA) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, 
 	return sa.Impl.GetAuthorization2(ctx, req)
 }
 
-func (sa SA) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return sa.Impl.GetAuthorizations2(ctx, req)
-}
-
 func (sa SA) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return sa.Impl.GetValidAuthorizations2(ctx, req)
 }
 
-func (sa SA) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+func (sa SA) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return sa.Impl.GetValidOrderAuthorizations2(ctx, req)
-}
-
-func (sa SA) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountPendingAuthorizations2(ctx, req)
 }
 
 func (sa SA) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -107,10 +99,6 @@ func (sa SA) GetCertificateStatus(ctx context.Context, req *sapb.Serial, _ ...gr
 
 func (sa SA) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.AddBlockedKey(ctx, req)
-}
-
-func (sa SA) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return sa.Impl.FQDNSetExists(ctx, req)
 }
 
 func (sa SA) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {

@@ -11,13 +11,13 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 	"github.com/letsencrypt/boulder/sfe"
 	"github.com/letsencrypt/boulder/sfe/zendesk"
 	"github.com/letsencrypt/boulder/web"
@@ -94,7 +94,14 @@ type Config struct {
 			// 20 minutes.
 			Interval config.Duration `validate:"omitempty,required_with=Mode,min=1200s"`
 		} `validate:"omitempty,dive"`
-		Features features.Config
+
+		// AutoApproveOverrides enables automatic approval of override requests
+		// for the following limits and tiers:
+		//   - NewOrdersPerAccount: 1000
+		//   - CertificatesPerDomain: 300
+		//   - CertificatesPerDomainPerAccount: 300
+		AutoApproveOverrides bool `validate:"-"`
+		Features             features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -131,7 +138,7 @@ func main() {
 	}
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SFE.DebugAddr)
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	clk := clock.New()
 
@@ -216,7 +223,7 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.SFE.Limiter.Defaults, "")
+		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.SFE.Limiter.Defaults, "", stats, logger)
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 	}
 
@@ -232,6 +239,7 @@ func main() {
 		zendeskClient,
 		limiter,
 		txnBuilder,
+		c.SFE.AutoApproveOverrides,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

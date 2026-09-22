@@ -194,7 +194,7 @@ func (srv *managementServer) delDNSAAAARecord(w http.ResponseWriter, r *http.Req
 func (srv *managementServer) addDNSCAARecord(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Host     string
-		Policies []challtestsrv.MockCAAPolicy
+		Policies []challtestsrv.CAAPolicy
 	}
 	if err := mustParsePOST(&request, r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

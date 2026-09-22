@@ -2,33 +2,33 @@ package mocks
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/email"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
+	"github.com/letsencrypt/boulder/salesforce"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
 )
 
-// MockPardotClientImpl is a mock implementation of PardotClient.
-type MockPardotClientImpl struct {
+var _ salesforce.SalesforceClient = (*MockSalesforceClientImpl)(nil)
+
+// MockSalesforceClientImpl is a mock implementation of salesforce.SalesforceClient.
+type MockSalesforceClientImpl struct {
 	sync.Mutex
 	CreatedContacts []string
 }
 
-// NewMockPardotClientImpl returns a emailPardotClient and a
-// MockPardotClientImpl. Both refer to the same instance, with the interface for
-// mock interaction and the struct for state inspection and modification.
-func NewMockPardotClientImpl() (email.PardotClient, *MockPardotClientImpl) {
-	mockImpl := &MockPardotClientImpl{
-		CreatedContacts: []string{},
-	}
-	return mockImpl, mockImpl
+// NewMockSalesforceClientImpl returns a MockSalesforceClientImpl, which implements
+// the PardotClient interface. It returns the underlying concrete type, so callers
+// have access to its struct members and helper methods.
+func NewMockSalesforceClientImpl() *MockSalesforceClientImpl {
+	return &MockSalesforceClientImpl{}
 }
 
 // SendContact adds an email to CreatedContacts.
-func (m *MockPardotClientImpl) SendContact(email string) error {
+func (m *MockSalesforceClientImpl) SendContact(email string) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -38,30 +38,33 @@ func (m *MockPardotClientImpl) SendContact(email string) error {
 
 // GetCreatedContacts is used for testing to retrieve the list of created
 // contacts in a thread-safe manner.
-func (m *MockPardotClientImpl) GetCreatedContacts() []string {
+func (m *MockSalesforceClientImpl) GetCreatedContacts() []string {
 	m.Lock()
 	defer m.Unlock()
+
 	// Return a copy to avoid race conditions.
-	return append([]string{}, m.CreatedContacts...)
+	return slices.Clone(m.CreatedContacts)
 }
+
+var _ emailpb.ExporterClient = (*MockExporterClientImpl)(nil)
 
 // MockExporterClientImpl is a mock implementation of ExporterClient.
 type MockExporterClientImpl struct {
-	PardotClient email.PardotClient
+	SalesforceClient salesforce.SalesforceClient
 }
 
 // NewMockExporterImpl returns a MockExporterClientImpl as an ExporterClient.
-func NewMockExporterImpl(pardotClient email.PardotClient) emailpb.ExporterClient {
+func NewMockExporterImpl(salesforceClient salesforce.SalesforceClient) emailpb.ExporterClient {
 	return &MockExporterClientImpl{
-		PardotClient: pardotClient,
+		SalesforceClient: salesforceClient,
 	}
 }
 
-// SendContacts submits emails to the inner PardotClient, returning an error if
-// any fail.
+// SendContacts submits emails to the inner salesforce.SalesforceClient, returning an
+// error if any fail.
 func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	for _, e := range req.Emails {
-		err := m.PardotClient.SendContact(e)
+		err := m.SalesforceClient.SendContact(e)
 		if err != nil {
 			return nil, err
 		}

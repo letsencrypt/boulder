@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -162,7 +161,7 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		return nil, nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
-	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, serverName))
+	va.log.Infof("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, serverName)
 
 	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
 	defer cancel()
@@ -210,7 +209,7 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		return nil, nil, berrors.UnauthorizedError("No certs presented for %s challenge", core.ChallengeTypeTLSALPN01)
 	}
 	for i, cert := range certs {
-		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
+		va.log.Infof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
 			core.ChallengeTypeTLSALPN01, ident.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
 	return certs[0], &cs, nil
@@ -296,7 +295,7 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
-		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 challenge was not DNS or IP: %s", ident))
+		va.log.Infof("Identifier type for TLS-ALPN-01 challenge was not DNS or IP: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
 	}
 
@@ -367,7 +366,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident 
 				return validationRecords, badCertErr(
 					"Received certificate with malformed acmeValidationV1 extension value.")
 			}
-			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
+			if !bytes.Equal(h[:], extValue) {
 				return validationRecords, badCertErr(fmt.Sprintf(
 					"Received certificate with acmeValidationV1 extension value %s but expected %s.",
 					hex.EncodeToString(extValue),

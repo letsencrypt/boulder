@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"reflect"
 
 	"github.com/letsencrypt/borp"
@@ -92,61 +91,4 @@ type Rows[T any] interface {
 	Get() (*T, error)
 	Err() error
 	Close() error
-}
-
-// MockSqlExecutor implement SqlExecutor by returning errors from every call.
-//
-// TODO: To mock out WithContext, we needed to be able to return objects that satisfy
-// borp.SqlExecutor. That's a pretty big interface, so we specify one no-op mock
-// that we can embed everywhere we need to satisfy it.
-// Note: MockSqlExecutor does *not* implement WithContext. The expectation is
-// that structs that embed MockSqlExecutor will define their own WithContext
-// that returns a reference to themselves. That makes it easy for those structs
-// to override the specific methods they need to implement (e.g. SelectOne).
-type MockSqlExecutor struct{}
-
-func (mse MockSqlExecutor) Get(ctx context.Context, i any, keys ...any) (any, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) Insert(ctx context.Context, list ...any) error {
-	return errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) Update(ctx context.Context, list ...any) (int64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) Delete(ctx context.Context, list ...any) (int64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) Select(ctx context.Context, i any, query string, args ...any) ([]any, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) SelectInt(ctx context.Context, query string, args ...any) (int64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) SelectNullInt(ctx context.Context, query string, args ...any) (sql.NullInt64, error) {
-	return sql.NullInt64{}, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) SelectFloat(ctx context.Context, query string, args ...any) (float64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) SelectNullFloat(ctx context.Context, query string, args ...any) (sql.NullFloat64, error) {
-	return sql.NullFloat64{}, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) SelectStr(ctx context.Context, query string, args ...any) (string, error) {
-	return "", errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) SelectNullStr(ctx context.Context, query string, args ...any) (sql.NullString, error) {
-	return sql.NullString{}, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) SelectOne(ctx context.Context, holder any, query string, args ...any) error {
-	return errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse MockSqlExecutor) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return nil
 }

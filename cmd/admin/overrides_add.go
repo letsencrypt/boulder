@@ -27,6 +27,7 @@ type subcommandAddOverride struct {
 	burst            int64
 	period           string
 	comment          string
+	force            bool
 }
 
 func (*subcommandAddOverride) Desc() string {
@@ -44,6 +45,7 @@ func (c *subcommandAddOverride) Flags(f *flag.FlagSet) {
 	f.Int64Var(&c.burst, "burst", 0, "burst size (required)")
 	f.StringVar(&c.period, "period", "", "period duration (e.g. 1h, 168h) (required)")
 	f.StringVar(&c.comment, "comment", "", "comment for the override (required)")
+	f.BoolVar(&c.force, "force", false, "forces an update even if the new override is lower than the existing one")
 }
 
 // validateIdentifiers checks that the provided identifiers are valid according policy.
@@ -134,9 +136,21 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 			Period:    durationpb.New(dur),
 			Comment:   c.comment,
 		},
+		Force: c.force,
 	})
 	if err != nil {
 		return fmt.Errorf("adding override for limit %s key %q: %s", name, bucketKey, err)
+	}
+
+	if resp.Existing != nil {
+		return fmt.Errorf(
+			"override for limit %s bucketKey %q is lower than existing override (count=%d burst=%d period=%s), use --force to override",
+			name,
+			bucketKey,
+			resp.Existing.Count,
+			resp.Existing.Burst,
+			resp.Existing.Period.AsDuration(),
+		)
 	}
 
 	status := "disabled"

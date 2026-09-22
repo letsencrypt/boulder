@@ -57,7 +57,9 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 	case berrors.AccountDoesNotExist:
 		outProb = probs.AccountDoesNotExist(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.BadNonce:
-		outProb = probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
+		// We stuff extra internal info into bad nonce errors, but none of it is
+		// really actionable by the end-user, so overwrite the user-visible message.
+		outProb = probs.BadNonce("JWS has an invalid anti-replay nonce")
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
@@ -79,8 +81,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 // of an type unknown to ProblemDetailsForError, it will return a ServerInternal
 // ProblemDetails.
 func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
-	var bErr *berrors.BoulderError
-	if errors.As(err, &bErr) {
+	bErr, ok := errors.AsType[*berrors.BoulderError](err)
+	if ok {
 		return problemDetailsForBoulderError(bErr, msg)
 	} else {
 		// Internal server error messages may include sensitive data, so we do

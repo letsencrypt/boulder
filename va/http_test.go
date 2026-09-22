@@ -3,7 +3,6 @@ package va
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	mrand "math/rand/v2"
@@ -12,7 +11,6 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +28,65 @@ import (
 
 	"testing"
 )
+
+type ipFakeDNS struct {
+	// If non-nil, this IP address will be returned by the appropriate method (LookupA / LookupAAAA) depending on
+	// whether it is IPv4 or IPv6. Otherwise those methods return 127.0.0.1 / ::1.
+	ip net.IP
+	bdns.Client
+}
+
+func (c *ipFakeDNS) LookupA(_ context.Context, hostname string) (*bdns.Result[*dns.A], string, error) {
+	var wrapA = func(ips ...net.IP) (*bdns.Result[*dns.A], string, error) {
+		var rrs []*dns.A
+		for _, ip := range ips {
+			rrs = append(rrs, &dns.A{A: ip})
+		}
+		res := &bdns.Result[*dns.A]{Final: rrs}
+		return res, "ipFakeDNS", nil
+	}
+
+	if strings.HasSuffix(hostname, ".invalid") {
+		return wrapA()
+	}
+
+	ip := net.IPv4(127, 0, 0, 1)
+	if c.ip != nil && c.ip.To4() != nil {
+		ip = c.ip
+	}
+	// dual-homed host with an IPv6 and an IPv4 address
+	if hostname == "ipv4.and.ipv6.localhost" {
+		return wrapA(ip)
+	}
+	if hostname == "ipv6.localhost" {
+		return wrapA()
+	}
+	return wrapA(ip)
+}
+
+func (c *ipFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result[*dns.AAAA], string, error) {
+	wrapAAAA := func(ips ...net.IP) (*bdns.Result[*dns.AAAA], string, error) {
+		var rrs []*dns.AAAA
+		for _, ip := range ips {
+			rrs = append(rrs, &dns.AAAA{AAAA: ip})
+		}
+		return &bdns.Result[*dns.AAAA]{Final: rrs}, "ipFakeDNS", nil
+	}
+
+	ip := net.IPv6loopback
+	if c.ip != nil && c.ip.To4() == nil {
+		ip = c.ip
+	}
+
+	// dual-homed host with an IPv6 and an IPv4 address
+	if hostname == "ipv4.and.ipv6.localhost" {
+		return wrapAAAA(ip)
+	}
+	if hostname == "ipv6.localhost" {
+		return wrapAAAA(ip)
+	}
+	return wrapAAAA()
+}
 
 // TestDialerMismatchError tests that using a preresolvedDialer for one host for
 // a dial to another host produces the expected dialerMismatchError.
@@ -54,15 +111,19 @@ func TestDialerMismatchError(t *testing.T) {
 	test.AssertEquals(t, err.Error(), expectedErr.Error())
 }
 
-// dnsMockReturnsUnroutable is a DNSClient mock that always returns an
-// unroutable address for LookupHost. This is useful in testing connect
-// timeouts.
-type dnsMockReturnsUnroutable struct {
-	*bdns.MockClient
+// unroutableFakeDNS is a DNSClient mock that always returns an
+// unroutable address for LookupA and no results for LookupAAAA. This is useful
+// in testing connect timeouts.
+type unroutableFakeDNS struct {
+	bdns.Client
 }
 
-func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
-	return []netip.Addr{netip.MustParseAddr("64.112.117.254")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
+func (c *unroutableFakeDNS) LookupA(_ context.Context, hostname string) (*bdns.Result[*dns.A], string, error) {
+	return &bdns.Result[*dns.A]{Final: []*dns.A{{A: net.IPv4(64, 112, 117, 254)}}}, "dnsFakeUnroutable", nil
+}
+
+func (c *unroutableFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result[*dns.AAAA], string, error) {
+	return nil, "dnsFakeUnroutable", errors.New("SERVFAIL")
 }
 
 // TestDialerTimeout tests that the preresolvedDialer's DialContext
@@ -71,7 +132,7 @@ func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname stri
 // the appropriate "Timeout during connect" error message, which helps clients
 // distinguish between firewall problems and server problems.
 func TestDialerTimeout(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &unroutableFakeDNS{})
 	// Timeouts below 50ms tend to be flaky.
 	va.singleDialTimeout = 50 * time.Millisecond
 
@@ -80,7 +141,6 @@ func TestDialerTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockClient{}}
 	// NOTE(@jsha): The only method I've found so far to trigger a connect timeout
 	// is to connect to an unrouteable IP address. This usually generates
 	// a connection timeout, but will rarely return "Network unreachable" instead.
@@ -130,8 +190,6 @@ func TestHTTPTransport(t *testing.T) {
 }
 
 func TestHTTPValidationTarget(t *testing.T) {
-	// NOTE(@cpu): See `bdns/mocks.go` and the mock `LookupHost` function for the
-	// hostnames used in this test.
 	testCases := []struct {
 		Name          string
 		Ident         identifier.ACMEIdentifier
@@ -141,7 +199,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		{
 			Name:          "No IPs for DNS identifier",
 			Ident:         identifier.NewDNS("always.invalid"),
-			ExpectedError: berrors.DNSError("No valid IP addresses found for always.invalid"),
+			ExpectedError: berrors.DNSError("no valid A records found for always.invalid; no valid AAAA records found for always.invalid"),
 		},
 		{
 			Name:        "Only IPv4 addrs for DNS identifier",
@@ -177,7 +235,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		exampleQuery = "my-path=was&my=own"
 	)
 
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &ipFakeDNS{})
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			target, err := va.newHTTPValidationTarget(
@@ -270,13 +328,6 @@ func TestExtractRequestTarget(t *testing.T) {
 			Name: "malformed wildcard-ish IPv4 address",
 			Req: &http.Request{
 				URL: mustURL("https://10.10.10.*"),
-			},
-			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
-		},
-		{
-			Name: "malformed too-long IPv6 address",
-			Req: &http.Request{
-				URL: mustURL("https://[a:b:c:d:e:f:b:a:d]"),
 			},
 			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
 		},
@@ -420,66 +471,8 @@ func TestExtractRequestTarget(t *testing.T) {
 	}
 }
 
-// TestHTTPValidationDNSError attempts validation for a domain name that always
-// generates a DNS error, and checks that a log line with the detailed error is
-// generated.
-func TestHTTPValidationDNSError(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
-
-	_, _, prob := va.processHTTPValidation(ctx, identifier.NewDNS("always.error"), "/.well-known/acme-challenge/whatever")
-	test.AssertError(t, prob, "Expected validation fetch to fail")
-	matchingLines := mockLog.GetAllMatching(`read udp: some net error`)
-	if len(matchingLines) != 1 {
-		t.Errorf("Didn't see expected DNS error logged. Instead, got:\n%s",
-			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
-	}
-}
-
-// TestHTTPValidationDNSIdMismatchError tests that performing an HTTP-01
-// challenge with a domain name that always returns a DNS ID mismatch error from
-// the mock resolver results in valid query/response data being logged in
-// a format we can decode successfully.
-func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
-
-	_, _, prob := va.processHTTPValidation(ctx, identifier.NewDNS("id.mismatch"), "/.well-known/acme-challenge/whatever")
-	test.AssertError(t, prob, "Expected validation fetch to fail")
-	matchingLines := mockLog.GetAllMatching(`logDNSError ID mismatch`)
-	if len(matchingLines) != 1 {
-		t.Errorf("Didn't see expected DNS error logged. Instead, got:\n%s",
-			strings.Join(mockLog.GetAllMatching(`.*`), "\n"))
-	}
-	expectedRegex := regexp.MustCompile(
-		`INFO: logDNSError ID mismatch ` +
-			`chosenServer=\[mock.server\] ` +
-			`hostname=\[id\.mismatch\] ` +
-			`respHostname=\[id\.mismatch\.\] ` +
-			`queryType=\[A\] ` +
-			`msg=\[([A-Za-z0-9+=/\=]+)\] ` +
-			`resp=\[([A-Za-z0-9+=/\=]+)\] ` +
-			`err\=\[dns: id mismatch\]`,
-	)
-
-	matches := expectedRegex.FindAllStringSubmatch(matchingLines[0], -1)
-	test.AssertEquals(t, len(matches), 1)
-	submatches := matches[0]
-	test.AssertEquals(t, len(submatches), 3)
-
-	msgBytes, err := base64.StdEncoding.DecodeString(submatches[1])
-	test.AssertNotError(t, err, "bad base64 encoded query msg")
-	msg := new(dns.Msg)
-	err = msg.Unpack(msgBytes)
-	test.AssertNotError(t, err, "bad packed query msg")
-
-	respBytes, err := base64.StdEncoding.DecodeString(submatches[2])
-	test.AssertNotError(t, err, "bad base64 encoded resp msg")
-	resp := new(dns.Msg)
-	err = resp.Unpack(respBytes)
-	test.AssertNotError(t, err, "bad packed response msg")
-}
-
 func TestSetupHTTPValidation(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &ipFakeDNS{})
 
 	mustTarget := func(t *testing.T, host string, port int, path string) *httpValidationTarget {
 		target, err := va.newHTTPValidationTarget(
@@ -541,7 +534,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 				AddressUsed:       netip.MustParseAddr("::1"),
-				ResolverAddrs:     []string{"MockClient"},
+				ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      netip.MustParseAddr("::1"),
@@ -559,7 +552,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 				AddressUsed:       netip.MustParseAddr("::1"),
-				ResolverAddrs:     []string{"MockClient"},
+				ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      netip.MustParseAddr("::1"),
@@ -868,8 +861,8 @@ func TestFetchHTTP(t *testing.T) {
 
 	// Setup VAs. By providing the testSrv to setup the VA will use the testSrv's
 	// randomly assigned port as its HTTP port.
-	vaIPv4, _ := setup(testSrvIPv4, "", nil, nil)
-	vaIPv6, _ := setup(testSrvIPv6, "", nil, nil)
+	vaIPv4, _ := setup(testSrvIPv4, "", nil, &ipFakeDNS{})
+	vaIPv6, _ := setup(testSrvIPv6, "", nil, &ipFakeDNS{})
 
 	// We need to know the randomly assigned HTTP port for testcases as well
 	httpPortIPv4 := getPort(testSrvIPv4)
@@ -896,7 +889,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 				AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-				ResolverAddrs:     []string{"MockClient"},
+				ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 			})
 	}
 
@@ -917,7 +910,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 				AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-				ResolverAddrs:     []string{"MockClient"},
+				ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 			})
 	}
 
@@ -940,7 +933,7 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("always.invalid"),
 			Path:  "/.well-known/whatever",
 			ExpectedProblem: probs.DNS(
-				"No valid IP addresses found for always.invalid"),
+				"no valid A records found for always.invalid; no valid AAAA records found for always.invalid"),
 			// There are no validation records in this case because the base record
 			// is only constructed once a URL is made.
 			ExpectedRecords: nil,
@@ -959,7 +952,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/timeout",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -994,7 +987,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-proto",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1012,7 +1005,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-port",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1028,7 +1021,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bare-ipv4",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 				{
 					Hostname:          "127.0.0.1",
@@ -1051,7 +1044,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv6.localhost/redir-bare-ipv6",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
 					AddressUsed:       netip.MustParseAddr("::1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 				{
 					Hostname:          "::1",
@@ -1075,7 +1068,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-path-too-long",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1092,7 +1085,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/bad-status-code",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1109,7 +1102,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/303-see-other",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1127,7 +1120,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/resp-too-big",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1144,7 +1137,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv6.localhost/ok",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1")},
 					AddressUsed:       netip.MustParseAddr("::1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1161,7 +1154,7 @@ func TestFetchHTTP(t *testing.T) {
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
 					AddressUsed:   netip.MustParseAddr("::1"),
-					ResolverAddrs: []string{"MockClient"},
+					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 				{
 					Hostname:          "ipv4.and.ipv6.localhost",
@@ -1170,7 +1163,7 @@ func TestFetchHTTP(t *testing.T) {
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("::1"), netip.MustParseAddr("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
 					AddressUsed:   netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs: []string{"MockClient"},
+					ResolverAddrs: []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1186,7 +1179,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1202,7 +1195,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 				{
 					Hostname:          "example.com",
@@ -1210,7 +1203,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1231,7 +1224,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
 					AddressUsed:       netip.MustParseAddr("127.0.0.1"),
-					ResolverAddrs:     []string{"MockClient"},
+					ResolverAddrs:     []string{"ipFakeDNS", "ipFakeDNS"},
 				},
 			},
 		},
@@ -1330,7 +1323,7 @@ func httpSrv(t *testing.T, token string, ipv6 bool) *httptest.Server {
 			http.Redirect(w, r, fmt.Sprintf("http://other.valid.com:%d/%s", port, path500), http.StatusMovedPermanently)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
-			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently)
+			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently) //nolint:gosec // open redirect, but that's okay, this is a test
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectInvalidPort) {
 			t.Logf("HTTPSRV: Got a port redirect req\n")
 			// Port 8080 is not the VA's httpPort or httpsPort and should be rejected
@@ -1367,7 +1360,7 @@ func TestHTTPBadPort(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	// Pick a random port between 40000 and 65000 - with great certainty we won't
 	// have an HTTP server listening on this port and the test will fail as
@@ -1411,7 +1404,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	})
 	hs.Start()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), expectedToken, expectedKeyAuthorization)
 
 	if err == nil {
@@ -1427,20 +1420,18 @@ func TestHTTP(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
-	va, log := setup(hs, "", nil, nil)
+	va, log := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), expectedToken, expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation for DNS: %s", err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedToken, expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation for IPv4: %s", err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), path404, ka(path404))
@@ -1448,7 +1439,6 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
 	test.AssertErrorIs(t, err, berrors.Unauthorized)
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	// The "wrong token" will actually be the expectedToken.  It's wrong
@@ -1459,7 +1449,6 @@ func TestHTTP(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathMoved, ka(pathMoved))
@@ -1492,20 +1481,19 @@ func TestHTTPIPv6(t *testing.T) {
 	hs := httpSrv(t, expectedToken, true)
 	defer hs.Close()
 
-	va, log := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedToken, expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation for IPv6: %s", err)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 }
 
 func TestHTTPTimeout(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	started := time.Now()
 	timeout := 250 * time.Millisecond
@@ -1533,7 +1521,7 @@ func TestHTTPTimeout(t *testing.T) {
 func TestHTTPRedirectLookup(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
-	va, log := setup(hs, "", nil, nil)
+	va, log := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost.com"), pathMoved, ka(pathMoved))
 	if err != nil {
@@ -1595,7 +1583,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 func TestHTTPRedirectLoop(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), "looper", ka("looper"))
 	if prob == nil {
@@ -1606,7 +1594,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 func TestHTTPRedirectUserAgent(t *testing.T) {
 	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 	va.userAgent = rejectUserAgent
 
 	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), pathMoved, ka(pathMoved))
@@ -1642,7 +1630,7 @@ func TestValidateHTTP(t *testing.T) {
 	hs := httpSrv(t, token, false)
 	defer hs.Close()
 
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 
 	_, prob := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), token, ka(token))
 	test.Assert(t, prob == nil, "validation failed")
@@ -1652,7 +1640,7 @@ func TestLimitedReader(t *testing.T) {
 	token := core.NewToken()
 
 	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789", false)
-	va, _ := setup(hs, "", nil, nil)
+	va, _ := setup(hs, "", nil, &ipFakeDNS{})
 	defer hs.Close()
 
 	_, err := va.validateHTTP01(ctx, identifier.NewDNS("localhost"), token, ka(token))
@@ -1723,7 +1711,7 @@ func TestHTTPHostHeader(t *testing.T) {
 
 			// Setup VA. By providing the testSrv to setup the VA will use the
 			// testSrv's randomly assigned port as its HTTP port.
-			va, _ := setup(testSrv, "", nil, nil)
+			va, _ := setup(testSrv, "", nil, &ipFakeDNS{})
 
 			var got string
 			_, _, _ = va.processHTTPValidation(ctx, tc.Ident, "/ok")

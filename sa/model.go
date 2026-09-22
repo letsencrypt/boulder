@@ -2,7 +2,6 @@ package sa
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -12,11 +11,11 @@ import (
 	"math"
 	"net/netip"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -334,52 +333,22 @@ func (model certificateStatusModel) toPb() *corepb.CertificateStatus {
 	}
 }
 
-// orderModel represents one row in the orders table. The CertificateProfileName
-// column is a pointer because the column is NULL-able.
+// orderModel represents one row in the orders table.
 type orderModel struct {
-	ID                     int64
-	RegistrationID         int64
-	Expires                time.Time
-	Created                time.Time
-	Error                  []byte
-	CertificateSerial      string
-	BeganProcessing        bool
+	ID                int64
+	RegistrationID    int64
+	Expires           time.Time
+	Created           time.Time
+	Error             []byte
+	CertificateSerial string
+	BeganProcessing   bool
+	// CertificateProfileName is a pointer because the column is NULL-able.
 	CertificateProfileName *string
-	Replaces               *string
-}
-
-type orderToAuthzModel struct {
-	OrderID int64
-	AuthzID int64
-}
-
-func orderToModel(order *corepb.Order) (*orderModel, error) {
-	// Make a local copy so we can take a reference to it below.
-	profile := order.CertificateProfileName
-	replaces := order.Replaces
-
-	om := &orderModel{
-		ID:                     order.Id,
-		RegistrationID:         order.RegistrationID,
-		Expires:                order.Expires.AsTime(),
-		Created:                order.Created.AsTime(),
-		BeganProcessing:        order.BeganProcessing,
-		CertificateSerial:      order.CertificateSerial,
-		CertificateProfileName: &profile,
-		Replaces:               &replaces,
-	}
-
-	if order.Error != nil {
-		errJSON, err := json.Marshal(order.Error)
-		if err != nil {
-			return nil, err
-		}
-		if len(errJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Error object is too large to store in the database")
-		}
-		om.Error = errJSON
-	}
-	return om, nil
+	// Replaces is a pointer because the column is NULL-able.
+	Replaces *string
+	// Contains protobuf-encoded list of authorization IDs without duplicates.
+	// See sa/proto/sadb.proto
+	Authzs []byte
 }
 
 func modelToOrder(om *orderModel) (*corepb.Order, error) {
@@ -391,6 +360,15 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	if om.Replaces != nil {
 		replaces = *om.Replaces
 	}
+	var v2Authorizations []int64
+	if len(om.Authzs) > 0 {
+		var decodedAuthzs sapb.Authzs
+		err := proto.Unmarshal(om.Authzs, &decodedAuthzs)
+		if err != nil {
+			return nil, err
+		}
+		v2Authorizations = decodedAuthzs.AuthzIDs
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -400,6 +378,7 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		BeganProcessing:        om.BeganProcessing,
 		CertificateProfileName: profile,
 		Replaces:               replaces,
+		V2Authorizations:       v2Authorizations,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
@@ -420,6 +399,7 @@ var challTypeToUint = map[string]uint8{
 	"dns-01":         1,
 	"tls-alpn-01":    2,
 	"dns-account-01": 3,
+	"dns-persist-01": 4,
 }
 
 var uintToChallType = map[uint8]string{
@@ -427,6 +407,7 @@ var uintToChallType = map[uint8]string{
 	1: "dns-01",
 	2: "tls-alpn-01",
 	3: "dns-account-01",
+	4: "dns-persist-01",
 }
 
 var identifierTypeToUint = map[string]uint8{
@@ -558,7 +539,7 @@ func SelectAuthzsMatchingIssuance(
 	identConditions, identArgs := buildIdentifierQueryConditions(idents)
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
-			status IN (?, ?) AND
+			status IN (?, ?, ?) AND
 			expires >= ? AND
 			attemptedAt <= ? AND
 			(%s)`,
@@ -567,7 +548,7 @@ func SelectAuthzsMatchingIssuance(
 	var args []any
 	args = append(args,
 		regID,
-		statusToUint[core.StatusValid], statusToUint[core.StatusDeactivated],
+		statusToUint[core.StatusValid], statusToUint[core.StatusDeactivated], statusToUint[core.StatusRevoked],
 		issued.Add(-1*time.Second), // leeway for clock skew
 		issued.Add(1*time.Second),  // leeway for clock skew
 	)
@@ -642,9 +623,14 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
+	if authz.Id == 0 {
+		return nil, errors.New("authorization is missing an ID value")
+	}
+
 	ident := identifier.FromProto(authz.Identifier)
 
 	am := &authzModel{
+		ID:              authz.Id,
 		IdentifierType:  identifierTypeToUint[ident.ToProto().Type],
 		IdentifierValue: ident.Value,
 		RegistrationID:  authz.RegistrationID,
@@ -654,16 +640,6 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	if authz.CertificateProfileName != "" {
 		profile := authz.CertificateProfileName
 		am.CertificateProfileName = &profile
-	}
-	if authz.Id != "" {
-		// The v1 internal authorization objects use a string for the ID, the v2
-		// storage format uses a integer ID. In order to maintain compatibility we
-		// convert the integer ID to a string.
-		id, err := strconv.Atoi(authz.Id)
-		if err != nil {
-			return nil, err
-		}
-		am.ID = int64(id)
 	}
 	if hasMultipleNonPendingChallenges(authz.Challenges) {
 		return nil, errors.New("multiple challenges are non-pending")
@@ -755,10 +731,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 				am.ValidationError,
 				err)
 		}
-		challenge.Error, err = grpc.ProblemDetailsToPB(&prob)
-		if err != nil {
-			return err
-		}
+		challenge.Error = grpc.ProblemDetailsToPB(&prob)
 	} else {
 		// If the error is empty the challenge must be valid.
 		challenge.Status = string(core.StatusValid)
@@ -801,7 +774,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	}
 
 	pb := &corepb.Authorization{
-		Id:                     fmt.Sprintf("%d", am.ID),
+		Id:                     am.ID,
 		Status:                 string(uintToStatus[am.Status]),
 		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),
 		RegistrationID:         am.RegistrationID,
@@ -1043,7 +1016,7 @@ func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) err
 	if cert.RawSubjectPublicKeyInfo == nil {
 		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
 	}
-	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	h := core.CertKeyDigest(cert)
 	khm := &keyHashModel{
 		KeyHash:      h[:],
 		CertNotAfter: cert.NotAfter,
@@ -1177,7 +1150,7 @@ type authzValidity struct {
 	Expires         time.Time `db:"expires"`
 }
 
-// getAuthorizationStatuses takes a sequence of authz IDs, and returns the
+// getAuthorizationStatuses takes a sequence of distinct authz IDs, and returns the
 // status and expiration date of each of them.
 func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) ([]authzValidity, error) {
 	var params []any
@@ -1196,19 +1169,12 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 		return nil, err
 	}
 
-	return validities, nil
-}
+	if len(validities) != len(ids) {
+		return nil, fmt.Errorf("getAuthorizationStatuses got %d results for for %d ids: %v",
+			len(validities), len(ids), ids)
+	}
 
-// authzForOrder retrieves the authorization IDs for an order.
-func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, error) {
-	var v2IDs []int64
-	_, err := s.Select(
-		ctx,
-		&v2IDs,
-		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
-		orderID,
-	)
-	return v2IDs, err
+	return validities, nil
 }
 
 // crlShardModel represents one row in the crlShards table. The ThisUpdate and

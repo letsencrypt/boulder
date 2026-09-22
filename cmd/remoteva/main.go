@@ -85,7 +85,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RVA.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 	clk := clock.New()
 
 	var servers bdns.ServerProvider
@@ -106,28 +106,15 @@ func main() {
 		tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 	}
 
-	var resolver bdns.Client
-	if !c.RVA.DNSAllowLoopbackAddresses {
-		resolver = bdns.New(
-			c.RVA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			c.RVA.DNSTries,
-			c.RVA.UserAgent,
-			logger,
-			tlsConfig)
-	} else {
-		resolver = bdns.NewTest(
-			c.RVA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			c.RVA.DNSTries,
-			c.RVA.UserAgent,
-			logger,
-			tlsConfig)
-	}
+	resolver := bdns.New(
+		c.RVA.DNSTimeout.Duration,
+		servers,
+		scope,
+		clk,
+		c.RVA.DNSTries,
+		c.RVA.UserAgent,
+		logger,
+		tlsConfig)
 
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
@@ -140,7 +127,13 @@ func main() {
 		c.RVA.AccountURIPrefixes,
 		c.RVA.Perspective,
 		c.RVA.RIR,
-		iana.IsReservedAddr)
+		iana.IsReservedAddr,
+		0,
+		c.RVA.DNSAllowLoopbackAddresses,
+		nil,
+		0,
+		0,
+	)
 	cmd.FailOnError(err, "Unable to create Remote-VA server")
 
 	start, err := bgrpc.NewServer(c.RVA.GRPC, logger).Add(

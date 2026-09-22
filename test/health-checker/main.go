@@ -22,8 +22,6 @@ type config struct {
 }
 
 func main() {
-	defer cmd.AuditPanic()
-
 	// Flag and config parsing and validation.
 	configFile := flag.String("config", "", "Path to the TLS configuration file")
 	serverAddr := flag.String("addr", "", "Address of the gRPC server to check")
@@ -61,7 +59,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*c.GRPC.Timeout.Duration)
 	defer cancel()
 
-	for {
+	start := time.Now()
+	for i := 1; ; i++ {
 		select {
 		case <-ticker.C:
 			_, hostOverride, err := c.GRPC.MakeTargetAndHostOverride()
@@ -69,7 +68,6 @@ func main() {
 
 			// Set the hostOverride to match the dNSName in the server certificate.
 			c.GRPC.HostOverride = strings.Replace(hostOverride, ".service.consul", ".boulder", 1)
-			fmt.Fprintf(os.Stderr, "health checking %s (%s)\n", c.GRPC.HostOverride, *serverAddr)
 
 			// Set up the GRPC connection.
 			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, metrics.NoopRegisterer, clk)
@@ -87,8 +85,11 @@ func main() {
 				if strings.Contains(err.Error(), "authentication handshake failed") {
 					cmd.Fail(fmt.Sprintf("health checking %s (%s): %s\n", c.GRPC.HostOverride, *serverAddr, err))
 				}
-				fmt.Fprintf(os.Stderr, "health checking %s (%s): %s\n", c.GRPC.HostOverride, *serverAddr, err)
 			} else if resp.Status == healthpb.HealthCheckResponse_SERVING {
+				elapsed := time.Since(start)
+				if elapsed > 1*time.Second {
+					fmt.Printf("service %s is healthy after %s with %d tries\n", *serverAddr, elapsed, i)
+				}
 				return
 			} else {
 				cmd.Fail(fmt.Sprintf("service %s failed health check with status %s", *serverAddr, resp.Status))

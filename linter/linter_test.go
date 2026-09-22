@@ -1,14 +1,22 @@
 package linter
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/hex"
 	"math/big"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -45,5 +53,96 @@ func TestMakeSigner_Unsupported(t *testing.T) {
 }
 
 func TestMakeIssuer(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
+	idRDNATrustAnchorIDExperimental := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
+	template := &x509.Certificate{
+		Subject: pkix.Name{
+			ExtraNames: []pkix.AttributeTypeAndValue{
+				{
+					Type:  idRDNATrustAnchorIDExperimental,
+					Value: asn1.RawValue{Tag: asn1.TagUTF8String, Bytes: []byte("44947.4.2.1")},
+				},
+			},
+		},
+	}
+	realIssuerBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	realIssuer, err := x509.ParseCertificate(realIssuerBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedSubject, err := hex.DecodeString("301d311b3019060a2b0601040182da4b2f010c0b34343934372e342e322e31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(realIssuer.RawSubject, expectedSubject) {
+		t.Fatalf("realIssuer Subject: got %x, want %x", realIssuer.RawSubject, expectedSubject)
+	}
+
+	linter, err := New(realIssuer, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eeKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ee := &x509.Certificate{}
+
+	lintCertBytes, err := linter.Check(ee, eeKey.Public(), nil, Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lintCert, err := x509.ParseCertificate(lintCertBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(lintCert.RawIssuer, realIssuer.RawSubject) {
+		t.Errorf("linting certificate issuer: got %x, want %x", lintCert.RawIssuer, realIssuer.RawSubject)
+	}
+}
+
+func TestCheckSelfSignedSKID(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+
+	tbs := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Self-Signed Test"},
+		NotBefore:             time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		NotAfter:              time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		SubjectKeyId:          []byte{1, 2, 3, 4},
+	}
+
+	// A self-signed tbs certificate whose subjectKeyIdentifier was not
+	// computed from its public key must be rejected outright: the SKID
+	// substitution performed by Check would otherwise hide it from the lints.
+	_, err = Check(tbs, key.Public(), tbs, key, Config{}, nil)
+	test.AssertError(t, err, "linting should have failed")
+	test.AssertContains(t, err.Error(), "RFC 7093")
+
+	// With the correct subjectKeyIdentifier, linting may fail for other
+	// reasons (this minimal certificate is far from profile-compliant), but
+	// not because of the subjectKeyIdentifier check.
+	skid, err := core.GenerateSKID(key.Public())
+	test.AssertNotError(t, err, "computing SKID")
+	tbs.SubjectKeyId = skid
+	_, err = Check(tbs, key.Public(), tbs, key, Config{}, nil)
+	if err != nil && strings.Contains(err.Error(), "RFC 7093") {
+		t.Errorf("linting failed on the subjectKeyIdentifier check despite a correct SKID: %s", err)
+	}
 }

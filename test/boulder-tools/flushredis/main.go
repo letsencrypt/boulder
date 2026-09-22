@@ -15,7 +15,7 @@ import (
 
 func main() {
 	rc := bredis.Config{
-		Username: "unittest-rw",
+		Username: "boulder",
 		TLS: cmd.TLSConfig{
 			CACertFile: "test/certs/ipki/minica.pem",
 			CertFile:   "test/certs/ipki/localhost/cert.pem",
@@ -30,7 +30,7 @@ func main() {
 		LookupDNSAuthority: "consul.service.consul",
 	}
 	rc.PasswordConfig = cmd.PasswordConfig{
-		PasswordFile: "test/secrets/ratelimits_redis_password",
+		PasswordFile: "test/secrets/redis_password",
 	}
 
 	stats := metrics.NoopRegisterer

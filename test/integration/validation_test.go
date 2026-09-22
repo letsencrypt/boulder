@@ -307,7 +307,7 @@ func TestCAARechecking(t *testing.T) {
 
 	// Manipulate the database so that it looks like the authz was validated
 	// more than 8 hours ago.
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
 	if err != nil {
 		t.Fatalf("sql.Open: %s", err)
 	}

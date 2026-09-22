@@ -1,0 +1,34 @@
+{
+	"mtPublisher": {
+		"db": {
+			"dbConnectFile": "test/secrets/mtpublisher_dburl",
+			"maxOpenConns": 10
+		},
+		"pollInterval": "1s",
+		"logID": {
+			"caID": "44947.4.1",
+			"logNumber": 44
+		},
+		"mtcaCertFile": "test/certs/mtpki/mtca1.cert.pem",
+		"mirror": {
+			"id": "32473.9",
+			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem",
+			"baseURL": "http://bsunlight:4700",
+			"timeout": "15s"
+		},
+		"s3": {
+			"s3endpoint": "http://boulder-minio:9000",
+			"s3bucket": "boulder-mtc-tiles",
+			"awsConfigFile": "test/config-next/mtca-s3-config.ini",
+			"awsCredsFile": "test/secrets/mtca-s3-creds.ini"
+		}
+	},
+	"syslog": {
+		"stdoutlevel": 6,
+		"sysloglevel": 6
+	},
+	"openTelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
+	}
+}

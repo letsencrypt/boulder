@@ -35,7 +35,7 @@ func TestErrorWrapping(t *testing.T) {
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake(), true}
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
@@ -58,8 +58,7 @@ func TestErrorWrapping(t *testing.T) {
 	_, err = client.Chill(context.Background(), &test_proto.Time{})
 	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
 	test.AssertDeepEquals(t, err, es.err)
-	var bErr *berrors.BoulderError
-	ok := errors.As(err, &bErr)
+	bErr, ok := errors.AsType[*berrors.BoulderError](err)
 	test.Assert(t, ok, "asserting error as boulder error")
 	// Ensure we got a RateLimitError
 	test.AssertErrorIs(t, bErr, berrors.RateLimit)
@@ -78,7 +77,7 @@ func TestSubErrorWrapping(t *testing.T) {
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake(), true}
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)

@@ -17,16 +17,18 @@ import (
 	"github.com/letsencrypt/boulder/crl/checker"
 )
 
-func downloadShard(url string) (*x509.RevocationList, error) {
+func downloadShard(url string, maxCRLSize int64) (*x509.RevocationList, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("downloading crl: %w", err)
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("downloading crl: http status %d", resp.StatusCode)
 	}
 
-	crlBytes, err := io.ReadAll(resp.Body)
+	crlBytes, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, maxCRLSize))
 	if err != nil {
 		return nil, fmt.Errorf("reading CRL bytes: %w", err)
 	}
@@ -45,10 +47,11 @@ func main() {
 	ageLimitStr := flag.String("ageLimit", "168h", "maximum allowable age of a CRL shard")
 	emitRevoked := flag.Bool("emitRevoked", false, "emit revoked serial numbers on stdout, one per line, hex-encoded")
 	save := flag.Bool("save", false, "save CRLs to files named after the URL")
+	maxCRLSize := flag.Int64("maxCRLSize", core.DefaultMaxCRLRead, "maximum CRL size. Should match or exceed CRL Storer maxCRLSize")
 	flag.Parse()
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1})
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	urlFileContents, err := os.ReadFile(*urlFile)
 	cmd.FailOnError(err, "Reading CRL URLs file")
@@ -77,7 +80,7 @@ func main() {
 	totalBytes := 0
 	oldestTimestamp := time.Time{}
 	for _, u := range urls {
-		crl, err := downloadShard(u)
+		crl, err := downloadShard(u, *maxCRLSize)
 		if err != nil {
 			errCount += 1
 			logger.Errf("fetching CRL %q failed: %s", u, err)
@@ -139,9 +142,12 @@ func main() {
 		cmd.Fail(fmt.Sprintf("Encountered %d errors", errCount))
 	}
 
-	logger.AuditInfof(
-		"Validated %d CRLs, %d serials, %d bytes. Oldest CRL: %s",
-		len(urls), len(seenSerials), totalBytes, oldestTimestamp.Format(time.RFC3339))
+	logger.AuditInfo("CRL checking complete", map[string]string{
+		"numCRLs":    fmt.Sprintf("%d", len(urls)),
+		"numSerials": fmt.Sprintf("%d", len(seenSerials)),
+		"numBytes":   fmt.Sprintf("%d", totalBytes),
+		"oldestCRL":  oldestTimestamp.Format(time.RFC3339),
+	})
 }
 
 func init() {

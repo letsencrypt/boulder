@@ -95,6 +95,7 @@ func TestForPurpose(t *testing.T) {
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
 		Log{Name: "Log B1", Operator: "B", State: loglist3.UsableLogStatus},
 		Log{Name: "Log T1", Operator: "T", Type: "test", State: loglist3.UndefinedLogStatus},
+		Log{Name: "Log M1", Operator: "M", Type: "monitoring_only", State: loglist3.UndefinedLogStatus},
 	}
 	expected = List{
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
@@ -108,6 +109,7 @@ func TestForPurpose(t *testing.T) {
 		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
 		Log{Name: "Log B1", Operator: "B", State: loglist3.UsableLogStatus},
 		Log{Name: "Log T1", Operator: "T", Type: "test", State: loglist3.UndefinedLogStatus},
+		Log{Name: "Log M1", Operator: "M", Type: "monitoring_only", State: loglist3.UndefinedLogStatus},
 	}
 	actual, err = input.forPurpose(Issuance, true)
 	test.AssertNotError(t, err, "should have two acceptable logs with submitToTestLogs=[true]")
@@ -158,7 +160,7 @@ func TestForTime(t *testing.T) {
 	test.AssertDeepEquals(t, actual, expected)
 }
 
-func TestPermute(t *testing.T) {
+func TestShuffle(t *testing.T) {
 	input := List{
 		Log{Name: "Log A1"},
 		Log{Name: "Log A2"},
@@ -174,7 +176,7 @@ func TestPermute(t *testing.T) {
 	}
 
 	for range 100 {
-		actual := input.Permute()
+		actual := input.Shuffle()
 		for index, log := range actual {
 			foundIndices[log.Name][index]++
 		}
@@ -186,6 +188,30 @@ func TestPermute(t *testing.T) {
 				t.Errorf("Log %s appeared at index %d too few times", name, index)
 			}
 		}
+	}
+}
+
+func TestShufflePrefersTiled(t *testing.T) {
+	input := List{
+		Log{Name: "Log A1"},
+		Log{Name: "Log A2"},
+		Log{Name: "Log T1", Tiled: true},
+	}
+
+	foundIndices := make(map[string]map[int]int)
+	for _, log := range input {
+		foundIndices[log.Name] = make(map[int]int)
+	}
+
+	for range 100 {
+		actual := input.Shuffle()
+		for index, log := range actual {
+			foundIndices[log.Name][index]++
+		}
+	}
+
+	if foundIndices["Log T1"][2] != 0 {
+		t.Errorf("Tiled log should have always been pulled into first two indices")
 	}
 }
 

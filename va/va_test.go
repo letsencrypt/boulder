@@ -81,7 +81,7 @@ func TestMain(m *testing.M) {
 	os.Exit(ret)
 }
 
-var accountURIPrefixes = []string{"http://boulder.service.consul:4000/acme/reg/"}
+var accountURIPrefixes = []string{"http://letsencrypt.org:4000/acme/reg/"}
 
 func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
 	return &vapb.PerformValidationRequest{
@@ -93,8 +93,8 @@ func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core
 			Validationrecords: nil,
 		},
 		Authz: &vapb.AuthzMeta{
-			Id:    "",
 			RegID: 1,
+			Id:    1,
 		},
 		ExpectedKeyAuthorization: expectedKeyAuthorization,
 	}
@@ -116,7 +116,7 @@ func isNonLoopbackReservedIP(ip netip.Addr) error {
 //
 // If remoteVAs is nil, this builds a VA that acts like a remote (and does not
 // perform multi-perspective validation). Otherwise it acts like a primary.
-func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
+func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, fakeDNSClient bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
 
@@ -133,8 +133,13 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		perspective = "example perspective " + core.RandomString(4)
 	}
 
+	dnsClient := fakeDNSClient
+	if dnsClient == nil {
+		dnsClient = &bdns.MockClient{}
+	}
+
 	va, err := NewValidationAuthorityImpl(
-		&bdns.MockClient{Log: logger},
+		dnsClient,
 		remoteVAs,
 		userAgent,
 		"letsencrypt.org",
@@ -145,13 +150,14 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		perspective,
 		"",
 		isNonLoopbackReservedIP,
+		time.Second,
+		true,
+		nil,
+		0,
+		0,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
-	}
-
-	if mockDNSClientOverride != nil {
-		va.dnsClient = mockDNSClientOverride
 	}
 
 	// Adjusting industry regulated ACME challenge port settings is fine during
@@ -165,8 +171,8 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client, perspective, rir string) RemoteClients {
-	rva, _ := setup(srv, userAgent, nil, mockDNSClientOverride)
+func setupRemote(srv *httptest.Server, userAgent string, fakeDNSClient bdns.Client, perspective, rir string) RemoteClients {
+	rva, _ := setup(srv, userAgent, nil, fakeDNSClient)
 	rva.perspective = perspective
 	rva.rir = rir
 
@@ -221,9 +227,9 @@ func setupRemotes(confs []remoteConf, srv *httptest.Server) []RemoteVA {
 	return remoteVAs
 }
 
-func setupWithRemotes(srv *httptest.Server, userAgent string, remotes []remoteConf, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
+func setupWithRemotes(srv *httptest.Server, userAgent string, remotes []remoteConf, fakeDNSClient bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	remoteVAs := setupRemotes(remotes, srv)
-	return setup(srv, userAgent, remoteVAs, mockDNSClientOverride)
+	return setup(srv, userAgent, remoteVAs, fakeDNSClient)
 }
 
 type multiSrv struct {
@@ -312,7 +318,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 	}
 
 	_, err := NewValidationAuthorityImpl(
-		&bdns.MockClient{Log: blog.NewMock()},
+		&bdns.MockClient{},
 		remoteVAs,
 		"user agent 1.0",
 		"letsencrypt.org",
@@ -323,6 +329,11 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		"example perspective",
 		"",
 		isNonLoopbackReservedIP,
+		time.Second,
+		true,
+		nil,
+		0,
+		0,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
@@ -332,19 +343,19 @@ func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 	t.Parallel()
 
 	mismatched1 := RemoteVA{
-		RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
+		RemoteClients: setupRemote(nil, "", &txtFakeDNS{}, "dadaist", arin),
 		Perspective:   "baroque",
 		RIR:           arin,
 	}
 	mismatched2 := RemoteVA{
-		RemoteClients: setupRemote(nil, "", nil, "impressionist", ripe),
+		RemoteClients: setupRemote(nil, "", &txtFakeDNS{}, "impressionist", ripe),
 		Perspective:   "minimalist",
 		RIR:           ripe,
 	}
 	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
 
-	va, mockLog := setup(nil, "", remoteVAs, nil)
+	va, mockLog := setup(nil, "", remoteVAs, &txtFakeDNS{})
 	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
 	res, _ := va.DoDCV(context.Background(), req)
 	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
@@ -355,19 +366,19 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 	t.Parallel()
 
 	mismatched1 := RemoteVA{
-		RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
+		RemoteClients: setupRemote(nil, "", &txtFakeDNS{}, "dadaist", arin),
 		Perspective:   "dadaist",
 		RIR:           ripe,
 	}
 	mismatched2 := RemoteVA{
-		RemoteClients: setupRemote(nil, "", nil, "impressionist", ripe),
+		RemoteClients: setupRemote(nil, "", &txtFakeDNS{}, "impressionist", ripe),
 		Perspective:   "impressionist",
 		RIR:           arin,
 	}
 	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
 
-	va, mockLog := setup(nil, "", remoteVAs, nil)
+	va, mockLog := setup(nil, "", remoteVAs, &txtFakeDNS{})
 	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
 	res, _ := va.DoDCV(context.Background(), req)
 	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
@@ -383,9 +394,140 @@ func TestValidateMalformedChallenge(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
+func TestExperimentalVAConcurrence(t *testing.T) {
+	testSrvIPv4 := httpSrv(t, expectedToken, false)
+	t.Cleanup(testSrvIPv4.Close)
+
+	tests := []struct {
+		name            string
+		primaryDNS      bdns.Client
+		experimentalDNS bdns.Client
+		primaryProblem  bool
+		expectConcur    float64
+		expectDisagree  float64
+		expectLog       string
+	}{
+		{
+			name:            "both pass",
+			primaryDNS:      &ipFakeDNS{},
+			experimentalDNS: &ipFakeDNS{},
+			expectConcur:    1,
+			expectDisagree:  0,
+		},
+		{
+			name:            "primary passes experimental fails",
+			primaryDNS:      &ipFakeDNS{},
+			experimentalDNS: &ipFakeDNS{ip: net.IPv4(127, 0, 0, 99)},
+			expectConcur:    0,
+			expectDisagree:  1,
+			// The addressesResolved and addressUsed fields are checked here to make sure they are not accidentally
+			// base64-encoded (which can happen if we log the protobuf `corepb.ValidationRecord` instead of the nicely
+			// JSON-serializable struct `core.ValidationRecord`)
+			expectLog: `Primary VA disagreed with experimental VA.*"addressesResolved":\["127.0.0.1"\],"addressUsed":"127.0.0.1"`,
+		},
+		{
+			name:            "both fail",
+			primaryDNS:      &ipFakeDNS{ip: net.IPv4(127, 0, 0, 99)},
+			experimentalDNS: &ipFakeDNS{ip: net.IPv4(127, 0, 0, 99)},
+			primaryProblem:  true,
+			expectConcur:    1,
+			expectDisagree:  0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			va, mockLog := setup(testSrvIPv4, "", nil, tc.primaryDNS)
+			expVA, _ := setup(testSrvIPv4, "", nil, tc.experimentalDNS)
+			expVA.perspective = "Experimental"
+			va.experimentalVA = expVA
+			va.experimentalVASampleRate = 1.0
+			va.experimentalVATimeout = 10 * time.Second
+
+			ident := identifier.NewDNS("experiment.example.com")
+			req := createValidationRequest(ident, core.ChallengeTypeHTTP01)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			res, err := va.DoDCV(ctx, req)
+			test.AssertNotError(t, err, "DoDCV failed")
+			if tc.primaryProblem && res.Problem == nil {
+				t.Errorf("for primary validation, got: nil Problem, want: any non-nil Problem")
+			} else if !tc.primaryProblem && res.Problem != nil {
+				t.Errorf("for primary validation, got: %q, want: nil Problem", res.Problem)
+			}
+
+			time.Sleep(100 * time.Millisecond)
+
+			test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+				"operation":   opDCV,
+				"concurrence": "true",
+			}, tc.expectConcur)
+			test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+				"operation":   opDCV,
+				"concurrence": "false",
+			}, tc.expectDisagree)
+
+			if tc.expectLog != "" {
+				err := mockLog.ExpectMatch(tc.expectLog)
+				if err != nil {
+					t.Error(err)
+				}
+			}
+		})
+	}
+}
+
+func TestExperimentalVANilIsNoop(t *testing.T) {
+	t.Parallel()
+
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
+	res, err := va.DoDCV(context.Background(), req)
+	test.AssertNotError(t, err, "DoDCV failed")
+	test.Assert(t, res.Problem == nil, "validation should succeed")
+}
+
+func TestExperimentalVAZeroSample(t *testing.T) {
+	t.Parallel()
+
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
+	expVA, _ := setup(nil, "", nil, &bdns.MockClient{})
+	expVA.perspective = "Experimental"
+	va.experimentalVA = expVA
+	va.experimentalVASampleRate = 0
+
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
+	res, err := va.DoDCV(context.Background(), req)
+	test.AssertNotError(t, err, "DoDCV failed")
+	test.Assert(t, res.Problem == nil, "expected no problem")
+
+	time.Sleep(100 * time.Millisecond)
+
+	test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+		"operation":   opDCV,
+		"concurrence": "true",
+	}, 0)
+	test.AssertMetricWithLabelsEquals(t, va.metrics.experimentConcurrence, prometheus.Labels{
+		"operation":   opDCV,
+		"concurrence": "false",
+	}, 0)
+}
+
+func TestPerformValidationWithEmptyAuthzID(t *testing.T) {
+	t.Parallel()
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
+
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
+	req.Authz.Id = 0
+	_, err := va.DoDCV(context.Background(), req)
+	test.AssertError(t, err, "validation unexpectedly succeeded")
+	test.AssertEquals(t, err.Error(), "Incomplete validation request")
+}
+
 func TestPerformValidationInvalid(t *testing.T) {
 	t.Parallel()
-	va, _ := setup(nil, "", nil, nil)
+	va, _ := setup(nil, "", nil, &txtFakeDNS{})
 
 	req := createValidationRequest(identifier.NewDNS("foo.com"), core.ChallengeTypeDNS01)
 	res, _ := va.DoDCV(context.Background(), req)
@@ -402,7 +544,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 func TestInternalErrorLogged(t *testing.T) {
 	t.Parallel()
 
-	va, mockLog := setup(nil, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, &ipFakeDNS{})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
@@ -417,7 +559,7 @@ func TestInternalErrorLogged(t *testing.T) {
 func TestPerformValidationValid(t *testing.T) {
 	t.Parallel()
 
-	va, mockLog := setup(nil, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, &txtFakeDNS{})
 
 	// create a challenge with well known token
 	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
@@ -445,7 +587,7 @@ func TestPerformValidationValid(t *testing.T) {
 func TestPerformValidationWildcard(t *testing.T) {
 	t.Parallel()
 
-	va, mockLog := setup(nil, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, &txtFakeDNS{})
 
 	// create a challenge with well known token
 	req := createValidationRequest(identifier.NewDNS("*.good-dns01.com"), core.ChallengeTypeDNS01)
@@ -501,9 +643,9 @@ func TestMultiVA(t *testing.T) {
 			// With local and all remote VAs working there should be no problem.
 			Name: "Local and remote VAs OK",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA: pass,
 		},
@@ -511,9 +653,9 @@ func TestMultiVA(t *testing.T) {
 			// If the local VA fails everything should fail
 			Name: "Local VA bad, remote VAs OK",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA:        fail,
 			ExpectedProbType: string(probs.UnauthorizedProblem),
@@ -522,8 +664,8 @@ func TestMultiVA(t *testing.T) {
 			// If one out of three remote VAs fails with an internal err it should succeed
 			Name: "Local VA ok, 1/3 remote VA internal err",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
 				{ua: pass, rir: apnic, impl: brokenVA},
 			},
 			PrimaryUA: pass,
@@ -532,7 +674,7 @@ func TestMultiVA(t *testing.T) {
 			// If two out of three remote VAs fail with an internal err it should fail
 			Name: "Local VA ok, 2/3 remote VAs internal err",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, impl: brokenVA},
 				{ua: pass, rir: apnic, impl: brokenVA},
 			},
@@ -545,10 +687,10 @@ func TestMultiVA(t *testing.T) {
 			// If one out of five remote VAs fail with an internal err it should succeed
 			Name: "Local VA ok, 1/5 remote VAs internal err",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
-				{ua: pass, rir: lacnic},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 				{ua: pass, rir: afrinic, impl: brokenVA},
 			},
 			PrimaryUA: pass,
@@ -557,9 +699,9 @@ func TestMultiVA(t *testing.T) {
 			// If two out of five remote VAs fail with an internal err it should fail
 			Name: "Local VA ok, 2/5 remote VAs internal err",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
 				{ua: pass, rir: arin, impl: brokenVA},
 				{ua: pass, rir: ripe, impl: brokenVA},
 			},
@@ -572,10 +714,10 @@ func TestMultiVA(t *testing.T) {
 			// If two out of six remote VAs fail with an internal err it should succeed
 			Name: "Local VA ok, 2/6 remote VAs internal err",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
-				{ua: pass, rir: lacnic},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 				{ua: pass, rir: afrinic, impl: brokenVA},
 				{ua: pass, rir: arin, impl: brokenVA},
 			},
@@ -585,9 +727,9 @@ func TestMultiVA(t *testing.T) {
 			// If three out of six remote VAs fail with an internal err it should fail
 			Name: "Local VA ok, 4/6 remote VAs internal err",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
 				{ua: pass, rir: lacnic, impl: brokenVA},
 				{ua: pass, rir: afrinic, impl: brokenVA},
 				{ua: pass, rir: arin, impl: brokenVA},
@@ -601,9 +743,9 @@ func TestMultiVA(t *testing.T) {
 			// With only one working remote VA there should be a validation failure
 			Name: "Local VA and one remote VA OK",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: fail, rir: apnic},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+				{ua: fail, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: fail, rir: apnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.UnauthorizedProblem),
@@ -613,9 +755,9 @@ func TestMultiVA(t *testing.T) {
 			// If one remote VA cancels, it should succeed
 			Name: "Local VA and one remote VA OK, one cancelled VA",
 			Remotes: []remoteConf{
-				{ua: pass, rir: arin},
+				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, impl: cancelledVA},
-				{ua: pass, rir: apnic},
+				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA: pass,
 		},
@@ -635,9 +777,9 @@ func TestMultiVA(t *testing.T) {
 			// With the local and remote VAs seeing diff problems, we expect a problem.
 			Name: "Local and remote VA differential",
 			Remotes: []remoteConf{
-				{ua: fail, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: fail, rir: apnic},
+				{ua: fail, rir: arin, dns: &ipFakeDNS{}},
+				{ua: fail, rir: ripe, dns: &ipFakeDNS{}},
+				{ua: fail, rir: apnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.UnauthorizedProblem),
@@ -654,7 +796,7 @@ func TestMultiVA(t *testing.T) {
 			defer ms.Close()
 
 			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setupWithRemotes(ms.Server, tc.PrimaryUA, tc.Remotes, nil)
+			localVA, mockLog := setupWithRemotes(ms.Server, tc.PrimaryUA, tc.Remotes, &ipFakeDNS{})
 
 			// Perform all validations
 			res, _ := localVA.DoDCV(ctx, req)
@@ -705,15 +847,15 @@ func TestMultiVALogging(t *testing.T) {
 	t.Parallel()
 
 	remoteConfs := []remoteConf{
-		{ua: pass, rir: arin},
-		{ua: pass, rir: ripe},
-		{ua: pass, rir: apnic},
+		{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+		{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+		{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
 	}
 
 	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
 	defer ms.Close()
 
-	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
+	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, &ipFakeDNS{})
 	req := createValidationRequest(identifier.NewDNS("letsencrypt.org"), core.ChallengeTypeHTTP01)
 	res, err := va.DoDCV(ctx, req)
 	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed with: %#v", res.Problem))

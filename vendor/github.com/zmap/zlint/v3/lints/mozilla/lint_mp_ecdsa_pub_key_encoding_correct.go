@@ -29,14 +29,17 @@ type ecdsaPubKeyAidEncoding struct{}
 /************************************************
 https://www.mozilla.org/en-US/about/governance/policies/security-group/certs/policy/
 
-When ECDSA keys are encoded in a SubjectPublicKeyInfo structure, the algorithm field MUST be one of the following, as
-specified by RFC 5480, Section 2.1.1:
+When ECDSA keys are encoded in a SubjectPublicKeyInfo structure, the algorithm field MUST be one of the following,
+as specified by RFC 5480, Section 2.1.1:
 
 The encoded AlgorithmIdentifier for a P-256 key MUST match the following hex-encoded
-bytes: > 301306072a8648ce3d020106082a8648ce3d030107.
+bytes: 301306072a8648ce3d020106082a8648ce3d030107;
 
 The encoded AlgorithmIdentifier for a P-384 key MUST match the following hex-encoded
-bytes: > 301006072a8648ce3d020106052b81040022.
+bytes: 301006072a8648ce3d020106052b81040022;
+
+The encoded AlgorithmIdentifier for a P-521 key MUST match the following hex-encoded
+bytes: 301006072a8648ce3d020106052b81040023.
 
 The above encodings consist of an ecPublicKey OID (1.2.840.10045.2.1) with a named curve parameter of the corresponding
 curve OID. Certificates MUST NOT use the implicit or specified curve forms.
@@ -50,7 +53,7 @@ func init() {
 			Description:   "The encoded algorithm identifiers for ECDSA public keys MUST match specific bytes",
 			Citation:      "Mozilla Root Store Policy / Section 5.1.2",
 			Source:        lint.MozillaRootStorePolicy,
-			EffectiveDate: util.MozillaPolicy27Date,
+			EffectiveDate: util.MozillaPolicy30Date,
 		},
 		Lint: NewEcdsaPubKeyAidEncoding,
 	})
@@ -60,11 +63,13 @@ func NewEcdsaPubKeyAidEncoding() lint.LintInterface {
 	return &ecdsaPubKeyAidEncoding{}
 }
 
-var acceptedAlgIDEncodingsDER = [2][]byte{
+var acceptedAlgIDEncodingsDER = [3][]byte{
 	// encoded AlgorithmIdentifier for a P-256 key
 	{0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07},
 	// encoded AlgorithmIdentifier for a P-384 key
 	{0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x22},
+	// encoded AlgorithmIdentifier for P-521 key
+	{0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x23},
 }
 
 func (l *ecdsaPubKeyAidEncoding) CheckApplies(c *x509.Certificate) bool {

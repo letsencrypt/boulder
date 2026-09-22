@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -23,6 +25,8 @@ func TestWFECORS(t *testing.T) {
 	client := &http.Client{}
 	resp, err := client.Do(getReq)
 	test.AssertNotError(t, err, "GET directory")
+	defer resp.Body.Close()
+
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
 	// We expect that the response has the correct Access-Control-Allow-Origin
@@ -49,4 +53,23 @@ func TestWFEHTTPMetrics(t *testing.T) {
 	test.AssertNotError(t, err, "Reading boulder-wfe2 metrics response")
 	test.AssertContains(t, string(body), `response_time_count{code="200",endpoint="/directory",method="GET"}`)
 	resp.Body.Close()
+}
+
+// TestWFEHealthz checks to make sure that the /health endpoint returns 200 OK,
+// retrying in case overrides take a moment to load.
+func TestWFEHealthz(t *testing.T) {
+	retries := 0
+	var status int
+	for retries < 5 {
+		time.Sleep(core.RetryBackoff(retries, time.Millisecond*2, time.Millisecond*50, 2))
+		resp, err := http.Get("http://boulder.service.consul:4001/healthz")
+		test.AssertNotError(t, err, "GET boulder-wfe2 healthz")
+		status = resp.StatusCode
+		resp.Body.Close()
+		if status == http.StatusOK {
+			break
+		}
+		retries++
+	}
+	test.AssertEquals(t, status, http.StatusOK)
 }

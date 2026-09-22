@@ -13,6 +13,7 @@ import (
 
 	"github.com/nxadm/tail"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/letsencrypt/boulder/log"
 )
@@ -38,11 +39,10 @@ type Validator struct {
 
 // New Validator monitoring paths, which is a list of file globs.
 func New(patterns []string, logger log.Logger, stats prometheus.Registerer) *Validator {
-	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	lineCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",
 	}, []string{"filename", "status"})
-	stats.MustRegister(lineCounter)
 
 	monitorContext, monitorCancel := context.WithCancel(context.Background())
 
@@ -66,7 +66,7 @@ func (v *Validator) pollPaths() {
 	for _, pattern := range v.patterns {
 		paths, err := filepath.Glob(pattern)
 		if err != nil {
-			v.log.Err(err.Error())
+			v.log.Errf("expanding file glob: %s", err)
 		}
 
 		for _, path := range paths {
@@ -186,10 +186,9 @@ func lineValid(text string) error {
 	}
 	checksum := fields[5]
 	_, err := base64.RawURLEncoding.DecodeString(checksum)
-	// TODO(#8414): Temporarily accept length 6 or 7 checksums
-	if err != nil || (len(checksum) != 6 && len(checksum) != 7) {
+	if err != nil || len(checksum) != 6 {
 		return fmt.Errorf(
-			"%s expected a 6 or 7 character base64 raw URL decodable string, got %q: %w",
+			"%s expected a 6 character base64 raw URL decodable string, got %q: %w",
 			errorPrefix,
 			checksum,
 			errInvalidChecksum,
@@ -205,13 +204,7 @@ func lineValid(text string) error {
 		return nil
 	}
 	// Check the extracted checksum against the computed checksum
-	// TODO(#8414): Accept both the old and new checksum format, distinguished by length
-	var computedChecksum string
-	if len(checksum) == 6 {
-		computedChecksum = log.NewLineChecksum(line)
-	} else {
-		computedChecksum = log.LogLineChecksum(line)
-	}
+	computedChecksum := log.LogLineChecksum(line)
 	if checksum != computedChecksum {
 		return fmt.Errorf("%s invalid checksum (expected %q, got %q)", errorPrefix, computedChecksum, checksum)
 	}

@@ -253,7 +253,7 @@ func CertificatesPerFQDNSetError(retryAfter time.Duration, msg string, args ...a
 func FailedAuthorizationsPerDomainPerAccountError(retryAfter time.Duration, msg string, args ...any) error {
 	return &BoulderError{
 		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account", args...),
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-identifier-per-account", args...),
 		RetryAfter: retryAfter,
 	}
 }
@@ -261,7 +261,7 @@ func FailedAuthorizationsPerDomainPerAccountError(retryAfter time.Duration, msg 
 func LimitOverrideRequestsPerIPAddressError(retryAfter time.Duration, msg string, args ...any) error {
 	return &BoulderError{
 		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#limit-override-requests-per-ip-address", args...),
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ip-address", args...),
 		RetryAfter: retryAfter,
 	}
 }
@@ -324,6 +324,10 @@ func BadRevocationReasonError(reason int64) error {
 
 func UnknownSerialError() error {
 	return newf(UnknownSerial, "unknown serial")
+}
+
+func ConflictError(msg string, args ...any) error {
+	return newf(Conflict, msg, args...)
 }
 
 func InvalidProfileError(msg string, args ...any) error {

@@ -15,8 +15,9 @@ package cabf_br
  */
 
 import (
-	"crypto/rsa"
+	"math/big"
 
+	"github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -53,7 +54,7 @@ func (l *rsaParsedTestsExpBounds) CheckApplies(c *x509.Certificate) bool {
 
 func (l *rsaParsedTestsExpBounds) Execute(c *x509.Certificate) *lint.LintResult {
 	key := c.PublicKey.(*rsa.PublicKey)
-	if key.E >= 3 { //If Cmp returns 1, means N > E
+	if key.E.Cmp(big.NewInt(3)) >= 0 {
 		return &lint.LintResult{Status: lint.Pass}
 	} else {
 		return &lint.LintResult{Status: lint.Error}

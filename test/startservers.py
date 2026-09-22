@@ -5,12 +5,12 @@ import signal
 import socket
 import subprocess
 
-from helpers import config_dir, waithealth, waitport
+from helpers import config_dir, waithealth, waitport, CONFIG_NEXT
 
 Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_port', 'host_override', 'cmd', 'deps'))
 
 # Keep these ports in sync with consul/config.hcl
-SERVICES = (
+SERVICES = [
     Service('remoteva-a',
         8011, 9397, 'rva.boulder',
         ('./bin/boulder', 'remoteva', '--config', os.path.join(config_dir, 'remoteva-a.json'), '--addr', ':9397', '--debug-addr', ':8011'),
@@ -31,9 +31,6 @@ SERVICES = (
         8103, 9495, 'sa.boulder',
         ('./bin/boulder', 'boulder-sa', '--config', os.path.join(config_dir, 'sa.json'), '--addr', ':9495', '--debug-addr', ':8103'),
         None),
-    Service('aia-test-srv',
-        4502, None, None,
-        ('./bin/aia-test-srv', '--addr', ':4502', '--hierarchy', 'test/certs/webpki/'), None),
     Service('ct-test-srv',
         4600, None, None,
         ('./bin/ct-test-srv', '--config', 'test/ct-test-srv/ct-test-srv.json'), None),
@@ -68,7 +65,7 @@ SERVICES = (
     Service('crl-storer',
         9667, None, None,
         ('./bin/boulder', 'crl-storer', '--config', os.path.join(config_dir, 'crl-storer.json'), '--addr', ':9309', '--debug-addr', ':9667'),
-        ('s3-test-srv',)),
+        ('s3-test-srv', 'boulder-sa-1', 'boulder-sa-2')),
     Service('boulder-ra-1',
         8002, 9394, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9394', '--debug-addr', ':8002'),
@@ -87,11 +84,11 @@ SERVICES = (
     Service('boulder-ra-sct-provider-1',
         8118, 9594, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9594', '--debug-addr', ':8118'),
-        ('boulder-publisher-1', 'boulder-publisher-2')),
+        ('boulder-sa-1', 'boulder-sa-2', 'boulder-publisher-1', 'boulder-publisher-2')),
     Service('boulder-ra-sct-provider-2',
         8119, 9694, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9694', '--debug-addr', ':8119'),
-        ('boulder-publisher-1', 'boulder-publisher-2')),
+        ('boulder-sa-1', 'boulder-sa-2', 'boulder-publisher-1', 'boulder-publisher-2')),
     Service('bad-key-revoker',
         8020, None, None,
         ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json'), '--debug-addr', ':8020'),
@@ -116,16 +113,16 @@ SERVICES = (
         8112, '10.77.77.77:9401', 'nonce.boulder',
         ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-b.json'), '--addr', '10.77.77.77:9401', '--debug-addr', ':8112',),
         None),
-    Service('pardot-test-srv',
+    Service('salesforce-test-srv',
         # Uses port 9601 to mock Salesforce OAuth2 token API and 9602 to mock
         # the Pardot API.
         9601, None, None,
-        ('./bin/pardot-test-srv', '--config', os.path.join(config_dir, 'pardot-test-srv.json'),),
+        ('./bin/salesforce-test-srv', '--config', os.path.join(config_dir, 'salesforce-test-srv.json'),),
         None),
     Service('email-exporter',
         8114, None, None,
         ('./bin/boulder', 'email-exporter', '--config', os.path.join(config_dir, 'email-exporter.json'), '--addr', ':9603', '--debug-addr', ':8114'),
-        ('pardot-test-srv',)),
+        ('salesforce-test-srv',)),
     Service('boulder-wfe2',
         4001, None, None,
         ('./bin/boulder', 'boulder-wfe2', '--config', os.path.join(config_dir, 'wfe2.json'), '--addr', ':4001', '--tls-addr', ':4431', '--debug-addr', ':8013'),
@@ -143,7 +140,7 @@ SERVICES = (
         8016, None, None,
         ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json'), '--debug-addr', ':8016'),
         None),
-)
+]
 
 def _service_toposort(services):
     """Yields Service objects in topologically sorted order.
@@ -185,7 +182,8 @@ def install(race_detection, coverage=False):
     if coverage:
         go_build_flags += ' -cover' # https://go.dev/blog/integration-test-coverage
 
-    return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
+    cmd = ["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]
+    return subprocess.call(cmd) == 0
 
 def run(cmd, coverage_dir=None):
     e = os.environ.copy()
@@ -307,13 +305,12 @@ def stopChallSrv():
 
 @atexit.register
 def stop():
-    # When we are about to exit, send SIGTERM to each subprocess and wait for
-    # them to nicely die. This reflects the restart process in prod and allows
-    # us to exercise the graceful shutdown code paths.
+    # When we are about to exit, send SIGKILL to each subprocess and wait for
+    # them to die.
     global processes
     for p in reversed(processes):
         if p.poll() is None:
-            p.send_signal(signal.SIGTERM)
+            p.send_signal(signal.SIGKILL)
             p.wait()
     processes = []
 

@@ -11,6 +11,8 @@ fi
 #
 # Defaults
 #
+export BOULDER_CONFIG_DIR="${BOULDER_CONFIG_DIR:-test/config}"
+export USE_VITESS="${USE_VITESS:-false}"
 export RACE="false"
 STAGE="starting"
 STATUS="FAILURE"
@@ -21,13 +23,14 @@ INTEGRATION_FLAGS=()
 FILTER=()
 COVERAGE="false"
 COVERAGE_DIR="test/coverage/$(date +%Y-%m-%d_%H-%M-%S)"
+GO=go
 
 #
 # Cleanup Functions
 #
 
 function flush_redis() {
-  go run ./test/boulder-tools/flushredis/main.go
+  "${GO}" run ./test/boulder-tools/flushredis/main.go
 }
 
 #
@@ -82,7 +85,30 @@ function run_and_expect_silence() {
 # Testing Helpers
 #
 function run_unit_tests() {
-  go test "${UNIT_FLAGS[@]}" "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
+  # Sleep 50ms instead of 1000ms at the end of each package's unittests.
+  # Speeds up running lots of small unittests.
+  # https://go.dev/doc/articles/race_detector#Options
+  export GORACE="atexit_sleep_ms=50"
+  # If unit test packages are not specified: set flags to run unit tests
+  # for all boulder packages
+  if [ -z "${UNIT_PACKAGES[@]+x}" ]
+  then
+    # The ra and sa unittests conflict because they both mutate the database.
+    # Exclude the ra from our first test run, then run on its own.
+    # https://github.com/letsencrypt/boulder/issues/1499
+    go_test $(go list ./... | grep -v 'boulder\/ra$')
+    go_test ./ra
+  else
+    go_test "${UNIT_PACKAGES[@]}"
+  fi
+
+}
+
+#
+# Run `go test` on a given set of packages.
+#
+function go_test() {
+  "${GO}" test "${UNIT_FLAGS[@]}" "${FILTER[@]}" "$@"
 }
 
 #
@@ -98,6 +124,7 @@ Boulder test suite CLI, intended to be run inside of a Docker container:
 With no options passed, runs standard battery of tests (lint, unit, and integration)
 
     -l, --lints                           Adds lint to the list of tests to run
+    -r, --reqs                            Adds reqs (requirements-document cross-reference checks) to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
     -v, --verbose                         Enables verbose output for unit and integration tests
     -w, --unit-without-cache              Disables go test caching for unit tests
@@ -125,7 +152,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts luvwecisgnhd:p:f:-: OPT; do
+while getopts lruvwecisgnhbd:p:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -133,6 +160,7 @@ while getopts luvwecisgnhd:p:f:-: OPT; do
   fi
   case "$OPT" in
     l | lints )                      RUN+=("lints") ;;
+    r | reqs )                       RUN+=("reqs") ;;
     u | unit )                       RUN+=("unit") ;;
     v | verbose )                    UNIT_FLAGS+=("-v"); INTEGRATION_FLAGS+=("-v") ;;
     w | unit-without-cache )         UNIT_FLAGS+=("-count=1") ;;
@@ -176,21 +204,6 @@ then
   FILTER=(--filter "${FILTER[@]}")
 fi
 
-# If unit test packages are not specified: set flags to run unit tests
-# for all boulder packages
-if [ -z "${UNIT_PACKAGES[@]+x}" ]
-then
-  # '-p=1' configures unit tests to run serially, rather than in parallel. Our
-  # unit tests depend on mutating a database and then cleaning up after
-  # themselves. If these test were run in parallel, they could fail spuriously
-  # due to one test modifying a table (especially registrations) while another
-  # test is reading from it.
-  # https://github.com/letsencrypt/boulder/issues/1499
-  # https://pkg.go.dev/cmd/go#hdr-Testing_flags
-  UNIT_FLAGS+=("-p=1")
-  UNIT_PACKAGES+=("./...")
-fi
-
 print_heading "Boulder Test Suite CLI"
 print_heading "Settings:"
 
@@ -200,12 +213,13 @@ trap "print_outcome" EXIT
 settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
-    GOCACHE:            $(go env GOCACHE)
+    GOCACHE:            $("${GO}" env GOCACHE)
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
     UNIT_FLAGS:         ${UNIT_FLAGS[@]}
     FILTER:             ${FILTER[@]}
     COVERAGE:           $COVERAGE
     COVERAGE_DIR:       $COVERAGE_DIR
+    USE_VITESS:         $USE_VITESS
 EOM
 )"
 
@@ -229,6 +243,15 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   run_and_expect_silence typos
   # Check test JSON configs are formatted consistently
   run_and_expect_silence ./test/format-configs.py 'test/config*/*.json'
+fi
+
+#
+# Check cross-references against requirements documents.
+#
+STAGE="reqs"
+if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
+  print_heading "Running Requirements Cross-Reference Checks"
+  "${GO}" run ./test/check-req-xrefs ./linter/lints/**/*.go
 fi
 
 #
@@ -308,8 +331,8 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   #   stringer: checking package: grpc/bcodes.go:6:2: could not import
   #     github.com/letsencrypt/boulder/probs (can't find import:
   #     github.com/letsencrypt/boulder/probs)
-  go install ./probs
-  go install ./vendor/google.golang.org/grpc/codes
+  "${GO}" install ./probs
+  "${GO}" install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
   run_and_expect_silence git diff --exit-code .
 fi

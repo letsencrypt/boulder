@@ -3,6 +3,8 @@ package core
 import (
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/go-jose/go-jose/v4"
@@ -27,21 +29,25 @@ func TestChallenges(t *testing.T) {
 
 	token := NewToken()
 	http01 := HTTPChallenge01(token)
-	test.AssertNotError(t, http01.CheckPending(), "CheckConsistencyForClientOffer returned an error")
+	test.AssertNotError(t, http01.CheckPending(), "CheckPending returned an error")
 
 	dns01 := DNSChallenge01(token)
-	test.AssertNotError(t, dns01.CheckPending(), "CheckConsistencyForClientOffer returned an error")
+	test.AssertNotError(t, dns01.CheckPending(), "CheckPending returned an error")
 
 	dnsAccount01 := DNSAccountChallenge01(token)
-	test.AssertNotError(t, dnsAccount01.CheckPending(), "CheckConsistencyForClientOffer returned an error")
+	test.AssertNotError(t, dnsAccount01.CheckPending(), "CheckPending returned an error")
+
+	dnsPersist01 := DNSPersistChallenge01()
+	test.AssertNotError(t, dnsPersist01.CheckPending(), "CheckPending returned an error")
 
 	tlsalpn01 := TLSALPNChallenge01(token)
-	test.AssertNotError(t, tlsalpn01.CheckPending(), "CheckConsistencyForClientOffer returned an error")
+	test.AssertNotError(t, tlsalpn01.CheckPending(), "CheckPending returned an error")
 
 	test.Assert(t, ChallengeTypeHTTP01.IsValid(), "Refused valid challenge")
 	test.Assert(t, ChallengeTypeDNS01.IsValid(), "Refused valid challenge")
 	test.Assert(t, ChallengeTypeTLSALPN01.IsValid(), "Refused valid challenge")
 	test.Assert(t, ChallengeTypeDNSAccount01.IsValid(), "Refused valid challenge")
+	test.Assert(t, ChallengeTypeDNSPersist01.IsValid(), "Refused valid challenge")
 	test.Assert(t, !AcmeChallenge("nonsense-71").IsValid(), "Accepted invalid challenge")
 }
 
@@ -74,5 +80,50 @@ func TestFingerprint(t *testing.T) {
 	digest := Fingerprint256(in)
 	if digest != base64.RawURLEncoding.EncodeToString(out) {
 		t.Errorf("Incorrect SHA-256 fingerprint: %v", digest)
+	}
+}
+
+func TestErrOnLimitReader(t *testing.T) {
+	testCases := []struct {
+		name    string
+		input   string
+		limit   int64
+		wantOut string
+		wantErr bool
+	}{
+		{
+			name:    "bytes within limit",
+			input:   "foo bar baz qux",
+			limit:   21,
+			wantOut: "foo bar baz qux",
+			wantErr: false,
+		},
+		{
+			name:    "bytes exactly match limit",
+			input:   "foo bar baz qux",
+			limit:   15,
+			wantOut: "foo bar baz qux",
+			wantErr: false,
+		},
+		{
+			name:    "bytes over limit",
+			input:   "foo bar baz qux",
+			limit:   9,
+			wantOut: "foo bar b",
+			wantErr: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			strReader := strings.NewReader(tc.input)
+			output, err := io.ReadAll(ErrOnLimitReader(strReader, tc.limit))
+			if tc.wantErr {
+				test.AssertError(t, err, "expected an error")
+				test.AssertEquals(t, err, ErrReaderLimitExceeded)
+			} else {
+				test.AssertNotError(t, err, "expected to succeed")
+			}
+			test.AssertEquals(t, string(output), tc.wantOut)
+		})
 	}
 }

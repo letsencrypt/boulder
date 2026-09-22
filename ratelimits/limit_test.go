@@ -1,15 +1,25 @@
 package ratelimits
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
+
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -18,7 +28,7 @@ import (
 //
 // TODO(#7901): Update the tests to test these functions individually.
 func loadAndParseDefaultLimits(path string) (Limits, error) {
-	fromFile, err := loadDefaults(path)
+	fromFile, err := loadDefaultsFromFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -26,12 +36,12 @@ func loadAndParseDefaultLimits(path string) (Limits, error) {
 	return parseDefaultLimits(fromFile)
 }
 
-// loadAndParseOverrideLimits is a helper that calls both loadOverrides and
-// parseOverrideLimits to handle a YAML file.
+// loadAndParseOverrideLimitsFromFile is a helper that calls both
+// loadOverridesFromFile and parseOverrideLimits to handle a YAML file.
 //
 // TODO(#7901): Update the tests to test these functions individually.
-func loadAndParseOverrideLimits(path string) (Limits, error) {
-	fromFile, err := loadOverrides(path)
+func loadAndParseOverrideLimitsFromFile(path string) (Limits, error) {
+	fromFile, err := loadOverridesFromFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +158,9 @@ func TestValidateLimit(t *testing.T) {
 	}
 }
 
-func TestLoadAndParseOverrideLimits(t *testing.T) {
+func TestLoadAndParseOverrideLimitsFromFile(t *testing.T) {
 	// Load a single valid override limit with Id formatted as 'enum:RegId'.
-	l, err := loadAndParseOverrideLimits("testdata/working_override.yml")
+	l, err := loadAndParseOverrideLimitsFromFile("testdata/working_override.yml")
 	test.AssertNotError(t, err, "valid single override limit")
 	expectKey := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "64.112.117.1")
 	test.AssertEquals(t, l[expectKey].Burst, int64(40))
@@ -158,7 +168,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
 
 	// Load single valid override limit with a 'domainOrCIDR' Id.
-	l, err = loadAndParseOverrideLimits("testdata/working_override_regid_domainorcidr.yml")
+	l, err = loadAndParseOverrideLimitsFromFile("testdata/working_override_regid_domainorcidr.yml")
 	test.AssertNotError(t, err, "valid single override limit with Id of regId:domainOrCIDR")
 	expectKey = joinWithColon(CertificatesPerDomain.EnumString(), "example.com")
 	test.AssertEquals(t, l[expectKey].Burst, int64(40))
@@ -166,7 +176,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
 
 	// Load multiple valid override limits with 'regId' Ids.
-	l, err = loadAndParseOverrideLimits("testdata/working_overrides.yml")
+	l, err = loadAndParseOverrideLimitsFromFile("testdata/working_overrides.yml")
 	test.AssertNotError(t, err, "multiple valid override limits")
 	expectKey1 := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "64.112.117.1")
 	test.AssertEquals(t, l[expectKey1].Burst, int64(40))
@@ -190,7 +200,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 		identifier.NewDNS("example.com"),
 	})
 
-	l, err = loadAndParseOverrideLimits("testdata/working_overrides_regid_fqdnset.yml")
+	l, err = loadAndParseOverrideLimitsFromFile("testdata/working_overrides_regid_fqdnset.yml")
 	test.AssertNotError(t, err, "multiple valid override limits with 'fqdnSet' Ids")
 	test.AssertEquals(t, l[entryKey1].Burst, int64(40))
 	test.AssertEquals(t, l[entryKey1].Count, int64(40))
@@ -206,44 +216,212 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	test.AssertEquals(t, l[entryKey4].Period.Duration, time.Second*4)
 
 	// Path is empty string.
-	_, err = loadAndParseOverrideLimits("")
+	_, err = loadAndParseOverrideLimitsFromFile("")
 	test.AssertError(t, err, "path is empty string")
 	test.Assert(t, os.IsNotExist(err), "path is empty string")
 
 	// Path to file which does not exist.
-	_, err = loadAndParseOverrideLimits("testdata/file_does_not_exist.yml")
+	_, err = loadAndParseOverrideLimitsFromFile("testdata/file_does_not_exist.yml")
 	test.AssertError(t, err, "a file that does not exist ")
 	test.Assert(t, os.IsNotExist(err), "test file should not exist")
 
 	// Burst cannot be 0.
-	_, err = loadAndParseOverrideLimits("testdata/busted_override_burst_0.yml")
+	_, err = loadAndParseOverrideLimitsFromFile("testdata/busted_override_burst_0.yml")
 	test.AssertError(t, err, "single override limit with burst=0")
 	test.AssertContains(t, err.Error(), "invalid burst")
 
 	// Id cannot be empty.
-	_, err = loadAndParseOverrideLimits("testdata/busted_override_empty_id.yml")
+	_, err = loadAndParseOverrideLimitsFromFile("testdata/busted_override_empty_id.yml")
 	test.AssertError(t, err, "single override limit with empty id")
 	test.Assert(t, !os.IsNotExist(err), "test file should exist")
 
 	// Name cannot be empty.
-	_, err = loadAndParseOverrideLimits("testdata/busted_override_empty_name.yml")
+	_, err = loadAndParseOverrideLimitsFromFile("testdata/busted_override_empty_name.yml")
 	test.AssertError(t, err, "single override limit with empty name")
 	test.Assert(t, !os.IsNotExist(err), "test file should exist")
 
 	// Name must be a string representation of a valid Name enumeration.
-	_, err = loadAndParseOverrideLimits("testdata/busted_override_invalid_name.yml")
+	_, err = loadAndParseOverrideLimitsFromFile("testdata/busted_override_invalid_name.yml")
 	test.AssertError(t, err, "single override limit with invalid name")
 	test.Assert(t, !os.IsNotExist(err), "test file should exist")
 
 	// Multiple entries, second entry has a bad name.
-	_, err = loadAndParseOverrideLimits("testdata/busted_overrides_second_entry_bad_name.yml")
+	_, err = loadAndParseOverrideLimitsFromFile("testdata/busted_overrides_second_entry_bad_name.yml")
 	test.AssertError(t, err, "multiple override limits, second entry is bad")
 	test.Assert(t, !os.IsNotExist(err), "test file should exist")
 
 	// Multiple entries, third entry has id of "lol", instead of an IPv4 address.
-	_, err = loadAndParseOverrideLimits("testdata/busted_overrides_third_entry_bad_id.yml")
+	_, err = loadAndParseOverrideLimitsFromFile("testdata/busted_overrides_third_entry_bad_id.yml")
 	test.AssertError(t, err, "multiple override limits, third entry has bad Id value")
 	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+}
+
+func TestLoadOverrides(t *testing.T) {
+	mockLog := blog.NewMock()
+
+	tb, err := NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "../test/config-next/ratelimit-overrides.yml", metrics.NoopRegisterer, mockLog)
+	test.AssertNotError(t, err, "creating TransactionBuilder")
+	err = tb.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides in TransactionBuilder")
+	overridesData, err := loadOverridesFromFile("../test/config-next/ratelimit-overrides.yml")
+	test.AssertNotError(t, err, "loading overrides from file")
+	testOverrides, err := parseOverrideLimits(overridesData)
+	test.AssertNotError(t, err, "parsing overrides")
+
+	newOverridesPerLimit := make(map[Name]float64)
+	for _, override := range testOverrides {
+		override.precompute()
+		newOverridesPerLimit[override.Name]++
+	}
+
+	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
+
+	var iom io_prometheus_client.Metric
+
+	for rlName, rlString := range nameToString {
+		err = tb.limitRegistry.overridesPerLimit.WithLabelValues(rlString).Write(&iom)
+		test.AssertNotError(t, err, fmt.Sprintf("encoding overridesPerLimit metric with label %q", rlString))
+		test.AssertEquals(t, iom.Gauge.GetValue(), newOverridesPerLimit[rlName])
+	}
+
+	err = tb.limitRegistry.overridesTimestamp.Write(&iom)
+	test.AssertNotError(t, err, "encoding overridesTimestamp metric")
+	test.Assert(t, int64(iom.Gauge.GetValue()) >= time.Now().Unix()-5, "overridesTimestamp too old")
+
+	// A failure loading overrides should log and return an error, and not
+	// overwrite existing overrides.
+	mockLog.Clear()
+	tb.limitRegistry.refreshOverrides = func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error) {
+		return nil, errors.New("mock failure")
+	}
+	err = tb.limitRegistry.loadOverrides(context.Background())
+	test.AssertError(t, err, "fail to load overrides")
+	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
+
+	// An empty set of overrides should log a warning, return nil, and not
+	// overwrite existing overrides.
+	mockLog.Clear()
+	tb.limitRegistry.refreshOverrides = func(context.Context, prometheus.Gauge, blog.Logger) (Limits, error) {
+		return Limits{}, nil
+	}
+	err = tb.limitRegistry.loadOverrides(context.Background())
+	test.AssertEquals(t, mockLog.GetAll()[0], "WARNING: loading overrides: no valid overrides")
+	test.AssertNotError(t, err, "load empty overrides")
+	test.AssertDeepEquals(t, tb.limitRegistry.overrides, testOverrides)
+}
+
+func TestNewRefresher(t *testing.T) {
+	mockLog := blog.NewMock()
+
+	reg := &limitRegistry{
+		refreshOverrides: func(_ context.Context, _ prometheus.Gauge, logger blog.Logger) (Limits, error) {
+			logger.Info("refreshed")
+			return nil, nil
+		},
+		logger: mockLog,
+	}
+
+	// Create and simultaneously cancel a refresher.
+	reg.NewRefresher(time.Millisecond * 2)()
+	time.Sleep(time.Millisecond * 20)
+	// The refresher should have run once, but then been cancelled before the
+	// first tick.
+	test.AssertDeepEquals(t, mockLog.GetAll(), []string{"INFO: refreshed", "WARNING: loading overrides: no valid overrides"})
+
+	reg.NewRefresher(time.Nanosecond)
+	retries := 0
+	for retries < 5 {
+		if slices.Contains(mockLog.GetAll(), "INFO: refreshed") {
+			break
+		}
+		retries++
+		time.Sleep(core.RetryBackoff(retries, time.Millisecond*2, time.Millisecond*50, 2))
+	}
+	test.AssertSliceContains(t, mockLog.GetAll(), "INFO: refreshed")
+	test.Assert(t, len(mockLog.GetAll()) > 1, "refresher didn't run more than once")
+}
+
+func TestHydrateOverrideLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		bucketKey       string
+		limit           Limit
+		expectBucketKey string
+		expectError     string
+	}{
+		{
+			name:            "bad limit name",
+			bucketKey:       "",
+			limit:           Limit{Name: 37},
+			expectBucketKey: "",
+			expectError:     "unrecognized limit name 37",
+		},
+		{
+			name:      "CertificatesPerDomain with bad FQDN, should fail validateIdForName",
+			bucketKey: "VelociousVacherin",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerDomain"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "",
+			expectError:     "\"VelociousVacherin\" is neither a domain (Domain name needs at least one dot) nor an IP address (ParseAddr(\"VelociousVacherin\"): unable to parse IP)",
+		},
+		{
+			name:      "CertificatesPerDomain with IPv4 address",
+			bucketKey: "64.112.117.1",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerDomain"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "64.112.117.1/32",
+			expectError:     "",
+		},
+		{
+			name:      "CertificatesPerDomain with IPv6 address",
+			bucketKey: "2602:80a:6000:666::",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerDomain"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "2602:80a:6000:666::/64",
+			expectError:     "",
+		},
+		{
+			name:      "CertificatesPerFQDNSet",
+			bucketKey: "example.com,example.net,example.org",
+			limit: Limit{
+				Name:   StringToName["CertificatesPerFQDNSet"],
+				Burst:  1,
+				Count:  1,
+				Period: config.Duration{Duration: time.Second},
+			},
+			expectBucketKey: "394e82811f52e2da38b970afdb21c9bc9af81060939c690183c00fce37408738",
+			expectError:     "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bk, err := hydrateOverrideLimit(tc.bucketKey, tc.limit.Name)
+			if tc.expectError != "" {
+				if err == nil {
+					t.Errorf("expected error for test %q but got none", tc.name)
+				}
+				test.AssertContains(t, err.Error(), tc.expectError)
+			} else {
+				test.AssertNotError(t, err, tc.name)
+				test.AssertEquals(t, bk, tc.expectBucketKey)
+			}
+		})
+	}
 }
 
 func TestLoadAndParseDefaultLimits(t *testing.T) {

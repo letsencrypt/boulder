@@ -74,14 +74,14 @@ func TestEmit(t *testing.T) {
 	t.Parallel()
 	log := setup(t)
 
-	log.AuditInfo("test message")
+	log.AuditInfo("test message", nil)
 }
 
 func TestEmitEmpty(t *testing.T) {
 	t.Parallel()
 	log := setup(t)
 
-	log.AuditInfo("")
+	log.AuditInfo("", nil)
 }
 
 func TestStdoutLogger(t *testing.T) {
@@ -98,46 +98,43 @@ func TestStdoutLogger(t *testing.T) {
 		},
 	}
 
-	logger.AuditErr("Error Audit")
+	logger.AuditErr("Error Audit", fmt.Errorf("oops"), nil)
 	logger.Warning("Warning log")
 	logger.Info("Info log")
 
-	test.AssertEquals(t, stdout.String(), "1970-01-01 prefix 6 log.test pcbo7wk Info log\n")
-	test.AssertEquals(t, stderr.String(), "1970-01-01 prefix 3 log.test 46_ghQg [AUDIT] Error Audit\n1970-01-01 prefix 4 log.test 97r2xAw Warning log\n")
+	test.AssertEquals(t, stdout.String(), "1970-01-01 prefix 6 log.test JSP6nQ Info log\n")
+	test.AssertEquals(t, stderr.String(), "1970-01-01 prefix 3 log.test d_ZkUQ [AUDIT] Error Audit JSON={\"error\":\"oops\"}\n1970-01-01 prefix 4 log.test d52dyA Warning log\n")
 }
 
 func TestSyslogMethods(t *testing.T) {
 	t.Parallel()
 	impl := setup(t)
 
-	impl.AuditInfo("audit-logger_test.go: audit-info")
-	impl.AuditErr("audit-logger_test.go: audit-err")
+	impl.AuditInfo("audit-logger_test.go: audit-info", map[string]any{"key": "value"})
+	impl.AuditErr("audit-logger_test.go: audit-err", fmt.Errorf("oops"), map[string]any{"key": "value"})
 	impl.Debug("audit-logger_test.go: debug")
-	impl.Err("audit-logger_test.go: err")
 	impl.Info("audit-logger_test.go: info")
 	impl.Warning("audit-logger_test.go: warning")
-	impl.AuditInfof("audit-logger_test.go: %s", "audit-info")
-	impl.AuditErrf("audit-logger_test.go: %s", "audit-err")
 	impl.Debugf("audit-logger_test.go: %s", "debug")
 	impl.Errf("audit-logger_test.go: %s", "err")
 	impl.Infof("audit-logger_test.go: %s", "info")
 	impl.Warningf("audit-logger_test.go: %s", "warning")
 }
 
-func TestAuditObject(t *testing.T) {
+func TestAuditInfo(t *testing.T) {
 	t.Parallel()
 
 	log := NewMock()
 
 	// Test a simple object
-	log.AuditObject("Prefix", "String")
+	log.AuditInfo("Prefix", "String")
 	if len(log.GetAllMatching("[AUDIT]")) != 1 {
 		t.Errorf("Failed to audit log simple object")
 	}
 
 	// Test a system object
 	log.Clear()
-	log.AuditObject("Prefix", t)
+	log.AuditInfo("Prefix", t)
 	if len(log.GetAllMatching("[AUDIT]")) != 1 {
 		t.Errorf("Failed to audit log system object")
 	}
@@ -149,9 +146,23 @@ func TestAuditObject(t *testing.T) {
 		B string
 	}
 	var valid = validObj{A: "B", B: "C"}
-	log.AuditObject("Prefix", valid)
+	log.AuditInfo("Prefix", valid)
 	if len(log.GetAllMatching("[AUDIT]")) != 1 {
 		t.Errorf("Failed to audit log complex object")
+	}
+
+	// Test a map
+	log.Clear()
+	log.AuditInfo("Prefix", map[string]any{"hello": "world", "number": 123})
+	if len(log.GetAllMatching("[AUDIT]")) != 1 {
+		t.Errorf("Failed to audit log map")
+	}
+
+	// Test a nil object
+	log.Clear()
+	log.AuditInfo("Prefix", nil)
+	if len(log.GetAllMatching("[AUDIT]")) != 1 {
+		t.Errorf("Failed to audit nil object")
 	}
 
 	// Test logging an unserializable object
@@ -159,9 +170,8 @@ func TestAuditObject(t *testing.T) {
 	type invalidObj struct {
 		A chan string
 	}
-
 	var invalid = invalidObj{A: make(chan string)}
-	log.AuditObject("Prefix", invalid)
+	log.AuditInfo("Prefix", invalid)
 	if len(log.GetAllMatching("[AUDIT]")) != 1 {
 		t.Errorf("Failed to audit log unserializable object %v", log.GetAllMatching("[AUDIT]"))
 	}
@@ -186,19 +196,15 @@ func TestTransmission(t *testing.T) {
 
 	data := make([]byte, 128)
 
-	impl.AuditInfo("audit-logger_test.go: audit-info")
+	impl.AuditInfo("audit-logger_test.go: audit-info", map[string]any{"key": "value"})
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
-	impl.AuditErr("audit-logger_test.go: audit-err")
+	impl.AuditErr("audit-logger_test.go: audit-err", fmt.Errorf("oops"), nil)
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
 	impl.Debug("audit-logger_test.go: debug")
-	_, _, err = l.ReadFrom(data)
-	test.AssertNotError(t, err, "Failed to find packet")
-
-	impl.Err("audit-logger_test.go: err")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
@@ -207,14 +213,6 @@ func TestTransmission(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to find packet")
 
 	impl.Warning("audit-logger_test.go: warning")
-	_, _, err = l.ReadFrom(data)
-	test.AssertNotError(t, err, "Failed to find packet")
-
-	impl.AuditInfof("audit-logger_test.go: %s", "audit-info")
-	_, _, err = l.ReadFrom(data)
-	test.AssertNotError(t, err, "Failed to find packet")
-
-	impl.AuditErrf("audit-logger_test.go: %s", "audit-err")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
@@ -325,7 +323,7 @@ func TestStdoutFailure(t *testing.T) {
 	}()
 
 	// Try to audit log something
-	log.AuditInfo("This should cause a panic, stdout is closed!")
+	log.AuditInfo("This should cause a panic, stdout is closed!", nil)
 }
 
 func TestLogAtLevelEscapesNewlines(t *testing.T) {
@@ -352,16 +350,10 @@ func TestLogLineChecksum(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "NewLineChecksum with Hello, World!",
-			function: NewLineChecksum,
+			name:     "LogLineChecksum with Hello, World!",
+			function: LogLineChecksum,
 			input:    "Hello, World!",
 			expected: "0MNK7A",
-		},
-		{
-			name:     "LogLineChecksum with Info log",
-			function: LogLineChecksum,
-			input:    "Info log",
-			expected: "pcbo7wk",
 		},
 	}
 

@@ -31,13 +31,6 @@ import (
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
-	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
-	// OCSP Must Staple extension to be rejected.
-	//
-	// Deprecated: This has no effect, Must Staple is always omitted.
-	// TODO(#8177): Remove this.
-	AllowMustStaple bool
-
 	// OmitCommonName causes the CN field to be excluded from the resulting
 	// certificate, regardless of its inclusion in the IssuanceRequest.
 	OmitCommonName bool
@@ -46,26 +39,23 @@ type ProfileConfig struct {
 	OmitKeyEncipherment bool
 	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
 	// to be omitted from the EKU extension.
+	// Deprecated: This has no effect, and we always omit the clientAuth EKU.
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
-	// OmitOCSP causes the OCSP URI field to be omitted from the Authority
-	// Information Access extension. This cannot be true unless
-	// IncludeCRLDistributionPoints is also true, to ensure that every
-	// certificate has at least one revocation mechanism included.
-	//
-	// Deprecated: This has no effect; OCSP is always omitted.
-	// TODO(#8177): Remove this.
-	OmitOCSP bool
-	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
-	// be added to all certificates issued by this profile.
-	//
-	// Deprecated: This has no effect; CRLDP is always included.
-	// TODO(#8177): Remove this.
-	IncludeCRLDistributionPoints bool
+	// MTC causes the precertificate poison and SCT list extension to be omitted.
+	MTC bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
+
+	// MaxCertificateSize causes rejection at the linting stage of any certificate
+	// that would be bigger than this many bytes. This should be considered a backstop
+	// and should be set higher than the corresponding limits at the WFE
+	// (MaxCumulativeIdentifierLength) and the RA (MaxNames * 253, per-profile),
+	// plus the longest possible signature size, plus some extra for certificate
+	// fields.
+	MaxCertificateSize int
 
 	// LintConfig is a path to a zlint config file, which can be used to control
 	// the behavior of zlint's "customizable lints".
@@ -75,26 +65,30 @@ type ProfileConfig struct {
 	IgnoredLints []string
 }
 
-// PolicyConfig describes a policy
-type PolicyConfig struct {
-	OID string `validate:"required"`
-}
-
-// Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
+// Profile is the validated structure created by reading in a ProfileConfig
 type Profile struct {
 	omitCommonName      bool
 	omitKeyEncipherment bool
-	omitClientAuth      bool
 	omitSKID            bool
+	mtc                 bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
 
+	maxCertificateSize int
+
+	// lints is the registry of lints to run against certificates issued under
+	// this profile. It carries no lint configuration of its own: at issuance
+	// time it is combined with a configuration derived from lintConfig.
 	lints lint.Registry
+	// lintConfig is the in-memory contents of this profile's zlint config
+	// file. At issuance time it is augmented with the issuing Issuer's
+	// certificate via WithIssuer.
+	lintConfig linter.Config
 }
 
 // NewProfile converts the profile config into a usable profile.
-func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
+func NewProfile(profileConfig ProfileConfig) (*Profile, error) {
 	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
 	// must be "within 48 hours of the time of signing". We can be even stricter.
 	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
@@ -107,30 +101,22 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
-	// Although the Baseline Requirements say that revocation information may be
-	// omitted entirely *for short-lived certs*, the Microsoft root program still
-	// requires that at least one revocation mechanism be included in all certs.
-	// TODO(#7673): Remove this restriction.
-	if !profileConfig.IncludeCRLDistributionPoints {
-		return nil, fmt.Errorf("at least one revocation mechanism must be included")
-	}
-
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
-	if profileConfig.LintConfig != "" {
-		lintconfig, err := lint.NewConfigFromFile(profileConfig.LintConfig)
-		cmd.FailOnError(err, "Failed to load zlint config file")
-		lints.SetConfiguration(lintconfig)
-	}
+
+	lintConfig, err := linter.LoadConfigFile(profileConfig.LintConfig)
+	cmd.FailOnError(err, "Failed to load zlint config file")
 
 	sp := &Profile{
 		omitCommonName:      profileConfig.OmitCommonName,
 		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
-		omitClientAuth:      profileConfig.OmitClientAuth,
 		omitSKID:            profileConfig.OmitSKID,
+		mtc:                 profileConfig.MTC,
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
+		maxCertificateSize:  profileConfig.MaxCertificateSize,
 		lints:               lints,
+		lintConfig:          lintConfig,
 	}
 
 	return sp, nil
@@ -158,7 +144,7 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 		return errors.New("unsupported public key type")
 	}
 
-	if len(req.precertDER) == 0 && !i.active {
+	if len(req.precertDER) == 0 && !i.IsActive() {
 		return errors.New("inactive issuer cannot issue precert")
 	}
 
@@ -212,6 +198,7 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		SignatureAlgorithm:    i.sigAlg,
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
 		Policies: []x509.OID{domainValidatedOID},
 	}
@@ -331,17 +318,6 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	// generate template from the issuer's data
 	template := i.generateTemplate()
 
-	ekus := []x509.ExtKeyUsage{
-		x509.ExtKeyUsageServerAuth,
-		x509.ExtKeyUsageClientAuth,
-	}
-	if prof.omitClientAuth {
-		ekus = []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-		}
-	}
-	template.ExtKeyUsage = ekus
-
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
@@ -366,19 +342,28 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.SubjectKeyId = req.SubjectKeyId
 	}
 
-	if req.IncludeCTPoison {
-		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
-	} else if len(req.sctList) > 0 {
-		if len(req.precertDER) == 0 {
-			return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+	if prof.mtc {
+		if req.IncludeCTPoison {
+			return nil, nil, errors.New("invalid request for CT poison with MTC")
 		}
-		sctListExt, err := generateSCTListExt(req.sctList)
-		if err != nil {
-			return nil, nil, err
+		if len(req.sctList) > 0 {
+			return nil, nil, errors.New("invalid request for SCT list with MTC")
 		}
-		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
-		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+		if req.IncludeCTPoison {
+			template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
+		} else if len(req.sctList) > 0 {
+			if len(req.precertDER) == 0 {
+				return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+			}
+			sctListExt, err := generateSCTListExt(req.sctList)
+			if err != nil {
+				return nil, nil, err
+			}
+			template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
+		} else {
+			return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+		}
 	}
 
 	// Pick a CRL shard based on the serial number modulo the number of shards.
@@ -390,9 +375,17 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints)
+	lintConfig, err := prof.lintConfig.WithIssuer(i.Cert.Certificate)
+	if err != nil {
+		return nil, nil, fmt.Errorf("building lint config: %w", err)
+	}
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints, lintConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
+	}
+
+	if prof.maxCertificateSize > 0 && len(lintCertBytes) > prof.maxCertificateSize {
+		return nil, nil, fmt.Errorf("linting certificate too big (%d > %d)", len(lintCertBytes), prof.maxCertificateSize)
 	}
 
 	if len(req.precertDER) > 0 {

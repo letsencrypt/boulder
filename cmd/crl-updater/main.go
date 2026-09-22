@@ -53,10 +53,29 @@ type Config struct {
 
 		// LookbackPeriod is how far back the updater should look for revoked expired
 		// certificates. We are required to include every revoked cert in at least
-		// one CRL, even if it is revoked seconds before it expires, so this must
-		// always be greater than the UpdatePeriod, and should be increased when
-		// recovering from an outage to ensure continuity of coverage.
+		// one CRL issued after it expires, even if it is revoked seconds before it
+		// expires, so this must always be at least twice the UpdatePeriod plus
+		// the LagFactor, and should be increased when recovering from an outage
+		// to ensure continuity of coverage.
 		LookbackPeriod config.Duration `validate:"-"`
+
+		// CheckFreshness has the updater confirm, before signing each CRL, that
+		// the revoked certificates it read for the shard include the primary
+		// database's most recent revocation; if not, the read came from a
+		// lagging replica and the shard is retried. Defaults to false.
+		//
+		// TODO(#8983): Remove this once #8984 has been deployed to production
+		// and the freshness check is made unconditional.
+		CheckFreshness bool
+
+		// LagFactor is how much database replication lag the freshness check
+		// tolerates. It ignores revocations from the last LagFactor before each
+		// CRL's thisUpdate. It must be less than the UpdatePeriod. Defaults to
+		// 5 minutes when CheckFreshness is set, and zero otherwise.
+		//
+		// TODO(#8983): Default this field to 5 minutes once #8984 has been
+		// deployed to production and the freshness check is made unconditional.
+		LagFactor config.Duration `validate:"-"`
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
 		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7:
@@ -71,21 +90,6 @@ type Config struct {
 		// strictly less than the UpdatePeriod. Defaults to 10 minutes, one order
 		// of magnitude greater than our p99 update latency.
 		UpdateTimeout config.Duration `validate:"-"`
-
-		// TemporallyShardedSerialPrefixes is a list of prefixes that were used to
-		// issue certificates with no CRLDistributionPoints extension, and which are
-		// therefore temporally sharded. If it's non-empty, the CRL Updater will
-		// require matching serials when querying by temporal shard. When querying
-		// by explicit shard, any prefix is allowed.
-		//
-		// This should be set to the current set of serial prefixes in production.
-		// When deploying explicit sharding (i.e. the CRLDistributionPoints extension),
-		// the CAs should be configured with a new set of serial prefixes that haven't
-		// been used before.
-		//
-		// Deprecated: The updater no longer supports temporal sharding.
-		// TODO(#8345): Remove this.
-		TemporallyShardedSerialPrefixes []string
 
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
@@ -159,7 +163,7 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 	clk := clock.New()
 
 	tlsConfig, err := c.CRLUpdater.TLS.Load(scope)
@@ -181,6 +185,11 @@ func main() {
 	if c.CRLUpdater.UpdateTimeout.Duration == 0 {
 		c.CRLUpdater.UpdateTimeout.Duration = 10 * time.Minute
 	}
+	// TODO(#8983): Remove the condition on CheckFreshness once #8984 has been
+	// deployed to production and the freshness check is made unconditional.
+	if c.CRLUpdater.CheckFreshness && c.CRLUpdater.LagFactor.Duration == 0 {
+		c.CRLUpdater.LagFactor.Duration = 5 * time.Minute
+	}
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
@@ -199,12 +208,14 @@ func main() {
 		c.CRLUpdater.NumShards,
 		c.CRLUpdater.ShardWidth.Duration,
 		c.CRLUpdater.LookbackPeriod.Duration,
+		c.CRLUpdater.LagFactor.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
 		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
 		c.CRLUpdater.CacheControl,
 		c.CRLUpdater.ExpiresMargin.Duration,
+		c.CRLUpdater.CheckFreshness,
 		sac,
 		cac,
 		csc,

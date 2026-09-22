@@ -148,7 +148,7 @@ func (e *extensionParser) Next() (cryptobyte.String, error) {
 
 // unwrapExtensions takes a given a sequence of bytes representing the `extensions` field
 // of a TBSCertificate and parses away the outermost two layers, returning the inner bytes
-// of the Extensions SEQUENCE.
+// of the Extensions sequence.
 //
 // https://datatracker.ietf.org/doc/html/rfc5280#page-117
 //
@@ -193,7 +193,7 @@ func readIdenticalElement(a, b *cryptobyte.String) error {
 }
 
 // tbsDERFromCertDER takes a Certificate object encoded as DER, and parses
-// away the outermost two SEQUENCEs to get the inner bytes of the TBSCertificate.
+// away the outermost two sequences to get the inner bytes of the TBSCertificate.
 //
 // https://datatracker.ietf.org/doc/html/rfc5280#page-116
 //

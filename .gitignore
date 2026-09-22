@@ -3,6 +3,8 @@
 *.a
 *.so
 *.pyc
+boulder-*.deb
+boulder-*.tar.gz
 
 # Folders
 _obj
@@ -43,3 +45,14 @@ test/proxysql/*.log*
 
 # Coverage files
 test/coverage
+
+# DSN symlinks
+test/secrets/badkeyrevoker_dburl
+test/secrets/cert_checker_dburl
+test/secrets/incidents_dburl
+test/secrets/incidents_admin_dburl
+test/secrets/mtpublisher_dburl
+test/secrets/revoker_dburl
+test/secrets/sa_dburl
+test/secrets/sa_ro_dburl
+test/secrets/mtca1_dburl

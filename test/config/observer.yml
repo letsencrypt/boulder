@@ -5,6 +5,11 @@ syslog:
   sysloglevel: 6
 monitors:
   -
+    period: 1h
+    kind: CCADB
+    settings:
+      crlAgeLimit: 2h
+  -
     period: 5s
     kind: DNS
     settings:
@@ -91,7 +96,8 @@ monitors:
       rcodes: [200, 404]
       useragent: "letsencrypt/boulder-observer-http-client"
   -
-    period: 10s
-    kind: TCP
+    period: 1h
+    kind: AIA
     settings:
-      hostport: acme-v02.api.letsencrypt.org:443
+      url: http://r3.i.lencr.org/
+      expectCommonName: "R3"

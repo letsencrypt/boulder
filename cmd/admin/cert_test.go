@@ -120,7 +120,7 @@ func TestSerialsFromPrivateKey(t *testing.T) {
 
 	a := admin{saroc: &mockSAWithKey{keyHash: keyHash[:], serials: serials}}
 
-	res, err := a.serialsFromPrivateKey(context.Background(), keyFile)
+	res, err := a.serialsFromPrivateKeys(context.Background(), keyFile)
 	test.AssertNotError(t, err, "getting serials from keyHashToSerial table")
 	test.AssertDeepEquals(t, res, serials)
 }
@@ -219,7 +219,6 @@ func TestRevokeSerials(t *testing.T) {
 	// Revoking should result in 3 gRPC requests and quiet execution.
 	mra.reset()
 	log.Clear()
-	a.dryRun = false
 	err := a.revokeSerials(context.Background(), serials, 0, false, 1)
 	test.AssertEquals(t, len(log.GetAllMatching("invalid serial format")), 0)
 	test.AssertNotError(t, err, "")
@@ -260,7 +259,6 @@ func TestRevokeSerials(t *testing.T) {
 	// Revoking in dry-run mode should result in no gRPC requests and three logs.
 	mra.reset()
 	log.Clear()
-	a.dryRun = true
 	a.rac = dryRunRAC{log: log}
 	err = a.revokeSerials(context.Background(), serials, 0, false, 1)
 	test.AssertNotError(t, err, "")
@@ -274,9 +272,8 @@ func TestRevokeMalformed(t *testing.T) {
 	mra := mockRARecordingRevocations{}
 	log := blog.NewMock()
 	a := &admin{
-		rac:    &mra,
-		log:    log,
-		dryRun: false,
+		rac: &mra,
+		log: log,
 	}
 
 	s := subcommandRevokeCert{

@@ -230,7 +230,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 	switch in.Id {
 	case 1: // Return a valid authorization with a single valid challenge.
 		return &corepb.Authorization{
-			Id:             "1",
+			Id:             1,
 			RegistrationID: 1,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusValid),
@@ -241,7 +241,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		}, nil
 	case 2: // Return a pending authorization with three pending challenges.
 		return &corepb.Authorization{
-			Id:             "2",
+			Id:             2,
 			RegistrationID: 1,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
@@ -254,7 +254,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		}, nil
 	case 3: // Return an expired authorization with three pending (but expired) challenges.
 		return &corepb.Authorization{
-			Id:             "3",
+			Id:             3,
 			RegistrationID: 1,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
@@ -269,7 +269,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return nil, fmt.Errorf("unspecified error")
 	case 5: // Return a pending authorization as above, but associated with RegID 2.
 		return &corepb.Authorization{
-			Id:             "5",
+			Id:             5,
 			RegistrationID: 2,
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
@@ -282,7 +282,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		}, nil
 	}
 
-	return nil, berrors.NotFoundError("no authorization found with id %q", in.Id)
+	return nil, berrors.NotFoundError("no authorization found with id %d", in.Id)
 }
 
 func (ra *MockRegistrationAuthority) DeactivateAuthorization(context.Context, *corepb.Authorization, ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -358,6 +358,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
+	logger := blog.NewMock()
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "creating test keypolicy")
@@ -404,14 +405,14 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
 	test.AssertNotError(t, err, "making nonceService")
 
-	inmemNonceService := &inmemnonce.Service{NonceService: nonceService}
+	inmemNonceService := &inmemnonce.NonceService{Impl: nonceService}
 	gnc := inmemNonceService
 	rnc := inmemNonceService
 
 	// Setup rate limiting.
 	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/ratelimit-defaults.yml", "", stats, logger)
 	test.AssertNotError(t, err, "making transaction composer")
 
 	unpauseSigner, err := unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
@@ -424,27 +425,31 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		testKeyPolicy,
 		certChains,
 		issuerCertificates,
-		blog.NewMock(),
+		logger,
 		10*time.Second,
 		10*time.Second,
 		2,
+		1000,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
 		nil,
 		gnc,
 		rnc,
 		rncKey,
-		mockSA,
 		limiter,
 		txnBuilder,
 		map[string]string{"default": "a test profile"},
 		unpauseSigner,
 		unpauseLifetime,
 		unpauseURL,
+		[]string{"asdf"},
+		nil,
+		"letsencrypt.org",
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
+	wfe.AccountURIPrefix = "http://localhost/acme/acct/"
 
 	return wfe, fc, requestSigner{t, inmemNonceService.AsSource()}
 }
@@ -623,7 +628,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Headers"), "Content-Type")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce, Retry-After")
 
 	// CORS preflight request for disallowed method
 	runWrappedHandler(&http.Request{
@@ -653,7 +658,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Headers"), "Content-Type")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, HEAD, POST")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Location, Replay-Nonce, Retry-After")
 
 	// OPTIONS request without an Origin header (i.e., not a CORS
 	// preflight request)
@@ -833,6 +838,7 @@ func TestDirectory(t *testing.T) {
   "newNonce": "http://localhost:4300/acme/new-nonce",
   "newAccount": "http://localhost:4300/acme/new-acct",
   "newOrder": "http://localhost:4300/acme/new-order",
+  "renewalInfo": "http://localhost:4300/acme/renewal-info",
   "revokeCert": "http://localhost:4300/acme/revoke-cert",
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 }`,
@@ -858,6 +864,7 @@ func TestDirectory(t *testing.T) {
   "newAccount": "http://localhost:4300/acme/new-acct",
   "newNonce": "http://localhost:4300/acme/new-nonce",
   "newOrder": "http://localhost:4300/acme/new-order",
+  "renewalInfo": "http://localhost:4300/acme/renewal-info",
   "revokeCert": "http://localhost:4300/acme/revoke-cert"
 }`,
 		},
@@ -882,6 +889,7 @@ func TestDirectory(t *testing.T) {
   "newAccount": "http://localhost/acme/new-acct",
   "newNonce": "http://localhost/acme/new-nonce",
   "newOrder": "http://localhost/acme/new-order",
+  "renewalInfo": "http://localhost/acme/renewal-info",
   "revokeCert": "http://localhost/acme/revoke-cert"
 }`,
 		},
@@ -923,10 +931,12 @@ func TestRelativeDirectory(t *testing.T) {
 		fmt.Fprintf(expected, `"newNonce":"%s/acme/new-nonce",`, hostname)
 		fmt.Fprintf(expected, `"newAccount":"%s/acme/new-acct",`, hostname)
 		fmt.Fprintf(expected, `"newOrder":"%s/acme/new-order",`, hostname)
+		fmt.Fprintf(expected, `"renewalInfo":"%s/acme/renewal-info",`, hostname)
 		fmt.Fprintf(expected, `"revokeCert":"%s/acme/revoke-cert",`, hostname)
 		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
 		fmt.Fprintf(expected, `"meta":{`)
 		fmt.Fprintf(expected, `"termsOfService":"http://example.invalid/terms",`)
+		fmt.Fprintf(expected, `"caaIdentities":["letsencrypt.org"],`)
 		fmt.Fprintf(expected, `"profiles":{"default":"a test profile"}`)
 		fmt.Fprintf(expected, "}")
 		fmt.Fprintf(expected, "}")
@@ -1092,6 +1102,11 @@ func TestHTTPMethods(t *testing.T) {
 		{
 			Name:    "Build ID path should be GET only",
 			Path:    buildIDPath,
+			Allowed: getOnly,
+		},
+		{
+			Name:    "Health path should be GET only",
+			Path:    healthzPath,
 			Allowed: getOnly,
 		},
 		{
@@ -1358,7 +1373,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"Unable to validate JWS :: JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"JWS has an invalid anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSAAccount(t *testing.T) {
@@ -1855,7 +1870,7 @@ type RAWithFailedChallenge struct {
 
 func (ra *RAWithFailedChallenge) GetAuthorization(ctx context.Context, id *rapb.GetAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	return &corepb.Authorization{
-		Id:             "6",
+		Id:             6,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 		Status:         string(core.StatusInvalid),
@@ -2844,6 +2859,11 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Invalid identifiers requested :: Cannot issue for \"example.invalid\": Domain name does not end with a valid public suffix (TLD)","status":400}`,
 		},
 		{
+			Name:         "POST, blocked DNS identifier",
+			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":"asdf.asdf.example.com"}]}`),
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Disallowed identifier requested :: Cannot issue for \"asdf.asdf.example.com\": domain name contains too many subdomain labels indicative of recursive on-demand issuance","status":400}`,
+		},
+		{
 			Name:         "POST, invalid IP identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"ip","value":"127.0.0.0.0.0.0.1"}]}`),
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Invalid identifiers requested :: Cannot issue for \"127.0.0.0.0.0.0.1\": IP address is invalid","status":400}`,
@@ -3355,7 +3375,7 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authenticated revocation"), []string{
-		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"RegID":1,"Method":"applicant"}`,
+		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"Requester":1,"Method":"applicant"}`,
 	})
 }
 
@@ -3384,7 +3404,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authenticated revocation"), []string{
-		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":1,"RegID":0,"Method":"privkey"}`,
+		`INFO: [AUDIT] Authenticated revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":1,"Requester":0,"Method":"privkey"}`,
 	})
 }
 
@@ -3614,7 +3634,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -3622,17 +3642,30 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending, Token: "token"},
 		},
 	}
 
-	// This modifies the authz in-place.
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
 	// Ensure ID and RegID are omitted.
 	authzJSON, err := json.Marshal(authz)
 	test.AssertNotError(t, err, "Failed to marshal authz")
 	test.AssertNotContains(t, string(authzJSON), "\"id\":\"12345\"")
-	test.AssertNotContains(t, string(authzJSON), "\"registrationID\":\"1\"")
+	test.AssertNotContains(t, string(authzJSON), "\"requester\":\"1\"")
+
+	// Verify per-challenge-type display behavior.
+	for _, chall := range authz.Challenges {
+		if chall.Type == core.ChallengeTypeDNSPersist01 {
+			test.Assert(t, chall.Token == "", fmt.Sprintf("expected %s to have no token", chall.Type))
+			test.AssertDeepEquals(t, chall.IssuerDomainNames, []string{"letsencrypt.org"})
+			test.AssertEquals(t, chall.AccountURI, "http://localhost/acme/acct/1")
+		} else {
+			test.Assert(t, chall.Token != "", fmt.Sprintf("expected %s to have a token", chall.Type))
+			test.Assert(t, chall.IssuerDomainNames == nil, fmt.Sprintf("expected %s to have no issuer domain names", chall.Type))
+			test.AssertEquals(t, chall.AccountURI, "")
+		}
+	}
 }
 
 func TestPrepRevokedAuthzForDisplay(t *testing.T) {
@@ -3640,7 +3673,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusInvalid,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -3648,6 +3681,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusPending},
 		},
 	}
 
@@ -3665,7 +3699,7 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("*.example.com"),
@@ -3688,7 +3722,7 @@ func TestPrepAuthzForDisplayShuffle(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             12345,
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
@@ -3779,19 +3813,30 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	})
 }
 
-func TestPrepAccountForDisplay(t *testing.T) {
+func TestAccountMarshaling(t *testing.T) {
 	acct := &core.Registration{
 		ID:        1987,
 		Agreement: "disagreement",
+		Status:    core.StatusValid,
 	}
 
-	// Prep the account for display.
-	prepAccountForDisplay(acct)
+	marshaled, err := json.Marshal(acct)
+	if err != nil {
+		t.Fatalf("marshalling account object: %s", err)
+	}
+
+	var got core.Registration
+	err = json.Unmarshal(marshaled, &got)
+	if err != nil {
+		t.Fatalf("unmarshaling account object: %s", err)
+	}
 
 	// The Agreement should always be cleared.
-	test.AssertEquals(t, acct.Agreement, "")
+	test.AssertEquals(t, got.Agreement, "")
 	// The ID field should be zeroed.
-	test.AssertEquals(t, acct.ID, int64(0))
+	test.AssertEquals(t, got.ID, int64(0))
+	// The Status field should be preserved.
+	test.AssertEquals(t, got.Status, core.StatusValid)
 }
 
 // TestGet404 tests that a 404 is served and that the expected endpoint of
@@ -3824,9 +3869,6 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
-	features.Set(features.Config{ServeRenewalInfo: true})
-	defer features.Reset()
-
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]any{}}
@@ -3845,7 +3887,9 @@ func TestARI(t *testing.T) {
 	resp := httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusOK)
-	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	retryAfter, err := strconv.Atoi(resp.Header().Get("Retry-After"))
+	test.AssertNotError(t, err, "failed to convert retry after header to int")
+	test.Assert(t, retryAfter >= 17280 && retryAfter <= 25920, "retry after amount is not within expected range")
 	var ri core.RenewalInfo
 	err = json.Unmarshal(resp.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
@@ -3859,7 +3903,9 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusOK)
-	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	retryAfter, err = strconv.Atoi(resp.Header().Get("Retry-After"))
+	test.AssertNotError(t, err, "failed to convert retry after header to int")
+	test.Assert(t, retryAfter >= 17280 && retryAfter <= 25920, "retry after amount is not within expected range")
 	err = json.Unmarshal(resp.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
 	test.Assert(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), "suggested window should end in the past")
@@ -3903,9 +3949,6 @@ func TestIncidentARI(t *testing.T) {
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
-	features.Set(features.Config{ServeRenewalInfo: true})
-	defer features.Reset()
-
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]any{}}
@@ -3925,9 +3968,11 @@ func TestIncidentARI(t *testing.T) {
 	resp := httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 200)
-	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	retryAfter, err := strconv.Atoi(resp.Header().Get("Retry-After"))
+	test.AssertNotError(t, err, "failed to convert retry after header to int")
+	test.Assert(t, retryAfter >= 17280 && retryAfter <= 25920, "retry after amount is not within expected range")
 	var ri core.RenewalInfo
-	err := json.Unmarshal(resp.Body.Bytes(), &ri)
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
 	// The start of the window should be in the past.
 	test.AssertEquals(t, ri.SuggestedWindow.Start.Before(wfe.clk.Now()), true)
@@ -3988,6 +4033,10 @@ func Test_sendErrorInternalServerError(t *testing.T) {
 type mockSAForARI struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert *corepb.Certificate
+}
+
+func (sa *mockSAForARI) GetRegistration(ctx context.Context, in *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{Id: in.Id, Key: []byte(test1KeyPublicJSON), Status: string(core.StatusValid)}, nil
 }
 
 func (sa *mockSAForARI) FQDNSetTimestampsForWindow(ctx context.Context, in *sapb.CountFQDNSetsRequest, opts ...grpc.CallOption) (*sapb.Timestamps, error) {
@@ -4240,7 +4289,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
-	})
+	}, nil, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "making transaction composer")
 	wfe.txnBuilder = txnBuilder
 
@@ -4296,9 +4345,6 @@ func TestNewOrderRateLimits(t *testing.T) {
 		`{"Identifiers": [{"type": "dns", "value": "example.com"}]}`)
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
-	features.Set(features.Config{
-		UseKvLimitsForNewOrder: true,
-	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusTooManyRequests)
 
 	// Make a request with the "Replaces" field, which should satisfy ARI checks
@@ -4372,8 +4418,8 @@ ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
 
 			wfe, _, signer := setupWFE(t)
 
-			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
-			wfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+			mockImpl := mocks.NewMockSalesforceClientImpl()
+			wfe.ee = mocks.NewMockExporterImpl(mockImpl)
 
 			contactsJSON, err := json.Marshal(tc.contacts)
 			test.AssertNotError(t, err, "Failed to marshal contacts")
@@ -4389,5 +4435,172 @@ ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
 				test.AssertSliceContains(t, mockImpl.GetCreatedContacts(), email)
 			}
 		})
+	}
+}
+
+func TestLooksLikeRecursiveOnDemandRequest(t *testing.T) {
+	testCases := []struct {
+		name    string
+		idents  identifier.ACMEIdentifiers
+		blocked []string
+		wantErr bool
+	}{
+		{
+			name:    "no blocks",
+			idents:  identifier.ACMEIdentifiers{{Type: identifier.TypeDNS, Value: "example.com"}},
+			blocked: nil,
+			wantErr: false,
+		},
+		{
+			name:    "no idents",
+			idents:  nil,
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name:    "no dns idents",
+			idents:  identifier.ACMEIdentifiers{{Type: identifier.TypeIP, Value: "1.2.3.4"}},
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name: "short idents",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "bar.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name: "long but not blocked ident",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "asdf.qwer.zxcv.asdf.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: false,
+		},
+		{
+			name: "two identical blocked labels early",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "asdf.asdf.qwer.zxcv.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: true,
+		},
+		{
+			name: "two identical blocked labels late",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "qwer.zxcv.asdf.asdf.example.com"},
+			},
+			blocked: []string{"asdf"},
+			wantErr: true,
+		},
+		{
+			name: "three blocked labels",
+			idents: identifier.ACMEIdentifiers{
+				{Type: identifier.TypeDNS, Value: "foo.example.com"},
+				{Type: identifier.TypeDNS, Value: "asdf.qwer.zxcv.asdf.example.com"},
+			},
+			blocked: []string{"asdf", "qwer", "zxcv"},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := looksLikeRecursiveOnDemandRequest(tc.idents, tc.blocked)
+			if err != nil && !tc.wantErr {
+				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = %#v, but want success", tc.idents, tc.blocked, err)
+			} else if err == nil && tc.wantErr {
+				t.Errorf("looksLikeRecursiveOnDemandRequest(%#v, %#v) = nil, but want error", tc.idents, tc.blocked)
+			}
+		})
+	}
+}
+
+type acctBlock struct{}
+
+func (ab *acctBlock) CheckAccountID(id int64) error {
+	return berrors.UnauthorizedError("oh no")
+}
+
+func TestAccountBlocker(t *testing.T) {
+	t.Parallel()
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	wfe.accountBlocker = new(acctBlock)
+
+	responseWriter := httptest.NewRecorder()
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		]
+	}`)
+	mux.ServeHTTP(responseWriter, r)
+	if responseWriter.Code != http.StatusForbidden {
+		t.Fatalf("newOrder with blocked account: got %d, want %d; %s", responseWriter.Code, http.StatusForbidden,
+			responseWriter.Body.String())
+	}
+	var errorResp1 map[string]any
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
+	if err != nil {
+		t.Fatalf("newOrder with blocked account: got error unmarshaling response: %s", err)
+	}
+	detail := errorResp1["detail"]
+	expected := "Account blocked :: oh no"
+	if detail != expected {
+		t.Errorf("newOrder with blocked account: got %q, want %q", detail, expected)
+	}
+}
+
+func TestMaxCumulativeIdentifierLength(t *testing.T) {
+	t.Parallel()
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	// Test that the newOrder endpoint returns no error if the valid profile is specified.
+	responseWriter := httptest.NewRecorder()
+
+	order := struct {
+		Identifiers []identifier.ACMEIdentifier
+	}{}
+
+	const alphabet = "abcdefghijklmnopqrstuvwxyz"
+
+	for i := 0; i < 25; i++ {
+		order.Identifiers = append(order.Identifiers,
+			identifier.NewDNS(
+				fmt.Sprintf("%d.%s.%s.%s.%s.example.com", i,
+					alphabet, alphabet, alphabet, alphabet)))
+	}
+
+	orderBytes, err := json.Marshal(order)
+	if err != nil {
+		t.Fatalf("marshaling JSON: %s", err)
+	}
+
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, string(orderBytes))
+	mux.ServeHTTP(responseWriter, r)
+	if responseWriter.Code != http.StatusBadRequest {
+		t.Fatalf("newOrder with too long identifiers: got %d, want %d; %s", responseWriter.Code, http.StatusBadRequest,
+			responseWriter.Body.String())
+	}
+	var errorResp1 map[string]any
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
+	if err != nil {
+		t.Fatalf("newOrder with too long identifiers: got error unmarshaling response: %s", err)
+	}
+	detail := errorResp1["detail"]
+	expected := "Cumulative length of all identifier values was greater than 1000 bytes"
+	if detail != expected {
+		t.Errorf("newOrder with too long identifiers: got %q, want %q", detail, expected)
 	}
 }

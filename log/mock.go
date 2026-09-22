@@ -5,7 +5,6 @@ import (
 	"log/syslog"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // UseMock sets a mock logger as the default logger, and returns it.
@@ -18,13 +17,6 @@ func UseMock() *Mock {
 // NewMock creates a mock logger.
 func NewMock() *Mock {
 	return &Mock{impl{newMockWriter()}}
-}
-
-// NewWaitingMock creates a mock logger implementing the writer interface.
-// It stores all logged messages in a buffer for inspection by test
-// functions.
-func NewWaitingMock() *WaitingMock {
-	return &WaitingMock{impl{newWaitingMockWriter()}}
 }
 
 // Mock is a logger that stores all log messages in memory to be examined by a
@@ -56,8 +48,8 @@ var levelName = map[syslog.Priority]string{
 	syslog.LOG_DEBUG:   "DEBUG",
 }
 
-func (w *mockWriter) logAtLevel(p syslog.Priority, msg string, a ...any) {
-	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
+func (w *mockWriter) logAtLevel(p syslog.Priority, msg string) {
+	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], msg)
 }
 
 // newMockWriter returns a new mockWriter
@@ -131,38 +123,8 @@ func (m *Mock) Clear() {
 	w.clearChan <- struct{}{}
 }
 
-type waitingMockWriter struct {
-	logChan chan string
-}
-
-// newWaitingMockWriter returns a new waitingMockWriter
-func newWaitingMockWriter() *waitingMockWriter {
-	logChan := make(chan string, 1000)
-	return &waitingMockWriter{
-		logChan,
-	}
-}
-
-func (m *waitingMockWriter) logAtLevel(p syslog.Priority, msg string, a ...any) {
-	m.logChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
-}
-
-// WaitForMatch returns the first log line matching a regex. It accepts a
-// regexp string and timeout. If the timeout value is met before the
-// matching pattern is read from the channel, an error is returned.
-func (m *WaitingMock) WaitForMatch(reString string, timeout time.Duration) (string, error) {
-	w := m.w.(*waitingMockWriter)
-	deadline := time.After(timeout)
-	re := regexp.MustCompile(reString)
-	for {
-		select {
-		case logLine := <-w.logChan:
-			if re.MatchString(logLine) {
-				close(w.logChan)
-				return logLine, nil
-			}
-		case <-deadline:
-			return "", fmt.Errorf("timeout waiting for match: %q", reString)
-		}
-	}
+// Close shuts down the mock's background goroutine.
+func (m *Mock) Close() {
+	w := m.w.(*mockWriter)
+	close(w.closeChan)
 }

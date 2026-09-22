@@ -1,1 +1,0 @@
-../../db/boulder_sa/20240304000000_CertificateProfiles.sql

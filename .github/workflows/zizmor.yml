@@ -1,0 +1,36 @@
+name:  Lint GitHub Actions
+
+on:
+  push:
+    branches:
+      - main
+      - release-branch-*
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-24.04
+
+    env:
+      ZIZMOR_IMAGE: ghcr.io/zizmorcore/zizmor:1.25.2@sha256:14ea7f5cc7c67933394a35b5a38a277397818d232602635edb2010b313afb110
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run \
+            --volume "${GITHUB_WORKSPACE}:/src:ro" \
+            --workdir "/src" \
+            --env "GH_TOKEN" \
+            "$ZIZMOR_IMAGE" -- /src

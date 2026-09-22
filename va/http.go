@@ -15,7 +15,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
@@ -178,8 +177,8 @@ type httpValidationTarget struct {
 	next []netip.Addr
 	// the current IP address being used for validation (if any)
 	cur netip.Addr
-	// the DNS resolver(s) that will attempt to fulfill the validation request
-	resolvers bdns.ResolverAddrs
+	// the DNS resolver(s) that were used to look up the host's IP addresses
+	resolvers []string
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -209,7 +208,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	path string,
 	query string) (*httpValidationTarget, error) {
 	var addrs []netip.Addr
-	var resolvers bdns.ResolverAddrs
+	var resolvers []string
 	switch ident.Type {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier
@@ -424,9 +423,12 @@ func fallbackErr(err error) bool {
 		return false
 	}
 	// Net OpErrors are fallback errs only if the operation was a "dial"
+	netOpError, ok := errors.AsType[*net.OpError](err)
+	if ok && netOpError.Op == "dial" {
+		return true
+	}
 	// All other errs are not fallback errs
-	var netOpError *net.OpError
-	return errors.As(err, &netOpError) && netOpError.Op == "dial"
+	return false
 }
 
 // processHTTPValidation performs an HTTP validation for the given host, port
@@ -507,9 +509,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Build a transport for this validation that will use the preresolvedDialer's
 	// DialContext function
 	transport := httpTransport(dialer.DialContext)
-
-	va.log.AuditInfof("Attempting to validate HTTP-01 for %q with GET to %q",
-		initialReq.Host, initialReq.URL.String())
 
 	// Create a closure around records & numRedirects we can use with a HTTP
 	// client to process redirects per our own policy (e.g. resolving IP
@@ -644,6 +643,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 	}
 
+	defer httpResponse.Body.Close()
+
 	if httpResponse.StatusCode != 200 {
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %d",
 			records[len(records)-1].URL, httpResponse.StatusCode))
@@ -652,10 +653,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// At this point we've made a successful request (be it from a retry or
 	// otherwise) and can read and process the response body.
 	body, err := io.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
-	closeErr := httpResponse.Body.Close()
-	if err == nil {
-		err = closeErr
-	}
 	if err != nil {
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
 	}
@@ -672,7 +669,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
-		va.log.Info(fmt.Sprintf("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident))
+		va.log.Errf("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for HTTP-01 challenge was not DNS or IP")
 	}
 

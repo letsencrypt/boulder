@@ -11,33 +11,27 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
-// Service implements noncepb.NonceServiceClient for tests.
-type Service struct {
-	*nonce.NonceService
+// NonceService implements noncepb.NonceServiceClient for tests.
+type NonceService struct {
+	noncepb.NonceServiceClient
+	Impl *nonce.NonceService
 }
 
-var _ noncepb.NonceServiceClient = &Service{}
+var _ noncepb.NonceServiceClient = &NonceService{}
 
-// Nonce implements proto.NonceServiceClient
-func (imns *Service) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	n, err := imns.NonceService.Nonce()
-	if err != nil {
-		return nil, err
-	}
-	return &noncepb.NonceMessage{Nonce: n}, nil
+func (ns *NonceService) Nonce(ctx context.Context, req *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
+	return ns.Impl.Nonce(ctx, req)
 }
 
-// Redeem implements proto.NonceServiceClient
-func (imns *Service) Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	valid := imns.NonceService.Valid(in.Nonce)
-	return &noncepb.ValidMessage{Valid: valid}, nil
+func (ns *NonceService) Redeem(ctx context.Context, req *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return ns.Impl.Redeem(ctx, req)
 }
 
 // AsSource returns a wrapper type that implements jose.NonceSource using this
 // inmemory service. This is useful so that tests can get nonces for signing
 // their JWS that will be accepted by the test WFE configured using this service.
-func (imns *Service) AsSource() jose.NonceSource {
-	return nonceServiceAdapter{imns}
+func (ns *NonceService) AsSource() jose.NonceSource {
+	return nonceServiceAdapter{ns}
 }
 
 // nonceServiceAdapter changes the gRPC nonce service interface to the one

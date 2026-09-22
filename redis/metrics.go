@@ -93,8 +93,8 @@ func MustRegisterClientMetricsCollector(client poolStatGetter, stats prometheus.
 	}
 	err := stats.Register(newClientMetricsCollector(client, labels))
 	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
+		_, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			// The collector is already registered using the same labels.
 			return
 		}

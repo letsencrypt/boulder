@@ -41,7 +41,8 @@
 		"perspective": "cubist",
 		"rir": "ARIN",
 		"features": {
-			"DNSAccount01Enabled": true
+			"DNSAccount01Enabled": true,
+			"DNSPersist01Enabled": true
 		}
 	},
 	"syslog": {

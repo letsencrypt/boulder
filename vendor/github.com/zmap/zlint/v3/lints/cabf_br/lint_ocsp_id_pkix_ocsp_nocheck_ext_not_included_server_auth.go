@@ -28,9 +28,10 @@ func init() {
 			Name: "e_ocsp_id_pkix_ocsp_nocheck_ext_not_included_server_auth",
 			Description: "OCSP signing Certificate MUST contain an extension of type id-pkixocsp-nocheck, as" +
 				" defined by RFC6960",
-			Citation:      "BRs: 4.9.9",
-			Source:        lint.CABFBaselineRequirements,
-			EffectiveDate: util.CABEffectiveDate,
+			Citation:                "BRs: 4.9.9",
+			Source:                  lint.CABFBaselineRequirements,
+			EffectiveDate:           util.CABEffectiveDate,
+			OverrideFrameworkFilter: true,
 		},
 		Lint: NewOCSPIDPKIXOCSPNocheckExtNotIncludedServerAuth,
 	})
@@ -41,7 +42,7 @@ func NewOCSPIDPKIXOCSPNocheckExtNotIncludedServerAuth() lint.LintInterface {
 }
 
 func (l *OCSPIDPKIXOCSPNocheckExtNotIncludedServerAuth) CheckApplies(c *x509.Certificate) bool {
-	return util.IsDelegatedOCSPResponderCert(c) && util.IsServerAuthCert(c)
+	return util.IsDelegatedOCSPResponderCert(c)
 }
 
 func (l *OCSPIDPKIXOCSPNocheckExtNotIncludedServerAuth) Execute(c *x509.Certificate) *lint.LintResult {

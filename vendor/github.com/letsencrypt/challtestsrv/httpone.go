@@ -164,9 +164,9 @@ type challHTTPServer struct {
 // challenge response server useful for redirect targets in another
 // configuration.
 func (c challHTTPServer) ListenAndServe() error {
-	if c.Server.TLSConfig != nil {
+	if c.TLSConfig != nil {
 		// This will use the certificate and key from TLSConfig.
-		return c.Server.ListenAndServeTLS("", "")
+		return c.ListenAndServeTLS("", "")
 	}
 	// Otherwise use HTTP
 	return c.Server.ListenAndServe()
@@ -182,7 +182,7 @@ func (c challHTTPServer) Shutdown() error {
 // resulting challengeServer will run a HTTPS server with a self-signed
 // certificate useful for HTTP-01 -> HTTPS HTTP-01 redirect responses. If HTTPS
 // is false the resulting challengeServer will run an HTTP server.
-func httpOneServer(address string, handler http.Handler, https bool) challengeServer {
+func httpOneServer(address string, handler http.Handler, https bool) challHTTPServer {
 	// If HTTPS is requested build a TLS Config that uses the self-signed
 	// certificate generated at startup.
 	var tlsConfig *tls.Config

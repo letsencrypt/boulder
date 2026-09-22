@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -103,6 +104,8 @@ func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.Rev
 	if err != nil {
 		t.Fatalf("getting CRL from %s: %s", crlURL, err)
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("fetching %s: status code %d", crlURL, resp.StatusCode)
 	}
@@ -110,7 +113,6 @@ func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.Rev
 	if err != nil {
 		t.Fatalf("reading CRL from %s: %s", crlURL, err)
 	}
-	resp.Body.Close()
 
 	list, err := x509.ParseRevocationList(body)
 	if err != nil {
@@ -383,14 +385,16 @@ func TestRevocation(t *testing.T) {
 	type revocationCheck func(t *testing.T, allCRLs map[string][]*x509.RevocationList)
 	var revocationChecks []revocationCheck
 	var rcMu sync.Mutex
-	var wg sync.WaitGroup
 
 	for _, kind := range []certKind{precert, finalcert} {
 		for _, reason := range []revocation.Reason{revocation.Unspecified, revocation.KeyCompromise, revocation.Superseded} {
+			// We only schedule four work items at a time because vttestserver only supports 4 concurrent transactions.
+			// If there are more than that, they will hang, timeout, and error.
+			// Specifically, vttestserver runs vtcomboserver with --queryserver-config-transaction-cap 4 and has no
+			// way (as of v23.0) to override it.
+			var wg sync.WaitGroup
 			for _, method := range []authMethod{byAccount, byAuth, byKey, byAdmin} {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					cert := issueAndRevoke(testCase{
 						method: method,
 						reason: reason,
@@ -424,12 +428,11 @@ func TestRevocation(t *testing.T) {
 					rcMu.Lock()
 					revocationChecks = append(revocationChecks, check)
 					rcMu.Unlock()
-				}()
+				})
 			}
+			wg.Wait()
 		}
 	}
-
-	wg.Wait()
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
 	allCRLs := getAllCRLs(t)
@@ -669,7 +672,7 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	t.Logf("Generated to-be-revoked cert with serial %x", toBeRevoked.certs[0].SerialNumber)
 
 	// Issue two more certs, one from the original account and one from an
-	// unrelated account. We don't use separatze revoker/revokee accounts here
+	// unrelated account. We don't use separate revoker/revokee accounts here
 	// because you can only revoke *your own* certs when signing the request with
 	// your account key.
 	bundles := []*issuanceResult{}
@@ -696,4 +699,81 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	for _, bundle := range bundles {
 		checkUnrevoked(t, allCRLs, bundle.certs[0])
 	}
+}
+
+// waitForAuthzStatusChange uses an acme client to poll some (a slice of)
+// authorizations watching for them to change to a desired status. It is willing
+// to repeatedly fetch the authorizations up to five times, accumulating ~3.5
+// seconds total wait time with backoff+jitter, before reporting failure.
+// Observed status change of ALL authorizations is success, ending the loop.
+func waitForAuthzStatusChange(t *testing.T, aClient *client, authzs []string, wantStatus core.AcmeStatus) {
+	t.Helper()
+
+	for try := range 5 {
+		time.Sleep(core.RetryBackoff(try, 100*time.Millisecond, 2*time.Second, 2.5))
+
+		var allStatus []string
+
+		for authz := range authzs {
+			respAuth, err := aClient.FetchAuthorization(aClient.Account, authzs[authz])
+			t.Logf("Authorization fetched: %v", respAuth)
+			test.AssertNotError(t, err, "FetchAuthorization Failed")
+
+			allStatus = append(allStatus, respAuth.Status)
+		}
+
+		slices.Sort(allStatus)
+		uniqStatus := slices.Compact(allStatus)
+
+		if len(uniqStatus) == 1 && uniqStatus[0] == string(wantStatus) {
+			// Success, all authorizations match our desired result
+			return
+		}
+	}
+
+	t.Fatalf("exhausted authz polling attempts, status values still not as desired")
+}
+
+func TestRevokeAuthzUponRevokeCert(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip("RevokeAuthzUponRevokeCert is only configured in config-next")
+	}
+
+	// Two acme clients, both alike in dignity
+	clientRed, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+	clientBlue, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+
+	// With different keys
+	certKeyRed, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate cert key")
+	certKeyBlue, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate cert key")
+
+	// Share one set of domains for BOTH client certs
+	redVsBlueIdents := []acme.Identifier{
+		{Type: "dns", Value: random_domain()},
+		{Type: "dns", Value: random_domain()},
+		{Type: "dns", Value: random_domain()},
+	}
+
+	// Both clients issue certs for the shared-control set of domains
+	res, err := authAndIssue(clientRed, certKeyRed, redVsBlueIdents, true, "")
+	test.AssertNotError(t, err, "authAndIssue failed")
+
+	res, err = authAndIssue(clientBlue, certKeyBlue, redVsBlueIdents, true, "")
+	test.AssertNotError(t, err, "authAndIssue failed")
+	certBlue := res.certs[0]
+	authzBlue := res.Order.Authorizations
+
+	// Red client revokes the Blue client cert with reason "Unspecified"
+	err = clientRed.RevokeCertificate(clientRed.Account, certBlue, clientRed.PrivateKey, int(revocation.Unspecified))
+	test.AssertNotError(t, err, "failed to revoke certificate")
+
+	// Authorizations for shared-control domains held by Blue client should be revoked
+	t.Logf("Blue cert revoked by Red client, poll authz for Idents: %v", redVsBlueIdents)
+	waitForAuthzStatusChange(t, clientBlue, authzBlue, core.StatusRevoked)
 }

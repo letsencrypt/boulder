@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -36,19 +37,13 @@ type caaParams struct {
 // implements the CAA portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	if core.IsAnyNilOrZero(req.Identifier, req.ValidationMethod, req.AccountURIID) {
+	if core.IsAnyNilOrZero(req.AuthzID, req.Identifier, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
 	ident := identifier.FromProto(req.Identifier)
 	if ident.Type != identifier.TypeDNS {
 		return nil, berrors.MalformedError("Identifier type for CAA check was not DNS")
-	}
-
-	logEvent := validationLogEvent{
-		AuthzID:    req.AuthzID,
-		Requester:  req.AccountURIID,
-		Identifier: ident,
 	}
 
 	challType := core.AcmeChallenge(req.ValidationMethod)
@@ -66,10 +61,13 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	// redeclare `prob`, `localLatency`, or `summary` below this point.
 	var prob *probs.ProblemDetails
 	var summary *mpicSummary
-	var internalErr error
 	var localLatency time.Duration
 	start := va.clk.Now()
-
+	logEvent := validationLogEvent{
+		AuthzID:    req.AuthzID,
+		Requester:  req.AccountURIID,
+		Identifier: ident,
+	}
 	defer func() {
 		probType := ""
 		outcome := fail
@@ -81,6 +79,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			// CAA check passed.
 			outcome = pass
 		}
+
 		// Observe local check latency (primary|remote).
 		va.observeLatency(opCAA, va.perspective, string(challType), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
@@ -88,21 +87,42 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
 			logEvent.Summary = summary
 		}
+
 		// Log the total check latency.
 		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
-
-		va.log.AuditObject("CAA check result", logEvent)
+		va.log.AuditInfo("CAA check result", logEvent)
 	}()
 
-	internalErr = va.checkCAA(ctx, ident, params)
+	// Do the local checks. We do these before kicking off the remote checks to
+	// ensure that we don't waste effort on remote checks if the local ones fail.
+	err := va.checkCAA(ctx, ident, params)
 
 	// Stop the clock for local check latency.
 	localLatency = va.clk.Since(start)
 
-	if internalErr != nil {
-		logEvent.InternalError = internalErr.Error()
-		prob = detailedError(internalErr)
+	if err != nil {
+		logEvent.InternalError = err.Error()
+		prob = detailedError(err)
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", ident.Value, prob.Detail)
+	}
+
+	if va.shouldRunExperiment() {
+		go va.runExperiment(
+			ctx,
+			opCAA,
+			prob,
+			nil,
+			func(ctx context.Context) ([]core.ValidationRecord, *corepb.ProblemDetails, error) {
+				result, err := va.experimentalVA.DoCAA(ctx, req)
+				if err != nil {
+					return nil, nil, err
+				}
+				return nil, result.Problem, err
+			})
+	}
+
+	if prob != nil {
+		return bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
 	}
 
 	if va.isPrimaryVA() {
@@ -113,35 +133,10 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 			}
 			return remoteva.DoCAA(ctx, checkRequest)
 		}
-		var remoteProb *probs.ProblemDetails
-		summary, remoteProb = va.doRemoteOperation(ctx, op, req)
-		// If the remote result was a non-nil problem then fail the CAA check
-		if remoteProb != nil {
-			prob = remoteProb
-			va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
-				ident.Value, remoteProb)
-		}
+		summary, prob = va.doRemoteOperation(ctx, op, req)
 	}
 
-	if prob != nil {
-		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
-		// It will also later be serialized in JSON, which defaults to UTF-8. Make
-		// sure it is UTF-8 clean now.
-		prob = filterProblemDetails(prob)
-		return &vapb.IsCAAValidResponse{
-			Problem: &corepb.ProblemDetails{
-				ProblemType: string(prob.Type),
-				Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
-			},
-			Perspective: va.perspective,
-			Rir:         va.rir,
-		}, nil
-	} else {
-		return &vapb.IsCAAValidResponse{
-			Perspective: va.perspective,
-			Rir:         va.rir,
-		}, nil
-	}
+	return bgrpc.CAAResultToPB(filterProblemDetails(prob), va.perspective, va.rir)
 }
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
@@ -150,7 +145,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	params *caaParams) error {
-	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
+	if core.IsAnyNilOrZero(params.validationMethod, params.accountURIID) {
 		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
@@ -159,8 +154,15 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return berrors.DNSError("%s", err)
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
-		ident.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
+	va.log.AuditInfo("Checked CAA records", map[string]any{
+		"identifier": ident.Value,
+		"present":    foundAt != "",
+		"requester":  params.accountURIID,
+		"challenge":  params.validationMethod,
+		"valid":      valid,
+		"foundAt":    foundAt,
+		"response":   response,
+	})
 	if !valid {
 		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}
@@ -178,7 +180,7 @@ type caaResult struct {
 	issuewild       []*dns.CAA
 	criticalUnknown bool
 	dig             string
-	resolvers       bdns.ResolverAddrs
+	resolver        string
 	err             error
 }
 
@@ -237,14 +239,18 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {
+			defer wg.Done()
 			r.name = name
-			var records []*dns.CAA
-			records, r.dig, r.resolvers, r.err = va.dnsClient.LookupCAA(ctx, name)
-			if len(records) > 0 {
+			var records *bdns.Result[*dns.CAA]
+			records, r.resolver, r.err = va.dnsClient.LookupCAA(ctx, name)
+			if r.err != nil {
+				return
+			}
+			r.dig = records.String()
+			if len(records.Final) > 0 {
 				r.present = true
 			}
-			r.issue, r.issuewild, r.criticalUnknown = filterCAA(records)
-			wg.Done()
+			r.issue, r.issuewild, r.criticalUnknown = filterCAA(records.Final)
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
 
@@ -310,7 +316,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
 	if strings.HasPrefix(hostname, `*.`) {
-		hostname = strings.TrimPrefix(ident.Value, `*.`)
+		hostname = strings.TrimPrefix(hostname, `*.`)
 		wildcard = true
 	}
 	caaSet, err := va.getCAA(ctx, hostname)

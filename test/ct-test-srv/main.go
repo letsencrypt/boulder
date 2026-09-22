@@ -5,7 +5,6 @@ package main
 
 import (
 	"crypto/ecdsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -30,7 +29,8 @@ type ctSubmissionRequest struct {
 
 type integrationSrv struct {
 	sync.Mutex
-	submissions map[string]int64
+	submissions    map[string]int64
+	submissionsCap int
 	// Hostnames where we refuse to provide an SCT. This is to exercise the code
 	// path where all CT servers fail.
 	rejectHosts map[string]bool
@@ -157,9 +157,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 
-	is.Lock()
-	is.submissions[hostnames]++
-	is.Unlock()
+	is.addSubmission(hostnames)
 
 	if is.flakinessRate != 0 && rand.IntN(100) < is.flakinessRate {
 		time.Sleep(10 * time.Second)
@@ -167,6 +165,16 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 
 	w.WriteHeader(http.StatusOK)
 	w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
+}
+
+func (is *integrationSrv) addSubmission(hostnames string) {
+	is.Lock()
+	defer is.Unlock()
+
+	_, ok := is.submissions[hostnames]
+	if ok || len(is.submissions) < is.submissionsCap {
+		is.submissions[hostnames]++
+	}
 }
 
 func (is *integrationSrv) getSubmissions(w http.ResponseWriter, r *http.Request) {
@@ -200,6 +208,9 @@ type Personality struct {
 	// FlakinessRate is an integer between 0-100 that controls how often the log
 	// "flakes", i.e. fails to respond in a reasonable time frame.
 	FlakinessRate int
+	// SubmissionsCap limits the number of hostnames we track. Defaults to 1 million.
+	// After that many entries, new hostnames won't be counted in /submissions.
+	SubmissionsCap int
 }
 
 func runPersonality(p Personality) {
@@ -211,16 +222,17 @@ func runPersonality(p Personality) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
-	if err != nil {
-		log.Fatal(err)
+	cap := p.SubmissionsCap
+	if cap == 0 {
+		cap = 1_000_000
 	}
 	is := integrationSrv{
-		key:           key,
-		flakinessRate: p.FlakinessRate,
-		submissions:   make(map[string]int64),
-		rejectHosts:   make(map[string]bool),
-		userAgent:     p.UserAgent,
+		key:            key,
+		flakinessRate:  p.FlakinessRate,
+		submissions:    make(map[string]int64),
+		submissionsCap: cap,
+		rejectHosts:    make(map[string]bool),
+		userAgent:      p.UserAgent,
 	}
 	m := http.NewServeMux()
 	m.HandleFunc("/submissions", is.getSubmissions)
@@ -232,9 +244,6 @@ func runPersonality(p Personality) {
 		Addr:    p.Addr,
 		Handler: m,
 	}
-	logID := sha256.Sum256(pubKeyBytes)
-	log.Printf("ct-test-srv on %s with pubkey: %s, log ID: %s, flakiness: %d%%", p.Addr,
-		base64.StdEncoding.EncodeToString(pubKeyBytes), base64.StdEncoding.EncodeToString(logID[:]), p.FlakinessRate)
 	log.Fatal(srv.ListenAndServe())
 }
 

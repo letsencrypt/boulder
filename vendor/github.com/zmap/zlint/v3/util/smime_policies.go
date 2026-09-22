@@ -15,6 +15,7 @@ package util
  */
 
 import (
+	"github.com/zmap/zcrypto/encoding/asn1"
 	"github.com/zmap/zcrypto/x509"
 )
 
@@ -90,4 +91,28 @@ func IsStrictSMIMECertificate(c *x509.Certificate) bool {
 	}
 
 	return false
+}
+
+func ContainsExactlyOneSMIMEPolicy(policies []asn1.ObjectIdentifier) bool {
+	found := 0
+	smimePolicies := map[string]bool{
+		SMIMEBRMailboxValidatedLegacyOID.String():            true,
+		SMIMEBRMailboxValidatedMultipurposeOID.String():      true,
+		SMIMEBRMailboxValidatedStrictOID.String():            true,
+		SMIMEBROrganizationValidatedLegacyOID.String():       true,
+		SMIMEBROrganizationValidatedMultipurposeOID.String(): true,
+		SMIMEBROrganizationValidatedStrictOID.String():       true,
+		SMIMEBRSponsorValidatedLegacyOID.String():            true,
+		SMIMEBRSponsorValidatedMultipurposeOID.String():      true,
+		SMIMEBRSponsorValidatedStrictOID.String():            true,
+		SMIMEBRIndividualValidatedLegacyOID.String():         true,
+		SMIMEBRIndividualValidatedMultipurposeOID.String():   true,
+		SMIMEBRIndividualValidatedStrictOID.String():         true,
+	}
+	for _, oid := range policies {
+		if _, present := smimePolicies[oid.String()]; present {
+			found++
+		}
+	}
+	return found == 1
 }

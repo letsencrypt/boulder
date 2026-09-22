@@ -38,12 +38,6 @@ func TestIsReservedAddr(t *testing.T) {
 		{"0100::", "Discard-Only Address Block"},                         // part of a reserved block in a non-canonical IPv6 format
 		{"0100::0000:ffff:ffff:ffff:ffff", "Discard-Only Address Block"}, // part of a reserved block in a non-canonical IPv6 format
 		{"0100::0002:0000:0000:0000:0000", ""},                           // non-reserved but in a non-canonical IPv6 format
-
-		// TODO(#8237): Move these entries to IP address blocklists once they're
-		// implemented.
-		{"ff00::1", "Multicast Addresses"},                                 // second-lowest IP in a reserved /8 we hardcode
-		{"ff10::1", "Multicast Addresses"},                                 // in the middle of a reserved /8 we hardcode
-		{"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "Multicast Addresses"}, // highest IP in a reserved /8 we hardcode
 	}
 
 	for _, tc := range cases {

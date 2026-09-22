@@ -4,7 +4,10 @@ package integration
 
 import (
 	"context"
+	nbv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"testing"
+	"time"
 
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc/status"
@@ -46,6 +49,11 @@ func TestNonceBalancer_NoBackendMatchingPrefix(t *testing.T) {
 
 	clk := clock.New()
 
+	getNonceConn, err := bgrpc.ClientSetup(c.NotWFE.GetNonceService, tlsConfig, metrics.NoopRegisterer, clk)
+	test.AssertNotError(t, err, "Failed to load credentials and create gRPC connection to get nonce service")
+
+	gnc := nonce.NewGetter(getNonceConn)
+
 	redeemNonceConn, err := bgrpc.ClientSetup(c.NotWFE.RedeemNonceService, tlsConfig, metrics.NoopRegisterer, clk)
 	test.AssertNotError(t, err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 	rnc := nonce.NewRedeemer(redeemNonceConn)
@@ -58,5 +66,24 @@ func TestNonceBalancer_NoBackendMatchingPrefix(t *testing.T) {
 	// We expect to get a specific gRPC status error with code NotFound.
 	gotRPCStatus, ok := status.FromError(err)
 	test.Assert(t, ok, "Failed to convert error to status")
-	test.AssertEquals(t, gotRPCStatus, nb.ErrNoBackendsMatchPrefix)
+	if gotRPCStatus != nb.ErrNoBackendsMatchPrefix && gotRPCStatus != nbv1.ErrNoBackendsMatchPrefix {
+		t.Errorf("redeeming nonce with unknown prefix: got %v, want %v", gotRPCStatus, nb.ErrNoBackendsMatchPrefix)
+	}
+
+	var nonces []*noncepb.NonceMessage
+	for i := 0; i < 300; i++ {
+		nonceMsg, err := gnc.Nonce(ctx, &emptypb.Empty{})
+		test.AssertNotError(t, err, "getting nonce")
+
+		nonces = append(nonces, nonceMsg)
+	}
+
+	for _, nonceMsg := range nonces {
+		ctx := context.WithValue(ctx, nonce.PrefixCtxKey{}, nonceMsg.Nonce[:nonce.PrefixLen])
+		ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, rncKey)
+
+		_, err = rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonceMsg.Nonce})
+		test.AssertNotError(t, err, "redeeming nonce")
+		time.Sleep(10 * time.Millisecond)
+	}
 }

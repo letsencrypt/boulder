@@ -25,9 +25,15 @@ Prometheus.
       * [CRL](#crl)
         * [Schema](#schema-4)
         * [Example](#example-4)
-      * [TLS](#tls)
+      * [AIA](#aia)
         * [Schema](#schema-5)
         * [Example](#example-5)
+      * [TLS](#tls)
+        * [Schema](#schema-6)
+        * [Example](#example-6)
+      * [CCADB](#ccadb)
+        * [Schema](#schema-7)
+        * [Example](#example-7)
   * [Metrics](#metrics)
     * [Global Metrics](#global-metrics)
       * [obs_monitors](#obs_monitors)
@@ -36,6 +42,9 @@ Prometheus.
       * [obs_crl_this_update](#obs_crl_this_update)
       * [obs_crl_next_update](#obs_crl_next_update)
       * [obs_crl_revoked_cert_count](#obs_crl_revoked_cert_count)
+    * [AIA Metrics](#aia-metrics)
+      * [obs_aia_not_before](#obs_aia_not_before)
+      * [obs_aia_not_after](#obs_aia_not_after)
     * [TLS Metrics](#tls-metrics)
       * [obs_crl_this_update](#obs_tls_not_after)
       * [obs_crl_next_update](#obs_tls_reason)
@@ -203,6 +212,26 @@ monitors:
       url: http://x1.c.lencr.org/
 ```
 
+#### AIA
+
+##### Schema
+
+`url`: Scheme + Hostname to grab the AIA certificate from (e.g. `http://r3.i.lencr.org/`).
+
+`expectCommonName`: Expected Common Name (CN) of the certificate. The prober verifies the certificate's CN matches this value.
+
+##### Example
+
+```yaml
+monitors:
+  - 
+    period: 1h
+    kind: AIA
+    settings:
+      url: http://r3.i.lencr.org/
+      expectCommonName: "R3"
+```
+
 #### TLS
 
 ##### Schema
@@ -227,6 +256,38 @@ monitors:
       rootOrg: "Internet Security Research Group"
       rootCN: "ISRG Root X1"
       response: valid
+```
+
+#### CCADB
+
+##### Schema
+
+`allCertificatesCSVURL`: URL of the "V4 All Certificate Information (root and
+  intermediate) in CCADB (CSV)" report from https://www.ccadb.org/resources.
+  Default value works.
+
+`certificatePEMsURL`: Base URL of the "All Certificate PEMs" report from
+  https://www.ccadb.org/resources (i.e. without the "NotBeforeDecade"
+  parameter). Default value works.
+
+`caOwner`: The value of the "CA Owner" field to filter on in the "All
+  Certificate Information" report. Default value works for ISRG.
+
+`crlAgeLimit`: Error when a CRL is older than this.
+
+`crlRegexp`: A regexp that matches our CRL URLs. Prevents fetching arbitrary
+  URLs. At a minimum this should have strict matching on the origin part of the
+  URL. Default value works.
+
+##### Example
+
+```yaml
+monitors:
+  -
+    period: 1h
+    kind: CCADB
+    settings:
+      crlAgeLimit: 2h
 ```
 
 ## Metrics
@@ -320,6 +381,39 @@ Count of revoked certificates in a CRL.
 **Labels:**
 
 `url`: Url of the CRL
+
+### AIA Metrics
+
+These metrics will be available whenever a valid AIA prober is configured.
+
+#### obs_aia_not_before
+
+Unix timestamp value (in seconds) of the notBefore field for an AIA certificate.
+
+**Labels:**
+
+`url`: URL of the AIA certificate
+
+#### obs_aia_not_after
+
+Unix timestamp value (in seconds) of the notAfter field for an AIA certificate.
+
+**Labels:**
+
+`url`: URL of the AIA certificate
+
+**Example Usage:**
+
+This is a sample rule that alerts when an AIA certificate has a notAfter timestamp indicating that the certificate will expire within the next 30 days:
+
+```yaml
+- alert: AIACertExpiresSoon
+  expr: obs_aia_not_after{url="http://r3.i.lencr.org/"} <= time() + 2592000
+  labels:
+    severity: warning
+  annotations:
+    description: 'AIA certificate expires within 30 days'
+```
 
 ### TLS Metrics
 

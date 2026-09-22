@@ -112,7 +112,7 @@ func NewConfigFromFile(path string) (Configuration, error) {
 	if err != nil {
 		return Configuration{}, fmt.Errorf("failed to open the provided configuration at %s. Error: %s", path, err.Error())
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 	return NewConfig(f)
 }
 

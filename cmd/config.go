@@ -94,7 +94,7 @@ func (d *DBConfig) URL() (string, error) {
 // it should offer.
 type PAConfig struct {
 	DBConfig    `validate:"-"`
-	Challenges  map[core.AcmeChallenge]bool        `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01 dns-account-01,endkeys"`
+	Challenges  map[core.AcmeChallenge]bool        `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01 dns-account-01 dns-persist-01,endkeys"`
 	Identifiers map[identifier.IdentifierType]bool `validate:"omitempty,dive,keys,oneof=dns ip,endkeys"`
 }
 
@@ -127,6 +127,10 @@ func (pc PAConfig) CheckIdentifiers() error {
 // what hostnames to issue for.
 type HostnamePolicyConfig struct {
 	HostnamePolicyFile string `validate:"required"`
+
+	// TODO(#8957): make this plural form "required" and remove the singular
+	// form above when no more components are configured with the singular form.
+	HostnamePolicyFiles map[string]string `validate:"omitempty"`
 }
 
 // TLSConfig represents certificates and a key for authenticated TLS.
@@ -178,8 +182,8 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		[]string{"serial"})
 	err = scope.Register(tlsNotBefore)
 	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			return nil, err
@@ -194,8 +198,8 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		[]string{"serial"})
 	err = scope.Register(tlsNotAfter)
 	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
+		are, ok := errors.AsType[prometheus.AlreadyRegisteredError](err)
+		if ok {
 			tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			return nil, err
@@ -218,6 +222,8 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		Certificates: []tls.Certificate{cert},
 		// Set the only acceptable TLS to v1.3.
 		MinVersion: tls.VersionTLS13,
+		// HTTP/2 requires us to advertise h2 in the TLS ALPN.
+		NextProtos: []string{"h2"},
 	}, nil
 }
 
@@ -306,7 +312,7 @@ type GRPCClientConfig struct {
 	// implementation of the SRV resolver should be used. The default is 'srv'
 	// For more details, see the documentation in:
 	// grpc/internal/resolver/dns/dns_resolver.go.
-	SRVResolver string `validate:"excluded_with=ServerAddress,isdefault|oneof=srv nonce-srv"`
+	SRVResolver string `validate:"excluded_with=ServerAddress,isdefault|oneof=srv nonce-srv nonce-srv-v2"`
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
@@ -344,6 +350,11 @@ type GRPCClientConfig struct {
 	// The current default, grpc.WaitForReady(true), means that if all of a GRPC client's
 	// backends are down, it will wait until either one becomes available or the RPC
 	// times out.
+	//
+	// Deprecated: This field no longer has any effect.
+	//
+	// TODO(#7843): Remove this field entirely once it is no longer referenced
+	// in our production configuration.
 	NoWaitForReady bool
 }
 

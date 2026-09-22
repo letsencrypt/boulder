@@ -23,7 +23,10 @@
 		"findCertificatesBatchSize": 10,
 		"interval": "50ms",
 		"backoffIntervalMax": "2s",
-		"maxExpectedReplicationLag": "100ms"
+		"maxExpectedReplicationLag": "100ms",
+		"features": {
+			"RevokeBadKeyAccounts": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 4,

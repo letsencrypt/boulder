@@ -19,13 +19,11 @@ import (
 const JWK1JSON = `{"kty":"RSA","n":"vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ","e":"AQAB"}`
 
 func TestProblemDetails(t *testing.T) {
-	pb, err := ProblemDetailsToPB(nil)
-	test.AssertNotEquals(t, err, "problemDetailToPB failed")
+	pb := ProblemDetailsToPB(nil)
 	test.Assert(t, pb == nil, "Returned corepb.ProblemDetails is not nil")
 
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
-	pb, err = ProblemDetailsToPB(prob)
-	test.AssertNotError(t, err, "problemDetailToPB failed")
+	pb = ProblemDetailsToPB(prob)
 	test.Assert(t, pb != nil, "return corepb.ProblemDetails is nill")
 	test.AssertDeepEquals(t, pb.ProblemType, string(prob.Type))
 	test.AssertEquals(t, pb.Detail, prob.Detail)
@@ -218,7 +216,7 @@ func TestAuthz(t *testing.T) {
 		Token:  "asd2",
 	}
 	inAuthz := core.Authorization{
-		ID:             "1",
+		ID:             1,
 		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
@@ -231,8 +229,13 @@ func TestAuthz(t *testing.T) {
 	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
 
+	// zero-value ID in PB should cause PBToAuthz to return ErrMissingParameters
+	pbAuthz.Id = 0
+	_, err = PBToAuthz(pbAuthz)
+	test.AssertEquals(t, err, ErrMissingParameters)
+
 	inAuthzNilExpires := core.Authorization{
-		ID:             "1",
+		ID:             1,
 		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
@@ -244,6 +247,7 @@ func TestAuthz(t *testing.T) {
 	outAuthz2, err := PBToAuthz(pbAuthz2)
 	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthzNilExpires, outAuthz2)
+
 }
 
 func TestOrderValid(t *testing.T) {

@@ -25,10 +25,10 @@ func ctAddRejectHost(domain string) error {
 		if err != nil {
 			return err
 		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("adding reject host: %d", resp.StatusCode)
 		}
-		resp.Body.Close()
 	}
 	return nil
 }

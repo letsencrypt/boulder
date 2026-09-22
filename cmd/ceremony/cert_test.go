@@ -6,12 +6,12 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"math/big"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,32 +21,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// samplePubkey returns a slice of bytes containing an encoded
-// SubjectPublicKeyInfo for an example public key.
-func samplePubkey() []byte {
-	pubKey, err := hex.DecodeString("3059301306072a8648ce3d020106082a8648ce3d03010703420004b06745ef0375c9c54057098f077964e18d3bed0aacd54545b16eab8c539b5768cc1cea93ba56af1e22a7a01c33048c8885ed17c9c55ede70649b707072689f5e")
-	if err != nil {
-		panic(err)
-	}
-	return pubKey
-}
-
 func realRand(_ pkcs11.SessionHandle, length int) ([]byte, error) {
 	r := make([]byte, length)
 	_, err := rand.Read(r)
 	return r, err
-}
-
-func TestParseOID(t *testing.T) {
-	_, err := parseOID("")
-	test.AssertError(t, err, "parseOID accepted an empty OID")
-	_, err = parseOID("a.b.c")
-	test.AssertError(t, err, "parseOID accepted an OID containing non-ints")
-	_, err = parseOID("1.0.2")
-	test.AssertError(t, err, "parseOID accepted an OID containing zero")
-	oid, err := parseOID("1.2.3")
-	test.AssertNotError(t, err, "parseOID failed with a valid OID")
-	test.Assert(t, oid.Equal(asn1.ObjectIdentifier{1, 2, 3}), "parseOID returned incorrect OID")
 }
 
 func TestMakeSubject(t *testing.T) {
@@ -63,46 +41,229 @@ func TestMakeSubject(t *testing.T) {
 	test.AssertDeepEquals(t, profile.Subject(), expectedSubject)
 }
 
+func TestMakeTemplateEnforcesRootNoEKUs(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	ctx.GenerateRandomFunc = realRand
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
+
+	workingRootProfile := &certProfile{
+		EKUs:               "",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		SignatureAlgorithm: "ECDSAWithSHA256",
+		NotBefore:          "2026-05-11 00:00:00",
+		NotAfter:           "2026-05-12 00:00:00",
+	}
+	_, err = makeTemplate(randReader, workingRootProfile, key.Public(), nil, rootCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with workingRootProfile: %s", err)
+	}
+
+	workingRootProfile.EKUs = "none"
+	_, err = makeTemplate(randReader, workingRootProfile, key.Public(), nil, rootCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with workingRootProfile: %s", err)
+	}
+
+	brokenRootProfile := *workingRootProfile
+	brokenRootProfile.EKUs = "both"
+	_, err = makeTemplate(randReader, &brokenRootProfile, key.Public(), nil, rootCert)
+	if err == nil {
+		t.Errorf("makeTemplate with brokenRootProfile: got nil error, want error")
+	}
+
+	brokenRootProfile = *workingRootProfile
+	brokenRootProfile.EKUs = "unintelligible"
+	_, err = makeTemplate(randReader, &brokenRootProfile, key.Public(), nil, rootCert)
+	if err == nil {
+		t.Errorf("makeTemplate with brokenRootProfile: got nil error, want error")
+	}
+}
+
+func TestMakeTemplateEnforcesCrossCertEKUs(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	ctx.GenerateRandomFunc = realRand
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
+
+	tbcsCert := &x509.Certificate{
+		SerialNumber: big.NewInt(666),
+		Subject: pkix.Name{
+			Organization: []string{"While Eek Ayote"},
+		},
+		NotBefore:             time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC),
+		NotAfter:              time.Date(2026, 5, 12, 0, 0, 0, 0, time.UTC),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	crossCertProfile := &certProfile{
+		EKUs:               "",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		SignatureAlgorithm: "ECDSAWithSHA256",
+		NotBefore:          "2026-05-11 00:00:00",
+		NotAfter:           "2026-05-12 00:00:00",
+	}
+
+	template, err := makeTemplate(randReader, crossCertProfile, key.Public(), tbcsCert, crossCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with crossCertProfile: %s", err)
+	}
+	expected := []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with crossCertProfile: got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	crossCertProfile.EKUs = "server"
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), tbcsCert, crossCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with crossCertProfile: %s", err)
+	}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with crossCertProfile: got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	// This will error because the tbcsCert has [serverAuth], but "both" means [serverAuth, clientAuth] on the cross sign
+	crossCertProfile.EKUs = "both"
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), tbcsCert, crossCert)
+	if err == nil {
+		t.Fatalf("makeTemplate with \"both\" and to-be-cross-signed certificate that has \"serverAuth\": got nil error, want error")
+	}
+
+	// Now simulate a to-be-cross-signed certificate that has no EKU constraints.
+	liberalTBCS := *tbcsCert
+	liberalTBCS.ExtKeyUsage = nil
+	crossCertProfile.EKUs = "both"
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), &liberalTBCS, crossCert)
+	if err != nil {
+		t.Errorf("makeTemplate with \"both\" and liberal to-be-cross-signed certificate: %s", err)
+	}
+
+	// Now check that issuing a "both" cross-sign in 2027 fails.
+	crossCertProfile.EKUs = "both"
+	crossCertProfile.NotBefore = "2027-05-11 00:00:00"
+	crossCertProfile.NotAfter = "2027-05-12 00:00:00"
+	_, err = makeTemplate(randReader, crossCertProfile, key.Public(), &liberalTBCS, crossCert)
+	if err == nil {
+		t.Fatalf("makeTemplate with \"both\" and late notBefore: go nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "late for including clientAuth EKU") {
+		t.Errorf("makeTemplate with \"both\" and late notBefore: got error %q, want error with \"late for including clientAuth EKU\"", err)
+	}
+}
+
+func TestMakeTemplateIntermediateEKUs(t *testing.T) {
+	s, ctx := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	ctx.GenerateRandomFunc = realRand
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
+
+	intermediateProfile := &certProfile{
+		EKUs:               "",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		SignatureAlgorithm: "ECDSAWithSHA256",
+		NotBefore:          "2026-05-11 00:00:00",
+		NotAfter:           "2026-05-12 00:00:00",
+	}
+
+	template, err := makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with intermediateProfile: %s", err)
+	}
+	expected := []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with intermediateProfile: got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	intermediateProfile.EKUs = "server"
+	template, err = makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"server\": %s", err)
+	}
+	expected = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with intermediateProfile and EKUs: \"server\": got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	intermediateProfile.EKUs = "both"
+	template, err = makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
+	if err != nil {
+		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"both\": %s", err)
+	}
+	expected = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	if !reflect.DeepEqual(template.ExtKeyUsage, expected) {
+		t.Errorf("makeTemplate with intermediateProfile and EKUs: \"both\": got %v, want %v",
+			template.ExtKeyUsage, expected)
+	}
+
+	intermediateProfile.EKUs = "unintelligible"
+	_, err = makeTemplate(randReader, intermediateProfile, key.Public(), nil, intermediateCert)
+	if err == nil {
+		t.Fatalf("makeTemplate with intermediateProfile and EKUs: \"unintelligible\": got nil error, want error")
+	}
+}
+
 func TestMakeTemplateRoot(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	profile := &certProfile{}
 	randReader := newRandReader(s)
-	pubKey := samplePubkey()
 	ctx.GenerateRandomFunc = realRand
 
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
+
 	profile.NotBefore = "1234"
-	_, err := makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
 	profile.NotAfter = "1234"
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not after")
 
 	profile.NotAfter = "2018-05-18 11:31:00"
 	profile.SignatureAlgorithm = "nope"
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")
 
 	profile.SignatureAlgorithm = "SHA256WithRSA"
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("bad")
 	}
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
 	ctx.GenerateRandomFunc = realRand
 
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
 
 	profile.KeyUsages = []string{"asd"}
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
 	profile.Policies = []policyInfoConfig{{}}
-	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	_, err = makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid (empty) policy OID")
 
 	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4"}}
@@ -111,7 +272,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	profile.Country = "country"
 	profile.CRLURL = "crl"
 	profile.IssuerURL = "issuer"
-	cert, err := makeTemplate(randReader, profile, pubKey, nil, rootCert)
+	cert, err := makeTemplate(randReader, profile, key.Public(), nil, rootCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.AssertEquals(t, cert.Subject.CommonName, profile.CommonName)
 	test.AssertEquals(t, len(cert.Subject.Organization), 1)
@@ -126,7 +287,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	test.AssertEquals(t, len(cert.Policies), 2)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
-	cert, err = makeTemplate(randReader, profile, pubKey, nil, intermediateCert)
+	cert, err = makeTemplate(randReader, profile, key.Public(), nil, intermediateCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, cert.MaxPathLenZero, "MaxPathLenZero not set in intermediate template")
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
@@ -137,7 +298,12 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	ctx.GenerateRandomFunc = realRand
 	randReader := newRandReader(s)
-	pubKey := samplePubkey()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatalf("generating test keypair: %s", err)
+	}
+
 	profile := &certProfile{
 		SignatureAlgorithm: "SHA256WithRSA",
 		CommonName:         "common name",
@@ -162,7 +328,7 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 		BasicConstraintsValid: true,
 	}
 
-	cert, err := makeTemplate(randReader, profile, pubKey, &tbcsCert, crossCert)
+	cert, err := makeTemplate(randReader, profile, key.Public(), &tbcsCert, crossCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, !cert.MaxPathLenZero, "MaxPathLenZero was set in cross-sign")
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
@@ -170,7 +336,7 @@ func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 }
 
 func TestVerifyProfile(t *testing.T) {
-	for _, tc := range []struct {
+	for i, tc := range []struct {
 		profile     certProfile
 		certType    []certType
 		expectedErr string
@@ -178,10 +344,25 @@ func TestVerifyProfile(t *testing.T) {
 		{
 			profile:     certProfile{},
 			certType:    []certType{intermediateCert, crossCert},
+			expectedErr: "policy-url is required",
+		},
+		{
+			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md",
+			},
+			certType:    []certType{intermediateCert, crossCert},
+			expectedErr: "policy-url must point to a specific subsection of a specific version of our CPS",
+		},
+		{
+			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+			},
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "not-before is required",
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore: "a",
 			},
 			certType:    []certType{intermediateCert, crossCert},
@@ -189,6 +370,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore: "a",
 				NotAfter:  "b",
 			},
@@ -197,6 +379,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -206,6 +389,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -216,6 +400,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -227,6 +412,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -239,6 +425,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -252,6 +439,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -266,6 +454,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -281,6 +470,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore:          "a",
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
@@ -292,6 +482,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				NotBefore: "a",
 			},
 			certType:    []certType{requestCert},
@@ -299,13 +490,15 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
-				NotAfter: "a",
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+				NotAfter:  "a",
 			},
 			certType:    []certType{requestCert},
 			expectedErr: "not-after cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
+				PolicyURL:          "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				SignatureAlgorithm: "a",
 			},
 			certType:    []certType{requestCert},
@@ -313,13 +506,15 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
-				CRLURL: "a",
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+				CRLURL:    "a",
 			},
 			certType:    []certType{requestCert},
 			expectedErr: "crl-url cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				IssuerURL: "a",
 			},
 			certType:    []certType{requestCert},
@@ -327,13 +522,15 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
-				Policies: []policyInfoConfig{{OID: "1.2.3"}},
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
+				Policies:  []policyInfoConfig{{OID: "1.2.3"}},
 			},
 			certType:    []certType{requestCert},
 			expectedErr: "policies cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
+				PolicyURL: "https://github.com/letsencrypt/cp-cps/blob/v0.1/CP-CPS.md#subsection",
 				KeyUsages: []string{"a"},
 			},
 			certType:    []certType{requestCert},
@@ -341,14 +538,16 @@ func TestVerifyProfile(t *testing.T) {
 		},
 	} {
 		for _, ct := range tc.certType {
-			err := tc.profile.verifyProfile(ct)
-			if err != nil {
-				if tc.expectedErr != err.Error() {
-					t.Fatalf("Expected %q, got %q", tc.expectedErr, err.Error())
+			t.Run(fmt.Sprintf("%d/%d", i, ct), func(t *testing.T) {
+				err := tc.profile.verifyProfile(ct)
+				if err != nil {
+					if !strings.Contains(err.Error(), tc.expectedErr) {
+						t.Errorf("Expected %q, got %q", tc.expectedErr, err.Error())
+					}
+				} else if tc.expectedErr != "" {
+					t.Errorf("verifyProfile didn't fail, expected %q", tc.expectedErr)
 				}
-			} else if tc.expectedErr != "" {
-				t.Fatalf("verifyProfile didn't fail, expected %q", tc.expectedErr)
-			}
+			})
 		}
 	}
 }
@@ -385,11 +584,4 @@ func TestLoadCert(t *testing.T) {
 
 	_, err = loadCert("../../test/hierarchy/int-e1.key.pem")
 	test.AssertError(t, err, "should have failed when trying to parse a private key")
-}
-
-func TestGenerateSKID(t *testing.T) {
-	sha256skid, err := generateSKID(samplePubkey())
-	test.AssertNotError(t, err, "Error generating SKID")
-	test.AssertEquals(t, len(sha256skid), 20)
-	test.AssertEquals(t, cap(sha256skid), 20)
 }

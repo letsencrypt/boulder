@@ -2,6 +2,7 @@ package sa
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -35,11 +37,6 @@ type SQLStorageAuthorityRO struct {
 
 	dbReadOnlyMap  *db.WrappedMap
 	dbIncidentsMap *db.WrappedMap
-
-	// For RPCs that generate multiple, parallelizable SQL queries, this is the
-	// max parallelism they will use (to avoid consuming too many MariaDB
-	// threads).
-	parallelismPerRPC int
 
 	// lagFactor is the amount of time we're willing to delay before retrying a
 	// request that may have failed due to replication lag. For example, a user
@@ -69,25 +66,22 @@ func NewSQLStorageAuthorityRO(
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
 	stats prometheus.Registerer,
-	parallelismPerRPC int,
 	lagFactor time.Duration,
 	clk clock.Clock,
 	logger blog.Logger,
 ) (*SQLStorageAuthorityRO, error) {
-	lagFactorCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	lagFactorCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "sa_lag_factor",
 		Help: "A counter of SA lagFactor checks labelled by method and pass/fail",
 	}, []string{"method", "result"})
-	stats.MustRegister(lagFactorCounter)
 
 	ssaro := &SQLStorageAuthorityRO{
-		dbReadOnlyMap:     dbReadOnlyMap,
-		dbIncidentsMap:    dbIncidentsMap,
-		parallelismPerRPC: parallelismPerRPC,
-		lagFactor:         lagFactor,
-		clk:               clk,
-		log:               logger,
-		lagFactorCounter:  lagFactorCounter,
+		dbReadOnlyMap:    dbReadOnlyMap,
+		dbIncidentsMap:   dbIncidentsMap,
+		lagFactor:        lagFactor,
+		clk:              clk,
+		log:              logger,
+		lagFactorCounter: lagFactorCounter,
 	}
 
 	return ssaro, nil
@@ -100,14 +94,14 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 	}
 
 	model, err := selectRegistration(ctx, ssa.dbReadOnlyMap, "id", req.Id)
-	if db.IsNoRows(err) && ssa.lagFactor != 0 {
+	if errors.Is(err, sql.ErrNoRows) && ssa.lagFactor != 0 {
 		// GetRegistration is often called to validate a JWK belonging to a brand
 		// new account whose registrations table row hasn't propagated to the read
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		model, err = selectRegistration(ctx, ssa.dbReadOnlyMap, "id", req.Id)
 		if err != nil {
-			if db.IsNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "notfound").Inc()
 			} else {
 				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "other").Inc()
@@ -117,7 +111,7 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		}
 	}
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
 		}
 		return nil, err
@@ -144,7 +138,7 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 	}
 	model, err := selectRegistration(ctx, ssa.dbReadOnlyMap, "jwk_sha256", sha)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
 		}
 		return nil, err
@@ -173,7 +167,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 		req.Serial,
 	)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, berrors.NotFoundError("serial %q not found", req.Serial)
 		}
 		return nil, err
@@ -187,6 +181,52 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 	}, nil
 }
 
+// MaxSerialsMetadataBatch is the most serials a GetSerialsMetadata request may
+// contain.
+const MaxSerialsMetadataBatch = 1000
+
+// GetSerialsMetadata returns the metadata for each of the provided serials, up
+// to MaxSerialsMetadataBatch. If any of the serials are invalid, an error is
+// returned for the entire request.
+func (ssa *SQLStorageAuthorityRO) GetSerialsMetadata(ctx context.Context, req *sapb.Serials) (*sapb.SerialsMetadata, error) {
+	if req == nil || len(req.Serials) == 0 {
+		return nil, errIncompleteRequest
+	}
+	if len(req.Serials) > MaxSerialsMetadataBatch {
+		return nil, fmt.Errorf("request contains %d serials, but may contain at most %d", len(req.Serials), MaxSerialsMetadataBatch)
+	}
+
+	var params []any
+	for _, serial := range req.Serials {
+		if !core.ValidSerial(serial) {
+			return nil, fmt.Errorf("invalid serial %q", serial)
+		}
+		params = append(params, serial)
+	}
+
+	var rows []recordedSerialModel
+	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
+		&rows,
+		"SELECT * FROM serials WHERE serial IN ("+db.QuestionMarks(len(params))+")",
+		params...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &sapb.SerialsMetadata{}
+	for _, row := range rows {
+		result.Metadata = append(result.Metadata, &sapb.SerialMetadata{
+			Serial:         row.Serial,
+			RegistrationID: row.RegistrationID,
+			Created:        timestamppb.New(row.Created),
+			Expires:        timestamppb.New(row.Expires),
+		})
+	}
+	return result, nil
+}
+
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
 func (ssa *SQLStorageAuthorityRO) GetCertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
@@ -198,7 +238,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificate(ctx context.Context, req *sapb.
 	}
 
 	cert, err := SelectCertificate(ctx, ssa.dbReadOnlyMap, req.Serial)
-	if db.IsNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
 	}
 	if err != nil {
@@ -220,7 +260,7 @@ func (ssa *SQLStorageAuthorityRO) GetLintPrecertificate(ctx context.Context, req
 	}
 
 	cert, err := SelectPrecertificate(ctx, ssa.dbReadOnlyMap, req.Serial)
-	if db.IsNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, berrors.NotFoundError("precertificate with serial %q not found", req.Serial)
 	}
 	if err != nil {
@@ -242,7 +282,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 	}
 
 	certStatus, err := SelectCertificateStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
-	if db.IsNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
 	}
 	if err != nil {
@@ -265,7 +305,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 
 	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
 		}
 		return nil, err
@@ -316,37 +356,9 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 	return &sapb.Timestamps{Timestamps: results}, nil
 }
 
-// FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
-// exists in the database
-func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	idents := identifier.FromProtoSlice(req.Identifiers)
-	if len(idents) == 0 {
-		return nil, errIncompleteRequest
-	}
-	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, idents)
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Exists{Exists: exists}, nil
-}
-
 // oneSelectorFunc is a func type that matches both borp.Transaction.SelectOne
 // and borp.DbMap.SelectOne.
 type oneSelectorFunc func(ctx context.Context, holder any, query string, args ...any) error
-
-// checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
-// for the given names exists.
-func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents identifier.ACMEIdentifiers) (bool, error) {
-	namehash := core.HashIdentifiers(idents)
-	var exists bool
-	err := selector(
-		ctx,
-		&exists,
-		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
-		namehash,
-	)
-	return exists, err
-}
 
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
@@ -356,14 +368,11 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 
 	txn := func(tx db.Executor) (any, error) {
 		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
-		if err != nil {
-			if db.IsNoRows(err) {
-				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
-			}
-			return nil, err
-		}
-		if omObj == nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		}
+		if err != nil {
+			return nil, err
 		}
 
 		order, err := modelToOrder(omObj.(*orderModel))
@@ -375,12 +384,6 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		if orderExp.Before(ssa.clk.Now()) {
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
-
-		v2AuthzIDs, err := authzForOrder(ctx, tx, order.Id)
-		if err != nil {
-			return nil, err
-		}
-		order.V2Authorizations = v2AuthzIDs
 
 		// Get the partial Authorization objects for the order
 		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, order.V2Authorizations)
@@ -406,14 +409,14 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	}
 
 	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
-	if (db.IsNoRows(err) || errors.Is(err, berrors.NotFound)) && ssa.lagFactor != 0 {
+	if (errors.Is(err, sql.ErrNoRows) || errors.Is(err, berrors.NotFound)) && ssa.lagFactor != 0 {
 		// GetOrder is often called shortly after a new order is created, sometimes
 		// before the order or its associated rows have propagated to the read
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		output, err = db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
 		if err != nil {
-			if db.IsNoRows(err) || errors.Is(err, berrors.NotFound) {
+			if errors.Is(err, sql.ErrNoRows) || errors.Is(err, berrors.NotFound) {
 				ssa.lagFactorCounter.WithLabelValues("GetOrder", "notfound").Inc()
 			} else {
 				ssa.lagFactorCounter.WithLabelValues("GetOrder", "other").Inc()
@@ -474,7 +477,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 					LIMIT 1`,
 		fqdnHash, ssa.clk.Now())
 
-	if db.IsNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, berrors.NotFoundError("no order matching request found")
 	} else if err != nil {
 		return nil, err
@@ -497,6 +500,38 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 	return order, nil
 }
 
+func (ssa *SQLStorageAuthorityRO) getAuthorizationsByID(ctx context.Context, ids []int64) (*sapb.Authorizations, error) {
+	selector, err := db.NewMappedSelector[authzModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return nil, fmt.Errorf("initializing db map: %w", err)
+	}
+
+	clauses := fmt.Sprintf(`WHERE id IN (%s)`, db.QuestionMarks(len(ids)))
+
+	var sliceOfAny []any
+	for _, id := range ids {
+		sliceOfAny = append(sliceOfAny, id)
+	}
+	rows, err := selector.QueryContext(ctx, clauses, sliceOfAny...)
+	if err != nil {
+		return nil, fmt.Errorf("reading db: %w", err)
+	}
+
+	var ret []*corepb.Authorization
+	err = rows.ForEach(func(row *authzModel) error {
+		authz, err := modelToAuthzPB(*row)
+		if err != nil {
+			return err
+		}
+		ret = append(ret, authz)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading db: %w", err)
+	}
+	return &sapb.Authorizations{Authzs: ret}, nil
+}
+
 // GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.
 // If no authorization is found matching the ID a berrors.NotFound type error is returned.
 func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
@@ -504,14 +539,14 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		return nil, errIncompleteRequest
 	}
 	obj, err := ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
-	if db.IsNoRows(err) && ssa.lagFactor != 0 {
+	if errors.Is(err, sql.ErrNoRows) && ssa.lagFactor != 0 {
 		// GetAuthorization2 is often called shortly after a new order is created,
 		// sometimes before the order's associated authz rows have propagated to the
 		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		obj, err = ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
 		if err != nil {
-			if db.IsNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()
 			} else {
 				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "other").Inc()
@@ -520,11 +555,11 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 			ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "found").Inc()
 		}
 	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
+	}
 	if err != nil {
 		return nil, err
-	}
-	if obj == nil {
-		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
 	}
 	return modelToAuthzPB(*(obj.(*authzModel)))
 }
@@ -543,105 +578,6 @@ func authzModelMapToPB(m map[identifier.ACMEIdentifier]authzModel) (*sapb.Author
 	return resp, nil
 }
 
-// GetAuthorizations2 returns a single pending or valid authorization owned by
-// the given account for all given identifiers. If both a valid and pending
-// authorization exist only the valid one will be returned.
-//
-// Deprecated: Use GetValidAuthorizations2, as we stop pending authz reuse.
-func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	idents := identifier.FromProtoSlice(req.Identifiers)
-
-	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
-		return nil, errIncompleteRequest
-	}
-
-	// The WHERE clause returned by this function does not contain any
-	// user-controlled strings; all user-controlled input ends up in the
-	// returned placeholder args.
-	identConditions, identArgs := buildIdentifierQueryConditions(idents)
-	query := fmt.Sprintf(
-		`SELECT %s FROM authz2
-			USE INDEX (regID_identifier_status_expires_idx)
-			WHERE registrationID = ? AND
-			status IN (?,?) AND
-			expires > ? AND
-			(%s)`,
-		authzFields,
-		identConditions,
-	)
-
-	params := []any{
-		req.RegistrationID,
-		statusUint(core.StatusValid), statusUint(core.StatusPending),
-		req.ValidUntil.AsTime(),
-	}
-	params = append(params, identArgs...)
-
-	var authzModels []authzModel
-	_, err := ssa.dbReadOnlyMap.Select(
-		ctx,
-		&authzModels,
-		query,
-		params...,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(authzModels) == 0 {
-		return &sapb.Authorizations{}, nil
-	}
-
-	// TODO(#8111): Consider reducing the volume of data in this map.
-	authzModelMap := make(map[identifier.ACMEIdentifier]authzModel, len(authzModels))
-	for _, am := range authzModels {
-		if req.Profile != "" {
-			// Don't return authzs whose profile doesn't match that requested.
-			if am.CertificateProfileName == nil || *am.CertificateProfileName != req.Profile {
-				continue
-			}
-		}
-		// If there is an existing authorization in the map, only replace it with
-		// one which has a "better" validation state (valid instead of pending).
-		identType, ok := uintToIdentifierType[am.IdentifierType]
-		if !ok {
-			return nil, fmt.Errorf("unrecognized identifier type encoding %d on authz id %d", am.IdentifierType, am.ID)
-		}
-		ident := identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}
-		existing, present := authzModelMap[ident]
-		if !present || uintToStatus[existing.Status] == core.StatusPending && uintToStatus[am.Status] == core.StatusValid {
-			authzModelMap[ident] = am
-		}
-	}
-
-	return authzModelMapToPB(authzModelMap)
-}
-
-// CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
-// for the given registration.
-func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
-	if req.Id == 0 {
-		return nil, errIncompleteRequest
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.SelectOne(ctx, &count,
-		`SELECT COUNT(*) FROM authz2 WHERE
-		registrationID = :regID AND
-		expires > :expires AND
-		status = :status`,
-		map[string]any{
-			"regID":   req.Id,
-			"expires": ssa.clk.Now(),
-			"status":  statusUint(core.StatusPending),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Count{Count: count}, nil
-}
-
 // GetValidOrderAuthorizations2 is used to get all authorizations
 // associated with the given Order ID.
 // NOTE: The name is outdated. It does *not* filter out invalid or expired
@@ -651,94 +587,43 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 // generally in a better position to provide insightful error messages, whereas
 // simply omitting an authz from this method's response would leave the caller
 // wondering why that authz was omitted.
-func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
+	return ssa.GetOrderAuthorizations(ctx, &sapb.GetOrderAuthorizationsRequest{
+		Id:     req.Id,
+		AcctID: req.AcctID,
+	})
+}
+
+// GetOrderAuthorizations returns all authorizations belonging to a specific order.
+func (ssa *SQLStorageAuthorityRO) GetOrderAuthorizations(ctx context.Context, req *sapb.GetOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteRequest
 	}
 
-	// The authz2 and orderToAuthz2 tables both have a column named "id", so we
-	// need to be explicit about which table's "id" column we want to select.
-	qualifiedAuthzFields := strings.Split(authzFields, " ")
-	for i, field := range qualifiedAuthzFields {
-		if field == "id," {
-			qualifiedAuthzFields[i] = "authz2.id,"
-			break
-		}
+	om, err := ssa.dbReadOnlyMap.Get(ctx, &orderModel{}, req.Id)
+	// Nonexistent orders should return no error, with an empty list of authorizations
+	if errors.Is(err, sql.ErrNoRows) {
+		return &sapb.Authorizations{}, nil
 	}
-
-	var ams []authzModel
-	_, err := ssa.dbReadOnlyMap.Select(
-		ctx,
-		&ams,
-		fmt.Sprintf(`SELECT %s FROM authz2
-			LEFT JOIN orderToAuthz2 ON authz2.ID = orderToAuthz2.authzID
-			WHERE orderToAuthz2.orderID = :orderID`,
-			strings.Join(qualifiedAuthzFields, " "),
-		),
-		map[string]any{
-			"orderID": req.Id,
-		},
-	)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO(#8111): Consider reducing the volume of data in this map.
-	byIdent := make(map[identifier.ACMEIdentifier]authzModel)
-	for _, am := range ams {
-		identType, ok := uintToIdentifierType[am.IdentifierType]
-		if !ok {
-			return nil, fmt.Errorf("unrecognized identifier type encoding %d on authz id %d", am.IdentifierType, am.ID)
-		}
-		ident := identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}
-		_, present := byIdent[ident]
-		if present {
-			return nil, fmt.Errorf("identifier %q appears twice in authzs for order %d", am.IdentifierValue, req.Id)
-		}
-		byIdent[ident] = am
-	}
-
-	return authzModelMapToPB(byIdent)
-}
-
-// CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
-// in a given time range.
-func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	ident := identifier.FromProto(req.Identifier)
-
-	if core.IsAnyNilOrZero(req.RegistrationID, ident, req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	idType, ok := identifierTypeToUint[ident.ToProto().Type]
-	if !ok {
-		return nil, fmt.Errorf("unsupported identifier type %q", ident.ToProto().Type)
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&count,
-		`SELECT COUNT(*) FROM authz2 WHERE
-		registrationID = :regID AND
-		status = :status AND
-		expires > :expiresEarliest AND
-		expires <= :expiresLatest AND
-		identifierType = :identType AND
-		identifierValue = :identValue`,
-		map[string]any{
-			"regID":           req.RegistrationID,
-			"identType":       idType,
-			"identValue":      ident.Value,
-			"expiresEarliest": req.Range.Earliest.AsTime(),
-			"expiresLatest":   req.Range.Latest.AsTime(),
-			"status":          statusUint(core.StatusInvalid),
-		},
-	)
+	order, err := modelToOrder(om.(*orderModel))
 	if err != nil {
 		return nil, err
 	}
-	return &sapb.Count{Count: count}, nil
+
+	if len(order.V2Authorizations) == 0 {
+		return nil, fmt.Errorf("invalid order: no authorization IDs")
+	}
+
+	// Fetch the fully-hydrated Authorization objects and return them.
+	authzs, err := ssa.getAuthorizationsByID(ctx, order.V2Authorizations)
+	if err != nil {
+		return nil, err
+	}
+	return authzs, nil
 }
 
 // GetValidAuthorizations2 returns a single valid authorization owned by the
@@ -747,7 +632,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	idents := identifier.FromProtoSlice(req.Identifiers)
 
-	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
+	if core.IsAnyNilOrZero(req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
@@ -823,7 +708,7 @@ func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.SPKI
 	var id int64
 	err := ssa.dbReadOnlyMap.SelectOne(ctx, &id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return &sapb.Exists{Exists: false}, nil
 		}
 		return nil, err
@@ -842,7 +727,7 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 	var activeIncidents []incidentModel
 	_, err := ssa.dbReadOnlyMap.Select(ctx, &activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return &sapb.Incidents{}, nil
 		}
 		return nil, err
@@ -854,7 +739,7 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 		err := ssa.dbIncidentsMap.SelectOne(ctx, &count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
 			i.SerialTable), req.Serial)
 		if err != nil {
-			if db.IsNoRows(err) {
+			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
 			return nil, err
@@ -869,6 +754,24 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 		return &sapb.Incidents{}, nil
 	}
 	return &sapb.Incidents{Incidents: incidentsForSerial}, nil
+}
+
+// ListIncidents returns every incidents row (enabled or disabled), ordered by id.
+func (ssa *SQLStorageAuthorityRO) ListIncidents(ctx context.Context, _ *emptypb.Empty) (*sapb.Incidents, error) {
+	var incidents []incidentModel
+	_, err := ssa.dbReadOnlyMap.Select(ctx, &incidents, `SELECT * FROM incidents ORDER BY id`)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &sapb.Incidents{}, nil
+		}
+		return nil, err
+	}
+	pbs := make([]*sapb.Incident, len(incidents))
+	for i, inc := range incidents {
+		pb := incidentModelToPB(inc)
+		pbs[i] = &pb
+	}
+	return &sapb.Incidents{Incidents: pbs}, nil
 }
 
 // SerialsForIncident queries the provided incident table and returns the
@@ -933,6 +836,9 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCer
 
 	atTime := req.RevokedBefore.AsTime()
 
+	// Note: the filters in the query below must match those in
+	// GetLatestRevokedCertByShard.
+
 	clauses := `
 		WHERE issuerID = ?
 		AND shardIdx = ?
@@ -972,81 +878,6 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCer
 	})
 }
 
-// GetRevokedCerts returns revoked certificates based on temporal sharding.
-//
-// Based on a request specifying an issuer and a period of time,
-// it writes to the output stream the set of all certificates issued by that
-// issuer which expire during that period of time and which have been revoked.
-// The starting timestamp is treated as inclusive (certs with exactly that
-// notAfter date are included), but the ending timestamp is exclusive (certs
-// with exactly that notAfter date are *not* included).
-func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
-	if core.IsAnyNilOrZero(req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter, req.ExpiresBefore) {
-		return errIncompleteRequest
-	}
-	atTime := req.RevokedBefore.AsTime()
-
-	clauses := `
-		WHERE notAfter >= ?
-		AND notAfter < ?
-		AND issuerID = ?
-		AND status = ?`
-	params := []any{
-		req.ExpiresAfter.AsTime(),
-		req.ExpiresBefore.AsTime(),
-		req.IssuerNameID,
-		core.OCSPStatusRevoked,
-	}
-
-	selector, err := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
-	if err != nil {
-		return fmt.Errorf("initializing db map: %w", err)
-	}
-
-	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
-	if err != nil {
-		return fmt.Errorf("reading db: %w", err)
-	}
-
-	return rows.ForEach(func(row *crlEntryModel) error {
-		// Double-check that the cert wasn't revoked between the time at which we're
-		// constructing this snapshot CRL and right now. If the cert was revoked
-		// at-or-after the "atTime", we'll just include it in the next generation
-		// of CRLs.
-		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
-			return nil
-		}
-
-		return stream.Send(&corepb.CRLEntry{
-			Serial:    row.Serial,
-			Reason:    int32(row.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
-			RevokedAt: timestamppb.New(row.RevokedDate),
-		})
-	})
-}
-
-// GetMaxExpiration returns the timestamp of the farthest-future notAfter date
-// found in the certificateStatus table. This provides an upper bound on how far
-// forward operations that need to cover all currently-unexpired certificates
-// have to look.
-func (ssa *SQLStorageAuthorityRO) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
-	var model struct {
-		MaxNotAfter *time.Time `db:"maxNotAfter"`
-	}
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&model,
-		"SELECT MAX(notAfter) AS maxNotAfter FROM certificateStatus",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("selecting max notAfter: %w", err)
-	}
-	if model.MaxNotAfter == nil {
-		return nil, errors.New("certificateStatus table notAfter column is empty")
-	}
-	return timestamppb.New(*model.MaxNotAfter), err
-}
-
 // Health implements the grpc.checker interface.
 func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
 	err := ssa.dbReadOnlyMap.SelectOne(ctx, new(int), "SELECT 1")
@@ -1072,7 +903,7 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 		req.Serial,
 	)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			// No replacement order exists.
 			return &sapb.Exists{Exists: false}, nil
 		}
@@ -1229,7 +1060,7 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 
 	var matches []identifierModel
 	_, err = ssa.dbReadOnlyMap.Select(ctx, &matches, query, args...)
-	if err != nil && !db.IsNoRows(err) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		// Error querying the database.
 		return nil, err
 	}
@@ -1255,7 +1086,7 @@ func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiers(ctx context.Context, req 
 		LIMIT 15`,
 		req.Id,
 	)
-	if err != nil && !db.IsNoRows(err) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
@@ -1265,12 +1096,12 @@ func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiers(ctx context.Context, req 
 // GetRateLimitOverride retrieves a rate limit override for the given bucket key
 // and limit. If no override is found, a NotFound error is returned.
 func (ssa *SQLStorageAuthorityRO) GetRateLimitOverride(ctx context.Context, req *sapb.GetRateLimitOverrideRequest) (*sapb.RateLimitOverrideResponse, error) {
-	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey) {
+	if core.IsAnyNilOrZero(req.LimitEnum, req.BucketKey) {
 		return nil, errIncompleteRequest
 	}
 
 	obj, err := ssa.dbReadOnlyMap.Get(ctx, overrideModel{}, req.LimitEnum, req.BucketKey)
-	if db.IsNoRows(err) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, berrors.NotFoundError(
 			"no rate limit override found for limit %d and bucket key %s",
 			req.LimitEnum,

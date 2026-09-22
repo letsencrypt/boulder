@@ -15,8 +15,9 @@ package community
  */
 
 import (
-	"crypto/rsa"
+	"math/big"
 
+	"github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -48,7 +49,7 @@ func (l *rsaExpNegative) CheckApplies(c *x509.Certificate) bool {
 
 func (l *rsaExpNegative) Execute(c *x509.Certificate) *lint.LintResult {
 	key := c.PublicKey.(*rsa.PublicKey)
-	if key.E < 0 {
+	if key.E.Cmp(big.NewInt(0)) < 0 {
 		return &lint.LintResult{Status: lint.Error}
 	}
 	return &lint.LintResult{Status: lint.Pass}

@@ -14,14 +14,14 @@ service CAA {
 }
 
 message IsCAAValidRequest {
-  // Next unused field number: 6
-  reserved 1; // Previously domain
+  // Next unused field number: 7
+  reserved 1, 4; // Previously domain, authzID(string)
   // NOTE: For DNS identifiers, the value may be a wildcard domain name (e.g.
   // `*.example.com`).
   core.Identifier identifier = 5;
   string validationMethod = 2;
   int64 accountURIID = 3;
-  string authzID = 4;
+  int64 authzID = 6;
 }
 
 // If CAA is valid for the requested domain, the problem will be empty
@@ -41,8 +41,10 @@ message PerformValidationRequest {
 }
 
 message AuthzMeta {
-  string id = 1;
+  // Next unused field number: 4
+  reserved 1; // Previously id(string)
   int64 regID = 2;
+  int64 id = 3;
 }
 
 message ValidationResult {

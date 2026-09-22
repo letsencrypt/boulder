@@ -39,5 +39,7 @@ AdminBlockedNames:
 AdminBlockedPrefixes:
   - "64.112.117.66/32"
   - "64.112.117.68/30"
+  - "224.0.0.0/4"
   - "2602:80a:6000:baa:ffff:ffff:ffff:ffff/128"
   - "2602:80a:6000:bad::/64"
+  - "ff00::/8"

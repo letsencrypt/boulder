@@ -18,7 +18,7 @@ import (
 	"slices"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	zlintx509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"
@@ -46,8 +46,15 @@ type lintCert *x509.Certificate
 // template certificate signed by a given issuer and returns a *lintCert or an
 // error. The lint certificate is linted prior to being returned. The public key
 // from the just issued lint certificate is checked by the GoodKey package.
-func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (lintCert, error) {
-	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
+// When cross-signing, existing is the pre-existing certificate of the CA being
+// cross-signed, allowing the CP/CPS profile lints to check correspondence with
+// it; it is nil otherwise.
+func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, existing *x509.Certificate, skipLints []string) (lintCert, error) {
+	lintConfig, err := linter.Config{}.WithExisting(existing)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create lint config: %w", err)
+	}
+	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, lintConfig, skipLints)
 	if err != nil {
 		return nil, fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
@@ -66,8 +73,10 @@ func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey
 // postIssuanceLinting performs post-issuance linting on the raw bytes of a
 // given certificate with the same set of lints as
 // issueLintCertAndPerformLinting. The public key is also checked by the GoodKey
-// package.
-func postIssuanceLinting(fc *x509.Certificate, skipLints []string) error {
+// package. The issuer and existing certificates, when non-nil, are supplied to
+// the CP/CPS profile lints so that they can perform their correspondence
+// checks.
+func postIssuanceLinting(fc, issuer, existing *x509.Certificate, skipLints []string) error {
 	if fc == nil {
 		return fmt.Errorf("certificate was not provided")
 	}
@@ -77,9 +86,21 @@ func postIssuanceLinting(fc *x509.Certificate, skipLints []string) error {
 		// lint. This should be treated as ZLint rejecting the certificate
 		return fmt.Errorf("unable to parse certificate: %s", err)
 	}
+	lintConfig, err := linter.Config{}.WithIssuer(issuer)
+	if err != nil {
+		return fmt.Errorf("unable to create lint config: %s", err)
+	}
+	lintConfig, err = lintConfig.WithExisting(existing)
+	if err != nil {
+		return fmt.Errorf("unable to create lint config: %s", err)
+	}
 	registry, err := linter.NewRegistry(skipLints)
 	if err != nil {
 		return fmt.Errorf("unable to create zlint registry: %s", err)
+	}
+	registry, err = linter.ConfigureRegistry(registry, lintConfig)
+	if err != nil {
+		return fmt.Errorf("unable to configure zlint registry: %s", err)
 	}
 	lintRes := zlint.LintCertificateEx(parsed, registry)
 	err = linter.ProcessResultSet(lintRes)
@@ -101,7 +122,6 @@ type keyGenConfig struct {
 }
 
 var allowedCurves = map[string]bool{
-	"P-224": true,
 	"P-256": true,
 	"P-384": true,
 	"P-521": true,
@@ -121,7 +141,7 @@ func (kgc keyGenConfig) validate() error {
 		return errors.New("if key.type = 'rsa' then key.ecdsa-curve is not used")
 	}
 	if kgc.Type == "ecdsa" && !allowedCurves[kgc.ECDSACurve] {
-		return errors.New("key.ecdsa-curve can only be 'P-224', 'P-256', 'P-384', or 'P-521'")
+		return errors.New("key.ecdsa-curve can only be 'P-256', 'P-384', or 'P-521'")
 	}
 	if kgc.Type == "ecdsa" && kgc.RSAModLength != 0 {
 		return errors.New("if key.type = 'ecdsa' then key.rsa-mod-length is not used")
@@ -535,30 +555,28 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, lintCert lintCert, subjectP
 	return cert, nil
 }
 
-// loadPubKey loads a PEM public key specified by filename. It returns a
-// crypto.PublicKey, the PEM bytes of the public key, and an error. If an error
-// exists, no public key or bytes are returned. The public key is checked by the
-// GoodKey package.
-func loadPubKey(filename string) (crypto.PublicKey, []byte, error) {
+// loadPubKey loads a PEM public key specified by filename. The public key is
+// checked by the GoodKey package.
+func loadPubKey(filename string) (crypto.PublicKey, error) {
 	keyPEM, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	log.Printf("Loaded public key from %s\n", filename)
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {
-		return nil, nil, fmt.Errorf("no data in cert PEM file %q", filename)
+		return nil, fmt.Errorf("no data in cert PEM file %q", filename)
 	}
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	err = kp.GoodKey(context.Background(), key)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return key, block.Bytes, nil
+	return key, nil
 }
 
 func rootCeremony(configBytes []byte) error {
@@ -585,11 +603,11 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
-	template, err := makeTemplate(newRandReader(session), &config.CertProfile, keyInfo.der, nil, rootCert)
+	template, err := makeTemplate(newRandReader(session), &config.CertProfile, keyInfo.key, nil, rootCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
-	lintCert, err := issueLintCertAndPerformLinting(template, template, keyInfo.key, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, template, keyInfo.key, signer, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -597,7 +615,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	err = postIssuanceLinting(finalCert, config.SkipLints)
+	err = postIssuanceLinting(finalCert, nil, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -617,7 +635,7 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
+	pub, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
@@ -629,12 +647,12 @@ func intermediateCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, nil, intermediateCert)
+	template, err := makeTemplate(randReader, &config.CertProfile, pub, nil, intermediateCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -649,7 +667,7 @@ func intermediateCeremony(configBytes []byte) error {
 	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
 		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
-	err = postIssuanceLinting(finalCert, config.SkipLints)
+	err = postIssuanceLinting(finalCert, issuer, nil, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -669,7 +687,7 @@ func crossCertCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
+	pub, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
@@ -685,12 +703,12 @@ func crossCertCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, toBeCrossSigned, crossCert)
+	template, err := makeTemplate(randReader, &config.CertProfile, pub, toBeCrossSigned, crossCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, toBeCrossSigned, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -715,27 +733,30 @@ func crossCertCeremony(configBytes []byte) error {
 		return fmt.Errorf("cross-signed subordinate CA's NotBefore predates the existing CA's NotBefore")
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
-	// We want the Extended Key Usages of our cross-signs to be identical to those
-	// in the cert being cross-signed, for the sake of consistency. However, our
-	// Root CA Certificates do not contain any EKUs, as required by BR 7.1.2.1.2.
-	// Therefore, cross-signs of our roots count as "unrestricted" cross-signs per
-	// the definition in BR 7.1.2.2.3, and are subject to the requirement that
-	// the cross-sign's Issuer and Subject fields must either:
-	// - have identical organizationNames; or
-	// - have orgnaizationNames which are affiliates of each other.
-	// Therefore, we enforce that cross-signs with empty EKUs have identical
-	// Subject Organization Name fields... or allow one special case where the
-	// issuer is "Internet Security Research Group" and the subject is "ISRG" to
-	// allow us to migrate from the longer string to the shorter one.
-	if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
+	// If the existing cert has Extended Key Usages (i.e. it is an issuing
+	// intermediate), then we need the EKUs of the cross-sign to be identical.
+	// However, if the existing cert has no EKUs (i.e. it is a self-signed root),
+	// then we need the EKUs to be exactly [serverAuth] (a dedicated
+	// hierarchy) or exactly [serverAuth, clientAuth] (allowed by the Chrome
+	// Root Program only until 2026-06-15).
+	if len(toBeCrossSigned.ExtKeyUsage) == 0 {
+		if !slices.Equal(lintCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) &&
+			!slices.Equal(lintCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+			return fmt.Errorf("lint cert has unacceptable EKUs for cross-signing a root")
+		}
+	} else if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
-	if len(lintCert.ExtKeyUsage) == 0 {
-		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) &&
-			!(slices.Equal(issuer.Subject.Organization, []string{"Internet Security Research Group"}) && slices.Equal(lintCert.Subject.Organization, []string{"ISRG"})) {
-			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
-		}
+
+	// A lot of additional requirements come into play if we issue a cross-sign to
+	// an external operator. Ensure that we only ever issue cross-signs to certs
+	// with the same Subject Organization field, with one exception for migrating
+	// from the longer "Internet Security Research Group" to the shorter "ISRG".
+	if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) &&
+		!(slices.Equal(issuer.Subject.Organization, []string{"Internet Security Research Group"}) && slices.Equal(lintCert.Subject.Organization, []string{"ISRG"})) {
+		return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
 	}
+
 	// Issue the cross-signed certificate.
 	finalCert, err := signAndWriteCert(template, issuer, lintCert, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
@@ -748,7 +769,7 @@ func crossCertCeremony(configBytes []byte) error {
 	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
 		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
-	err = postIssuanceLinting(finalCert, config.SkipLints)
+	err = postIssuanceLinting(finalCert, issuer, toBeCrossSigned, config.SkipLints)
 	if err != nil {
 		return err
 	}
@@ -768,7 +789,7 @@ func csrCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	pub, _, err := loadPubKey(config.Inputs.PublicKeyPath)
+	pub, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}

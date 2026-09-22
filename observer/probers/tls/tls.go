@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -15,7 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
-	"github.com/letsencrypt/boulder/observer/obsdialer"
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/observer/obsclient"
 )
 
 type reason int
@@ -83,8 +85,9 @@ func checkOCSP(ctx context.Context, cert, issuer *x509.Certificate, want int) (b
 	if err != nil {
 		return false, err
 	}
+	defer res.Body.Close()
 
-	output, err := io.ReadAll(res.Body)
+	output, err := io.ReadAll(core.ErrOnLimitReader(res.Body, core.DefaultMaxRead))
 	if err != nil {
 		return false, err
 	}
@@ -113,7 +116,7 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 	}
 	defer resp.Body.Close()
 
-	der, err := io.ReadAll(resp.Body)
+	der, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, core.DefaultMaxCRLRead))
 	if err != nil {
 		return false, fmt.Errorf("reading CRL: %w", err)
 	}
@@ -138,8 +141,14 @@ func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bo
 
 // Return an error if the root settings are nonempty and do not match the
 // expected root.
-func (p TLSProbe) checkRoot(rootOrg, rootCN string) error {
-	if (p.rootCN == "" && p.rootOrg == "") || (rootOrg == p.rootOrg && rootCN == p.rootCN) {
+func (p TLSProbe) checkRoot(root pkix.Name) error {
+	if p.rootCN == "" && p.rootOrg == "" {
+		return nil
+	}
+	if len(root.Organization) != 1 {
+		return errors.New("root certificate does not have exactly one Organization")
+	}
+	if root.Organization[0] == p.rootOrg && root.CommonName == p.rootCN {
 		return nil
 	}
 	return fmt.Errorf("Expected root does not match.")
@@ -154,7 +163,7 @@ func (p TLSProbe) exportMetrics(cert *x509.Certificate, reason reason) {
 	p.reason.WithLabelValues(p.hostname, reasonToString[reason]).Inc()
 }
 
-func (p TLSProbe) probeExpired(timeout time.Duration) bool {
+func (p TLSProbe) probeExpired(ctx context.Context) error {
 	addr := p.hostname
 	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -162,7 +171,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	}
 
 	tlsDialer := tls.Dialer{
-		NetDialer: &obsdialer.Dialer,
+		NetDialer: obsclient.Dialer(),
 		Config: &tls.Config{
 			// Set InsecureSkipVerify to skip the default validation we are
 			// replacing. This will not disable VerifyConnection.
@@ -189,13 +198,10 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		p.exportMetrics(nil, internalError)
-		return false
+		return err
 	}
 	defer conn.Close()
 
@@ -203,21 +209,20 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	peers := conn.(*tls.Conn).ConnectionState().PeerCertificates
 	if time.Until(peers[0].NotAfter) > 0 {
 		p.exportMetrics(peers[0], statusDidNotMatch)
-		return false
+		return fmt.Errorf("certificate is not expired, notAfter %s", peers[0].NotAfter)
 	}
 
-	root := peers[len(peers)-1].Issuer
-	err = p.checkRoot(root.Organization[0], root.CommonName)
+	err = p.checkRoot(peers[len(peers)-1].Issuer)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
-		return false
+		return err
 	}
 
 	p.exportMetrics(peers[0], none)
-	return true
+	return nil
 }
 
-func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
+func (p TLSProbe) probeUnexpired(ctx context.Context) error {
 	addr := p.hostname
 	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -225,7 +230,7 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	}
 
 	tlsDialer := tls.Dialer{
-		NetDialer: &obsdialer.Dialer,
+		NetDialer: obsclient.Dialer(),
 		Config: &tls.Config{
 			// Set InsecureSkipVerify to skip the default validation we are
 			// replacing. This will not disable VerifyConnection.
@@ -249,23 +254,19 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		p.exportMetrics(nil, internalError)
-		return false
+		return err
 	}
 	defer conn.Close()
 
 	// tls.Dialer.DialContext is documented to always return *tls.Conn
 	peers := conn.(*tls.Conn).ConnectionState().PeerCertificates
-	root := peers[len(peers)-1].Issuer
-	err = p.checkRoot(root.Organization[0], root.CommonName)
+	err = p.checkRoot(peers[len(peers)-1].Issuer)
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
-		return false
+		return err
 	}
 
 	var wantStatus int
@@ -284,32 +285,27 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	}
 	if err != nil {
 		p.exportMetrics(peers[0], revocationStatusError)
-		return false
+		return err
 	}
 
 	if !statusMatch {
 		p.exportMetrics(peers[0], statusDidNotMatch)
-		return false
+		return fmt.Errorf("unexpected certificate revocation status, want %v", wantStatus)
 	}
 
 	p.exportMetrics(peers[0], none)
-	return true
+	return nil
 }
 
-// Probe performs the configured TLS probe. Return true if the root has the
+// Probe performs the configured TLS probe. Returns nil if the root has the
 // expected Subject (or if no root is provided for comparison in settings), and
 // the end entity certificate has the correct expiration status (either expired
 // or unexpired, depending on what is configured). Exports metrics for the
-// NotAfter timestamp of the end entity certificate and the reason for the Probe
-// returning false ("none" if returns true).
-func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	start := time.Now()
-	var success bool
+// validity interval of the end entity certificate and the result of the probe.
+func (p TLSProbe) Probe(ctx context.Context) error {
 	if p.response == "expired" {
-		success = p.probeExpired(timeout)
+		return p.probeExpired(ctx)
 	} else {
-		success = p.probeUnexpired(timeout)
+		return p.probeUnexpired(ctx)
 	}
-
-	return success, time.Since(start)
 }

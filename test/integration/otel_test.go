@@ -65,6 +65,8 @@ func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) Trace {
 	traceURL := "http://bjaeger:16686/api/traces/" + traceID.String()
 	resp, err := http.Get(traceURL)
 	test.AssertNotError(t, err, "failed to trace from jaeger: "+traceID.String())
+	defer resp.Body.Close()
+
 	if resp.StatusCode == http.StatusNotFound {
 		t.Fatalf("jaeger returned 404 for trace %s", traceID)
 	}

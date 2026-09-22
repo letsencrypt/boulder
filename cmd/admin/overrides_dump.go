@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"io"
 
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ratelimits"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type subcommandDumpEnabledOverrides struct {
@@ -29,7 +30,7 @@ func (c *subcommandDumpEnabledOverrides) Run(ctx context.Context, a *admin) erro
 		return errors.New("--file is required")
 	}
 
-	stream, err := a.sac.GetEnabledRateLimitOverrides(ctx, &emptypb.Empty{})
+	stream, err := a.saroc.GetEnabledRateLimitOverrides(ctx, &emptypb.Empty{})
 	if err != nil {
 		return fmt.Errorf("fetching enabled overrides: %w", err)
 	}

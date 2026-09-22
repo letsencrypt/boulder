@@ -1,5 +1,6 @@
 {
 	"crlStorer": {
+		"maxCRLSize": 2000000,
 		"tls": {
 			"caCertfile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/crl-storer.boulder/cert.pem",
@@ -19,6 +20,16 @@
 					]
 				}
 			}
+		},
+		"saReadOnlyService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "sa",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "sa.boulder"
 		},
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",

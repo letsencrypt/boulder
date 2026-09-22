@@ -49,7 +49,7 @@ func (l *qcStatemQctypeWeb) CheckApplies(c *x509.Certificate) bool {
 		return false
 	}
 	if util.ParseQcStatem(util.GetExtFromCert(c, util.QcStateOid).Value, *l.getStatementOid()).IsPresent() {
-		return util.IsServerAuthCert(c)
+		return util.HasEKU(c, x509.ExtKeyUsageServerAuth)
 	}
 	return false
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -39,9 +40,8 @@ const (
 	PrimaryPerspective = "Primary"
 	allPerspectives    = "all"
 
-	opDCVAndCAA = "dcv+caa"
-	opDCV       = "dcv"
-	opCAA       = "caa"
+	opDCV = "dcv"
+	opCAA = "caa"
 
 	pass = "pass"
 	fail = "fail"
@@ -113,54 +113,47 @@ type vaMetrics struct {
 	http01Redirects                   prometheus.Counter
 	caaCounter                        *prometheus.CounterVec
 	ipv4FallbackCounter               prometheus.Counter
+	// experimentConcurrence tracks whether the primary and experimental VAs
+	// reached the same outcome. It's labelled by:
+	//   - operation: [dcv|caa]
+	//   - concurrence: [true|false]
+	experimentConcurrence *prometheus.CounterVec
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
-	validationLatency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "validation_latency",
-			Help:    "Histogram of the latency to perform validations from the primary and remote VA perspectives",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"operation", "perspective", "challenge_type", "problem_type", "result"},
-	)
-	stats.MustRegister(validationLatency)
-	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "prospective_remote_caa_check_failures",
-			Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
-		})
-	stats.MustRegister(prospectiveRemoteCAACheckFailures)
-	tlsALPNOIDCounter := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "tls_alpn_oid_usage",
-			Help: "Number of TLS ALPN validations using either of the two OIDs",
-		},
-		[]string{"oid"},
-	)
-	stats.MustRegister(tlsALPNOIDCounter)
-	http01Fallbacks := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "http01_fallbacks",
-			Help: "Number of IPv6 to IPv4 HTTP-01 fallback requests made",
-		})
-	stats.MustRegister(http01Fallbacks)
-	http01Redirects := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "http01_redirects",
-			Help: "Number of HTTP-01 redirects followed",
-		})
-	stats.MustRegister(http01Redirects)
-	caaCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	validationLatency := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "validation_latency",
+		Help:    "Histogram of the latency to perform validations from the primary and remote VA perspectives",
+		Buckets: metrics.InternetFacingBuckets,
+	}, []string{"operation", "perspective", "challenge_type", "problem_type", "result"})
+	prospectiveRemoteCAACheckFailures := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "prospective_remote_caa_check_failures",
+		Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consensus were enforced",
+	})
+	tlsALPNOIDCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "tls_alpn_oid_usage",
+		Help: "Number of TLS ALPN validations using either of the two OIDs",
+	}, []string{"oid"})
+	http01Fallbacks := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "http01_fallbacks",
+		Help: "Number of IPv6 to IPv4 HTTP-01 fallback requests made",
+	})
+	http01Redirects := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "http01_redirects",
+		Help: "Number of HTTP-01 redirects followed",
+	})
+	caaCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "caa_sets_processed",
 		Help: "A counter of CAA sets processed labelled by result",
 	}, []string{"result"})
-	stats.MustRegister(caaCounter)
-	ipv4FallbackCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	ipv4FallbackCounter := promauto.With(stats).NewCounter(prometheus.CounterOpts{
 		Name: "tls_alpn_ipv4_fallback",
 		Help: "A counter of IPv4 fallbacks during TLS ALPN validation",
 	})
-	stats.MustRegister(ipv4FallbackCounter)
+	experimentConcurrence := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "experiment_concurrence",
+		Help: "Count of validations where the experimental VA did or did not concur with the primary VA",
+	}, []string{"operation", "concurrence"})
 
 	return &vaMetrics{
 		validationLatency:                 validationLatency,
@@ -170,6 +163,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		http01Redirects:                   http01Redirects,
 		caaCounter:                        caaCounter,
 		ipv4FallbackCounter:               ipv4FallbackCounter,
+		experimentConcurrence:             experimentConcurrence,
 	}
 }
 
@@ -204,21 +198,26 @@ func newDefaultPortConfig() *portConfig {
 type ValidationAuthorityImpl struct {
 	vapb.UnsafeVAServer
 	vapb.UnsafeCAAServer
-	log                blog.Logger
-	dnsClient          bdns.Client
-	issuerDomain       string
-	httpPort           int
-	httpsPort          int
-	tlsPort            int
-	userAgent          string
-	clk                clock.Clock
-	remoteVAs          []RemoteVA
-	maxRemoteFailures  int
-	accountURIPrefixes []string
-	singleDialTimeout  time.Duration
-	perspective        string
-	rir                string
-	isReservedIPFunc   func(netip.Addr) error
+	log                      blog.Logger
+	dnsClient                bdns.Client
+	issuerDomain             string
+	httpPort                 int
+	httpsPort                int
+	tlsPort                  int
+	userAgent                string
+	clk                      clock.Clock
+	remoteVAs                []RemoteVA
+	maxRemoteFailures        int
+	accountURIPrefixes       []string
+	singleDialTimeout        time.Duration
+	slowRemoteTimeout        time.Duration
+	perspective              string
+	rir                      string
+	isReservedIPFunc         func(netip.Addr) error
+	allowRestrictedAddrs     bool
+	experimentalVA           *ValidationAuthorityImpl
+	experimentalVASampleRate float64
+	experimentalVATimeout    time.Duration
 
 	metrics *vaMetrics
 }
@@ -239,6 +238,11 @@ func NewValidationAuthorityImpl(
 	perspective string,
 	rir string,
 	reservedIPChecker func(netip.Addr) error,
+	slowRemoteTimeout time.Duration,
+	allowRestrictedAddrs bool,
+	experimentalVA *ValidationAuthorityImpl,
+	experimentalVASampleRate float64,
+	experimentalVATimeout time.Duration,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
@@ -253,12 +257,20 @@ func NewValidationAuthorityImpl(
 		}
 	}
 
+	normalizedIssuerDomain, err := core.NormalizeIssuerDomainName(issuerDomain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid issuerDomain (caaIdentity) %q: %w", issuerDomain, err)
+	}
+	if normalizedIssuerDomain != issuerDomain {
+		return nil, fmt.Errorf("issuerDomain (caaIdentity) %q is not in normalized form, use %q", issuerDomain, normalizedIssuerDomain)
+	}
+
 	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
 		log:                logger,
 		dnsClient:          resolver,
-		issuerDomain:       issuerDomain,
+		issuerDomain:       normalizedIssuerDomain,
 		httpPort:           pc.HTTPPort,
 		httpsPort:          pc.HTTPSPort,
 		tlsPort:            pc.TLSPort,
@@ -272,13 +284,63 @@ func NewValidationAuthorityImpl(
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
 		// HTTP-01 challenge validation.
-		singleDialTimeout: 10 * time.Second,
-		perspective:       perspective,
-		rir:               rir,
-		isReservedIPFunc:  reservedIPChecker,
+		singleDialTimeout:        10 * time.Second,
+		slowRemoteTimeout:        slowRemoteTimeout,
+		perspective:              perspective,
+		rir:                      rir,
+		isReservedIPFunc:         reservedIPChecker,
+		allowRestrictedAddrs:     allowRestrictedAddrs,
+		experimentalVA:           experimentalVA,
+		experimentalVASampleRate: experimentalVASampleRate,
+		experimentalVATimeout:    experimentalVATimeout,
 	}
 
 	return va, nil
+}
+
+func (va *ValidationAuthorityImpl) shouldRunExperiment() bool {
+	return va.experimentalVA != nil && rand.Float64() < va.experimentalVASampleRate
+}
+
+// runExperiment compares the primary VA's local result against the experimental
+// VA's result and records a concurrence metric. On disagreement, it logs a
+// structured event with both results. The primary argument must be non-nil.
+// Callers should invoke this in a goroutine.
+//
+// The passed experimentFunc should return a list of validation records (or nil in the case of CAA),
+// followed by any ProblemDetails relevant (which will be nil on success), and any errors in validation.
+func (va *ValidationAuthorityImpl) runExperiment(
+	ctx context.Context,
+	operation string,
+	primaryProblem *probs.ProblemDetails,
+	primaryValidationRecords []core.ValidationRecord,
+	experimentFunc func(context.Context) ([]core.ValidationRecord, *corepb.ProblemDetails, error),
+) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), va.experimentalVATimeout)
+	defer cancel()
+
+	experimentValidationRecords, experimentProblem, err := experimentFunc(ctx)
+
+	primaryPassed := primaryProblem == nil
+	experimentPassed := err == nil && experimentProblem == nil
+
+	if primaryPassed == experimentPassed {
+		va.metrics.experimentConcurrence.WithLabelValues(operation, "true").Inc()
+		return
+	}
+	va.metrics.experimentConcurrence.WithLabelValues(operation, "false").Inc()
+
+	logArgs := map[string]any{
+		"operation":                   operation,
+		"primaryProblem":              primaryProblem,
+		"primaryValidationRecords":    primaryValidationRecords,
+		"experimentProblem":           experimentProblem,
+		"experimentValidationRecords": experimentValidationRecords,
+	}
+	if err != nil {
+		logArgs["experimentErr"] = err.Error()
+	}
+	va.log.AuditInfo("Primary VA disagreed with experimental VA", logArgs)
 }
 
 // maxAllowedFailures returns the maximum number of allowed failures
@@ -328,8 +390,8 @@ func (i ipError) Error() string {
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
 func detailedError(err error) *probs.ProblemDetails {
-	var ipErr ipError
-	if errors.As(err, &ipErr) {
+	ipErr, ok := errors.AsType[ipError](err)
+	if ok {
 		detailedErr := detailedError(ipErr.err)
 		if (ipErr.ip == netip.Addr{}) {
 			// This should never happen.
@@ -340,20 +402,20 @@ func detailedError(err error) *probs.ProblemDetails {
 		return detailedErr
 	}
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	urlErr, ok := errors.AsType[*url.Error](err)
+	if ok {
 		prob := detailedError(urlErr.Err)
 		prob.Detail = fmt.Sprintf("Fetching %s: %s", urlErr.URL, prob.Detail)
 		return prob
 	}
 
-	var tlsErr tls.RecordHeaderError
-	if errors.As(err, &tlsErr) && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
+	tlsErr, ok := errors.AsType[tls.RecordHeaderError](err)
+	if ok && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
 		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
-	var netOpErr *net.OpError
-	if errors.As(err, &netOpErr) {
+	netOpErr, ok := errors.AsType[*net.OpError](err)
+	if ok {
 		if fmt.Sprintf("%T", netOpErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
@@ -364,8 +426,8 @@ func detailedError(err error) *probs.ProblemDetails {
 			return probs.Connection(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
 		}
 	}
-	var syscallErr *os.SyscallError
-	if errors.As(err, &syscallErr) {
+	syscallErr, ok := errors.AsType[*os.SyscallError](err)
+	if ok {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
 			return probs.Connection("Connection refused")
@@ -375,8 +437,8 @@ func detailedError(err error) *probs.ProblemDetails {
 			return probs.Connection("Connection reset by peer")
 		}
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
+	netErr, ok := errors.AsType[net.Error](err)
+	if ok && netErr.Timeout() {
 		return probs.Connection("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {
@@ -408,8 +470,8 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
-// The accountURI parameter is required for dns-account-01 challenges to
-// calculate the account-specific label.
+// The accountURI parameter is required for dns-account-01 and
+// dns-persist-01 challenges.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -425,6 +487,13 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		// Strip a (potential) leading wildcard token from the identifier.
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 		return va.validateDNS01(ctx, ident, keyAuthorization)
+	case core.ChallengeTypeDNSPersist01:
+		if features.Get().DNSPersist01Enabled {
+			wildcard := strings.HasPrefix(ident.Value, "*.")
+			// Strip a (potential) leading wildcard token from the identifier.
+			ident.Value = strings.TrimPrefix(ident.Value, "*.")
+			return va.validateDNSPersist01(ctx, ident, accountURI, wildcard)
+		}
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeDNSAccount01:
@@ -585,6 +654,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 	var failed []string
 	var passedRIRs = map[string]struct{}{}
 	var firstProb *probs.ProblemDetails
+	var slowTimerSet bool
 
 	for resp := range responses {
 		var currProb *probs.ProblemDetails
@@ -620,6 +690,17 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
+		if va.slowRemoteTimeout != 0 && !slowTimerSet {
+			// If enough perspectives have passed, or enough perspectives have
+			// failed, set a tighter deadline for the remaining perspectives.
+			if (len(passed) >= required && len(passedRIRs) >= requiredRIRs) ||
+				(len(failed) > remoteVACount-required) {
+				timer := time.AfterFunc(va.slowRemoteTimeout, cancel)
+				defer timer.Stop()
+				slowTimerSet = true
+			}
+		}
+
 		// Once all the VAs have returned a result, break the loop.
 		if len(passed)+len(failed) >= remoteVACount {
 			break
@@ -641,7 +722,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 // validationLogEvent is a struct that contains the information needed to log
 // the results of DoCAA and DoDCV.
 type validationLogEvent struct {
-	AuthzID       string
+	AuthzID       int64
 	Requester     int64
 	Identifier    identifier.ACMEIdentifier
 	Challenge     core.Challenge
@@ -662,7 +743,7 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.Authz, req.Authz.RegID, req.ExpectedKeyAuthorization) {
+	if core.IsAnyNilOrZero(req.Identifier, req.Challenge, req.Authz, req.Authz.Id, req.Authz.RegID, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -703,6 +784,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 			logEvent.Challenge.Status = core.StatusValid
 			outcome = pass
 		}
+
 		// Observe local validation latency (primary|remote).
 		va.observeLatency(opDCV, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
@@ -713,12 +795,14 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 
 		// Log the total validation latency.
 		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
-		va.log.AuditObject("Validation result", logEvent)
+		va.log.AuditInfo("Validation result", logEvent)
 	}()
 
-	// For dns-account-01 challenges, construct the account URI from the configured prefix
+	// For dns-account-01 and dns-persist-01 challenges, construct the account URI
+	// from the configured prefix.
 	var accountURI string
-	if chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled {
+	if (chall.Type == core.ChallengeTypeDNSAccount01 && features.Get().DNSAccount01Enabled) ||
+		(chall.Type == core.ChallengeTypeDNSPersist01 && features.Get().DNSPersist01Enabled) {
 		accountURI = fmt.Sprintf("%s%d", va.accountURIPrefixes[0], req.Authz.RegID)
 	}
 
@@ -747,7 +831,40 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	if err != nil {
 		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
-		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	}
+
+	// Capture the local validation result for experimental resolver comparison
+	// before MPIC can influence the outcome.
+	localResult, err := bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	if err != nil {
+		return nil, err
+	}
+
+	if va.shouldRunExperiment() {
+		go va.runExperiment(
+			ctx,
+			opDCV,
+			prob,
+			records,
+			func(ctx context.Context) ([]core.ValidationRecord, *corepb.ProblemDetails, error) {
+				result, err := va.experimentalVA.DoDCV(ctx, req)
+				if err != nil {
+					return nil, nil, err
+				}
+				var loggableRecords []core.ValidationRecord
+				for _, record := range result.Records {
+					converted, err := bgrpc.PBToValidationRecord(record)
+					if err != nil {
+						return nil, nil, err
+					}
+					loggableRecords = append(loggableRecords, converted)
+				}
+				return loggableRecords, result.Problem, nil
+			})
+	}
+
+	if prob != nil {
+		return localResult, nil
 	}
 
 	if va.isPrimaryVA() {
@@ -765,5 +882,6 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		}
 		summary, prob = va.doRemoteOperation(ctx, op, req)
 	}
+
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }

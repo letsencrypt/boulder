@@ -49,13 +49,13 @@ type Source interface {
 	//    the underlying storage client implementation).
 	BatchGet(ctx context.Context, bucketKeys []string) (map[string]time.Time, error)
 
-	// Delete removes the TAT associated with the specified bucketKey (formatted
-	// as 'name:id'). Implementations MUST ensure non-blocking operations by
-	// either:
+	// BatchDelete removes the TATs associated with the specified bucketKeys
+	// (formatted as 'name:id'). Implementations MUST ensure non-blocking
+	// operations by either:
 	//   a) applying a deadline or timeout to the context WITHIN the method, or
 	//   b) guaranteeing the operation will not block indefinitely (e.g. via
 	//    the underlying storage client implementation).
-	Delete(ctx context.Context, bucketKey string) error
+	BatchDelete(ctx context.Context, bucketKeys []string) error
 }
 
 type increment struct {
@@ -131,9 +131,11 @@ func (in *inmem) BatchGet(_ context.Context, bucketKeys []string) (map[string]ti
 	return tats, nil
 }
 
-func (in *inmem) Delete(_ context.Context, bucketKey string) error {
+func (in *inmem) BatchDelete(_ context.Context, bucketKeys []string) error {
 	in.Lock()
 	defer in.Unlock()
-	delete(in.m, bucketKey)
+	for _, bucketKey := range bucketKeys {
+		delete(in.m, bucketKey)
+	}
 	return nil
 }

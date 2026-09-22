@@ -3,19 +3,25 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strconv"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/core/proto"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -26,6 +32,7 @@ type crlUpdater struct {
 	numShards      int
 	shardWidth     time.Duration
 	lookbackPeriod time.Duration
+	lagFactor      time.Duration
 	updatePeriod   time.Duration
 	updateTimeout  time.Duration
 	maxParallelism int
@@ -34,12 +41,19 @@ type crlUpdater struct {
 	cacheControl  string
 	expiresMargin time.Duration
 
+	// checkFreshness enables the freshness check in updateShard.
+	//
+	// TODO(#8983): Remove this once the freshness check is unconditional.
+	checkFreshness bool
+
 	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
 
-	tickHistogram  *prometheus.HistogramVec
-	updatedCounter *prometheus.CounterVec
+	tickHistogram    *prometheus.HistogramVec
+	updatedCounter   *prometheus.CounterVec
+	sizeBytesGauge   *prometheus.GaugeVec
+	sizeEntriesGauge *prometheus.GaugeVec
 
 	log blog.Logger
 	clk clock.Clock
@@ -50,12 +64,14 @@ func NewUpdater(
 	numShards int,
 	shardWidth time.Duration,
 	lookbackPeriod time.Duration,
+	lagFactor time.Duration,
 	updatePeriod time.Duration,
 	updateTimeout time.Duration,
 	maxParallelism int,
 	maxAttempts int,
 	cacheControl string,
 	expiresMargin time.Duration,
+	checkFreshness bool,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
@@ -80,8 +96,15 @@ func NewUpdater(
 		return nil, fmt.Errorf("update timeout must be less than period: %s !< %s", updateTimeout, updatePeriod)
 	}
 
-	if lookbackPeriod < 2*updatePeriod {
-		return nil, fmt.Errorf("lookbackPeriod must be at least 2x updatePeriod: %s !< 2 * %s", lookbackPeriod, updatePeriod)
+	if lagFactor < 0 || lagFactor >= updatePeriod {
+		return nil, fmt.Errorf("lagFactor must be non-negative and less than updatePeriod: got %s, updatePeriod %s", lagFactor, updatePeriod)
+	}
+
+	// The freshness check ignores the last lagFactor of revocations, so keep a
+	// full updatePeriod of margin on top of it to ensure every revoked cert
+	// appears on a CRL issued after its expiry.
+	if lookbackPeriod < 2*updatePeriod+lagFactor {
+		return nil, fmt.Errorf("lookbackPeriod must be at least 2x updatePeriod plus lagFactor: %s !< 2 * %s + %s", lookbackPeriod, updatePeriod, lagFactor)
 	}
 
 	if maxParallelism <= 0 {
@@ -92,35 +115,47 @@ func NewUpdater(
 		maxAttempts = 1
 	}
 
-	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	tickHistogram := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_updater_ticks",
 		Help:    "A histogram of crl-updater tick latencies labeled by issuer and result",
 		Buckets: []float64{0.01, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000},
 	}, []string{"issuer", "result"})
-	stats.MustRegister(tickHistogram)
 
-	updatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	updatedCounter := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "crl_updater_generated",
 		Help: "A counter of CRL generation calls labeled by result",
 	}, []string{"issuer", "result"})
-	stats.MustRegister(updatedCounter)
+
+	sizeBytesGauge := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crl_updater_crl_size_bytes",
+		Help: "The size in bytes of each CRL, labeled by issuer and shard",
+	}, []string{"issuer", "shard"})
+
+	sizeEntriesGauge := promauto.With(stats).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crl_updater_crl_size_entries",
+		Help: "The number of entries in each CRL, labeled by issuer and shard",
+	}, []string{"issuer", "shard"})
 
 	return &crlUpdater{
 		issuersByNameID,
 		numShards,
 		shardWidth,
 		lookbackPeriod,
+		lagFactor,
 		updatePeriod,
 		updateTimeout,
 		maxParallelism,
 		maxAttempts,
 		cacheControl,
 		expiresMargin,
+		checkFreshness,
 		sa,
 		ca,
 		cs,
 		tickHistogram,
 		updatedCounter,
+		sizeBytesGauge,
+		sizeEntriesGauge,
 		log,
 		clk,
 	}, nil
@@ -149,9 +184,10 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 		// core.RetryBackoff always returns 0 when its first argument is zero.
 		sleepTime := core.RetryBackoff(i, time.Second, time.Minute, 2)
 		if i != 0 {
-			cu.log.Errf(
-				"Generating CRL failed, will retry in %vs: id=[%s] err=[%s]",
-				sleepTime.Seconds(), crlID, err)
+			cu.log.AuditErr("Generating CRL failed", err, map[string]any{
+				"id":         crlID,
+				"retryAfter": int(sleepTime.Seconds()),
+			})
 		}
 		cu.clk.Sleep(sleepTime)
 
@@ -207,17 +243,19 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	// up in at least one CRL, even if they expire between revocation and CRL generation.
 	expiresAfter := cu.clk.Now().Add(-cu.lookbackPeriod)
 
-	saStream, err := cu.sa.GetRevokedCertsByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
+	req := &sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  int64(issuerNameID),
 		ShardIdx:      int64(shardIdx),
 		ExpiresAfter:  timestamppb.New(expiresAfter),
 		RevokedBefore: timestamppb.New(atTime),
-	})
+	}
+
+	saStream, err := cu.sa.GetRevokedCertsByShard(ctx, req)
 	if err != nil {
 		return fmt.Errorf("GetRevokedCertsByShard: %w", err)
 	}
 
-	var crlEntries []*proto.CRLEntry
+	var crlEntries []*corepb.CRLEntry
 	for {
 		entry, err := saStream.Recv()
 		if err != nil {
@@ -230,6 +268,38 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	}
 
 	cu.log.Infof("Queried SA for CRL shard: id=[%s] shardIdx=[%d] numEntries=[%d]", crlID, shardIdx, len(crlEntries))
+
+	// TODO(#8983): Make this unconditional once checkFreshness is in production configs.
+	if cu.checkFreshness {
+		latestReq := proto.Clone(req).(*sapb.GetRevokedCertsByShardRequest)
+		cutoffTime := latestReq.RevokedBefore.AsTime().Add(-cu.lagFactor)
+		latestReq.RevokedBefore = timestamppb.New(cutoffTime)
+
+		latest, err := cu.sa.GetLatestRevokedCertByShard(ctx, latestReq)
+		if err != nil {
+			if !errors.Is(err, berrors.NotFound) {
+				return fmt.Errorf("GetLatestRevokedCertByShard: %w", err)
+			}
+			foundOlder := slices.ContainsFunc(crlEntries, func(entry *corepb.CRLEntry) bool {
+				return entry.RevokedAt.AsTime().Before(cutoffTime)
+			})
+			if foundOlder {
+				return errors.New("primary database has no revocations for this shard but the replica " +
+					"returned entries revoked more than lagFactor ago, which replication lag " +
+					"cannot explain; the primary and replica are not seeing the same data")
+			}
+		} else {
+			foundLatest := slices.ContainsFunc(crlEntries, func(entry *corepb.CRLEntry) bool {
+				return entry.Serial == latest.Serial
+			})
+			if !foundLatest {
+				return fmt.Errorf("latest revocation (serial %s, revoked at %s, %s ago) missing from "+
+					"%d entries: database replica may be lagging",
+					latest.Serial, latest.RevokedAt.AsTime().Format(time.RFC3339),
+					cu.clk.Now().Sub(latest.RevokedAt.AsTime()).Round(time.Second), len(crlEntries))
+			}
+		}
+	}
 
 	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
@@ -324,6 +394,8 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
 		crlID, crlLen, crlHash.Sum(nil))
+	cu.sizeBytesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(crlLen))
+	cu.sizeEntriesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(len(crlEntries)))
 
 	return nil
 }

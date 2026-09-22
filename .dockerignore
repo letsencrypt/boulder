@@ -8,3 +8,4 @@ test/certs/webpki
 test/certs/.softhsm-tokens
 .git
 .gocache
+.github

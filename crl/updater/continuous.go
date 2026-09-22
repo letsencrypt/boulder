@@ -45,9 +45,9 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
-				cu.log.AuditErrf(
-					"Generating CRL failed: id=[%s] err=[%s]",
-					crl.Id(issuerNameID, shardIdx, crl.Number(atTime)), err)
+				cu.log.AuditErr("Generating CRL failed", err, map[string]any{
+					"id": crl.Id(issuerNameID, shardIdx, crl.Number(atTime)),
+				})
 			}
 
 			select {

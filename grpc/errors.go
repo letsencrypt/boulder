@@ -25,8 +25,8 @@ func wrapError(ctx context.Context, appErr error) error {
 		return nil
 	}
 
-	var berr *berrors.BoulderError
-	if errors.As(appErr, &berr) {
+	berr, ok := errors.AsType[*berrors.BoulderError](appErr)
+	if ok {
 		pairs := []string{
 			"errortype", strconv.Itoa(int(berr.Type)),
 		}
@@ -92,8 +92,8 @@ func unwrapError(err error, md metadata.MD) error {
 		)
 	}
 	inErr := berrors.New(berrors.ErrorType(inErrType), inErrMsg)
-	var outErr *berrors.BoulderError
-	if !errors.As(inErr, &outErr) {
+	outErr, ok := errors.AsType[*berrors.BoulderError](inErr)
+	if !ok {
 		return fmt.Errorf(
 			"expected type of inErr to be %T got %T: %q",
 			outErr,

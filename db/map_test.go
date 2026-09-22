@@ -49,39 +49,6 @@ func TestErrDatabaseOpError(t *testing.T) {
 	}
 }
 
-func TestIsNoRows(t *testing.T) {
-	testCases := []struct {
-		name           string
-		err            ErrDatabaseOp
-		expectedNoRows bool
-	}{
-		{
-			name: "underlying err is sql.ErrNoRows",
-			err: ErrDatabaseOp{
-				Op:    "test",
-				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", sql.ErrNoRows),
-			},
-			expectedNoRows: true,
-		},
-		{
-			name: "underlying err is not sql.ErrNoRows",
-			err: ErrDatabaseOp{
-				Op:    "test",
-				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", errors.New("lots of rows. too many rows.")),
-			},
-			expectedNoRows: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			test.AssertEquals(t, IsNoRows(tc.err), tc.expectedNoRows)
-		})
-	}
-}
-
 func TestIsDuplicate(t *testing.T) {
 	testCases := []struct {
 		name            string
@@ -163,10 +130,6 @@ func TestTableFromQuery(t *testing.T) {
 			expectedTable: "`orders`",
 		},
 		{
-			query:         "insert into `orderToAuthz2` (`OrderID`,`AuthzID`) values (?,?);",
-			expectedTable: "`orderToAuthz2`",
-		},
-		{
 			query:         "UPDATE authz2 SET status = :status, attempted = :attempted, validationRecord = :validationRecord, validationError = :validationError, expires = :expires WHERE id = :id AND status = :pending",
 			expectedTable: "authz2",
 		},
@@ -239,8 +202,8 @@ func testDbMap(t *testing.T) *WrappedMap {
 func TestWrappedMap(t *testing.T) {
 	mustDbErr := func(err error) ErrDatabaseOp {
 		t.Helper()
-		var dbOpErr ErrDatabaseOp
-		test.AssertErrorWraps(t, err, &dbOpErr)
+		test.AssertErrorWraps[ErrDatabaseOp](t, err)
+		dbOpErr, _ := errors.AsType[ErrDatabaseOp](err)
 		return dbOpErr
 	}
 

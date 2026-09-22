@@ -1,0 +1,34 @@
+# A sunlight witness operating as the c2sp.org/tlog-mirror for the test MTC
+# issuance log. Config reference:
+# https://github.com/FiloSottile/sunlight/blob/v0.9.0/cmd/sunlight/sunlight.go#L67
+listen:
+  - ":4700"
+# The checkpoint lock database, stored in the same volume as the MinIO data.
+checkpoints: /sunlight-data/checkpoints.db
+witness:
+  name: bsunlight
+  secret: /boulder/test/certs/sunlight/seed.bin
+  monitoringprefix: http://boulder-minio:9000/boulder-sunlight
+  s3region: us-east-1
+  s3bucket: boulder-sunlight
+  s3endpoint: http://boulder-minio:9000
+  mirrorname: oid/1.3.6.1.4.1.32473.9
+  mirrorloglists:
+    - /boulder/test/certs/sunlight/mtc-logs.txt
+# A throwaway CT log nothing submits to. Stock cmd/sunlight exits without at
+# least one active log, since only per-log sequencers keep main alive:
+# https://github.com/FiloSottile/sunlight/blob/v0.9.0/cmd/sunlight/sunlight.go#L1169-L1183
+logs:
+  - shortname: bsunlight-ctlog
+    inception: "@INCEPTION@"
+    submissionprefix: https://bsunlight/ctlog
+    monitoringprefix: http://boulder-minio:9000/boulder-sunlight/ctlog
+    roots: /boulder/test/certs/sunlight/ctlog-roots.pem
+    secret: /boulder/test/certs/sunlight/seed.bin
+    cache: /tmp/ctlog-cache.db
+    s3region: us-east-1
+    s3bucket: boulder-sunlight
+    s3keyprefix: ctlog/
+    s3endpoint: http://boulder-minio:9000
+    notafterstart: "2020-01-01T00:00:00Z"
+    notafterlimit: "2040-01-01T00:00:00Z"

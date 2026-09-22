@@ -349,13 +349,19 @@ func (s *State) Run(
 	httpOneAddrs []string,
 	tlsALPNOneAddrs []string,
 	dnsAddrs []string,
+	dohAddrs []string,
+	dohCert string,
+	dohCertKey string,
 	fakeDNS string,
 	p Plan) error {
 	// Create a new challenge server binding the requested addrs.
 	challSrv, err := challtestsrv.New(challtestsrv.Config{
 		HTTPOneAddrs:    httpOneAddrs,
 		TLSALPNOneAddrs: tlsALPNOneAddrs,
-		DNSOneAddrs:     dnsAddrs,
+		DNSAddrs:        dnsAddrs,
+		DOHAddrs:        dohAddrs,
+		DOHCert:         dohCert,
+		DOHCertKey:      dohCertKey,
 		// Use a logger that has a load-generator prefix
 		Log: log.New(os.Stdout, "load-generator challsrv - ", log.LstdFlags),
 	})
@@ -513,6 +519,7 @@ func (s *State) post(
 		ns.addNonce(newNonce)
 	}
 	if resp.StatusCode != expectedCode {
+		defer resp.Body.Close()
 		return nil, fmt.Errorf("POST %q returned HTTP status %d, expected %d",
 			url, resp.StatusCode, expectedCode)
 	}

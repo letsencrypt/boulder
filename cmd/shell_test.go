@@ -80,15 +80,15 @@ func TestMysqlLogger(t *testing.T) {
 	}{
 		{
 			[]any{nil},
-			`ERR: [AUDIT] [mysql] <nil>`,
+			`ERR: [mysql] <nil>`,
 		},
 		{
 			[]any{""},
-			`ERR: [AUDIT] [mysql] `,
+			`ERR: [mysql] `,
 		},
 		{
 			[]any{"Sup ", 12345, " Sup sup"},
-			`ERR: [AUDIT] [mysql] Sup 12345 Sup sup`,
+			`ERR: [mysql] Sup 12345 Sup sup`,
 		},
 	}
 
@@ -118,14 +118,16 @@ func TestCaptureStdlibLog(t *testing.T) {
 	}
 }
 
-func TestVersionString(t *testing.T) {
+func TestLogStartup(t *testing.T) {
 	core.BuildID = "TestBuildID"
 	core.BuildTime = "RightNow!"
 	core.BuildHost = "Localhost"
 
-	versionStr := VersionString()
-	expected := fmt.Sprintf("Versions: cmd.test=(TestBuildID RightNow!) Golang=(%s) BuildHost=(Localhost)", runtime.Version())
-	test.AssertEquals(t, versionStr, expected)
+	log := blog.NewMock()
+	LogStartup(log)
+	logged := strings.Join(log.GetAll(), "\n")
+	expected := fmt.Sprintf(`INFO: [AUDIT] Process starting JSON={"Command":"cmd.test","BuildID":"TestBuildID","BuildTime":"RightNow!","GoVersion":"%s","BuildHost":"Localhost"}`, runtime.Version())
+	test.AssertEquals(t, logged, expected)
 }
 
 func TestReadConfigFile(t *testing.T) {
@@ -276,7 +278,7 @@ func TestFailExit(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestFailExit")
+	cmd := exec.Command(os.Args[0], "-test.run=TestFailExit") //nolint:gosec // os.Args is untrusted but we're okay with that in test code
 	cmd.Env = append(os.Environ(), "TIME_TO_DIE=1")
 	output, err := cmd.CombinedOutput()
 	test.AssertError(t, err, "running a failing program")
@@ -302,11 +304,11 @@ func TestPanicStackTrace(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace")
+	cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace") //nolint:gosec // os.Args is untrusted but we're okay with that in test code
 	cmd.Env = append(os.Environ(), "AT_THE_DISCO=1")
 	output, err := cmd.CombinedOutput()
 	test.AssertError(t, err, "running a failing program")
 	test.AssertContains(t, string(output), "nil pointer dereference")
-	test.AssertContains(t, string(output), "Stack Trace")
+	test.AssertContains(t, string(output), "runtime/debug.Stack()")
 	test.AssertContains(t, string(output), "cmd/shell_test.go:")
 }

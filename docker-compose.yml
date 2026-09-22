@@ -8,18 +8,20 @@ services:
       context: test/boulder-tools/
       # Should match one of the GO_CI_VERSIONS in test/boulder-tools/tag_and_upload.sh.
       args:
-        GO_VERSION: 1.25.0
+        GO_VERSION: 1.27.1
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening. This is
       # pointing at the boulder service's "public" IP, where challtestsrv is.
       FAKE_DNS: 64.112.117.122
       BOULDER_CONFIG_DIR: test/config
+      USE_VITESS: false
       GOCACHE: /boulder/.gocache/go-build
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
       - ./test/certs/.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
+      - pkimetal-socket:/var/run/pkimetal
     networks:
       bouldernet:
         ipv4_address: 10.77.77.77
@@ -50,13 +52,22 @@ services:
       - 4001:4001 # ACMEv2
       - 4003:4003 # SFE
     depends_on:
-      - bmysql
-      - bproxysql
-      - bredis_1
-      - bredis_2
-      - bconsul
-      - bjaeger
-      - bpkimetal
+      bmariadb:
+        condition: service_started
+      bproxysql:
+        condition: service_started
+      bvitess:
+        condition: service_healthy
+      bredis_1:
+        condition: service_started
+      bredis_2:
+        condition: service_started
+      bconsul:
+        condition: service_started
+      bjaeger:
+        condition: service_started
+      bpkimetal:
+        condition: service_started
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -74,25 +85,19 @@ services:
       # with a "docker compose up bsetup".
       - setup
 
-  bmysql:
+  bmariadb:
     image: mariadb:10.11.13
+    volumes:
+      - ./sa/db:/docker-entrypoint-initdb.d
     networks:
       bouldernet:
         aliases:
-          - boulder-mysql
+          - boulder-mariadb
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-    # Send slow queries to a table so we can check for them in the
-    # integration tests. For now we ignore queries not using indexes,
-    # because that seems to trigger based on the optimizer's choice to not
-    # use an index for certain queries, particularly when tables are still
-    # small.
-    command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
-    logging:
-      driver: none
 
   bproxysql:
-    image: proxysql/proxysql:2.5.4
+    image: proxysql/proxysql:2.7.2
     # The --initial flag force resets the ProxySQL database on startup. By
     # default, ProxySQL ignores new configuration if the database already
     # exists. Without this flag, new configuration wouldn't be applied until you
@@ -101,14 +106,14 @@ services:
     volumes:
       - ./test/:/test/:cached
     depends_on:
-      - bmysql
+      - bmariadb
     networks:
       bouldernet:
         aliases:
           - boulder-proxysql
 
   bredis_1:
-    image: redis:6.2.7
+    image: redis:7.0.15
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
@@ -117,7 +122,7 @@ services:
         ipv4_address: 10.77.77.4
 
   bredis_2:
-    image: redis:6.2.7
+    image: redis:7.0.15
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
@@ -126,7 +131,7 @@ services:
         ipv4_address: 10.77.77.5
 
   bconsul:
-    image: hashicorp/consul:1.15.4
+    image: hashicorp/consul:1.22.6
     volumes:
      - ./test/:/test/:cached
     networks:
@@ -135,14 +140,61 @@ services:
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
   bjaeger:
-    image: jaegertracing/all-in-one:1.50
+    image: jaegertracing/all-in-one:1.76.0
     networks:
       - bouldernet
 
   bpkimetal:
-    image: ghcr.io/pkimetal/pkimetal:v1.20.0
+    image: ghcr.io/pkimetal/pkimetal:v1.41.0
+    volumes:
+      - pkimetal-socket:/var/run/pkimetal
+      - ./test/pkimetal-config.yaml:/config/config.yaml:ro
+    network_mode: none
+
+  bvitess:
+    # The `letsencrypt/boulder-vtcomboserver:latest` tag is automatically built
+    # in local dev environments. In CI a specific BOULDER_VTCOMBOSERVER_TAG is
+    # passed, and it is pulled with `docker compose pull`.
+    image: letsencrypt/boulder-vtcomboserver:${BOULDER_VTCOMBOSERVER_TAG:-latest}
+    build:
+      context: test/vtcomboserver/
+    volumes:
+      - ./:/boulder/
+    environment:
+      # By specifying KEYSPACES vttestserver will create the corresponding
+      # databases on startup.
+      KEYSPACES: boulder_sa,incidents_sa,boulder_sa_next,incidents_sa_next,mtcmeta_44947_4_1_0_44
+      NUM_SHARDS: 1,1,1,1,1
+    healthcheck:
+      # Make sure the service is up and the tables are created. Use `serials` because it happens
+      # to be last in the SQL initialization files, so if it exists the other tables do too.
+      # Note that the mysql command issues some queries on startup that result in this spurious
+      # logging from bvitess:
+      #   You have an error in your SQL syntax; check the manual that corresponds to your MySQL
+      #   server version for the right syntax to use near '$$ from dual limit 10001'
+      test: [ "CMD", "mysql", "-h", "127.0.0.1", "-P", "33577", "-D", "boulder_sa",
+                "-e", "SELECT 1 FROM serials"]
+      interval: 2s
+      timeout: 30s
+      retries: 10
+      start_period: 10s
+      start_interval: 2s
     networks:
-      - bouldernet
+      bouldernet:
+        aliases:
+          - boulder-vitess
+
+volumes:
+  mtc-data:
+  # Shared between bpkimetal (which listens on a unix socket here) and any
+  # boulder container that needs to reach pkimetal. Owned by uid 1001 so
+  # the default pkimetal user in the container can create the socket.
+  pkimetal-socket:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=1001,gid=1001,mode=0755"
 
 networks:
   # This network represents the data-center internal network. It is used for

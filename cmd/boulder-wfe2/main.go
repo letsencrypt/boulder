@@ -14,18 +14,21 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
-	emailpb "github.com/letsencrypt/boulder/email/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
+	noncebalancerv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	emailpb "github.com/letsencrypt/boulder/salesforce/email/proto"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/letsencrypt/boulder/wfe2"
@@ -98,10 +101,14 @@ type Config struct {
 
 		Features features.Config
 
-		// DirectoryCAAIdentity is used for the /directory response's "meta"
-		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
-		// configuration value (this value is the one used to enforce CAA)
+		// DirectoryCAAIdentity is the CA's issuer domain name, used for:
+		//   1. /directory response: included in the "meta" caaIdentities field.
+		//   2. dns-persist-01 challenges: included in the issuer-domain-names field.
+		//
+		// Must match the VA's IssuerDomain. A mismatch will cause CAA and
+		// dns-persist-01 validation failures.
 		DirectoryCAAIdentity string `validate:"required,fqdn"`
+
 		// DirectoryWebsite is used for the /directory response's "meta" element's
 		// "website" field.
 		DirectoryWebsite string `validate:"required,url"`
@@ -114,6 +121,14 @@ type Config struct {
 		// header of the WFE1 instance and the legacy 'reg' path component. This
 		// will differ in configuration for production and staging.
 		LegacyKeyIDPrefix string `validate:"required,url"`
+
+		// AccountURIPrefix is used to construct the "accounturi" field of
+		// dns-persist-01 challenges (e.g. "https://acme-v02.api.letsencrypt.org/acme/acct/").
+		// MUST match the first entry of the VA's AccountURIPrefixes field.
+		//
+		// TODO(#8724): Once this field has been set in Production we can make
+		// it required.
+		AccountURIPrefix string `validate:"omitempty,url,endswith=/"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -134,6 +149,12 @@ type Config struct {
 		// contacts than this are rejected. Default: 10.
 		MaxContactsPerRegistration int `validate:"omitempty,min=1"`
 
+		// MaxCumulativeIdentifierLength is the maximum allowed total bytes of
+		// all identifier values in a new-order request. Default (0) means no limit.
+		MaxCumulativeIdentifierLength int `validate:"omitempty,min=1"`
+
+		// AccountCache is deprecated, and has no effect on WFE behavior.
+		// TODO(#8795): Remove this.
 		AccountCache *CacheConfig
 
 		Limiter struct {
@@ -151,11 +172,15 @@ type Config struct {
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
-			// this field is not set, all requesters will be subject to the
-			// default rate limits. Overrides for the Failed Authorizations
-			// overrides passed in this file must be identical to those in the
-			// RA.
+			// neither this field nor OverridesFromDB is set, all requesters
+			// will be subject to the default rate limits. Overrides for the
+			// Failed Authorizations overrides passed in this file must be
+			// identical to those in the RA.
 			Overrides string
+
+			// OverridesFromDB causes the WFE and RA to retrieve rate limit
+			// overrides from the database, instead of from a file.
+			OverridesFromDB bool
 		}
 
 		// CertProfiles is a map of acceptable certificate profile names to
@@ -182,6 +207,22 @@ type Config struct {
 			// to enable the pausing feature.
 			URL string `validate:"omitempty,required_with=HMACKey JWTLifetime,url,startswith=https://,endsnotwith=/"`
 		}
+
+		// BlockedOnDemandLabels is a case-insensitive list of subdomain labels that
+		// frequently appear in on-demand requests for certificates as a result of
+		// automated crawler activity. For example, a vulnerability-seeking bot
+		// might see a cert for example.com in CT, and attempt to access
+		// asdf.example.com. The webserver receiving that request uses us to issue
+		// an on-demand cert for that name, when then appears in CT. Moments later,
+		// the crawler attempts to access asdf.asdf.example.com, and the cycle
+		// repeats. We don't want to issue certs for names that look like they
+		// result from this process.
+		BlockedOnDemandLabels []string `validate:"omitempty"`
+
+		// BlockedAccountsFile is the path to a YAML file listing regIDs which are
+		// blocked from requesting issuance of new certificates. If empty, no
+		// accounts are blocked.
+		BlockedAccountsFile string `validate:"omitempty"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -191,9 +232,61 @@ type Config struct {
 	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
+// CacheConfig is deprecated.
+// TODO(#8795): Remove this.
 type CacheConfig struct {
 	Size int
 	TTL  config.Duration
+}
+
+type blockedAccountsPolicy struct {
+	BlockedAccountIDs []int64 `yaml:"BlockedAccountIDs"`
+	Message           string  `yaml:"Message"`
+}
+
+// accountBlocker implements wfe2.AccountBlocker.
+type accountBlocker struct {
+	message string
+	blocked map[int64]bool
+}
+
+var _ wfe2.AccountBlocker = new(accountBlocker)
+
+func (b *accountBlocker) CheckAccountID(id int64) error {
+	if b.blocked[id] {
+		return berrors.UnauthorizedError("%s", b.message)
+	}
+	return nil
+}
+
+// loadBlockedAccountsFile parses the YAML file at the given path and returns
+// the set of blocked account IDs it contains.
+// TODO: Update the schema to handle multiple lists each with their own
+// message string.
+func loadBlockedAccountsFile(f string) (*accountBlocker, error) {
+	configBytes, err := os.ReadFile(f)
+	if err != nil {
+		return nil, err
+	}
+
+	var policy blockedAccountsPolicy
+	err = strictyaml.Unmarshal(configBytes, &policy)
+	if err != nil {
+		return nil, err
+	}
+
+	blocked := make(map[int64]bool, 0)
+	for _, id := range policy.BlockedAccountIDs {
+		if id <= 0 {
+			return nil, fmt.Errorf("malformed BlockedAccountIDs entry, not a positive integer: %d", id)
+		}
+		blocked[id] = true
+	}
+
+	return &accountBlocker{
+		message: policy.Message,
+		blocked: blocked,
+	}, nil
 }
 
 // loadChain takes a list of filenames containing pem-formatted certificates,
@@ -261,7 +354,7 @@ func main() {
 	}
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	clk := clock.New()
 
@@ -303,9 +396,11 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 	gnc := nonce.NewGetter(getNonceConn)
 
-	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme {
+	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme &&
+		c.WFE.RedeemNonceService.SRVResolver != noncebalancerv1.SRVResolverScheme {
 		cmd.Fail(fmt.Sprintf(
-			"'redeemNonceService.SRVResolver' must be set to %q", noncebalancer.SRVResolverScheme),
+			"'redeemNonceService.SRVResolver' must be set to %q or %q",
+			noncebalancer.SRVResolverScheme, noncebalancerv1.SRVResolverScheme),
 		)
 	}
 	redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, stats, clk)
@@ -326,6 +421,7 @@ func main() {
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
 	var limiterRedis *bredis.Ring
+	overridesRefresherShutdown := func() {}
 	if c.WFE.Limiter.Defaults != "" {
 		// Setup rate limiting.
 		limiterRedis, err = bredis.NewRingFromConfig(*c.WFE.Limiter.Redis, stats, logger)
@@ -334,20 +430,27 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides)
+		if c.WFE.Limiter.OverridesFromDB {
+			if c.WFE.Limiter.Overrides != "" {
+				cmd.Fail("OverridesFromDB and an overrides file were both defined, but are mutually exclusive")
+			}
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromDatabase(c.WFE.Limiter.Defaults, sac.GetEnabledRateLimitOverrides, stats, logger)
+		} else {
+			txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats, logger)
+		}
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+
+		// The 30 minute period here must be kept in sync with the promise
+		// (successCommentBody) made to requesters in sfe/overridesimporter.go
+		overridesRefresherShutdown = txnBuilder.NewRefresher(30 * time.Minute)
 	}
 
-	var accountGetter wfe2.AccountGetter
-	if c.WFE.AccountCache != nil {
-		accountGetter = wfe2.NewAccountCache(sac,
-			c.WFE.AccountCache.Size,
-			c.WFE.AccountCache.TTL.Duration,
-			clk,
-			stats)
-	} else {
-		accountGetter = sac
+	var acctBlocker wfe2.AccountBlocker
+	if c.WFE.BlockedAccountsFile != "" {
+		acctBlocker, err = loadBlockedAccountsFile(c.WFE.BlockedAccountsFile)
+		cmd.FailOnError(err, "Couldn't load blocked accounts file")
 	}
+
 	wfe, err := wfe2.NewWebFrontEndImpl(
 		stats,
 		clk,
@@ -358,27 +461,30 @@ func main() {
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
 		c.WFE.MaxContactsPerRegistration,
+		c.WFE.MaxCumulativeIdentifierLength,
 		rac,
 		sac,
 		eec,
 		gnc,
 		rnc,
 		noncePrefixKey,
-		accountGetter,
 		limiter,
 		txnBuilder,
 		c.WFE.CertProfiles,
 		unpauseSigner,
 		c.WFE.Unpause.JWTLifetime.Duration,
 		c.WFE.Unpause.URL,
+		c.WFE.BlockedOnDemandLabels,
+		acctBlocker,
+		c.WFE.DirectoryCAAIdentity,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
-	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
+	wfe.AccountURIPrefix = c.WFE.AccountURIPrefix
 
 	if c.WFE.ListenAddress == "" {
 		cmd.Fail("HTTP listen address is not configured")
@@ -413,6 +519,7 @@ func main() {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
+		overridesRefresherShutdown()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
 		limiterRedis.StopLookups()

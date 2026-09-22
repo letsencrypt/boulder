@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/jmhodges/clock"
@@ -140,19 +142,19 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 
 // IssuerConfig describes the constraints on and URLs used by a single issuer.
 type IssuerConfig struct {
-	// Active determines if the issuer can be used to sign precertificates. All
-	// issuers, regardless of this field, can be used to sign final certificates
-	// (for which an issuance token is presented) and CRLs.
-	// All Active issuers of a given key type (RSA or ECDSA) are part of a pool
+	// Profiles is the list of profiles for which this issuer is willing to issue.
+	// The names listed here must match the names of configured profiles (see
+	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's
+	// ProfileConfig). If Profiles is not empty then the issuer can be used
+	// to sign precertificates and final certificates. All issuers, regardless
+	// if this field is empty or not, can be used to sign CRLs. All issuers
+	// with a profile(s) of a given key type (RSA or ECDSA) are part of a pool
 	// and each precertificate will be issued randomly from a selected pool.
 	// The selection of which pool depends on the precertificate's key algorithm.
-	Active bool
+	Profiles []string `validate:"dive,alphanum,min=1,max=32"`
 
 	IssuerURL  string `validate:"required,url"`
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
-
-	// TODO(#8177): Remove this.
-	OCSPURL string `validate:"omitempty,url"`
 
 	// Number of CRL shards. Must be positive, but can be 1 for no sharding.
 	CRLShards int `validate:"required,min=1"`
@@ -188,7 +190,6 @@ type Issuer struct {
 
 	keyAlg x509.PublicKeyAlgorithm
 	sigAlg x509.SignatureAlgorithm
-	active bool
 
 	// Used to set the Authority Information Access caIssuers URL in issued
 	// certificates.
@@ -199,37 +200,26 @@ type Issuer struct {
 
 	crlShards int
 
+	// profiles is a list of the names of profiles that this issuer is willing to
+	// issue for.
+	profiles []string
+
 	clk clock.Clock
 }
 
 // newIssuer constructs a new Issuer from the in-memory certificate and signer.
 // It exists as a helper for LoadIssuer to make testing simpler.
 func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk clock.Clock) (*Issuer, error) {
-	var keyAlg x509.PublicKeyAlgorithm
-	var sigAlg x509.SignatureAlgorithm
-	switch k := cert.PublicKey.(type) {
-	case *rsa.PublicKey:
-		keyAlg = x509.RSA
-		sigAlg = x509.SHA256WithRSA
-	case *ecdsa.PublicKey:
-		keyAlg = x509.ECDSA
-		switch k.Curve {
-		case elliptic.P256():
-			sigAlg = x509.ECDSAWithSHA256
-		case elliptic.P384():
-			sigAlg = x509.ECDSAWithSHA384
-		default:
-			return nil, fmt.Errorf("unsupported ECDSA curve: %q", k.Curve.Params().Name)
-		}
-	default:
-		return nil, errors.New("unsupported issuer key type")
+	keyAlg, sigAlg, err := pubkeyParams(cert.PublicKey)
+	if err != nil {
+		return nil, err
 	}
 
 	if config.IssuerURL == "" {
-		return nil, errors.New("Issuer URL is required")
+		return nil, errors.New("issuer URL is required")
 	}
 	if config.CRLURLBase == "" {
-		return nil, errors.New("CRL URL base is required")
+		return nil, errors.New("crlURLBase is required")
 	}
 	if !strings.HasPrefix(config.CRLURLBase, "http://") {
 		return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
@@ -238,19 +228,16 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
 	}
 	if config.CRLShards <= 0 {
-		return nil, errors.New("Number of CRL shards is required")
+		return nil, errors.New("number of CRL shards is required")
 	}
 
 	// We require that all of our issuers be capable of both issuing certs and
-	// providing revocation information.
+	// providing CRL revocation information.
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
 	}
 	if cert.KeyUsage&x509.KeyUsageCRLSign == 0 {
 		return nil, errors.New("end-entity signing cert does not have keyUsage crlSign")
-	}
-	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
-		return nil, errors.New("end-entity signing cert does not have keyUsage digitalSignature")
 	}
 
 	lintSigner, err := linter.New(cert.Certificate, signer)
@@ -264,17 +251,40 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		Linter:     lintSigner,
 		keyAlg:     keyAlg,
 		sigAlg:     sigAlg,
-		active:     config.Active,
 		issuerURL:  config.IssuerURL,
 		crlURLBase: config.CRLURLBase,
 		crlShards:  config.CRLShards,
+		profiles:   config.Profiles,
 		clk:        clk,
 	}
 	return i, nil
 }
 
-// KeyType returns either x509.RSA or x509.ECDSA, depending on whether the
-// issuer has an RSA or ECDSA keypair. This is useful for determining which
+// pubkeyParams returns a PublicKeyAlgorithm and SignatureAlgorithm for the input pubkey.
+func pubkeyParams(pubkey any) (x509.PublicKeyAlgorithm, x509.SignatureAlgorithm, error) {
+	switch k := pubkey.(type) {
+	case *mldsa.PublicKey:
+		return x509.MLDSA, x509.MLDSA44, nil
+	case *rsa.PublicKey:
+		return x509.RSA, x509.SHA256WithRSA, nil
+	case *ecdsa.PublicKey:
+		switch k.Curve {
+		case elliptic.P256():
+			return x509.ECDSA, x509.ECDSAWithSHA256, nil
+		case elliptic.P384():
+			return x509.ECDSA, x509.ECDSAWithSHA384, nil
+		default:
+			return x509.UnknownPublicKeyAlgorithm, x509.UnknownSignatureAlgorithm,
+				fmt.Errorf("unsupported ECDSA curve: %q", k.Curve.Params().Name)
+		}
+	default:
+		return x509.UnknownPublicKeyAlgorithm, x509.UnknownSignatureAlgorithm,
+			errors.New("unsupported issuer key type")
+	}
+}
+
+// KeyType returns x509.RSA, x509.ECDSA, or x509.MLDSA depending on the
+// keypair of the issuer. This is useful for determining which
 // issuance requests should be routed to this issuer.
 func (i *Issuer) KeyType() x509.PublicKeyAlgorithm {
 	return i.keyAlg
@@ -283,7 +293,7 @@ func (i *Issuer) KeyType() x509.PublicKeyAlgorithm {
 // IsActive is true if the issuer is willing to issue precertificates, and false
 // if the issuer is only willing to issue final certificates and CRLs.
 func (i *Issuer) IsActive() bool {
-	return i.active
+	return len(i.profiles) > 0
 }
 
 // Name provides the Common Name specified in the issuer's certificate.
@@ -294,6 +304,11 @@ func (i *Issuer) Name() string {
 // NameID provides the NameID of the issuer's certificate.
 func (i *Issuer) NameID() NameID {
 	return i.Cert.NameID()
+}
+
+// Profiles returns the set of profiles that this issuer can issue for.
+func (i *Issuer) Profiles() []string {
+	return slices.Clone(i.profiles)
 }
 
 // LoadIssuer constructs a new Issuer, loading its certificate from disk and its
@@ -345,10 +360,14 @@ func loadSigner(location IssuerLoc, pubkey crypto.PublicKey) (crypto.Signer, err
 		pkcs11Config = location.PKCS11
 	}
 
-	if pkcs11Config.Module == "" ||
-		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" {
-		return nil, fmt.Errorf("missing a field in pkcs11Config %#v", pkcs11Config)
+	if pkcs11Config.Module == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: Module")
+	}
+	if pkcs11Config.TokenLabel == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: TokenLabel")
+	}
+	if pkcs11Config.PIN == "" {
+		return nil, fmt.Errorf("missing required field in pkcs11Config: PIN")
 	}
 
 	numSessions := location.NumSessions

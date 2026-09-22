@@ -565,9 +565,9 @@ func (m *DbMap) Delete(ctx context.Context, list ...interface{}) (int64, error) 
 // The hook function PostGet() will be executed after the SELECT
 // statement if the interface defines them.
 //
-// Returns a pointer to a struct that matches or nil if no row is found.
+// Returns a pointer to a struct that matches.
 //
-// Returns an error if SetKeys has not been called on the TableMap
+// Returns an error if SetKeys has not been called on the TableMap or no row is found.
 // Panics if any interface in the list has not been registered with AddTable
 func (m *DbMap) Get(ctx context.Context, i interface{}, keys ...interface{}) (interface{}, error) {
 	return get(ctx, m, m, i, keys...)

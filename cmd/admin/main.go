@@ -23,8 +23,6 @@ import (
 
 type Config struct {
 	Admin struct {
-		// DB controls the admin tool's direct connection to the database.
-		DB cmd.DBConfig
 		// TLS controls the TLS client the admin tool uses for gRPC connections.
 		TLS cmd.TLSConfig
 
@@ -76,6 +74,10 @@ func main() {
 		"dump-limit-overrides":   &subcommandDumpEnabledOverrides{},
 		"toggle-limit-override":  &subcommandToggleOverride{},
 		"add-limit-override":     &subcommandAddOverride{},
+		"create-incident":        &subcommandCreateIncident{},
+		"list-incidents":         &subcommandListIncidents{},
+		"update-incident":        &subcommandUpdateIncident{},
+		"load-incident-serials":  &subcommandLoadIncidentSerials{},
 	}
 
 	defaultUsage := flag.Usage
@@ -132,19 +134,19 @@ func main() {
 	cmd.FailOnError(err, "creating admin object")
 
 	// Finally, run the selected subcommand.
-	if a.dryRun {
-		a.log.AuditInfof("admin tool executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
+	if *dryRun {
+		a.log.Infof("admin tool executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
 	} else {
-		a.log.AuditInfof("admin tool executing with the following arguments: %q", strings.Join(os.Args, " "))
+		a.log.AuditInfo("admin tool beginning execution", map[string]any{"cmd": strings.Join(os.Args, " ")})
 	}
 
 	err = subcommand.Run(context.Background(), a)
 	cmd.FailOnError(err, "executing subcommand")
 
-	if a.dryRun {
-		a.log.AuditInfof("admin tool has successfully completed executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
+	if *dryRun {
+		a.log.Infof("admin tool has successfully completed executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
 		a.log.Info("Dry run complete. Pass -dry-run=false to mutate the database.")
 	} else {
-		a.log.AuditInfof("admin tool has successfully completed executing with the following arguments: %q", strings.Join(os.Args, " "))
+		a.log.AuditInfo("admin tool completed successfully", map[string]any{"cmd": strings.Join(os.Args, " ")})
 	}
 }

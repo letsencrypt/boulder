@@ -129,7 +129,7 @@ message UnpauseAccountResponse {
   int64 count = 1;
 }
 
-message AddRateLimitOverrideRequest {
+message RateLimitOverride {
   int64 limitEnum      = 1;
   string bucketKey = 2;
   string comment    = 3;
@@ -138,7 +138,13 @@ message AddRateLimitOverrideRequest {
   int64 burst      = 6;
 }
 
+
+message AddRateLimitOverrideRequest {
+  RateLimitOverride override = 1;
+}
+
 message AddRateLimitOverrideResponse {
   bool inserted = 1;
   bool enabled = 2;
+  RateLimitOverride existing = 3;
 }

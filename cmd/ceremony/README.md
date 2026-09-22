@@ -11,7 +11,7 @@ ceremony --config path/to/config.yml
 - `root`: generates a signing key on HSM and creates a self-signed root certificate that uses the generated key, outputting a PEM public key, and a PEM certificate. After generating such a root for public trust purposes, it should be submitted to [as many root programs as is possible/practical](https://github.com/daknob/root-programs).
 - `intermediate`: creates a intermediate certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 - `cross-csr`: creates a CSR for signing by a third party, outputting a PEM CSR.
-- `cross-certificate`: issues a certificate for one root, signed by another root. This is distinct from an intermediate because there is no path length constraint and there are no EKUs.
+- `cross-certificate`: issues a certificate for one CA, signed by another CA. Although this does produce a Subordinate CA Certificate (an "intermediate"), this is a distinct ceremony because the resulting certificate must reflect the existing certificate in certain critical ways.
 - `key`: generates a signing key on HSM, outputting a PEM public key
 - `crl`: creates a CRL with the IDP extension and `onlyContainsCACerts = true` from the provided profile and signs it using a signing key already on a HSM, outputting a PEM CRL
 
@@ -40,7 +40,7 @@ This tool always generates key pairs such that the public and private key are bo
     | Field | Description |
     | --- | --- |
     | `type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
-    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
+    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-256`, `P-384`, or `P-521`. |
     | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`. |
 
 - `outputs`: object containing paths to write outputs.
@@ -200,9 +200,10 @@ certificate-profile:
         - Digital Signature
         - Cert Sign
         - CRL Sign
+    ekus: server
 ```
 
-This config generates a cross-sign of the already-created "CA root 2", issued from the similarly-already-created "CA root". The subject key used is taken from `/home/user/root-signing-pub-2.pem`. The EKUs and Subject Key Identifier are taken from `/home/user/root-cert-2-cross.pem`. The issuer is `/home/user/root-cert.pem`, and the Issuer and Authority Key Identifier fields are taken from that cert. The resulting certificate is written to `/home/user/root-cert-2-cross.pem`.
+This config generates a cross-sign of the already-created "CA root 2", issued from the similarly-already-created "CA root". The subject key used is taken from `/home/user/root-signing-pub-2.pem`. The Subject Key Identifier is taken from `/home/user/root-cert-2-cross.pem`. The issuer is `/home/user/root-cert.pem`, and the Issuer and Authority Key Identifier fields are taken from that cert. The resulting certificate is written to `/home/user/root-cert-2-cross.pem`.
 
 ### Cross-CSR ceremony
 
@@ -267,7 +268,7 @@ This config generates a CSR signed by a key in the HSM, identified by the object
     | Field | Description |
     | --- | --- |
     | `type` | Specifies the type of key to be generated, either `rsa` or `ecdsa`. If `rsa` the generated key will have an exponent of 65537 and a modulus length specified by `rsa-mod-length`. If `ecdsa` the curve is specified by `ecdsa-curve`. |
-    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-224`, `P-256`, `P-384`, or `P-521`. |
+    | `ecdsa-curve` | Specifies the ECDSA curve to use when generating key, either `P-256`, `P-384`, or `P-521`. |
     | `rsa-mod-length` | Specifies the length of the RSA modulus, either `2048` or `4096`. |
 
 - `outputs`: object containing paths to write outputs.
@@ -355,6 +356,7 @@ The certificate profile defines a restricted set of fields that are used to gene
 
 | Field | Description |
 | --- | --- |
+| `policy-url` | Required. The URL of a specific subsection of a specific version of our markdown CPS, e.g. `https://github.com/letsencrypt/cp-cps/blob/v6.1/CP-CPS.md#root-ca-certificate-profile`. |
 | `signature-algorithm` | Specifies the signing algorithm to use, one of `SHA256WithRSA`, `SHA384WithRSA`, `SHA512WithRSA`, `ECDSAWithSHA256`, `ECDSAWithSHA384`, `ECDSAWithSHA512` |
 | `common-name` | Specifies the subject commonName |
 | `organization` | Specifies the subject organization |
@@ -365,3 +367,4 @@ The certificate profile defines a restricted set of fields that are used to gene
 | `issuer-url` | Specifies the AIA caIssuer URL |
 | `policies` | Specifies contents of a certificatePolicies extension. Should contain a list of policies with the field `oid`, indicating the policy OID. |
 | `key-usages` | Specifies list of key usage bits should be set, list can contain `Digital Signature`, `CRL Sign`, and `Cert Sign` |
+| `ekus` | Must be `none`, `server`, or `both`. |

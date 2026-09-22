@@ -6,12 +6,19 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/eggsampler/acme/v3"
 
@@ -144,31 +151,139 @@ func TestIssuanceProfiles(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")
 
-	// Create a set of identifiers to request.
-	idents := []acme.Identifier{
-		{Type: "dns", Value: random_domain()},
-	}
-
 	// Get one cert for each profile that we know the test server advertises.
-	res, err := authAndIssue(client, key, idents, true, "legacy")
+	res, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "legacy")
 	test.AssertNotError(t, err, "failed to issue under legacy profile")
 	test.AssertEquals(t, res.Order.Profile, "legacy")
 	legacy := res.certs[0]
 
-	res, err = authAndIssue(client, key, idents, true, "modern")
+	res, err = authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "modern")
 	test.AssertNotError(t, err, "failed to issue under modern profile")
 	test.AssertEquals(t, res.Order.Profile, "modern")
 	modern := res.certs[0]
 
-	// Check that each profile worked as expected.
-	test.AssertEquals(t, legacy.Subject.CommonName, idents[0].Value)
-	test.AssertEquals(t, modern.Subject.CommonName, "")
+	res, err = authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "shortlived")
+	test.AssertNotError(t, err, "failed to issue under shortlived profile")
+	test.AssertEquals(t, res.Order.Profile, "shortlived")
+	shortlived := res.certs[0]
 
-	test.AssertDeepEquals(t, legacy.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})
+	// Check that each profile worked as expected.
+	test.Assert(t, len(legacy.Subject.CommonName) > 0, "legacy profile should have CN")
+	test.AssertEquals(t, modern.Subject.CommonName, "")
+	test.AssertEquals(t, shortlived.Subject.CommonName, "")
+
+	test.AssertDeepEquals(t, legacy.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
 	test.AssertDeepEquals(t, modern.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
+	test.AssertDeepEquals(t, shortlived.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
 
 	test.AssertEquals(t, len(legacy.SubjectKeyId), 20)
 	test.AssertEquals(t, len(modern.SubjectKeyId), 0)
+	test.AssertEquals(t, len(shortlived.SubjectKeyId), 0)
+
+	test.AssertEquals(t, legacy.NotAfter.Add(time.Second).Sub(legacy.NotBefore), 90*24*time.Hour)
+	test.AssertEquals(t, modern.NotAfter.Add(time.Second).Sub(modern.NotBefore), 45*24*time.Hour)
+	test.AssertEquals(t, shortlived.NotAfter.Add(time.Second).Sub(shortlived.NotBefore), 160*time.Hour)
+}
+
+// TestIssuanceMTC issues from an MTC profile.
+func TestIssuanceMTC(t *testing.T) {
+	t.Skip("temporarily disabled until an S3 backend is available in CI again")
+	t.Parallel()
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("MTC issuance only available in config-next")
+	}
+
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating keypair: %s", err)
+	}
+
+	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
+
+	_, err = authAndIssue(client, key, idents, true, "mtcshortlived")
+	// "finalized order timeout" is as far as we get for now. Once we are collecting
+	// signatures and constructing standalone certificates, we'll expect this to succeed.
+	if err == nil || !strings.Contains(err.Error(), "finalized order timeout") {
+		t.Fatalf("issuing certificate: expected 'finalized order timeout', got %q", err)
+	}
+
+	// The mtca serves each checkpoint as soon as it is sequenced, and the
+	// mtpublisher then submits it to the sunlight mirror, so the mirror's
+	// checkpoint must converge on the served tree head. Poll until they agree.
+	origin := "oid/1.3.6.1.4.1.44947.4.1.0.44"
+	originHash := sha256.Sum256([]byte(origin))
+	localURL := "http://boulder-minio:9000/boulder-mtc-tiles/44947.4.1/44/checkpoint"
+	mirrorURL := "http://boulder-minio:9000/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
+
+	deadline := time.Now().Add(5 * time.Second)
+	var localText string
+	var localSignatures string
+	var mirrorSignatures string
+	for {
+		var mirrorText string
+		localText, localSignatures = checkpointNote(t, localURL)
+		mirrorText, mirrorSignatures = checkpointNote(t, mirrorURL)
+		if localText != "" && localText == mirrorText {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("served checkpoint %q and mirror checkpoint %q have not converged", localText, mirrorText)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// The checkpoint names the issuance log and covers at least the genesis
+	// null entry and the entry issued above.
+	lines := strings.Split(localText, "\n")
+	if lines[0] != origin {
+		t.Errorf("checkpoint origin = %q, want %q", lines[0], origin)
+	}
+	size, err := strconv.Atoi(lines[1])
+	if err != nil || size < 2 {
+		t.Errorf("checkpoint tree size = %q, want at least 2", lines[1])
+	}
+
+	// The served checkpoint carries only the MTCA's signature. The mirror's
+	// checkpoint carries that same line.
+	caLine := "— oid/1.3.6.1.4.1.44947.4.1 "
+	if strings.Count(localSignatures, "\n") != 1 || !strings.HasPrefix(localSignatures, caLine) {
+		t.Errorf("served checkpoint signatures %q, want one line by the MTCA", localSignatures)
+	}
+	if !strings.Contains(mirrorSignatures, localSignatures) {
+		t.Errorf("mirror checkpoint signatures %q do not include the served MTCA line %q", mirrorSignatures, localSignatures)
+	}
+}
+
+// checkpointNote fetches a signed checkpoint note from url and returns its text
+// and its signature lines. It returns empty strings while the checkpoint does
+// not exist yet.
+func checkpointNote(t *testing.T, url string) (string, string) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("fetching %s: %s", url, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading %s: %s", url, err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return "", ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fetching %s: status %d", url, resp.StatusCode)
+	}
+	text, signatureLines, ok := strings.Cut(string(body), "\n\n")
+	if !ok {
+		t.Fatalf("checkpoint at %s has no signature lines: %q", url, body)
+	}
+	return text, signatureLines
 }
 
 // TestIPShortLived verifies that we will allow IP address identifiers only in
@@ -199,7 +314,7 @@ func TestIPShortLived(t *testing.T) {
 	if err == nil {
 		t.Error("issued for IP address identifier under legacy profile")
 	}
-	if !strings.Contains(err.Error(), "Profile \"legacy\" does not permit ip type identifiers") {
+	if !strings.Contains(err.Error(), "Profile \"legacy\" does not permit IP address identifiers") {
 		t.Fatalf("issuing under legacy profile failed for the wrong reason: %s", err)
 	}
 
@@ -207,7 +322,7 @@ func TestIPShortLived(t *testing.T) {
 	if err == nil {
 		t.Error("issued for IP address identifier under modern profile")
 	}
-	if !strings.Contains(err.Error(), "Profile \"modern\" does not permit ip type identifiers") {
+	if !strings.Contains(err.Error(), "Profile \"modern\" does not permit IP address identifiers") {
 		t.Fatalf("issuing under legacy profile failed for the wrong reason: %s", err)
 	}
 

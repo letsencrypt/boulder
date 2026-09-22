@@ -10,30 +10,27 @@ import "google/protobuf/duration.proto";
 
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 service StorageAuthorityReadOnly {
-  rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
-  rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
-  rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
-  rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
-  rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
-  rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
+  rpc GetSerialsMetadata(Serials) returns (SerialsMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
-  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetValidOrderAuthorizations2(GetOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
+  rpc ListIncidents(google.protobuf.Empty) returns (Incidents) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
@@ -45,30 +42,27 @@ service StorageAuthorityReadOnly {
 // StorageAuthority provides full read/write access to the database.
 service StorageAuthority {
   // Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
-  rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
-  rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
-  rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
-  rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
-  rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
-  rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
+  rpc GetSerialsMetadata(Serials) returns (SerialsMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
-  rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetValidOrderAuthorizations2(GetOrderAuthorizationsRequest) returns (Authorizations) {}
+  rpc GetOrderAuthorizations(GetOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
+  rpc ListIncidents(google.protobuf.Empty) returns (Incidents) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
@@ -88,6 +82,7 @@ service StorageAuthority {
   rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
+  rpc SetAuthzProcessing(AuthorizationID2) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
@@ -99,6 +94,17 @@ service StorageAuthority {
   rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
   rpc DisableRateLimitOverride(DisableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
   rpc EnableRateLimitOverride(EnableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
+  rpc RevokeAuthorizationsFor(RevokeAuthorizationsForRequest) returns (RevokeAuthorizationsForResponse) {}
+
+  // Getters which must read from the primary database.
+  rpc GetLatestRevokedCertByShard(GetRevokedCertsByShardRequest) returns (core.CRLEntry) {}
+}
+
+// StorageAuthorityAdmin exposes those SA methods exclusive to the admin tool.
+service StorageAuthorityAdmin {
+  rpc CreateIncident(CreateIncidentRequest) returns (Incident) {}
+  rpc UpdateIncident(UpdateIncidentRequest) returns (Incident) {}
+  rpc AddSerialsToIncident(stream AddSerialsToIncidentRequest) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {
@@ -107,10 +113,6 @@ message RegistrationID {
 
 message JSONWebKey {
   bytes jwk = 1;
-}
-
-message AuthorizationID {
-  string id = 1;
 }
 
 message GetValidAuthorizationsRequest {
@@ -125,6 +127,14 @@ message GetValidAuthorizationsRequest {
 
 message Serial {
   string serial = 1;
+}
+
+message Serials {
+  repeated string serials = 1;
+}
+
+message SerialsMetadata {
+  repeated SerialMetadata metadata = 1;
 }
 
 message SerialMetadata {
@@ -173,12 +183,6 @@ message CountFQDNSetsRequest {
   int64 limit = 4;
 }
 
-message FQDNSetExistsRequest {
-  // Next unused field number: 3
-  reserved 1; // Previously dnsNames
-  repeated core.Identifier identifiers = 2;
-}
-
 message Exists {
   bool exists = 1;
 }
@@ -217,6 +221,8 @@ message NewOrderRequest {
   google.protobuf.Timestamp expires = 5;
   reserved 3; // Previously dnsNames
   repeated core.Identifier identifiers = 9;
+  // A list of already-existing authorization IDs that should be associated with
+  // the new Order object. This is for authorization reuse.
   repeated int64 v2Authorizations = 4;
   string certificateProfileName = 7;
   // Replaces is the ARI certificate Id that this order replaces.
@@ -227,9 +233,7 @@ message NewOrderRequest {
 
 }
 
-// NewAuthzRequest starts with all the same fields as corepb.Authorization,
-// because it is replacing that type in NewOrderAndAuthzsRequest, and then
-// improves from there.
+// NewAuthzRequest represents a request to create an authorization.
 message NewAuthzRequest {
   // Next unused field number: 13
   reserved 1; // previously id
@@ -248,6 +252,11 @@ message NewAuthzRequest {
 
 message NewOrderAndAuthzsRequest {
   NewOrderRequest newOrder = 1;
+  // Authorizations to be newly created alongside the order, and associated with it.
+  // These will be combined with any reused authorizations (newOrder.v2Authorizations)
+  // to make the overall set of authorizations for the order. This field and
+  // newOrder.v2Authorizations may both be present, or only one of the two may be
+  // present, but they may not both be absent.
   repeated NewAuthzRequest newAuthzs = 2;
 }
 
@@ -256,7 +265,7 @@ message SetOrderErrorRequest {
   core.ProblemDetails error = 2;
 }
 
-message GetValidOrderAuthorizationsRequest {
+message GetOrderAuthorizationsRequest {
   int64 id = 1;
   int64 acctID = 2;
 }
@@ -285,10 +294,6 @@ message GetAuthorizationsRequest {
 
 message Authorizations {
   repeated core.Authorization authzs = 2;
-}
-
-message AuthorizationIDs {
-  repeated string ids = 1;
 }
 
 message AuthorizationID2 {
@@ -353,6 +358,38 @@ message SerialsForIncidentRequest {
   string incidentTable = 1;
 }
 
+message CreateIncidentRequest {
+  string serialTable = 1;
+  string url = 2;
+  google.protobuf.Timestamp renewBy = 3;
+}
+
+// UpdateIncidentRequest updates a subset of the metadata fields on the
+// incidents row identified by serialTable. An empty url, nil renewBy, and
+// nil enabled all mean "leave that field alone"; at least one of them must
+// be set.
+message UpdateIncidentRequest {
+  string serialTable = 1;
+  string url = 2;
+  google.protobuf.Timestamp renewBy = 3;
+  optional bool enabled = 4;
+}
+
+message AddSerialsToIncidentRequest {
+  oneof payload {
+    AddSerialsToIncidentMetadata metadata = 1;
+    AddSerialsToIncidentBatch batch = 2;
+  }
+}
+
+message AddSerialsToIncidentMetadata {
+  string serialTable = 1;
+}
+
+message AddSerialsToIncidentBatch {
+  repeated string serials = 1;
+}
+
 message IncidentSerial {
   // Next unused field number: 6
   string serial = 1;
@@ -367,18 +404,6 @@ message GetRevokedCertsByShardRequest {
   google.protobuf.Timestamp revokedBefore = 2;
   google.protobuf.Timestamp expiresAfter = 3;
   int64 shardIdx = 4;
-}
-
-message GetRevokedCertsRequest {
-  // Next unused field number: 9
-  int64 issuerNameID = 1;
-  reserved 2; // Previously expiresAfterNS
-  google.protobuf.Timestamp expiresAfter = 6; // inclusive
-  reserved 3; // Previously expiresBeforeNS
-  google.protobuf.Timestamp expiresBefore = 7; // exclusive
-  reserved 4; // Previously revokedBeforeNS
-  google.protobuf.Timestamp revokedBefore = 8;
-  reserved 5;
 }
 
 message RevocationStatus {
@@ -436,11 +461,13 @@ message RateLimitOverride {
 
 message AddRateLimitOverrideRequest {
   RateLimitOverride override = 1;
+  bool force = 2;
 }
 
 message AddRateLimitOverrideResponse {
   bool inserted = 1;
   bool enabled = 2;
+  RateLimitOverride existing = 3;
 }
 
 message EnableRateLimitOverrideRequest {
@@ -462,4 +489,14 @@ message RateLimitOverrideResponse {
   RateLimitOverride override  = 1;
   bool enabled  = 2;
   google.protobuf.Timestamp updatedAt = 3;
+}
+
+message RevokeAuthorizationsForRequest {
+  int64 registrationID = 1;
+  core.Identifier identifier = 2;
+  int64 revokeLimit = 3;
+}
+
+message RevokeAuthorizationsForResponse {
+  int64 revokedCount = 1;
 }

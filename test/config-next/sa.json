@@ -12,7 +12,10 @@
 			"dbConnectFile": "test/secrets/incidents_dburl",
 			"maxOpenConns": 100
 		},
-		"ParallelismPerRPC": 20,
+		"incidentsAdminDB": {
+			"dbConnectFile": "test/secrets/incidents_admin_dburl",
+			"maxOpenConns": 100
+		},
 		"lagFactor": "200ms",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
@@ -33,8 +36,15 @@
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
 						"admin.boulder",
+						"crl-storer.boulder",
 						"wfe.boulder",
-						"sfe.boulder"
+						"sfe.boulder",
+						"ra.boulder"
+					]
+				},
+				"sa.StorageAuthorityAdmin": {
+					"clientNames": [
+						"admin.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
@@ -46,9 +56,7 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {
-			"StoreARIReplacesInOrders": true
-		}
+		"features": {}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

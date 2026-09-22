@@ -15,8 +15,7 @@
 package cabf_smime_br
 
 import (
-	"crypto/rsa"
-
+	"github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -42,7 +41,7 @@ func NewRSAOtherKeyUsages() lint.LintInterface {
 }
 
 func (l *rsaOtherKeyUsages) CheckApplies(c *x509.Certificate) bool {
-	if !(util.IsSubscriberCert(c) && util.IsSMIMEBRCertificate(c) && util.IsExtInCert(c, util.KeyUsageOID)) {
+	if !util.IsSubscriberCert(c) || !util.IsSMIMEBRCertificate(c) || !util.IsExtInCert(c, util.KeyUsageOID) {
 		return false
 	}
 
@@ -51,7 +50,7 @@ func (l *rsaOtherKeyUsages) CheckApplies(c *x509.Certificate) bool {
 }
 
 func (l *rsaOtherKeyUsages) Execute(c *x509.Certificate) *lint.LintResult {
-	if !(util.HasKeyUsage(c, x509.KeyUsageDigitalSignature) || util.HasKeyUsage(c, x509.KeyUsageKeyEncipherment)) {
+	if !util.HasKeyUsage(c, x509.KeyUsageDigitalSignature) && !util.HasKeyUsage(c, x509.KeyUsageKeyEncipherment) {
 		if c.KeyUsage != 0 {
 			return &lint.LintResult{Status: lint.Error}
 		}

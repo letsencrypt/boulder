@@ -43,12 +43,13 @@ func runUpdater(t *testing.T, configFile string) {
 	// this new batch of CRLs.
 	resp, err := http.Post("http://localhost:4501/reset", "", bytes.NewReader([]byte{}))
 	test.AssertNotError(t, err, "opening database connection")
+	defer resp.Body.Close()
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
 	// Reset the "leasedUntil" column so this can be done alongside other
 	// updater runs without worrying about unclean state.
 	fc := clock.NewFake()
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "opening database connection")
 	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
 	test.AssertNotError(t, err, "resetting leasedUntil column")
@@ -132,7 +133,7 @@ func TestCRLPipeline(t *testing.T) {
 	configFile := path.Join(configDir, "crl-updater.json")
 
 	// Create a database connection so we can pretend to jump forward in time.
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "creating database connection")
 
 	// Issue a test certificate and save its serial number.
@@ -191,9 +192,12 @@ func TestCRLPipeline(t *testing.T) {
 	resp.Body.Close()
 
 	// Finally update the database so that the certificate expired several CRL
-	// update cycles ago. The cert should now vanish from the CRL.
+	// update cycles ago. The cert should now vanish from the CRL. The serials
+	// table must agree, since the crl-storer checks it before allowing that.
 	_, err = db.Exec("UPDATE revokedCertificates SET notAfterHour = ? WHERE serial = ?", time.Now().Add(-48*time.Hour).Truncate(time.Hour).Format(time.DateTime), serial)
 	test.AssertNotError(t, err, "updating expiry to far past")
+	_, err = db.Exec("UPDATE serials SET expires = ? WHERE serial = ?", time.Now().Add(-49*time.Hour).Format(time.DateTime), serial)
+	test.AssertNotError(t, err, "updating serial expiry to far past")
 	runUpdater(t, configFile)
 	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
 	test.AssertNotError(t, err, "s3-test-srv GET /query failed")

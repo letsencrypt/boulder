@@ -396,9 +396,6 @@ func get(ctx context.Context, m *DbMap, exec SqlExecutor, i interface{},
 	row := exec.QueryRowContext(ctx, plan.query, keys...)
 	err = row.Scan(dest...)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			err = nil
-		}
 		return nil, err
 	}
 

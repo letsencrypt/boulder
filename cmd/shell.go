@@ -24,7 +24,9 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -47,7 +49,7 @@ import (
 func init() {
 	for _, v := range os.Args {
 		if v == "--version" || v == "-version" {
-			fmt.Println(VersionString())
+			fmt.Printf("%+v", info())
 			os.Exit(0)
 		}
 	}
@@ -59,7 +61,7 @@ type mysqlLogger struct {
 }
 
 func (m mysqlLogger) Print(v ...any) {
-	m.AuditErrf("[mysql] %s", fmt.Sprint(v...))
+	m.Errf("[mysql] %s", fmt.Sprint(v...))
 }
 
 // grpcLogger implements the grpclog.LoggerV2 interface.
@@ -82,15 +84,15 @@ func (log grpcLogger) Fatalln(args ...any) {
 	os.Exit(1)
 }
 
-// Treat all gRPC error logs as potential audit events.
+// Pass through all Error level logs.
 func (log grpcLogger) Error(args ...any) {
-	log.Logger.AuditErr(fmt.Sprint(args...))
+	log.Logger.Errf("%s", fmt.Sprint(args...))
 }
 func (log grpcLogger) Errorf(format string, args ...any) {
-	log.Logger.AuditErrf(format, args...)
+	log.Logger.Errf(format, args...)
 }
 func (log grpcLogger) Errorln(args ...any) {
-	log.Logger.AuditErr(fmt.Sprintln(args...))
+	log.Logger.Errf("%s", fmt.Sprintln(args...))
 }
 
 // Pass through most Warnings, but filter out a few noisy ones.
@@ -136,7 +138,7 @@ type promLogger struct {
 }
 
 func (log promLogger) Println(args ...any) {
-	log.AuditErr(fmt.Sprint(args...))
+	log.Errf("%s", fmt.Sprint(args...))
 }
 
 type redisLogger struct {
@@ -180,7 +182,7 @@ func (l logOutput) Output(calldepth int, logline string) error {
 // is called, because gRPC's SetLogger doesn't use any locking.
 //
 // This function does not return an error, and will panic on problems.
-func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
+func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (*prometheus.Registry, blog.Logger, func(context.Context)) {
 	logger := NewLogger(logConf)
 
 	shutdown := NewOpenTelemetry(otConf, logger)
@@ -259,7 +261,7 @@ func newVersionCollector() prometheus.Collector {
 	)
 }
 
-func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
+func newStatsRegistry(addr string, logger blog.Logger) *prometheus.Registry {
 	registry := prometheus.NewRegistry()
 
 	if addr == "" {
@@ -271,6 +273,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry.MustRegister(collectors.NewProcessCollector(
 		collectors.ProcessCollectorOpts{}))
 	registry.MustRegister(newVersionCollector())
+	registry.MustRegister(version.NewCollector("boulder"))
 
 	mux := http.NewServeMux()
 	// Register the available pprof handlers. These are all registered on
@@ -302,10 +305,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	}
 	go func() {
 		err := server.ListenAndServe()
-		if err != nil {
-			logger.Errf("unable to boot debug server on %s: %v", addr, err)
-			os.Exit(1)
-		}
+		FailOnError(err, "Unable to boot debug server")
 	}()
 	return registry
 }
@@ -360,6 +360,7 @@ func AuditPanic() {
 	err := recover()
 	// No panic, no problem
 	if err == nil {
+		blog.Get().AuditInfo("Process exiting normally", info())
 		return
 	}
 	// Get the global logger if it's initialized, or create a default one if not.
@@ -369,12 +370,14 @@ func AuditPanic() {
 	// For the special type `failure`, audit log the message and exit quietly
 	fail, ok := err.(failure)
 	if ok {
-		log.AuditErr(fail.msg)
+		log.AuditErr(fail.msg, nil, nil)
 	} else {
-		// For all other values passed to `panic`, log them and a stack trace
-		log.AuditErrf("Panic caused by err: %s", err)
-
-		log.AuditErrf("Stack Trace (Current goroutine) %s", debug.Stack())
+		// For all other values (which might not be an error) passed to `panic`, log
+		// them and a stack trace
+		log.AuditErr("Panic", nil, map[string]any{
+			"panic": fmt.Sprintf("%#v", err),
+			"stack": string(debug.Stack()),
+		})
 	}
 	// Because this function is deferred as early as possible, there's no further defers to run after this one
 	// So it is safe to os.Exit to set the exit code and exit without losing any defers we haven't executed.
@@ -501,7 +504,7 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	// Register custom types for use with existing validation tags.
 	validate.RegisterCustomTypeFunc(config.DurationCustomTypeFunc, config.Duration{})
 
-	inBytes, err := io.ReadAll(in)
+	inBytes, err := io.ReadAll(core.ErrOnLimitReader(in, core.DefaultMaxRead))
 	if err != nil {
 		return err
 	}
@@ -527,9 +530,27 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	return nil
 }
 
-// VersionString produces a friendly Application version string.
-func VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", core.Command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+type buildInfo struct {
+	Command   string
+	BuildID   string
+	BuildTime string
+	GoVersion string
+	BuildHost string
+}
+
+// info produces build information about this binary
+func info() buildInfo {
+	return buildInfo{
+		Command:   core.Command(),
+		BuildID:   core.GetBuildID(),
+		BuildTime: core.GetBuildTime(),
+		GoVersion: runtime.Version(),
+		BuildHost: core.GetBuildHost(),
+	}
+}
+
+func LogStartup(logger blog.Logger) {
+	logger.AuditInfo("Process starting", info())
 }
 
 // CatchSignals blocks until a SIGTERM, SIGINT, or SIGHUP is received, then
@@ -554,4 +575,19 @@ func WaitForSignal() {
 	signal.Notify(sigChan, syscall.SIGINT)
 	signal.Notify(sigChan, syscall.SIGHUP)
 	<-sigChan
+}
+
+// PushMetrics pushes the provided Prometheus metrics to the provided
+// Pushgateway URL with the provided job name.
+func PushMetrics(jobname, pushgatewayURL string, gatherer prometheus.Gatherer, logger blog.Logger) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		logger.Warningf("error getting hostname: %s", err)
+		hostname = "unknown"
+	}
+	return push.New(pushgatewayURL, jobname).
+		Client(&http.Client{Timeout: 10 * time.Second}).
+		Gatherer(gatherer).
+		Grouping("instance", hostname).
+		Push()
 }

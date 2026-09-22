@@ -98,8 +98,6 @@ def check_challenge_dns_err(chalType):
                 c = chisel2.get_chall(authzr, challenges.HTTP01)
             elif chalType == "dns-01":
                 c = chisel2.get_chall(authzr, challenges.DNS01)
-            elif chalType == "tls-alpn-01":
-                c = chisel2.get_chall(authzr, challenges.TLSALPN01)
             else:
                 raise(Exception("Invalid challenge type requested: {0}".format(challType)))
 
@@ -129,13 +127,6 @@ def test_dns_challenge_dns_err():
     with broken DNS produces the correct problem response.
     """
     check_challenge_dns_err("dns-01")
-
-def test_tls_alpn_challenge_dns_err():
-    """
-    test_tls_alpn_challenge_dns_err tests that a TLS-ALPN-01 challenge for a domain
-    with broken DNS produces the correct problem response.
-    """
-    check_challenge_dns_err("tls-alpn-01")
 
 def test_http_challenge_broken_redirect():
     """
@@ -481,20 +472,6 @@ def test_http_challenge_timeout():
     if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
         raise(Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds())))
 
-
-def test_tls_alpn_challenge():
-    # Pick two random domains
-    domains = [random_domain(),random_domain()]
-
-    # Add A records for these domains to ensure the VA's requests are directed
-    # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
-    # responses
-    for host in domains:
-        challSrv.add_a_record(host, ["64.112.117.134"])
-    chisel2.auth_and_issue(domains, chall_type="tls-alpn-01")
-
-    for host in domains:
-        challSrv.remove_a_record(host)
 
 def test_overlapping_wildcard():
     """

@@ -22,11 +22,12 @@ type s3TestSrv struct {
 }
 
 func (srv *s3TestSrv) handleS3(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "PUT" {
+	switch r.Method {
+	case "PUT":
 		srv.handleUpload(w, r)
-	} else if r.Method == "GET" {
+	case "GET":
 		srv.handleDownload(w, r)
-	} else {
+	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
@@ -101,8 +102,9 @@ func (srv *s3TestSrv) handleReset(w http.ResponseWriter, r *http.Request) {
 
 	srv.Lock()
 	defer srv.Unlock()
+	// allShards is deliberately kept: the crl-storer compares each upload
+	// against the previous CRL, and clearing them would disable those checks.
 	srv.allSerials = make(map[string]revocation.Reason)
-	srv.allShards = make(map[string][]byte)
 
 	w.WriteHeader(http.StatusOK)
 }

@@ -142,6 +142,10 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userAgent := r.Header.Get("User-Agent")
+	// If someone sends a very long User-Agent we're only interested in logging the beginning.
+	if len(userAgent) > 100 {
+		userAgent = userAgent[:100] + "..."
+	}
 
 	logEvent := &RequestEvent{
 		RealIP:    realIP,
@@ -197,25 +201,17 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 	if logEvent.suppressed {
 		return
 	}
-	var msg string
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.AuditErrf("failed to marshal logEvent - %s - %#v", msg, err)
+		th.log.Errf("%s %s %d %d %d %s JSON={\"InternalErrors\": %q}",
+			logEvent.Method, logEvent.Endpoint, logEvent.Requester, logEvent.Code,
+			int(logEvent.Latency*1000), logEvent.RealIP,
+			fmt.Errorf("failed to marshal json log event: %w", err).Error())
 		return
 	}
 	th.log.Infof("%s %s %d %d %d %s JSON=%s",
 		logEvent.Method, logEvent.Endpoint, logEvent.Requester, logEvent.Code,
 		int(logEvent.Latency*1000), logEvent.RealIP, jsonEvent)
-}
-
-// GetClientAddr returns a comma-separated list of HTTP clients involved in
-// making this request, starting with the original requester and ending with the
-// remote end of our TCP connection (which is typically our own proxy).
-func GetClientAddr(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff + "," + r.RemoteAddr
-	}
-	return r.RemoteAddr
 }
 
 func KeyTypeToString(pub crypto.PublicKey) string {

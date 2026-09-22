@@ -65,6 +65,12 @@ func usableForPurpose(s loglist3.LogStatus, p purpose) bool {
 	return false
 }
 
+// isTestLog returns true if the log type is test is "test" or "monitoring_only".
+// The schema documents a third option, "prod", which does not currently appear in Google's lists.
+func isTestLog(log Log) bool {
+	return log.Type == "test" || log.Type == "monitoring_only"
+}
+
 // New returns a LogList of all operators and all logs parsed from the file at
 // the given path. The file must conform to the JSON Schema published by Google:
 // https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
@@ -186,10 +192,13 @@ func (ll List) forPurpose(p purpose, submitToTestLogs bool) (List, error) {
 	// interprets this as "UndefinedLogStatus", which causes usableForPurpose()
 	// to return false. To account for this, we skip this check for test logs.
 	for _, log := range ll {
-		if log.Type == "test" && !submitToTestLogs {
+		// Only consider test logs if we are submitting to test logs:
+		if isTestLog(log) && !submitToTestLogs {
 			continue
 		}
-		if log.Type != "test" && !usableForPurpose(log.State, p) {
+		// Check the log is usable for a purpose.
+		// But test logs aren't ever marked Usable.
+		if !isTestLog(log) && !usableForPurpose(log.State, p) {
 			continue
 		}
 		res = append(res, log)
@@ -217,13 +226,25 @@ func (ll List) ForTime(expiry time.Time) List {
 	return res
 }
 
-// Permute returns a new log list containing the exact same logs, but in a
-// randomly-shuffled order.
-func (ll List) Permute() List {
+// Shuffle returns a new log list containing the exact same logs, but in a
+// nearly-randomly-shuffled order. If possible, it ensures that the first two
+// logs consist of one tiled log and one non-tiled log, to boost the percentage
+// of certs which include an SCT from a static log.
+func (ll List) Shuffle() List {
 	res := slices.Clone(ll)
 	rand.Shuffle(len(res), func(i int, j int) {
 		res[i], res[j] = res[j], res[i]
 	})
+	if len(res) > 2 && res[0].Tiled == res[1].Tiled {
+		// If we have more than two logs, and both are either tiled or not,
+		// try to bring another log to the front of the list.
+		for i := 2; i < len(res); i++ {
+			if res[0].Tiled != res[i].Tiled {
+				res[0], res[i] = res[i], res[0]
+				break
+			}
+		}
+	}
 	return res
 }
 

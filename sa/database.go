@@ -13,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -201,13 +200,6 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 		}
 	}
 
-	// If a given parameter has the value "0", delete it from conf.Params.
-	omitZero := func(name string) {
-		if conf.Params[name] == "0" {
-			delete(conf.Params, name)
-		}
-	}
-
 	// Ensures that MySQL/MariaDB warnings are treated as errors. This
 	// avoids a number of nasty edge conditions we could wander into.
 	// Common things this discovers includes places where data being sent
@@ -216,25 +208,10 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 	// <https://dev.mysql.com/doc/refman/5.0/en/sql-mode.html#sql-mode-strict>.
 	setDefault("sql_mode", "'STRICT_ALL_TABLES'")
 
-	// If a read timeout is set, we set max_statement_time to 95% of that, and
-	// long_query_time to 80% of that. That way we get logs of queries that are
-	// close to timing out but not yet doing so, and our queries get stopped by
-	// max_statement_time before timing out the read. This generates clearer
-	// errors, and avoids unnecessary reconnects.
-	// To override these values, set them in the DSN, e.g.
-	// `?max_statement_time=2`. A zero value in the DSN means these won't be
-	// sent on new connections.
-	if conf.ReadTimeout != 0 {
-		// In MariaDB, max_statement_time and long_query_time are both seconds,
-		// but can have up to microsecond granularity.
-		// Note: in MySQL (which we don't use), max_statement_time is millis.
-		readTimeout := conf.ReadTimeout.Seconds()
-		setDefault("max_statement_time", fmt.Sprintf("%.6f", readTimeout*0.95))
-		setDefault("long_query_time", fmt.Sprintf("%.6f", readTimeout*0.80))
-	}
-
-	omitZero("max_statement_time")
-	omitZero("long_query_time")
+	// Omit max_statement_time and max_execution_time from the DSN. Query
+	// timeouts are managed exclusively by ProxySQL and/or Vitess.
+	delete(conf.Params, "max_statement_time")
+	delete(conf.Params, "max_execution_time")
 
 	// Finally, perform validation over all variables set by the DSN and via Boulder.
 	for k, v := range conf.Params {
@@ -272,15 +249,9 @@ func initTables(dbMap *borp.DbMap) {
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(certificateStatusModel{}, "certificateStatus").SetKeys(true, "ID")
 	dbMap.AddTableWithName(fqdnSet{}, "fqdnSets").SetKeys(true, "ID")
-	tableMap := dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
-	if !features.Get().StoreARIReplacesInOrders {
-		tableMap.ColMap("Replaces").SetTransient(true)
-	}
-
-	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz").SetKeys(false, "OrderID", "AuthzID")
+	dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
 	dbMap.AddTableWithName(orderFQDNSet{}, "orderFqdnSets").SetKeys(true, "ID")
 	dbMap.AddTableWithName(authzModel{}, "authz2").SetKeys(true, "ID")
-	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz2").SetKeys(false, "OrderID", "AuthzID")
 	dbMap.AddTableWithName(recordedSerialModel{}, "serials").SetKeys(true, "ID")
 	dbMap.AddTableWithName(lintingCertModel{}, "precertificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(keyHashModel{}, "keyHashToSerial").SetKeys(true, "ID")

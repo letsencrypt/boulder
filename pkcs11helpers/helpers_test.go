@@ -14,8 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/pkcs11"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestGetECDSAPublicKey(t *testing.T) {
@@ -151,7 +152,7 @@ func newSessionWithMock() (*Session, *MockCtx) {
 }
 
 func TestFindObjectFailsOnFailedInit(t *testing.T) {
-	ctx := MockCtx{}
+	ctx := &MockCtx{}
 	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
 		return []pkcs11.ObjectHandle{1}, false, nil
@@ -167,7 +168,7 @@ func TestFindObjectFailsOnFailedInit(t *testing.T) {
 }
 
 func TestFindObjectFailsOnFailedFindObjects(t *testing.T) {
-	ctx := MockCtx{}
+	ctx := &MockCtx{}
 	ctx.FindObjectsInitFunc = findObjectsInitOK
 	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 
@@ -181,7 +182,7 @@ func TestFindObjectFailsOnFailedFindObjects(t *testing.T) {
 }
 
 func TestFindObjectFailsOnNoHandles(t *testing.T) {
-	ctx := MockCtx{}
+	ctx := &MockCtx{}
 	ctx.FindObjectsInitFunc = findObjectsInitOK
 	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 
@@ -195,7 +196,7 @@ func TestFindObjectFailsOnNoHandles(t *testing.T) {
 }
 
 func TestFindObjectFailsOnMultipleHandles(t *testing.T) {
-	ctx := MockCtx{}
+	ctx := &MockCtx{}
 	ctx.FindObjectsInitFunc = findObjectsInitOK
 	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 
@@ -210,7 +211,7 @@ func TestFindObjectFailsOnMultipleHandles(t *testing.T) {
 }
 
 func TestFindObjectFailsOnFinalizeFailure(t *testing.T) {
-	ctx := MockCtx{}
+	ctx := &MockCtx{}
 	ctx.FindObjectsInitFunc = findObjectsInitOK
 
 	// test FindObject fails when FindObjectsFinal fails
@@ -226,7 +227,7 @@ func TestFindObjectFailsOnFinalizeFailure(t *testing.T) {
 }
 
 func TestFindObjectSucceeds(t *testing.T) {
-	ctx := MockCtx{}
+	ctx := &MockCtx{}
 	ctx.FindObjectsInitFunc = findObjectsInitOK
 	ctx.FindObjectsFinalFunc = findObjectsFinalOK
 	ctx.FindObjectsFunc = func(pkcs11.SessionHandle, int) ([]pkcs11.ObjectHandle, bool, error) {
@@ -241,7 +242,7 @@ func TestFindObjectSucceeds(t *testing.T) {
 }
 
 func TestX509Signer(t *testing.T) {
-	ctx := MockCtx{}
+	ctx := &MockCtx{}
 
 	// test that x509Signer.Sign properly converts the PKCS#11 format signature to
 	// the RFC 5480 format signature

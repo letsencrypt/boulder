@@ -4,20 +4,21 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"database/sql"
-	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	zX509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
@@ -31,12 +32,48 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/precert"
 	"github.com/letsencrypt/boulder/sa"
 )
+
+type certCheckerMetrics struct {
+	checkerLatency   prometheus.Histogram
+	checkerTimestamp prometheus.Gauge
+	checkerGoodCount prometheus.Gauge
+	checkerBadCount  prometheus.Gauge
+}
+
+func newCertCheckerMetrics(stats prometheus.Registerer) *certCheckerMetrics {
+	checkerLatency := promauto.With(stats).NewHistogram(prometheus.HistogramOpts{
+		Name: "cert_checker_latency",
+		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
+	})
+
+	checkerTimestamp := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_last_run_timestamp",
+		Help: "Timestamp of cert-checker's last run",
+	})
+
+	checkerGoodCount := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_good_count",
+		Help: "Cert-checker count of good certificates",
+	})
+
+	checkerBadCount := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "cert_checker_bad_count",
+		Help: "Cert-checker count of bad certificates",
+	})
+	return &certCheckerMetrics{
+		checkerLatency:   checkerLatency,
+		checkerTimestamp: checkerTimestamp,
+		checkerGoodCount: checkerGoodCount,
+		checkerBadCount:  checkerBadCount,
+	}
+}
 
 // For defense-in-depth in addition to using the PA & its identPolicy to check
 // domain names we also perform a check against the regex's from the
@@ -62,25 +99,9 @@ var batchSize = 1000
 type report struct {
 	begin     time.Time
 	end       time.Time
-	GoodCerts int64                  `json:"good-certs"`
-	BadCerts  int64                  `json:"bad-certs"`
-	DbErrs    int64                  `json:"db-errs"`
-	Entries   map[string]reportEntry `json:"entries"`
-}
-
-func (r *report) dump() error {
-	content, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(os.Stdout, string(content))
-	return nil
-}
-
-type reportEntry struct {
-	Valid    bool     `json:"valid"`
-	SANs     []string `json:"sans"`
-	Problems []string `json:"problems,omitempty"`
+	GoodCerts int64 `json:"good-certs"`
+	BadCerts  int64 `json:"bad-certs"`
+	DbErrs    int64 `json:"db-errs"`
 }
 
 // certDB is an interface collecting the borp.DbMap functions that the various
@@ -89,7 +110,6 @@ type reportEntry struct {
 type certDB interface {
 	Select(ctx context.Context, i any, query string, args ...any) ([]any, error)
 	SelectOne(ctx context.Context, i any, query string, args ...any) error
-	SelectNullInt(ctx context.Context, query string, args ...any) (sql.NullInt64, error)
 }
 
 // A function that looks up a precertificate by serial and returns its DER bytes. Used for
@@ -103,11 +123,12 @@ type certChecker struct {
 	getPrecert                  precertGetter
 	certs                       chan *corepb.Certificate
 	clock                       clock.Clock
-	rMu                         *sync.Mutex
 	issuedReport                report
 	checkPeriod                 time.Duration
 	acceptableValidityDurations map[time.Duration]bool
+	issuers                     map[string]*issuance.Certificate
 	lints                       lint.Registry
+	lintConfig                  linter.Config
 	logger                      blog.Logger
 }
 
@@ -117,7 +138,9 @@ func newChecker(saDbMap certDB,
 	kp goodkey.KeyPolicy,
 	period time.Duration,
 	avd map[time.Duration]bool,
+	issuers map[string]*issuance.Certificate,
 	lints lint.Registry,
+	lintConfig linter.Config,
 	logger blog.Logger,
 ) certChecker {
 	precertGetter := func(ctx context.Context, serial string) ([]byte, error) {
@@ -133,12 +156,12 @@ func newChecker(saDbMap certDB,
 		dbMap:                       saDbMap,
 		getPrecert:                  precertGetter,
 		certs:                       make(chan *corepb.Certificate, batchSize),
-		rMu:                         new(sync.Mutex),
 		clock:                       clk,
-		issuedReport:                report{Entries: make(map[string]reportEntry)},
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
+		issuers:                     issuers,
 		lints:                       lints,
+		lintConfig:                  lintConfig,
 		logger:                      logger,
 	}
 }
@@ -146,8 +169,6 @@ func newChecker(saDbMap certDB,
 // findStartingID returns the lowest `id` in the certificates table within the
 // time window specified. The time window is a half-open interval [begin, end).
 func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) (int64, error) {
-	var output sql.NullInt64
-	var err error
 	var retries int
 
 	// Rather than querying `MIN(id)` across that whole window, we query it across the first
@@ -160,8 +181,10 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 	queryEnd := begin.Add(time.Hour)
 
 	for queryBegin.Compare(end) < 0 {
-		output, err = c.dbMap.SelectNullInt(
+		var output *int64
+		err := c.dbMap.SelectOne(
 			ctx,
+			&output,
 			`SELECT MIN(id) FROM certificates
 				WHERE issued >= :begin AND
 					  issued < :end`,
@@ -171,7 +194,11 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 			},
 		)
 		if err != nil {
-			c.logger.AuditErrf("finding starting certificate: %s", err)
+			c.logger.AuditErr("finding starting certificate", err, map[string]any{
+				"begin":   queryBegin.Format(time.RFC3339),
+				"end":     queryEnd.Format(time.RFC3339),
+				"attempt": retries + 1,
+			})
 			retries++
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
@@ -180,7 +207,7 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 		// MIN() returns NULL if there were no matching rows
 		// https://pkg.go.dev/database/sql#NullInt64
 		// Valid is true if Int64 is not NULL
-		if !output.Valid {
+		if output == nil {
 			// No matching rows, try the next hour
 			queryBegin = queryBegin.Add(time.Hour)
 			queryEnd = queryEnd.Add(time.Hour)
@@ -190,7 +217,7 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 			continue
 		}
 
-		return output.Int64, nil
+		return *output, nil
 	}
 
 	// Fell through the loop without finding a valid ID
@@ -233,7 +260,12 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 			},
 		)
 		if err != nil {
-			c.logger.AuditErrf("selecting certificates: %s", err)
+			c.logger.AuditErr("selecting certificates", err, map[string]any{
+				"begin":        c.issuedReport.begin.Format(time.RFC3339),
+				"end":          c.issuedReport.end.Format(time.RFC3339),
+				"batchStartID": batchStartID,
+				"attempt":      retries + 1,
+			})
 			retries++
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
@@ -257,26 +289,17 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
+func (c *certChecker) processCerts(ctx context.Context) {
 	for cert := range c.certs {
 		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
-		c.rMu.Lock()
-		if !badResultsOnly || (badResultsOnly && !valid) {
-			c.issuedReport.Entries[cert.Serial] = reportEntry{
-				Valid:    valid,
-				SANs:     sans,
-				Problems: problems,
-			}
-		}
-		c.rMu.Unlock()
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
+			c.logger.AuditErr("certificate error found", nil, map[string]any{"serial": cert.Serial, "sans": sans, "problems": problems})
 		} else {
 			atomic.AddInt64(&c.issuedReport.GoodCerts, 1)
 		}
 	}
-	wg.Done()
 }
 
 // Extensions that we allow in certificates
@@ -301,8 +324,8 @@ var expectedExtensionContent = map[string][]byte{
 
 // checkValidations checks the database for matching authorizations that were
 // likely valid at the time the certificate was issued. Authorizations with
-// status = "deactivated" are counted for this, so long as their validatedAt
-// is before the issuance and expiration is after.
+// status = "deactivated" and "revoked" are counted for this, so long as their
+// validatedAt is before the issuance and expiration is after.
 func (c *certChecker) checkValidations(ctx context.Context, cert *corepb.Certificate, idents identifier.ACMEIdentifiers) error {
 	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued.AsTime(), idents)
 	if err != nil {
@@ -357,8 +380,29 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 		sans = append(sans, ip.String())
 	}
 
+	// Configure zlint.
+	lintConfig := c.lintConfig
+	if len(c.issuers) > 0 {
+		issuer, ok := c.issuers[parsedCert.Issuer.CommonName]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("Unrecognized issuer: %q", parsedCert.Issuer.CommonName))
+			return nil, problems
+		}
+
+		lintConfig, err = c.lintConfig.WithIssuer(issuer.Certificate)
+		if err != nil {
+			problems = append(problems, "Couldn't configure lints with issuer")
+			return nil, problems
+		}
+	}
+	registry, err := linter.ConfigureRegistry(c.lints, lintConfig)
+	if err != nil {
+		problems = append(problems, "Couldn't create lint registry")
+		return nil, problems
+	}
+
 	// Run zlint checks.
-	results := zlint.LintCertificateEx(parsedCert, c.lints)
+	results := zlint.LintCertificateEx(parsedCert, registry)
 	for name, res := range results.Results {
 		if res.Status <= lint.Pass {
 			continue
@@ -432,7 +476,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 	// address in the SANs. We do not check the CommonName here, as (if it exists)
 	// we already checked that it is identical to one of the DNSNames in the SAN.
 	for _, name := range parsedCert.DNSNames {
-		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)})
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)}, parsedCert.NotBefore)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			continue
@@ -453,7 +497,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 			problems = append(problems, fmt.Sprintf("SANs contain malformed IP %q", name))
 			continue
 		}
-		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)})
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)}, parsedCert.NotBefore)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			continue
@@ -518,7 +562,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 				for _, ident := range idents {
 					identValues = append(identValues, ident.Value)
 				}
-				c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
+				c.logger.Warningf("Certificate %s %s: %s", cert.Serial, identValues, err)
 			}
 		}
 	}
@@ -531,9 +575,22 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
+		DebugAddr string `validate:"omitempty,hostname_port"`
+
 		Workers int `validate:"required,min=1"`
-		// Deprecated: this is ignored, and cert checker always checks both expired and unexpired.
-		UnexpiredOnly  bool
+		// LookupDNSAuthority can only be specified with PushgatewayService. It's a single
+		// <hostname|IPv4|[IPv6]>:<port> of the DNS server to be used for resolution
+		// of pushgateway backends. If the address contains a hostname it will be resolved
+		// using system DNS. If the address contains a port, the client will use it
+		// directly, otherwise port 53 is used.
+		LookupDNSAuthority string `validate:"excluded_without=PushgatewayService,required_with=PushgatewayService,omitempty,ip|hostname|hostname_port"`
+		// PushgatewayService entry contains a service and domain name that will be used
+		// to construct a SRV DNS query to lookup pushgateway backends. For example: if
+		// the resource record is 'foo.service.consul', then the 'Service' is 'foo'
+		// and the 'Domain' is 'service.consul'. The expected dNSName to be
+		// authenticated in the server certificate would be 'foo.service.consul'.
+		PushgatewayService *cmd.ServiceDomain `validate:"required_with=LookupDNSAuthority"`
+		// Deprecated: cert-checker only logs bad results anyway.
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
 
@@ -558,13 +615,66 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
+		// CTIncludeTestLogs allows logs marked as "test" to be included in the
+		// CT log list used for linting. This should be enabled in environments
+		// configured to submit SCTs to test logs.
+		CTIncludeTestLogs bool
+
+		// IssuerCerts are paths to all intermediate certificates which may have
+		// been used to issue certificates in the last 90 days. These are used to
+		// configure our CP/CPS-specific lints.
+		// TODO(#5492): Change this to `"min=1,dive,required"`
+		IssuerCerts []string `validate:"omitempty"`
+
 		Features features.Config
 	}
 	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig
 }
 
+// getPushgatewayURL resolves svc via SRV+A lookups against dnsAuthority and
+// returns an http:// URL whose host is an IP address. Both lookups go through
+// dnsAuthority (typically Consul DNS) because the system resolver can't answer
+// queries for the .consul domain. The SRV target is then flattened to an IP
+// because the returned URL is consumed by net/http via cmd.PushMetrics, which
+// resolves hostnames using the system resolver. Scheme is fixed to http:
+// pushgateway is assumed to be on an internal network
+func getPushgatewayURL(ctx context.Context, dnsAuthority string, svc cmd.ServiceDomain) (string, error) {
+	host, port, err := net.SplitHostPort(dnsAuthority)
+	if err != nil {
+		// Assume only hostname or IPv4 address was specified.
+		host = dnsAuthority
+		port = "53"
+	}
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(host, port))
+		},
+	}
+	_, targets, err := r.LookupSRV(ctx, svc.Service, "tcp", svc.Domain)
+	if err != nil {
+		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s failed: %w", svc.Service, svc.Domain, err)
+	}
+	if len(targets) == 0 {
+		return "", fmt.Errorf("SRV lookup of _%s._tcp.%s returned 0 results", svc.Service, svc.Domain)
+	}
+	// Flatten the SRV target to an IP using the same Consul authority; net/http
+	// (used downstream) would otherwise try to resolve names like
+	// *.addr.dc1.consul via the system resolver and fail.
+	target := strings.TrimSuffix(targets[0].Target, ".")
+	addrs, err := r.LookupHost(ctx, target)
+	if err != nil {
+		return "", fmt.Errorf("A/AAAA lookup of %q failed: %w", target, err)
+	}
+	if len(addrs) == 0 {
+		return "", fmt.Errorf("A/AAAA lookup of %q returned 0 results", target)
+	}
+	return fmt.Sprintf("http://%s", net.JoinHostPort(addrs[0], fmt.Sprint(targets[0].Port))), nil
+}
+
 func main() {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -576,10 +686,17 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	if *debugAddr != "" {
+		config.CertChecker.DebugAddr = *debugAddr
+	}
+
 	features.Set(config.CertChecker.Features)
 
-	logger := cmd.NewLogger(config.Syslog)
-	logger.Info(cmd.VersionString())
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, cmd.OpenTelemetryConfig{}, config.CertChecker.DebugAddr)
+	defer oTelShutdown(context.Background())
+	cmd.LogStartup(logger)
+
+	metrics := newCertCheckerMetrics(stats)
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
@@ -603,29 +720,36 @@ func main() {
 	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name: "cert_checker_latency",
-		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
-	})
-	prometheus.DefaultRegisterer.MustRegister(checkerLatency)
-
 	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
 
 	err = pa.LoadIdentPolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
+	for policyReason, policyFile := range config.CertChecker.HostnamePolicyFiles {
+		err = pa.LoadIdentPolicyFile(policyFile)
+		cmd.FailOnError(err, fmt.Sprintf("Failed to load identifier policy file: %q, at path: %q", policyReason, policyFile))
+	}
+
 	if config.CertChecker.CTLogListFile != "" {
-		err = loglist.InitLintList(config.CertChecker.CTLogListFile)
+		err = loglist.InitLintList(config.CertChecker.CTLogListFile, config.CertChecker.CTIncludeTestLogs)
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
 	lints, err := linter.NewRegistry(config.CertChecker.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
+
+	lintConfig := linter.Config{}
 	if config.CertChecker.LintConfig != "" {
-		lintconfig, err := lint.NewConfigFromFile(config.CertChecker.LintConfig)
+		lintConfig, err = linter.LoadConfigFile(config.CertChecker.LintConfig)
 		cmd.FailOnError(err, "Failed to load zlint config file")
-		lints.SetConfiguration(lintconfig)
+	}
+
+	issuers := make(map[string]*issuance.Certificate)
+	for _, issuerCertPath := range config.CertChecker.IssuerCerts {
+		issuer, err := issuance.LoadCertificate(issuerCertPath)
+		cmd.FailOnError(err, "Failed to load issuer cert file")
+		issuers[issuer.Subject.CommonName] = issuer
 	}
 
 	checker := newChecker(
@@ -635,7 +759,9 @@ func main() {
 		kp,
 		config.CertChecker.CheckPeriod.Duration,
 		acceptableValidityDurations,
+		issuers,
 		lints,
+		lintConfig,
 		logger,
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
@@ -651,23 +777,34 @@ func main() {
 	fmt.Fprintf(os.Stderr, "# Processing certificates using %d workers\n", config.CertChecker.Workers)
 	wg := new(sync.WaitGroup)
 	for range config.CertChecker.Workers {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			s := checker.clock.Now()
-			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly)
-			checkerLatency.Observe(checker.clock.Since(s).Seconds())
-		}()
+			checker.processCerts(context.Background())
+			metrics.checkerLatency.Observe(checker.clock.Since(s).Seconds())
+		})
 	}
 	wg.Wait()
-	fmt.Fprintf(
-		os.Stderr,
-		"# Finished processing certificates, report length: %d, good: %d, bad: %d\n",
-		len(checker.issuedReport.Entries),
-		checker.issuedReport.GoodCerts,
-		checker.issuedReport.BadCerts,
-	)
-	err = checker.issuedReport.dump()
-	cmd.FailOnError(err, "Failed to dump results: %s\n")
+	logger.AuditInfo("Finished processing certificates", checker.issuedReport)
+
+	metrics.checkerTimestamp.SetToCurrentTime()
+	metrics.checkerGoodCount.Set(float64(checker.issuedReport.GoodCerts))
+	metrics.checkerBadCount.Set(float64(checker.issuedReport.BadCerts))
+
+	if config.CertChecker.PushgatewayService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		pushgatewayURL, err := getPushgatewayURL(ctx, config.CertChecker.LookupDNSAuthority, *config.CertChecker.PushgatewayService)
+		if err != nil {
+			logger.Errf("failed to get pushgateway URL: %s", err)
+		} else {
+			err = cmd.PushMetrics("cert-checker", pushgatewayURL, stats, logger)
+			if err != nil {
+				logger.Errf("failed to push metrics to pushgateway: %s", err)
+			} else {
+				logger.Debugf("pushed metrics to pushgateway at %s", pushgatewayURL)
+			}
+		}
+	}
 }
 
 func init() {

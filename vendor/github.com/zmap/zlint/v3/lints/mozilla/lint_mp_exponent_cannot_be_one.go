@@ -15,8 +15,9 @@
 package mozilla
 
 import (
-	"crypto/rsa"
+	"math/big"
 
+	"github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -60,7 +61,7 @@ func (l *exponentCannotBeOne) Execute(c *x509.Certificate) *lint.LintResult {
 		}
 	}
 
-	if pubKey.E == 1 {
+	if pubKey.E.Cmp(big.NewInt(1)) == 0 {
 		return &lint.LintResult{Status: lint.Error}
 	}
 

@@ -2,17 +2,17 @@ package main
 
 import (
 	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
-	"strconv"
-	"strings"
+	"regexp"
+	"slices"
 	"time"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 type policyInfoConfig struct {
@@ -21,6 +21,12 @@ type policyInfoConfig struct {
 
 // certProfile contains the information required to generate a certificate
 type certProfile struct {
+	// PolicyURL is *not* included in the certificate. It is a mandatory pointer
+	// to the profile documented in our CPS with which this profile complies.
+	// It must point to a specific subsection of a specific version of the
+	// markdown source of our CPS.
+	PolicyURL string `yaml:"policy-url"`
+
 	// SignatureAlgorithm should contain one of the allowed signature algorithms
 	// in AllowedSigAlgs
 	SignatureAlgorithm string `yaml:"signature-algorithm"`
@@ -56,6 +62,14 @@ type certProfile struct {
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
+
+	// EKUs must be either "none" (used for self-signed roots), "server" (used
+	// for modern single-purpose hierarchies), or "both" (used for legacy
+	// hierarchies with both id-kp-tlsClientAuth and id-kp-tlsServerAuth). If
+	// empty, defaults to "none" for root ceremonies and to "server" for others.
+	//
+	// TODO: Remove this when we no longer issue any tlsClientAuth CA certs.
+	EKUs string `yaml:"ekus"`
 }
 
 // AllowedSigAlgs contains the allowed signature algorithms
@@ -77,6 +91,12 @@ const (
 	requestCert
 )
 
+// policyURLRegex matches URLs which point to a specific subsection (see
+// trailing fragment) of a specific version (following /blob/) of our markdown
+// CPS (which we host at github.com/letsencrypt/cp-cps).
+var policyURLRegex = regexp.MustCompile(
+	`^https://github\.com/letsencrypt/cp-cps/blob/v[0-9]+(\.[0-9]+)+/CP-CPS\.md#[0-9a-zA-Z-]+$`)
+
 // Subject returns a pkix.Name from the appropriate certProfile fields
 func (profile *certProfile) Subject() pkix.Name {
 	return pkix.Name{
@@ -87,6 +107,13 @@ func (profile *certProfile) Subject() pkix.Name {
 }
 
 func (profile *certProfile) verifyProfile(ct certType) error {
+	if profile.PolicyURL == "" {
+		return errors.New("policy-url is required")
+	}
+	if !policyURLRegex.MatchString(profile.PolicyURL) {
+		return fmt.Errorf("policy-url must point to a specific subsection of a specific version of our CPS: %s", policyURLRegex.String())
+	}
+
 	if ct == requestCert {
 		if profile.NotBefore != "" {
 			return errors.New("not-before cannot be set for a CSR")
@@ -154,46 +181,14 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 	return nil
 }
 
-func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
-	var oid asn1.ObjectIdentifier
-	for a := range strings.SplitSeq(oidStr, ".") {
-		i, err := strconv.Atoi(a)
-		if err != nil {
-			return nil, err
-		}
-		if i <= 0 {
-			return nil, errors.New("OID components must be >= 1")
-		}
-		oid = append(oid, i)
-	}
-	return oid, nil
-}
-
 var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Digital Signature": x509.KeyUsageDigitalSignature,
 	"CRL Sign":          x509.KeyUsageCRLSign,
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
 
-func generateSKID(pk []byte) ([]byte, error) {
-	var pkixPublicKey struct {
-		Algo      pkix.AlgorithmIdentifier
-		BitString asn1.BitString
-	}
-	if _, err := asn1.Unmarshal(pk, &pkixPublicKey); err != nil {
-		return nil, err
-	}
-
-	// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers: The
-	// keyIdentifier [may be] composed of the leftmost 160-bits of the SHA-256
-	// hash of the value of the BIT STRING subjectPublicKey (excluding the tag,
-	// length, and number of unused bits).
-	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
-	return skid[0:20:20], nil
-}
-
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
-func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbcs *x509.Certificate, ct certType) (*x509.Certificate, error) {
+func makeTemplate(randReader io.Reader, profile *certProfile, pubKey crypto.PublicKey, tbcs *x509.Certificate, ct certType) (*x509.Certificate, error) {
 	// Handle "unrestricted" vs "restricted" subordinate CA profile specifics.
 	if ct == crossCert && tbcs == nil {
 		return nil, fmt.Errorf("toBeCrossSigned cert field was nil, but was required to gather EKUs for the lint cert")
@@ -208,13 +203,17 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		issuingCertificateURL = []string{profile.IssuerURL}
 	}
 
-	subjectKeyID, err := generateSKID(pubKey)
+	subjectKeyID, err := core.GenerateSKID(pubKey)
 	if err != nil {
 		return nil, err
 	}
 
-	serial := make([]byte, 16)
-	_, err = randReader.Read(serial)
+	// We want 128 bits of random number, plus a prefix to ensure that the serial is
+	// never shorter than that, even if the CSPRNG generates lots of leading zeroes.
+	const randBits = 128
+	serial := make([]byte, randBits/8+1)
+	serial[0] = 0x01
+	_, err = randReader.Read(serial[1:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate serial number: %s", err)
 	}
@@ -231,6 +230,49 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		return nil, errors.New("at least one key usage must be set")
 	}
 
+	var ekus []x509.ExtKeyUsage
+	if ct == rootCert {
+		// rootCert does not get EKU or MaxPathZero.
+		// 		BR 7.1.2.1.2 Root CA Extensions
+		// 		Extension 	Presence 	Critical 	Description
+		// 		extKeyUsage 	MUST NOT 	N 	-
+		if profile.EKUs != "" && profile.EKUs != "none" {
+			return nil, fmt.Errorf("root certificates MUST NOT have an EKU extension; profile configured %q", profile.EKUs)
+		}
+	} else {
+		switch profile.EKUs {
+		case "", "server":
+			// By default, only include id-kp-tlsServerAuth. This reflects the move
+			// towards single-purpose hierarchies, as required by the Chrome Root
+			// Program, among others.
+			ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		case "both":
+			// Until June 15, 2026, including both EKUs is acceptable.
+			// https://googlechrome.github.io/chromerootprogram/#132-promote-use-of-dedicated-tls-server-authentication-pki-hierarchies
+			// 1.3.2 Promote use of Dedicated TLS Server Authentication PKI Hierarchies
+			// ...
+			// All corresponding unexpired and unrevoked subordinate CA certificates operated beneath an existing root included in the Chrome Root Store MUST:
+			// if disclosed to the CCADB before June 15, 2026: include the extendedKeyUsage extension and (a) only assert an extendedKeyUsage purpose of id-kp-serverAuth or (b) only assert extendedKeyUsage purposes of id-kp-serverAuth and id-kp-clientAuth.
+			// ...
+			//
+			// Note: this safety check uses on notBefore rather than a disclosure date, so it's imperfect but still useful.
+			notBefore, err := time.Parse(time.DateTime, profile.NotBefore)
+			if err != nil {
+				return nil, fmt.Errorf("parsing notBefore: %s", err)
+			}
+			if notBefore.Before(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)) {
+				ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+			} else {
+				return nil, fmt.Errorf("notBefore of %s is too late for including clientAuth EKU", tbcs.NotAfter.Format(time.RFC3339))
+			}
+		default:
+			return nil, fmt.Errorf("unrecognized EKUs %q; must be 'none', 'server', or 'both'", profile.EKUs)
+		}
+	}
+	if ct == crossCert && len(tbcs.ExtKeyUsage) != 0 && !slices.Equal(ekus, tbcs.ExtKeyUsage) {
+		return nil, fmt.Errorf("existing cert has EKUs %v, but cross-certificate profile has EKUs %v", tbcs.ExtKeyUsage, ekus)
+	}
+
 	cert := &x509.Certificate{
 		SerialNumber:          big.NewInt(0).SetBytes(serial),
 		BasicConstraintsValid: true,
@@ -239,6 +281,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		CRLDistributionPoints: crlDistributionPoints,
 		IssuingCertificateURL: issuingCertificateURL,
 		KeyUsage:              ku,
+		ExtKeyUsage:           ekus,
 		SubjectKeyId:          subjectKeyID,
 	}
 
@@ -250,30 +293,34 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		cert.SignatureAlgorithm = sigAlg
 		notBefore, err := time.Parse(time.DateTime, profile.NotBefore)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing notBefore: %s", err)
 		}
-		cert.NotBefore = notBefore
 		notAfter, err := time.Parse(time.DateTime, profile.NotAfter)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parsing notAfter: %s", err)
 		}
+		validity := notAfter.Add(time.Second).Sub(notBefore)
+		if ct == rootCert && validity >= 9132*24*time.Hour {
+			// The value 9132 comes directly from the BRs, where it is described
+			// as "approximately 25 years". It's equal to 365 * 25 + 7, to allow
+			// for some leap years.
+			return nil, fmt.Errorf("root cert validity too large: %s >= 25 years", validity)
+		} else if (ct == intermediateCert || ct == crossCert) && validity >= 8*365*24*time.Hour {
+			// Our CP/CPS states "at most 8 years", so we calculate that number
+			// in the most conservative way (i.e. not accounting for leap years)
+			// to give ourselves a buffer.
+			return nil, fmt.Errorf("subordinate CA cert validity too large: %s >= 8 years", validity)
+		}
+		cert.NotBefore = notBefore
 		cert.NotAfter = notAfter
 	}
 
 	switch ct {
-	// rootCert does not get EKU or MaxPathZero.
-	// 		BR 7.1.2.1.2 Root CA Extensions
-	// 		Extension 	Presence 	Critical 	Description
-	// 		extKeyUsage 	MUST NOT 	N 	-
 	case requestCert, intermediateCert:
-		// id-kp-serverAuth is included in intermediate certificates, as required by
-		// Section 7.1.2.10.6 of the CA/BF Baseline Requirements.
-		// id-kp-clientAuth is excluded, as required by section 3.2.1 of the Chrome
-		// Root Program Requirements.
-		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		// Issuing intermediates must always have MaxPathLen 0.
 		cert.MaxPathLenZero = true
 	case crossCert:
-		cert.ExtKeyUsage = tbcs.ExtKeyUsage
+		// Cross-signs should have the same MaxPathLen as the existing cert.
 		cert.MaxPathLenZero = tbcs.MaxPathLenZero
 		// The SKID needs to match the previous SKID, no matter how it was computed.
 		cert.SubjectKeyId = tbcs.SubjectKeyId

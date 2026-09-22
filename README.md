@@ -66,8 +66,8 @@ communication model can be found in the [gRPC
 documentation](https://www.grpc.io/docs/).
 
 The full details of how the various ACME operations happen in Boulder are
-laid out in
-[DESIGN.md](https://github.com/letsencrypt/boulder/blob/main/docs/DESIGN.md).
+laid out in the
+[Boulder implementation details](./docs/acme-implementation_details.md).
 
 ## Setting up Boulder
 
@@ -103,53 +103,67 @@ We recommend having **at least 2GB of RAM** available on your Docker host. In
 practice using less RAM may result in the MariaDB container failing in
 non-obvious ways.
 
-To start Boulder in a Docker container, run:
-
-```shell
-docker compose up
-```
-
 To run our standard battery of tests (lints, unit, integration):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh
+./t.sh
 ```
 
 To run all unit tests:
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --unit
+./t.sh -u
 ```
 
 To run specific unit tests (example is of the ./va directory):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --unit --filter=./va
+./t.sh -u -p ./va
 ```
 
 To run all integration tests:
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --integration
+./t.sh -i
 ```
 
 To run unit tests and integration tests with coverage:
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --unit --integration --coverage --coverage-dir=./test/coverage/mytestrun
+./t.sh -ui -c --coverage-dir=./test/coverage/mytestrun
 ```
 
 To run specific integration tests (example runs TestGenerateValidity and TestWFECORS):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --filter TestGenerateValidity/TestWFECORS
+./t.sh -i -f TestGenerateValidity/TestWFECORS
 ```
 
-To get a list of available integration tests:
+To do any of the above, but using the "config-next" configuration, which
+represents a likely future state (e.g. including new feature flags):
 
 ```shell
-docker compose run --use-aliases boulder ./test.sh --list-integration-tests
+./tn.sh -your -options -here
 ```
+
+To start Boulder in a Docker container, first run:
+
+```shell
+docker compose run bsetup
+```
+this will write the necessary certificates into `test/certs/[.softhsm-tokens,ipki,webpki]`;
+You only need to run this once to create the certificates. If you
+need to remove all of the certificates and start over, you can remove
+the directories `./test/certs/.softhsm-tokens`, `./test/certs/ipki`,
+and `./test/certs/webpki` and re-run `docker compose run bsetup`.
+
+Then run:
+
+```shell
+docker compose up
+```
+
+
 
 The configuration in docker-compose.yml mounts your boulder checkout at
 /boulder so you can edit code on your host and it will be immediately
@@ -186,7 +200,13 @@ docker compose run --use-aliases -e FAKE_DNS=172.17.0.1 --service-ports boulder 
 
 Running tests without the `./test.sh` wrapper:
 
-Run all unit tests
+Run unit tests locally, without docker (only works for some directories):
+
+```shell
+go test ./issuance/...
+```
+
+Run all unit tests:
 
 ```shell
 docker compose run --use-aliases boulder go test -p 1 ./...

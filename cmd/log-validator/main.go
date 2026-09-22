@@ -37,7 +37,7 @@ func main() {
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 
 	v := validator.New(config.Files, logger, stats)
 	defer v.Shutdown()

@@ -135,7 +135,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 
 // Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
 // need to report its own metrics. A map is returned containing the constructed
-// objects, indexed by the name of the Promtheus metric.  If no objects were
+// objects, indexed by the name of the Prometheus metric.  If no objects were
 // constructed, nil is returned.
 func (c TLSConf) Instrument() map[string]prometheus.Collector {
 	notBefore := prometheus.Collector(prometheus.NewGaugeVec(

@@ -56,7 +56,7 @@ func (e HTTPRequestEvent) Key() string {
 	return e.Host
 }
 
-// DNSRequestEvent corresponds to a DNS request received by a dnsOneServer. It
+// DNSRequestEvent corresponds to a DNS request received by a dnsServer. It
 // implements the RequestEvent interface.
 type DNSRequestEvent struct {
 	// The DNS question received.
@@ -74,11 +74,7 @@ func (e DNSRequestEvent) Type() RequestEventType {
 // DNSRequestEvents use the Question Name as the storage key. Any trailing `.`
 // in the question name is removed.
 func (e DNSRequestEvent) Key() string {
-	key := e.Question.Name
-	if strings.HasSuffix(key, ".") {
-		key = strings.TrimSuffix(key, ".")
-	}
-	return key
+	return strings.TrimSuffix(e.Question.Name, ".")
 }
 
 // TLSALPNRequestEvent corresponds to a TLS request received by

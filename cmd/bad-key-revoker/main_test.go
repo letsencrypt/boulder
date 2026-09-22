@@ -3,6 +3,9 @@ package notmain
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
@@ -76,7 +80,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 	_, err = bkr.selectUncheckedKey(ctx)
 	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
-	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
+	test.Assert(t, errors.Is(err, sql.ErrNoRows), "returned error is not sql.ErrNoRows")
 
 	// insert a blocked key that's due to be checked
 	insertBlockedRow(t, dbMap, fcBeforeRepLag(fc, bkr), hashB, 1, false)
@@ -91,7 +95,12 @@ func TestSelectUncheckedRows(t *testing.T) {
 	test.AssertEquals(t, row.RevokedBy, int64(1))
 }
 
-func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock) int64 {
+// insertRegistration inserts a valid registration with a random key hash and
+// returns its ID along with the raw (un-encoded) key hash. The key hash is
+// stored in the jwk_sha256 column base64-encoded, matching production, so that
+// blocking the returned hash will cause bad-key-revoker to find and deactivate
+// this account.
+func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock) (int64, []byte) {
 	t.Helper()
 	jwkHash := make([]byte, 32)
 	_, err := rand.Read(jwkHash)
@@ -100,7 +109,7 @@ func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock) int6
 		context.Background(),
 		"INSERT INTO registrations (jwk, jwk_sha256, agreement, createdAt, status) VALUES (?, ?, ?, ?, ?)",
 		[]byte{},
-		fmt.Sprintf("%x", jwkHash),
+		base64.StdEncoding.EncodeToString(jwkHash),
 		"yes",
 		fc.Now(),
 		string(core.StatusValid),
@@ -108,7 +117,7 @@ func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock) int6
 	test.AssertNotError(t, err, "failed to insert test registrations row")
 	regID, err := res.LastInsertId()
 	test.AssertNotError(t, err, "failed to get registration ID")
-	return regID
+	return regID, jwkHash
 }
 
 type ExpiredStatus bool
@@ -151,9 +160,9 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 		status,
 		expiredStatus,
 		fc.Now(),
-		time.Time{},
+		time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 		0,
-		time.Time{},
+		time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
@@ -211,7 +220,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 		maxExpectedReplicationLag: time.Second * 22,
 	}
 	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
-	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
+	test.Assert(t, errors.Is(err, sql.ErrNoRows), "expected NoRows error")
 }
 
 func TestFindUnrevoked(t *testing.T) {
@@ -223,7 +232,7 @@ func TestFindUnrevoked(t *testing.T) {
 
 	fc := clock.NewFake()
 
-	regID := insertRegistration(t, dbMap, fc)
+	regID, _ := insertRegistration(t, dbMap, fc)
 
 	bkr := &badKeyRevoker{
 		dbMap:                     dbMap,
@@ -247,13 +256,13 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertNotError(t, err, "findUnrevoked failed")
 	test.AssertEquals(t, len(rows), 1)
 	test.AssertEquals(t, rows[0].Serial, "ff")
-	test.AssertEquals(t, rows[0].RegistrationID, int64(1))
+	test.AssertEquals(t, rows[0].RegistrationID, regID)
 	test.AssertByteEquals(t, rows[0].DER, []byte{1, 2, 3})
 
 	bkr.maxRevocations = 0
 	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertError(t, err, "findUnrevoked didn't fail with 0 maxRevocations")
-	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: got 1, max 0", hashA))
+	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: found at least 1, max 0", hashA))
 }
 
 type mockRevoker struct {
@@ -276,12 +285,13 @@ func TestRevokeCerts(t *testing.T) {
 	fc := clock.NewFake()
 	mr := &mockRevoker{}
 	bkr := &badKeyRevoker{
-		dbMap:    dbMap,
-		raClient: mr,
-		clk:      fc,
+		dbMap:        dbMap,
+		raClient:     mr,
+		clk:          fc,
+		certsRevoked: prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
 
-	err = bkr.revokeCerts([]unrevokedCertificate{
+	err = bkr.revokeCerts(t.Context(), []unrevokedCertificate{
 		{ID: 0, Serial: "ff"},
 		{ID: 1, Serial: "ee"},
 	})
@@ -305,10 +315,11 @@ func TestCertificateAbsent(t *testing.T) {
 		logger:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
+		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
 	}
 
 	// populate DB with all the test data
-	regIDA := insertRegistration(t, dbMap, fc)
+	regIDA, _ := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, fcBeforeRepLag(fc, bkr), hashA, regIDA, false)
 
@@ -345,13 +356,15 @@ func TestInvoke(t *testing.T) {
 		logger:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
+		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
+		certsRevoked:              prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
 
 	// populate DB with all the test data
-	regIDA := insertRegistration(t, dbMap, fc)
-	regIDB := insertRegistration(t, dbMap, fc)
-	regIDC := insertRegistration(t, dbMap, fc)
-	regIDD := insertRegistration(t, dbMap, fc)
+	regIDA, _ := insertRegistration(t, dbMap, fc)
+	regIDB, _ := insertRegistration(t, dbMap, fc)
+	regIDC, _ := insertRegistration(t, dbMap, fc)
+	regIDD, _ := insertRegistration(t, dbMap, fc)
 	hashA := randHash(t)
 	insertBlockedRow(t, dbMap, fcBeforeRepLag(fc, bkr), hashA, regIDC, false)
 	insertGoodCert(t, dbMap, fc, hashA, "ff", regIDA)
@@ -363,7 +376,7 @@ func TestInvoke(t *testing.T) {
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 	test.AssertEquals(t, mr.revoked, 4)
-	test.AssertMetricWithLabelsEquals(t, keysToProcess, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, bkr.keysToProcess, prometheus.Labels{}, 1)
 
 	var checked struct {
 		ExtantCertificatesChecked bool
@@ -391,6 +404,57 @@ func TestInvoke(t *testing.T) {
 	test.AssertEquals(t, noWork, true)
 }
 
+// TestInvokeRevokesAccount checks that when a blocked key hash corresponds
+// to an existing account, invoking bad-key-revoker updates that account's
+// status to "deactivated".
+func TestInvokeRevokesAccount(t *testing.T) {
+	features.Set(features.Config{RevokeBadKeyAccounts: true})
+	defer features.Reset()
+
+	ctx := context.Background()
+
+	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
+	if err != nil {
+		t.Fatalf("setting up db client: %s", err)
+	}
+	defer test.ResetBoulderTestDatabase(t)()
+
+	fc := clock.NewFake()
+
+	mr := &mockRevoker{}
+	bkr := &badKeyRevoker{
+		dbMap:                     dbMap,
+		maxRevocations:            10,
+		serialBatchSize:           1,
+		raClient:                  mr,
+		logger:                    blog.NewMock(),
+		clk:                       fc,
+		maxExpectedReplicationLag: time.Second * 22,
+		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
+		certsRevoked:              prometheus.NewCounter(prometheus.CounterOpts{}),
+	}
+
+	// Create an account, then block its key.
+	regID, hashA := insertRegistration(t, dbMap, fc)
+	insertBlockedRow(t, dbMap, fcBeforeRepLag(fc, bkr), hashA, regID, false)
+
+	_, err = bkr.invoke(ctx)
+	if err != nil {
+		t.Fatalf("invoke failed: %s", err)
+	}
+
+	var status struct {
+		Status string
+	}
+	err = dbMap.SelectOne(ctx, &status, "SELECT status FROM registrations WHERE id = ?", regID)
+	if err != nil {
+		t.Fatalf("selecting registration status: %s", err)
+	}
+	if status.Status != string(core.StatusRevoked) {
+		t.Errorf("account status = %q, want %q", status.Status, string(core.StatusDeactivated))
+	}
+}
+
 func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	// This test checks that when the user who revoked the initial
 	// certificate that added the row to blockedKeys doesn't have any
@@ -411,12 +475,14 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 		logger:                    blog.NewMock(),
 		clk:                       fc,
 		maxExpectedReplicationLag: time.Second * 22,
+		keysToProcess:             prometheus.NewGauge(prometheus.GaugeOpts{}),
+		certsRevoked:              prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
 
 	// populate DB with all the test data
-	regIDA := insertRegistration(t, dbMap, fc)
-	regIDB := insertRegistration(t, dbMap, fc)
-	regIDC := insertRegistration(t, dbMap, fc)
+	regIDA, _ := insertRegistration(t, dbMap, fc)
+	regIDB, _ := insertRegistration(t, dbMap, fc)
+	regIDC, _ := insertRegistration(t, dbMap, fc)
 
 	hashA := randHash(t)
 

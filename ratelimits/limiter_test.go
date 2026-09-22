@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -32,8 +33,11 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:64.112.117.1' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
-	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml")
+	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml", metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "should not error")
+	err = c.loadOverrides(context.Background())
+	test.AssertNotError(t, err, "loading overrides")
+
 	return c
 }
 
@@ -45,7 +49,7 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 	// runs.
 	randIP := make(net.IP, 4)
 	for i := range 4 {
-		randIP[i] = byte(rand.IntN(256))
+		randIP[i] = byte(rand.IntN(256)) //nolint:gosec // we know the integer is byte-sized
 	}
 
 	// Construct a limiter for each source.
@@ -53,6 +57,14 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 		"inmem": newInmemTestLimiter(t, clk),
 		"redis": newRedisTestLimiter(t, clk),
 	}, newTestTransactionBuilder(t), clk, randIP.String()
+}
+
+func resetBucket(t *testing.T, l *Limiter, ctx context.Context, limit *Limit, bucketKey string) {
+	t.Helper()
+	txn, err := newResetTransaction(limit, bucketKey)
+	test.AssertNotError(t, err, "txn should be valid")
+	err = l.BatchReset(ctx, []Transaction{txn})
+	test.AssertNotError(t, err, "should not error")
 }
 
 func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
@@ -149,10 +161,8 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, overriddenBucketKey)
-			test.AssertNotError(t, err, "should not error")
-			err = l.Reset(testCtx, normalBucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, overriddenLimit, overriddenBucketKey)
+			resetBucket(t, l, testCtx, normalLimit, normalBucketKey)
 
 			// Spend the same bucket but in a batch with a Transaction that is
 			// check-only. This should succeed, but the decision should reflect
@@ -234,8 +244,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, overriddenBucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, overriddenLimit, overriddenBucketKey)
 		})
 	}
 }
@@ -274,8 +283,7 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.retryIn, time.Duration(0))
 
 			// Reset our bucket.
-			err = l.Reset(testCtx, bucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, limit, bucketKey)
 
 			// Similar to above, but we'll use Spend() to actually initialize
 			// the bucket. Spend should return the same result as Check.
@@ -396,8 +404,7 @@ func TestLimiter_RefundAndReset(t *testing.T) {
 			test.AssertEquals(t, d.remaining, int64(0))
 			test.AssertEquals(t, d.resetIn, time.Second)
 
-			err = l.Reset(testCtx, bucketKey)
-			test.AssertNotError(t, err, "should not error")
+			resetBucket(t, l, testCtx, limit, bucketKey)
 
 			// Attempt to spend 20 more requests, this should succeed.
 			d, err = l.Spend(testCtx, txn20)
@@ -520,7 +527,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "4:12345:example.com",
 				},
 			},
-			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account",
+			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-identifier-per-account",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -570,7 +577,7 @@ func TestRateLimitError(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:     "too many override request form submissions (3) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#limit-override-requests-per-ip-address",
+			expectedErr:     "too many override request form submissions (3) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ip-address",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -602,4 +609,64 @@ func TestRateLimitError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStricterDeniedBeatsAllowed(t *testing.T) {
+	t.Parallel()
+
+	clk := clock.NewFake()
+	l := newInmemTestLimiter(t, clk)
+	ctx := context.Background()
+
+	// Limit A, our fast limit, permits 2 requests per second.
+	limitA := &Limit{
+		Burst:  2,
+		Count:  2,
+		Period: config.Duration{Duration: time.Second},
+		Name:   NewRegistrationsPerIPAddress,
+	}
+	limitA.precompute()
+
+	// Limit B, our slow limit, permits 2 requests per hour. An allowed decision
+	// from this limit will have a retryIn up to 30 minutes, far exceeding any
+	// retryIn from the denied limit A.
+	limitB := &Limit{
+		Burst:  2,
+		Count:  2,
+		Period: config.Duration{Duration: time.Hour},
+		Name:   NewRegistrationsPerIPv6Range,
+	}
+	limitB.precompute()
+
+	bucketKeyA := "limitA:testkey"
+	bucketKeyB := "limitB:testkey"
+
+	// Exhaust limit A's bucket completely.
+	txnA2, err := newTransaction(limitA, bucketKeyA, 2)
+	test.AssertNotError(t, err, "Txn should be valid")
+	d, err := l.Spend(ctx, txnA2)
+	test.AssertNotError(t, err, "Should not error")
+	test.Assert(t, d.allowed, "Initial spend should be allowed")
+	test.AssertEquals(t, d.remaining, int64(0))
+
+	// Spend 1 from limit B so it's reduced to 1 remaining.
+	txnB1, err := newTransaction(limitB, bucketKeyB, 1)
+	test.AssertNotError(t, err, "Txn should be valid")
+	d, err = l.Spend(ctx, txnB1)
+	test.AssertNotError(t, err, "Should not error")
+	test.Assert(t, d.allowed, "Initial spend should be allowed")
+	test.AssertEquals(t, d.remaining, int64(1))
+
+	// Now batch, limit A should deny (0 remaining), limit B should allow (1
+	// remaining) but with a large retryIn (~30 minutes).
+	txnA1, err := newTransaction(limitA, bucketKeyA, 1)
+	test.AssertNotError(t, err, "Txn should be valid")
+	txnB1, err = newTransaction(limitB, bucketKeyB, 1)
+	test.AssertNotError(t, err, "Txn should be valid")
+
+	d, err = l.BatchSpend(ctx, []Transaction{txnA1, txnB1})
+	test.AssertNotError(t, err, "Should not error")
+
+	// The batch MUST be denied because limit A denied the request.
+	test.Assert(t, !d.allowed, "Batch should be denied when any limit denies")
 }

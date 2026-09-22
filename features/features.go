@@ -15,24 +15,6 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
-	// Deprecated flags.
-	IncrementRateLimits         bool
-	UseKvLimitsForNewOrder      bool
-	DisableLegacyLimitWrites    bool
-	MultipleCertificateProfiles bool
-	InsertAuthzsIndividually    bool
-	EnforceMultiCAA             bool
-	EnforceMPIC                 bool
-	MPICFullResults             bool
-	UnsplitIssuance             bool
-	ExpirationMailerUsesJoin    bool
-	DOH                         bool
-	IgnoreAccountContacts       bool
-
-	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
-	// GET requests. WARNING: This feature is a draft and highly unstable.
-	ServeRenewalInfo bool
-
 	// CertCheckerChecksValidations enables an extra query for each certificate
 	// checked, to find the relevant authzs. Since this query might be
 	// expensive, we gate it behind a feature flag.
@@ -50,6 +32,10 @@ type Config struct {
 	// requires clients to properly implement polling the Order object to wait
 	// for the cert URL to appear.
 	AsyncFinalize bool
+
+	// CAARechecksFailOrder causes the RA to set an order to "invalid" if its CAA
+	// rechecks fail.
+	CAARechecksFailOrder bool
 
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
@@ -71,21 +57,43 @@ type Config struct {
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
 
-	// NoPendingAuthzReuse causes the RA to only select already-validated authzs
-	// to attach to a newly created order. This preserves important client-facing
-	// functionality (valid authz reuse) while letting us simplify our code by
-	// removing pending authz reuse.
-	NoPendingAuthzReuse bool
-
-	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
-	// ARI replaces field in the orders table.
-	StoreARIReplacesInOrders bool
-
 	// DNSAccount01Enabled controls support for the dns-account-01 challenge
 	// type. When enabled, the server can offer and validate this challenge
 	// during certificate issuance. This flag must be set to true in the
-	// RA, VA, and WFE2 services for full functionality.
+	// RA and VA services for full functionality.
 	DNSAccount01Enabled bool
+
+	// DNSPersist01Enabled controls support for the dns-persist-01 challenge
+	// type. When enabled, the server can offer and validate this challenge
+	// during certificate issuance. This flag must be set to true in the
+	// RA and VA services for full functionality.
+	DNSPersist01Enabled bool
+
+	// RevokeBadKeyAccounts controls whether bad-key-revoker will attempt
+	// to find and revoke accounts using keys which have been added to the
+	// blockedKeys table.
+	RevokeBadKeyAccounts bool
+
+	// SetAuthzProcessing controls whether the RA attempts to mark authorizations
+	// as "processing" before dispatching validation to the VA. This reduces
+	// unnecessary work due to parallel validations, but requires a database
+	// change to work.
+	SetAuthzProcessing bool
+
+	// UnsignLintCerts controls whether the linting package returns RFC 9925
+	// Unsigned versions of the linting precerts it checks. This in turn controls
+	// the the contents of the precertificates table (which actually stores
+	// linting precerts), saving on storage volume by dropping fake signatures.
+	UnsignLintCerts bool
+
+	// RevokeAuthzsUponRevokeCert controls whether the RA will call for
+	// revocation of Authorizations for identifiers in a certificate that is
+	// successfully revoked by a requester that is DIFFERENT than the one that
+	// was originally granted the certificate. In this scenario, the new
+	// requester has demonstrated control over the requisite set of identifiers,
+	// so we can avoid the possibility of Authz re-use by the original
+	// requester via Authz revocation.
+	RevokeAuthzsUponRevokeCert bool
 }
 
 var fMu = new(sync.RWMutex)

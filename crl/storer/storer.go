@@ -18,14 +18,19 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl"
+	"github.com/letsencrypt/boulder/crl/checker"
 	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -33,15 +38,16 @@ import (
 type simpleS3 interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	Bucket() string
 }
 
 type crlStorer struct {
 	cspb.UnsafeCRLStorerServer
 	s3Client         simpleS3
-	s3Bucket         string
+	sa               sapb.StorageAuthorityReadOnlyClient
 	issuers          map[issuance.NameID]*issuance.Certificate
+	maxCRLSize       int64
 	uploadCount      *prometheus.CounterVec
-	sizeHistogram    *prometheus.HistogramVec
 	latencyHistogram *prometheus.HistogramVec
 	log              blog.Logger
 	clk              clock.Clock
@@ -52,7 +58,8 @@ var _ cspb.CRLStorerServer = (*crlStorer)(nil)
 func New(
 	issuers []*issuance.Certificate,
 	s3Client simpleS3,
-	s3Bucket string,
+	sa sapb.StorageAuthorityReadOnlyClient,
+	maxCRLSize int64,
 	stats prometheus.Registerer,
 	log blog.Logger,
 	clk clock.Clock,
@@ -62,32 +69,23 @@ func New(
 		issuersByNameID[issuer.NameID()] = issuer
 	}
 
-	uploadCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+	uploadCount := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
 		Name: "crl_storer_uploads",
 		Help: "A counter of the number of CRLs uploaded by crl-storer",
 	}, []string{"issuer", "result"})
-	stats.MustRegister(uploadCount)
 
-	sizeHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "crl_storer_sizes",
-		Help:    "A histogram of the sizes (in bytes) of CRLs uploaded by crl-storer",
-		Buckets: []float64{0, 256, 1024, 4096, 16384, 65536},
-	}, []string{"issuer"})
-	stats.MustRegister(sizeHistogram)
-
-	latencyHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	latencyHistogram := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_storer_upload_times",
 		Help:    "A histogram of the time (in seconds) it took crl-storer to upload CRLs",
 		Buckets: []float64{0.01, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000},
 	}, []string{"issuer"})
-	stats.MustRegister(latencyHistogram)
 
 	return &crlStorer{
 		issuers:          issuersByNameID,
 		s3Client:         s3Client,
-		s3Bucket:         s3Bucket,
+		sa:               sa,
+		maxCRLSize:       maxCRLSize,
 		uploadCount:      uploadCount,
-		sizeHistogram:    sizeHistogram,
 		latencyHistogram: latencyHistogram,
 		log:              log,
 		clk:              clk,
@@ -96,6 +94,51 @@ func New(
 
 // TODO(#6261): Unify all error messages to identify the shard they're working
 // on as a JSON object including issuer, crl number, and shard number.
+
+// checkRemovedEntries returns an error unless every certificate whose serial
+// is in removed expired before prevThisUpdate, i.e. unless each has already
+// appeared on a CRL issued beyond its validity period.
+func (cs *crlStorer) checkRemovedEntries(ctx context.Context, removed []*big.Int, prevThisUpdate, thisUpdate time.Time) error {
+	var serials []string
+	for _, serial := range removed {
+		serials = append(serials, core.SerialToString(serial))
+	}
+
+	expiries := make(map[string]time.Time)
+	for batch := range slices.Chunk(serials, sa.MaxSerialsMetadataBatch) {
+		result, err := cs.sa.GetSerialsMetadata(ctx, &sapb.Serials{Serials: batch})
+		if err != nil {
+			return fmt.Errorf("looking up serials missing from this CRL: %w", err)
+		}
+		for _, metadata := range result.Metadata {
+			expiries[metadata.Serial] = metadata.Expires.AsTime()
+		}
+	}
+
+	for _, serial := range serials {
+		expires, ok := expiries[serial]
+		if !ok {
+			return fmt.Errorf("serial %s is missing from this CRL and unknown to the SA", serial)
+		}
+		if expires.Before(prevThisUpdate) {
+			continue
+		}
+
+		if !expires.Before(thisUpdate) {
+			return fmt.Errorf("serial %s appeared on the previous CRL but is missing from this one, "+
+				"and expires at %s, %s after this CRL's thisUpdate: the revocation data is "+
+				"incomplete, possibly from a lagging database replica",
+				serial, expires.Format(time.RFC3339),
+				expires.Sub(thisUpdate).Round(time.Second))
+		}
+		return fmt.Errorf("serial %s appeared on the previous CRL but is missing from this one, "+
+			"and expired at %s, after that CRL's thisUpdate %s: the crl-updater's lookbackPeriod "+
+			"must cover the gap since that CRL (currently %s, and growing until an upload succeeds)",
+			serial, expires.Format(time.RFC3339), prevThisUpdate.Format(time.RFC3339),
+			cs.clk.Now().Sub(prevThisUpdate).Round(time.Second))
+	}
+	return nil
+}
 
 // UploadCRL implements the gRPC method of the same name. It takes a stream of
 // bytes as its input, parses and runs some sanity checks on the CRL, and then
@@ -149,9 +192,12 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		return errors.New("got no metadata message")
 	}
 
-	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
+	// don't upload a CRL larger than we are willing to read
+	if int64(len(crlBytes)) > cs.maxCRLSize {
+		return fmt.Errorf("crl too large: %dB > %dB", len(crlBytes), cs.maxCRLSize)
+	}
 
-	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
+	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
 
 	crl, err := x509.ParseRevocationList(crlBytes)
 	if err != nil {
@@ -172,19 +218,22 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	// additional safety check against clock skew and potential races, if multiple
 	// crl-updaters are working on the same shard at the same time. We only run
 	// these checks if we found a CRL, so we don't block uploading brand new CRLs.
+	var prevEtag *string
 	filename := fmt.Sprintf("%d/%d.crl", issuer.NameID(), shardIdx)
+	bucket := cs.s3Client.Bucket()
 	prevObj, err := cs.s3Client.GetObject(stream.Context(), &s3.GetObjectInput{
-		Bucket: &cs.s3Bucket,
+		Bucket: &bucket,
 		Key:    &filename,
 	})
 	if err != nil {
-		var smithyErr *smithyhttp.ResponseError
-		if !errors.As(err, &smithyErr) || smithyErr.HTTPStatusCode() != 404 {
+		smithyErr, ok := errors.AsType[*smithyhttp.ResponseError](err)
+		if !ok || smithyErr.HTTPStatusCode() != 404 {
 			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
 		}
 		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)
 	} else {
-		prevBytes, err := io.ReadAll(prevObj.Body)
+		defer prevObj.Body.Close()
+		prevBytes, err := io.ReadAll(core.ErrOnLimitReader(prevObj.Body, cs.maxCRLSize))
 		if err != nil {
 			return fmt.Errorf("downloading previous CRL for %s: %w", crlId, err)
 		}
@@ -218,6 +267,23 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		if !uriMatch {
 			return fmt.Errorf("IDP does not match previous: %v !∩ %v", idpURIs, prevURIs)
 		}
+
+		diff, err := checker.Diff(prevCRL, crl)
+		if err != nil {
+			return fmt.Errorf("diffing against previous CRL for %s: %w", crlId, err)
+		}
+
+		// TODO(#8983): Remove the nil check once saReadOnlyService is in production configs.
+		if cs.sa != nil {
+			err = cs.checkRemovedEntries(stream.Context(), diff.Removed, prevCRL.ThisUpdate, crl.ThisUpdate)
+			if err != nil {
+				return fmt.Errorf("refusing to upload %s: %w", crlId, err)
+			}
+		}
+
+		// This ensures that the CRL object hasn't been replaced since we downloaded
+		// it above. Prevents races against another storer.
+		prevEtag = prevObj.ETag
 	}
 
 	// Finally actually upload the new CRL.
@@ -227,7 +293,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
 	_, err = cs.s3Client.PutObject(stream.Context(), &s3.PutObjectInput{
-		Bucket:            &cs.s3Bucket,
+		Bucket:            &bucket,
 		Key:               &filename,
 		Body:              bytes.NewReader(crlBytes),
 		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
@@ -236,6 +302,7 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
 		Expires:           &expires,
 		CacheControl:      &cacheControl,
+		IfMatch:           prevEtag,
 	})
 
 	latency := cs.clk.Now().Sub(start)
@@ -243,15 +310,18 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 
 	if err != nil {
 		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
-		cs.log.AuditErrf("CRL upload failed: id=[%s] err=[%s]", crlId, err)
+		cs.log.AuditErr("CRL upload failed", err, map[string]any{"id": crlId})
 		return fmt.Errorf("uploading to S3: %w", err)
 	}
 
 	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
-	cs.log.AuditInfof(
-		"CRL uploaded: id=[%s] issuerCN=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-		crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificateEntries),
-	)
+	cs.log.AuditInfo("CRL uploaded", map[string]any{
+		"id":         crlId,
+		"issuerCN":   issuer.Subject.CommonName,
+		"thisUpdate": crl.ThisUpdate.Format(time.RFC3339),
+		"nextUpdate": crl.NextUpdate.Format(time.RFC3339),
+		"numEntries": len(crl.RevokedCertificateEntries),
+	})
 
 	return stream.SendAndClose(&emptypb.Empty{})
 }

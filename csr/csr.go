@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -43,7 +44,7 @@ var (
 // VerifyCSR checks the validity of a x509.CertificateRequest. It uses
 // identifier.FromCSR to normalize the DNS names before checking whether we'll
 // issue for them.
-func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
+func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		return invalidPubKey
@@ -86,11 +87,8 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(idents) == 0 {
 		return invalidNoIdent
 	}
-	if len(idents) > maxNames {
-		return berrors.BadCSRError("CSR contains more than %d identifiers", maxNames)
-	}
 
-	err = pa.WillingToIssue(idents)
+	err = pa.WillingToIssue(idents, time.Time{})
 	if err != nil {
 		return err
 	}

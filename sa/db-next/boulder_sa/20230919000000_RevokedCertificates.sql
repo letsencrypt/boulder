@@ -1,1 +1,0 @@
-../../db/boulder_sa/20230919000000_RevokedCertificates.sql

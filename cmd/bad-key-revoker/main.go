@@ -2,6 +2,9 @@ package notmain
 
 import (
 	"context"
+	"database/sql"
+	"encoding/base64"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -9,6 +12,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -16,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -24,19 +29,6 @@ import (
 )
 
 const blockedKeysGaugeLimit = 1000
-
-var keysToProcess = prometheus.NewGauge(prometheus.GaugeOpts{
-	Name: "bad_keys_to_process",
-	Help: fmt.Sprintf("A gauge of blockedKeys rows to process (max: %d)", blockedKeysGaugeLimit),
-})
-var keysProcessed = prometheus.NewCounterVec(prometheus.CounterOpts{
-	Name: "bad_keys_processed",
-	Help: "A counter of blockedKeys rows processed labelled by processing state",
-}, []string{"state"})
-var certsRevoked = prometheus.NewCounter(prometheus.CounterOpts{
-	Name: "bad_keys_certs_revoked",
-	Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
-})
 
 // revoker is an interface used to reduce the scope of a RA gRPC client
 // to only the single method we need to use, this makes testing significantly
@@ -57,6 +49,9 @@ type badKeyRevoker struct {
 	backoffFactor             float64
 	backoffTicker             int
 	maxExpectedReplicationLag time.Duration
+	keysToProcess             prometheus.Gauge
+	keysProcessed             *prometheus.CounterVec
+	certsRevoked              prometheus.Counter
 }
 
 // uncheckedBlockedKey represents a row in the blockedKeys table
@@ -168,10 +163,11 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 			}
 			unrevokedCerts = append(unrevokedCerts, unrevokedCert)
 		}
+		if len(unrevokedCerts) > bkr.maxRevocations {
+			return nil, fmt.Errorf("too many certificates to revoke associated with %x: found at least %d, max %d", unchecked.KeyHash, len(unrevokedCerts), bkr.maxRevocations)
+		}
 	}
-	if len(unrevokedCerts) > bkr.maxRevocations {
-		return nil, fmt.Errorf("too many certificates to revoke associated with %x: got %d, max %d", unchecked.KeyHash, len(unrevokedCerts), bkr.maxRevocations)
-	}
+
 	return unrevokedCerts, nil
 }
 
@@ -185,9 +181,9 @@ func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked unchecke
 // revokeCerts revokes all the provided certificates. It uses reason
 // keyCompromise and includes note indicating that they were revoked by
 // bad-key-revoker.
-func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
+func (bkr *badKeyRevoker) revokeCerts(ctx context.Context, certs []unrevokedCertificate) error {
 	for _, cert := range certs {
-		_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		_, err := bkr.raClient.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
 			Cert:      cert.DER,
 			Serial:    cert.Serial,
 			Code:      int64(revocation.KeyCompromise),
@@ -196,50 +192,73 @@ func (bkr *badKeyRevoker) revokeCerts(certs []unrevokedCertificate) error {
 		if err != nil {
 			return err
 		}
-		certsRevoked.Inc()
+		bkr.certsRevoked.Inc()
 	}
 	return nil
 }
 
 // invoke exits early and returns true if there is no work to be done.
 // Otherwise, it processes a single key in the blockedKeys table and returns false.
-func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
+func (bkr *badKeyRevoker) invoke(ctx context.Context) (work bool, err error) {
+	logEvent := make(map[string]any)
+	defer func() {
+		if err != nil {
+			bkr.logger.AuditErr("Error while processing bad key", err, logEvent)
+		} else {
+			bkr.logger.AuditInfo("Processed bad key", logEvent)
+		}
+	}()
+
 	// Gather a count of rows to be processed.
 	uncheckedCount, err := bkr.countUncheckedKeys(ctx)
 	if err != nil {
 		return false, err
 	}
+	logEvent["keysToProcess"] = uncheckedCount
 
 	// Set the gauge to the number of rows to be processed (max:
 	// blockedKeysGaugeLimit).
-	keysToProcess.Set(float64(uncheckedCount))
+	bkr.keysToProcess.Set(float64(uncheckedCount))
 
 	if uncheckedCount >= blockedKeysGaugeLimit {
-		bkr.logger.AuditInfof("found >= %d unchecked blocked keys left to process", uncheckedCount)
-	} else {
-		bkr.logger.AuditInfof("found %d unchecked blocked keys left to process", uncheckedCount)
+		logEvent["keysToProcessOverflow"] = true
 	}
 
 	// select a row to process
 	unchecked, err := bkr.selectUncheckedKey(ctx)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return true, nil
 		}
 		return false, err
 	}
-	bkr.logger.AuditInfo(fmt.Sprintf("found unchecked block key to work on: %s", unchecked))
+	logEvent["keyHash"] = fmt.Sprintf("%x", unchecked.KeyHash)
+	logEvent["revokedBy"] = unchecked.RevokedBy
+
+	if features.Get().RevokeBadKeyAccounts {
+		// Revoke the account, if any, which uses this key. The registrations
+		// table ensures that jwk_sha256 is unique. However, it stores the jwk_sha256
+		// column in base64, unlike the keyHashToSerial table. We do this before the
+		// certs so that we can still early-exit if there are zero certs to process.
+		_, err = bkr.dbMap.ExecContext(
+			ctx, "UPDATE registrations SET status = ? WHERE jwk_sha256 = ? AND status = ? LIMIT 1",
+			string(core.StatusRevoked),
+			base64.StdEncoding.EncodeToString(unchecked.KeyHash),
+			string(core.StatusValid),
+		)
+		if err != nil {
+			return false, fmt.Errorf("deactivating corresponding account: %w", err)
+		}
+	}
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash
 	unrevokedCerts, err := bkr.findUnrevoked(ctx, unchecked)
 	if err != nil {
-		bkr.logger.AuditInfo(fmt.Sprintf("finding unrevoked certificates related to %s: %s",
-			unchecked, err))
 		return false, err
 	}
+	logEvent["certsToProcess"] = len(unrevokedCerts)
+
 	if len(unrevokedCerts) == 0 {
-		bkr.logger.AuditInfo(fmt.Sprintf("found no certificates that need revoking related to %s, marking row as checked", unchecked))
-		// mark row as checked
 		err = bkr.markRowChecked(ctx, unchecked)
 		if err != nil {
 			return false, err
@@ -251,10 +270,10 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 	for _, cert := range unrevokedCerts {
 		serials = append(serials, cert.Serial)
 	}
-	bkr.logger.AuditInfo(fmt.Sprintf("revoking serials %v for key with hash %x", serials, unchecked.KeyHash))
+	logEvent["serials"] = serials
 
 	// revoke each certificate
-	err = bkr.revokeCerts(unrevokedCerts)
+	err = bkr.revokeCerts(ctx, unrevokedCerts)
 	if err != nil {
 		return false, err
 	}
@@ -301,6 +320,8 @@ type Config struct {
 		// the database's maximum replication lag, and always well under 24
 		// hours.
 		MaxExpectedReplicationLag config.Duration `validate:"-"`
+
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -320,25 +341,37 @@ func main() {
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
 
+	features.Set(config.BadKeyRevoker.Features)
+
 	if *debugAddr != "" {
 		config.BadKeyRevoker.DebugAddr = *debugAddr
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
 	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
+	cmd.LogStartup(logger)
 	clk := clock.New()
 
-	scope.MustRegister(keysProcessed)
-	scope.MustRegister(certsRevoked)
+	keysToProcess := promauto.With(stats).NewGauge(prometheus.GaugeOpts{
+		Name: "bad_keys_to_process",
+		Help: fmt.Sprintf("A gauge of blockedKeys rows to process (max: %d)", blockedKeysGaugeLimit),
+	})
+	keysProcessed := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "bad_keys_processed",
+		Help: "A counter of blockedKeys rows processed labelled by processing state",
+	}, []string{"state"})
+	certsRevoked := promauto.With(stats).NewCounter(prometheus.CounterOpts{
+		Name: "bad_keys_certs_revoked",
+		Help: "A counter of certificates associated with rows in blockedKeys that have been revoked",
+	})
 
-	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, scope, logger)
+	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, stats, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	tlsConfig, err := config.BadKeyRevoker.TLS.Load(scope)
+	tlsConfig, err := config.BadKeyRevoker.TLS.Load(stats)
 	cmd.FailOnError(err, "TLS config")
 
-	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, scope, clk)
+	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, stats, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(conn)
 
@@ -353,6 +386,9 @@ func main() {
 		backoffIntervalBase:       config.BadKeyRevoker.Interval.Duration,
 		backoffFactor:             1.3,
 		maxExpectedReplicationLag: config.BadKeyRevoker.MaxExpectedReplicationLag.Duration,
+		keysToProcess:             keysToProcess,
+		keysProcessed:             keysProcessed,
+		certsRevoked:              certsRevoked,
 	}
 
 	// If `BackoffIntervalMax` was not set via the config, set it to 60
@@ -368,12 +404,10 @@ func main() {
 		bkr.backoffIntervalBase = time.Second
 	}
 
-	// If `MaxExpectedReplicationLag` was not set via the config, then set
-	// `bkr.maxExpectedReplicationLag` to a default 22 seconds. This is based on
-	// ProxySQL's max_replication_lag for bad-key-revoker (10s), times two, plus
-	// two seconds.
+	// If `MaxExpectedReplicationLag` was not set via the config, fail. We can't
+	// safely assume or anticipate its value for any given Boulder deployment.
 	if bkr.maxExpectedReplicationLag == 0 {
-		bkr.maxExpectedReplicationLag = time.Second * 22
+		cmd.Fail("maxExpectedReplicationLag must be provided.")
 	}
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.
@@ -381,13 +415,11 @@ func main() {
 		noWork, err := bkr.invoke(context.Background())
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
-			logger.AuditErrf("failed to process blockedKeys row: %s", err)
 			// Calculate and sleep for a backoff interval
 			bkr.backoff()
 			continue
 		}
 		if noWork {
-			logger.Info("no work to do")
 			// Calculate and sleep for a backoff interval
 			bkr.backoff()
 		} else {

@@ -43,19 +43,15 @@ func (e ErrDatabaseOp) Unwrap() error {
 	return e.Err
 }
 
-// IsNoRows is a utility function for determining if an error wraps the go sql
-// package's ErrNoRows, which is returned when a Scan operation has no more
-// results to return, and as such is returned by many borp methods.
-func IsNoRows(err error) bool {
-	return errors.Is(err, sql.ErrNoRows)
-}
-
 // IsDuplicate is a utility function for determining if an error wrap MySQL's
 // Error 1062: Duplicate entry. This error is returned when inserting a row
 // would violate a unique key constraint.
 func IsDuplicate(err error) bool {
-	var dbErr *mysql.MySQLError
-	return errors.As(err, &dbErr) && dbErr.Number == 1062
+	dbErr, ok := errors.AsType[*mysql.MySQLError](err)
+	if ok && dbErr.Number == 1062 {
+		return true
+	}
+	return false
 }
 
 // WrappedMap wraps a *borp.DbMap such that its major functions wrap error

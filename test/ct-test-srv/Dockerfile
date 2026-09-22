@@ -9,7 +9,7 @@ COPY go.mod go.sum vendor ./
 
 COPY . .
 
-RUN go build -o /bin/ct-test-srv ./test/ct-test-srv/main.go
+RUN go build -trimpath -o /bin/ct-test-srv ./test/ct-test-srv/main.go
 
 FROM ubuntu:24.04
 
