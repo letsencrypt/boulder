@@ -1,5 +1,3 @@
-//go:build go1.27
-
 // genkeys generates the sunlight witness's seed and the throwaway CT log's
 // accepted roots file, derives the mirror cosigner's public key for the mtca
 // and mtpublisher configs the way cmd/sunlight derives the private key, and
