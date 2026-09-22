@@ -643,7 +643,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	for _, e := range entries {
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
-			subtreeID:    0, // TODO(#9020): calculate subtreeIDs and persist them.
+			subtreeID:    0, // TODO(#9020): insert subtrees and persist their IDs.
 		}
 		serial++
 	}

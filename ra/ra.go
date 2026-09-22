@@ -1179,7 +1179,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	if ra.isMTC(order) {
 		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
 		if err != nil {
-			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Issuing MTC"))
+			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error issuing MTC"))
 			return nil, err
 		}
 

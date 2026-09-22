@@ -48,7 +48,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
-const logNumber = 44
+const logNumber = 3
 
 // setup returns a working mtca, its fake tile storage, and a cleanup
 // function, or an error.
