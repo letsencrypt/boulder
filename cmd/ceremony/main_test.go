@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"io/fs"
@@ -17,6 +20,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -1308,4 +1312,125 @@ func TestPostIssuanceLinting(t *testing.T) {
 	test.AssertNotError(t, err, "unable to parse DER bytes")
 	err = postIssuanceLinting(parsedCert, nil, nil, nil)
 	test.AssertNotError(t, err, "should not have errored")
+}
+
+func TestCRLCeremony(t *testing.T) {
+	tmpdir, err := os.MkdirTemp("", "crltest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(tmpdir) })
+
+	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	template := &x509.Certificate{
+		PublicKey:             issuerKey.Public(),
+		Subject:               pkix.Name{CommonName: "example"},
+		NotBefore:             time.Date(2023, 1, 1, 1, 1, 1, 0, time.UTC),
+		NotAfter:              time.Date(2028, 1, 1, 1, 1, 1, 0, time.UTC),
+		KeyUsage:              x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		MaxPathLen:            1,
+		MaxPathLenZero:        false,
+	}
+	issuerCert, err := x509.CreateCertificate(rand.Reader, template, template, issuerKey.Public(), issuerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	err = pem.Encode(&buf, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: issuerCert,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Note: we only write one certificate, which is both the CRL signer and the certificate to be revoked.
+	err = os.WriteFile(path.Join(tmpdir, "issuer.cert.pem"), buf.Bytes(), os.FileMode(0644))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config := fmt.Appendf(nil, `
+ceremony-type: crl
+pkcs11:
+  module: unused
+  pin: unused
+  signing-key-slot: 23
+  signing-key-label: unused
+inputs:
+  issuer-certificate-path: %s/issuer.cert.pem
+outputs:
+  crl-path: %s/crl-out.pem
+crl-profile:
+  this-update: 2026-09-23 18:00:00
+  next-update: 2026-12-23 23:59:59
+  number: 7654
+  revoked-certificates:
+  - certificate-path: %s/issuer.cert.pem
+    revocation-date: 2026-09-23 16:00:00
+    revocation-reason: superseded
+skip-lints:
+  # This lint thinks these CRLs contain Subscriber certs and enforces the wrong limit.
+  - e_crl_next_update_invalid
+`, tmpdir, tmpdir, tmpdir)
+	t.Logf("%s", config)
+
+	oldOpenSigner := openSigner
+	t.Cleanup(func() {
+		openSigner = oldOpenSigner
+	})
+
+	openSigner = func(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer, *hsmRandReader, error) {
+		return issuerKey, nil, nil
+	}
+
+	err = crlCeremony(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := os.ReadFile(path.Join(tmpdir, "crl-out.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	block, _ := pem.Decode(b)
+	if block == nil {
+		t.Fatal("failed to parse CRL PEM")
+	}
+
+	list, err := x509.ParseRevocationList(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(list.RevokedCertificateEntries) != 1 {
+		t.Fatalf("expected 1 entry in CRL, got %d", len(list.RevokedCertificateEntries))
+	}
+
+	entry := list.RevokedCertificateEntries[0]
+	if entry.ReasonCode != int(revocation.Superseded) {
+		t.Errorf("expected revocation reasonCode %d, got %d", revocation.Superseded, entry.ReasonCode)
+	}
+
+	issuerCertParsed, err := x509.ParseCertificate(issuerCert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.SerialNumber.Cmp(issuerCertParsed.SerialNumber) != 0 {
+		t.Errorf("CRL entry 0: got serialNumber %x, want %x", issuerCertParsed.SerialNumber, entry.SerialNumber)
+	}
+
+	expectedRevocationTime := time.Date(2026, 9, 23, 16, 00, 00, 0, time.UTC)
+	if !entry.RevocationTime.Equal(expectedRevocationTime) {
+		t.Errorf("CRL entry 0: got revocationTime %s, want %s",
+			entry.RevocationTime, expectedRevocationTime)
+	}
 }

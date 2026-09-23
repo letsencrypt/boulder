@@ -7,8 +7,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -498,7 +496,10 @@ func publicKeysEqual(a, b crypto.PublicKey) (bool, error) {
 	}
 }
 
-func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer, *hsmRandReader, error) {
+// openSigner is overridden with a mock in unittests.
+var openSigner = openSignerImpl
+
+func openSignerImpl(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer, *hsmRandReader, error) {
 	session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s",
@@ -896,14 +897,7 @@ func crlCeremony(configBytes []byte) error {
 		if err != nil {
 			return fmt.Errorf("looking up revocation reason: %w", err)
 		}
-		encReason, err := asn1.Marshal(reasonCode)
-		if err != nil {
-			return fmt.Errorf("failed to marshal revocation reason %d (%q): %s", reasonCode, rc.RevocationReason, err)
-		}
-		revokedCert.Extensions = []pkix.Extension{{
-			Id:    asn1.ObjectIdentifier{2, 5, 29, 21}, // id-ce-reasonCode
-			Value: encReason,
-		}}
+		revokedCert.ReasonCode = int(reasonCode)
 		revokedCertificates = append(revokedCertificates, revokedCert)
 	}
 
