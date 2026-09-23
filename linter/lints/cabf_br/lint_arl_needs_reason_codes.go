@@ -11,26 +11,26 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-type arlHasReasonCodes struct{}
+type arlNeedsReasonCodes struct{}
 
 func init() {
 	lint.RegisterRevocationListLint(&lint.RevocationListLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_arl_has_reason_codes",
+			Name:          "e_arl_needs_reason_codes",
 			Description:   "The reasonCode MUST be present for revoked Subordinate CA Certificates",
 			Citation:      "BRs 7.2.2; CCADB 3.2; Microsoft 2.1.7",
 			Source:        lint.CABFBaselineRequirements,
 			EffectiveDate: util.CABFBRs_2_0_0_Date,
 		},
-		Lint: NewArlHasReasonCodes,
+		Lint: NewArlNeedsReasonCodes,
 	})
 }
 
-func NewArlHasReasonCodes() lint.RevocationListLintInterface {
-	return &arlHasReasonCodes{}
+func NewArlNeedsReasonCodes() lint.RevocationListLintInterface {
+	return &arlNeedsReasonCodes{}
 }
 
-func (l *arlHasReasonCodes) CheckApplies(c *x509.RevocationList) bool {
+func (l *arlNeedsReasonCodes) CheckApplies(c *x509.RevocationList) bool {
 	// This requirement applies only to ARLs, i.e. CRLs which contain entries for
 	// Subordinate CA Certificates. Assume that any CRL which does *not* have the
 	// onlyContainsUserCerts bit set is potentially an ARL. Note that this is a
@@ -73,7 +73,7 @@ func (l *arlHasReasonCodes) CheckApplies(c *x509.RevocationList) bool {
 	return true
 }
 
-func (l *arlHasReasonCodes) Execute(c *x509.RevocationList) *lint.LintResult {
+func (l *arlNeedsReasonCodes) Execute(c *x509.RevocationList) *lint.LintResult {
 	for _, rc := range c.RevokedCertificates {
 		if rc.ReasonCode == nil {
 			return &lint.LintResult{

@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints/test"
 )
 
-func TestArlHasReasonCodes(t *testing.T) {
+func TestArlNeedsReasonCodes(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -45,7 +45,7 @@ func TestArlHasReasonCodes(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			l := NewArlHasReasonCodes()
+			l := NewArlNeedsReasonCodes()
 			c := test.LoadPEMCRL(t, fmt.Sprintf("testdata/crl_%s.pem", tc.name))
 
 			if !l.CheckApplies(c) {
