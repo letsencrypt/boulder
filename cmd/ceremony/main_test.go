@@ -1315,7 +1315,10 @@ func TestPostIssuanceLinting(t *testing.T) {
 }
 
 func TestCRLCeremony(t *testing.T) {
-	tmpdir := os.TempDir()
+	tmpdir, err := os.MkdirTemp("", "crltest")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { os.RemoveAll(tmpdir) })
 
 	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
