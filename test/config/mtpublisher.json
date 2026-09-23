@@ -13,11 +13,11 @@
 		"mirror": {
 			"id": "32473.9",
 			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem",
-			"baseURL": "http://bsunlight:4700",
+			"baseURL": "http://boulder-sunlight:4700",
 			"timeout": "15s"
 		},
 		"s3": {
-			"s3endpoint": "http://boulder-minio:9000",
+			"s3endpoint": "http://boulder-seaweedfs:8333",
 			"s3bucket": "boulder-mtc-tiles",
 			"awsConfigFile": "test/config-next/mtca-s3-config.ini",
 			"awsCredsFile": "test/secrets/mtca-s3-creds.ini"

@@ -68,6 +68,10 @@ services:
         condition: service_started
       bpkimetal:
         condition: service_started
+      bseaweedfs:
+        condition: service_started
+      bsunlight:
+        condition: service_started
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -183,6 +187,44 @@ services:
       bouldernet:
         aliases:
           - boulder-vitess
+
+  bseaweedfs:
+    image: chrislusf/seaweedfs:4.47
+    # Sunlight connects to its S3 backend as `<bucket>.<host>`. That means
+    # SeaweedFS needs to know its `<host>` name so it can parse the Host header
+    # to extract the bucket name.
+    command: mini -dir=/data -s3.domainName=boulder-seaweedfs -s3.config=/etc/seaweedfs/seaweedfs.json
+    environment:
+      AWS_ACCESS_KEY_ID: boulderseaweeduser
+      AWS_SECRET_ACCESS_KEY: boulderseaweedpassword
+      S3_BUCKET: boulder-mtc-tiles,boulder-sunlight
+    volumes:
+      - mtc-data:/data
+      - ./test/seaweedfs/:/etc/seaweedfs/
+    networks:
+      bouldernet:
+        aliases:
+          - boulder-seaweedfs
+          # See note above: sunlight uses `<bucket>.<host>` as its S3 backend.
+          - boulder-sunlight.boulder-seaweedfs
+
+  bsunlight:
+    image: letsencrypt/boulder-sunlight:${BOULDER_SUNLIGHT_TAG:-latest}
+    build:
+      context: test/sunlight/
+    depends_on:
+      bseaweedfs:
+        condition: service_started
+    volumes:
+      - .:/boulder:cached
+      - mtc-data:/sunlight-data
+    environment:
+      AWS_ACCESS_KEY_ID: boulderseaweeduser
+      AWS_SECRET_ACCESS_KEY: boulderseaweedpassword
+    networks:
+      bouldernet:
+        aliases:
+          - boulder-sunlight
 
 volumes:
   mtc-data:

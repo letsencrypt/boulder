@@ -140,6 +140,14 @@ SERVICES = [
         8016, None, None,
         ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json'), '--debug-addr', ':8016'),
         None),
+    Service('boulder-mtca-1',
+        8010, 9396, 'mtca.boulder',
+        ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010', '-init-log-for-test'),
+        None),
+    Service('boulder-mtpublisher-1',
+        8025, None, None,
+        ('./bin/boulder', 'boulder-mtpublisher', '--config', os.path.join(config_dir, 'mtpublisher.json'), '--debug-addr', ':8025'),
+        None),
 ]
 
 def _service_toposort(services):

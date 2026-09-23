@@ -187,10 +187,9 @@ func TestIssuanceProfiles(t *testing.T) {
 
 // TestIssuanceMTC issues from an MTC profile.
 func TestIssuanceMTC(t *testing.T) {
-	t.Skip("temporarily disabled until an S3 backend is available in CI again")
 	t.Parallel()
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("MTC issuance only available in config-next")
+		t.Skip("MTC issuance only available in config-next (due to orders table migrations in boulder_sa_next)")
 	}
 
 	client, err := makeClient()
@@ -217,8 +216,8 @@ func TestIssuanceMTC(t *testing.T) {
 	// checkpoint must converge on the served tree head. Poll until they agree.
 	origin := "oid/1.3.6.1.4.1.44947.4.1.0.44"
 	originHash := sha256.Sum256([]byte(origin))
-	localURL := "http://boulder-minio:9000/boulder-mtc-tiles/44947.4.1/44/checkpoint"
-	mirrorURL := "http://boulder-minio:9000/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
+	localURL := "http://boulder-seaweedfs:8333/boulder-mtc-tiles/44947.4.1/44/checkpoint"
+	mirrorURL := "http://boulder-seaweedfs:8333/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
 
 	deadline := time.Now().Add(5 * time.Second)
 	var localText string
