@@ -86,6 +86,7 @@ func TestGenerateCRLLints(t *testing.T) {
 		{
 			SerialNumber:   big.NewInt(12345),
 			RevocationTime: time.Now().Add(time.Hour),
+			ReasonCode:     4,
 		},
 	}, []string{})
 	test.AssertError(t, err, "generateCRL did not fail")
@@ -96,6 +97,7 @@ func TestGenerateCRLLints(t *testing.T) {
 		{
 			SerialNumber:   big.NewInt(12345),
 			RevocationTime: time.Now().Add(time.Hour),
+			ReasonCode:     4,
 		},
 	}, []string{"e_crl_next_update_invalid"})
 	test.AssertNotError(t, err, "generateCRL should have ignored the failing lint")
