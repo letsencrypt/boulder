@@ -12,8 +12,4 @@ if [ ! -f /sunlight-data/checkpoints.db ]; then
     "CREATE TABLE checkpoints (logID BLOB PRIMARY KEY, body BLOB NOT NULL) STRICT"
 fi
 
-sunlight -c /boulder/test/sunlight/sunlight.yaml
-
-# Sunlight often doesn't print a message on exit; this makes debugging with
-# `docker compose logs` simpler.
-echo "exiting" 2>&1
+exec sunlight -c /boulder/test/sunlight/sunlight.yaml
