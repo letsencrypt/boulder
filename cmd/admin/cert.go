@@ -79,10 +79,10 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("looking up revocation reason: %w", err)
 	}
 
-	if s.skipBlock && reasonCode == revocation.KeyCompromise {
+	if s.skipBlock && reasonCode != revocation.KeyCompromise {
 		// We would only add the SPKI hash of the pubkey to the blockedKeys table if
 		// the revocation reason is keyCompromise.
-		return errors.New("-skip-block-key only makes sense with -reason=1")
+		return errors.New("-skip-block-key only makes sense with -reason=keyCompromise")
 	}
 
 	if s.malformed && reasonCode == revocation.KeyCompromise {
