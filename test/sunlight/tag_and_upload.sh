@@ -6,7 +6,7 @@ cd $(dirname $0)
 
 DATESTAMP=$(date +%Y-%m-%d)
 DOCKER_REPO="letsencrypt/boulder-sunlight"
-SUNLIGHT_TAG=v0.9.0
+SUNLIGHT_TAG=v0.10.0
 
 echo "Please login to allow push to DockerHub"
 docker login
