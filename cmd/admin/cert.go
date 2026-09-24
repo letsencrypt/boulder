@@ -54,7 +54,7 @@ func (s *subcommandRevokeCert) Desc() string {
 func (s *subcommandRevokeCert) Flags(flag *flag.FlagSet) {
 	// General flags relevant to all certificate input methods.
 	flag.UintVar(&s.parallelism, "parallelism", 10, "Number of concurrent workers to use while revoking certs")
-	flag.StringVar(&s.reasonStr, "reason", "unspecified", "Revocation reason (unspecified, keyCompromise, superseded, cessationOfOperation, or privilegeWithdrawn)")
+	flag.StringVar(&s.reasonStr, "reason", "", "Revocation reason (unspecified, keyCompromise, superseded, cessationOfOperation, or privilegeWithdrawn)")
 	flag.BoolVar(&s.skipBlock, "skip-block-key", false, "Skip blocking the key, if revoked for keyCompromise - use with extreme caution")
 	flag.BoolVar(&s.malformed, "malformed", false, "Indicates that the cert cannot be parsed - use with caution")
 	flag.Int64Var(&s.crlShard, "crl-shard", 0, "For malformed certs, the CRL shard the certificate belongs to")
@@ -72,6 +72,10 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	if s.parallelism == 0 {
 		// Why did they override it to 0, instead of just leaving it the default?
 		return fmt.Errorf("got unacceptable parallelism %d", s.parallelism)
+	}
+
+	if s.reasonStr == "" {
+		return errors.New("revocation reason must be specified with -reason")
 	}
 
 	reasonCode, err := revocation.StringToReason(s.reasonStr)
