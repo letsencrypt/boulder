@@ -198,6 +198,8 @@ func UnauthorizedError(msg string, args ...any) error {
 	return newf(Unauthorized, msg, args...)
 }
 
+// NotFoundError returns an error with Type: NotFound.
+// Calling it with the empty string and no other arguments is valid.
 func NotFoundError(msg string, args ...any) error {
 	return newf(NotFound, msg, args...)
 }

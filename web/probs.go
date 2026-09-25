@@ -17,7 +17,11 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 	case berrors.Unauthorized:
 		outProb = probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.NotFound:
-		outProb = probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
+		if err.Detail == "" {
+			outProb = probs.NotFound("not found")
+		} else {
+			outProb = probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
+		}
 	case berrors.RateLimit:
 		outProb = probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.InternalServer:
