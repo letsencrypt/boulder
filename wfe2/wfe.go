@@ -2570,7 +2570,12 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
+	var order *corepb.Order
+	if features.Get().WFECallsRAForGetOrder {
+		order, err = wfe.ra.GetOrder(ctx, &rapb.GetOrderRequest{OrderID: orderID})
+	} else {
+		order, err = wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
+	}
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), nil)
@@ -2652,7 +2657,12 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
+	var order *corepb.Order
+	if features.Get().WFECallsRAForGetOrder {
+		order, err = wfe.ra.GetOrder(ctx, &rapb.GetOrderRequest{OrderID: orderID})
+	} else {
+		order, err = wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
+	}
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), nil)

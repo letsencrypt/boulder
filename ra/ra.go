@@ -2422,6 +2422,48 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	return storedOrder, nil
 }
 
+// GetOrder returns an order object from the SA. If the SA returns an order in "processing" state,
+// this method will return the same order but with "valid" state if:
+//
+//   - It is an MTC order, and a call to an MTCA indicates that sufficient signatures are available to
+//     product a standalone certificate.
+//   - It is a non-MTC order and the certificateSerial field is nonempty.
+func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.GetOrderRequest) (*corepb.Order, error) {
+	order, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: req.OrderID})
+	if err != nil {
+		return nil, err
+	}
+
+	if order.Status != string(core.StatusProcessing) {
+		return order, nil
+	}
+
+	if ra.isMTC(order) {
+		mtca, ok := ra.profileToMTCA[ra.profileName(order)]
+		if !ok {
+			return nil, fmt.Errorf("MTC order does not have a corresponding MTCA")
+		}
+
+		resp, err := mtca.StandaloneReady(ctx, &mtcapb.StandaloneReadyRequest{
+			MtcLogID:        order.MtcLogID,
+			MtcSerialNumber: order.MtcSerialNumber,
+			MtcSubtreeID:    order.MtcSubtreeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if resp.Ready {
+			order.Status = string(core.StatusValid)
+		}
+	} else {
+		if order.CertificateSerial != "" {
+			order.Status = string(core.StatusValid)
+		}
+	}
+
+	return order, nil
+}
+
 // wildcardOverlap takes a slice of identifiers and returns an error if any of
 // them is a non-wildcard FQDN that overlaps with a wildcard domain in the map.
 func wildcardOverlap(idents identifier.ACMEIdentifiers) error {
