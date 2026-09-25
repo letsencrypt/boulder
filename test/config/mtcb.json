@@ -24,10 +24,10 @@
 			"dbConnectFile": "test/secrets/mtcb_dburl"
 		},
 		"s3": {
-			"s3endpoint": "http://boulder-minio:9000",
+			"s3endpoint": "http://boulder-seaweedfs:8333",
 			"s3bucket": "boulder-mtc-tiles",
-			"awsConfigFile": "test/config-next/mtcb-s3-config.ini",
-			"awsCredsFile": "test/secrets/mtcb-s3-creds.ini"
+			"awsConfigFile": "test/config-next/mtca-s3-config.ini",
+			"awsCredsFile": "test/secrets/mtca-s3-creds.ini"
 		},
 		"issuerCerts": [
 			"test/certs/mtpki/mtca1.cert.pem"
