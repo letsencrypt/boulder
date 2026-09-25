@@ -14,10 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/letsencrypt/borp"
-
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
@@ -26,15 +23,22 @@ import (
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/tiles"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
+
+// checkpointDB is the subset of treedb.Impl the mtcb uses, so tests can supply
+// checkpoints without a database.
+type checkpointDB interface {
+	ContainingCheckpoint(ctx context.Context, mtcLogID string, entryIndex int64) (*treedb.CheckpointModel, error)
+}
 
 type mtcb struct {
 	mtcbpb.UnimplementedMTCBServer
 
 	issuers map[string]struct{}
 
-	db  *db.WrappedMap
-	s3c simpleS3
+	checkpoints checkpointDB
+	s3c         simpleS3
 
 	log blog.Logger
 	clk clock.Clock
@@ -45,7 +49,7 @@ var _ mtcbpb.MTCBServer = &mtcb{}
 // New creates a new MTCB service.
 func New(
 	issuers []*issuance.Certificate,
-	dbMap *borp.DbMap,
+	checkpoints checkpointDB,
 	s3c simpleS3,
 	logger blog.Logger,
 	clk clock.Clock,
@@ -61,11 +65,11 @@ func New(
 	}
 
 	m := &mtcb{
-		issuers: issuersMap,
-		db:      initDB(dbMap),
-		s3c:     s3c,
-		log:     logger,
-		clk:     clk,
+		issuers:     issuersMap,
+		checkpoints: checkpoints,
+		s3c:         s3c,
+		log:         logger,
+		clk:         clk,
 	}
 
 	return m, nil
@@ -76,11 +80,6 @@ func New(
 type simpleS3 interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	Bucket() string
-}
-
-func initDB(dbMap *borp.DbMap) *db.WrappedMap {
-	dbMap.AddTableWithName(checkpointRow{}, "checkpoints").SetKeys(true, "ID")
-	return db.NewWrappedMap(dbMap)
 }
 
 // entryIndexBits is the width of the entry index in the low bits of a 64-bit
@@ -125,34 +124,26 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	// Step 1: Fetch the relevant checkpoint from the database.
 	// TODO: Eventually, fetch the relevant subtree instead.
-	cp, err := m.containingCheckpoint(ctx, logID, entryIndex)
+	cp, err := m.checkpoints.ContainingCheckpoint(ctx, logID.String(), tlogIndex)
 	if err != nil {
 		return nil, err
 	}
+	err = cp.Valid()
+	if err != nil {
+		return nil, fmt.Errorf("validating checkpoint %d: %w", cp.ID, err)
+	}
+	if !cp.Mirrored() {
+		return nil, fmt.Errorf("checkpoint %d is not mirrored", cp.ID)
+	}
 
 	// Step 2: Fetch the tbsCertificateLogEntry and pubkey from the log.
-	tr := tiles.NewTileReader(ctx, m.s3c, logID.TilePrefix())
-
-	entryTiles, err := tr.ReadTiles([]tlog.Tile{{
-		L: -1, // TODO: use const for level
-		N: tlogIndex / 256,
-		W: 256, // TODO: support non-full tiles
-	}})
+	entryBundle, pubkeyBundle, err := tiles.ReadBundles(ctx, m.s3c, tlogIndex, cp.TreeSize, logID.TilePrefix())
 	if err != nil {
-		return nil, fmt.Errorf("failed to read entry tile: %w", err)
+		return nil, fmt.Errorf("reading bundles: %w", err)
 	}
 
-	pubkeyTiles, err := tr.ReadTiles([]tlog.Tile{{
-		L: -2, // TODO: use const for level
-		N: tlogIndex / 256,
-		W: 256, // TODO: support non-full tiles
-	}})
-	if err != nil {
-		return nil, fmt.Errorf("failed to read pubkey tile: %w", err)
-	}
-
-	ebr := entry.NewBundleReader(entryTiles[0])
-	pbr := pubkey.NewBundleReader(pubkeyTiles[0])
+	ebr := entry.NewBundleReader(entryBundle)
+	pbr := pubkey.NewBundleReader(pubkeyBundle)
 
 	for i := entryIndex - (entryIndex % 256); i < entryIndex; i++ {
 		// TODO: using ReadEntry for these is very inefficient, because it parses
@@ -179,8 +170,8 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	}
 
 	// Step 3: Build the inclusion proof from the log.
-	var rootHash tlog.Hash
-	copy(rootHash[:], cp.RootHash)
+	rootHash := tlog.Hash(cp.RootHash)
+	tr := tiles.NewTileReader(ctx, m.s3c, logID.TilePrefix())
 	hr := tlog.TileHashReader(tlog.Tree{N: cp.TreeSize, Hash: rootHash}, tr)
 	inclusionProof, err := tlog.ProveRecord(cp.TreeSize, tlogIndex, hr)
 	if err != nil {
@@ -195,7 +186,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	sig := proof.MTCProof{
 		Start:          0,
-		End:            uint64(cp.TreeSize), //nolint:gosec // G115: the treeSize > entryIndex clause in containingCheckpoint leaves TreeSize positive.
+		End:            uint64(cp.TreeSize), //nolint:gosec // G115: cp.Valid() above rejects a non-positive TreeSize.
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
 			{CosignerID: []byte(logID.CAID), Signature: cp.MTCASignature},
@@ -239,33 +230,4 @@ func buildCertificate(tbs []byte, sig *proof.MTCProof) ([]byte, error) {
 
 func (m *mtcb) GetLandmarkRelative(ctx context.Context, req *mtcbpb.LandmarkRelativeRequest) (*mtcbpb.LandmarkRelativeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLandmarkRelative not implemented")
-}
-
-// checkpointRow is the database model of a signed and mirrored checkpoint.
-type checkpointRow struct {
-	ID              int64   `db:"id"`
-	MTCLogID        string  `db:"mtcLogID"`
-	MTCASignature   []byte  `db:"mtcaSignature"`
-	MirrorID        *string `db:"mirrorID"` // nullable if not yet mirrored
-	MirrorSignature []byte  `db:"mirrorSignature"`
-	TreeSize        int64   `db:"treeSize"`
-	RootHash        []byte  `db:"rootHash"`
-}
-
-func (m *mtcb) containingCheckpoint(ctx context.Context, logID issuancelog.ID, entryIndex uint64) (*checkpointRow, error) {
-	var cp checkpointRow
-	err := m.db.SelectOne(ctx, &cp,
-		`SELECT id, mtcLogID, mtcaSignature, mirrorID, mirrorSignature, treeSize, rootHash
-		 FROM checkpoints
-		 WHERE mtcLogID = ? AND
-		 			 treeSize > ?
-		 ORDER BY treeSize
-		 LIMIT 1`,
-		logID.String(),
-		entryIndex)
-	if err != nil {
-		return nil, fmt.Errorf("getting checkpoint for log %q index %d: %w", logID.String(), entryIndex, err)
-	}
-
-	return &cp, nil
 }
