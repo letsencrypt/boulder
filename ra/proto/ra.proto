@@ -108,7 +108,7 @@ message NewOrderRequest {
 }
 
 message GetOrderRequest {
-  // Next unused field number: 3
+  // Next unused field number: 2
   int64 orderID = 1;
 }
 
