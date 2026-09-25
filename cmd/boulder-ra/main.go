@@ -22,6 +22,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
+	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
@@ -49,6 +50,7 @@ type Config struct {
 		VAService        *cmd.GRPCClientConfig
 		CAService        *cmd.GRPCClientConfig
 		PublisherService *cmd.GRPCClientConfig
+		MTCBService      *cmd.GRPCClientConfig
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
@@ -198,6 +200,10 @@ func main() {
 		profileToMTCA[profile] = mtcaClient
 	}
 
+	mtcbConn, err := bgrpc.ClientSetup(c.RA.MTCBService, tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Unable to create MTCB client")
+	mtcb := mtcbpb.NewMTCBClient(mtcbConn)
+
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
@@ -301,6 +307,7 @@ func main() {
 		ctp,
 		issuerCerts,
 		profileToMTCA,
+		mtcb,
 	)
 	defer rai.Drain()
 

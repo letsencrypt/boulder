@@ -41,6 +41,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
+	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -77,6 +78,7 @@ type RegistrationAuthorityImpl struct {
 	PA            core.PolicyAuthority
 	publisher     pubpb.PublisherClient
 	profileToMTCA map[string]mtcapb.MTCAClient
+	mtcb          mtcbpb.MTCBClient
 
 	clk               clock.Clock
 	log               blog.Logger
@@ -129,6 +131,7 @@ func NewRegistrationAuthorityImpl(
 	ctp *ctpolicy.CTPolicy,
 	issuers []*issuance.Certificate,
 	profileToMTCA map[string]mtcapb.MTCAClient,
+	mtcb mtcbpb.MTCBClient,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := promauto.With(stats).NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -218,6 +221,7 @@ func NewRegistrationAuthorityImpl(
 		limiter:                 limiter,
 		txnBuilder:              txnBuilder,
 		publisher:               pubc,
+		mtcb:                    mtcb,
 		profileToMTCA:           profileToMTCA,
 		finalizeTimeout:         finalizeTimeout,
 		ctpolicy:                ctp,
@@ -2420,6 +2424,51 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.Identifiers)))
 
 	return storedOrder, nil
+}
+
+// GetOrder returns an order object from the SA. If the SA returns an order in "processing" state,
+// this method will return the same order but with "valid" state if:
+//
+//   - It is an MTC order, and a call to an MTCA indicates that sufficient signatures are available to
+//     product a standalone certificate.
+//   - It is a non-MTC order and the certificateSerial field is nonempty.
+func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.GetOrderRequest) (*corepb.Order, error) {
+	order, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: req.OrderID})
+	if err != nil {
+		return nil, err
+	}
+
+	if order.Status != string(core.StatusProcessing) {
+		return order, nil
+	}
+
+	if ra.isMTC(order) {
+		if order.MtcSubtreeID == 0 {
+			// Order is processing but not yet sequenced.
+			return order, nil
+		}
+
+		resp, err := ra.mtcb.StandaloneReady(ctx, &mtcbpb.StandaloneReadyRequest{
+			MtcLogID:        order.MtcLogID,
+			MtcSerialNumber: order.MtcSerialNumber,
+			MtcSubtreeID:    order.MtcSubtreeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if resp.Ready {
+			order.Status = string(core.StatusValid)
+		}
+	} else {
+		// This duplicates the code in sa.statusForOrder that sets processing to valid for
+		// non-MTC orders when `CertificateSerial` is non-empty. TODO: remove that code and
+		// make RA solely responsible for setting order status to "valid" for both MTC and non-MTC.
+		if order.CertificateSerial != "" {
+			order.Status = string(core.StatusValid)
+		}
+	}
+
+	return order, nil
 }
 
 // wildcardOverlap takes a slice of identifiers and returns an error if any of

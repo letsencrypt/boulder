@@ -95,6 +95,11 @@ type Config struct {
 	// OrderModelHasMTCFields tells the SA that the necessary migration has been
 	// applied for the order model to have the new fields needed for MTCs.
 	OrderModelHasMTCFields bool
+
+	// WFECallsRAForGetOrder tells the WFE to call the RA instead of the SA for
+	// GetOrder, so we can calculate the "status" field correctly for MTCs (based
+	// on whether sufficient signatures are available).
+	WFECallsRAForGetOrder bool
 }
 
 var fMu = new(sync.RWMutex)

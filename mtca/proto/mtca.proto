@@ -24,5 +24,5 @@ message IssueResponse {
   // Next unused field number: 4
   string mtcLogID = 1;
   uint64 mtcSerialNumber = 2;
-  uint64 mtcSubtreeID = 3;
+  int64 mtcSubtreeID = 3;
 }

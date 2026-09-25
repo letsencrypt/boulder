@@ -19,6 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	MTCB_StandaloneReady_FullMethodName     = "/mtcb.MTCB/StandaloneReady"
 	MTCB_GetStandalone_FullMethodName       = "/mtcb.MTCB/GetStandalone"
 	MTCB_GetLandmarkRelative_FullMethodName = "/mtcb.MTCB/GetLandmarkRelative"
 )
@@ -29,6 +30,9 @@ const (
 //
 // MTCB constructs already-issued MTCs from database and log data.
 type MTCBClient interface {
+	// StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
+	// for a standalone certificate to be built.
+	StandaloneReady(ctx context.Context, in *StandaloneReadyRequest, opts ...grpc.CallOption) (*StandaloneReadyResponse, error)
 	// GetStandalone returns a standalone certificate.
 	GetStandalone(ctx context.Context, in *StandaloneRequest, opts ...grpc.CallOption) (*StandaloneResponse, error)
 	// GetLandmarkRelative returns a landmark-relative certificate.
@@ -41,6 +45,16 @@ type mTCBClient struct {
 
 func NewMTCBClient(cc grpc.ClientConnInterface) MTCBClient {
 	return &mTCBClient{cc}
+}
+
+func (c *mTCBClient) StandaloneReady(ctx context.Context, in *StandaloneReadyRequest, opts ...grpc.CallOption) (*StandaloneReadyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StandaloneReadyResponse)
+	err := c.cc.Invoke(ctx, MTCB_StandaloneReady_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *mTCBClient) GetStandalone(ctx context.Context, in *StandaloneRequest, opts ...grpc.CallOption) (*StandaloneResponse, error) {
@@ -69,6 +83,9 @@ func (c *mTCBClient) GetLandmarkRelative(ctx context.Context, in *LandmarkRelati
 //
 // MTCB constructs already-issued MTCs from database and log data.
 type MTCBServer interface {
+	// StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
+	// for a standalone certificate to be built.
+	StandaloneReady(context.Context, *StandaloneReadyRequest) (*StandaloneReadyResponse, error)
 	// GetStandalone returns a standalone certificate.
 	GetStandalone(context.Context, *StandaloneRequest) (*StandaloneResponse, error)
 	// GetLandmarkRelative returns a landmark-relative certificate.
@@ -83,6 +100,9 @@ type MTCBServer interface {
 // pointer dereference when methods are called.
 type UnimplementedMTCBServer struct{}
 
+func (UnimplementedMTCBServer) StandaloneReady(context.Context, *StandaloneReadyRequest) (*StandaloneReadyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StandaloneReady not implemented")
+}
 func (UnimplementedMTCBServer) GetStandalone(context.Context, *StandaloneRequest) (*StandaloneResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStandalone not implemented")
 }
@@ -108,6 +128,24 @@ func RegisterMTCBServer(s grpc.ServiceRegistrar, srv MTCBServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&MTCB_ServiceDesc, srv)
+}
+
+func _MTCB_StandaloneReady_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StandaloneReadyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MTCBServer).StandaloneReady(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MTCB_StandaloneReady_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MTCBServer).StandaloneReady(ctx, req.(*StandaloneReadyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _MTCB_GetStandalone_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -153,6 +191,10 @@ var MTCB_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "mtcb.MTCB",
 	HandlerType: (*MTCBServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "StandaloneReady",
+			Handler:    _MTCB_StandaloneReady_Handler,
+		},
 		{
 			MethodName: "GetStandalone",
 			Handler:    _MTCB_GetStandalone_Handler,
