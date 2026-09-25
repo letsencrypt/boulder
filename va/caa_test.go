@@ -1673,8 +1673,44 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 			expectErrSubstr: "value contains disallowed character",
 		},
 		{
-			name:            "hyphens in param tags are invalid",
+			name:            "interior hyphens in param tags are valid",
 			value:           "letsencrypt.org; 1=2; a-b=c",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  []caaParameter{{tag: "1", val: "2"}, {tag: "a-b", val: "c"}},
+			expectErrSubstr: "",
+		},
+		{
+			name:            "multiple interior hyphens in param tags are valid",
+			value:           "letsencrypt.org; 1=2; a-b-c=d",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  []caaParameter{{tag: "1", val: "2"}, {tag: "a-b-c", val: "d"}},
+			expectErrSubstr: "",
+		},
+		{
+			name:            "consecutive interior hyphens in param tags are valid",
+			value:           "letsencrypt.org; a--b=c",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  []caaParameter{{tag: "a--b", val: "c"}},
+			expectErrSubstr: "",
+		},
+		{
+			name:            "leading hyphen in param tag is invalid",
+			value:           "letsencrypt.org; -ab=c",
+			expectErrSubstr: "tag contains disallowed character",
+		},
+		{
+			name:            "trailing hyphen in param tag is invalid",
+			value:           "letsencrypt.org; ab-=c",
+			expectErrSubstr: "tag contains disallowed character",
+		},
+		{
+			name:            "empty param tag is invalid",
+			value:           "letsencrypt.org; =c",
+			expectErrSubstr: "tag contains disallowed character",
+		},
+		{
+			name:            "empty param tag between valid params is invalid",
+			value:           "letsencrypt.org; a=b; =c",
 			expectErrSubstr: "tag contains disallowed character",
 		},
 		{
