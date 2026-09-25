@@ -126,6 +126,7 @@
 			"Overrides": "test/config/ratelimit-overrides.yml"
 		},
 		"features": {
+			"WFECallsRAForGetOrder": true,
 			"CheckIdentifiersPaused": true
 		},
 		"certProfiles": {

@@ -68,6 +68,8 @@ func New(
 		return nil, errors.New("sequencingPeriod must be non-zero")
 	}
 
+	db := initDB(dbMap)
+
 	m := &mtca{
 		issuer:        issuer,
 		profiles:      profiles,
@@ -77,10 +79,11 @@ func New(
 
 		sequencingPeriod: sequencingPeriod,
 
-		db:  initDB(dbMap),
-		s3c: s3c,
-		log: logger,
-		clk: clk,
+		db:     db,
+		treedb: treedb.New(db),
+		s3c:    s3c,
+		log:    logger,
+		clk:    clk,
 	}
 
 	cosigner, err := cosignature.NewCosigner(logID.CAID, logID.Origin(), issuer.Signer)
@@ -133,10 +136,16 @@ type mtca struct {
 	// TODO: factor our sa.InitWrappedDb() so we get metrics and other goodies.
 	// TODO: decide whether we want to route this through the SA or an SA-like object,
 	// or keep a direct DB connection from the MTCA.
-	db  *db.WrappedMap
-	s3c simpleS3
-	log blog.Logger
-	clk clock.Clock
+	db     *db.WrappedMap
+	treedb treeDB
+	s3c    simpleS3
+	log    blog.Logger
+	clk    clock.Clock
+}
+
+type treeDB interface {
+	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
+	GetSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error)
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -251,7 +260,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 	m.frontier = candidate
 
-	_, err = treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
+	_, err = m.treedb.LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return fmt.Errorf("fetching first checkpoint: %s", err)
 	}
@@ -269,7 +278,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 // a previous process stopped between publishing tiles and serving. It must be
 // called on startup, before Loop().
 func (m *mtca) Preflight(ctx context.Context) error {
-	latest, err := treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
+	latest, err := m.treedb.LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return err
 	}
@@ -414,6 +423,22 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	}
 }
 
+// StandaloneReady checks if the requested TBSCertificateLogEntry is ready to be built into a stanadlone certificate.
+//
+// TODO(#8918): Move this to MTCB.
+func (m *mtca) StandaloneReady(ctx context.Context, req *mtcapb.StandaloneReadyRequest) (*mtcapb.StandaloneReadyResponse, error) {
+	if req.MtcLogID != m.logID.String() {
+		return nil, fmt.Errorf("misdirected request for MTC log ID %q", req.MtcLogID)
+	}
+	subtree, err := m.treedb.GetSubtree(ctx, m.logID.String(), req.MtcSubtreeID)
+	if err != nil {
+		return nil, err
+	}
+
+	ready := len(subtree.MirrorSignature) > 0
+	return &mtcapb.StandaloneReadyResponse{Ready: ready}, nil
+}
+
 // Loop periodically sequences all entries in the pool and sends notifications to the waiting RPCs.
 //
 // Must be called after Preflight() returns success.
@@ -474,7 +499,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return nil
 	}
 
-	latest, err := treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
+	latest, err := m.treedb.LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return err
 	}

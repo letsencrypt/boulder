@@ -11,6 +11,11 @@ service MTCA {
   // for the given request. It returns once a checkpoint has been signed that includes
   // that certificate's TBSCertificateLogEntry, but does not wait for cosignatures.
   rpc Issue(IssueRequest) returns (IssueResponse) {}
+
+  // StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
+  // for a standalone certificate to be built.
+  // TODO(#8918): Make this part of MTCB instead.
+  rpc StandaloneReady(StandaloneReadyRequest) returns (StandaloneReadyResponse) {}
 }
 
 message IssueRequest {
@@ -25,4 +30,16 @@ message IssueResponse {
   string mtcLogID = 1;
   uint64 mtcSerialNumber = 2;
   uint64 mtcSubtreeID = 3;
+}
+
+message StandaloneReadyRequest {
+  // Next unused field number: 4
+  string mtcLogID = 1;
+  uint64 mtcSerialNumber = 2;
+  int64 mtcSubtreeID = 3;
+}
+
+message StandaloneReadyResponse {
+  // Next unused field number: 2
+  bool ready = 1;
 }

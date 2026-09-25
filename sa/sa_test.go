@@ -1446,7 +1446,7 @@ func TestFinalizeMTCOrder(t *testing.T) {
 	test.AssertNotError(t, err, "GetOrder failed")
 	test.AssertEquals(t, updatedOrder.MtcLogID, "44947.4.1.0.44")
 	test.AssertEquals(t, updatedOrder.MtcSerialNumber, uint64(23))
-	test.AssertEquals(t, updatedOrder.MtcSubtreeID, uint64(99))
+	test.AssertEquals(t, updatedOrder.MtcSubtreeID, int64(99))
 
 	test.AssertEquals(t, updatedOrder.Status, string(core.StatusProcessing))
 

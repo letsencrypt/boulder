@@ -17,6 +17,7 @@ service RegistrationAuthority {
   rpc RevokeCertByKey(RevokeCertByKeyRequest) returns (google.protobuf.Empty) {}
   rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc NewOrder(NewOrderRequest) returns (core.Order) {}
+  rpc GetOrder(GetOrderRequest) returns (core.Order) {}
   rpc GetAuthorization(GetAuthorizationRequest) returns (core.Authorization) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Order) {}
   rpc UnpauseAccount(UnpauseAccountRequest) returns (UnpauseAccountResponse) {}
@@ -104,6 +105,11 @@ message NewOrderRequest {
   string replacesSerial = 3;
   reserved 4; // previously isARIRenewal
   reserved 6; // previously isRenewal
+}
+
+message GetOrderRequest {
+  // Next unused field number: 3
+  int64 orderID = 1;
 }
 
 message GetAuthorizationRequest {

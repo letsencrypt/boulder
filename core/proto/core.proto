@@ -133,7 +133,7 @@ message Order {
   string mtcLogID = 17;
   uint64 mtcSerialNumber = 18;
   // This is an opaque ID communicated from the MTCA to the MTCB.
-  uint64 mtcSubtreeID = 19;
+  int64 mtcSubtreeID = 19;
 }
 
 message CRLEntry {

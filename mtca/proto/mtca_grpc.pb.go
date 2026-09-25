@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MTCA_Issue_FullMethodName = "/mtca.MTCA/Issue"
+	MTCA_Issue_FullMethodName           = "/mtca.MTCA/Issue"
+	MTCA_StandaloneReady_FullMethodName = "/mtca.MTCA/StandaloneReady"
 )
 
 // MTCAClient is the client API for MTCA service.
@@ -32,6 +33,10 @@ type MTCAClient interface {
 	// for the given request. It returns once a checkpoint has been signed that includes
 	// that certificate's TBSCertificateLogEntry, but does not wait for cosignatures.
 	Issue(ctx context.Context, in *IssueRequest, opts ...grpc.CallOption) (*IssueResponse, error)
+	// StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
+	// for a standalone certificate to be built.
+	// TODO(#8918): Make this part of MTCB instead.
+	StandaloneReady(ctx context.Context, in *StandaloneReadyRequest, opts ...grpc.CallOption) (*StandaloneReadyResponse, error)
 }
 
 type mTCAClient struct {
@@ -52,6 +57,16 @@ func (c *mTCAClient) Issue(ctx context.Context, in *IssueRequest, opts ...grpc.C
 	return out, nil
 }
 
+func (c *mTCAClient) StandaloneReady(ctx context.Context, in *StandaloneReadyRequest, opts ...grpc.CallOption) (*StandaloneReadyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StandaloneReadyResponse)
+	err := c.cc.Invoke(ctx, MTCA_StandaloneReady_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MTCAServer is the server API for MTCA service.
 // All implementations must embed UnimplementedMTCAServer
 // for forward compatibility.
@@ -62,6 +77,10 @@ type MTCAServer interface {
 	// for the given request. It returns once a checkpoint has been signed that includes
 	// that certificate's TBSCertificateLogEntry, but does not wait for cosignatures.
 	Issue(context.Context, *IssueRequest) (*IssueResponse, error)
+	// StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
+	// for a standalone certificate to be built.
+	// TODO(#8918): Make this part of MTCB instead.
+	StandaloneReady(context.Context, *StandaloneReadyRequest) (*StandaloneReadyResponse, error)
 	mustEmbedUnimplementedMTCAServer()
 }
 
@@ -74,6 +93,9 @@ type UnimplementedMTCAServer struct{}
 
 func (UnimplementedMTCAServer) Issue(context.Context, *IssueRequest) (*IssueResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Issue not implemented")
+}
+func (UnimplementedMTCAServer) StandaloneReady(context.Context, *StandaloneReadyRequest) (*StandaloneReadyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StandaloneReady not implemented")
 }
 func (UnimplementedMTCAServer) mustEmbedUnimplementedMTCAServer() {}
 func (UnimplementedMTCAServer) testEmbeddedByValue()              {}
@@ -114,6 +136,24 @@ func _MTCA_Issue_Handler(srv interface{}, ctx context.Context, dec func(interfac
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MTCA_StandaloneReady_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StandaloneReadyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MTCAServer).StandaloneReady(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MTCA_StandaloneReady_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MTCAServer).StandaloneReady(ctx, req.(*StandaloneReadyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MTCA_ServiceDesc is the grpc.ServiceDesc for MTCA service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -124,6 +164,10 @@ var MTCA_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Issue",
 			Handler:    _MTCA_Issue_Handler,
+		},
+		{
+			MethodName: "StandaloneReady",
+			Handler:    _MTCA_StandaloneReady_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -3379,6 +3379,12 @@ func (mtca mockMTCA) Issue(_ context.Context, req *mtcapb.IssueRequest, _ ...grp
 	}, nil
 }
 
+func (mtca mockMTCA) StandaloneReady(_ context.Context, req *mtcapb.StandaloneReadyRequest, _ ...grpc.CallOption) (*mtcapb.StandaloneReadyResponse, error) {
+	return &mtcapb.StandaloneReadyResponse{
+		Ready: false,
+	}, nil
+}
+
 func TestIssueMTC(t *testing.T) {
 	_, _, ra, _, fc, registration, cleanup := initAuthorities(t)
 	defer cleanup()

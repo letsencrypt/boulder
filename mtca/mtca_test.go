@@ -33,7 +33,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mtca/proto"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/privatekey"
@@ -210,7 +210,7 @@ func truncateTables(db *sql.DB) error {
 // issueResult is the outcome of one async Issue call, along with the values
 // we expect to find in the entry sequenced for it.
 type issueResult struct {
-	*proto.IssueResponse
+	*mtcapb.IssueResponse
 	err              error
 	expectedSPKIHash [sha256.Size]byte
 	expectedDNSName  string
@@ -218,7 +218,7 @@ type issueResult struct {
 
 // makeIssueRequest returns an IssueRequest with a freshly generated key and
 // a random DNS name under example.com.
-func makeIssueRequest(t *testing.T) *proto.IssueRequest {
+func makeIssueRequest(t *testing.T) *mtcapb.IssueRequest {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
@@ -236,7 +236,7 @@ func makeIssueRequest(t *testing.T) *proto.IssueRequest {
 	}
 	dnsName := fmt.Sprintf("%x.example.com", buf)
 
-	return &proto.IssueRequest{
+	return &mtcapb.IssueRequest{
 		Pubkey: pubkeyBytes,
 		Identifiers: []*corepb.Identifier{
 			{Type: "dns", Value: dnsName},
@@ -812,5 +812,69 @@ DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
 	expected := "44947.4.1"
 	if caID != expected {
 		t.Errorf("getCAID(): got %s, want %s", caID, expected)
+	}
+}
+
+type treedbWithStandaloneReady struct {
+	ready bool
+}
+
+func (t treedbWithStandaloneReady) LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (t treedbWithStandaloneReady) GetSubtree(ctx context.Context, mtcLogID string, subtreeID int64) (*treedb.CheckpointSubtreeModel, error) {
+	mirrorID := "7897.23.1.4"
+	var mirrorSignature []byte
+	if t.ready {
+		mirrorSignature = []byte("def")
+	}
+	return &treedb.CheckpointSubtreeModel{
+		ID:              subtreeID,
+		MTCLogID:        mtcLogID,
+		MTCASignature:   []byte("abc"),
+		MirrorID:        &mirrorID,
+		MirrorSignature: mirrorSignature,
+		SubtreeStart:    2,
+		SubtreeEnd:      3,
+		SubtreeHash:     []byte("ghi"),
+	}, nil
+}
+
+func TestStandaloneReady(t *testing.T) {
+	m, _, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+
+	m.treedb = treedbWithStandaloneReady{true}
+
+	resp, err := m.StandaloneReady(t.Context(), &mtcapb.StandaloneReadyRequest{
+		MtcLogID:        "44947.4.1.0.3",
+		MtcSerialNumber: 123,
+		MtcSubtreeID:    456,
+	})
+	if err != nil {
+		t.Fatalf("StandaloneReady(): %s", err)
+	}
+
+	if !resp.Ready {
+		t.Errorf("StandaloneReady(): got %t, want %t", resp.Ready, true)
+	}
+
+	m.treedb = treedbWithStandaloneReady{false}
+
+	resp, err = m.StandaloneReady(t.Context(), &mtcapb.StandaloneReadyRequest{
+		MtcLogID:        "44947.4.1.0.3",
+		MtcSerialNumber: 123,
+		MtcSubtreeID:    456,
+	})
+	if err != nil {
+		t.Fatalf("StandaloneReady(): %s", err)
+	}
+
+	if resp.Ready {
+		t.Errorf("StandaloneReady(): got %t, want %t", resp.Ready, false)
 	}
 }
