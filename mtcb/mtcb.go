@@ -8,8 +8,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
-	"github.com/zmap/zcrypto/cryptobyte"
-	"github.com/zmap/zcrypto/cryptobyte/asn1"
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/mod/sumdb/tlog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -52,7 +52,7 @@ func New(
 ) (*mtcb, error) {
 	issuersMap := make(map[string]struct{})
 	for _, issuer := range issuers {
-		caID, err := issuer.CAID()
+		caID, err := issuer.MTCAID()
 		if err != nil {
 			return nil, fmt.Errorf("computing MTCA ID: %w", err)
 		}

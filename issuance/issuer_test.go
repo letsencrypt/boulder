@@ -72,7 +72,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestCAID(t *testing.T) {
+func TestMTCAID(t *testing.T) {
 	t.Parallel()
 	certBytes, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
 MIIBRjCB9KADAgECAgF7MAoGCCqGSM49BAMCMBsxGTAXBgorBgEEAYLaSy8BDAk0
@@ -95,14 +95,14 @@ DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
 	if err != nil {
 		t.Fatal(err)
 	}
-	caID, err := ic.CAID()
+	caID, err := ic.MTCAID()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	expected := "44947.4.1"
 	if caID != expected {
-		t.Errorf("CAID(): got %s, want %s", caID, expected)
+		t.Errorf("MTCAID(): got %s, want %s", caID, expected)
 	}
 }
 

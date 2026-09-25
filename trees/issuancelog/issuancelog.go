@@ -38,24 +38,30 @@ func (id ID) String() string {
 // ParseID parses a log ID from its ASCII representation, the inverse of
 // ID.String. It rejects anything ID.String would not have produced.
 func ParseID(s string) (ID, error) {
-	i := strings.LastIndex(s, ".0.")
-	if i < 1 {
-		return ID{}, fmt.Errorf("log ID %q is not of the form <CA ID>.0.<log number>", s)
+	arcs := strings.Split(s, ".")
+	if len(arcs) < 3 {
+		return ID{}, fmt.Errorf("log ID %q must have at least three arcs", s)
 	}
-
-	logNumber, err := strconv.ParseUint(s[i+3:], 10, 16)
+	for _, arc := range arcs {
+		_, err := strconv.ParseUint(arc, 10, 64)
+		if err != nil {
+			return ID{}, fmt.Errorf("parsing arc %q of log ID %q: %w", arc, s, err)
+		}
+		if len(arc) > 1 && arc[0] == '0' {
+			return ID{}, fmt.Errorf("arc %q of log ID %q has a leading zero", arc, s)
+		}
+	}
+	if arcs[len(arcs)-2] != "0" {
+		return ID{}, fmt.Errorf("log ID %q must have 0 before its log number, got %q", s, arcs[len(arcs)-2])
+	}
+	logNumber, err := strconv.ParseUint(arcs[len(arcs)-1], 10, 16)
 	if err != nil {
 		return ID{}, fmt.Errorf("parsing log number of log ID %q: %w", s, err)
 	}
 	if logNumber == 0 {
 		return ID{}, fmt.Errorf("log ID %q has log number 0, which is reserved", s)
 	}
-
-	id := ID{CAID: s[:i], LogNumber: uint16(logNumber)}
-	if id.String() != s {
-		return ID{}, fmt.Errorf("log ID %q is not in canonical form %q", s, id.String())
-	}
-	return id, nil
+	return ID{CAID: strings.Join(arcs[:len(arcs)-2], "."), LogNumber: uint16(logNumber)}, nil
 }
 
 // Origin returns the log origin per mtc-tlog, the log ID as an origin. For

@@ -55,7 +55,7 @@ func New(
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtca, error) {
-	certCAID, err := issuer.Cert.CAID()
+	certCAID, err := issuer.Cert.MTCAID()
 	if err != nil {
 		return nil, err
 	}

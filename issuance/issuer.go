@@ -73,9 +73,9 @@ func (ic *Certificate) NameID() NameID {
 	return ic.nameID
 }
 
-// CAID returns the trust anchor ID from this issuer certificate's Subject. It
+// MTCAID returns the trust anchor ID from this issuer certificate's Subject. It
 // returns an error for issuers that are not MTC CAs.
-func (ic *Certificate) CAID() (string, error) {
+func (ic *Certificate) MTCAID() (string, error) {
 	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
 	for _, attribute := range ic.Subject.Names {
 		if attribute.Type.Equal(testingTrustAnchorIDOID) {
