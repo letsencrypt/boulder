@@ -1,6 +1,10 @@
 package issuancelog
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // oidPrefix begins every mtc-tlog log origin, the IANA private enterprise arc
 // an MTC ID is relative to.
@@ -29,6 +33,35 @@ type ID struct {
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-issuance-logs
 func (id ID) String() string {
 	return fmt.Sprintf("%s.0.%d", id.CAID, id.LogNumber)
+}
+
+// ParseID parses a log ID from its ASCII representation, the inverse of
+// ID.String. It rejects anything ID.String would not have produced.
+func ParseID(s string) (ID, error) {
+	arcs := strings.Split(s, ".")
+	if len(arcs) < 3 {
+		return ID{}, fmt.Errorf("log ID %q must have at least three arcs", s)
+	}
+	for _, arc := range arcs {
+		_, err := strconv.ParseUint(arc, 10, 64)
+		if err != nil {
+			return ID{}, fmt.Errorf("parsing arc %q of log ID %q: %w", arc, s, err)
+		}
+		if len(arc) > 1 && arc[0] == '0' {
+			return ID{}, fmt.Errorf("arc %q of log ID %q has a leading zero", arc, s)
+		}
+	}
+	if arcs[len(arcs)-2] != "0" {
+		return ID{}, fmt.Errorf("log ID %q must have 0 before its log number, got %q", s, arcs[len(arcs)-2])
+	}
+	logNumber, err := strconv.ParseUint(arcs[len(arcs)-1], 10, 16)
+	if err != nil {
+		return ID{}, fmt.Errorf("parsing log number of log ID %q: %w", s, err)
+	}
+	if logNumber == 0 {
+		return ID{}, fmt.Errorf("log ID %q has log number 0, which is reserved", s)
+	}
+	return ID{CAID: strings.Join(arcs[:len(arcs)-2], "."), LogNumber: uint16(logNumber)}, nil
 }
 
 // Origin returns the log origin per mtc-tlog, the log ID as an origin. For

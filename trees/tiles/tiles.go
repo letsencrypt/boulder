@@ -809,6 +809,34 @@ func (r *TileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
 // SaveTiles is a no-op.
 func (r *TileReader) SaveTiles([]tlog.Tile, [][]byte) {}
 
+// bundleCoords returns the coordinates of the bundle on layer holding the entry
+// at index in a log of treeSize entries, partial if the bundle is not yet full.
+func bundleCoords(layer int, index, treeSize int64) tlog.Tile {
+	bundle := index / 256
+	return tlog.Tile{
+		L: layer,
+		N: bundle,
+		W: int(min(int64(256), treeSize-bundle*256)),
+	}
+}
+
+// ReadBundles reads the entry bundle and the pubkey bundle holding the entry at
+// index from a log of treeSize entries.
+func ReadBundles(ctx context.Context, s3c simpleS3Reader, index, treeSize int64, prefix string) ([]byte, []byte, error) {
+	if index < 0 || index >= treeSize {
+		return nil, nil, fmt.Errorf("invalid entry index %d for tree size %d", index, treeSize)
+	}
+	entries, err := getTile(ctx, s3c, bundleCoords(entryTilesLayer, index, treeSize), prefix)
+	if err != nil {
+		return nil, nil, err
+	}
+	pubkeys, err := getTile(ctx, s3c, bundleCoords(pubkeyTilesLayer, index, treeSize), prefix)
+	if err != nil {
+		return nil, nil, err
+	}
+	return entries, pubkeys, nil
+}
+
 // EntriesForPackage reads the entries in [start, end) from their stored entry
 // bundle, returning them unparsed in the wire form a tlog-mirror entry package
 // requires, each entry with a big-endian uint16 length prefix.
@@ -822,11 +850,7 @@ func EntriesForPackage(ctx context.Context, s3c simpleS3Reader, start, end, tree
 	if (end-1)/256 != bundle {
 		return nil, fmt.Errorf("entry interval [%d, %d) spans multiple bundles", start, end)
 	}
-	coords := tlog.Tile{
-		L: -1, // entries layer is represented as -1.
-		N: bundle,
-		W: int(min(int64(256), treeSize-bundle*256)),
-	}
+	coords := bundleCoords(entryTilesLayer, start, treeSize)
 
 	body, err := getTile(ctx, s3c, coords, prefix)
 	if err != nil {
