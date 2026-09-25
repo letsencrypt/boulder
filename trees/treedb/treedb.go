@@ -48,7 +48,6 @@ func (c *CheckpointModel) Mirrored() bool {
 	return len(c.MTCASignature) > 0 && c.MirrorID != nil && len(c.MirrorSignature) > 0
 }
 
-// CheckpointSubtreeModel represents a row in the `checkpointSubtrees` table.
 type CheckpointSubtreeModel struct {
 	ID              int64   `db:"id"`
 	MTCLogID        string  `db:"mtcLogID"`
@@ -58,6 +57,28 @@ type CheckpointSubtreeModel struct {
 	SubtreeStart    uint64  `db:"subtreeStart"`
 	SubtreeEnd      uint64  `db:"subtreeEnd"`
 	SubtreeHash     []byte  `db:"subtreeHash"`
+}
+
+func (s *CheckpointSubtreeModel) Valid() error {
+	if len(s.MTCLogID) == 0 {
+		return errors.New("MTCLogID is empty")
+	}
+	if s.SubtreeEnd <= s.SubtreeStart ||
+		s.SubtreeEnd >= 1<<48 {
+		return fmt.Errorf("Subtree [%d, %d) is invalid", s.SubtreeStart, s.SubtreeEnd)
+	}
+	if len(s.SubtreeHash) == 0 {
+		return errors.New("SubtreeHash is empty")
+	}
+	if len(s.SubtreeHash) != sha256.Size {
+		return fmt.Errorf("SubtreeHash is %d bytes", len(s.SubtreeHash))
+	}
+
+	return nil
+}
+
+func (s *CheckpointSubtreeModel) Mirrored() bool {
+	return len(s.MTCASignature) > 0 && s.MirrorID != nil && len(s.MirrorSignature) > 0
 }
 
 type Impl struct {
@@ -89,30 +110,6 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 		return nil, fmt.Errorf("getting latest checkpoint for %q: %w", mtcLogID, err)
 	}
 	return latest, nil
-}
-
-// ContainingCheckpoint returns the smallest checkpoint of the log that includes
-// entryIndex and carries both the MTCA signature and the mirror cosignature.
-func (i *Impl) ContainingCheckpoint(ctx context.Context, mtcLogID string, entryIndex int64) (*CheckpointModel, error) {
-	var cp CheckpointModel
-	err := i.db.SelectOne(ctx, &cp,
-		`SELECT id, mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash,
-		        subtreeID1, subtreeID2
-		 FROM checkpoints
-		 WHERE mtcLogID = ? AND
-		       treeSize > ? AND
-		       mtcaSignature IS NOT NULL AND
-		       mirrorID IS NOT NULL AND
-		       mirrorSignature IS NOT NULL
-		 ORDER BY treeSize
-		 LIMIT 1`,
-		mtcLogID,
-		entryIndex)
-	if err != nil {
-		return nil, fmt.Errorf("getting checkpoint covering index %d of %q: %w", entryIndex, mtcLogID, err)
-	}
-	return &cp, nil
 }
 
 // InsertCheckpoint inserts the given CheckpointModel into the database.
@@ -162,4 +159,21 @@ type TxFunc = func(tx db.Executor) (any, error)
 // the operations we want to perform inside a transaction, so we can mock those.
 func (i *Impl) WithTransaction(ctx context.Context, f TxFunc) (any, error) {
 	return db.WithTransaction(ctx, i.db, f)
+}
+
+func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*CheckpointSubtreeModel, error) {
+	var checkpointSubtree CheckpointSubtreeModel
+	err := i.db.SelectOne(ctx, &checkpointSubtree,
+		`SELECT id, mtcLogID, mtcaSignature,
+				mirrorID, mirrorSignature,
+				subtreeStart, subtreeEnd, subtreeHash
+		 FROM checkpointSubtrees
+		 WHERE mtcLogID = ? AND
+		 	id = ?`,
+		mtcLogID,
+		id)
+	if err != nil {
+		return nil, err
+	}
+	return &checkpointSubtree, nil
 }

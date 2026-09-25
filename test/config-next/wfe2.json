@@ -133,6 +133,7 @@
 			"OverridesFromDB": true
 		},
 		"features": {
+			"WFECallsRAForGetOrder": true,
 			"PropagateCancels": true,
 			"CheckIdentifiersPaused": true
 		},

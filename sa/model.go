@@ -352,7 +352,7 @@ type orderModel struct {
 
 	MTCLogID        *string
 	MTCSerialNumber *uint64
-	MTCSubtreeID    *uint64
+	MTCSubtreeID    *int64
 }
 
 // optionalStr returns "" if s is nil, otherwise *s.
@@ -365,6 +365,14 @@ func optionalStr(s *string) string {
 
 // optionalUint64 returns 0 if i is nil, otherwise *i.
 func optionalUint64(i *uint64) uint64 {
+	if i == nil {
+		return 0
+	}
+	return *i
+}
+
+// optionalInt64 returns 0 if i is nil, otherwise *i.
+func optionalInt64(i *int64) int64 {
 	if i == nil {
 		return 0
 	}
@@ -400,7 +408,7 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		V2Authorizations:       v2Authorizations,
 		MtcLogID:               optionalStr(om.MTCLogID),
 		MtcSerialNumber:        optionalUint64(om.MTCSerialNumber),
-		MtcSubtreeID:           optionalUint64(om.MTCSubtreeID),
+		MtcSubtreeID:           optionalInt64(om.MTCSubtreeID),
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails

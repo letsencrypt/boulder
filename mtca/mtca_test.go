@@ -34,7 +34,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mtca/proto"
+	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/privatekey"
@@ -215,7 +215,7 @@ func truncateTables(db *sql.DB) error {
 // issueResult is the outcome of one async Issue call, along with the values
 // we expect to find in the entry sequenced for it.
 type issueResult struct {
-	*proto.IssueResponse
+	*mtcapb.IssueResponse
 	err              error
 	expectedSPKIHash [sha256.Size]byte
 	expectedDNSName  string
@@ -223,7 +223,7 @@ type issueResult struct {
 
 // makeIssueRequest returns an IssueRequest with a freshly generated key and
 // a random DNS name under example.com.
-func makeIssueRequest(t *testing.T) *proto.IssueRequest {
+func makeIssueRequest(t *testing.T) *mtcapb.IssueRequest {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), nil)
 	if err != nil {
@@ -241,7 +241,7 @@ func makeIssueRequest(t *testing.T) *proto.IssueRequest {
 	}
 	dnsName := fmt.Sprintf("%x.example.com", buf)
 
-	return &proto.IssueRequest{
+	return &mtcapb.IssueRequest{
 		Pubkey: pubkeyBytes,
 		Identifiers: []*corepb.Identifier{
 			{Type: "dns", Value: dnsName},
@@ -709,7 +709,7 @@ func TestSequence(t *testing.T) {
 	got := collectResults(t, results, 1, 5)
 
 	for _, issuanceResult := range got {
-		subtree := mockTreedb.get(int64(issuanceResult.MtcSubtreeID)) //nolint:gosec // G115: we know that subtree IDs stay fairly small in these tests
+		subtree := mockTreedb.get(issuanceResult.MtcSubtreeID)
 		if subtree == nil {
 			t.Fatalf("getting subtreeID %d: not found", issuanceResult.MtcSubtreeID)
 		}
