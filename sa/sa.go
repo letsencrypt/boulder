@@ -23,6 +23,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -760,6 +761,61 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 	return &emptypb.Empty{}, nil
 }
 
+// FinalizeMTCOrder finalizes a provided *corepb.Order after an MTC issuance,
+// by persisting the MTC-relevant fields and a valid status to the database.
+func (ssa *SQLStorageAuthority) FinalizeMTCOrder(ctx context.Context, req *sapb.FinalizeMTCOrderRequest) (*emptypb.Empty, error) {
+	if !features.Get().OrderModelHasMTCFields {
+		return nil, fmt.Errorf("MTC fields not yet available in database")
+	}
+	// TODO(#9020): check that req.SubtreeID is nonzero
+	if core.IsAnyNilOrZero(req.Id, req.MtcLogID, req.MtcSerialNumber) {
+		return nil, errIncompleteRequest
+	}
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
+		result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET mtcLogID = ?,
+		    mtcSubtreeID = ?,
+		    mtcSerialNumber = ?
+		WHERE id = ? AND
+		      certificateSerial = "" AND
+		      mtcLogID IS NULL AND
+		      mtcSubtreeID IS NULL AND
+		      mtcSerialNumber IS NULL AND
+		      beganProcessing = true`,
+			req.MtcLogID,
+			req.MtcSubtreeID,
+			req.MtcSerialNumber,
+			req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		n, err := result.RowsAffected()
+		if err != nil || n == 0 {
+			return nil, fmt.Errorf("no order updated for finalization")
+		}
+
+		// Delete the orderFQDNSet row for the order now that it has been finalized.
+		// We use this table for order reuse and should not reuse a finalized order.
+		err = deleteOrderFQDNSet(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		err = setReplacementOrderFinalized(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	})
+	if overallError != nil {
+		return nil, overallError
+	}
+	return &emptypb.Empty{}, nil
+}
+
 // FinalizeOrder finalizes a provided *corepb.Order by persisting the
 // CertificateSerial and a valid status to the database. No fields other than
 // CertificateSerial and the order ID on the provided order are processed (e.g.
@@ -1055,6 +1111,53 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// GetLatestRevokedCertByShard returns the most recently revoked certificate
+// among those GetRevokedCertsByShard would return for the same request. Unlike
+// that method, it reads from the primary database. It returns a NotFound error
+// if no revoked certificates match.
+func (ssa *SQLStorageAuthority) GetLatestRevokedCertByShard(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest) (*corepb.CRLEntry, error) {
+	if core.IsAnyNilOrZero(req.ShardIdx, req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter) {
+		return nil, errIncompleteRequest
+	}
+
+	// BoulderTypeConverter truncates time parameters to whole seconds, so round
+	// the bound up to keep the comparison equivalent to GetRevokedCertsByShard.
+	revokedBefore := req.RevokedBefore.AsTime().Add(time.Second - time.Nanosecond).Truncate(time.Second)
+
+	// Note: the filters in the query below must match those in
+	// GetRevokedCertsByShard.
+
+	var row revokedCertModel
+	err := ssa.dbMap.SelectOne(
+		ctx,
+		&row,
+		`SELECT serial, revokedDate, revokedReason
+			FROM revokedCertificates
+			WHERE issuerID = ?
+			AND shardIdx = ?
+			AND notAfterHour >= ?
+			AND revokedDate < ?
+			ORDER BY revokedDate DESC
+			LIMIT 1`,
+		req.IssuerNameID,
+		req.ShardIdx,
+		req.ExpiresAfter.AsTime().Truncate(time.Hour),
+		revokedBefore,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, berrors.NotFoundError("no revoked certificates for issuer %d shard %d", req.IssuerNameID, req.ShardIdx)
+		}
+		return nil, fmt.Errorf("reading db: %w", err)
+	}
+
+	return &corepb.CRLEntry{
+		Serial:    row.Serial,
+		Reason:    int32(row.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
+		RevokedAt: timestamppb.New(row.RevokedDate),
+	}, nil
 }
 
 // AddBlockedKey adds a key hash to the blockedKeys table

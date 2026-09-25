@@ -93,7 +93,7 @@ func TestMTCProofMarshal(t *testing.T) {
 		"0040",         // inclusion_proof length: two 32-byte hashes
 		hex.EncodeToString(hash1[:]),
 		hex.EncodeToString(hash2[:]),
-		"000b",         // signatures length
+		"00000b",       // signatures length
 		"01aa0002bbcc", // signature 1
 		"0201020000",   // signature 2
 	}, ""))
@@ -117,7 +117,7 @@ func TestMTCProofSignatureOrdering(t *testing.T) {
 
 	expected, err := hex.DecodeString(
 		"0000" + "000000000000" + "000000000000" + "0000" +
-			"0011" + // combined byte length of the encoded signatures
+			"000011" + // combined byte length of the encoded signatures
 			"01aa000101" + // a: 1-byte ID sorts before all 2-byte IDs
 			"020102000102" + // b: same length as c, lexicographically first
 			"020103000103") // c
@@ -306,7 +306,7 @@ func TestUnmarshalMTCProofMalformed(t *testing.T) {
 	// Two cosignerIDs in the correct order, with shortest first: 0x02 comes before
 	// 0x01 0x02 because it's shorter. A naive comparison would put them the other way, so
 	// test that this parses.
-	input, err := hex.DecodeString(prefix + "0000" + "0009" + "01020000" + "0201020000")
+	input, err := hex.DecodeString(prefix + "0000" + "000009" + "01020000" + "0201020000")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -51,17 +52,43 @@ func (f *revokedCertsStream) Recv() (*corepb.CRLEntry, error) {
 
 // fakeSAC is a fake sapb.StorageAuthorityClient which can be populated with a
 // fakeGRCC to be used as the return value for calls to GetRevokedCertsByShard,
-// and a fake timestamp to serve as the database's maximum notAfter value.
+// a fake timestamp to serve as the database's maximum notAfter value, and a
+// CRL entry (or error) to be returned from GetLatestRevokedCertByShard.
 type fakeSAC struct {
 	sapb.StorageAuthorityClient
 	revokedCerts revokedCertsStream
 	maxNotAfter  time.Time
 	leaseError   error
+	latest       *corepb.CRLEntry
+	latestErr    error
+	latestReqs   []*sapb.GetRevokedCertsByShardRequest
 }
 
 // Return the configured stream.
 func (f *fakeSAC) GetRevokedCertsByShard(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
 	return &f.revokedCerts, nil
+}
+
+// Return the configured entry or error, or NotFound if neither is configured.
+func (f *fakeSAC) GetLatestRevokedCertByShard(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (*corepb.CRLEntry, error) {
+	f.latestReqs = append(f.latestReqs, req)
+	if f.latestErr != nil {
+		return nil, f.latestErr
+	}
+	if f.latest == nil {
+		return nil, berrors.NotFoundError("no revocations")
+	}
+	return f.latest, nil
+}
+
+// useFakeSA installs f as the SA client, with the freshness check enabled.
+func useFakeSA(cu *crlUpdater, f *fakeSAC) {
+	cu.sa = f
+	cu.checkFreshness = true
+}
+
+func (f *fakeSAC) UpdateCRLShard(_ context.Context, _ *sapb.UpdateCRLShardRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 func (f *fakeSAC) LeaseCRLShard(_ context.Context, req *sapb.LeaseCRLShardRequest, _ ...grpc.CallOption) (*sapb.LeaseCRLShardResponse, error) {
@@ -147,16 +174,21 @@ func (f *fakeCA) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (grpc
 
 // recordingUploader acts as the streaming part of UploadCRL.
 //
-// Records all uploaded chunks in crlBody.
+// Records all uploaded chunks in crlBody, and the CRL number from
+// the metadata.
 type recordingUploader struct {
 	grpc.ClientStream
 
 	crlBody []byte
+	number  int64
 }
 
 func (r *recordingUploader) Send(req *cspb.UploadCRLRequest) error {
-	if t, ok := req.Payload.(*cspb.UploadCRLRequest_CrlChunk); ok {
+	switch t := req.Payload.(type) {
+	case *cspb.UploadCRLRequest_CrlChunk:
 		r.crlBody = append(r.crlBody, t.CrlChunk...)
+	case *cspb.UploadCRLRequest_Metadata:
+		r.number = t.Metadata.Number
 	}
 	return nil
 }
@@ -196,6 +228,39 @@ func (f *fakeStorer) UploadCRL(ctx context.Context, opts ...grpc.CallOption) (gr
 	return f.uploaderStream, nil
 }
 
+func TestNewUpdaterLookbackValidation(t *testing.T) {
+	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
+	test.AssertNotError(t, err, "loading test issuer")
+	clk := clock.NewFake()
+	fsa := &fakeSAC{}
+
+	build := func(lookback, lagFactor time.Duration) error {
+		_, err := NewUpdater(
+			[]*issuance.Certificate{e1},
+			1, 18*time.Hour, lookback, lagFactor,
+			6*time.Hour, time.Minute, 1, 1,
+			"stale-if-error=60", 5*time.Minute,
+			true, fsa, &fakeCA{}, &fakeStorer{},
+			metrics.NoopRegisterer, blog.NewMock(), clk,
+		)
+		return err
+	}
+
+	// The lagFactor counts against the lookback period.
+	test.AssertNotError(t, build(12*time.Hour, 0), "2x updatePeriod, no lagFactor")
+	err = build(12*time.Hour, 5*time.Minute)
+	test.AssertError(t, err, "2x updatePeriod with lagFactor")
+	test.AssertContains(t, err.Error(), "lookbackPeriod must be at least 2x updatePeriod plus lagFactor")
+	test.AssertNotError(t, build(12*time.Hour+5*time.Minute, 5*time.Minute), "2x updatePeriod plus lagFactor")
+
+	err = build(24*time.Hour, -time.Minute)
+	test.AssertError(t, err, "negative lagFactor")
+	test.AssertContains(t, err.Error(), "lagFactor must be non-negative")
+	err = build(24*time.Hour, 6*time.Hour)
+	test.AssertError(t, err, "lagFactor equal to updatePeriod")
+	test.AssertContains(t, err.Error(), "less than updatePeriod")
+}
+
 func TestUpdateShard(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
@@ -208,20 +273,19 @@ func TestUpdateShard(t *testing.T) {
 
 	clk := clock.NewFake()
 	clk.Set(time.Date(2020, time.January, 18, 0, 0, 0, 0, time.UTC))
+	fsa := &fakeSAC{revokedCerts: revokedCertsStream{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)}
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
 		2,
 		18*time.Hour, // shardWidth
 		24*time.Hour, // lookbackPeriod
+		0,            // lagFactor
 		6*time.Hour,  // updatePeriod
 		time.Minute,  // updateTimeout
 		1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
-		&fakeSAC{
-			revokedCerts: revokedCertsStream{},
-			maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
-		},
+		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,
@@ -245,7 +309,7 @@ func TestUpdateShard(t *testing.T) {
 	recordingUploader := &recordingUploader{}
 	now := timestamppb.Now()
 	cu.cs = &fakeStorer{uploaderStream: recordingUploader}
-	cu.sa = &fakeSAC{
+	useFakeSA(cu, &fakeSAC{
 		revokedCerts: revokedCertsStream{
 			entries: []*corepb.CRLEntry{
 				{
@@ -266,7 +330,8 @@ func TestUpdateShard(t *testing.T) {
 			},
 		},
 		maxNotAfter: clk.Now().Add(90 * 24 * time.Hour),
-	}
+		latest:      &corepb.CRLEntry{Serial: "03aa617ab8ee58896ba082bfa25199c884", RevokedAt: now},
+	})
 	// We ask for shard 2 specifically because GetRevokedCertsByShard only returns our
 	// certificate for that shard.
 	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 2)
@@ -304,6 +369,7 @@ func TestUpdateShard(t *testing.T) {
 	cu.updatedCounter.Reset()
 
 	// Ensure that getting no results from the SA still works.
+	useFakeSA(cu, &fakeSAC{revokedCerts: revokedCertsStream{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)})
 	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
 	test.AssertNotError(t, err, "empty CRL")
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
@@ -355,8 +421,70 @@ func TestUpdateShard(t *testing.T) {
 	}, 1)
 	cu.updatedCounter.Reset()
 
+	// Missing the primary's latest revocation should fail.
+	useFakeSA(cu, &fakeSAC{
+		revokedCerts: revokedCertsStream{entries: []*corepb.CRLEntry{{Serial: "0311b5d430823cfa25b0fc85d14c54ee35", RevokedAt: now}}},
+		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
+		latest:       &corepb.CRLEntry{Serial: "037d6a05a0f6a975380456ae605cee9889", RevokedAt: now},
+	})
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	test.AssertError(t, err, "lagging replica")
+	test.AssertContains(t, err.Error(), "database replica may be lagging")
+	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
+		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
+	}, 1)
+	cu.updatedCounter.Reset()
+
+	// Likewise if the primary has no revocations but the replica has one from
+	// before the freshness check's cutoff.
+	cu.lagFactor = 5 * time.Minute
+	useFakeSA(cu, &fakeSAC{
+		revokedCerts: revokedCertsStream{entries: []*corepb.CRLEntry{{Serial: "0311b5d430823cfa25b0fc85d14c54ee35", RevokedAt: timestamppb.New(clk.Now().Add(-time.Hour))}}},
+		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
+	})
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	test.AssertError(t, err, "inconsistent primary")
+	test.AssertContains(t, err.Error(), "primary database has no revocations")
+	cu.updatedCounter.Reset()
+
+	// But entries revoked within the last lagFactor are outside the
+	// freshness check's view, so the primary having none is not an error.
+	useFakeSA(cu, &fakeSAC{
+		revokedCerts: revokedCertsStream{entries: []*corepb.CRLEntry{{Serial: "0311b5d430823cfa25b0fc85d14c54ee35", RevokedAt: timestamppb.New(clk.Now().Add(-time.Minute))}}},
+		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
+	})
+	cu.ca = &fakeCA{gcc: generateCRLStream{}}
+	cu.cs = &fakeStorer{uploaderStream: &noopUploader{}}
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	test.AssertNotError(t, err, "revocations newer than the check's cutoff")
+	cu.lagFactor = 0
+	cu.updatedCounter.Reset()
+
+	// With the freshness check disabled, a lagging replica goes unnoticed.
+	//
+	// TODO(#8983): Remove this once the freshness check is unconditional.
+	cu.sa = &fakeSAC{
+		revokedCerts: revokedCertsStream{entries: []*corepb.CRLEntry{{Serial: "0311b5d430823cfa25b0fc85d14c54ee35", RevokedAt: now}}},
+		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
+		latest:       &corepb.CRLEntry{Serial: "037d6a05a0f6a975380456ae605cee9889", RevokedAt: now},
+	}
+	cu.checkFreshness = false
+	cu.ca = &fakeCA{gcc: generateCRLStream{}}
+	cu.cs = &fakeStorer{uploaderStream: &noopUploader{}}
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	test.AssertNotError(t, err, "freshness check disabled")
+	cu.updatedCounter.Reset()
+
+	// Errors from the primary should bubble up.
+	useFakeSA(cu, &fakeSAC{revokedCerts: revokedCertsStream{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour), latestErr: sentinelErr})
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	test.AssertError(t, err, "primary database error")
+	test.AssertContains(t, err.Error(), "GetLatestRevokedCertByShard")
+	test.AssertErrorIs(t, err, sentinelErr)
+	cu.updatedCounter.Reset()
+
 	// Errors reading from the SA should bubble up soonest.
-	cu.sa = &fakeSAC{revokedCerts: revokedCertsStream{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)}
+	useFakeSA(cu, &fakeSAC{revokedCerts: revokedCertsStream{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)})
 	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "retrieving entry from SA")
@@ -381,13 +509,14 @@ func TestUpdateShardWithRetry(t *testing.T) {
 	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
 
 	// Build an updater that will always fail when it talks to the SA.
+	fsa := &fakeSAC{revokedCerts: revokedCertsStream{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)}
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
-		2, 18*time.Hour, 24*time.Hour,
+		2, 18*time.Hour, 24*time.Hour, 0,
 		6*time.Hour, time.Minute, 1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
-		&fakeSAC{revokedCerts: revokedCertsStream{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
+		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,

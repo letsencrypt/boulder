@@ -6,6 +6,10 @@
 			"maxOpenConns": 10
 		},
 		"hostnamePolicyFile": "test/ident-policy.yaml",
+		"hostnamePolicyFiles": {
+			"reasonNameOne": "test/reasonName-ident-policy.yaml",
+			"reasonNameTwo": "test/reasonName-ident-policy.yaml"
+		},
 		"workers": 16,
 		"badResultsOnly": true,
 		"checkPeriod": "72h",

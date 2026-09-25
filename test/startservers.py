@@ -65,7 +65,7 @@ SERVICES = [
     Service('crl-storer',
         9667, None, None,
         ('./bin/boulder', 'crl-storer', '--config', os.path.join(config_dir, 'crl-storer.json'), '--addr', ':9309', '--debug-addr', ':9667'),
-        ('s3-test-srv',)),
+        ('s3-test-srv', 'boulder-sa-1', 'boulder-sa-2')),
     Service('boulder-ra-1',
         8002, 9394, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9394', '--debug-addr', ':8002'),
@@ -140,23 +140,19 @@ SERVICES = [
         8016, None, None,
         ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json'), '--debug-addr', ':8016'),
         None),
+    Service('boulder-mtca-1',
+        8010, 9396, 'mtca.boulder',
+        ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010', '-init-log-for-test'),
+        None),
+    Service('boulder-mtpublisher-1',
+        8025, None, None,
+        ('./bin/boulder', 'boulder-mtpublisher', '--config', os.path.join(config_dir, 'mtpublisher.json'), '--debug-addr', ':8025'),
+        None),
+    Service('boulder-mtcb',
+        8026, 9398, 'mtcb.boulder',
+        ('./bin/boulder', 'boulder-mtcb', '--config', os.path.join(config_dir, 'mtcb.json'), '--addr', ':9398', '--debug-addr', ':8026'),
+        None),
 ]
-
-if CONFIG_NEXT:
-    SERVICES.extend([
-        Service('boulder-mtca-1',
-            8010, 9396, 'mtca.boulder',
-            ('./bin/boulder', 'boulder-mtca', '--config', os.path.join(config_dir, 'mtca.json'), '--addr', ':9396', '--debug-addr', ':8010', '-init-log-for-test'),
-            None),
-        Service('boulder-mtpublisher-1',
-            8025, None, None,
-            ('./bin/boulder', 'boulder-mtpublisher', '--config', os.path.join(config_dir, 'mtpublisher.json'), '--debug-addr', ':8025'),
-            None),
-        Service('boulder-mtcb',
-            8026, 9398, 'mtcb.boulder',
-            ('./bin/boulder', 'boulder-mtcb', '--config', os.path.join(config_dir, 'mtcb.json'), '--addr', ':9398', '--debug-addr', ':8026'),
-            None),
-    ])
 
 def _service_toposort(services):
     """Yields Service objects in topologically sorted order.
@@ -199,8 +195,6 @@ def install(race_detection, coverage=False):
         go_build_flags += ' -cover' # https://go.dev/blog/integration-test-coverage
 
     cmd = ["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]
-    if CONFIG_NEXT:
-        cmd.append("GO=gotip")
     return subprocess.call(cmd) == 0
 
 def run(cmd, coverage_dir=None):

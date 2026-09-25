@@ -349,25 +349,44 @@ type orderModel struct {
 	// Contains protobuf-encoded list of authorization IDs without duplicates.
 	// See sa/proto/sadb.proto
 	Authzs []byte
+
+	MTCLogID        *string
+	MTCSerialNumber *uint64
+	MTCSubtreeID    *uint64
+}
+
+// optionalStr returns "" if s is nil, otherwise *s.
+func optionalStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// optionalUint64 returns 0 if i is nil, otherwise *i.
+func optionalUint64(i *uint64) uint64 {
+	if i == nil {
+		return 0
+	}
+	return *i
+}
+
+func unpackAuthzIDs(authzs []byte) ([]int64, error) {
+	if len(authzs) == 0 {
+		return nil, nil
+	}
+	var decodedAuthzs sapb.Authzs
+	err := proto.Unmarshal(authzs, &decodedAuthzs)
+	if err != nil {
+		return nil, err
+	}
+	return decodedAuthzs.AuthzIDs, nil
 }
 
 func modelToOrder(om *orderModel) (*corepb.Order, error) {
-	profile := ""
-	if om.CertificateProfileName != nil {
-		profile = *om.CertificateProfileName
-	}
-	replaces := ""
-	if om.Replaces != nil {
-		replaces = *om.Replaces
-	}
-	var v2Authorizations []int64
-	if len(om.Authzs) > 0 {
-		var decodedAuthzs sapb.Authzs
-		err := proto.Unmarshal(om.Authzs, &decodedAuthzs)
-		if err != nil {
-			return nil, err
-		}
-		v2Authorizations = decodedAuthzs.AuthzIDs
+	v2Authorizations, err := unpackAuthzIDs(om.Authzs)
+	if err != nil {
+		return nil, err
 	}
 	order := &corepb.Order{
 		Id:                     om.ID,
@@ -376,9 +395,12 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		Created:                timestamppb.New(om.Created),
 		CertificateSerial:      om.CertificateSerial,
 		BeganProcessing:        om.BeganProcessing,
-		CertificateProfileName: profile,
-		Replaces:               replaces,
+		CertificateProfileName: optionalStr(om.CertificateProfileName),
+		Replaces:               optionalStr(om.Replaces),
 		V2Authorizations:       v2Authorizations,
+		MtcLogID:               optionalStr(om.MTCLogID),
+		MtcSerialNumber:        optionalUint64(om.MTCSerialNumber),
+		MtcSubtreeID:           optionalUint64(om.MTCSubtreeID),
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
@@ -1122,7 +1144,9 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 	}
 
 	// If the order is fully authorized and the certificate serial is set then the
-	// order is valid
+	// order is valid.
+	// TODO(#9022): An order can also become valid once it has an MTCLogID, MTCSerialNumber,
+	// and MTCSubtreeID, _and_ the corresponding `checkpointSubtree` row has two signatures.
 	if fullyAuthorized && order.CertificateSerial != "" {
 		return string(core.StatusValid), nil
 	}

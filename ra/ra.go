@@ -984,12 +984,21 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		Identifiers: order.Identifiers,
 		Profile:     profileName,
 	})
-
 	if err != nil {
 		return fmt.Errorf("issuing MTC: %s", err)
 	}
 
-	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcEntryIndex)
+	_, err = ra.SA.FinalizeMTCOrder(ctx, &sapb.FinalizeMTCOrderRequest{
+		Id:              order.Id,
+		MtcLogID:        resp.MtcLogID,
+		MtcSerialNumber: resp.MtcSerialNumber,
+		MtcSubtreeID:    resp.MtcSubtreeID,
+	})
+	if err != nil {
+		return fmt.Errorf("finalizing MTC order: %s", err)
+	}
+
+	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcSerialNumber)
 	return nil
 }
 
@@ -1170,7 +1179,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	if ra.isMTC(order) {
 		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
 		if err != nil {
-			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
+			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error issuing MTC"))
 			return nil, err
 		}
 
@@ -2189,7 +2198,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Validate that our policy allows issuing for each of the identifiers in
 	// the order
-	err = ra.PA.WillingToIssue(idents)
+	err = ra.PA.WillingToIssue(idents, time.Time{})
 	if err != nil {
 		return nil, err
 	}

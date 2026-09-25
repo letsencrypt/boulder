@@ -170,7 +170,7 @@ while getopts lruvwecisgnhbd:p:f:-: OPT; do
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start-py )                   RUN+=("start") ;;
     g | generate )                   RUN+=("generate") ;;
-    n | config-next )                BOULDER_CONFIG_DIR="test/config-next"; GO=gotip ;;
+    n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     c | coverage )                   COVERAGE="true" ;;
     d | coverage-dir )               check_arg; COVERAGE_DIR="${OPTARG}" ;;
     h | help )                       print_usage_exit ;;

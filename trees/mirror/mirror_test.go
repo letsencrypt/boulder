@@ -171,17 +171,15 @@ func TestPackages(t *testing.T) {
 
 func TestEntryPackage(t *testing.T) {
 	proof := []tlog.Hash{mustHash(t, "PlRNCrwHpqhGrupue0L7gxbjbMiKA9temvuZZDDpkaw=")}
-	body, err := EntryPackage([][]byte{[]byte("abc"), []byte("de")}, proof)
+	// EntryPackage carries the entries opaquely, so any bytes exercise it.
+	entries := []byte("wire form entries")
+
+	body, err := EntryPackage(entries, proof)
 	if err != nil {
 		t.Fatalf("EntryPackage: %s", err)
 	}
 	var expect cryptobyte.Builder
-	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte("abc"))
-	})
-	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte("de"))
-	})
+	expect.AddBytes(entries)
 	expect.AddUint8(1)
 	expect.AddBytes(proof[0][:])
 	if !bytes.Equal(body, expect.BytesOrPanic()) {
@@ -192,13 +190,45 @@ func TestEntryPackage(t *testing.T) {
 	if err == nil {
 		t.Error("EntryPackage with no entries = nil error, want error")
 	}
-	_, err = EntryPackage([][]byte{make([]byte, 0x10000)}, proof)
-	if err == nil {
-		t.Error("EntryPackage with an oversize entry = nil error, want error")
-	}
-	_, err = EntryPackage([][]byte{[]byte("abc")}, make([]tlog.Hash, 64))
+	_, err = EntryPackage(entries, make([]tlog.Hash, 64))
 	if err == nil {
 		t.Error("EntryPackage with 64 proof hashes = nil error, want error")
+	}
+}
+
+func TestSignSubtreeRequest(t *testing.T) {
+	hash := mustHash(t, "CsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I=")
+	proof := []tlog.Hash{mustHash(t, "PlRNCrwHpqhGrupue0L7gxbjbMiKA9temvuZZDDpkaw=")}
+	note := []byte("example.com/log\n512\n" + hash.String() + "\n\n— example.com/log AAAA\n")
+
+	body, err := SignSubtreeRequest(256, 512, hash, proof, note)
+	if err != nil {
+		t.Fatalf("SignSubtreeRequest: %s", err)
+	}
+	expect := "subtree 256 512\n" + hash.String() + "\n" + proof[0].String() + "\n\n" + string(note)
+	if string(body) != expect {
+		t.Errorf("SignSubtreeRequest = %q, want %q", body, expect)
+	}
+
+	_, err = SignSubtreeRequest(-1, 512, hash, nil, note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with a negative start = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(512, 256, hash, nil, note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with end before start = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(512, 512, hash, nil, note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with an empty subtree = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(0, 512, hash, make([]tlog.Hash, 64), note)
+	if err == nil {
+		t.Error("SignSubtreeRequest with 64 proof lines = nil error, want error")
+	}
+	_, err = SignSubtreeRequest(0, 512, hash, nil, nil)
+	if err == nil {
+		t.Error("SignSubtreeRequest with an empty checkpoint = nil error, want error")
 	}
 }
 

@@ -180,6 +180,19 @@ func (sa *StorageAuthorityReadOnly) GetSerialMetadata(ctx context.Context, req *
 	}, nil
 }
 
+// GetSerialsMetadata is a mock
+func (sa *StorageAuthorityReadOnly) GetSerialsMetadata(ctx context.Context, req *sapb.Serials, _ ...grpc.CallOption) (*sapb.SerialsMetadata, error) {
+	result := &sapb.SerialsMetadata{}
+	for _, serial := range req.Serials {
+		md, err := sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
+		if err != nil {
+			return nil, err
+		}
+		result.Metadata = append(result.Metadata, md)
+	}
+	return result, nil
+}
+
 // GetCertificate is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if req.Serial == "000000000000000000000000000000626164" {

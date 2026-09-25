@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-ARG VITESS_TAG=v23.0.0
+ARG VITESS_TAG=v24.0.3
 ARG MYSQL_BASE_IMAGE=mysql:8.4
 
-FROM golang:1.25.2-bookworm AS build
+FROM golang:1.27.1-trixie AS build
 ARG VITESS_TAG
 ENV CGO_ENABLED=0
 

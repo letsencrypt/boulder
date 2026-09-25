@@ -3249,6 +3249,24 @@ func TestGetOrder(t *testing.T) {
 		Headers  map[string]string
 	}{
 		{
+			Name:    "Zero order ID",
+			Request: makeGet("1/0"),
+			Response: `{
+              "type": "urn:ietf:params:acme:error:malformed",
+              "detail": "No order for ID 0",
+              "status": 404
+            }`,
+		},
+		{
+			Name:    "Zero acct ID",
+			Request: makeGet("0/1"),
+			Response: `{
+              "type": "urn:ietf:params:acme:error:malformed",
+              "detail": "No order for ID 1",
+              "status": 404
+            }`,
+		},
+		{
 			Name:     "Good request",
 			Request:  makeGet("1/1"),
 			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz/1/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,

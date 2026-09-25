@@ -1,0 +1,8 @@
+{
+  "identities": [
+    {
+      "name": "anonymous",
+      "actions": ["Read"]
+    }
+  ]
+}

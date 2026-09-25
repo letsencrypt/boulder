@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -249,7 +250,12 @@ func initTables(dbMap *borp.DbMap) {
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(certificateStatusModel{}, "certificateStatus").SetKeys(true, "ID")
 	dbMap.AddTableWithName(fqdnSet{}, "fqdnSets").SetKeys(true, "ID")
-	dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
+	tableMap := dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
+	if !features.Get().OrderModelHasMTCFields {
+		tableMap.ColMap("MTCLogID").SetTransient(true)
+		tableMap.ColMap("MTCSerialNumber").SetTransient(true)
+		tableMap.ColMap("MTCSubtreeID").SetTransient(true)
+	}
 	dbMap.AddTableWithName(orderFQDNSet{}, "orderFqdnSets").SetKeys(true, "ID")
 	dbMap.AddTableWithName(authzModel{}, "authz2").SetKeys(true, "ID")
 	dbMap.AddTableWithName(recordedSerialModel{}, "serials").SetKeys(true, "ID")

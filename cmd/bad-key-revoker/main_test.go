@@ -262,7 +262,7 @@ func TestFindUnrevoked(t *testing.T) {
 	bkr.maxRevocations = 0
 	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertError(t, err, "findUnrevoked didn't fail with 0 maxRevocations")
-	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: got 1, max 0", hashA))
+	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: found at least 1, max 0", hashA))
 }
 
 type mockRevoker struct {

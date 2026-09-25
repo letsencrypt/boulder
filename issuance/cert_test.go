@@ -405,6 +405,7 @@ func TestIssue(t *testing.T) {
 
 func TestIssueCertTooBig(t *testing.T) {
 	fc := clock.NewFake()
+	fc.Set(time.Now())
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	if err != nil {
 		t.Fatalf("newIssuer: %s", err)
@@ -417,12 +418,23 @@ func TestIssueCertTooBig(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		dnsNames = append(dnsNames, fmt.Sprintf("%d.example.com", i))
 	}
-	profile := defaultProfile()
+
+	// Adding some ignored lints to target a specific behavior in this test
+	profcfg := defaultProfileConfig()
+	profcfg.IgnoredLints = append(profcfg.IgnoredLints, []string{
+		// adding a large list of SANs is one way of testing inflated cert size
+		"e_cert_has_san_count_out_of_bounds",
+		// inflated SAN count is also a cps profile mismatch
+		"e_precertificate_matches_cps_profile",
+	}...)
+	profile, err := NewProfile(profcfg)
+	test.AssertNotError(t, err, "NewProfile failed")
+
 	profile.maxCertificateSize = 1000
 	_, _, err = signer.Prepare(profile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    goodSKID,
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 		DNSNames:        dnsNames,
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -439,6 +451,7 @@ func TestIssueCertTooBig(t *testing.T) {
 
 func TestIssueDNSNamesOnly(t *testing.T) {
 	fc := clock.NewFake()
+	fc.Set(time.Now().UTC())
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	if err != nil {
 		t.Fatalf("newIssuer: %s", err)
@@ -482,6 +495,7 @@ func TestIssueDNSNamesOnly(t *testing.T) {
 
 func TestIssueIPAddressesOnly(t *testing.T) {
 	fc := clock.NewFake()
+	fc.Set(time.Now())
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	if err != nil {
 		t.Fatalf("newIssuer: %s", err)
@@ -525,6 +539,7 @@ func TestIssueIPAddressesOnly(t *testing.T) {
 
 func TestIssueWithCRLDP(t *testing.T) {
 	fc := clock.NewFake()
+	fc.Set(time.Now())
 	issuerConfig := defaultIssuerConfig()
 	issuerConfig.CRLURLBase = "http://crls.example.net/"
 	issuerConfig.CRLShards = 999

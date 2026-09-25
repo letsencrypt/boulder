@@ -31,6 +31,25 @@ selected shard baked into the certificate as part of its CRLDistributionPoints
 extension. The shard is selected based on taking the (random) low bytes of the
 serial number modulo the number of shards produced by that certificate's issuer.
 
+## Safety checks
+
+Two checks guard against publishing a CRL which is missing entries, which would
+appear to un-revoke certificates.
+
+The crl-updater reads each shard's entries from a database replica via
+`GetRevokedCertsByShard`. Before signing, it asks the database primary for the
+shard's most recent revocation entry via `GetLatestRevokedCertByShard`; if that
+entry is missing, or the primary is unreachable, the replica is lagging and the
+update fails. The check's cutoff is `lagFactor` (default 5 minutes) earlier than
+the CRL's, so ordinary replication lag does not impact it.
+
+The crl-storer diffs each CRL against the previous one for the same shard. An
+entry may only disappear once it has appeared on a CRL issued after its
+certificate expired (RFC 5280, Section 3.3), so for each missing entry the
+storer looks up the certificate's expiry (`GetSerialsMetadata`) and refuses the
+upload unless it precedes the previous CRL's `thisUpdate`. The storer also
+refuses CRLs whose number does not increase or whose IDP changes.
+
 ## Storage
 
 When a certificate is revoked, the new status is written to both the

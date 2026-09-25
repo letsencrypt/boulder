@@ -1,5 +1,3 @@
-//go:build go1.27
-
 package mtca
 
 import (
@@ -25,7 +23,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/borp"
+
+	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/config"
@@ -34,13 +35,20 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/mtpublisher"
+	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/privatekey"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/letsencrypt/boulder/trees/checkpoint"
+	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
+
+const logNumber = 3
 
 // setup returns a working mtca, its fake tile storage, and a cleanup
 // function, or an error.
@@ -64,7 +72,10 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		return nil, nil, nil, err
 	}
 	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
-	truncateTables(db)
+	err = truncateTables(db)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	logger := blog.NewMock()
 	clk := clock.NewFake()
@@ -91,7 +102,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
-		issuancelog.ID{CAID: "44947.4.1", LogNumber: 44},
+		issuancelog.ID{CAID: "44947.4.1", LogNumber: logNumber},
 		100*time.Millisecond,
 		dbMap,
 		fs3,
@@ -107,7 +118,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	}
 
 	cleanup := func() {
-		truncateTables(db)
+		_ = truncateTables(db)
 	}
 
 	return mtca, fs3, cleanup, nil
@@ -150,43 +161,50 @@ func TestPool(t *testing.T) {
 func TestCheckpointValid(t *testing.T) {
 	type testCase struct {
 		name  string
-		value checkpoint
+		value treedb.CheckpointModel
 	}
 
 	rootHash := [32]byte{}
 
 	testCases := []testCase{
-		{"no MTCLogID", checkpoint{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
-		{"no TreeSize", checkpoint{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
-		{"short RootHash", checkpoint{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
-		{"no RootHash", checkpoint{ID: 7, MTCLogID: "TestLog", TreeSize: 9}},
+		{"no MTCLogID", treedb.CheckpointModel{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
+		{"no TreeSize", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
+		{"short RootHash", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
+		{"no RootHash", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", TreeSize: 9}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.value.valid()
+			err := tc.value.Valid()
 			if err == nil {
 				t.Errorf("checkpoint.valid(): got nil, want error")
 			}
 		})
 	}
 
-	goodCheckpoint := checkpoint{
+	goodCheckpoint := treedb.CheckpointModel{
 		ID:       7,
 		MTCLogID: "TestLog",
 		TreeSize: 9,
 		RootHash: rootHash[:],
 	}
 
-	err := goodCheckpoint.valid()
+	err := goodCheckpoint.Valid()
 	if err != nil {
 		t.Errorf("goodCheckpoint.valid(): got %q, want no error", err)
 	}
 }
 
-func truncateTables(db *sql.DB) {
-	db.Exec("TRUNCATE TABLE checkpoints")
-	db.Exec("TRUNCATE TABLE latestCheckpoint")
+func truncateTables(db *sql.DB) error {
+	_, err := db.Exec("TRUNCATE TABLE checkpoints")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("TRUNCATE TABLE latestCheckpoint")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // issueResult is the outcome of one async Issue call, along with the values
@@ -255,6 +273,185 @@ func issueMany(t *testing.T, m *mtca, n int) <-chan issueResult {
 	return ch
 }
 
+// TestWriteCheckpoint checks that writeCheckpoint creates the checkpoint only
+// when given no ETag, replaces only the checkpoint whose ETag is prevETag, and
+// otherwise returns ErrCheckpointChanged without writing.
+func TestWriteCheckpoint(t *testing.T) {
+	m, fs3, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+	key := m.checkpointKey
+	delete(fs3.Objects, key)
+
+	first, err := m.writeCheckpoint(t.Context(), []byte("first note\n"), "")
+	if err != nil {
+		t.Fatalf("writing the first checkpoint: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "first note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "first note\n")
+	}
+
+	second, err := m.writeCheckpoint(t.Context(), []byte("second note\n"), first)
+	if err != nil {
+		t.Fatalf("replacing the checkpoint: %s", err)
+	}
+	if string(fs3.Objects[key].Data) != "second note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "second note\n")
+	}
+
+	if second == first {
+		t.Error("ETag did not change with the checkpoint's contents")
+	}
+
+	_, err = m.writeCheckpoint(t.Context(), []byte("third note\n"), "")
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("writeCheckpoint creating over an existing checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+	if string(fs3.Objects[key].Data) != "second note\n" {
+		t.Errorf("stored checkpoint = %q, want %q", fs3.Objects[key].Data, "second note\n")
+	}
+
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+	_, err = m.writeCheckpoint(t.Context(), []byte("fourth note\n"), second)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("writeCheckpoint over another writer's checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+	if string(fs3.Objects[key].Data) != "foreign note\n" {
+		t.Errorf("stored checkpoint = %q, want the other writer's %q", fs3.Objects[key].Data, "foreign note\n")
+	}
+
+	delete(fs3.Objects, key)
+	_, err = m.writeCheckpoint(t.Context(), []byte("fifth note\n"), second)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("writeCheckpoint replacing a deleted checkpoint = %s, want ErrCheckpointChanged", err)
+	}
+}
+
+// TestInitLogRefusesServedCheckpoint checks that InitLog fails when a
+// checkpoint is already served, leaving it in place.
+func TestInitLogRefusesServedCheckpoint(t *testing.T) {
+	m, _, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+
+	db, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
+	if err != nil {
+		t.Fatalf("opening db: %s", err)
+	}
+	defer db.Close()
+	err = truncateTables(db)
+	if err != nil {
+		t.Fatalf("truncating tables: %s", err)
+	}
+	fs3 := bs3test.New()
+	m.s3c = fs3
+	m.servedCheckpointETag = ""
+	key := m.checkpointKey
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+
+	err = m.InitLog(t.Context())
+	if !errors.Is(err, ErrCheckpointChanged) || !strings.Contains(err.Error(), "already served") {
+		t.Errorf("InitLog with a checkpoint already served = %s, want ErrCheckpointChanged naming it", err)
+	}
+	if string(fs3.Objects[key].Data) != "foreign note\n" {
+		t.Errorf("stored checkpoint = %q, want the existing %q", fs3.Objects[key].Data, "foreign note\n")
+	}
+}
+
+// TestPreflightServesCheckpoint checks that Preflight serves the latest
+// checkpoint, covering a process that stopped between publishing tiles and
+// serving.
+func TestPreflightServesCheckpoint(t *testing.T) {
+	m, fs3, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+
+	m.servedCheckpointETag = ""
+	err = m.Preflight(t.Context())
+	if err != nil {
+		t.Fatalf("Preflight over our served checkpoint: %s", err)
+	}
+	verifyStores(t, m, fs3)
+
+	delete(fs3.Objects, m.checkpointKey)
+	m.servedCheckpointETag = ""
+	err = m.Preflight(t.Context())
+	if err != nil {
+		t.Fatalf("Preflight with nothing served: %s", err)
+	}
+	verifyStores(t, m, fs3)
+}
+
+// TestServeCheckpointMismatch checks that a serve over an earlier checkpoint
+// of ours adopts its ETag and succeeds, and that a serve over nothing, another
+// writer's checkpoint, or a larger one of ours fails with ErrCheckpointChanged
+// and keeps failing.
+func TestServeCheckpointMismatch(t *testing.T) {
+	m, fs3, cleanup, err := setup()
+	if err != nil {
+		t.Fatalf("setup: %s", err)
+	}
+	defer cleanup()
+	latest := verifyStores(t, m, fs3)
+	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
+	key := m.checkpointKey
+	signedNote := fs3.Objects[key].Data
+
+	fs3.Objects[key] = bs3test.StoredObject{Data: signedNote, ETag: "\"lost response\""}
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
+	if err != nil {
+		t.Fatalf("serving over our own checkpoint under an unknown ETag: %s", err)
+	}
+	if m.servedCheckpointETag == "\"lost response\"" {
+		t.Error("servedCheckpointETag still holds the ETag of the replaced checkpoint")
+	}
+
+	delete(fs3.Objects, key)
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("serving after the checkpoint was deleted = %s, want ErrCheckpointChanged", err)
+	}
+	fs3.Objects[key] = bs3test.StoredObject{Data: signedNote}
+	m.servedCheckpointETag = ""
+
+	larger := tlog.Tree{N: latest.TreeSize + 1, Hash: tlog.Hash(latest.RootHash)}
+	largerSignature, err := m.cosigner.CosignCheckpoint(larger)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	largerRaw, err := cosignature.RawSignature(largerSignature)
+	if err != nil {
+		t.Fatalf("RawSignature: %s", err)
+	}
+	largerNote, err := m.checkpointNote(larger, largerRaw)
+	if err != nil {
+		t.Fatalf("checkpointNote: %s", err)
+	}
+	fs3.Objects[key] = bs3test.StoredObject{Data: largerNote, ETag: "\"larger\""}
+	m.servedCheckpointETag = ""
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("serving over a larger checkpoint of ours = %s, want ErrCheckpointChanged", err)
+	}
+
+	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
+	for range 2 {
+		err = m.serveCheckpoint(t.Context(), tree, signedNote)
+		if !errors.Is(err, ErrCheckpointChanged) {
+			t.Errorf("serving over another writer's checkpoint = %s, want ErrCheckpointChanged", err)
+		}
+	}
+	if string(fs3.Objects[key].Data) != "foreign note\n" {
+		t.Errorf("stored checkpoint = %q, want the other writer's %q", fs3.Objects[key].Data, "foreign note\n")
+	}
+}
+
 // errorS3 wraps a bs3test.FakeS3, failing every PutObject with `err` while
 // it is non-nil and passing through to the wrapped fake otherwise.
 type errorS3 struct {
@@ -273,11 +470,23 @@ func (e *errorS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optF
 // in for the daemon, so sequencing can proceed.
 func mirrorCosign(t *testing.T, m *mtca) {
 	t.Helper()
+	caPub, ok := m.issuer.Signer.Public().(*mldsa.PublicKey)
+	if !ok {
+		t.Fatalf("issuer public key is %T, must be ML-DSA-44", m.issuer.Signer.Public())
+	}
 	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	p, err := mtpublisher.New(m.db, time.Second, m.logID, "32473.9", privatekey.NewDeterministicSigner(key), key.PublicKey(), blog.NewMock())
+	mirror, err := mtpublishertest.NewTestMirror("32473.9", m.logID.Origin(), privatekey.NewDeterministicSigner(key))
+	if err != nil {
+		t.Fatalf("mtpublishertest.NewTestMirror: %s", err)
+	}
+	dbMap, err := sa.DBMapForTest(vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
+	if err != nil {
+		t.Fatalf("opening mtcmeta dbMap: %s", err)
+	}
+	p, err := mtpublisher.New(dbMap, time.Second, m.logID, caPub, mirror, blog.NewMock())
 	if err != nil {
 		t.Fatalf("mtpublisher.New: %s", err)
 	}
@@ -293,9 +502,9 @@ func mirrorCosign(t *testing.T, m *mtca) {
 //   - m.frontier
 //   - m.latestCheckpoint()
 //   - fake tile storage
-func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *checkpoint {
+func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *treedb.CheckpointModel {
 	t.Helper()
-	latest, err := m.latestCheckpoint(t.Context())
+	latest, err := treedb.New(m.db).LatestCheckpoint(t.Context(), m.logID.String())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -318,6 +527,19 @@ func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *checkpoint {
 	if !bytes.Equal(latest.RootHash, tileHash[:]) {
 		t.Errorf("tile storage RootHash %s != DB RootHash %s",
 			tileHash, base64.StdEncoding.EncodeToString(latest.RootHash))
+	}
+
+	served, ok := fs3.Objects[m.logID.TilePrefix()+"/checkpoint"]
+	if !ok {
+		t.Fatal("no checkpoint served in tile storage")
+	}
+	servedCheckpoint, _, err := checkpoint.Open(served.Data, m.verifier)
+	if err != nil {
+		t.Fatalf("opening the served checkpoint: %s", err)
+	}
+	if servedCheckpoint.Tree.N != latest.TreeSize || !bytes.Equal(servedCheckpoint.Tree.Hash[:], latest.RootHash) {
+		t.Errorf("served checkpoint is tree size %d hash %s, DB latest is size %d hash %s",
+			servedCheckpoint.Tree.N, servedCheckpoint.Tree.Hash, latest.TreeSize, base64.StdEncoding.EncodeToString(latest.RootHash))
 	}
 	return latest
 }
@@ -383,11 +605,16 @@ func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, 
 			t.Errorf("Issue: %s", res.err)
 			continue
 		}
-		_, ok := got[res.MtcEntryIndex]
-		if ok {
-			t.Errorf("entryIndex %d returned twice", res.MtcEntryIndex)
+		if res.MtcSerialNumber>>48 != logNumber {
+			t.Errorf("MTC serial number of %016x does not have expected logNumber %04x",
+				res.MtcSerialNumber, logNumber)
 		}
-		got[res.MtcEntryIndex] = res
+		entryIndex := int64(res.MtcSerialNumber & (1<<48 - 1))
+		_, ok := got[entryIndex]
+		if ok {
+			t.Errorf("entryIndex %d returned twice", entryIndex)
+		}
+		got[entryIndex] = res
 	}
 	for i := firstIndex; i < firstIndex+int64(n); i++ {
 		_, ok := got[i]
@@ -475,15 +702,15 @@ func TestSequenceStorageFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("sequencing with failing storage: got nil error, want error")
 	}
-	if !strings.Contains(err.Error(), "staging") {
-		t.Errorf("sequencing with failing storage: got %q, want a staging error", err)
+	if !strings.Contains(err.Error(), "staging candidate tiles") {
+		t.Fatalf("sequencing with failing storage: got %q, want a 'staging candidate tiles' error", err)
 	}
 
 	// The waiting RPCs should get their responses.
 	for i := 0; i < 2; i++ {
 		res := <-results
 		if res.err == nil {
-			t.Errorf("Issue with failing storage: got entryIndex %d, want error", res.MtcEntryIndex)
+			t.Errorf("Issue with failing storage: got entryIndex %d, want error", res.MtcSerialNumber)
 		}
 	}
 
@@ -508,7 +735,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 }
 
 func TestInitLog(t *testing.T) {
-	mtca, _, cleanup, err := setup()
+	mtca, fs3, cleanup, err := setup()
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
@@ -520,11 +747,7 @@ func TestInitLog(t *testing.T) {
 		t.Errorf("second InitLog: got nil error, want error")
 	}
 
-	latest, err := mtca.latestCheckpoint(t.Context())
-	if err != nil {
-		t.Fatalf("getting latest: %s", err)
-	}
-
+	latest := verifyStores(t, mtca, fs3)
 	if latest.TreeSize != 1 {
 		t.Errorf("just-initialized log: got TreeSize %d, want 1", latest.TreeSize)
 	}
@@ -536,14 +759,14 @@ func TestInitLog(t *testing.T) {
 	verifyCheckpoint(t, mtca, latest)
 }
 
-func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *checkpoint) {
+func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointModel) {
 	t.Helper()
 	message := cosigned.Message{
 		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID,
 		Timestamp:    0,
 		LogOrigin:    mtca.logID.Origin(),
 		Start:        0,
-		End:          uint64(checkpoint.TreeSize),
+		End:          uint64(checkpoint.TreeSize), //nolint:gosec // G115: we know that tree sizes are positive in these tests
 		SubtreeHash:  [32]byte(checkpoint.RootHash),
 	}
 

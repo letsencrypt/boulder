@@ -21,6 +21,16 @@
 				}
 			}
 		},
+		"saReadOnlyService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "sa",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "sa.boulder"
+		},
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",
 			"test/certs/webpki/int-rsa-b.cert.pem",

@@ -79,11 +79,11 @@ fi
 if ! [ -d test/certs/mtpki ]; then
   echo "Generating mtpki/..."
   mkdir -p test/certs/mtpki
-  gotip run ./test/certs/genmtpki/genmtpki.go -output-dir test/certs/mtpki -tlog-prefix-url https://ignored.example.com
+  go run ./test/certs/genmtpki/genmtpki.go -output-dir test/certs/mtpki -tlog-prefix-url https://ignored.example.com
 fi
 
 if ! [ -f test/certs/sunlight/mtc-logs.txt ] || [ test/certs/mtpki/mtca1.pub.pem -nt test/certs/sunlight/mtc-logs.txt ]; then
   echo "Generating sunlight/..."
   mkdir -p test/certs/sunlight
-  gotip run ./test/sunlight/genkeys/main.go -output-dir test/certs/sunlight -mtca-public-key test/certs/mtpki/mtca1.pub.pem
+  go run ./test/sunlight/genkeys/main.go -output-dir test/certs/sunlight -mtca-public-key test/certs/mtpki/mtca1.pub.pem
 fi

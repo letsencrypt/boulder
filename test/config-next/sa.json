@@ -36,6 +36,7 @@
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
 						"admin.boulder",
+						"crl-storer.boulder",
 						"wfe.boulder",
 						"sfe.boulder",
 						"ra.boulder"
@@ -55,7 +56,9 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {}
+		"features": {
+			"OrderModelHasMTCFields": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
