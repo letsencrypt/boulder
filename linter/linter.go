@@ -17,7 +17,6 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/unsigned"
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
@@ -58,10 +57,7 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 		return nil, err
 	}
 
-	if features.Get().UnsignLintCerts {
-		return unsigned.Design(lintCertBytes, false)
-	}
-	return lintCertBytes, nil
+	return unsigned.Design(lintCertBytes, false)
 }
 
 // CheckCRL is like Check, but for CRLs.
@@ -169,10 +165,7 @@ func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, re
 		return nil, err
 	}
 
-	if features.Get().UnsignLintCerts {
-		return unsigned.Design(lintCertBytes, false)
-	}
-	return lintCertBytes, nil
+	return unsigned.Design(lintCertBytes, false)
 }
 
 // CheckCRL signs the given RevocationList template using the Linter's fake
