@@ -108,6 +108,7 @@ GRANT SELECT ON latestCheckpoint TO 'mtpublisher'@'%';
 -- MTCA
 GRANT SELECT,INSERT,UPDATE ON checkpoints TO 'mtca'@'%';
 GRANT SELECT,INSERT,UPDATE ON latestCheckpoint TO 'mtca'@'%';
+GRANT SELECT,INSERT ON checkpointSubtrees TO 'mtca'@'%';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'%';

@@ -30,6 +30,7 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
+	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/pubkey"
@@ -68,6 +69,8 @@ func New(
 		return nil, errors.New("sequencingPeriod must be non-zero")
 	}
 
+	db := initDB(dbMap)
+
 	m := &mtca{
 		issuer:        issuer,
 		profiles:      profiles,
@@ -77,10 +80,11 @@ func New(
 
 		sequencingPeriod: sequencingPeriod,
 
-		db:  initDB(dbMap),
-		s3c: s3c,
-		log: logger,
-		clk: clk,
+		db:     db,
+		treedb: treedb.New(db),
+		s3c:    s3c,
+		log:    logger,
+		clk:    clk,
 	}
 
 	cosigner, err := cosignature.NewCosigner(logID.CAID, logID.Origin(), issuer.Signer)
@@ -133,10 +137,18 @@ type mtca struct {
 	// TODO: factor our sa.InitWrappedDb() so we get metrics and other goodies.
 	// TODO: decide whether we want to route this through the SA or an SA-like object,
 	// or keep a direct DB connection from the MTCA.
-	db  *db.WrappedMap
-	s3c simpleS3
-	log blog.Logger
-	clk clock.Clock
+	db     *db.WrappedMap
+	treedb checkpointDB
+	s3c    simpleS3
+	log    blog.Logger
+	clk    clock.Clock
+}
+
+// checkpointDB is the subset of treedb.Impl the MTCA uses, so tests can
+// substitute their own.
+type checkpointDB interface {
+	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
+	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -165,6 +177,7 @@ func getCAID(issuerCert *x509.Certificate) (string, error) {
 
 func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 	dbMap.AddTableWithName(treedb.CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
+	dbMap.AddTableWithName(treedb.CheckpointSubtreeModel{}, "checkpointSubtrees").SetKeys(true, "ID")
 	return db.NewWrappedMap(dbMap)
 }
 
@@ -251,7 +264,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 	m.frontier = candidate
 
-	_, err = treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
+	_, err = m.treedb.LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return fmt.Errorf("fetching first checkpoint: %s", err)
 	}
@@ -269,7 +282,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 // a previous process stopped between publishing tiles and serving. It must be
 // called on startup, before Loop().
 func (m *mtca) Preflight(ctx context.Context) error {
-	latest, err := treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
+	latest, err := m.treedb.LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return err
 	}
@@ -474,7 +487,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return nil
 	}
 
-	latest, err := treedb.New(m.db).LatestCheckpoint(ctx, m.logID.String())
+	latest, err := m.treedb.LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return err
 	}
@@ -638,12 +651,55 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
 
+	// cosigner_name and log_origin are computed from the cosigner ID and the
+	// issuance log's ID (Section 5.1), respectively. They contain the
+	// concatenation of:
+	//     The 16-byte ASCII string: oid/1.3.6.1.4.1.
+	//     The trust anchor ID's ASCII representation (Section 4 of [I-D.ietf-tls-trust-anchor-ids])
+	// This is equivalent to the concatenation of:
+	//     The four-byte ASCII string: oid/
+	//     The trust anchor ID as a full OID, in dotted decimal notation
+	cosignedMessage, err := (&cosigned.Message{
+		CosignerName: "oid/1.3.6.1.4.1." + m.logID.CAID,
+		// Timestamp should always be zero when signing over a subtree (as
+		// opposed to a checkpoint)
+		Timestamp:   0,
+		LogOrigin:   "oid/1.3.6.1.4.1." + m.logID.String(),
+		Start:       0,
+		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+		SubtreeHash: newRootHash,
+	}).Marshal()
+	if err != nil {
+		return fmt.Errorf("marshaling cosigned message: %s", err)
+	}
+
+	subtreeSignature, err := m.issuer.Signer.Sign(nil, cosignedMessage, nil)
+	if err != nil {
+		return err
+	}
+
+	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
+	// always using 0 for subtreeStart
+	subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
+		MTCLogID:        m.logID.String(),
+		MTCASignature:   subtreeSignature,
+		MirrorID:        nil,
+		MirrorSignature: nil,
+		SubtreeStart:    0,
+		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+		SubtreeHash:     newRootHash[:],
+	})
+	if err != nil {
+		// InsertCheckpointSubtree already wraps the err
+		return err
+	}
+
 	// Notify waiting RPCs.
 	serial := uint64(m.logID.LogNumber)<<48 | uint64(latest.TreeSize) //nolint:gosec // G115: TreeSize is guaranteed positive by calling Valid().
 	for _, e := range entries {
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
-			subtreeID:    0, // TODO(#9020): insert subtrees and persist their IDs.
+			subtreeID:    uint64(subtreeID), //nolint:gosec // G115: db operations will not return a negative autoincrement id
 		}
 		serial++
 	}

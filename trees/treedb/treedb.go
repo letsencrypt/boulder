@@ -48,6 +48,18 @@ func (c *CheckpointModel) Mirrored() bool {
 	return len(c.MTCASignature) > 0 && len(c.MirrorSignature) > 0
 }
 
+// CheckpointSubtreeModel represents a row in the `checkpointSubtrees` table.
+type CheckpointSubtreeModel struct {
+	ID              int64   `db:"id"`
+	MTCLogID        string  `db:"mtcLogID"`
+	MTCASignature   []byte  `db:"mtcaSignature"`
+	MirrorID        *string `db:"mirrorID"`
+	MirrorSignature []byte  `db:"mirrorSignature"`
+	SubtreeStart    uint64  `db:"subtreeStart"`
+	SubtreeEnd      uint64  `db:"subtreeEnd"`
+	SubtreeHash     []byte  `db:"subtreeHash"`
+}
+
 type Impl struct {
 	db *db.WrappedMap
 }
@@ -88,6 +100,15 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 		return fmt.Errorf("adding mirror signature: %d rows affected (want 1 row affected)", n)
 	}
 	return nil
+}
+
+func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSubtreeModel) (int64, error) {
+	err := i.db.Insert(ctx, model)
+	if err != nil {
+		return 0, fmt.Errorf("inserting into checkpointSubtrees: %s", err)
+	}
+
+	return model.ID, nil
 }
 
 func New(db *db.WrappedMap) *Impl {
