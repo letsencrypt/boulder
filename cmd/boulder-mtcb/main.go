@@ -2,13 +2,10 @@ package notmain
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"os"
 
 	"github.com/jmhodges/clock"
-
-	"github.com/letsencrypt/borp"
 
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
@@ -16,6 +13,8 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/mtcb"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
+	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 type Config struct {
@@ -72,16 +71,13 @@ func main() {
 		issuers = append(issuers, issuer)
 	}
 
-	url, err := c.MTCB.DB.URL()
-	cmd.FailOnError(err, "Reading DB URL")
-	db, err := sql.Open("mysql", url)
+	dbMap, err := sa.InitWrappedDb(c.MTCB.DB, scope, logger)
 	cmd.FailOnError(err, "Opening DB")
-	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
 
 	s3c, err := bs3.FromConfig(c.MTCB.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")
 
-	mtcbImpl, err := mtcb.New(issuers, dbMap, s3c, logger, clk)
+	mtcbImpl, err := mtcb.New(issuers, treedb.New(dbMap), s3c, logger, clk)
 	cmd.FailOnError(err, "Building MTCB")
 
 	srv := bgrpc.NewServer(c.MTCB.GRPCMTCB, logger).Add(
