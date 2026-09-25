@@ -3,16 +3,13 @@ package mtcb
 import (
 	"context"
 	"crypto"
-	"crypto/x509"
-	"encoding/asn1"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 	"github.com/zmap/zcrypto/cryptobyte"
+	"github.com/zmap/zcrypto/cryptobyte/asn1"
 	"golang.org/x/mod/sumdb/tlog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,7 +52,7 @@ func New(
 ) (*mtcb, error) {
 	issuersMap := make(map[string]struct{})
 	for _, issuer := range issuers {
-		caID, err := getCAID(issuer.Certificate)
+		caID, err := issuer.CAID()
 		if err != nil {
 			return nil, fmt.Errorf("computing MTCA ID: %w", err)
 		}
@@ -81,75 +78,50 @@ type simpleS3 interface {
 	Bucket() string
 }
 
-func getCAID(issuerCert *x509.Certificate) (string, error) {
-	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
-	for _, attribute := range issuerCert.Subject.Names {
-		if attribute.Type.Equal(testingTrustAnchorIDOID) {
-			caID, ok := attribute.Value.(string)
-			if !ok {
-				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
-			}
-			return caID, nil
-		}
-	}
-
-	return "", fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
-		issuerCert.Subject, testingTrustAnchorIDOID)
-}
-
 func initDB(dbMap *borp.DbMap) *db.WrappedMap {
 	dbMap.AddTableWithName(checkpointRow{}, "checkpoints").SetKeys(true, "ID")
 	return db.NewWrappedMap(dbMap)
 }
 
-// splitMTCSerial takes a hex-encoded serial number and returns the log number
-// and entry index encoded inside it.
-func splitMTCSerial(serial string) (uint16, uint64, error) {
-	serialBytes, err := hex.DecodeString(serial)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to decode hex serial %q: %w", serial, err)
-	}
+// entryIndexBits is the width of the entry index in the low bits of a 64-bit
+// MTC serial.
+//
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format
+const entryIndexBits = 48
 
-	if len(serialBytes) < 1 || len(serialBytes) > 8 {
-		return 0, 0, fmt.Errorf("serial must be a uint64, got %d bytes", len(serialBytes))
-	}
+// splitMTCSerial takes a serial number and returns the log number and entry
+// index encoded inside it.
+func splitMTCSerial(serial uint64) (uint16, uint64) {
+	// The log number is the top 16 bits of the 64-bit serial.
+	logNum := uint16(serial >> entryIndexBits)
 
-	// The serial is always a 64-bit int. However, there might be many leading
-	// zeroes which aren't represented in the hex string, so it needs to be
-	// left-padded with zeroes out to 64 bits.
-	var paddedSerialBytes [8]byte
-	copy(paddedSerialBytes[8-len(serialBytes):8], serialBytes)
+	// The entry index is the bottom 48 bits of the 64-bit serial.
+	entryIndex := serial & (1<<entryIndexBits - 1)
 
-	// The log number is the top two bytes of the 64-bit serial.
-	logNum := binary.BigEndian.Uint16(serialBytes[0:2])
-
-	// The entry index is the bottom six bytes of the 64-bit serial. We use an
-	// 8-byte array to hold it because Go doesn't have native 48-bit ints, and
-	// zero the top bytes to clear out the log number.
-	serialBytes[0] = 0
-	serialBytes[1] = 0
-	entryIndex := binary.BigEndian.Uint64(serialBytes[0:8])
-
-	return logNum, entryIndex, nil
+	return logNum, entryIndex
 }
 
 func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest) (*mtcbpb.StandaloneResponse, error) {
 	// Step 0: Validate the request.
-	if core.IsAnyNilOrZero(req.MtcaID, req.Serial) {
+	if core.IsAnyNilOrZero(req.MtcLogID, req.Serial) {
 		return nil, errors.New("incomplete gRPC request")
 	}
 
-	_, ok := m.issuers[req.MtcaID]
-	if !ok {
-		return nil, fmt.Errorf("unrecognized MTCA ID %q", req.MtcaID)
-	}
-
-	logNum, entryIndex, err := splitMTCSerial(req.Serial)
+	logID, err := issuancelog.ParseID(req.MtcLogID)
 	if err != nil {
 		return nil, err
 	}
 
-	logID := issuancelog.ID{CAID: req.MtcaID, LogNumber: logNum}
+	_, ok := m.issuers[logID.CAID]
+	if !ok {
+		return nil, fmt.Errorf("unrecognized MTCA ID %q", logID.CAID)
+	}
+
+	logNum, entryIndex := splitMTCSerial(req.Serial)
+	if logNum != logID.LogNumber {
+		return nil, fmt.Errorf("serial %d encodes log number %d, which is not log %q", req.Serial, logNum, req.MtcLogID)
+	}
+	tlogIndex := int64(entryIndex) //nolint:gosec // G115: splitMTCSerial zeroes the top 16 bits of entryIndex, so it fits in an int64.
 
 	// Step 1: Fetch the relevant checkpoint from the database.
 	// TODO: Eventually, fetch the relevant subtree instead.
@@ -163,7 +135,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	entryTiles, err := tr.ReadTiles([]tlog.Tile{{
 		L: -1, // TODO: use const for level
-		N: int64(entryIndex) / 256,
+		N: tlogIndex / 256,
 		W: 256, // TODO: support non-full tiles
 	}})
 	if err != nil {
@@ -172,7 +144,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	pubkeyTiles, err := tr.ReadTiles([]tlog.Tile{{
 		L: -2, // TODO: use const for level
-		N: int64(entryIndex) / 256,
+		N: tlogIndex / 256,
 		W: 256, // TODO: support non-full tiles
 	}})
 	if err != nil {
@@ -210,26 +182,37 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	var rootHash tlog.Hash
 	copy(rootHash[:], cp.RootHash)
 	hr := tlog.TileHashReader(tlog.Tree{N: cp.TreeSize, Hash: rootHash}, tr)
-	inclusionProof, err := tlog.ProveRecord(cp.TreeSize, int64(entryIndex), hr)
+	inclusionProof, err := tlog.ProveRecord(cp.TreeSize, tlogIndex, hr)
 	if err != nil {
 		return nil, fmt.Errorf("computing inclusion proof: %w", err)
 	}
 
 	// Step 4: Synthesize the cert from all of the above.
-	tbs, err := mtcle.ToTBSCertificate(uint64(logNum)<<48|entryIndex, pubkey.Pubkey(), crypto.SHA256)
+	tbs, err := mtcle.ToTBSCertificate(req.Serial, pubkey.Pubkey(), crypto.SHA256)
 	if err != nil {
 		return nil, fmt.Errorf("synthesizing tbsCertificate: %w", err)
 	}
 
 	sig := proof.MTCProof{
 		Start:          0,
-		End:            uint64(cp.TreeSize),
+		End:            uint64(cp.TreeSize), //nolint:gosec // G115: the treeSize > entryIndex clause in containingCheckpoint leaves TreeSize positive.
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
 			{CosignerID: []byte(logID.CAID), Signature: cp.MTCASignature},
 			{CosignerID: []byte(*cp.MirrorID), Signature: cp.MirrorSignature},
 		},
 	}
+	certBytes, err := buildCertificate(tbs, &sig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
+}
+
+// buildCertificate wraps a DER-encoded tbsCertificate and an MTCProof into a
+// DER-encoded RFC 5280 Certificate.
+func buildCertificate(tbs []byte, sig *proof.MTCProof) ([]byte, error) {
 	sigBytes, err := sig.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("synthesizing mtcProof signature: %w", err)
@@ -237,15 +220,11 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	b := cryptobyte.NewBuilder(nil)
 	// The Certificate SEQUENCE
-	b.AddASN1(asn1.TagSequence, func(b *cryptobyte.Builder) {
+	b.AddASN1(asn1.SEQUENCE, func(b *cryptobyte.Builder) {
 		// The tbsCertificate SEQUENCE
-		b.AddASN1(asn1.TagSequence, func(b *cryptobyte.Builder) {
-			b.AddBytes(tbs)
-		})
+		b.AddBytes(tbs)
 		// The signatureAlgorithm SEQUENCE
-		b.AddASN1(asn1.TagSequence, func(b *cryptobyte.Builder) {
-			b.AddBytes(proof.SigAlgEncoded())
-		})
+		b.AddBytes(proof.SigAlgEncoded())
 		// The signature BIT STRING
 		b.AddASN1BitString(sigBytes)
 	})
@@ -255,7 +234,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("synthesizing certificate: %w", err)
 	}
 
-	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
+	return certBytes, nil
 }
 
 func (m *mtcb) GetLandmarkRelative(ctx context.Context, req *mtcbpb.LandmarkRelativeRequest) (*mtcbpb.LandmarkRelativeResponse, error) {

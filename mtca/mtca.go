@@ -6,7 +6,6 @@ import (
 	"crypto"
 	"crypto/mldsa"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -56,7 +55,7 @@ func New(
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtca, error) {
-	certCAID, err := getCAID(issuer.Cert.Certificate)
+	certCAID, err := issuer.Cert.CAID()
 	if err != nil {
 		return nil, err
 	}
@@ -145,22 +144,6 @@ type simpleS3 interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	Bucket() string
-}
-
-func getCAID(issuerCert *x509.Certificate) (string, error) {
-	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
-	for _, attribute := range issuerCert.Subject.Names {
-		if attribute.Type.Equal(testingTrustAnchorIDOID) {
-			caID, ok := attribute.Value.(string)
-			if !ok {
-				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
-			}
-			return caID, nil
-		}
-	}
-
-	return "", fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
-		issuerCert.Subject, testingTrustAnchorIDOID)
 }
 
 func initDB(dbMap *borp.DbMap) *db.WrappedMap {

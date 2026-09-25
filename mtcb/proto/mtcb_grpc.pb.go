@@ -29,12 +29,9 @@ const (
 //
 // MTCB constructs already-issued MTCs from database and log data.
 type MTCBClient interface {
-	// GetStandalone requests that the MTCB return the standalone version of the
-	// certificate with the given serial number issued by the given MTCA.
+	// GetStandalone returns a standalone certificate.
 	GetStandalone(ctx context.Context, in *StandaloneRequest, opts ...grpc.CallOption) (*StandaloneResponse, error)
-	// GetLandmarkRelative requests that the MTCB return the landmark-relative
-	// version of the certificate with the given serial number issued by the given
-	// MTCA.
+	// GetLandmarkRelative returns a landmark-relative certificate.
 	GetLandmarkRelative(ctx context.Context, in *LandmarkRelativeRequest, opts ...grpc.CallOption) (*LandmarkRelativeResponse, error)
 }
 
@@ -72,12 +69,9 @@ func (c *mTCBClient) GetLandmarkRelative(ctx context.Context, in *LandmarkRelati
 //
 // MTCB constructs already-issued MTCs from database and log data.
 type MTCBServer interface {
-	// GetStandalone requests that the MTCB return the standalone version of the
-	// certificate with the given serial number issued by the given MTCA.
+	// GetStandalone returns a standalone certificate.
 	GetStandalone(context.Context, *StandaloneRequest) (*StandaloneResponse, error)
-	// GetLandmarkRelative requests that the MTCB return the landmark-relative
-	// version of the certificate with the given serial number issued by the given
-	// MTCA.
+	// GetLandmarkRelative returns a landmark-relative certificate.
 	GetLandmarkRelative(context.Context, *LandmarkRelativeRequest) (*LandmarkRelativeResponse, error)
 	mustEmbedUnimplementedMTCBServer()
 }

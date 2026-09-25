@@ -7,6 +7,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +71,23 @@ type Certificate struct {
 // precomputed.
 func (ic *Certificate) NameID() NameID {
 	return ic.nameID
+}
+
+// CAID returns the trust anchor ID from this issuer certificate's Subject. It
+// returns an error for issuers that are not MTC CAs.
+func (ic *Certificate) CAID() (string, error) {
+	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
+	for _, attribute := range ic.Subject.Names {
+		if attribute.Type.Equal(testingTrustAnchorIDOID) {
+			caID, ok := attribute.Value.(string)
+			if !ok {
+				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
+			}
+			return caID, nil
+		}
+	}
+	return "", fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
+		ic.Subject, testingTrustAnchorIDOID)
 }
 
 // NewCertificate wraps an in-memory cert in an issuance.Certificate, marking it

@@ -1,6 +1,10 @@
 package issuancelog
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // oidPrefix begins every mtc-tlog log origin, the IANA private enterprise arc
 // an MTC ID is relative to.
@@ -29,6 +33,29 @@ type ID struct {
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-issuance-logs
 func (id ID) String() string {
 	return fmt.Sprintf("%s.0.%d", id.CAID, id.LogNumber)
+}
+
+// ParseID parses a log ID from its ASCII representation, the inverse of
+// ID.String. It rejects anything ID.String would not have produced.
+func ParseID(s string) (ID, error) {
+	i := strings.LastIndex(s, ".0.")
+	if i < 1 {
+		return ID{}, fmt.Errorf("log ID %q is not of the form <CA ID>.0.<log number>", s)
+	}
+
+	logNumber, err := strconv.ParseUint(s[i+3:], 10, 16)
+	if err != nil {
+		return ID{}, fmt.Errorf("parsing log number of log ID %q: %w", s, err)
+	}
+	if logNumber == 0 {
+		return ID{}, fmt.Errorf("log ID %q has log number 0, which is reserved", s)
+	}
+
+	id := ID{CAID: s[:i], LogNumber: uint16(logNumber)}
+	if id.String() != s {
+		return ID{}, fmt.Errorf("log ID %q is not in canonical form %q", s, id.String())
+	}
+	return id, nil
 }
 
 // Origin returns the log origin per mtc-tlog, the log ID as an origin. For
