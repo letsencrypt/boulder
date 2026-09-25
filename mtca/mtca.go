@@ -435,6 +435,18 @@ func (m *mtca) StandaloneReady(ctx context.Context, req *mtcapb.StandaloneReadyR
 		return nil, err
 	}
 
+	logNumber := uint16(req.MtcSerialNumber >> 48)
+	entryIndex := req.MtcSerialNumber & (1<<48 - 1)
+
+	if logNumber != m.logID.LogNumber {
+		return nil, fmt.Errorf("misdirected request for MTC log number %d", logNumber)
+	}
+
+	if entryIndex < subtree.SubtreeStart || entryIndex >= subtree.SubtreeEnd {
+		return nil, fmt.Errorf("malformed request: serial number %016x is not in subtree %d (start=%d, end=%d)",
+			req.MtcSerialNumber, subtree.ID, subtree.SubtreeStart, subtree.SubtreeEnd)
+	}
+
 	ready := len(subtree.MirrorSignature) > 0
 	return &mtcapb.StandaloneReadyResponse{Ready: ready}, nil
 }
@@ -668,7 +680,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	for _, e := range entries {
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
-			subtreeID:    987654321, // TODO(#9020): insert subtrees and persist their IDs.
+			subtreeID:    0, // TODO(#9020): insert subtrees and persist their IDs.
 		}
 		serial++
 	}

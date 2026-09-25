@@ -2439,10 +2439,11 @@ func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.Get
 	}
 
 	if ra.isMTC(order) {
-		if order.MtcLogID == "" && order.MtcSerialNumber == 0 && order.MtcSubtreeID == 0 {
+		if order.MtcSubtreeID == 0 {
 			// Order is processing but not yet sequenced.
 			return order, nil
 		}
+		// TODO: this is wrong. Route it based on the MTCLogID instead.
 		mtca, ok := ra.profileToMTCA[ra.profileName(order)]
 		if !ok {
 			return nil, fmt.Errorf("MTC order does not have a corresponding MTCA")
