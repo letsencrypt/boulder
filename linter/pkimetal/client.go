@@ -30,10 +30,12 @@ type Config struct {
 
 type Client struct {
 	Config
-
-	clientOnce sync.Once
-	httpClient *http.Client
 }
+
+var (
+	httpClientOnce sync.Once
+	httpClient     *http.Client
+)
 
 // Enabled returns true if the client has a socket configured.
 func (pkim *Client) Enabled() bool {
@@ -132,7 +134,7 @@ func (pkim *Client) Execute(endpoint string, der []byte) (*lint.LintResult, erro
 
 func (pkim *Client) getHTTPClient() *http.Client {
 	// Create an http client on first use, as there's not a great place to do this setup ahead of time.
-	pkim.clientOnce.Do(func() {
+	httpClientOnce.Do(func() {
 		socket := pkim.Socket
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.Proxy = nil
@@ -140,9 +142,9 @@ func (pkim *Client) getHTTPClient() *http.Client {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", socket)
 		}
-		pkim.httpClient = &http.Client{
+		httpClient = &http.Client{
 			Transport: transport,
 		}
 	})
-	return pkim.httpClient
+	return httpClient
 }
