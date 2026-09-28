@@ -156,12 +156,12 @@ func (c CCADBProber) Name() string {
 }
 
 func (c *CCADBProber) Probe(ctx context.Context) error {
-	issuers, err := c.getAllIntermediates(ctx)
+	crlURLs, err := c.getCRLURLs(ctx)
 	if err != nil {
 		return err
 	}
 
-	crlURLs, err := c.getCRLURLs(ctx, issuers)
+	issuers, err := c.getAllIntermediates(ctx, crlURLs)
 	if err != nil {
 		return err
 	}
@@ -347,13 +347,13 @@ func checkAllShardIndexesPresent(seen []int) error {
 	return nil
 }
 
-func (c CCADBProber) getAllIntermediates(ctx context.Context) (map[string]*x509.Certificate, error) {
-	certs, err := c.getDecadeIntermediates(ctx, 2010)
+func (c CCADBProber) getAllIntermediates(ctx context.Context, crlURLs map[string][]string) (map[string]*x509.Certificate, error) {
+	certs, err := c.getDecadeIntermediates(ctx, 2010, crlURLs)
 	if err != nil {
 		return nil, err
 	}
 
-	moreCerts, err := c.getDecadeIntermediates(ctx, 2020)
+	moreCerts, err := c.getDecadeIntermediates(ctx, 2020, crlURLs)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func (c CCADBProber) getAllIntermediates(ctx context.Context) (map[string]*x509.
 	return certs, nil
 }
 
-func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (map[string]*x509.Certificate, error) {
+func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int, crlURLs map[string][]string) (map[string]*x509.Certificate, error) {
 	url := fmt.Sprintf("%s?NotBeforeDecade=%d", c.certificatePEMsURL, decade)
 	header, reader, err := getCSV(ctx, url)
 	if err != nil {
@@ -375,6 +375,7 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (ma
 	}
 
 	ret := make(map[string]*x509.Certificate)
+	var parsed int
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -397,17 +398,22 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (ma
 		if err != nil {
 			continue
 		}
+		parsed++
+		_, ok := crlURLs[string(cert.SubjectKeyId)]
+		if !ok {
+			continue
+		}
 		ret[string(cert.SubjectKeyId)] = cert
 	}
 
-	if len(ret) == 0 {
+	if parsed == 0 {
 		return nil, fmt.Errorf("no valid certificate PEMs found in %s", url)
 	}
 	return ret, nil
 }
 
 // returns a map from issuer SKID to list of URLs
-func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Certificate) (map[string][]string, error) {
+func (c CCADBProber) getCRLURLs(ctx context.Context) (map[string][]string, error) {
 	header, reader, err := getCSV(ctx, c.allCertificatesCSVURL)
 	if err != nil {
 		return nil, err
@@ -460,10 +466,6 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Ce
 			return nil, fmt.Errorf("no skid for %q", certificateName)
 		}
 		stringSKID := string(skid)
-		if issuers[stringSKID] == nil {
-			return nil, fmt.Errorf("CCADB contained %q with SKID %x, but that SKID is not in issuers CRL at %s?decade=XXXX",
-				certificateName, skid, c.certificatePEMsURL)
-		}
 		// An issuer can show up multiple times, under different cross-signs. However,
 		// it must have the same list of CRLs each time.
 		if c := allCRLs[stringSKID]; c != nil && !slices.Equal(c, crls) {
