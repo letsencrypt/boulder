@@ -76,7 +76,7 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 // ContainingCheckpoint returns the smallest checkpoint of the log that includes
 // entryIndex and carries both the MTCA signature and the mirror cosignature.
 func (i *Impl) ContainingCheckpoint(ctx context.Context, mtcLogID string, entryIndex int64) (*CheckpointModel, error) {
-	cp := new(CheckpointModel)
+	var cp CheckpointModel
 	err := i.db.SelectOne(ctx, &cp,
 		`SELECT id, mtcLogID, mtcaSignature, mirrorID,
 		        mirrorSignature, treeSize, rootHash,
@@ -94,7 +94,7 @@ func (i *Impl) ContainingCheckpoint(ctx context.Context, mtcLogID string, entryI
 	if err != nil {
 		return nil, fmt.Errorf("getting checkpoint covering index %d of %q: %w", entryIndex, mtcLogID, err)
 	}
-	return cp, nil
+	return &cp, nil
 }
 
 func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorCosig []byte, mtcLogID string) error {

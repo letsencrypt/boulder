@@ -59,7 +59,7 @@ func ParseID(s string) (ID, error) {
 		return ID{}, fmt.Errorf("parsing log number of log ID %q: %w", s, err)
 	}
 	if logNumber == 0 {
-		return ID{}, fmt.Errorf("log ID %q has log number 0, which is reserved", s)
+		return ID{}, fmt.Errorf("log ID %q has log number 0, but log numbers start at 1", s)
 	}
 	return ID{CAID: strings.Join(arcs[:len(arcs)-2], "."), LogNumber: uint16(logNumber)}, nil
 }

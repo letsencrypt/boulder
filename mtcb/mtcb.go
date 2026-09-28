@@ -54,6 +54,9 @@ func New(
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtcb, error) {
+	// TODO: Make this a map of MTCA IDs to checkpointDBs, so that a single MTCB
+	// can talk to multiple different databases to build certs for multiple
+	// different CAs.
 	issuersMap := make(map[string]struct{})
 	for _, issuer := range issuers {
 		caID, err := issuer.MTCAID()
