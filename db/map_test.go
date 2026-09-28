@@ -249,7 +249,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
+		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Select with a valid query
@@ -265,7 +265,7 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
 		dbOpErr = mustDbErr(err)
 		test.AssertEquals(t, dbOpErr.Op, "select one")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
+		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped SelectOne with a valid query
