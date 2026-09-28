@@ -231,7 +231,7 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s",
 						entry.SerialNumber, checkedCRLURLs[otherCRLIndex], url))
 				}
-				serials[key] = int32(len(checkedCRLURLs) - 1)
+				serials[key] = int32(len(checkedCRLURLs) - 1) //nolint:gosec // G115: one entry per CRL shard, 128 per issuer.
 			}
 		}
 
