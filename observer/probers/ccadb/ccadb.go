@@ -347,6 +347,8 @@ func checkAllShardIndexesPresent(seen []int) error {
 	return nil
 }
 
+// getAllIntermediates returns the certificates from the CCADB PEM report with a
+// SKID matching the given crlURLs.
 func (c CCADBProber) getAllIntermediates(ctx context.Context, crlURLs map[string][]string) (map[string]*x509.Certificate, error) {
 	certs, err := c.getDecadeIntermediates(ctx, 2010, crlURLs)
 	if err != nil {
@@ -359,9 +361,14 @@ func (c CCADBProber) getAllIntermediates(ctx context.Context, crlURLs map[string
 	}
 
 	maps.Copy(certs, moreCerts)
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("no certificates matching the given CRLs found in %s", c.certificatePEMsURL)
+	}
 	return certs, nil
 }
 
+// getDecadeIntermediates fetches a given decade of the CCADB PEM report and
+// returns only those certificates with a SKID in the given crlURLs.
 func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int, crlURLs map[string][]string) (map[string]*x509.Certificate, error) {
 	url := fmt.Sprintf("%s?NotBeforeDecade=%d", c.certificatePEMsURL, decade)
 	header, reader, err := getCSV(ctx, url)
@@ -375,7 +382,6 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int, crl
 	}
 
 	ret := make(map[string]*x509.Certificate)
-	var parsed int
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -398,7 +404,6 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int, crl
 		if err != nil {
 			continue
 		}
-		parsed++
 		_, ok := crlURLs[string(cert.SubjectKeyId)]
 		if !ok {
 			continue
@@ -406,13 +411,11 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int, crl
 		ret[string(cert.SubjectKeyId)] = cert
 	}
 
-	if parsed == 0 {
-		return nil, fmt.Errorf("no valid certificate PEMs found in %s", url)
-	}
 	return ret, nil
 }
 
-// returns a map from issuer SKID to list of URLs
+// getCRLURLs returns a mapping of issuer SKID to CRL URLs for each CCADB record
+// owned by c.caOwner.
 func (c CCADBProber) getCRLURLs(ctx context.Context) (map[string][]string, error) {
 	header, reader, err := getCSV(ctx, c.allCertificatesCSVURL)
 	if err != nil {
