@@ -166,8 +166,10 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 		return err
 	}
 
-	// Map of serials to their CRL issuingDistributionPoint.
-	serials := make(map[string]string)
+	// Fixed-size keys and index values keep this map pointer-free, so the GC
+	// never scans it.
+	serials := make(map[[20]byte]int32)
+	var checkedCRLURLs []string
 
 	var errs []error
 	for skid, urls := range crlURLs {
@@ -210,6 +212,7 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 				errs = append(errs, fmt.Errorf("fetching %s: %s", url, err))
 				continue
 			}
+			checkedCRLURLs = append(checkedCRLURLs, url)
 
 			// Check for duplicates across different CRLs (or within a CRL).
 			// Cap any given CRL at 1M entries to limit memory use.
@@ -217,11 +220,18 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 				if i > 1_000_000 {
 					break
 				}
-				serialByteString := string(entry.SerialNumber.Bytes())
-				if otherCRLURL, ok := serials[serialByteString]; ok {
-					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s", entry.SerialNumber, otherCRLURL, url))
+				if entry.SerialNumber.BitLen() > 160 {
+					errs = append(errs, fmt.Errorf("serial %x on %s is longer than 20 octets", entry.SerialNumber, url))
+					continue
 				}
-				serials[serialByteString] = url
+				var key [20]byte
+				entry.SerialNumber.FillBytes(key[:])
+				otherCRLIndex, ok := serials[key]
+				if ok {
+					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s",
+						entry.SerialNumber, checkedCRLURLs[otherCRLIndex], url))
+				}
+				serials[key] = int32(len(checkedCRLURLs) - 1)
 			}
 		}
 
