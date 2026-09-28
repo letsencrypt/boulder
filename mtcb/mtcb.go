@@ -181,10 +181,10 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("computing inclusion proof: %w", err)
 	}
 
-	// Step 4: Synthesize the cert from all of the above.
+	// Step 4: Build the cert from all of the above.
 	tbs, err := mtcle.ToTBSCertificate(req.Serial, pubkey.Pubkey(), crypto.SHA256)
 	if err != nil {
-		return nil, fmt.Errorf("synthesizing tbsCertificate: %w", err)
+		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
 	sig := proof.MTCProof{
@@ -209,7 +209,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 func buildCertificate(tbs []byte, sig *proof.MTCProof) ([]byte, error) {
 	sigBytes, err := sig.Marshal()
 	if err != nil {
-		return nil, fmt.Errorf("synthesizing mtcProof signature: %w", err)
+		return nil, fmt.Errorf("marshaling MTCProof: %w", err)
 	}
 
 	b := cryptobyte.NewBuilder(nil)
@@ -225,7 +225,7 @@ func buildCertificate(tbs []byte, sig *proof.MTCProof) ([]byte, error) {
 
 	certBytes, err := b.Bytes()
 	if err != nil {
-		return nil, fmt.Errorf("synthesizing certificate: %w", err)
+		return nil, fmt.Errorf("serializing certificate: %w", err)
 	}
 
 	return certBytes, nil
