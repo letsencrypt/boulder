@@ -634,14 +634,16 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
 
-	// cosigner_name and log_origin are computed from the cosigner ID and the
-	// issuance log's ID (Section 5.1), respectively. They contain the
+	// `cosigner_name` and `log_origin` are computed from the cosigner ID and
+	// the issuance log's ID (Section 5.1), respectively. They contain the
 	// concatenation of:
-	//     The 16-byte ASCII string: oid/1.3.6.1.4.1.
-	//     The trust anchor ID's ASCII representation (Section 4 of [I-D.ietf-tls-trust-anchor-ids])
+	//   * The 16-byte ASCII string `oid/1.3.6.1.4.1.`
+	//   * The trust anchor ID's ASCII representation (Section 4 of [I-D.ietf-tls-trust-anchor-ids])
 	// This is equivalent to the concatenation of:
-	//     The four-byte ASCII string: oid/
-	//     The trust anchor ID as a full OID, in dotted decimal notation
+	//   * The four-byte ASCII string `oid/`
+	//   * The trust anchor ID as a full OID, in dotted decimal notation
+	//
+	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-signature-format
 	cosignedMessage, err := (&cosigned.Message{
 		CosignerName: "oid/1.3.6.1.4.1." + m.logID.CAID,
 		// Timestamp should always be zero when signing over a subtree (as
@@ -673,8 +675,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		SubtreeHash:     newRootHash[:],
 	})
 	if err != nil {
-		// InsertCheckpointSubtree already wraps the err
-		return err
+		return fmt.Errorf("calling treedb.InsertCheckpointSubtree: %s", err)
 	}
 
 	// Notify waiting RPCs.

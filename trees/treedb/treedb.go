@@ -64,6 +64,10 @@ type Impl struct {
 	db *db.WrappedMap
 }
 
+func New(db *db.WrappedMap) *Impl {
+	return &Impl{db}
+}
+
 func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*CheckpointModel, error) {
 	latest := new(CheckpointModel)
 	err := i.db.SelectOne(ctx, &latest,
@@ -126,15 +130,15 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 	return nil
 }
 
+// InsertCheckpointSubtree inserts a row into db, and returns the inserted row
+// ID, or an error. Because borp's `Insert` modifies its argument to set the ID
+// when a field is marked as autoincrement (`.SetKeys(true, "ID")`), this method
+// also modifies its argument (in this case, `model`).
 func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSubtreeModel) (int64, error) {
 	err := i.db.Insert(ctx, model)
 	if err != nil {
-		return 0, fmt.Errorf("inserting into checkpointSubtrees: %s", err)
+		return 0, fmt.Errorf("inserting into checkpointSubtrees table: %s", err)
 	}
 
 	return model.ID, nil
-}
-
-func New(db *db.WrappedMap) *Impl {
-	return &Impl{db}
 }

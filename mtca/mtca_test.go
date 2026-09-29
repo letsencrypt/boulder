@@ -629,8 +629,9 @@ func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, 
 	return got
 }
 
-// treedbWithInsertCheckpointSubtree is a mock treedb to allow for testing
-// db-facing functionality without hitting a real db, when possible.
+// treedbWithInsertCheckpointSubtree is a mock treedb that implements the
+// InsertCheckpointSubtree method of treedb.Impl with an in-memory store, while
+// passing other calls along to the underlying DB.
 type treedbWithInsertCheckpointSubtree struct {
 	*treedb.Impl
 	storedCheckpointSubtrees []*treedb.CheckpointSubtreeModel
