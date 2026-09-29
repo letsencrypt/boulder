@@ -785,32 +785,3 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointMod
 		t.Errorf("verifying MTCASignature: %s", err)
 	}
 }
-
-func TestGetCAID(t *testing.T) {
-	certBytes, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
-MIIBRjCB9KADAgECAgF7MAoGCCqGSM49BAMCMBsxGTAXBgorBgEEAYLaSy8BDAk0
-NDk0Ny40LjEwHhcNMjYwNzE0MjIyNjIwWhcNMzYwNzExMjIyNjIwWjAbMRkwFwYK
-KwYBBAGC2ksvAQwJNDQ5NDcuNC4xME4wEAYHKoZIzj0CAQYFK4EEACEDOgAERbiP
-RTb8x/eav43juNzWZLId2Wl5TzmTsG5iRf+CiB+rn+TXnuUbWDIuIi/kYs3USANm
-LUyLxH+jNDAyMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA8GA1Ud
-DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
-2TewRlXg+ohJvFoCHQCTMjnYvLIvTCqF3gZm38+h1iShEgMfMT522d60
-`, "\n", ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cert, err := x509.ParseCertificate(certBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	caID, err := getCAID(cert)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expected := "44947.4.1"
-	if caID != expected {
-		t.Errorf("getCAID(): got %s, want %s", caID, expected)
-	}
-}

@@ -33,6 +33,8 @@ func TestConfigValidation(t *testing.T) {
 			fileNames = []string{"ca.json"}
 		case "boulder-mtca":
 			fileNames = []string{"mtca.json"}
+		case "boulder-mtcb":
+			fileNames = []string{"mtcb.json"}
 		case "boulder-observer":
 			fileNames = []string{"observer.yml"}
 		case "boulder-publisher":
