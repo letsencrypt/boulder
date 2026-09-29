@@ -56,3 +56,4 @@ test/secrets/revoker_dburl
 test/secrets/sa_dburl
 test/secrets/sa_ro_dburl
 test/secrets/mtca1_dburl
+test/secrets/mtcb_dburl

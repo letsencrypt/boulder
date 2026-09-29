@@ -156,18 +156,20 @@ func (c CCADBProber) Name() string {
 }
 
 func (c *CCADBProber) Probe(ctx context.Context) error {
-	issuers, err := c.getAllIntermediates(ctx)
+	crlURLs, err := c.getCRLURLs(ctx)
 	if err != nil {
 		return err
 	}
 
-	crlURLs, err := c.getCRLURLs(ctx, issuers)
+	issuers, err := c.getAllIntermediates(ctx, crlURLs)
 	if err != nil {
 		return err
 	}
 
-	// Map of serials to their CRL issuingDistributionPoint.
-	serials := make(map[string]string)
+	// Fixed-size keys and index values keep this map pointer-free, so the GC
+	// never scans it.
+	serials := make(map[[20]byte]int32)
+	var checkedCRLURLs []string
 
 	var errs []error
 	for skid, urls := range crlURLs {
@@ -210,6 +212,7 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 				errs = append(errs, fmt.Errorf("fetching %s: %s", url, err))
 				continue
 			}
+			checkedCRLURLs = append(checkedCRLURLs, url)
 
 			// Check for duplicates across different CRLs (or within a CRL).
 			// Cap any given CRL at 1M entries to limit memory use.
@@ -217,11 +220,18 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 				if i > 1_000_000 {
 					break
 				}
-				serialByteString := string(entry.SerialNumber.Bytes())
-				if otherCRLURL, ok := serials[serialByteString]; ok {
-					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s", entry.SerialNumber, otherCRLURL, url))
+				if entry.SerialNumber.BitLen() > 160 {
+					errs = append(errs, fmt.Errorf("serial %x on %s is longer than 20 octets", entry.SerialNumber, url))
+					continue
 				}
-				serials[serialByteString] = url
+				var key [20]byte
+				entry.SerialNumber.FillBytes(key[:])
+				otherCRLIndex, ok := serials[key]
+				if ok {
+					errs = append(errs, fmt.Errorf("serial %x seen on multiple CRLs: %s and %s",
+						entry.SerialNumber, checkedCRLURLs[otherCRLIndex], url))
+				}
+				serials[key] = int32(len(checkedCRLURLs) - 1) //nolint:gosec // G115: one entry per CRL shard, 128 per issuer.
 			}
 		}
 
@@ -337,22 +347,29 @@ func checkAllShardIndexesPresent(seen []int) error {
 	return nil
 }
 
-func (c CCADBProber) getAllIntermediates(ctx context.Context) (map[string]*x509.Certificate, error) {
-	certs, err := c.getDecadeIntermediates(ctx, 2010)
+// getAllIntermediates returns the certificates from the CCADB PEM report with a
+// SKID matching the given crlURLs.
+func (c CCADBProber) getAllIntermediates(ctx context.Context, crlURLs map[string][]string) (map[string]*x509.Certificate, error) {
+	certs, err := c.getDecadeIntermediates(ctx, 2010, crlURLs)
 	if err != nil {
 		return nil, err
 	}
 
-	moreCerts, err := c.getDecadeIntermediates(ctx, 2020)
+	moreCerts, err := c.getDecadeIntermediates(ctx, 2020, crlURLs)
 	if err != nil {
 		return nil, err
 	}
 
 	maps.Copy(certs, moreCerts)
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("no certificates matching the given CRLs found in %s", c.certificatePEMsURL)
+	}
 	return certs, nil
 }
 
-func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (map[string]*x509.Certificate, error) {
+// getDecadeIntermediates fetches a given decade of the CCADB PEM report and
+// returns only those certificates with a SKID in the given crlURLs.
+func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int, crlURLs map[string][]string) (map[string]*x509.Certificate, error) {
 	url := fmt.Sprintf("%s?NotBeforeDecade=%d", c.certificatePEMsURL, decade)
 	header, reader, err := getCSV(ctx, url)
 	if err != nil {
@@ -387,17 +404,19 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (ma
 		if err != nil {
 			continue
 		}
+		_, ok := crlURLs[string(cert.SubjectKeyId)]
+		if !ok {
+			continue
+		}
 		ret[string(cert.SubjectKeyId)] = cert
 	}
 
-	if len(ret) == 0 {
-		return nil, fmt.Errorf("no valid certificate PEMs found in %s", url)
-	}
 	return ret, nil
 }
 
-// returns a map from issuer SKID to list of URLs
-func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Certificate) (map[string][]string, error) {
+// getCRLURLs returns a mapping of issuer SKID to CRL URLs for each CCADB record
+// owned by c.caOwner.
+func (c CCADBProber) getCRLURLs(ctx context.Context) (map[string][]string, error) {
 	header, reader, err := getCSV(ctx, c.allCertificatesCSVURL)
 	if err != nil {
 		return nil, err
@@ -450,10 +469,6 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Ce
 			return nil, fmt.Errorf("no skid for %q", certificateName)
 		}
 		stringSKID := string(skid)
-		if issuers[stringSKID] == nil {
-			return nil, fmt.Errorf("CCADB contained %q with SKID %x, but that SKID is not in issuers CRL at %s?decade=XXXX",
-				certificateName, skid, c.certificatePEMsURL)
-		}
 		// An issuer can show up multiple times, under different cross-signs. However,
 		// it must have the same list of CRLs each time.
 		if c := allCRLs[stringSKID]; c != nil && !slices.Equal(c, crls) {

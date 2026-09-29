@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"fmt"
 	"math/big"
 	"os"
@@ -69,6 +70,40 @@ func TestMain(m *testing.M) {
 	cmd.FailOnError(err, "failed to parse test issuer")
 	issuerCert = &Certificate{Certificate: cert}
 	os.Exit(m.Run())
+}
+
+func TestMTCAID(t *testing.T) {
+	t.Parallel()
+	certBytes, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
+MIIBRjCB9KADAgECAgF7MAoGCCqGSM49BAMCMBsxGTAXBgorBgEEAYLaSy8BDAk0
+NDk0Ny40LjEwHhcNMjYwNzE0MjIyNjIwWhcNMzYwNzExMjIyNjIwWjAbMRkwFwYK
+KwYBBAGC2ksvAQwJNDQ5NDcuNC4xME4wEAYHKoZIzj0CAQYFK4EEACEDOgAERbiP
+RTb8x/eav43juNzWZLId2Wl5TzmTsG5iRf+CiB+rn+TXnuUbWDIuIi/kYs3USANm
+LUyLxH+jNDAyMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA8GA1Ud
+DgQIBAaC3xMBAgEwCgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk
+2TewRlXg+ohJvFoCHQCTMjnYvLIvTCqF3gZm38+h1iShEgMfMT522d60
+`, "\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ic, err := NewCertificate(cert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caID, err := ic.MTCAID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "44947.4.1"
+	if caID != expected {
+		t.Errorf("MTCAID(): got %s, want %s", caID, expected)
+	}
 }
 
 func TestLoadCertificate(t *testing.T) {

@@ -150,6 +150,27 @@ func parseEntries(t *testing.T, body []byte) [][]byte {
 	return out
 }
 
+// TestBundleCoords checks the bundle index and width at the boundaries of a
+// full bundle and for a partial bundle.
+func TestBundleCoords(t *testing.T) {
+	for _, tc := range []struct {
+		index, treeSize int64
+		expectN         int64
+		expectW         int
+	}{
+		{0, 1, 0, 1},
+		{255, 256, 0, 256},
+		{255, 300, 0, 256},
+		{256, 300, 1, 44},
+		{511, 512, 1, 256},
+	} {
+		got := bundleCoords(entryTilesLayer, tc.index, tc.treeSize)
+		if got.N != tc.expectN || got.W != tc.expectW {
+			t.Errorf("bundleCoords(%d, %d) = N %d W %d, want N %d W %d", tc.index, tc.treeSize, got.N, got.W, tc.expectN, tc.expectW)
+		}
+	}
+}
+
 func TestGetTile(t *testing.T) {
 	fs3 := bs3test.New()
 	gzipStr := "gzip"
