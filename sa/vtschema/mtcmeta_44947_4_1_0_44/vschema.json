@@ -7,6 +7,7 @@
   },
   "tables": {
     "checkpoints": { "column_vindexes": [ { "column": "mtcLogID", "name": "xxhash" } ] },
+    "checkpointSubtrees": { "column_vindexes": [ { "column": "mtcLogID", "name": "xxhash" } ] },
     "latestCheckpoint": { "column_vindexes": [ { "column": "mtcLogID", "name": "xxhash" } ] },
     "landmarks": { "column_vindexes": [ { "column": "mtcLogID", "name": "xxhash" } ] }
   }

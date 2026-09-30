@@ -48,8 +48,24 @@ func (c *CheckpointModel) Mirrored() bool {
 	return len(c.MTCASignature) > 0 && c.MirrorID != nil && len(c.MirrorSignature) > 0
 }
 
+// CheckpointSubtreeModel represents a row in the `checkpointSubtrees` table.
+type CheckpointSubtreeModel struct {
+	ID              int64   `db:"id"`
+	MTCLogID        string  `db:"mtcLogID"`
+	MTCASignature   []byte  `db:"mtcaSignature"`
+	MirrorID        *string `db:"mirrorID"`
+	MirrorSignature []byte  `db:"mirrorSignature"`
+	SubtreeStart    uint64  `db:"subtreeStart"`
+	SubtreeEnd      uint64  `db:"subtreeEnd"`
+	SubtreeHash     []byte  `db:"subtreeHash"`
+}
+
 type Impl struct {
 	db *db.WrappedMap
+}
+
+func New(db *db.WrappedMap) *Impl {
+	return &Impl{db}
 }
 
 func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*CheckpointModel, error) {
@@ -114,6 +130,15 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 	return nil
 }
 
-func New(db *db.WrappedMap) *Impl {
-	return &Impl{db}
+// InsertCheckpointSubtree inserts a row into db, and returns the inserted row
+// ID, or an error. Because borp's `Insert` modifies its argument to set the ID
+// when a field is marked as autoincrement (`.SetKeys(true, "ID")`), this method
+// also modifies its argument (in this case, `model`).
+func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSubtreeModel) (int64, error) {
+	err := i.db.Insert(ctx, model)
+	if err != nil {
+		return 0, fmt.Errorf("inserting into checkpointSubtrees table: %s", err)
+	}
+
+	return model.ID, nil
 }

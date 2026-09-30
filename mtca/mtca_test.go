@@ -200,6 +200,10 @@ func truncateTables(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	_, err = db.Exec("TRUNCATE TABLE checkpointSubtrees")
+	if err != nil {
+		return err
+	}
 	_, err = db.Exec("TRUNCATE TABLE latestCheckpoint")
 	if err != nil {
 		return err
@@ -625,12 +629,41 @@ func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, 
 	return got
 }
 
+// treedbWithInsertCheckpointSubtree is a mock treedb that implements the
+// InsertCheckpointSubtree method of treedb.Impl with an in-memory store, while
+// passing other calls along to the underlying DB.
+type treedbWithInsertCheckpointSubtree struct {
+	*treedb.Impl
+	storedCheckpointSubtrees []*treedb.CheckpointSubtreeModel
+}
+
+// When storing and retrieving subtrees in this mock, the ID is offset by an
+// arbitrary 666 to avoid the ramifications of encountering a zero-value ID
+func (db *treedbWithInsertCheckpointSubtree) InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error) {
+	model.ID = int64(len(db.storedCheckpointSubtrees) + 666)
+	db.storedCheckpointSubtrees = append(db.storedCheckpointSubtrees, model)
+	return model.ID, nil
+}
+
+func (db *treedbWithInsertCheckpointSubtree) get(id int64) *treedb.CheckpointSubtreeModel {
+	offset := id - 666
+	if offset < 0 || offset > int64(len(db.storedCheckpointSubtrees)) {
+		return nil
+	}
+	return db.storedCheckpointSubtrees[offset]
+}
+
 func TestSequence(t *testing.T) {
 	mtca, fs3, cleanup, err := setup()
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
 	t.Cleanup(cleanup)
+
+	// use our treedb mock
+	mockTreedb := treedbWithInsertCheckpointSubtree{treedb.New(mtca.db), nil}
+	mtca.treedb = &mockTreedb
+
 	// An empty pool is a no-op regardless of checkpoint state.
 	err = mtca.sequence(t.Context())
 	if err != nil {
@@ -670,6 +703,39 @@ func TestSequence(t *testing.T) {
 		t.Fatalf("sequencing with waiting entries: %s", err)
 	}
 	got := collectResults(t, results, 1, 5)
+
+	for _, issuanceResult := range got {
+		subtree := mockTreedb.get(int64(issuanceResult.MtcSubtreeID)) //nolint:gosec // G115: we know that subtree IDs stay fairly small in these tests
+		if subtree == nil {
+			t.Fatalf("getting subtreeID %d: not found", issuanceResult.MtcSubtreeID)
+		}
+
+		if subtree.MTCLogID != mtca.logID.String() {
+			t.Errorf("subtree.MTCLogID: got %q, want %q", subtree.MTCLogID, mtca.logID.String())
+		}
+
+		if len(subtree.MTCASignature) == 0 {
+			t.Error("subtree.MTCASignature: got empty slice, want non-empty slice")
+		}
+
+		if subtree.MirrorID != nil {
+			t.Error("subtree.MirrorID: got non-nil string pointer, want nil")
+		}
+
+		if len(subtree.MirrorSignature) != 0 {
+			t.Error("subtree.MirrorSignature: got non-empty slice, want empty slice")
+		}
+
+		entryIndex := issuanceResult.MtcSerialNumber & (1<<48 - 1)
+		if !(subtree.SubtreeStart <= entryIndex && entryIndex < subtree.SubtreeEnd) {
+			t.Errorf("subtree.MTCSerialNumber: got entryIndex %d, want entryIndex in interval [%d,%d)",
+				entryIndex, subtree.SubtreeStart, subtree.SubtreeEnd)
+		}
+
+		if len(subtree.SubtreeHash) != 32 {
+			t.Errorf("subtree.SubtreeHash: got length %d, want length 32", len(subtree.SubtreeHash))
+		}
+	}
 
 	// The in-memory frontier, DB checkpoint, and stored tiles must agree,
 	// and the resulting checkpoint signature must be valid.
