@@ -100,7 +100,7 @@ func testPubkey() *pubkey.MTCPublicKey {
 	return testPubkey
 }
 
-// appendEntries appends test entries and test pubkeys [start, end] to `f`,
+// appendEntries appends test entries and test pubkeys [start, end) to `f`,
 // flushing every `flushEvery` appends and once at the end.
 func appendEntries(t *testing.T, f *Frontier, fs3 *bs3test.FakeS3, start, end int, prefix string, flushEvery int) {
 	t.Helper()
