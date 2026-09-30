@@ -220,6 +220,33 @@ func StringToSerial(serial string) (*big.Int, error) {
 	return &serialNum, err
 }
 
+// EncodeMTCSerial takes a log number and the index of an entry in that log and
+// returns the serial number, (log_number << 48) | index.
+//
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format
+func EncodeMTCSerial(logNumber uint16, index int64) (uint64, error) {
+	if logNumber == 0 {
+		return 0, errors.New("encoding MTC serial: log number is zero")
+	}
+	if index < 0 || index > 1<<48-1 {
+		return 0, fmt.Errorf("encoding MTC serial: index %d is not between 0 and 2^48-1", index)
+	}
+	return uint64(logNumber)<<48 | uint64(index), nil
+}
+
+// DecodeMTCSerial takes a serial number and returns the log number and index
+// encoded inside it. It errors if the log number is zero.
+//
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-verifying-certificate-signa
+func DecodeMTCSerial(serial uint64) (uint16, int64, error) {
+	logNumber := uint16(serial >> 48)
+	if logNumber == 0 {
+		return 0, 0, fmt.Errorf("decoding MTC serial %d: log number is zero", serial)
+	}
+	index := int64(serial & (1<<48 - 1))
+	return logNumber, index, nil
+}
+
 // ValidSerial tests whether the input string represents a syntactically
 // valid serial number, i.e., that it is a valid hex string between 32
 // and 36 characters long.

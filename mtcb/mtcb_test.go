@@ -35,31 +35,6 @@ var mirrorID = "32473.9"
 
 var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 5}
 
-func TestSplitMTCSerial(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name             string
-		serial           uint64
-		expectLogNum     uint16
-		expectEntryIndex uint64
-	}{
-		{name: "Log one", serial: 1<<entryIndexBits | 5, expectLogNum: 1, expectEntryIndex: 5},
-		{name: "Max values", serial: 0xffffffffffffffff, expectLogNum: 0xffff, expectEntryIndex: 1<<entryIndexBits - 1},
-		{name: "High bit set", serial: 0x8000<<entryIndexBits | 1, expectLogNum: 0x8000, expectEntryIndex: 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			logNum, entryIndex := splitMTCSerial(tc.serial)
-			if logNum != tc.expectLogNum {
-				t.Errorf("log number = %d, want %d", logNum, tc.expectLogNum)
-			}
-			if entryIndex != tc.expectEntryIndex {
-				t.Errorf("entry index = %d, want %d", entryIndex, tc.expectEntryIndex)
-			}
-		})
-	}
-}
-
 // TestBuildCertificate checks that buildCertificate's output parses as a
 // Certificate.
 func TestBuildCertificate(t *testing.T) {
@@ -72,7 +47,7 @@ func TestBuildCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromX509: %s", err)
 	}
-	tbs, err := mtcle.ToTBSCertificate(1<<entryIndexBits|7, orig.RawSubjectPublicKeyInfo, crypto.SHA256)
+	tbs, err := mtcle.ToTBSCertificate(testSerial(t, 7), orig.RawSubjectPublicKeyInfo, crypto.SHA256)
 	if err != nil {
 		t.Fatalf("ToTBSCertificate: %s", err)
 	}
@@ -175,8 +150,13 @@ func newTestLog(t *testing.T) *testLog {
 }
 
 // testSerial returns the serial of the entry at index in testLogID.
-func testSerial(index int64) uint64 {
-	return uint64(testLogID.LogNumber)<<entryIndexBits | uint64(index) //nolint:gosec // G115: indices in this test are tiny.
+func testSerial(t *testing.T, index int64) uint64 {
+	t.Helper()
+	serial, err := core.EncodeMTCSerial(testLogID.LogNumber, index)
+	if err != nil {
+		t.Fatalf("EncodeMTCSerial: %s", err)
+	}
+	return serial
 }
 
 // appendCertificate appends the log entry and public key of a new certificate
@@ -223,7 +203,7 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 	}
 	return issued{
 		index:   index,
-		serial:  testSerial(index),
+		serial:  testSerial(t, index),
 		spki:    spki,
 		dnsName: dnsName,
 	}
@@ -365,7 +345,7 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			m := testMTCB(t, bs3test.New(), []*treedb.CheckpointModel{tc.cp})
-			_, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), Serial: testSerial(1)})
+			_, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), Serial: testSerial(t, 1)})
 			if err == nil {
 				t.Fatal("GetStandalone: got nil error, want error")
 			}
@@ -378,7 +358,7 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 
 func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 	t.Parallel()
-	serial := testSerial(1)
+	serial := testSerial(t, 1)
 	otherLog := issuancelog.ID{CAID: testLogID.CAID, LogNumber: testLogID.LogNumber + 1}
 
 	for _, tc := range []struct {

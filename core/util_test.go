@@ -320,6 +320,56 @@ func TestUniqueLowerNames(t *testing.T) {
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
 }
 
+func TestMTCSerial(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		logNumber    uint16
+		index        int64
+		expectSerial uint64
+	}{
+		{name: "first entry of the first log", logNumber: 1, index: 0, expectSerial: 1 << 48},
+		{name: "log one", logNumber: 1, index: 5, expectSerial: 1<<48 | 5},
+		{name: "high bit set", logNumber: 0x8000, index: 1, expectSerial: 0x8000<<48 | 1},
+		{name: "max values", logNumber: 0xffff, index: 1<<48 - 1, expectSerial: 0xffffffffffffffff},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			serial, err := EncodeMTCSerial(tc.logNumber, tc.index)
+			test.AssertNotError(t, err, "encoding")
+			test.AssertEquals(t, serial, tc.expectSerial)
+
+			logNumber, index, err := DecodeMTCSerial(tc.expectSerial)
+			test.AssertNotError(t, err, "decoding")
+			test.AssertEquals(t, logNumber, tc.logNumber)
+			test.AssertEquals(t, index, tc.index)
+		})
+	}
+
+	for _, tc := range []struct {
+		name              string
+		logNumber         uint16
+		index             int64
+		expectErrContains string
+	}{
+		{name: "log number zero", logNumber: 0, index: 5, expectErrContains: "log number is zero"},
+		{name: "negative index", logNumber: 1, index: -1, expectErrContains: "is not between 0 and 2^48-1"},
+		{name: "index too large", logNumber: 1, index: 1 << 48, expectErrContains: "is not between 0 and 2^48-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := EncodeMTCSerial(tc.logNumber, tc.index)
+			test.AssertError(t, err, "encoding")
+			test.AssertContains(t, err.Error(), tc.expectErrContains)
+		})
+	}
+
+	_, _, err := DecodeMTCSerial(5)
+	test.AssertError(t, err, "decoding a serial with log number zero")
+	test.AssertContains(t, err.Error(), "log number is zero")
+}
+
 func TestValidSerial(t *testing.T) {
 	notLength32Or36 := "A"
 	length32 := strings.Repeat("A", 32)
