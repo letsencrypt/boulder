@@ -64,6 +64,8 @@ type Impl struct {
 	db *db.WrappedMap
 }
 
+// New returns an `*Impl` object that uses the given *db.WrappedMap. As a side effect, it registers
+// table mappings with borp.
 func New(dbMap *db.WrappedMap) *Impl {
 	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
 	dbMap.AddTableWithName(CheckpointSubtreeModel{}, "checkpointSubtrees").SetKeys(true, "ID")
@@ -152,14 +154,12 @@ func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSub
 	return model.ID, nil
 }
 
-type TxFunc = func(tx db.Executor) (any, error)
-
 // WithTransaction calls `github.com/letsencrypt/boulder/db.WithTransaction` for the given
 // transaction function, with the built-in DB. In the database-backed implementation this
 // is simply a pass-through.
 //
 // TODO(#8998): Replace TxFunc's `db.Executor` parameter with an interface that defines
 // the operations we want to perform inside a transaction, so we can mock those.
-func (i *Impl) WithTransaction(ctx context.Context, f TxFunc) (any, error) {
+func (i *Impl) WithTransaction(ctx context.Context, f db.TxFunc) (any, error) {
 	return db.WithTransaction(ctx, i.db, f)
 }

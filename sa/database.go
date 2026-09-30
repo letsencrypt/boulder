@@ -47,7 +47,13 @@ type DbSettings struct {
 	ConnMaxIdleTime time.Duration
 }
 
-func initWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
+// InitDB constructs a wrapped borp mapping object with the provided
+// settings.
+//
+// If scope is non-nil, Prometheus metrics will be exported. If logger
+// is non-nil, SQL debug-level logging will be enabled. The only required parameter
+// is config.
+func InitDB(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	url, err := config.URL()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load DBConnect URL: %s", err)
@@ -73,16 +79,6 @@ func initWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	return dbMap, nil
 }
 
-// InitDB constructs a wrapped borp mapping object with the provided
-// settings.
-//
-// If scope is non-nil, Prometheus metrics will be exported. If logger
-// is non-nil, SQL debug-level logging will be enabled. The only required parameter
-// is config.
-func InitDB(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
-	return initWrappedDb(config, scope, logger)
-}
-
 // InitDBWithSATables constructs a wrapped borp mapping object with the provided settings,
 // and also initializes its table<->type mappings for the tables used by SA.
 //
@@ -90,7 +86,7 @@ func InitDB(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger
 // is non-nil, SQL debug-level logging will be enabled. The only required parameter
 // is config.
 func InitDBWithSATables(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
-	wrappedMap, err := initWrappedDb(config, scope, logger)
+	wrappedMap, err := InitDB(config, scope, logger)
 	if err != nil {
 		return nil, err
 	}

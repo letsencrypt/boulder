@@ -143,7 +143,7 @@ type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
 	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
-	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
+	WithTransaction(ctx context.Context, f db.TxFunc) (any, error)
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
