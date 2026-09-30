@@ -85,24 +85,6 @@ type simpleS3 interface {
 	Bucket() string
 }
 
-// entryIndexBits is the width of the entry index in the low bits of a 64-bit
-// MTC serial.
-//
-// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format
-const entryIndexBits = 48
-
-// splitMTCSerial takes a serial number and returns the log number and entry
-// index encoded inside it.
-func splitMTCSerial(serial uint64) (uint16, uint64) {
-	// The log number is the top 16 bits of the 64-bit serial.
-	logNum := uint16(serial >> entryIndexBits)
-
-	// The entry index is the bottom 48 bits of the 64-bit serial.
-	entryIndex := serial & (1<<entryIndexBits - 1)
-
-	return logNum, entryIndex
-}
-
 func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest) (*mtcbpb.StandaloneResponse, error) {
 	// Step 0: Validate the request.
 	if core.IsAnyNilOrZero(req.MtcLogID, req.Serial) {
@@ -119,15 +101,17 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("unrecognized MTCA ID %q", logID.CAID)
 	}
 
-	logNum, entryIndex := splitMTCSerial(req.Serial)
+	logNum, entryIndex, err := core.DecodeMTCSerial(req.Serial)
+	if err != nil {
+		return nil, err
+	}
 	if logNum != logID.LogNumber {
 		return nil, fmt.Errorf("serial %d encodes log number %d, which is not log %q", req.Serial, logNum, req.MtcLogID)
 	}
-	tlogIndex := int64(entryIndex) //nolint:gosec // G115: splitMTCSerial zeroes the top 16 bits of entryIndex, so it fits in an int64.
 
 	// Step 1: Fetch the relevant checkpoint from the database.
 	// TODO: Eventually, fetch the relevant subtree instead.
-	cp, err := m.checkpoints.ContainingCheckpoint(ctx, logID.String(), tlogIndex)
+	cp, err := m.checkpoints.ContainingCheckpoint(ctx, logID.String(), entryIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +124,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	}
 
 	// Step 2: Fetch the tbsCertificateLogEntry and pubkey from the log.
-	entryBundle, pubkeyBundle, err := tiles.ReadBundles(ctx, m.s3c, tlogIndex, cp.TreeSize, logID.TilePrefix())
+	entryBundle, pubkeyBundle, err := tiles.ReadBundles(ctx, m.s3c, entryIndex, cp.TreeSize, logID.TilePrefix())
 	if err != nil {
 		return nil, fmt.Errorf("reading bundles: %w", err)
 	}
@@ -176,7 +160,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	rootHash := tlog.Hash(cp.RootHash)
 	tr := tiles.NewTileReader(ctx, m.s3c, logID.TilePrefix())
 	hr := tlog.TileHashReader(tlog.Tree{N: cp.TreeSize, Hash: rootHash}, tr)
-	inclusionProof, err := tlog.ProveRecord(cp.TreeSize, tlogIndex, hr)
+	inclusionProof, err := tlog.ProveRecord(cp.TreeSize, entryIndex, hr)
 	if err != nil {
 		return nil, fmt.Errorf("computing inclusion proof: %w", err)
 	}
