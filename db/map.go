@@ -192,7 +192,7 @@ type WrappedExecutor struct {
 }
 
 func errForOp(operation string, err error, list []any) ErrDatabaseOp {
-	table := "unknown"
+	var table string
 	if len(list) > 0 {
 		table = fmt.Sprintf("%T", list[0])
 	}
@@ -208,13 +208,8 @@ func errForQuery(query, operation string, err error, list []any) ErrDatabaseOp {
 	table := tableFromQuery(query)
 	if table == "" && len(list) > 0 {
 		// If there's no table from the query but there was a list of holder types,
-		// use the type from the first element of the list and indicate we failed to
-		// extract a table from the query.
-		table = fmt.Sprintf("%T (unknown table)", list[0])
-	} else if table == "" {
-		// If there's no table from the query and no list of holders then all we can
-		// say is that the table is unknown.
-		table = "unknown table"
+		// use the type from the first element of the list.
+		table = fmt.Sprintf("%T", list[0])
 	}
 
 	return ErrDatabaseOp{

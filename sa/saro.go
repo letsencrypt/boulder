@@ -885,7 +885,10 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCer
 func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
 	err := ssa.dbReadOnlyMap.SelectOne(ctx, new(int), "SELECT 1")
 	if err != nil {
-		return err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("querying read database: context deadline exceeded")
+		}
+		return fmt.Errorf("querying read database: %s", err)
 	}
 	return nil
 }
