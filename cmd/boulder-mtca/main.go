@@ -19,6 +19,7 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 type Config struct {
@@ -115,7 +116,7 @@ func main() {
 		profiles,
 		c.MTCA.LogID,
 		c.MTCA.SequencingPeriod.Duration,
-		dbMap,
+		treedb.New(dbMap),
 		s3c,
 		logger,
 		clk)
