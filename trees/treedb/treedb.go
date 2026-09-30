@@ -69,7 +69,7 @@ func New(db *db.WrappedMap) *Impl {
 }
 
 func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*CheckpointModel, error) {
-	latest := new(CheckpointModel)
+	var latest CheckpointModel
 	err := i.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
 		        mirrorSignature, treeSize, rootHash,
@@ -86,7 +86,7 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 		}
 		return nil, fmt.Errorf("getting latest checkpoint for %q: %w", mtcLogID, err)
 	}
-	return latest, nil
+	return &latest, nil
 }
 
 // ContainingCheckpoint returns the smallest checkpoint of the log that includes
