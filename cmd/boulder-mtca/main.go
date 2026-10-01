@@ -2,7 +2,6 @@ package notmain
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"os"
@@ -11,8 +10,6 @@ import (
 
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/borp"
-
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -20,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	mtca "github.com/letsencrypt/boulder/mtca"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
@@ -106,11 +104,8 @@ func main() {
 		profiles[name] = profile
 	}
 
-	url, err := c.MTCA.DB.URL()
-	cmd.FailOnError(err, "Reading DB URL")
-	db, err := sql.Open("mysql", url)
-	cmd.FailOnError(err, "Opening DB")
-	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
+	dbMap, err := sa.InitDB(c.MTCA.DB, scope, logger)
+	cmd.FailOnError(err, "While initializing dbMap")
 
 	s3c, err := bs3.FromConfig(c.MTCA.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")

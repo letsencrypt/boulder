@@ -68,6 +68,21 @@ func (m *WrappedMap) TableFor(t reflect.Type, checkPK bool) (*borp.TableMap, err
 	return m.dbMap.TableFor(t, checkPK)
 }
 
+// AddTableWithName has the same behavior as AddTable, but sets table.TableName to name.
+func (m *WrappedMap) AddTableWithName(i any, name string) *borp.TableMap {
+	return m.dbMap.AddTableWithName(i, name)
+}
+
+// AddTable registers the given interface type with borp. The table name will be
+// given the name of the TypeOf(i). You must call this function, or
+// AddTableWithName, for any struct type you wish to persist with the given WrappedMap.
+//
+// This operation is idempotent. If i's type is already mapped, the existing
+// *TableMap is returned.
+func (m *WrappedMap) AddTable(i any) *borp.TableMap {
+	return m.dbMap.AddTable(i)
+}
+
 func (m *WrappedMap) Get(ctx context.Context, holder any, keys ...any) (any, error) {
 	return WrappedExecutor{sqlExecutor: m.dbMap}.Get(ctx, holder, keys...)
 }

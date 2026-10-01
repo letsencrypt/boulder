@@ -9,7 +9,6 @@ import (
 
 	"golang.org/x/mod/sumdb/tlog"
 
-	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -44,7 +43,7 @@ type mtpublisher struct {
 // checkpoint's signed note from the stored MTCA signature, verified against
 // mtcaPublicKey, and obtains each cosignature from mirror, which verifies it
 // before returning it.
-func New(dbMap *db.WrappedMap, interval time.Duration, logID issuancelog.ID, mtcaPublicKey *mldsa.PublicKey, mirror Mirror, log blog.Logger) (*mtpublisher, error) {
+func New(checkpointDB checkpointDB, interval time.Duration, logID issuancelog.ID, mtcaPublicKey *mldsa.PublicKey, mirror Mirror, log blog.Logger) (*mtpublisher, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("interval must be positive, got %s", interval)
 	}
@@ -55,7 +54,7 @@ func New(dbMap *db.WrappedMap, interval time.Duration, logID issuancelog.ID, mtc
 	}
 
 	return &mtpublisher{
-		treedb:     treedb.New(dbMap),
+		treedb:     checkpointDB,
 		interval:   interval,
 		logID:      logID,
 		mirror:     mirror,
