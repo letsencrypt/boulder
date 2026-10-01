@@ -70,11 +70,10 @@ func (f *fakeCheckpointDB) AddMirrorSignature(_ context.Context, id int64, mirro
 // key.
 func testPublisher(t *testing.T, key *mldsa.PrivateKey, checkpoints *fakeCheckpointDB) *mtpublisher {
 	t.Helper()
-	p, err := New(nil, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock())
+	p, err := New(checkpoints, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
-	p.treedb = checkpoints
 	return p
 }
 

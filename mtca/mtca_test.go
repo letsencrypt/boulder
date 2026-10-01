@@ -24,14 +24,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/borp"
-
 	"golang.org/x/mod/sumdb/tlog"
+
+	"github.com/letsencrypt/borp"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
@@ -68,12 +69,11 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		return nil, nil, nil, err
 	}
 
-	db, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
+	sqlDB, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	dbMap := &borp.DbMap{Db: db, Dialect: borp.MySQLDialect{}}
-	err = truncateTables(db)
+	err = truncateTables(sqlDB)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -99,6 +99,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		return nil, nil, nil, err
 	}
 
+	dbMap := db.NewWrappedMap(&borp.DbMap{Db: sqlDB, Dialect: borp.MySQLDialect{}})
 	fs3 := bs3test.New()
 	mtca, err := New(
 		issuer,
@@ -119,7 +120,7 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 	}
 
 	cleanup := func() {
-		_ = truncateTables(db)
+		_ = truncateTables(sqlDB)
 	}
 
 	return mtca, fs3, cleanup, nil
@@ -489,9 +490,10 @@ func mirrorCosign(t *testing.T, m *mtca) {
 	}
 	dbMap, err := sa.DBMapForTest(vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
 	if err != nil {
-		t.Fatalf("opening mtcmeta dbMap: %s", err)
+		t.Fatalf("opening mtcmeta db: %s", err)
 	}
-	p, err := mtpublisher.New(dbMap, time.Second, m.logID, caPub, mirror, blog.NewMock())
+
+	p, err := mtpublisher.New(treedb.New(dbMap), time.Second, m.logID, caPub, mirror, blog.NewMock())
 	if err != nil {
 		t.Fatalf("mtpublisher.New: %s", err)
 	}
@@ -509,7 +511,7 @@ func mirrorCosign(t *testing.T, m *mtca) {
 //   - fake tile storage
 func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *treedb.CheckpointModel {
 	t.Helper()
-	latest, err := treedb.New(m.db).LatestCheckpoint(t.Context(), m.logID.String())
+	latest, err := m.treedb.LatestCheckpoint(t.Context(), m.logID.String())
 	if err != nil {
 		t.Fatalf("getting latest: %s", err)
 	}
@@ -665,8 +667,10 @@ func TestSequence(t *testing.T) {
 	}
 	t.Cleanup(cleanup)
 
+	realDb := mtca.treedb.(*treedb.Impl)
+
 	// use our treedb mock
-	mockTreedb := treedbWithInsertCheckpointSubtree{treedb.New(mtca.db), nil}
+	mockTreedb := treedbWithInsertCheckpointSubtree{realDb, nil}
 	mtca.treedb = &mockTreedb
 
 	// An empty pool is a no-op regardless of checkpoint state.

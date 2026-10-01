@@ -19,7 +19,6 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/borp"
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/core"
@@ -50,7 +49,7 @@ func New(
 	profiles map[string]*issuance.Profile,
 	logID issuancelog.ID,
 	sequencingPeriod time.Duration,
-	dbMap *borp.DbMap,
+	dbMap *db.WrappedMap,
 	s3c simpleS3,
 	logger blog.Logger,
 	clk clock.Clock,
@@ -67,8 +66,6 @@ func New(
 		return nil, errors.New("sequencingPeriod must be non-zero")
 	}
 
-	db := initDB(dbMap)
-
 	m := &mtca{
 		issuer:        issuer,
 		profiles:      profiles,
@@ -78,8 +75,7 @@ func New(
 
 		sequencingPeriod: sequencingPeriod,
 
-		db:     db,
-		treedb: treedb.New(db),
+		treedb: treedb.New(dbMap),
 		s3c:    s3c,
 		log:    logger,
 		clk:    clk,
@@ -132,10 +128,8 @@ type mtca struct {
 
 	sequencingPeriod time.Duration
 
-	// TODO: factor our sa.InitWrappedDb() so we get metrics and other goodies.
 	// TODO: decide whether we want to route this through the SA or an SA-like object,
 	// or keep a direct DB connection from the MTCA.
-	db     *db.WrappedMap
 	treedb checkpointDB
 	s3c    simpleS3
 	log    blog.Logger
@@ -146,7 +140,9 @@ type mtca struct {
 // substitute their own.
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
+	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
 	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
+	WithTransaction(ctx context.Context, f db.TxFunc) (any, error)
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -155,12 +151,6 @@ type simpleS3 interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	Bucket() string
-}
-
-func initDB(dbMap *borp.DbMap) *db.WrappedMap {
-	dbMap.AddTableWithName(treedb.CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
-	dbMap.AddTableWithName(treedb.CheckpointSubtreeModel{}, "checkpointSubtrees").SetKeys(true, "ID")
-	return db.NewWrappedMap(dbMap)
 }
 
 // InitLog creates the database metadata for a new, empty log: one checkpoint and the row
@@ -177,7 +167,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 	var caSig []byte
 	var signedNote []byte
-	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
+	_, err = m.treedb.WithTransaction(ctx, func(tx db.Executor) (any, error) {
 		var numLatestCheckpoints int64
 		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
 			m.logID.String())
@@ -562,15 +552,15 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// should check for staged tiles. Assuming the staged tiles and the checkpoint are consistent with
 	// the previous, signed, checkpoint, MTCA should try to re-sign the checkpoint and proceed from there.
 	//
-	// Note: Insert() updates the ID field of its parameter due to SetKeys(true, "ID")
-	err = m.db.Insert(ctx, newCheckpoint)
+	// Note: InsertCheckpoint() updates the ID field of its parameter.
+	err = m.treedb.InsertCheckpoint(ctx, newCheckpoint)
 	if err != nil {
 		return err
 	}
 
 	var caSig []byte
 	var signedNote []byte
-	_, err = db.WithTransaction(ctx, m.db, func(tx db.Executor) (any, error) {
+	_, err = m.treedb.WithTransaction(ctx, func(tx db.Executor) (any, error) {
 		var latestID int64
 		// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
 		// The FOR UPDATE does the heavy lifting here.

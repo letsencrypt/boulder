@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 type Config struct {
@@ -107,7 +108,7 @@ func main() {
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
 
-	dbMap, err := sa.InitWrappedDb(c.MTPublisher.DB, scope, logger)
+	dbMap, err := sa.InitDB(c.MTPublisher.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	s3c, err := bs3.FromConfig(c.MTPublisher.S3, logger)
@@ -126,7 +127,7 @@ func main() {
 	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
-	publisher, err := mtpublisher.New(dbMap, c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
+	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
 	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())

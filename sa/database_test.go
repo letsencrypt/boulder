@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/test"
@@ -86,7 +87,7 @@ func TestDbSettings(t *testing.T) {
 		ConnMaxLifetime: config.Duration{Duration: 100 * time.Second},
 		ConnMaxIdleTime: config.Duration{Duration: 100 * time.Second},
 	}
-	_, err = InitWrappedDb(config, nil, nil)
+	_, err = InitDBWithSATables(config, nil, nil)
 	if err != nil {
 		t.Errorf("connecting to DB: %s", err)
 	}

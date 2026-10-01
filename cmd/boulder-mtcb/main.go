@@ -71,7 +71,7 @@ func main() {
 		issuers = append(issuers, issuer)
 	}
 
-	dbMap, err := sa.InitWrappedDb(c.MTCB.DB, scope, logger)
+	dbMap, err := sa.InitDB(c.MTCB.DB, scope, logger)
 	cmd.FailOnError(err, "Opening DB")
 
 	s3c, err := bs3.FromConfig(c.MTCB.S3, logger)
