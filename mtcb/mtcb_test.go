@@ -313,13 +313,10 @@ func (l *testLog) verifyStandalone(t *testing.T, certDER []byte, expected issued
 func TestGetStandalone(t *testing.T) {
 	t.Parallel()
 	l := newTestLog(t)
-	m := testMTCB(t, l.fs3, nil, nil)
-
-	fakeDB := fakeCheckpointDB{nil, l.checkpointSubtrees}
-	m.checkpoints = &fakeDB
 
 	// Call GetStandalone for a variety of subtrees. For each one, use a `latest` checkpoint that
-	// has a TreeSize equal to SubtreeEnd, to exercise the partial-tile fetch path.
+	// has a TreeSize equal to SubtreeEnd, to exercise the partial-tile fetch path, and where the
+	// log has grown past it, a later one.
 	for _, tc := range []struct {
 		name    string
 		entries []issued
@@ -330,10 +327,12 @@ func TestGetStandalone(t *testing.T) {
 		{name: "Partial first bundle at size 6", entries: l.entries[4:6], latest: l.checkpoints[1], subtree: l.checkpointSubtrees[1]},
 		{name: "Full first bundle", entries: l.entries[6:8], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[2]},
 		{name: "Across the bundle boundary", entries: l.entries[254:], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[2]},
+		{name: "Size 4 subtree under the size 258 checkpoint", entries: l.entries[1:4], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[0]},
+		{name: "Size 6 subtree under the size 258 checkpoint", entries: l.entries[4:6], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[1]},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			m := testMTCB(t, l.fs3, []*treedb.CheckpointModel{tc.latest}, l.checkpointSubtrees)
 			for _, expected := range tc.entries {
-				fakeDB.checkpoints = []*treedb.CheckpointModel{tc.latest}
 				resp, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{
 					MtcLogID:        testLogID.String(),
 					MtcSerialNumber: expected.serial,
@@ -348,67 +347,74 @@ func TestGetStandalone(t *testing.T) {
 	}
 }
 
-func TestGetStandaloneInvalidLatestCheckpoint(t *testing.T) {
+func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name              string
-		latest            *treedb.CheckpointModel
-		subtree           *treedb.CheckpointSubtreeModel
+		mutateLatest      func(*treedb.CheckpointModel)
+		mutateSubtree     func(*treedb.CheckpointSubtreeModel)
 		expectErrContains string
 	}{
 		{
-			name: "Short root hash",
-			latest: &treedb.CheckpointModel{
-				ID:              1,
-				MTCLogID:        testLogID.String(),
-				TreeSize:        4,
-				RootHash:        make([]byte, 5),
-				MTCASignature:   []byte("mtca"),
-				MirrorID:        &mirrorID,
-				MirrorSignature: []byte("mirror"),
-			},
-			subtree: &treedb.CheckpointSubtreeModel{
-				ID:              54545,
-				MTCLogID:        testLogID.String(),
-				MTCASignature:   []byte{},
-				MirrorID:        nil,
-				MirrorSignature: nil,
-				SubtreeStart:    0,
-				SubtreeEnd:      4,
-				SubtreeHash:     make([]byte, 5),
-			},
-			expectErrContains: "validating checkpoint",
+			name:              "Latest checkpoint with a short root hash",
+			mutateLatest:      func(cp *treedb.CheckpointModel) { cp.RootHash = make([]byte, 5) },
+			expectErrContains: "validating checkpoint 1:",
 		},
 		{
-			name: "No mirror ID",
-			latest: &treedb.CheckpointModel{
-				ID:              1,
-				MTCLogID:        testLogID.String(),
-				TreeSize:        4,
-				RootHash:        make([]byte, 32),
-				MTCASignature:   []byte("mtca"),
-				MirrorSignature: []byte("mirror"),
-			},
-			subtree: &treedb.CheckpointSubtreeModel{
-				ID:              1,
-				MTCLogID:        testLogID.String(),
-				MTCASignature:   []byte{},
-				MirrorID:        nil,
-				MirrorSignature: nil,
-				SubtreeStart:    0,
-				SubtreeEnd:      4,
-				SubtreeHash:     make([]byte, 32),
-			},
+			name:              "Subtree with a short hash",
+			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeHash = make([]byte, 5) },
+			expectErrContains: "validating checkpoint subtree",
+		},
+		{
+			name:              "Subtree with no mirror ID",
+			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.MirrorID = nil },
 			expectErrContains: "not ready",
+		},
+		{
+			name:              "Subtree past the latest checkpoint",
+			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeEnd = 6 },
+			expectErrContains: "subtreeEnd is greater than treeSize",
+		},
+		{
+			name:              "Subtree that does not include the entry",
+			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeEnd = 1 },
+			expectErrContains: "not in subtree",
+		},
+		{
+			name:              "Subtree starting past the first entry",
+			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeStart = 1 },
+			expectErrContains: "not yet supported",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			m := testMTCB(t, bs3test.New(), []*treedb.CheckpointModel{tc.latest}, []*treedb.CheckpointSubtreeModel{tc.subtree})
+			latest := &treedb.CheckpointModel{
+				ID:       1,
+				MTCLogID: testLogID.String(),
+				TreeSize: 4,
+				RootHash: make([]byte, 32),
+			}
+			subtree := &treedb.CheckpointSubtreeModel{
+				ID:              1,
+				MTCLogID:        testLogID.String(),
+				MTCASignature:   []byte("mtca"),
+				MirrorID:        &mirrorID,
+				MirrorSignature: []byte("mirror"),
+				SubtreeStart:    0,
+				SubtreeEnd:      4,
+				SubtreeHash:     make([]byte, 32),
+			}
+			if tc.mutateLatest != nil {
+				tc.mutateLatest(latest)
+			}
+			if tc.mutateSubtree != nil {
+				tc.mutateSubtree(subtree)
+			}
+			m := testMTCB(t, bs3test.New(), []*treedb.CheckpointModel{latest}, []*treedb.CheckpointSubtreeModel{subtree})
 			_, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{
 				MtcLogID:        testLogID.String(),
 				MtcSerialNumber: testSerial(t, 1),
-				MtcSubtreeID:    tc.subtree.ID,
+				MtcSubtreeID:    subtree.ID,
 			})
 			if err == nil {
 				t.Fatal("GetStandalone: got nil error, want error")
@@ -452,97 +458,107 @@ func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 }
 
 func TestStandaloneReady(t *testing.T) {
-	issuer, err := issuance.LoadCertificate("../test/certs/mtpki/mtca1.cert.pem")
-	if err != nil {
-		t.Fatalf("LoadCertificate: %s", err)
+	t.Parallel()
+	mirrored := &treedb.CheckpointSubtreeModel{
+		ID:              456,
+		MTCLogID:        testLogID.String(),
+		MTCASignature:   []byte("mtca"),
+		MirrorID:        &mirrorID,
+		MirrorSignature: []byte("mirror"),
+		SubtreeStart:    0,
+		SubtreeEnd:      3,
+		SubtreeHash:     make([]byte, 32),
 	}
-	l := newTestLog(t)
+	unmirrored := &treedb.CheckpointSubtreeModel{
+		ID:            457,
+		MTCLogID:      testLogID.String(),
+		MTCASignature: []byte("mtca"),
+		SubtreeStart:  0,
+		SubtreeEnd:    3,
+		SubtreeHash:   make([]byte, 32),
+	}
+	m := testMTCB(t, bs3test.New(), nil, []*treedb.CheckpointSubtreeModel{mirrored, unmirrored})
+	otherLog := issuancelog.ID{CAID: testLogID.CAID, LogNumber: testLogID.LogNumber + 1}
 
-	fakeDB := &fakeCheckpointDB{
-		checkpoints: []*treedb.CheckpointModel{},
-		checkpointSubtrees: []*treedb.CheckpointSubtreeModel{
-			{
-				ID:              456,
-				MTCLogID:        "44947.4.1.0.3",
-				MTCASignature:   []byte("abc"),
-				MirrorID:        &mirrorID,
-				MirrorSignature: []byte("def"),
-				SubtreeStart:    2,
-				SubtreeEnd:      3,
-				SubtreeHash:     make([]byte, 32),
+	for _, tc := range []struct {
+		name              string
+		req               *mtcbpb.StandaloneReadyRequest
+		expectReady       bool
+		expectErrContains string
+	}{
+		{
+			name: "Mirrored subtree",
+			req: &mtcbpb.StandaloneReadyRequest{
+				MtcLogID:        testLogID.String(),
+				MtcSerialNumber: testSerial(t, 2),
+				MtcSubtreeID:    mirrored.ID,
 			},
+			expectReady: true,
 		},
-	}
-
-	m, err := New(
-		[]*issuance.Certificate{issuer},
-		fakeDB,
-		l.fs3,
-		blog.NewMock(),
-		clock.NewFake())
-	if err != nil {
-		t.Fatalf("New: %s", err)
-	}
-
-	resp, err := m.StandaloneReady(t.Context(), &mtcbpb.StandaloneReadyRequest{
-		MtcLogID:        "44947.4.1.0.3",
-		MtcSerialNumber: 0x0003000000000002,
-		MtcSubtreeID:    456,
-	})
-	if err != nil {
-		t.Fatalf("StandaloneReady(): %s", err)
-	}
-
-	if !resp.Ready {
-		t.Errorf("StandaloneReady(): got %t, want %t", resp.Ready, true)
-	}
-
-	// Zero out the mirror signature; ready should return false
-	fakeDB.checkpointSubtrees[0].MirrorSignature = nil
-
-	resp, err = m.StandaloneReady(t.Context(), &mtcbpb.StandaloneReadyRequest{
-		MtcLogID:        "44947.4.1.0.3",
-		MtcSerialNumber: 0x0003000000000002,
-		MtcSubtreeID:    456,
-	})
-	if err != nil {
-		t.Fatalf("StandaloneReady(): %s", err)
-	}
-
-	if resp.Ready {
-		t.Errorf("StandaloneReady(): got %t, want %t", resp.Ready, false)
-	}
-
-	// Restore the mirror signature and ask for a non-existent subtree ID. Should error.
-	fakeDB.checkpointSubtrees[0].MirrorSignature = []byte("def")
-	_, err = m.StandaloneReady(t.Context(), &mtcbpb.StandaloneReadyRequest{
-		MtcLogID:        "44947.4.1.0.3",
-		MtcSerialNumber: 0x0003000000000002,
-		MtcSubtreeID:    999999,
-	})
-	if err == nil {
-		t.Errorf("StandaloneReady(nonexistent ID): got nil error, want error")
-	}
-
-	// Requests where serial doesn't match log number, or log number isn't available,
-	// should error without hitting the DB. Verify by setting checkpoints to nil so
-	// hitting the database panics.
-	m.checkpoints = nil
-	_, err = m.StandaloneReady(t.Context(), &mtcbpb.StandaloneReadyRequest{
-		MtcLogID:        "44947.4.1.0.3",
-		MtcSerialNumber: 0x0099000000000002,
-		MtcSubtreeID:    456,
-	})
-	if err == nil {
-		t.Errorf("StandaloneReady(nonexistent ID): got nil error, want error")
-	}
-
-	_, err = m.StandaloneReady(t.Context(), &mtcbpb.StandaloneReadyRequest{
-		MtcLogID:        "44947.4.1.0.99",
-		MtcSerialNumber: 0x0099000000000002,
-		MtcSubtreeID:    456,
-	})
-	if err == nil {
-		t.Errorf("StandaloneReady(nonexistent ID): got nil error, want error")
+		{
+			name: "Unmirrored subtree",
+			req: &mtcbpb.StandaloneReadyRequest{
+				MtcLogID:        testLogID.String(),
+				MtcSerialNumber: testSerial(t, 2),
+				MtcSubtreeID:    unmirrored.ID,
+			},
+			expectReady: false,
+		},
+		{
+			name: "Nonexistent subtree ID",
+			req: &mtcbpb.StandaloneReadyRequest{
+				MtcLogID:        testLogID.String(),
+				MtcSerialNumber: testSerial(t, 2),
+				MtcSubtreeID:    999999,
+			},
+			expectErrContains: "not found",
+		},
+		{
+			name: "Serial outside the subtree",
+			req: &mtcbpb.StandaloneReadyRequest{
+				MtcLogID:        testLogID.String(),
+				MtcSerialNumber: testSerial(t, 3),
+				MtcSubtreeID:    mirrored.ID,
+			},
+			expectErrContains: "not in subtree",
+		},
+		{
+			name: "Log number mismatch",
+			req: &mtcbpb.StandaloneReadyRequest{
+				MtcLogID:        otherLog.String(),
+				MtcSerialNumber: testSerial(t, 2),
+				MtcSubtreeID:    mirrored.ID,
+			},
+			expectErrContains: "encodes log number",
+		},
+		{
+			name: "Unknown CA",
+			req: &mtcbpb.StandaloneReadyRequest{
+				MtcLogID:        "32473.9.0.5",
+				MtcSerialNumber: testSerial(t, 2),
+				MtcSubtreeID:    mirrored.ID,
+			},
+			expectErrContains: "no issuer configured",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := m.StandaloneReady(t.Context(), tc.req)
+			if tc.expectErrContains != "" {
+				if err == nil {
+					t.Fatal("StandaloneReady: got nil error, want error")
+				}
+				if !strings.Contains(err.Error(), tc.expectErrContains) {
+					t.Errorf("StandaloneReady: got %q, want it to contain %q", err, tc.expectErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("StandaloneReady: %s", err)
+			}
+			if resp.Ready != tc.expectReady {
+				t.Errorf("StandaloneReady: ready = %t, want %t", resp.Ready, tc.expectReady)
+			}
+		})
 	}
 }

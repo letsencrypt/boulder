@@ -1152,9 +1152,8 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 	}
 
 	// If the order is fully authorized and the certificate serial is set then the
-	// order is valid.
-	// TODO(#9022): An order can also become valid once it has an MTCLogID, MTCSerialNumber,
-	// and MTCSubtreeID, _and_ the corresponding `checkpointSubtree` row has two signatures.
+	// order is valid. Note: This only happens for non-MTC orders. For an MTC order,
+	// the RA is in charge of setting StatusValid when the signatures are ready.
 	if fullyAuthorized && order.CertificateSerial != "" {
 		return string(core.StatusValid), nil
 	}

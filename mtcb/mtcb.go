@@ -226,10 +226,6 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		Hash: tlog.Hash(latestCheckpoint.RootHash),
 	}, tr)
 
-	if subtree.SubtreeStart != 0 {
-		return nil, fmt.Errorf("inclusion proofs from start > 0 not yet supported")
-	}
-
 	inclusionProof, err := tlog.ProveRecord(
 		int64(subtree.SubtreeEnd), //nolint:gosec // G115: SubtreeEnd is less than 1<<48.
 		entryIndex,
@@ -270,6 +266,10 @@ func ready(subtree *treedb.CheckpointSubtreeModel, entryIndex uint64) (bool, err
 	if entryIndex < subtree.SubtreeStart || entryIndex >= subtree.SubtreeEnd {
 		return false, fmt.Errorf("entryIndex is not in subtree ID %d [%d, %d)",
 			subtree.ID, subtree.SubtreeStart, subtree.SubtreeEnd)
+	}
+
+	if subtree.SubtreeStart != 0 {
+		return false, fmt.Errorf("inclusion proofs from start > 0 not yet supported")
 	}
 
 	return subtree.Mirrored(), nil
