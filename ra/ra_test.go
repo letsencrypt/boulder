@@ -3483,7 +3483,7 @@ func TestGetOrder(t *testing.T) {
 				CertificateProfileName: "test",
 				CertificateSerial:      "abcd",
 			},
-			wantStatus: core.StatusValid,
+			wantStatus: core.StatusProcessing,
 		},
 		{
 			name: "MTC order, not processing",

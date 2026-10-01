@@ -2427,11 +2427,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 }
 
 // GetOrder returns an order object from the SA. If the SA returns an order in "processing" state,
-// this method will return the same order but with "valid" state if:
-//
-//   - It is an MTC order, and a call to an MTCA indicates that sufficient signatures are available to
-//     product a standalone certificate.
-//   - It is a non-MTC order and the certificateSerial field is nonempty.
+// this method will return the same order but with "valid" state if (a) it is an MTC order and (b)
+// a call to an MTCB indicates that sufficient signatures are available to produce a standalone certificate.
 func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.GetOrderRequest) (*corepb.Order, error) {
 	order, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: req.OrderID})
 	if err != nil {
@@ -2443,6 +2440,9 @@ func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.Get
 	}
 
 	if ra.isMTC(order) {
+		if ra.mtcb == nil {
+			return nil, fmt.Errorf("handling GetOrder for an MTC order: no MTCB backend")
+		}
 		if order.MtcSubtreeID == 0 {
 			// Order is processing but not yet sequenced.
 			return order, nil
@@ -2457,13 +2457,6 @@ func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.Get
 			return nil, err
 		}
 		if resp.Ready {
-			order.Status = string(core.StatusValid)
-		}
-	} else {
-		// This duplicates the code in sa.statusForOrder that sets processing to valid for
-		// non-MTC orders when `CertificateSerial` is non-empty. TODO: remove that code and
-		// make RA solely responsible for setting order status to "valid" for both MTC and non-MTC.
-		if order.CertificateSerial != "" {
 			order.Status = string(core.StatusValid)
 		}
 	}

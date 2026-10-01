@@ -99,7 +99,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 
 	_, ok := m.issuers[requestedLogID.CAID]
 	if !ok {
-		return nil, fmt.Errorf("misdirected request for MTC log ID %q", req.MtcLogID)
+		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
 	}
 
 	requestedLogNumber, entryIndex, err := core.DecodeMTCSerial(req.MtcSerialNumber)
@@ -108,8 +108,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 	}
 
 	if requestedLogNumber != requestedLogID.LogNumber {
-		return nil, fmt.Errorf("misdirected request for MTC ID %s and serial %016x",
-			requestedLogID.String(), req.MtcSerialNumber)
+		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
 	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
@@ -130,29 +129,29 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, errors.New("incomplete gRPC request")
 	}
 
-	logID, err := issuancelog.ParseID(req.MtcLogID)
+	requestedLogID, err := issuancelog.ParseID(req.MtcLogID)
 	if err != nil {
 		return nil, err
 	}
 
-	_, ok := m.issuers[logID.CAID]
+	_, ok := m.issuers[requestedLogID.CAID]
 	if !ok {
-		return nil, fmt.Errorf("unrecognized MTCA ID %q", logID.CAID)
+		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
 	}
 
-	logNum, entryIndex, err := core.DecodeMTCSerial(req.MtcSerialNumber)
+	requestedLogNumber, entryIndex, err := core.DecodeMTCSerial(req.MtcSerialNumber)
 	if err != nil {
 		return nil, err
 	}
-	if logNum != logID.LogNumber {
-		return nil, fmt.Errorf("serial %d encodes log number %d, which is not log %q", req.MtcSerialNumber, logNum, req.MtcLogID)
+	if requestedLogNumber != requestedLogID.LogNumber {
+		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
 	// Fetch the latest checkpoint. We'll need the latest treesize to fetch tiles.
 	// TODO: The latestCheckpoint table gets updated upon signing, and tile publication hasn't happened yet.
 	// So we can wind up trying to read tiles that don't exist yet.  Read the checkpoint file from tile storage
 	// instead of the latest checkpoint row from the DB.
-	latestCheckpoint, err := m.checkpoints.LatestCheckpoint(ctx, logID.String())
+	latestCheckpoint, err := m.checkpoints.LatestCheckpoint(ctx, requestedLogID.String())
 	if err != nil {
 		return nil, fmt.Errorf("getting latest checkpoint: %s", err)
 	}
@@ -162,7 +161,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	}
 
 	// Fetch the relevant subtree from the database.
-	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, logID.String(), req.MtcSubtreeID)
+	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +171,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 	if !isReady {
-		return nil, fmt.Errorf("not ready to build standalone for %q %016x", logID, req.MtcSerialNumber)
+		return nil, fmt.Errorf("not ready to build standalone for %q %016x", requestedLogID, req.MtcSerialNumber)
 	}
 
 	if subtree.SubtreeEnd > uint64(latestCheckpoint.TreeSize) { //nolint:gosec // G115: TreeSize is positive
@@ -186,7 +185,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		m.s3c,
 		entryIndex,
 		latestCheckpoint.TreeSize,
-		logID.TilePrefix())
+		requestedLogID.TilePrefix())
 	if err != nil {
 		return nil, fmt.Errorf("reading bundles: %w", err)
 	}
@@ -219,7 +218,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	}
 
 	// Build the inclusion proof from the log.
-	tr := tiles.NewTileReader(ctx, m.s3c, logID.TilePrefix())
+	tr := tiles.NewTileReader(ctx, m.s3c, requestedLogID.TilePrefix())
 	// The tile reader has to know the latest tree size, while the proof
 	// should go to the size of the subtree.
 	hr := tlog.TileHashReader(tlog.Tree{
@@ -250,7 +249,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		End:            subtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: []byte(logID.CAID), Signature: subtree.MTCASignature},
+			{CosignerID: []byte(requestedLogID.CAID), Signature: subtree.MTCASignature},
 			{CosignerID: []byte(*subtree.MirrorID), Signature: subtree.MirrorSignature},
 		},
 	}

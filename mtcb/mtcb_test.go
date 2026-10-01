@@ -434,7 +434,7 @@ func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 		{"Zero serial", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), MtcSubtreeID: 123}, "incomplete"},
 		{"Zero subtreeID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), MtcSerialNumber: serial}, "incomplete"},
 		{"Malformed log ID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.CAID, MtcSerialNumber: serial, MtcSubtreeID: 123}, "before its log number"},
-		{"Unknown CA", &mtcbpb.StandaloneRequest{MtcLogID: "32473.9.0.5", MtcSerialNumber: serial, MtcSubtreeID: 123}, "unrecognized MTCA ID"},
+		{"Unknown CA", &mtcbpb.StandaloneRequest{MtcLogID: "32473.9.0.5", MtcSerialNumber: serial, MtcSubtreeID: 123}, "no issuer configured"},
 		{"Log number mismatch", &mtcbpb.StandaloneRequest{MtcLogID: otherLog.String(), MtcSerialNumber: serial, MtcSubtreeID: 123}, "encodes log number"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

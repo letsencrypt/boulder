@@ -200,9 +200,12 @@ func main() {
 		profileToMTCA[profile] = mtcaClient
 	}
 
-	mtcbConn, err := bgrpc.ClientSetup(c.RA.MTCBService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to create MTCB client")
-	mtcb := mtcbpb.NewMTCBClient(mtcbConn)
+	var mtcb mtcbpb.MTCBClient
+	if c.RA.MTCBService != nil {
+		mtcbConn, err := bgrpc.ClientSetup(c.RA.MTCBService, tlsConfig, scope, clk)
+		cmd.FailOnError(err, "Unable to create MTCB client")
+		mtcb = mtcbpb.NewMTCBClient(mtcbConn)
+	}
 
 	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
