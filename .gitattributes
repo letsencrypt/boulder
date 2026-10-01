@@ -6,6 +6,5 @@
 # https://git-scm.com/docs/gitattributes#_marking_files_as_binary
 *.pb.go -diff linguist-generated=true
 docs/* linguist-documentation=true
-go.mod linguist-generated=true
 go.sum linguist-generated=true
 vendor/* linguist-vendored=true
