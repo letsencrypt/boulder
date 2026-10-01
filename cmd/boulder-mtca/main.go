@@ -83,6 +83,8 @@ func main() {
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
 
+	metrics := mtca.NewMTCAMetrics(scope)
+
 	tlsConfig, err := c.MTCA.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading TLS config")
 
@@ -118,6 +120,7 @@ func main() {
 		dbMap,
 		s3c,
 		logger,
+		metrics,
 		clk)
 	cmd.FailOnError(err, "Building MTCA")
 
