@@ -10,6 +10,7 @@ import (
 
 	zlint_x509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"
+	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/linter"
 )
@@ -19,12 +20,41 @@ import (
 // less than ageLimit old. It returns an error if any of these conditions are
 // not met.
 func Validate(crl *x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration) error {
+	return validate(crl, issuer, ageLimit, lint.GlobalRegistry())
+}
+
+// caCRLLintConfig tells zlint that the CRL covers CA certificates, which may
+// have a nextUpdate up to 12 months after thisUpdate rather than 10 days.
+var caCRLLintConfig = func() lint.Configuration {
+	config, err := lint.NewConfigFromString("[e_crl_next_update_invalid]\nSubscriberCRL = false\n")
+	if err != nil {
+		panic(fmt.Sprintf("parsing CA CRL lint config: %s", err))
+	}
+	return config
+}()
+
+// caCRLRegistry is the global registry, configured with caCRLLintConfig.
+type caCRLRegistry struct {
+	lint.Registry
+}
+
+func (caCRLRegistry) GetConfiguration() lint.Configuration {
+	return caCRLLintConfig
+}
+
+// ValidateCACRL is like Validate, but for CRLs that cover CA certificates
+// (e.g. a root's CRL) rather than Subscriber certificates.
+func ValidateCACRL(crl *x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration) error {
+	return validate(crl, issuer, ageLimit, caCRLRegistry{lint.GlobalRegistry()})
+}
+
+func validate(crl *x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration, registry lint.Registry) error {
 	zcrl, err := zlint_x509.ParseRevocationList(crl.Raw)
 	if err != nil {
 		return fmt.Errorf("parsing CRL: %w", err)
 	}
 
-	err = linter.ProcessResultSet(zlint.LintRevocationList(zcrl))
+	err = linter.ProcessResultSet(zlint.LintRevocationListEx(zcrl, registry))
 	if err != nil {
 		return fmt.Errorf("linting CRL: %w", err)
 	}

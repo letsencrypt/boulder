@@ -279,6 +279,12 @@ monitors:
   URLs. At a minimum this should have strict matching on the origin part of the
   URL. Default value works.
 
+`caCRLAgeLimit`: Error when a CRL covering CA certificates (i.e. a root's CRL)
+  is older than this. Default is 365 days.
+
+`caCRLRegexp`: Like `crlRegexp`, but for the URLs of CRLs covering CA
+  certificates. Default value works.
+
 ##### Example
 
 ```yaml

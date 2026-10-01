@@ -3,9 +3,11 @@ package ccadb
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -16,6 +18,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,6 +42,13 @@ type CCADBConf struct {
 	// Because this prober fetches URLs controlled by external input (CCADB), we
 	// rely on this regexp avoid arbitrary content fetching (SSRF).
 	CRLRegexp string `yaml:"crlRegexp"`
+	// CACRLAgeLimit is the age limit for CRLs covering CA certificates, i.e.
+	// those issued by our roots. These are issued far less often than the
+	// partitioned CRLs covering Subscriber certificates.
+	CACRLAgeLimit string `yaml:"caCRLAgeLimit"`
+	// CACRLRegexp is the regex used to validate CA CRL URLs before fetching
+	// them. Like CRLRegexp, it must strictly check the validity of a given URL.
+	CACRLRegexp string `yaml:"caCRLRegexp"`
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
@@ -96,12 +106,33 @@ func (c CCADBConf) MakeProber(collectors map[string]prometheus.Collector) (probe
 		return nil, fmt.Errorf("parsing CRL regexp %q: %s", crlRegexp, err)
 	}
 
+	// Root CRLs are reissued at least every 12 months, per BRs 4.9.7.
+	caCRLAgeLimit := 365 * 24 * time.Hour
+	if c.CACRLAgeLimit != "" {
+		caCRLAgeLimit, err = time.ParseDuration(c.CACRLAgeLimit)
+		if err != nil {
+			return nil, fmt.Errorf("parsing CA CRL age limit: %s", err)
+		}
+	}
+
+	caCRLRegexp := `^http://[a-z0-9-]+\.c\.lencr\.org/$`
+	if c.CACRLRegexp != "" {
+		caCRLRegexp = c.CACRLRegexp
+	}
+
+	caRe, err := regexp.Compile(caCRLRegexp)
+	if err != nil {
+		return nil, fmt.Errorf("parsing CA CRL regexp %q: %s", caCRLRegexp, err)
+	}
+
 	return &CCADBProber{
 		allCertificatesCSVURL: ccadbAllCertificatesCSVURL,
 		certificatePEMsURL:    certificatePEMsURL,
 		caOwner:               caOwner,
 		crlAgeLimit:           ageLimitDuration,
 		crlRegexp:             re,
+		caCRLAgeLimit:         caCRLAgeLimit,
+		caCRLRegexp:           caRe,
 	}, nil
 }
 
@@ -139,12 +170,18 @@ func getIDP(crl *x509.RevocationList) (string, error) {
 //
 // It also checks, heuristically, whether the complete corpus of CRL shards
 // are reported in CCADB.
+//
+// For CAs that issue CA certificates (our roots), it checks that the CRL URLs
+// disclosed for them exactly match the CRLDPs in the unexpired CA certificates
+// they issued, and that each disclosed CRL is fresh and correctly signed.
 type CCADBProber struct {
 	allCertificatesCSVURL string
 	certificatePEMsURL    string
 	caOwner               string
 	crlAgeLimit           time.Duration
 	crlRegexp             *regexp.Regexp
+	caCRLAgeLimit         time.Duration
+	caCRLRegexp           *regexp.Regexp
 }
 
 func (c CCADBProber) Kind() string {
@@ -156,12 +193,17 @@ func (c CCADBProber) Name() string {
 }
 
 func (c *CCADBProber) Probe(ctx context.Context) error {
-	issuers, err := c.getAllIntermediates(ctx)
+	records, err := c.getRecords(ctx)
 	if err != nil {
 		return err
 	}
 
-	crlURLs, err := c.getCRLURLs(ctx, issuers)
+	issuers, certsByFingerprint, err := c.getAllIntermediates(ctx, records)
+	if err != nil {
+		return err
+	}
+
+	crlURLs, err := c.getCRLURLs(records, issuers)
 	if err != nil {
 		return err
 	}
@@ -251,6 +293,8 @@ func (c *CCADBProber) Probe(ctx context.Context) error {
 		}
 	}
 
+	errs = append(errs, c.checkCACRLs(ctx, records, issuers, certsByFingerprint)...)
+
 	return errors.Join(errs...)
 }
 
@@ -337,41 +381,59 @@ func checkAllShardIndexesPresent(seen []int) error {
 	return nil
 }
 
-func (c CCADBProber) getAllIntermediates(ctx context.Context) (map[string]*x509.Certificate, error) {
-	certs, err := c.getDecadeIntermediates(ctx, 2010)
-	if err != nil {
-		return nil, err
+// getAllIntermediates returns the certificates for the given records, keyed by
+// SKID and by fingerprint (see getDecadeIntermediates).
+func (c CCADBProber) getAllIntermediates(ctx context.Context, records []ccadbRecord) (map[string]*x509.Certificate, map[string]*x509.Certificate, error) {
+	wanted := make(map[string]bool, len(records))
+	for _, record := range records {
+		wanted[record.fingerprint] = true
 	}
 
-	moreCerts, err := c.getDecadeIntermediates(ctx, 2020)
+	bySKID, byFingerprint, err := c.getDecadeIntermediates(ctx, 2010, wanted)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	maps.Copy(certs, moreCerts)
-	return certs, nil
+	moreBySKID, moreByFingerprint, err := c.getDecadeIntermediates(ctx, 2020, wanted)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	maps.Copy(bySKID, moreBySKID)
+	maps.Copy(byFingerprint, moreByFingerprint)
+	return bySKID, byFingerprint, nil
 }
 
-func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (map[string]*x509.Certificate, error) {
+// getDecadeIntermediates returns the certificates in the given decade's PEM
+// report whose fingerprints are in wanted, twice: keyed by SKID, and keyed by
+// uppercase hex SHA-256 fingerprint (the format CCADB uses in its "SHA-256
+// Fingerprint" columns). The SKID map collapses cross-signs of the same key
+// into one entry; the fingerprint map does not.
+//
+// The report covers every CA Owner (thousands of certificates), and we only
+// need our own, so we skip parsing and retaining the rest to save memory.
+func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int, wanted map[string]bool) (map[string]*x509.Certificate, map[string]*x509.Certificate, error) {
 	url := fmt.Sprintf("%s?NotBeforeDecade=%d", c.certificatePEMsURL, decade)
 	header, reader, err := getCSV(ctx, url)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	pemIndex := slices.Index(header, "X.509 Certificate (PEM)")
 	if pemIndex == -1 {
-		return nil, fmt.Errorf("no column named \"X.509 Certificate (PEM)\" in %s", url)
+		return nil, nil, fmt.Errorf("no column named \"X.509 Certificate (PEM)\" in %s", url)
 	}
 
-	ret := make(map[string]*x509.Certificate)
+	bySKID := make(map[string]*x509.Certificate)
+	byFingerprint := make(map[string]*x509.Certificate)
+	var numPEMs int
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("%q: %w", url, err)
+			return nil, nil, fmt.Errorf("%q: %w", url, err)
 		}
 
 		if len(record) < pemIndex {
@@ -382,36 +444,64 @@ func (c CCADBProber) getDecadeIntermediates(ctx context.Context, decade int) (ma
 		if block == nil {
 			continue
 		}
+		numPEMs++
+
+		sum := sha256.Sum256(block.Bytes)
+		fingerprint := strings.ToUpper(hex.EncodeToString(sum[:]))
+		if !wanted[fingerprint] {
+			continue
+		}
 
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
 			continue
 		}
-		ret[string(cert.SubjectKeyId)] = cert
+		bySKID[string(cert.SubjectKeyId)] = cert
+		byFingerprint[fingerprint] = cert
 	}
 
-	if len(ret) == 0 {
-		return nil, fmt.Errorf("no valid certificate PEMs found in %s", url)
+	if numPEMs == 0 {
+		return nil, nil, fmt.Errorf("no valid certificate PEMs found in %s", url)
 	}
-	return ret, nil
+	return bySKID, byFingerprint, nil
 }
 
-// returns a map from issuer SKID to list of URLs
-func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Certificate) (map[string][]string, error) {
+// ccadbRecord is the subset of a row of the All Certificate Records report
+// that this prober uses.
+type ccadbRecord struct {
+	name string
+	// skid is the raw (not base64) Subject Key Identifier.
+	skid string
+	// fingerprint and parentFingerprint are uppercase hex SHA-256.
+	fingerprint       string
+	parentFingerprint string
+	revocationStatus  string
+	// partitionedCRLs and fullCRLs are nil when the column is empty.
+	partitionedCRLs []string
+	fullCRLs        []string
+}
+
+// getRecords fetches the All Certificate Records report and returns the rows
+// belonging to our CA Owner.
+func (c CCADBProber) getRecords(ctx context.Context) ([]ccadbRecord, error) {
 	header, reader, err := getCSV(ctx, c.allCertificatesCSVURL)
 	if err != nil {
 		return nil, err
 	}
 
 	const (
-		owner           = "CA Owner"
-		crl             = "JSON Array of Partitioned CRLs"
-		skid            = "Subject Key Identifier"
-		certificateName = "Certificate Name"
+		owner             = "CA Owner"
+		certificateName   = "Certificate Name"
+		skid              = "Subject Key Identifier"
+		fingerprint       = "SHA-256 Fingerprint"
+		parentFingerprint = "Parent SHA-256 Fingerprint"
+		revocationStatus  = "Revocation Status"
+		partitionedCRLs   = "JSON Array of Partitioned CRLs"
+		fullCRLs          = "JSON Array of All Full CRL URLs"
 	)
 
 	columns := map[string]int{}
-	for _, headerName := range []string{owner, crl, skid, certificateName} {
+	for _, headerName := range []string{owner, certificateName, skid, fingerprint, parentFingerprint, revocationStatus, partitionedCRLs, fullCRLs} {
 		index := slices.Index(header, headerName)
 		if index == -1 {
 			return nil, fmt.Errorf("no column named %q in %s", headerName, c.allCertificatesCSVURL)
@@ -419,53 +509,242 @@ func (c CCADBProber) getCRLURLs(ctx context.Context, issuers map[string]*x509.Ce
 		columns[headerName] = index
 	}
 
-	allCRLs := make(map[string][]string)
+	parseURLs := func(name, column, value string) ([]string, error) {
+		if value == "" {
+			return nil, nil
+		}
+		var urls []string
+		err := json.Unmarshal([]byte(value), &urls)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %q for %q: %w", column, name, err)
+		}
+		return urls, nil
+	}
+
+	var records []ccadbRecord
 	for {
-		record, err := reader.Read()
+		row, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%q: %w", c.allCertificatesCSVURL, err)
 		}
-		if record[columns[owner]] != c.caOwner {
+		if row[columns[owner]] != c.caOwner {
 			continue
 		}
-		crlJSON := record[columns[crl]]
-		if crlJSON == "" {
-			continue
-		}
-		var crls []string
-		err = json.Unmarshal([]byte(crlJSON), &crls)
+
+		name := row[columns[certificateName]]
+		skid, err := base64.StdEncoding.DecodeString(row[columns[skid]])
 		if err != nil {
 			return nil, err
 		}
-		certificateName := record[columns[certificateName]]
-		skidBase64 := record[columns[skid]]
-		skid, err := base64.StdEncoding.DecodeString(skidBase64)
+		partitioned, err := parseURLs(name, partitionedCRLs, row[columns[partitionedCRLs]])
 		if err != nil {
 			return nil, err
 		}
-		if len(skid) == 0 {
-			return nil, fmt.Errorf("no skid for %q", certificateName)
+		full, err := parseURLs(name, fullCRLs, row[columns[fullCRLs]])
+		if err != nil {
+			return nil, err
 		}
-		stringSKID := string(skid)
-		if issuers[stringSKID] == nil {
+
+		records = append(records, ccadbRecord{
+			name:              name,
+			skid:              string(skid),
+			fingerprint:       strings.ToUpper(row[columns[fingerprint]]),
+			parentFingerprint: strings.ToUpper(row[columns[parentFingerprint]]),
+			revocationStatus:  row[columns[revocationStatus]],
+			partitionedCRLs:   partitioned,
+			fullCRLs:          full,
+		})
+	}
+
+	if len(records) == 0 {
+		return nil, fmt.Errorf("no records found in CCADB for CA Owner %q", c.caOwner)
+	}
+	return records, nil
+}
+
+// returns a map from issuer SKID to list of URLs
+func (c CCADBProber) getCRLURLs(records []ccadbRecord, issuers map[string]*x509.Certificate) (map[string][]string, error) {
+	allCRLs := make(map[string][]string)
+	for _, record := range records {
+		crls := record.partitionedCRLs
+		if crls == nil {
+			continue
+		}
+		if len(record.skid) == 0 {
+			return nil, fmt.Errorf("no skid for %q", record.name)
+		}
+		if issuers[record.skid] == nil {
 			return nil, fmt.Errorf("CCADB contained %q with SKID %x, but that SKID is not in issuers CRL at %s?decade=XXXX",
-				certificateName, skid, c.certificatePEMsURL)
+				record.name, record.skid, c.certificatePEMsURL)
 		}
 		// An issuer can show up multiple times, under different cross-signs. However,
 		// it must have the same list of CRLs each time.
-		if c := allCRLs[stringSKID]; c != nil && !slices.Equal(c, crls) {
-			return nil, fmt.Errorf("CCADB contained %q with SKID %x multiple times with different CRLs", certificateName, skid)
+		if c := allCRLs[record.skid]; c != nil && !slices.Equal(c, crls) {
+			return nil, fmt.Errorf("CCADB contained %q with SKID %x multiple times with different CRLs", record.name, record.skid)
 		}
-		allCRLs[stringSKID] = crls
+		allCRLs[record.skid] = crls
 	}
 
 	if len(allCRLs) == 0 {
 		return nil, fmt.Errorf("no records found in CCADB for CA Owner %q", c.caOwner)
 	}
 	return allCRLs, nil
+}
+
+// checkCACRLs checks the CRL disclosures for CAs that issue CA certificates,
+// i.e. our roots and their cross-signs. CCADB has these in the "All Full CRL
+// URLs" column; we treat every record without partitioned CRLs as one.
+//
+// CCADB Policy 6.2 requires that the disclosed URLs exactly match the distinct
+// HTTP URLs in the crlDistributionPoints of the unexpired certificates issued
+// by that CA. Everything a root issues is itself disclosed in CCADB, so we
+// compute that set from the certificates directly, rather than assuming it
+// from our own configuration. Each disclosed URL is also fetched and checked.
+func (c CCADBProber) checkCACRLs(ctx context.Context, records []ccadbRecord, bySKID, byFingerprint map[string]*x509.Certificate) []error {
+	var errs []error
+	now := time.Now()
+
+	skidByFingerprint := make(map[string]string, len(records))
+	for _, record := range records {
+		skidByFingerprint[record.fingerprint] = record.skid
+	}
+
+	// The set of CRLDPs in unexpired certificates issued by each CA, keyed by
+	// the CA's SKID. A CA can have several records (e.g. self-signed and
+	// cross-signed) but the requirement applies to the CA, so we group by key.
+	// Revoked certificates are included, since the policy only excludes
+	// expired ones.
+	wantBySKID := make(map[string]map[string]struct{})
+	for _, record := range records {
+		issuerSKID, ok := skidByFingerprint[record.parentFingerprint]
+		if !ok {
+			// A root, or issued by another CA Owner.
+			continue
+		}
+		cert := byFingerprint[record.fingerprint]
+		if cert == nil {
+			errs = append(errs, fmt.Errorf("no PEM found in CCADB for %q (%s)", record.name, record.fingerprint))
+			continue
+		}
+		if now.After(cert.NotAfter) {
+			continue
+		}
+		if wantBySKID[issuerSKID] == nil {
+			wantBySKID[issuerSKID] = make(map[string]struct{})
+		}
+		for _, crldp := range cert.CRLDistributionPoints {
+			if strings.HasPrefix(crldp, "http://") {
+				wantBySKID[issuerSKID][crldp] = struct{}{}
+			}
+		}
+	}
+
+	type disclosure struct{ skid, url string }
+	var toFetch []disclosure
+	seen := make(map[disclosure]bool)
+
+	for _, record := range records {
+		if record.partitionedCRLs != nil {
+			// Checked by the partitioned CRL logic in Probe.
+			continue
+		}
+		cert := byFingerprint[record.fingerprint]
+		if cert == nil {
+			errs = append(errs, fmt.Errorf("no PEM found in CCADB for %q (%s)", record.name, record.fingerprint))
+			continue
+		}
+		// The requirement only covers unexpired and unrevoked CA certificates.
+		if now.After(cert.NotAfter) || (record.revocationStatus != "" && record.revocationStatus != "Not Revoked") {
+			continue
+		}
+
+		want := wantBySKID[record.skid]
+		got := make(map[string]struct{}, len(record.fullCRLs))
+		for _, url := range record.fullCRLs {
+			got[url] = struct{}{}
+		}
+
+		var missing, extra []string
+		for url := range want {
+			if _, ok := got[url]; !ok {
+				missing = append(missing, url)
+			}
+		}
+		for url := range got {
+			if _, ok := want[url]; !ok {
+				extra = append(extra, url)
+			}
+		}
+		slices.Sort(missing)
+		slices.Sort(extra)
+		if len(missing) > 0 {
+			errs = append(errs, fmt.Errorf("%q (%s): CRLDPs %q appear in unexpired certificates it issued, but are not disclosed in CCADB",
+				record.name, record.fingerprint, missing))
+		}
+		if len(extra) > 0 {
+			errs = append(errs, fmt.Errorf("%q (%s): CRLs %q are disclosed in CCADB, but do not appear in any unexpired certificate it issued",
+				record.name, record.fingerprint, extra))
+		}
+
+		for _, url := range record.fullCRLs {
+			d := disclosure{record.skid, url}
+			if !seen[d] {
+				seen[d] = true
+				toFetch = append(toFetch, d)
+			}
+		}
+	}
+
+	for _, d := range toFetch {
+		// Because this prober fetches URLs controlled by external input (CCADB),
+		// we rely on this regexp avoid arbitrary content fetching (SSRF).
+		if !c.caCRLRegexp.MatchString(d.url) {
+			errs = append(errs, fmt.Errorf("CA CRL %s does not match regexp %s", d.url, c.caCRLRegexp))
+			continue
+		}
+		err := checkCACRL(ctx, d.url, bySKID[d.skid], c.caCRLAgeLimit)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("fetching %s: %w", d.url, err))
+		}
+	}
+
+	return errs
+}
+
+func checkCACRL(ctx context.Context, url string, issuer *x509.Certificate, ageLimit time.Duration) error {
+	if issuer == nil {
+		return errors.New("no issuer certificate found")
+	}
+
+	body, err := httpGet(ctx, url)
+	if err != nil {
+		return err
+	}
+
+	crl, err := x509.ParseRevocationList(body)
+	if err != nil {
+		return err
+	}
+
+	// Our root CRLs have an issuingDistributionPoint that only sets
+	// onlyContainsCACerts, with no distributionPoint. But if it does name URIs,
+	// one must match the URL the CRL was fetched from.
+	idps, err := idp.GetIDPURIs(crl.Extensions)
+	if err != nil {
+		return fmt.Errorf("extracting IssuingDistributionPoint URIs: %w", err)
+	}
+	if len(idps) > 0 && !slices.Contains(idps, url) {
+		return fmt.Errorf("CRL had mismatched IDP %s", idps)
+	}
+
+	if time.Now().After(crl.NextUpdate) {
+		return fmt.Errorf("nextUpdate is in the past: %v", crl.NextUpdate)
+	}
+
+	return checker.ValidateCACRL(crl, issuer, ageLimit)
 }
 
 // init is called at runtime and registers this prober type.
