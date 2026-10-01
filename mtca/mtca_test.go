@@ -27,6 +27,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -690,11 +691,15 @@ func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, 
 			t.Errorf("Issue: %s", res.err)
 			continue
 		}
-		if res.MtcSerialNumber>>48 != logNumber {
+		serialLogNumber, entryIndex, err := core.DecodeMTCSerial(res.MtcSerialNumber)
+		if err != nil {
+			t.Errorf("DecodeMTCSerial: %s", err)
+			continue
+		}
+		if serialLogNumber != logNumber {
 			t.Errorf("MTC serial number of %016x does not have expected logNumber %04x",
 				res.MtcSerialNumber, logNumber)
 		}
-		entryIndex := int64(res.MtcSerialNumber & (1<<48 - 1))
 		_, ok := got[entryIndex]
 		if ok {
 			t.Errorf("entryIndex %d returned twice", entryIndex)
@@ -756,7 +761,7 @@ func TestSequence(t *testing.T) {
 	}
 	got := collectResults(t, results, 1, 5)
 
-	for _, issuanceResult := range got {
+	for entryIndex, issuanceResult := range got {
 		fake := mtca.treedb.(*fakeDB)
 		subtree, err := fake.getCheckpointSubtree(mtca.logID.String(), int64(issuanceResult.MtcSubtreeID)) //nolint:gosec // G115: we know that subtree IDs stay fairly small in these tests
 		if err != nil {
@@ -779,8 +784,8 @@ func TestSequence(t *testing.T) {
 			t.Error("subtree.MirrorSignature: got non-empty slice, want empty slice")
 		}
 
-		entryIndex := issuanceResult.MtcSerialNumber & (1<<48 - 1)
-		if !(subtree.SubtreeStart <= entryIndex && entryIndex < subtree.SubtreeEnd) {
+		index := uint64(entryIndex) //nolint:gosec // G115: collectResults keys by entry index, which is never negative.
+		if !(subtree.SubtreeStart <= index && index < subtree.SubtreeEnd) {
 			t.Errorf("subtree.MTCSerialNumber: got entryIndex %d, want entryIndex in interval [%d,%d)",
 				entryIndex, subtree.SubtreeStart, subtree.SubtreeEnd)
 		}

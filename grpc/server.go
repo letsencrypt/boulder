@@ -275,8 +275,8 @@ func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, servi
 		}
 
 		if next != healthpb.HealthCheckResponse_SERVING {
-			sb.logger.Warningf("transitioning overall health from %q to %q, due to: %s", last, next, err)
-			sb.logger.Warningf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
+			sb.logger.Warningf("transitioning overall health from %q to %q, due to health check returning: %s", last, next, err)
+			sb.logger.Warningf("transitioning health of %q from %q to %q, due to health check returning: %s", service, last, next, err)
 		} else {
 			sb.logger.Infof("transitioning overall health from %q to %q", last, next)
 			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)

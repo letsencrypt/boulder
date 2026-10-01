@@ -1200,7 +1200,10 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 func (ssa *SQLStorageAuthority) Health(ctx context.Context) error {
 	err := ssa.dbMap.SelectOne(ctx, new(int), "SELECT 1")
 	if err != nil {
-		return err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("querying read-write database: context deadline exceeded")
+		}
+		return fmt.Errorf("querying read-write database: %s", err)
 	}
 
 	err = ssa.SQLStorageAuthorityRO.Health(ctx)

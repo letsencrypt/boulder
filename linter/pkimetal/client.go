@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/zmap/zlint/v3/lint"
@@ -30,9 +29,6 @@ type Config struct {
 
 type Client struct {
 	Config
-
-	clientOnce sync.Once
-	httpClient *http.Client
 }
 
 // Enabled returns true if the client has a socket configured.
@@ -49,6 +45,18 @@ func (pkim *Client) Execute(endpoint string, der []byte) (*lint.LintResult, erro
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	// A client that always makes requests to the configured socket. Since `pkimetal.Client` objects
+	// are short-lived, we set DisableKeepAlives to ensure connections don't linger and waste resources.
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", pkim.Socket)
+			},
+		},
+	}
 
 	// Host is ignored by our unix-socket transport, so any valid base works.
 	apiURL, err := url.JoinPath("http://pkimetal", endpoint)
@@ -72,7 +80,7 @@ func (pkim *Client) Execute(endpoint string, der []byte) (*lint.LintResult, erro
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("Accept", "application/json")
 
-	resp, err := pkim.getHTTPClient().Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("making POST request to pkimetal API: %s (timeout %s)", err, timeout)
 	}
@@ -128,21 +136,4 @@ func (pkim *Client) Execute(endpoint string, der []byte) (*lint.LintResult, erro
 	}
 
 	return &lint.LintResult{Status: lint.Pass}, nil
-}
-
-func (pkim *Client) getHTTPClient() *http.Client {
-	// Create an http client on first use, as there's not a great place to do this setup ahead of time.
-	pkim.clientOnce.Do(func() {
-		socket := pkim.Socket
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.Proxy = nil
-		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", socket)
-		}
-		pkim.httpClient = &http.Client{
-			Transport: transport,
-		}
-	})
-	return pkim.httpClient
 }

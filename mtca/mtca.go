@@ -21,6 +21,7 @@ import (
 	"github.com/jmhodges/clock"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -38,8 +39,6 @@ import (
 var ErrIssuanceLogAlreadyInitialized = errors.New("issuance log already initialized")
 var ErrCheckpointNotReady = errors.New("not ready - no mirror signature")
 var ErrCheckpointChanged = errors.New("served checkpoint is not the one this MTCA last wrote")
-
-const maxLogSize = 1<<48 - 1
 
 var _ mtcapb.MTCAServer = &mtca{}
 
@@ -469,8 +468,13 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	if latest.TreeSize+int64(len(entries)) > maxLogSize {
+	if latest.TreeSize+int64(len(entries)) > 1<<48-1 {
 		return fmt.Errorf("log is full")
+	}
+
+	serial, err := core.EncodeMTCSerial(m.logID.LogNumber, latest.TreeSize)
+	if err != nil {
+		return err
 	}
 
 	candidate := m.frontier.Clone()
@@ -626,7 +630,6 @@ func (m *mtca) sequence(ctx context.Context) error {
 	}
 
 	// Notify waiting RPCs.
-	serial := uint64(m.logID.LogNumber)<<48 | uint64(latest.TreeSize) //nolint:gosec // G115: TreeSize is guaranteed positive by calling Valid().
 	for _, e := range entries {
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
