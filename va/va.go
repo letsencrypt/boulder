@@ -456,6 +456,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	if errors.Is(err, berrors.CAA) {
 		return probs.CAA(err.Error())
 	}
+	if errors.Is(err, berrors.InternalServer) {
+		return probs.ServerInternal(err.Error())
+	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
 		return probs.Connection("Server is speaking HTTP/2 over HTTP")
