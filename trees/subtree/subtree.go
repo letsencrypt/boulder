@@ -267,6 +267,50 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 	return tn == 0 && fr == nodeHash && sr == rootHash
 }
 
+// HashFromProof returns a subtree hash given an entry hash and an inclusion proof.
+//
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-evaluating-a-subtree-inclus
+func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, end int64) (tlog.Hash, error) {
+	if !valid(start, end) {
+		return tlog.Hash{}, fmt.Errorf("invalid subtree: [%d, %d)", start, end)
+	}
+	if !(start <= entryIndex && entryIndex < end) {
+		return tlog.Hash{}, fmt.Errorf("entryIndex %d not in [%d, %d)", entryIndex, start, end)
+	}
+
+	secondNumber := end - start - 1
+	firstNumber := entryIndex - start
+	currentHash := entryHash
+
+	for _, proofHash := range proof {
+		if secondNumber == 0 {
+			return tlog.Hash{}, fmt.Errorf("too many hashes in proof evaluation, got %d for entry %d in subtree [%d, %d)",
+				len(proof), entryIndex, start, end)
+		}
+
+		if firstNumber&1 == 1 || firstNumber == secondNumber {
+			currentHash = tlog.NodeHash(proofHash, currentHash)
+
+			for firstNumber&1 == 0 {
+				firstNumber >>= 1
+				secondNumber >>= 1
+			}
+
+		} else {
+			currentHash = tlog.NodeHash(currentHash, proofHash)
+		}
+
+		firstNumber >>= 1
+		secondNumber >>= 1
+	}
+
+	if secondNumber != 0 {
+		return tlog.Hash{}, fmt.Errorf("too few hashes in proof evaluation, got %d for entry %d in subtree [%d, %d)",
+			len(proof), entryIndex, start, end)
+	}
+	return currentHash, nil
+}
+
 // MTH emits the Merkle Tree Hash of its inputs, as defined in RFC 9162 section 2.1.1.
 //
 // https://www.rfc-editor.org/info/rfc9162/#name-definition-of-the-merkle-tr

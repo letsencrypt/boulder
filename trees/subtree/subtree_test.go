@@ -1,6 +1,7 @@
 package subtree
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -425,9 +426,9 @@ func TestVerifySubtreeConsistencyRejectsMismatchedProof(t *testing.T) {
 	}
 }
 
-// TestSubtreeRoundTrip covers the generate and verify round trip and checks
+// TestConsistencyProofRoundTrip covers the generate and verify round trip and checks
 // that the verifier rejects tampering.
-func TestSubtreeRoundTrip(t *testing.T) {
+func TestConsistencyProofRoundTrip(t *testing.T) {
 	for n := int64(1); n <= 48; n++ {
 		entries := seqLeaves(int(n))
 		leaves := leafHashes(entries)
@@ -468,6 +469,98 @@ func TestSubtreeRoundTrip(t *testing.T) {
 				if VerifyConsistency(start, end, n, proof, node, badRoot) {
 					t.Errorf("(%d, %d, %d) accepted a corrupted root hash", start, end, n)
 				}
+			}
+		}
+	}
+}
+
+func TestInclusionProofErrors(t *testing.T) {
+	// Entry index not in range
+	_, err := HashFromProof(tlog.Hash{}, nil, 0, 1, 2)
+	if err == nil {
+		t.Errorf("HashFromProof(tlog.Hash{}, nil, 0, 1, 2): got nil error, want error")
+	}
+	_, err = HashFromProof(tlog.Hash{}, nil, 9, 1, 2)
+	if err == nil {
+		t.Errorf("HashFromProof(tlog.Hash{}, nil, 9, 1, 2): got nil error, want error")
+	}
+	// Entry index in range, but [1, 3) is not a valid subtree
+	_, err = HashFromProof(tlog.Hash{}, make([]tlog.Hash, 1), 1, 1, 3)
+	if err == nil {
+		t.Errorf("HashFromProof(tlog.Hash{}, make([]tlog.Hash, 1), 1, 1, 3): got nil error, want error")
+	}
+}
+
+func TestInclusionProofRoundTrip(t *testing.T) {
+	treeSize := 48
+	entries := seqLeaves(treeSize)
+	leaves := leafHashes(entries)
+
+	for start := int64(0); start <= int64(treeSize); start++ {
+		for end := start + 1; end <= int64(treeSize); end++ {
+			if !valid(start, end) {
+				continue
+			}
+			for i := start; i < end; i++ {
+				t.Run(fmt.Sprintf("index=%d,subtree=[%d,%d)", i, start, end), func(t *testing.T) {
+					rootHash := MTH(leaves[start:end])
+					inclusionProof, err := tlog.ProveRecord(
+						end-start,
+						i-start,
+						buildHashReader(t, entries[start:end]))
+					if err != nil {
+						t.Fatalf("computing inclusion proof: %s", err)
+					}
+
+					hashFromProof, err := HashFromProof(leaves[i], inclusionProof, i, start, end)
+					if err != nil {
+						t.Fatalf("computing hash from subtree inclusion proof: %s", err)
+					}
+
+					if !bytes.Equal(hashFromProof[:], rootHash[:]) {
+						t.Errorf("HashFromProof()=%s, want %s", hashFromProof, rootHash)
+					}
+
+					// Flipping a byte in any proof hash must result in a different hash.
+					for j := range inclusionProof {
+						bad := slices.Clone(inclusionProof)
+						bad[j][0] ^= 0xff
+						hashFromProof, err = HashFromProof(leaves[i], bad, i, start, end)
+						if err != nil {
+							t.Fatalf("computing hash from subtree inclusion proof: %s", err)
+						}
+						if bytes.Equal(hashFromProof[:], rootHash[:]) {
+							t.Errorf("HashFromProof()=%s after corruption, wanted literally anything else", hashFromProof)
+						}
+					}
+
+					// Flipping a byte in the node hash must result in a different hash.
+					badEntryHash := leaves[i]
+					badEntryHash[0] ^= 0xff
+					hashFromProof, err = HashFromProof(badEntryHash, inclusionProof, i, start, end)
+					if err != nil {
+						t.Fatalf("computing hash from subtree inclusion proof: %s", err)
+					}
+					if bytes.Equal(hashFromProof[:], rootHash[:]) {
+						t.Errorf("HashFromProof()=%s after corruption, wanted literally anything else", hashFromProof)
+					}
+
+					// Skipping the first hash in the proof must be an error.
+					if len(inclusionProof) > 0 {
+						_, err = HashFromProof(leaves[i], inclusionProof[1:], i, start, end)
+						if err == nil {
+							t.Errorf("constructing hash from too-short inclusion proof: got nil error, want non-nil error")
+						}
+					}
+
+					// Adding a hash must be an error.
+					longProof := slices.Clone(inclusionProof)
+					longProof = append(longProof, tlog.Hash{})
+					_, err = HashFromProof(leaves[i], longProof, i, start, end)
+					if err == nil {
+						t.Errorf("constructing hash from too-long inclusion proof: got nil error, want non-nil error")
+					}
+				})
 			}
 		}
 	}

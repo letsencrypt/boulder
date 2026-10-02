@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path"
 	"sync"
 	"time"
 
@@ -67,11 +66,10 @@ func New(
 	}
 
 	m := &mtca{
-		issuer:        issuer,
-		profiles:      profiles,
-		logID:         logID,
-		pool:          &pool{maxSize: 100},
-		checkpointKey: path.Join(logID.TilePrefix(), "checkpoint"),
+		issuer:   issuer,
+		profiles: profiles,
+		logID:    logID,
+		pool:     &pool{maxSize: 100},
 
 		sequencingPeriod: sequencingPeriod,
 
@@ -106,11 +104,8 @@ type mtca struct {
 	issuer   *issuance.Issuer
 	profiles map[string]*issuance.Profile
 	logID    issuancelog.ID
-	// checkpointKey is the key of the log's <prefix>/checkpoint in tile
-	// storage, per c2sp.org/tlog-tiles.
-	checkpointKey string
-	cosigner      *cosignature.Cosigner
-	verifier      *cosignature.Verifier
+	cosigner *cosignature.Cosigner
+	verifier *cosignature.Verifier
 
 	// servedCheckpointETag guards writes of the checkpoint served from tile
 	// storage. It holds the ETag from the last read or write. It is used to
@@ -244,7 +239,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 	err = m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: rootHash}, signedNote)
 	if errors.Is(err, ErrCheckpointChanged) {
 		return fmt.Errorf("initializing issuance log for %s: a checkpoint is already served at s3://%s/%s, refusing to replace it: %w",
-			m.logID.String(), m.s3c.Bucket(), m.checkpointKey, err)
+			m.logID.String(), m.s3c.Bucket(), m.logID.CheckpointPath(), err)
 	}
 	return err
 }
@@ -721,7 +716,7 @@ func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error)
 // checkpointNote assembles the checkpoint of tree from its note text and the
 // MTCA's cosignature line carrying mtcaSignature, and verifies it.
 func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, error) {
-	caCosignatureLine, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), 0, mtcaSignature)
+	caCosignatureLine, err := m.cosigner.SignatureLine(0, mtcaSignature)
 	if err != nil {
 		return nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
 	}
@@ -746,7 +741,7 @@ func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, err
 func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
 	etag, err := m.writeCheckpoint(ctx, signedNote, m.servedCheckpointETag)
 	if errors.Is(err, ErrCheckpointChanged) {
-		// The served checkpoint may be an earlier one of ours, from before a
+		// The served checkpoint may be a valid earlier one of ours, from before a
 		// restart or from a failed pass whose write succeeded but never
 		// responded.
 		served, servedETag, readErr := m.readCheckpoint(ctx)
@@ -754,11 +749,12 @@ func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote [
 			return fmt.Errorf("serving checkpoint of tree size %d: %w", tree.N, readErr)
 		}
 		cp, _, openErr := checkpoint.Open(served, m.verifier)
-		if openErr != nil || cp.Tree.N > tree.N {
+		if openErr != nil || cp.Tree.N > tree.N || cp.Origin != m.logID.Origin() {
 			// It is not, so another process is writing checkpoints for this
 			// log, or the checkpoint was deleted.
 			return fmt.Errorf("serving checkpoint of tree size %d: %w", tree.N, err)
 		}
+
 		etag, err = m.writeCheckpoint(ctx, signedNote, servedETag)
 	}
 	if err != nil {
@@ -772,7 +768,8 @@ func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote [
 // empty string when none is served yet.
 func (m *mtca) readCheckpoint(ctx context.Context) ([]byte, string, error) {
 	bucket := m.s3c.Bucket()
-	out, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &m.checkpointKey})
+	path := m.logID.CheckpointPath()
+	out, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &path})
 	if err != nil {
 		respErr, ok := errors.AsType[*awshttp.ResponseError](err)
 		if ok && respErr.HTTPStatusCode() == http.StatusNotFound {
@@ -780,17 +777,17 @@ func (m *mtca) readCheckpoint(ctx context.Context) ([]byte, string, error) {
 			// writes one.
 			return nil, "", nil
 		}
-		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, m.checkpointKey, err)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
 	}
 	defer out.Body.Close()
 
 	served, err := io.ReadAll(out.Body)
 	if err != nil {
-		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, m.checkpointKey, err)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
 	}
 	if out.ETag == nil {
 		// This should never happen. Every read returns the ETag.
-		return nil, "", fmt.Errorf("reading s3://%s/%s: no ETag", bucket, m.checkpointKey)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: no ETag", bucket, path)
 	}
 	return served, *out.ETag, nil
 }
@@ -805,9 +802,10 @@ func (m *mtca) writeCheckpoint(ctx context.Context, signedNote []byte, prevETag 
 	bucket := m.s3c.Bucket()
 	contentType := "text/plain; charset=utf-8"
 	cacheControl := "no-store"
+	path := m.logID.CheckpointPath()
 	input := &s3.PutObjectInput{
 		Bucket:       &bucket,
-		Key:          &m.checkpointKey,
+		Key:          &path,
 		ContentType:  &contentType,
 		CacheControl: &cacheControl,
 		Body:         bytes.NewReader(signedNote),
@@ -825,14 +823,14 @@ func (m *mtca) writeCheckpoint(ctx context.Context, signedNote []byte, prevETag 
 		if ok && (respErr.HTTPStatusCode() == http.StatusPreconditionFailed || respErr.HTTPStatusCode() == http.StatusNotFound) {
 			// The served checkpoint is not the one prevETag describes, or none
 			// is served.
-			return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, m.checkpointKey, ErrCheckpointChanged)
+			return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, path, ErrCheckpointChanged)
 		}
-		return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, m.checkpointKey, err)
+		return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, path, err)
 	}
 
 	if out.ETag == nil {
 		// This should never happen. Every write returns the new ETag.
-		return "", fmt.Errorf("writing s3://%s/%s: no ETag in response", bucket, m.checkpointKey)
+		return "", fmt.Errorf("writing s3://%s/%s: no ETag in response", bucket, path)
 	}
 	return *out.ETag, nil
 }
