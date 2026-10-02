@@ -288,7 +288,7 @@ func TestWriteCheckpoint(t *testing.T) {
 		t.Fatalf("setup: %s", err)
 	}
 	defer cleanup()
-	key := m.checkpointKey
+	key := m.logID.CheckpointPath()
 	delete(fs3.Objects, key)
 
 	first, err := m.writeCheckpoint(t.Context(), []byte("first note\n"), "")
@@ -356,7 +356,7 @@ func TestInitLogRefusesServedCheckpoint(t *testing.T) {
 	fs3 := bs3test.New()
 	m.s3c = fs3
 	m.servedCheckpointETag = ""
-	key := m.checkpointKey
+	key := m.logID.CheckpointPath()
 	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
 
 	err = m.InitLog(t.Context())
@@ -385,7 +385,7 @@ func TestPreflightServesCheckpoint(t *testing.T) {
 	}
 	verifyStores(t, m, fs3)
 
-	delete(fs3.Objects, m.checkpointKey)
+	delete(fs3.Objects, m.logID.CheckpointPath())
 	m.servedCheckpointETag = ""
 	err = m.Preflight(t.Context())
 	if err != nil {
@@ -406,7 +406,7 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	defer cleanup()
 	latest := verifyStores(t, m, fs3)
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
-	key := m.checkpointKey
+	key := m.logID.CheckpointPath()
 	signedNote := fs3.Objects[key].Data
 
 	fs3.Objects[key] = bs3test.StoredObject{Data: signedNote, ETag: "\"lost response\""}

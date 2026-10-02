@@ -159,6 +159,14 @@ func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
 	return out, nil
 }
 
+// SignatureLine assembles the note signature line of the cosigner with the
+// Cosigner's name and key ID plus the provided timestamp and rawSignature as
+// its timestamped_signature. Callers are responsible for ensuring the signature
+// line is valid for any note text they append it to.
+func (c *Cosigner) SignatureLine(timestamp uint64, rawSignature []byte) ([]byte, error) {
+	return SignatureLine(c.name, c.keyID, timestamp, rawSignature)
+}
+
 // Verifier is a note.Verifier that verifies an MTC cosigner's ML-DSA-44
 // cosignatures over checkpoints.
 //
@@ -262,6 +270,9 @@ func RawSignature(timestampedSignature []byte) ([]byte, error) {
 // given keyName, keyID, timestamp and rawSignature as its timestamped_signature.
 // Callers are responsible for ensuring the signature line is valid for any note
 // text they append it to.
+//
+// See also `Cosigner.SignatureLine` for a more convenient method when the caller
+// is assembling a signature line based on its own cosigner ID.
 func SignatureLine(keyName string, keyID uint32, timestamp uint64, rawSignature []byte) ([]byte, error) {
 	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
 		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)

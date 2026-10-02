@@ -2,6 +2,7 @@ package issuancelog
 
 import (
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -92,4 +93,9 @@ func (id ID) Origin() string {
 // log number 44 is "44947.4.1/44".
 func (id ID) TilePrefix() string {
 	return fmt.Sprintf("%s/%d", id.CAID, id.LogNumber)
+}
+
+// CheckpointPath returns the path of the checkpoint file for this log within tile storage.
+func (id ID) CheckpointPath() string {
+	return path.Join(id.TilePrefix(), "checkpoint")
 }
