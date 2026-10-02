@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/trees"
 )
 
 var ErrIssuanceLogNotInitialized = errors.New("issuance log DB not initialized")
@@ -31,7 +32,7 @@ func (c *CheckpointModel) Valid() error {
 	if len(c.MTCLogID) == 0 {
 		return errors.New("MTCLogID is empty")
 	}
-	if c.TreeSize <= 0 {
+	if !(0 < c.TreeSize && c.TreeSize <= trees.MaxSize) {
 		return fmt.Errorf("TreeSize of %d is invalid", c.TreeSize)
 	}
 	if len(c.RootHash) == 0 {

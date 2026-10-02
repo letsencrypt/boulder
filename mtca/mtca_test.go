@@ -41,6 +41,7 @@ import (
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/cosigned"
@@ -171,6 +172,7 @@ func TestCheckpointValid(t *testing.T) {
 	testCases := []testCase{
 		{"no MTCLogID", treedb.CheckpointModel{ID: 7, TreeSize: 9, RootHash: rootHash[:]}},
 		{"no TreeSize", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", RootHash: rootHash[:]}},
+		{"TreeSize too big", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", TreeSize: trees.MaxSize + 1, RootHash: rootHash[:]}},
 		{"short RootHash", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", TreeSize: 9, RootHash: rootHash[:4]}},
 		{"no RootHash", treedb.CheckpointModel{ID: 7, MTCLogID: "TestLog", TreeSize: 9}},
 	}
