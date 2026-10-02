@@ -484,10 +484,10 @@ func TestInclusionProofErrors(t *testing.T) {
 	if err == nil {
 		t.Errorf("HashFromProof(tlog.Hash{}, nil, 9, 1, 2): got nil error, want error")
 	}
-	// Entry index in range, but [1, 3) is not a valid subtree
+	// Entry index in range, but [1,3] is not a valid subtree
 	_, err = HashFromProof(tlog.Hash{}, make([]tlog.Hash, 1), 1, 1, 3)
 	if err == nil {
-		t.Errorf("HashFromProof(tlog.Hash{}, make([]tlog.Hash, 1), 1, 1, 3): got nil error, want error")
+		t.Errorf("HashFromProof(tlog.Hash{}, nil, 1, 1, 3): got nil error, want error")
 	}
 }
 
