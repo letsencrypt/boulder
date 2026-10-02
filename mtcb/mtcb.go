@@ -326,10 +326,12 @@ func (m *mtcb) readCheckpoint(ctx context.Context, logID issuancelog.ID) (*check
 	if !ok {
 		return nil, fmt.Errorf("issuer public key is %T, must be ML-DSA-44", issuer.Certificate.PublicKey)
 	}
+
 	verifier, err := cosignature.NewVerifier(logID.CAID, pubKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA verifier: %s", err)
 	}
+
 	cp, _, err := checkpoint.Open(body, verifier)
 	if err != nil {
 		return nil, err
