@@ -763,7 +763,7 @@ func TestSequence(t *testing.T) {
 
 	for entryIndex, issuanceResult := range got {
 		fake := mtca.treedb.(*fakeDB)
-		subtree, err := fake.getCheckpointSubtree(mtca.logID.String(), int64(issuanceResult.MtcSubtreeID)) //nolint:gosec // G115: we know that subtree IDs stay fairly small in these tests
+		subtree, err := fake.getCheckpointSubtree(mtca.logID.String(), issuanceResult.MtcSubtreeID)
 		if err != nil {
 			t.Fatalf("getting subtree: %s", err)
 		}
