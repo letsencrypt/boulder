@@ -1,0 +1,10 @@
+# https://github.com/github-linguist/linguist/blob/main/docs/overrides.md
+#   * linguist-generated - excluded from stats, hidden in diffs
+#   * linguist-vendored - excluded from stats
+#   * linguist-documentation - excluded from stats
+#
+# https://git-scm.com/docs/gitattributes#_marking_files_as_binary
+*.pb.go -diff linguist-generated=true
+docs/* linguist-documentation=true
+go.sum linguist-generated=true
+vendor/* linguist-vendored=true

@@ -287,7 +287,7 @@ message FinalizeMTCOrderRequest {
   int64 id = 1;
   string mtcLogID = 2;
   uint64 mtcSerialNumber = 3;
-  uint64 mtcSubtreeID = 4;
+  int64 mtcSubtreeID = 4;
 }
 
 message GetAuthorizationsRequest {

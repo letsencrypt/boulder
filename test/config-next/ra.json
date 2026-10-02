@@ -100,6 +100,16 @@
 				"hostOverride": "mtca.boulder"
 			}
 		},
+		"mtcbService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "mtcb",
+				"domain": "service.consul"
+			},
+			"timeout": "20s",
+			"noWaitForReady": true,
+			"hostOverride": "mtcb.boulder"
+		},
 		"vaService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {

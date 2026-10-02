@@ -299,7 +299,7 @@ func (p *pool) append(e pendingEntry) error {
 type issuanceNotification struct {
 	serialNumber uint64
 	// A reference to a row in the mtcmeta subtrees table.
-	subtreeID uint64
+	subtreeID int64
 	errored   bool
 }
 
@@ -633,7 +633,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	for _, e := range entries {
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
-			subtreeID:    uint64(subtreeID), //nolint:gosec // G115: db operations will not return a negative autoincrement id
+			subtreeID:    subtreeID,
 		}
 		serial++
 	}

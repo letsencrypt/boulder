@@ -253,6 +253,6 @@ ALTER TABLE `orders`
   ADD COLUMN `mtcLogID` varchar(255) DEFAULT NULL,
   ADD COLUMN `mtcSerialNumber` bigint(20) unsigned DEFAULT NULL,
   -- A reference to the `subtreeCheckpoints` table.
-  ADD COLUMN `mtcSubtreeID` bigint(20) unsigned DEFAULT NULL;
+  ADD COLUMN `mtcSubtreeID` bigint(20) DEFAULT NULL;
 
 ALTER TABLE `authz2` ADD COLUMN `beganProcessing` tinyint(1) NOT NULL DEFAULT 0;
