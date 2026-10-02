@@ -180,6 +180,12 @@ func (i *Impl) WithTransaction(ctx context.Context, f TxFunc) (any, error) {
 type TxFunc func(tx Tx) (any, error)
 
 // Tx represents a transaction.
+//
+// The methods on this are those that are currently called within a transaction by the MTCA.
+// We don't include these methods on `*Impl` because we don't want them to be called outside
+// a transaction. We don't include all the methods of `*Impl` here because any test that wants
+// to mock `Impl.WithTransaction` needs to implement a `Tx`, which means such a test needs to
+// implement each method in this interface. That means keeping it small is useful.
 type Tx interface {
 	AlreadyInitialized(ctx context.Context, mtcLogID string) (bool, error)
 	InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *CheckpointModel) error
