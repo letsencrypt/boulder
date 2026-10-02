@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -52,6 +53,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
+	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -380,7 +382,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder,
-		profiles, nil, 5*time.Minute, ctp, nil, profileToMTCA)
+		profiles, nil, 5*time.Minute, ctp, nil, profileToMTCA, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
@@ -3356,7 +3358,7 @@ type mockSAWithFinalizeMTC struct {
 		orderID         int64
 		mtcLogID        string
 		mtcSerialNumber uint64
-		mtcSubtreeID    uint64
+		mtcSubtreeID    int64
 	}
 }
 
@@ -3416,6 +3418,138 @@ func TestIssueMTC(t *testing.T) {
 	}
 	if mockSA.storage.mtcSubtreeID != 34 {
 		t.Errorf("mtcSubtreeID: got %d, want %d", mockSA.storage.mtcSubtreeID, 34)
+	}
+}
+
+// mockSAWithGetOrder returns a fixed order in response to GetOrder().
+type mockSAWithGetOrder struct {
+	sapb.StorageAuthorityClient
+	order *corepb.Order
+}
+
+func (sa *mockSAWithGetOrder) GetOrder(_ context.Context, _ *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	return proto.Clone(sa.order).(*corepb.Order), nil
+}
+
+// mockMTCBStandaloneReady returns a fixed value in response to StandaloneReady()
+// and records whether it was called.
+type mockMTCBStandaloneReady struct {
+	mtcapb.MTCAClient
+	ready  bool
+	called bool
+}
+
+func (mtcb *mockMTCBStandaloneReady) StandaloneReady(_ context.Context, _ *mtcbpb.StandaloneReadyRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneReadyResponse, error) {
+	mtcb.called = true
+	return &mtcbpb.StandaloneReadyResponse{Ready: mtcb.ready}, nil
+}
+
+func (mtcb *mockMTCBStandaloneReady) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (mtcb *mockMTCBStandaloneReady) GetLandmarkRelative(ctx context.Context, req *mtcbpb.LandmarkRelativeRequest, _ ...grpc.CallOption) (*mtcbpb.LandmarkRelativeResponse, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func TestGetOrder(t *testing.T) {
+	testCases := []struct {
+		name           string
+		order          *corepb.Order
+		mtcbReady      bool
+		wantStatus     core.AcmeStatus
+		wantMTCACalled bool
+	}{
+		{
+			name: "non-MTC order, not processing",
+			order: &corepb.Order{
+				Status:                 string(core.StatusReady),
+				CertificateProfileName: "test",
+			},
+			wantStatus: core.StatusReady,
+		},
+		{
+			name: "non-MTC order, processing, no serial",
+			order: &corepb.Order{
+				Status:                 string(core.StatusProcessing),
+				CertificateProfileName: "test",
+			},
+			wantStatus: core.StatusProcessing,
+		},
+		{
+			name: "non-MTC order, processing, with serial",
+			order: &corepb.Order{
+				Status:                 string(core.StatusProcessing),
+				CertificateProfileName: "test",
+				CertificateSerial:      "abcd",
+			},
+			wantStatus: core.StatusProcessing,
+		},
+		{
+			name: "MTC order, not processing",
+			order: &corepb.Order{
+				Status:                 string(core.StatusReady),
+				CertificateProfileName: "mtcshortlived",
+			},
+			wantStatus: core.StatusReady,
+		},
+		{
+			name: "MTC order, processing, not yet sequenced",
+			order: &corepb.Order{
+				Status:                 string(core.StatusProcessing),
+				CertificateProfileName: "mtcshortlived",
+			},
+			mtcbReady:  true,
+			wantStatus: core.StatusProcessing,
+		},
+		{
+			name: "MTC order, processing, sequenced, not ready",
+			order: &corepb.Order{
+				Status:                 string(core.StatusProcessing),
+				CertificateProfileName: "mtcshortlived",
+				MtcLogID:               "44947.4.1.0.44",
+				MtcSerialNumber:        56,
+				MtcSubtreeID:           34,
+			},
+			wantStatus:     core.StatusProcessing,
+			wantMTCACalled: true,
+		},
+		{
+			name: "MTC order, processing, sequenced, ready",
+			order: &corepb.Order{
+				Status:                 string(core.StatusProcessing),
+				CertificateProfileName: "mtcshortlived",
+				MtcLogID:               "44947.4.1.0.44",
+				MtcSerialNumber:        56,
+				MtcSubtreeID:           34,
+			},
+			mtcbReady:      true,
+			wantStatus:     core.StatusValid,
+			wantMTCACalled: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, ra, _, _, _, cleanup := initAuthorities(t)
+			defer cleanup()
+
+			ra.profiles.byName["mtcshortlived"] = &validationProfile{mtc: true}
+			mockMTCB := &mockMTCBStandaloneReady{ready: tc.mtcbReady}
+			ra.mtcb = mockMTCB
+			ra.SA = &mockSAWithGetOrder{order: tc.order}
+
+			got, err := ra.GetOrder(t.Context(), &rapb.GetOrderRequest{OrderID: 1234})
+			if err != nil {
+				t.Fatalf("GetOrder: %s", err)
+			}
+			if got.Status != string(tc.wantStatus) {
+				t.Errorf("Status = %q, want %q", got.Status, tc.wantStatus)
+			}
+			if mockMTCB.called != tc.wantMTCACalled {
+				t.Errorf("MTCA StandaloneReady called = %t, want %t", mockMTCB.called, tc.wantMTCACalled)
+			}
+		})
 	}
 }
 
