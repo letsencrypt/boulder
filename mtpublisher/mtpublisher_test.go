@@ -33,6 +33,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -70,7 +71,32 @@ func (f *fakeCheckpointDB) AddMirrorSignature(_ context.Context, id int64, mirro
 // key.
 func testPublisher(t *testing.T, key *mldsa.PrivateKey, checkpoints *fakeCheckpointDB) *mtpublisher {
 	t.Helper()
-	p, err := New(checkpoints, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock())
+	cosignDuration := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "mtpub_cosign_duration_seconds",
+	})
+	entriesUploaded := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mtpub_entries_uploaded_total",
+	}, []string{"result"})
+	lastPubSuccessTimestamp := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "mtpub_last_publish_success_timestamp_seconds",
+	})
+	mirrorRequestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "mtpub_mirror_request_duration_seconds",
+	}, []string{"mirror", "endpoint", "status"})
+	publishPasses := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mtpub_publish_passes_total",
+	}, []string{"result"})
+	sourceDurations := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "mtpub_source_duration_seconds",
+	}, []string{"operation"})
+	treeSize := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mtpub_tree_size",
+	}, []string{"type"})
+	verifyFailures := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mtpub_sig_verify_failures_total",
+	}, []string{"signer"})
+	metrics := &mtpublisherMetrics{cosignDuration, entriesUploaded, lastPubSuccessTimestamp, mirrorRequestDuration, publishPasses, sourceDurations, treeSize, verifyFailures}
+	p, err := New(checkpoints, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock(), metrics)
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}

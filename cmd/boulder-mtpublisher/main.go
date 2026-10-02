@@ -108,6 +108,8 @@ func main() {
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
 
+	metrics := mtpublisher.NewMTPublisherMetrics(scope)
+
 	dbMap, err := sa.InitDB(c.MTPublisher.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
@@ -127,7 +129,7 @@ func main() {
 	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
-	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
+	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger, metrics)
 	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())
