@@ -16,6 +16,7 @@ import (
 	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
 	internalauthsmithy "github.com/aws/aws-sdk-go-v2/internal/auth/smithy"
 	internalConfig "github.com/aws/aws-sdk-go-v2/internal/configsources"
+	"github.com/aws/aws-sdk-go-v2/internal/timeouts"
 	"github.com/aws/aws-sdk-go-v2/internal/v4a"
 	acceptencodingcust "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding"
 	presignedurlcust "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url"
@@ -533,6 +534,12 @@ func resolveHTTPClient(o *Options) {
 		})
 	}
 
+	if _, ok := buildable.GetReadTimeout(); !ok {
+		if timeout, ok := timeouts.GetServiceReadTimeout(ServiceID); ok {
+			buildable = buildable.WithReadTimeout(timeout)
+		}
+	}
+
 	o.HTTPClient = buildable
 }
 
@@ -672,10 +679,6 @@ func newDefaultV4Signer(o Options) *v4.Signer {
 
 func addClientRequestID(stack *middleware.Stack) error {
 	return stack.Build.Add(&awsmiddleware.ClientRequestID{}, middleware.After)
-}
-
-func addComputeContentLength(stack *middleware.Stack) error {
-	return stack.Build.Insert(&smithyhttp.ComputeContentLength{}, "ClientRequestID", middleware.After)
 }
 
 func addRawResponseToMetadata(stack *middleware.Stack) error {
