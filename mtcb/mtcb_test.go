@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
+	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -248,12 +249,15 @@ func testMTCB(t *testing.T, fs3 *bs3test.FakeS3, checkpoints []*treedb.Checkpoin
 }
 
 // verifyStandalone checks that certDER is a standalone certificate for expected
-// that proves inclusion to subtree and carries its cosignatures.
-func (l *testLog) verifyStandalone(t *testing.T, certDER []byte, expected issued, subtree *treedb.CheckpointSubtreeModel) {
+// that proves inclusion to dbSubtree's rootHash and carries its cosignatures.
+func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *treedb.CheckpointSubtreeModel) {
 	t.Helper()
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		t.Fatalf("x509.ParseCertificate: %s", err)
+	}
+	if !cert.SerialNumber.IsUint64() {
+		t.Fatalf("serial number %x is not representable as a uint64", cert.SerialNumber)
 	}
 	if cert.SerialNumber.Uint64() != expected.serial {
 		t.Errorf("serial = %d, want %d", cert.SerialNumber.Uint64(), expected.serial)
@@ -269,30 +273,43 @@ func (l *testLog) verifyStandalone(t *testing.T, certDER []byte, expected issued
 	if err != nil {
 		t.Fatalf("UnmarshalMTCProof: %s", err)
 	}
-	if mtcProof.Start != subtree.SubtreeStart {
-		t.Errorf("start = %d, want %d", mtcProof.Start, subtree.SubtreeStart)
+	if mtcProof.Start != dbSubtree.SubtreeStart {
+		t.Errorf("start = %d, want %d", mtcProof.Start, dbSubtree.SubtreeStart)
 	}
-	if mtcProof.End != subtree.SubtreeEnd {
-		t.Errorf("end = %d, want %d", mtcProof.End, subtree.SubtreeEnd)
+	if mtcProof.End != dbSubtree.SubtreeEnd {
+		t.Errorf("end = %d, want %d", mtcProof.End, dbSubtree.SubtreeEnd)
 	}
 
-	// TODO: This test fetches the hash of the MTCLogEntry at index `expected.index` and verifies the proof against that.
-	// Instead it should calculate the hash based purely on the `certDER`, following the algorithm at
-	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-verifying-certificate-signa
-	subtreeEnd := int64(subtree.SubtreeEnd) //nolint:gosec // G115: SubtreeEnd fits an int64 in this test.
-	tree := tlog.Tree{N: subtreeEnd, Hash: tlog.Hash(subtree.SubtreeHash)}
-	hr := tlog.TileHashReader(tree, tiles.NewTileReader(t.Context(), l.fs3, testLogID.TilePrefix()))
-	leafHashes, err := hr.ReadHashes([]int64{tlog.StoredHashIndex(0, expected.index)})
+	_, entryIndex, err := core.DecodeMTCSerial(cert.SerialNumber.Uint64())
 	if err != nil {
-		t.Fatalf("reading the leaf hash from tile storage: %s", err)
+		t.Fatal(err)
 	}
-	mtcLogEntryHash := leafHashes[0]
 
-	err = tlog.CheckRecord(mtcProof.InclusionProof, subtreeEnd, tree.Hash, expected.index, mtcLogEntryHash)
+	mtcle, err := entry.FromX509(certDER, crypto.SHA256)
 	if err != nil {
-		t.Errorf("inclusion proof is not for index %d in the checkpoint of tree size %d: %s", expected.index, subtree.SubtreeEnd, err)
+		t.Fatal(err)
 	}
 
+	mtcleMarshaled, err := mtcle.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedSubtreeHash, err := subtree.HashFromProof(
+		tlog.RecordHash(mtcleMarshaled),
+		mtcProof.InclusionProof,
+		entryIndex,
+		int64(mtcProof.Start), //nolint:gosec // G115: we know these are < 1<<48 in tests
+		int64(mtcProof.End),   //nolint:gosec // G115: we know these are < 1<<48 in tests
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dbSubtree.SubtreeHash, expectedSubtreeHash[:]) {
+		t.Errorf("subtree hash from database (%s) != HashFromProof(%s)", tlog.Hash(dbSubtree.SubtreeHash), expectedSubtreeHash)
+	}
+
+	// TODO: sign real signatures in the test and validate them here.
 	if len(mtcProof.Signatures) != 2 {
 		t.Fatalf("got %d cosignatures, want 2", len(mtcProof.Signatures))
 	}
@@ -300,11 +317,11 @@ func (l *testLog) verifyStandalone(t *testing.T, certDER []byte, expected issued
 	for _, sig := range mtcProof.Signatures {
 		sigsByID[string(sig.CosignerID)] = sig.Signature
 	}
-	if !bytes.Equal(sigsByID[testLogID.CAID], subtree.MTCASignature) {
-		t.Errorf("MTCA cosignature = %x, want %x", sigsByID[testLogID.CAID], subtree.MTCASignature)
+	if !bytes.Equal(sigsByID[testLogID.CAID], dbSubtree.MTCASignature) {
+		t.Errorf("MTCA cosignature = %x, want %x", sigsByID[testLogID.CAID], dbSubtree.MTCASignature)
 	}
-	if !bytes.Equal(sigsByID[mirrorID], subtree.MirrorSignature) {
-		t.Errorf("mirror cosignature = %x, want %x", sigsByID[mirrorID], subtree.MirrorSignature)
+	if !bytes.Equal(sigsByID[mirrorID], dbSubtree.MirrorSignature) {
+		t.Errorf("mirror cosignature = %x, want %x", sigsByID[mirrorID], dbSubtree.MirrorSignature)
 	}
 }
 
@@ -341,7 +358,7 @@ func TestGetStandalone(t *testing.T) {
 				if err != nil {
 					t.Fatalf("GetStandalone for serial %016x: %s", expected.serial, err)
 				}
-				l.verifyStandalone(t, resp.CertDER, expected, tc.subtree)
+				verifyStandalone(t, resp.CertDER, expected, tc.subtree)
 			}
 		})
 	}
