@@ -169,11 +169,129 @@ func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSub
 }
 
 // WithTransaction calls `github.com/letsencrypt/boulder/db.WithTransaction` for the given
-// transaction function, with the built-in DB. In the database-backed implementation this
-// is simply a pass-through.
+// transaction function, with the built-in DB.
+func (i *Impl) WithTransaction(ctx context.Context, f TxFunc) (any, error) {
+	return db.WithTransaction(ctx, i.db, func(tx db.Executor) (any, error) {
+		return f(txImpl{tx})
+	})
+}
+
+// TxFunc is a function that gets run in a transaction by `Impl.WithTransaction` (or mocks).
+type TxFunc func(tx Tx) (any, error)
+
+// Tx represents a transaction.
 //
-// TODO(#8998): Replace TxFunc's `db.Executor` parameter with an interface that defines
-// the operations we want to perform inside a transaction, so we can mock those.
-func (i *Impl) WithTransaction(ctx context.Context, f db.TxFunc) (any, error) {
-	return db.WithTransaction(ctx, i.db, f)
+// The methods on this are those that are currently called within a transaction by the MTCA.
+// We don't include these methods on `*Impl` because we don't want them to be called outside
+// a transaction. We don't include all the methods of `*Impl` here because any test that wants
+// to mock `Impl.WithTransaction` needs to implement a `Tx`, which means such a test needs to
+// implement each method in this interface. That means keeping it small is useful.
+type Tx interface {
+	AlreadyInitialized(ctx context.Context, mtcLogID string) (bool, error)
+	InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *CheckpointModel) error
+	AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error
+	SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error)
+	SetLatestCheckpointID(ctx context.Context, mtcLogID string, old, new int64) error
+}
+
+type txImpl struct {
+	tx db.Executor
+}
+
+// AlreadyInitialized returns true if the given mtcLogID is initialized already.
+func (tx txImpl) AlreadyInitialized(ctx context.Context, mtcLogID string) (bool, error) {
+	var numLatestCheckpoints int64
+	err := tx.tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
+		mtcLogID)
+	if err != nil {
+		return false, fmt.Errorf("getting latestCheckpoint: %s", err)
+	}
+
+	var numCheckpoints int64
+	err = tx.tx.SelectOne(ctx, &numCheckpoints, "SELECT COUNT(*) FROM checkpoints WHERE mtcLogID = ?",
+		mtcLogID)
+	if err != nil {
+		return false, fmt.Errorf("getting checkpoints: %s", err)
+	}
+
+	if numCheckpoints > 0 || numLatestCheckpoints > 0 {
+		if numLatestCheckpoints == 1 {
+			return true, nil
+		}
+
+		return false, fmt.Errorf("initializing issuance log for %s: already has %d checkpoints and %d latestCheckpoint rows",
+			mtcLogID, numCheckpoints, numLatestCheckpoints)
+	}
+
+	return false, nil
+}
+
+// InsertFirstCheckpoint inserts a `CheckpointModel` and also inserts its ID into `latestCheckpoint` table.
+func (tx txImpl) InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *CheckpointModel) error {
+	err := firstCheckpoint.Valid()
+	if err != nil {
+		return fmt.Errorf("first checkpoint invalid: %s", err)
+	}
+	if len(firstCheckpoint.MTCASignature) == 0 {
+		return fmt.Errorf("first checkpoint needs MTCASignature")
+	}
+
+	err = tx.tx.Insert(ctx, firstCheckpoint)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.tx.ExecContext(ctx, "INSERT INTO latestCheckpoint (id, mtcLogID) VALUES (?, ?)", firstCheckpoint.ID, firstCheckpoint.MTCLogID)
+	return err
+}
+
+// AddMTCASignature updates an already-existing checkpoint to fill the MTCASignature field.
+func (tx txImpl) AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error {
+	result, err := tx.tx.ExecContext(ctx, "UPDATE checkpoints SET mtcaSignature = ? WHERE mtcLogID = ? AND id = ?",
+		caSig, mtcLogID, id)
+	if err != nil {
+		return fmt.Errorf("updating checkpoint with MTCA signature: %s", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("updating checkpoint with MTCA signature, getting rows affected: %s", err)
+	}
+	if rowsAffected != 1 {
+		return fmt.Errorf("updating checkpoint with MTCA signature: %d rows updated, want 1", rowsAffected)
+	}
+	return nil
+}
+
+// SelectLatestForUpdate does a `SELECT ... FOR UPDATE` of the `latestCheckpoint` row for the given mtcLogID, returning the row's ID.
+func (tx txImpl) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error) {
+	// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
+	// The FOR UPDATE does the heavy lifting here.
+	// https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/selecting-data/for-update
+	var latestID int64
+	err := tx.tx.SelectOne(ctx, &latestID,
+		`SELECT id from latestCheckpoint WHERE mtcLogID = ? FOR UPDATE`,
+		mtcLogID)
+	if err != nil {
+		return 0, err
+	}
+	return latestID, nil
+}
+
+// SetLatestCheckpointID updates the `latestCheckpoint` row for the given mtcLogID to point to the checkpoint with id `new`.
+// Errors if the existing value in `latestCheckpoint was not equal to `old`.
+func (tx txImpl) SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID, newID int64) error {
+	result, err := tx.tx.ExecContext(ctx, "UPDATE latestCheckpoint SET id = ? WHERE mtcLogID = ? AND id = ?",
+		newID, mtcLogID, oldID)
+	if err != nil {
+		return fmt.Errorf("updating latestCheckpoint: %s", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("updating latestCheckpoint, getting rows affected: %s", err)
+	}
+	if rowsAffected != 1 {
+		return fmt.Errorf("updating latestCheckpoint: %d rows updated, rolling back", rowsAffected)
+	}
+
+	return nil
 }
