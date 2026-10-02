@@ -273,10 +273,10 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 	if err != nil {
 		t.Fatalf("UnmarshalMTCProof: %s", err)
 	}
-	if mtcProof.Start != dbSubtree.SubtreeStart {
+	if mtcProof.Start != int64(dbSubtree.SubtreeStart) { //nolint:gosec // G115: these are guaranteed < 1<<48
 		t.Errorf("start = %d, want %d", mtcProof.Start, dbSubtree.SubtreeStart)
 	}
-	if mtcProof.End != dbSubtree.SubtreeEnd {
+	if mtcProof.End != int64(dbSubtree.SubtreeEnd) { //nolint:gosec // G115: these are guaranteed < 1<<48
 		t.Errorf("end = %d, want %d", mtcProof.End, dbSubtree.SubtreeEnd)
 	}
 
@@ -299,8 +299,8 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 		tlog.RecordHash(mtcleMarshaled),
 		mtcProof.InclusionProof,
 		entryIndex,
-		int64(mtcProof.Start), //nolint:gosec // G115: we know these are < 1<<48 in tests
-		int64(mtcProof.End),   //nolint:gosec // G115: we know these are < 1<<48 in tests
+		mtcProof.Start,
+		mtcProof.End,
 	)
 	if err != nil {
 		t.Fatal(err)

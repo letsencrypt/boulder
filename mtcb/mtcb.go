@@ -242,9 +242,11 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	sig := proof.MTCProof{
 		Start:          0,
-		End:            subtree.SubtreeEnd,
+		End:            int64(subtree.SubtreeEnd), //nolint: gosec // G115: these are guaranteed < 1<<48
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
+			// TODO: CosignerID should be a TrustAnchorID, which is a RELATIVE_OID:
+			// https://datatracker.ietf.org/doc/html/draft-ietf-tls-trust-anchor-ids-04#section-4
 			{CosignerID: []byte(requestedLogID.CAID), Signature: subtree.MTCASignature},
 			{CosignerID: []byte(*subtree.MirrorID), Signature: subtree.MirrorSignature},
 		},

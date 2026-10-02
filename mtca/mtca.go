@@ -639,11 +639,11 @@ func (m *mtca) sequence(ctx context.Context) error {
 	//
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-signature-format
 	cosignedMessage, err := (&cosigned.Message{
-		CosignerName: "oid/1.3.6.1.4.1." + m.logID.CAID,
+		CosignerName: m.logID.CACosignerName(),
 		// Timestamp should always be zero when signing over a subtree (as
 		// opposed to a checkpoint)
 		Timestamp:   0,
-		LogOrigin:   "oid/1.3.6.1.4.1." + m.logID.String(),
+		LogOrigin:   m.logID.Origin(),
 		Start:       0,
 		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
 		SubtreeHash: newRootHash,

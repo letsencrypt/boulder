@@ -50,7 +50,7 @@ func SigAlgEncoded() []byte {
 //	} MTCProof;
 type MTCProof struct {
 	Extensions     []byte
-	Start, End     uint64
+	Start, End     int64
 	InclusionProof []tlog.Hash
 	Signatures     []*SubtreeSignature
 }
@@ -63,15 +63,20 @@ func (m *MTCProof) Marshal() ([]byte, error) {
 	})
 
 	var startBytes, endBytes [8]byte
-	binary.BigEndian.PutUint64(startBytes[:], m.Start)
-	binary.BigEndian.PutUint64(endBytes[:], m.End)
-
-	if startBytes[0] != 0 || startBytes[1] != 0 {
+	if m.Start < 0 {
+		return nil, fmt.Errorf("start is negative")
+	}
+	if m.End < 0 {
+		return nil, fmt.Errorf("end is negative")
+	}
+	if m.Start > 1<<48-1 {
 		return nil, fmt.Errorf("start too big: %d", m.Start)
 	}
-	if endBytes[0] != 0 || endBytes[1] != 0 {
+	if m.End > 1<<48-1 {
 		return nil, fmt.Errorf("end too big: %d", m.End)
 	}
+	binary.BigEndian.PutUint64(startBytes[:], uint64(m.Start))
+	binary.BigEndian.PutUint64(endBytes[:], uint64(m.End))
 
 	builder.AddBytes(startBytes[2:])
 	builder.AddBytes(endBytes[2:])
@@ -136,8 +141,8 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 		return nil, fmt.Errorf("malformed end")
 	}
 
-	start := binary.BigEndian.Uint64(append([]byte{0, 0}, startBytesLower[:6]...))
-	end := binary.BigEndian.Uint64(append([]byte{0, 0}, endBytesLower[:6]...))
+	start := int64(binary.BigEndian.Uint64(append([]byte{0, 0}, startBytesLower[:6]...))) //nolint:gosec // G115: the upper two bytes are zero
+	end := int64(binary.BigEndian.Uint64(append([]byte{0, 0}, endBytesLower[:6]...)))     //nolint:gosec // G115: the upper two bytes are zero
 
 	var inclusionProofBytes cryptobyte.String
 	if !input.ReadUint16LengthPrefixed(&inclusionProofBytes) {

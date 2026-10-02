@@ -1,6 +1,8 @@
 package issuancelog
 
 import (
+	"crypto/x509"
+	"encoding/asn1"
 	"fmt"
 	"strconv"
 	"strings"
@@ -73,6 +75,14 @@ func (id ID) Origin() string {
 	return oidPrefix + id.String()
 }
 
+// CACosignerName returns the CA's cosigner name per mtc-tlog. For instance,
+// the CA cosigner name of CA ID "44947.4.1" is "oid/1.3.6.1.4.1.44947.4.1".
+//
+// https://c2sp.org/mtc-tlog
+func (id ID) CACosignerName() string {
+	return oidPrefix + id.CAID
+}
+
 // TilePrefix returns the path within a bucket where the log's tiles and
 // checkpoint are stored.
 //
@@ -92,4 +102,21 @@ func (id ID) Origin() string {
 // log number 44 is "44947.4.1/44".
 func (id ID) TilePrefix() string {
 	return fmt.Sprintf("%s/%d", id.CAID, id.LogNumber)
+}
+
+// MTCAID returns the trust anchor ID from an issuer certificate's Subject. It
+// returns an error for issuers that are not MTC CAs.
+func MTCAID(cert *x509.Certificate) (string, error) {
+	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
+	for _, attribute := range cert.Subject.Names {
+		if attribute.Type.Equal(testingTrustAnchorIDOID) {
+			caID, ok := attribute.Value.(string)
+			if !ok {
+				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
+			}
+			return caID, nil
+		}
+	}
+	return "", fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
+		cert.Subject, testingTrustAnchorIDOID)
 }
