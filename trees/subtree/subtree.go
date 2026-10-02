@@ -267,7 +267,7 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 	return tn == 0 && fr == nodeHash && sr == rootHash
 }
 
-// HashFromProof returns a subtree hash given an entry hash and an inclusion proof.
+// HashFromProof returns a subtree hash given an entry hash and an inclusion proof across a subtree of some Merkle tree.
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-evaluating-a-subtree-inclus
 func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, end int64) (tlog.Hash, error) {
@@ -278,35 +278,46 @@ func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, en
 		return tlog.Hash{}, fmt.Errorf("entryIndex %d not in [%d, %d)", entryIndex, start, end)
 	}
 
-	secondNumber := end - start - 1
-	firstNumber := entryIndex - start
+	result, err := hashFromProof(entryHash, proof, entryIndex-start, end-start)
+	if err != nil {
+		return tlog.Hash{}, fmt.Errorf("evaluating MTCProof of length %d, for entryIndex %d, within subtree [%d, %d): %s",
+			len(proof), entryIndex, start, end, err)
+	}
+	return result, nil
+}
+
+// hashFromProof calculates the expected hash across a Merkle tree.
+func hashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, treesize int64) (tlog.Hash, error) {
 	currentHash := entryHash
+	// These represent the index of nodes within the current layer of the conceptual Merkle tree
+	// (not to be confused with a level of tile storage).
+	currentNode, lastNode := entryIndex, treesize-1
 
 	for _, proofHash := range proof {
-		if secondNumber == 0 {
-			return tlog.Hash{}, fmt.Errorf("too many hashes in proof evaluation, got %d for entry %d in subtree [%d, %d)",
-				len(proof), entryIndex, start, end)
+		if lastNode == 0 {
+			return tlog.Hash{}, fmt.Errorf("too many hashes in proof evaluation")
 		}
 
-		if firstNumber&1 == 1 || firstNumber == secondNumber {
+		if currentNode&1 == 1 || currentNode == lastNode {
 			currentHash = tlog.NodeHash(proofHash, currentHash)
 
-			for firstNumber&1 == 0 {
-				firstNumber >>= 1
-				secondNumber >>= 1
+			for currentNode&1 == 0 {
+				// Move up levels in the Merkle tree by right-shifting these indices
+				currentNode >>= 1
+				lastNode >>= 1
 			}
 
 		} else {
 			currentHash = tlog.NodeHash(currentHash, proofHash)
 		}
 
-		firstNumber >>= 1
-		secondNumber >>= 1
+		// Move up one level in the Merkle tree
+		currentNode >>= 1
+		lastNode >>= 1
 	}
 
-	if secondNumber != 0 {
-		return tlog.Hash{}, fmt.Errorf("too few hashes in proof evaluation, got %d for entry %d in subtree [%d, %d)",
-			len(proof), entryIndex, start, end)
+	if lastNode != 0 {
+		return tlog.Hash{}, fmt.Errorf("too few hashes in proof evaluation")
 	}
 	return currentHash, nil
 }
