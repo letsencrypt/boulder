@@ -174,7 +174,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("not ready to build standalone for %q %016x", requestedLogID, req.MtcSerialNumber)
 	}
 
-	if subtree.SubtreeEnd > uint64(latestCheckpoint.TreeSize) { //nolint:gosec // G115: TreeSize is positive
+	if subtree.SubtreeEnd > uint64(latestCheckpoint.TreeSize) { //nolint:gosec // G115: guaranteed non-negative by Valid()
 		return nil, fmt.Errorf("subtreeEnd is greater than treeSize (%d > %d)",
 			subtree.SubtreeEnd, latestCheckpoint.TreeSize)
 	}

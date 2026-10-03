@@ -490,10 +490,6 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	if latest.TreeSize+int64(len(entries)) > 1<<48-1 {
-		return fmt.Errorf("log is full")
-	}
-
 	serial, err := core.EncodeMTCSerial(m.logID.LogNumber, latest.TreeSize)
 	if err != nil {
 		return err
@@ -645,7 +641,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		Timestamp:   0,
 		LogOrigin:   "oid/1.3.6.1.4.1." + m.logID.String(),
 		Start:       0,
-		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
 		SubtreeHash: newRootHash,
 	}).Marshal()
 	if err != nil {
@@ -665,7 +661,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		MirrorID:        nil,
 		MirrorSignature: nil,
 		SubtreeStart:    0,
-		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
 		SubtreeHash:     newRootHash[:],
 	})
 	if err != nil {

@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
+	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/subtree"
@@ -423,6 +425,41 @@ func TestLoadEmptyTree(t *testing.T) {
 	_, err := LoadFrontier(t.Context(), bs3test.New(), 0, "")
 	if err == nil {
 		t.Errorf("Load(0): got nil, want error")
+	}
+}
+
+func TestLoadInvalidTreeSize(t *testing.T) {
+	// We check -256 because at multiples of 256 we don't load any tiles. Since we're testing
+	// for an error, we want to make sure it's not masked by a different error.
+	for _, size := range []int64{-1, -256, trees.MaxSize + 1} {
+		_, err := LoadFrontier(t.Context(), bs3test.New(), size, "")
+		if err == nil || !strings.Contains(err.Error(), "invalid tree size") {
+			t.Errorf("LoadFrontier(%d): got %v, want \"invalid tree size\" error", size, err)
+		}
+	}
+}
+
+// TestAppendToFullTree checks that Frontier errors once it hits trees.MaxSize.
+func TestAppendToFullTree(t *testing.T) {
+	mtcpk := testPubkey()
+
+	// Fake up an almost full Frontier.
+	f := &Frontier{treeSize: trees.MaxSize - 1}
+	err := f.AppendEntry(testEntry(0), mtcpk)
+	if err != nil {
+		t.Fatalf("AppendEntry to tree of size %d: %s", int64(trees.MaxSize-1), err)
+	}
+	if f.TreeSize() != trees.MaxSize {
+		t.Fatalf("TreeSize: got %d, want %d", f.TreeSize(), int64(trees.MaxSize))
+	}
+
+	want := f.Clone()
+	err = f.AppendEntry(testEntry(1), mtcpk)
+	if err == nil {
+		t.Errorf("AppendEntry to full tree: got nil, want error")
+	}
+	if !reflect.DeepEqual(f, want) {
+		t.Errorf("AppendEntry to full tree changed the Frontier")
 	}
 }
 
