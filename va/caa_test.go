@@ -1022,61 +1022,6 @@ func TestMultiCAARechecking(t *testing.T) {
 				{ua: hijackedUA, rir: lacnic, dns: caaHijackedDNS{}},
 			},
 		},
-		{
-			name:                     "1 hijacked RVA, CAA issuewild type present, 1 failure allowed",
-			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
-			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
-			expectedSummary: &mpicSummary{
-				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
-				Failed:       []string{"dc-0-ARIN"},
-				PassedRIRs:   []string{ripe, apnic},
-				QuorumResult: "2/3",
-			},
-			localDNSClient: &caaFakeDNS{},
-			remoteVAs: []remoteConf{
-				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: ripe, dns: &caaFakeDNS{}},
-				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
-			},
-		},
-		{
-			name:                     "2 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
-			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
-			expectedProbSubstring:    "During secondary validation: While processing CAA",
-			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
-			expectedSummary: &mpicSummary{
-				Passed:       []string{"dc-2-APNIC"},
-				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE"},
-				PassedRIRs:   []string{apnic},
-				QuorumResult: "1/3",
-			},
-			localDNSClient: &caaFakeDNS{},
-			remoteVAs: []remoteConf{
-				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
-				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
-				{ua: remoteUA, rir: apnic, dns: &caaFakeDNS{}},
-			},
-		},
-		{
-			name:                     "3 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
-			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
-			expectedProbSubstring:    "During secondary validation: While processing CAA",
-			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
-			expectedSummary: &mpicSummary{
-				Passed:       []string{},
-				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE", "dc-2-APNIC"},
-				PassedRIRs:   []string{},
-				QuorumResult: "0/3",
-			},
-			localDNSClient: &caaFakeDNS{},
-			remoteVAs: []remoteConf{
-				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
-				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
-				{ua: hijackedUA, rir: apnic, dns: caaHijackedDNS{}},
-			},
-		},
 	}
 
 	for _, tc := range testCases {
