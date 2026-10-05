@@ -40,7 +40,7 @@ func TestExtractSuffix_Valid(t *testing.T) {
 	for _, tc := range testCases {
 		got, err := ExtractSuffix(tc.domain)
 		if err != nil {
-			t.Errorf("%q: returned error", tc.domain)
+			t.Errorf("%q: returned error: %v", tc.domain, err)
 			continue
 		}
 		if got != tc.want {
