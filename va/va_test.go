@@ -729,7 +729,7 @@ func TestMultiVA(t *testing.T) {
 		},
 		{
 			// If three out of six remote VAs fail with an internal err it should fail
-			Name: "Local VA ok, 4/6 remote VAs internal err",
+			Name: "Local VA ok, 3/6 remote VAs internal err",
 			Remotes: []remoteConf{
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
