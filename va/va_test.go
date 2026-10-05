@@ -871,6 +871,29 @@ func TestMultiVALogging(t *testing.T) {
 	test.AssertNotError(t, err, "performing validation")
 }
 
+func TestMultiVAInsufficientPerspectives(t *testing.T) {
+	t.Parallel()
+
+	remoteConfs := []remoteConf{
+		{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+		{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+		{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+	}
+
+	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+	defer ms.Close()
+
+	// With fewer than the minimum number of remote perspectives, validation
+	// should fail even though every perspective would have passed.
+	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, &ipFakeDNS{})
+	req := createValidationRequest(identifier.NewDNS("letsencrypt.org"), core.ChallengeTypeHTTP01)
+	res, err := va.DoDCV(ctx, req)
+	test.AssertNotError(t, err, "performing validation")
+	test.AssertNotNil(t, res.Problem, "validation succeeded with insufficient remote perspectives")
+	test.AssertEquals(t, res.Problem.ProblemType, string(probs.ServerInternalProblem))
+	test.AssertContains(t, res.Problem.Detail, "Insufficient remote perspectives: need at least 4")
+}
+
 func TestDetailedError(t *testing.T) {
 	cases := []struct {
 		err      error
