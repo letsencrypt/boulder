@@ -216,6 +216,14 @@ services {
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
+services {
+  id      = "rva1-d"
+  name    = "rva1"
+  address = "10.77.77.77"
+  port    = 9500
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
 # TODO(#5294) Remove rva2-a/b in favor of rva1-a/b
 services {
   id      = "rva2-a"
