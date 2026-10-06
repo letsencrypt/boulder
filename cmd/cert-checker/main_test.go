@@ -398,7 +398,7 @@ func TestCheckCert(t *testing.T) {
 				},
 				SerialNumber:          serial,
 				BasicConstraintsValid: false,
-				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 				KeyUsage:              x509.KeyUsageDigitalSignature,
 				OCSPServer:            []string{"http://example.com/ocsp"},
 				IssuingCertificateURL: []string{"http://example.com/cert"},
