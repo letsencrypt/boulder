@@ -398,7 +398,7 @@ func TestCheckCert(t *testing.T) {
 				},
 				SerialNumber:          serial,
 				BasicConstraintsValid: false,
-				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 				KeyUsage:              x509.KeyUsageDigitalSignature,
 				OCSPServer:            []string{"http://example.com/ocsp"},
 				IssuingCertificateURL: []string{"http://example.com/cert"},
@@ -521,7 +521,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		NotAfter:              fc.Now().Add(999999 * time.Hour),
 		BasicConstraintsValid: true,
 		DNSNames:              []string{"not-blacklisted.com"},
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: sa})
 	test.AssertNotError(t, err, "Couldn't create registration")
@@ -737,7 +737,7 @@ func TestIgnoredLint(t *testing.T) {
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(testValidityDuration - time.Second),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IssuingCertificateURL: []string{"http://aia.example.org"},
