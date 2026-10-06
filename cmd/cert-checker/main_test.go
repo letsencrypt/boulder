@@ -361,6 +361,8 @@ func TestCheckCertExtKeyUsage(t *testing.T) {
 				Der:     certDer,
 			}
 			_, problems := checker.checkCert(context.Background(), cert)
+			slices.Sort(problems)
+			slices.Sort(tc.expectedProblems)
 			test.AssertDeepEquals(t, problems, tc.expectedProblems)
 		})
 	}
