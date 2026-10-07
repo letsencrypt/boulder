@@ -265,6 +265,109 @@ func TestCheckWildcardCert(t *testing.T) {
 	}
 }
 
+func TestCheckCertExtKeyUsage(t *testing.T) {
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
+	test.AssertNotError(t, err, "Couldn't connect to database")
+	saCleanup := test.ResetBoulderTestDatabase(t)
+	defer func() {
+		saCleanup()
+	}()
+
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
+	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	_, issuerCert, issuer := fakeIssuer(t, testKey)
+
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations,
+		map[string]*issuance.Certificate{issuerCert.Subject.CommonName: issuer},
+		nil, linter.Config{}, blog.NewMock())
+
+	// ignore things we don't care about for this test
+	ignoredLints, err := linter.NewRegistry([]string{
+		"w_ext_subject_key_identifier_missing_sub_cert",
+		"w_ct_sct_policy_count_unsatisfied",
+		"w_subject_common_name_included",
+	})
+	test.AssertNotError(t, err, "creating test lint registry")
+	checker.lints = ignoredLints
+
+	issued := checker.clock.Now().Add(-time.Minute)
+	goodExpiry := issued.Add(testValidityDuration - time.Second)
+	serial, _ := big.NewInt(0).SetString("12345678901234567890123456789012", 10)
+	dvOID, _ := x509.OIDFromASN1OID(asn1.ObjectIdentifier(util.BRDomainValidatedOID))
+
+	signedCertificateTimestampList := pkix.Extension{
+		Id:       asn1.ObjectIdentifier(util.TimestampOID),
+		Critical: false,
+		Value:    fakeSCTListExtnValue(),
+	}
+
+	testCases := []struct {
+		name             string
+		eku              []x509.ExtKeyUsage
+		expectedProblems []string
+	}{
+		{
+			name:             "serverAuth only",
+			eku:              []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			expectedProblems: nil,
+		},
+		{
+			name: "serverAuth and clientAuth",
+			eku:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+			expectedProblems: []string{
+				"zlint error: e_subscriber_server_certificate_matches_cps_profile extKeyUsage does not contain exactly id-kp-serverAuth",
+				"Certificate has incorrect key usage extensions",
+			},
+		},
+		{
+			name: "clientAuth only",
+			eku:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			expectedProblems: []string{
+				"zlint error: e_subscriber_server_certificate_matches_cps_profile extKeyUsage does not contain exactly id-kp-serverAuth",
+				"zlint error: e_sub_cert_eku_check id-kp-serverAuth MUST be present",
+				"Certificate has incorrect key usage extensions",
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			template := x509.Certificate{
+				Subject: pkix.Name{
+					CommonName: "example.com",
+				},
+				NotBefore:             issued,
+				NotAfter:              goodExpiry,
+				DNSNames:              []string{"example.com"},
+				SerialNumber:          serial,
+				BasicConstraintsValid: true,
+				ExtKeyUsage:           tc.eku,
+				KeyUsage:              x509.KeyUsageDigitalSignature,
+				IssuingCertificateURL: []string{"http://example.com/cert"},
+				CRLDistributionPoints: []string{"http://crl.example.com"},
+				Policies:              []x509.OID{dvOID},
+				ExtraExtensions:       []pkix.Extension{signedCertificateTimestampList},
+			}
+			certDer, err := x509.CreateCertificate(rand.Reader, &template, issuerCert, &testKey.PublicKey, testKey)
+			test.AssertNotError(t, err, "Couldn't create certificate")
+			parsed, err := x509.ParseCertificate(certDer)
+			test.AssertNotError(t, err, "Couldn't parse created certificate")
+			cert := &corepb.Certificate{
+				Serial:  core.SerialToString(serial),
+				Digest:  core.Fingerprint256(certDer),
+				Expires: timestamppb.New(parsed.NotAfter),
+				Issued:  timestamppb.New(parsed.NotBefore),
+				Der:     certDer,
+			}
+			_, problems := checker.checkCert(context.Background(), cert)
+			slices.Sort(problems)
+			slices.Sort(tc.expectedProblems)
+			test.AssertDeepEquals(t, problems, tc.expectedProblems)
+		})
+	}
+}
+
 func TestCheckCertReturnsSANs(t *testing.T) {
 	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
@@ -521,7 +624,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		NotAfter:              fc.Now().Add(999999 * time.Hour),
 		BasicConstraintsValid: true,
 		DNSNames:              []string{"not-blacklisted.com"},
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: sa})
 	test.AssertNotError(t, err, "Couldn't create registration")
@@ -737,7 +840,7 @@ func TestIgnoredLint(t *testing.T) {
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(testValidityDuration - time.Second),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IssuingCertificateURL: []string{"http://aia.example.org"},
