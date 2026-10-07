@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -380,6 +381,107 @@ func TestValidSerial(t *testing.T) {
 	test.AssertEquals(t, isValidSerial, true)
 	isValidSerial = ValidSerial(length36)
 	test.AssertEquals(t, isValidSerial, true)
+}
+
+func TestRelativeOID(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		oid     string
+		encoded []byte
+	}{
+		{name: "zero", oid: "0", encoded: []byte{0x00}},
+		{name: "largest one-byte component", oid: "127", encoded: []byte{0x7f}},
+		{name: "smallest two-byte component", oid: "128", encoded: []byte{0x81, 0x00}},
+		{name: "largest two-byte component", oid: "16383", encoded: []byte{0xff, 0x7f}},
+		{name: "smallest three-byte component", oid: "16384", encoded: []byte{0x81, 0x80, 0x00}},
+		{name: "multiple one-byte components", oid: "85.2", encoded: []byte{0x55, 0x02}},
+		{name: "multi-byte last component", oid: "85.2.8192", encoded: []byte{0x55, 0x02, 0xc0, 0x00}},
+		{name: "multi-byte first component", oid: "180.3", encoded: []byte{0x81, 0x34, 0x03}},
+		{name: "private enterprise number", oid: "32473.9", encoded: []byte{0x81, 0xfd, 0x59, 0x09}},
+		{name: "five-byte component", oid: "1492336001", encoded: []byte{0x85, 0xc7, 0xcc, 0xfb, 0x01}},
+		{name: "max int32", oid: "2147483647", encoded: []byte{0x87, 0xff, 0xff, 0xff, 0x7f}},
+		{
+			name:    "multiple multi-byte components",
+			oid:     "128.16384.2147483647",
+			encoded: []byte{0x81, 0x00, 0x81, 0x80, 0x00, 0x87, 0xff, 0xff, 0xff, 0x7f},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			encoded, err := EncodeRelativeOID(tc.oid)
+			if err != nil {
+				t.Errorf("EncodeRelativeOID(%q) = %s, want success", tc.oid, err)
+			} else if !bytes.Equal(encoded, tc.encoded) {
+				t.Errorf("EncodeRelativeOID(%q) = %x, want %x", tc.oid, encoded, tc.encoded)
+			}
+
+			oid, err := DecodeRelativeOID(tc.encoded)
+			if err != nil {
+				t.Errorf("DecodeRelativeOID(%x) = %s, want success", tc.encoded, err)
+			} else if oid != tc.oid {
+				t.Errorf("DecodeRelativeOID(%x) = %q, want %q", tc.encoded, oid, tc.oid)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		oid  string
+	}{
+		{name: "empty", oid: ""},
+		{name: "empty component", oid: "1..2"},
+		{name: "leading dot", oid: ".1"},
+		{name: "trailing dot", oid: "1."},
+		{name: "non-numeric component", oid: "1.a.2"},
+		{name: "whitespace", oid: "1. 2"},
+		{name: "negative component", oid: "1.-5.2"},
+		{name: "explicit plus sign", oid: "+5"},
+		{name: "leading zero", oid: "05"},
+		{name: "component exceeds int32", oid: "2147483648"},
+		{name: "component exceeds int64", oid: "9223372036854775808"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			encoded, err := EncodeRelativeOID(tc.oid)
+			if err == nil {
+				t.Errorf("EncodeRelativeOID(%q) = %x, want error", tc.oid, encoded)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name    string
+		encoded []byte
+	}{
+		{name: "empty input", encoded: []byte{}},
+		{name: "truncated only component", encoded: []byte{0x81}},
+		{name: "truncated last component", encoded: []byte{0x55, 0x81}},
+		{name: "non-minimal zero", encoded: []byte{0x80, 0x00}},
+		{name: "non-minimal first component", encoded: []byte{0x80, 0x01, 0x02}},
+		{name: "non-minimal middle component", encoded: []byte{0x55, 0x80, 0x02}},
+		{name: "exceeds int32", encoded: []byte{0x88, 0x80, 0x80, 0x80, 0x00}},
+		{name: "six-byte component", encoded: []byte{0x81, 0x80, 0x80, 0x80, 0x80, 0x00}},
+		{name: "oversized truncated component", encoded: []byte{0x55, 0x02, 0xc0, 0x80, 0x80, 0x80, 0x80}},
+		{
+			// 2^70 + 1, which a decoder without a length limit could wrap
+			// around to 1.
+			name:    "wraps int64",
+			encoded: []byte{0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			oid, err := DecodeRelativeOID(tc.encoded)
+			if err == nil {
+				t.Errorf("DecodeRelativeOID(%x) = %q, want error", tc.encoded, oid)
+			}
+		})
+	}
 }
 
 func TestLoadCert(t *testing.T) {
