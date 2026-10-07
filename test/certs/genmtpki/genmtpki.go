@@ -15,6 +15,10 @@ import (
 	"path"
 	"time"
 
+	"golang.org/x/crypto/cryptobyte"
+	casn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/unsigned"
 )
 
@@ -72,16 +76,26 @@ func main2() error {
 		return err
 	}
 
+	// https://letsencrypt.org/docs/oids/
+	// 44947 is ISRG; 44947.4.1 will be temporarily for our prototype MTC implementation, with ".1"
+	// representing one CA instance.
+	mtcaID := "44947.4.1"
+	skid, _ := core.EncodeRelativeOID(mtcaID)
+
 	template := &x509.Certificate{
 		// TODO: decide how to generate serial number for MTCA certificates; presumably random?
 		SerialNumber: big.NewInt(123),
-		Subject:      mtcaSubject(),
+		Subject:      mtcaSubject(mtcaID),
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour),
 		// The key usage extension (Section 4.2.1.3 of [RFC5280]) MUST be present and assert at least the keyCertSign bit.
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		// The subject key identifier extension (Section 4.2.1.2 of [RFC5280]), if present, SHOULD be set to the CA ID Section 5.1.
+		// The CA ID is encoded in its binary representation, as defined in Section 4 of [I-D.ietf-tls-trust-anchor-ids].
+		SubjectKeyId:          skid,
 		IsCA:                  true,
 		BasicConstraintsValid: true,
+		MaxPathLenZero:        true,
 		ExtraExtensions:       []pkix.Extension{mtcaExtn, tlogPrefixExtn},
 	}
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
@@ -124,22 +138,31 @@ func main2() error {
 	return pem.Encode(caPubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: caSPKI})
 }
 
-func mtcaSubject() pkix.Name {
+func mtcaSubject(relativeOID string) pkix.Name {
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certification-authority-ide
-	// For initial experimentation, early implementations of this design will:
-	//  - Use UTF8String to represent the attribute's value rather than RELATIVE-OID. The UTF8String contains trust anchor ID's ASCII representation, e.g. 32473.1.
-	//  - Use the OID 1.3.6.1.4.1.44363.47.1 instead of id-rdna-trustAnchorID.
-	// idRDNATrustAnchorID := asn1.ObjectIdentifier{ 1, 3, 6, 1, 5, 5, 7, 25 }
-	idRDNATrustAnchorIDExperimental := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
+	// A CA ID determines a PKIX distinguished name (Section 4.1.2.4 of [RFC5280]) that can be used in the issuer or subject field of an X.509 TBSCertificate.
+	// This distinguished name has a single relative distinguished name, which has a single attribute. The attribute has type id-rdna-trustAnchorID, defined below:
+	// 	id-rdna-trustAnchorID OBJECT IDENTIFIER ::= {
+	// 			iso(1) identified-organization(3) dod(6) internet(1) security(5)
+	// 			mechanisms(5) pkix(7) rdna(25) 3 }
+	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
 
-	// https://letsencrypt.org/docs/oids/
-	// 44947 is ISRG; 44947.4.1 will be temporarily for our prototype MTC implementation, with ".1"
-	// representing one CA instance.
-	mtcaID := "44947.4.1"
+	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certification-authority-ide
+	// The attribute's value is a RELATIVE-OID containing the trust anchor ID's ASN.1 representation.
+	//
+	// https://www.ietf.org/archive/id/draft-housley-asn1-layman-guide-03.html#section-2
+	// 	Type					Decimal Tag Number	Hexadecimal Tag Number
+	// 	RELATIVE-OID	13									0d
+	tagRelativeOID := 13
+
+	// Throw away the err because this is just test setup code and we know that
+	// we're providing well-formed relative OIDs.
+	val, _ := core.EncodeRelativeOID(relativeOID)
+
 	attributes := []pkix.AttributeTypeAndValue{
 		{
-			Type:  idRDNATrustAnchorIDExperimental,
-			Value: asn1.RawValue{Tag: asn1.TagUTF8String, Bytes: []byte(mtcaID)},
+			Type:  idRDNATrustAnchorID,
+			Value: asn1.RawValue{Tag: tagRelativeOID, Bytes: val},
 		},
 	}
 
