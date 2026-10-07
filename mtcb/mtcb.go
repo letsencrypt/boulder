@@ -240,13 +240,23 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
+	mtcaID, err := core.EncodeRelativeOID(subtree.MTCLogID)
+	if err != nil {
+		return nil, fmt.Errorf("serializing MTCA ID: %w", err)
+	}
+
+	mirrorID, err := core.EncodeRelativeOID(*subtree.MirrorID)
+	if err != nil {
+		return nil, fmt.Errorf("serializing Mirror ID: %w", err)
+	}
+
 	sig := proof.MTCProof{
 		Start:          0,
 		End:            subtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: []byte(requestedLogID.CAID), Signature: subtree.MTCASignature},
-			{CosignerID: []byte(*subtree.MirrorID), Signature: subtree.MirrorSignature},
+			{CosignerID: mtcaID, Signature: subtree.MTCASignature},
+			{CosignerID: mirrorID, Signature: subtree.MirrorSignature},
 		},
 	}
 	certBytes, err := buildCertificate(tbs, &sig)
