@@ -19,6 +19,8 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/core"
@@ -43,6 +45,82 @@ var ErrCheckpointChanged = errors.New("served checkpoint is not the one this MTC
 
 var _ mtcapb.MTCAServer = &mtca{}
 
+type mtcaMetrics struct {
+	checkpointValidations   *prometheus.CounterVec
+	issueFailures           *prometheus.CounterVec
+	lastSeqSuccessTimestamp prometheus.Gauge
+	pendingEntryPoolSize    prometheus.Gauge
+	pendingEntryPoolWait    prometheus.Histogram
+	sequenceBatchSize       prometheus.Histogram
+	sequenceDuration        *prometheus.HistogramVec
+	sequenceTxDuration      *prometheus.HistogramVec
+	signatureDurations      *prometheus.HistogramVec
+	tileStoreDurations      *prometheus.HistogramVec
+	treeSize                prometheus.Gauge
+}
+
+func NewMTCAMetrics(register prometheus.Registerer) *mtcaMetrics {
+	checkpointValidations := promauto.With(register).NewCounterVec(prometheus.CounterOpts{
+		Name: "mtca_checkpoint_validations_total",
+		Help: "Total count of times we encountered a checkpoint validation error, by stage",
+	}, []string{"stage", "result"})
+	issueFailures := promauto.With(register).NewCounterVec(prometheus.CounterOpts{
+		Name: "mtca_issue_failures_total",
+		Help: "Total count of times Issue errored for specific reasons",
+	}, []string{"reason"})
+	lastSeqSuccessTimestamp := promauto.With(register).NewGauge(prometheus.GaugeOpts{
+		Name: "mtca_last_sequence_success_timestamp_seconds",
+		Help: "Timestamp of last sequence success",
+	})
+	pendingEntryPoolSize := promauto.With(register).NewGauge(prometheus.GaugeOpts{
+		Name: "mtca_pending_entry_pool_size",
+		Help: "Gauge over entries waiting to be sequenced",
+	})
+	pendingEntryPoolWait := promauto.With(register).NewHistogram(prometheus.HistogramOpts{
+		Name: "mtca_pending_entry_pool_wait_seconds",
+		Help: "Histogram of observations of time spent in the pendingEntry pool",
+	})
+	sequenceBatchSize := promauto.With(register).NewHistogram(prometheus.HistogramOpts{
+		Name:    "mtca_sequence_batch_size",
+		Buckets: []float64{1, 3, 5, 10, 20, 50, 90},
+		Help:    "Histogram of observations of batch sizes taken during sequence passes",
+	})
+	sequenceDuration := promauto.With(register).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "mtca_sequence_pass_duration_seconds",
+		Help: "Histogram of observations of complete sequence passes including the DB transaction and HSM signing operation",
+	}, []string{"result"})
+	sequenceTxDuration := promauto.With(register).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "mtca_sequence_transaction_duration_seconds",
+		Help: "Histogram of observations DB transaction duration while sequencing",
+	}, []string{"result"})
+	signatureDurations := promauto.With(register).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "mtca_signature_duration_seconds",
+		Help: "Histogram of observations of HSM signing operation while sequencing",
+	}, []string{"type", "result"})
+	tileStoreDurations := promauto.With(register).NewHistogramVec(prometheus.HistogramOpts{
+		Name: "mtca_tile_store_duration_seconds",
+		Help: "Observations of tile store operation durations",
+	}, []string{"operation", "result"})
+	treeSize := promauto.With(register).NewGauge(prometheus.GaugeOpts{
+		Name: "mtca_tree_size",
+		Help: "Current merkle tree size",
+	})
+
+	return &mtcaMetrics{
+		checkpointValidations,
+		issueFailures,
+		lastSeqSuccessTimestamp,
+		pendingEntryPoolSize,
+		pendingEntryPoolWait,
+		sequenceBatchSize,
+		sequenceDuration,
+		sequenceTxDuration,
+		signatureDurations,
+		tileStoreDurations,
+		treeSize,
+	}
+}
+
 // New creates a new MTCA service.
 func New(
 	issuer *issuance.Issuer,
@@ -52,6 +130,7 @@ func New(
 	dbMap *db.WrappedMap,
 	s3c simpleS3,
 	logger blog.Logger,
+	metrics *mtcaMetrics,
 	clk clock.Clock,
 ) (*mtca, error) {
 	certCAID, err := issuer.Cert.MTCAID()
@@ -75,10 +154,11 @@ func New(
 
 		sequencingPeriod: sequencingPeriod,
 
-		treedb: treedb.New(dbMap),
-		s3c:    s3c,
-		log:    logger,
-		clk:    clk,
+		treedb:  treedb.New(dbMap),
+		s3c:     s3c,
+		log:     logger,
+		metrics: metrics,
+		clk:     clk,
 	}
 
 	cosigner, err := cosignature.NewCosigner(logID.CAID, logID.Origin(), issuer.Signer)
@@ -130,10 +210,11 @@ type mtca struct {
 
 	// TODO: decide whether we want to route this through the SA or an SA-like object,
 	// or keep a direct DB connection from the MTCA.
-	treedb checkpointDB
-	s3c    simpleS3
-	log    blog.Logger
-	clk    clock.Clock
+	treedb  checkpointDB
+	s3c     simpleS3
+	log     blog.Logger
+	metrics *mtcaMetrics
+	clk     clock.Clock
 }
 
 // checkpointDB is the subset of treedb.Impl the MTCA uses, so tests can
@@ -263,6 +344,9 @@ func (m *mtca) Preflight(ctx context.Context) error {
 		return err
 	}
 
+	// Preflight observation of tree size
+	m.metrics.treeSize.Set(float64(latest.TreeSize))
+
 	tileBasedHash := frontier.RootHash()
 	if !bytes.Equal(latest.RootHash, tileBasedHash[:]) {
 		return fmt.Errorf("state mismatch: at tree size %d, DB contains RootHash %s, but frontier tiles calculate %s",
@@ -287,11 +371,15 @@ type pool struct {
 	maxSize int
 }
 
-// pendingEntry represents a pending entry in the pool, along with a channel to notify a pending RPC.
+// pendingEntry represents a pending entry in the pool, along with a channel to
+// notify a pending RPC. Each pendingEntry carries an RA-generated eventID, and
+// an enqueue time for measuring pool wait duration.
 type pendingEntry struct {
-	mtcle *entry.MTCLogEntry
-	mtcpk *pubkey.MTCPublicKey
-	ch    chan<- issuanceNotification
+	eventID string
+	enqTime time.Time
+	mtcle   *entry.MTCLogEntry
+	mtcpk   *pubkey.MTCPublicKey
+	ch      chan<- issuanceNotification
 }
 
 func (p *pool) take() []pendingEntry {
@@ -322,7 +410,9 @@ type issuanceNotification struct {
 	serialNumber uint64
 	// A reference to a row in the mtcmeta subtrees table.
 	subtreeID int64
-	errored   bool
+	// An issuance event identifier token originating in the RA
+	eventID string
+	errored bool
 }
 
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
@@ -359,6 +449,7 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 		IPAddresses: ipAddresses,
 	})
 	if err != nil {
+		m.metrics.issueFailures.With(prometheus.Labels{"reason": "prepare"}).Inc()
 		return nil, fmt.Errorf("preparing x509 certificate: %s", err)
 	}
 
@@ -376,11 +467,15 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan issuanceNotification, 1)
 	err = m.pool.append(pendingEntry{
-		mtcle: mtcle,
-		mtcpk: mtcpk,
-		ch:    ch,
+		eventID: req.EventID,
+		enqTime: m.clk.Now(),
+		mtcle:   mtcle,
+		mtcpk:   mtcpk,
+		ch:      ch,
 	})
 	if err != nil {
+		// pool.append has just one error case, a full pool
+		m.metrics.issueFailures.With(prometheus.Labels{"reason": "pool_full"}).Inc()
 		return nil, err
 	}
 
@@ -389,12 +484,14 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 		return nil, ctx.Err()
 	case res := <-ch:
 		if res.errored {
+			m.metrics.issueFailures.With(prometheus.Labels{"reason": "sequencing_error"}).Inc()
 			return nil, fmt.Errorf("error during sequencing")
 		}
 		return &mtcapb.IssueResponse{
 			MtcLogID:        m.logID.String(),
 			MtcSerialNumber: res.serialNumber,
 			MtcSubtreeID:    res.subtreeID,
+			EventID:         res.eventID,
 		}, nil
 	}
 }
@@ -413,13 +510,8 @@ func (m *mtca) Loop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			err := m.sequence(ctx)
+			err := m.sequenceWithMetrics(ctx, since)
 			if err != nil {
-				if !errors.Is(err, ErrCheckpointNotReady) {
-					m.log.Errf("sequencing: %s", err)
-				} else if time.Since(since) > 10*m.sequencingPeriod {
-					m.log.Errf("after %s: %s", time.Since(since).Round(time.Millisecond), err)
-				}
 				continue
 			}
 			since = time.Now()
@@ -465,8 +557,10 @@ func (m *mtca) sequence(ctx context.Context) error {
 	}
 	err = latest.Valid()
 	if err != nil {
+		m.metrics.checkpointValidations.With(prometheus.Labels{"stage": "latest_checkpoint", "result": "failed"}).Inc()
 		return fmt.Errorf("validating latest checkpoint: %s", err)
 	}
+	m.metrics.checkpointValidations.With(prometheus.Labels{"stage": "latest_checkpoint", "result": "success"}).Inc()
 
 	if !latest.Mirrored() {
 		return fmt.Errorf("temporary: checkpoint ID %d (tree size %d): %w",
@@ -475,14 +569,19 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Pull the contents of the pool.
 	entries := m.pool.take()
-	if len(entries) == 0 {
+	entries_count := len(entries)
+	if entries_count == 0 {
 		return nil
 	}
+
+	// add an observation of the size of the batch taken
+	m.metrics.sequenceBatchSize.Observe(float64(entries_count))
 
 	// Since we've taken ownership of the previously-pooled entries, make sure we notify
 	// the waiting RPCs of either a success or a failure.
 	defer func() {
 		for _, e := range entries {
+			m.metrics.pendingEntryPoolWait.Observe(m.clk.Since(e.enqTime).Seconds())
 			e.ch <- issuanceNotification{
 				// We don't send the specific error to clients because that will be in the MTCA logs.
 				errored: true,
@@ -510,6 +609,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Log each leaf along with the root hash it will be included in.
 	for i, e := range entries {
 		m.log.AuditInfo("issuing", map[string]any{
+			"EventID":                e.eventID,
 			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
 			"entryIndex":             latest.TreeSize + int64(i),
 			"mtcLogID":               m.logID.String(),
@@ -517,14 +617,18 @@ func (m *mtca) sequence(ctx context.Context) error {
 		})
 	}
 
+	observationStart := m.clk.Now()
 	// First stage to a pending area. After signing and storing to the DB
 	// (but before publishing a new checkpoint signed note), we will flush
 	// to the live location. This ensures we've persisted the tiles before
 	// committing to a tree hash by signing it.
 	err = candidate.Stage(ctx, m.s3c, m.logID.TilePrefix())
+	observationDuration := m.clk.Since(observationStart).Seconds()
 	if err != nil {
+		m.metrics.tileStoreDurations.With(prometheus.Labels{"operation": "stage_candidate", "result": "failed"}).Observe(observationDuration)
 		return fmt.Errorf("staging candidate tiles: %s", err)
 	}
+	m.metrics.tileStoreDurations.With(prometheus.Labels{"operation": "stage_candidate", "result": "success"}).Observe(observationDuration)
 
 	newCheckpoint := &treedb.CheckpointModel{
 		ID:              0,
@@ -538,8 +642,10 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	err = newCheckpoint.Valid()
 	if err != nil {
+		m.metrics.checkpointValidations.With(prometheus.Labels{"stage": "new_checkpoint", "result": "failed"}).Inc()
 		return fmt.Errorf("validating checkpoint: %s", err)
 	}
+	m.metrics.checkpointValidations.With(prometheus.Labels{"stage": "new_checkpoint", "result": "success"}).Inc()
 
 	// Precommit to the new checkpoint. This will allow us to do recovery if we crash between signing
 	// the new checkpoint and writing it to the database.
@@ -556,6 +662,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	var caSig []byte
 	var signedNote []byte
+	txStart := m.clk.Now()
 	_, err = m.treedb.WithTransaction(ctx, func(tx db.Executor) (any, error) {
 		var latestID int64
 		// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
@@ -572,12 +679,16 @@ func (m *mtca) sequence(ctx context.Context) error {
 				latest.ID, latestID)
 		}
 
+		observationStart := m.clk.Now()
 		// Note that we're doing HSM work while holding a database lock. That's intentional; the database lock
 		// is to prevent the possibility of a concurrent signer on the same tree.
 		caSig, signedNote, err = m.signCheckpoint(newCheckpoint)
+		observationDuration := m.clk.Since(observationStart).Seconds()
 		if err != nil {
+			m.metrics.signatureDurations.With(prometheus.Labels{"type": "checkpoint", "result": "failed"}).Observe(observationDuration)
 			return nil, err
 		}
+		m.metrics.signatureDurations.With(prometheus.Labels{"type": "checkpoint", "result": "success"}).Observe(observationDuration)
 
 		result, err := tx.ExecContext(ctx, "UPDATE checkpoints SET mtcaSignature = ? WHERE mtcLogID = ? AND id = ?",
 			caSig, m.logID.String(), newCheckpoint.ID)
@@ -608,11 +719,14 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return nil, nil
 	})
 	if err != nil {
+		m.metrics.sequenceTxDuration.With(prometheus.Labels{"result": "failed"}).Observe(m.clk.Since(txStart).Seconds())
 		return err
 	}
+	m.metrics.sequenceTxDuration.With(prometheus.Labels{"result": "success"}).Observe(m.clk.Since(txStart).Seconds())
 
 	m.frontier = candidate
 
+	observationStart = m.clk.Now()
 	// Write the tiles to a live serving location.
 	//
 	// TODO(#8902): This should include indefinite retries on error. We've committed to the
@@ -620,9 +734,12 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// The same applies to serving the checkpoint below, which otherwise stays stale until
 	// the next sequencing pass serves a newer one.
 	err = m.frontier.Publish(ctx, m.s3c, m.logID.TilePrefix())
+	observationDuration = m.clk.Since(observationStart).Seconds()
 	if err != nil {
+		m.metrics.tileStoreDurations.With(prometheus.Labels{"operation": "publish_frontier", "result": "failed"}).Observe(observationDuration)
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
+	m.metrics.tileStoreDurations.With(prometheus.Labels{"operation": "publish_frontier", "result": "success"}).Observe(observationDuration)
 
 	// `cosigner_name` and `log_origin` are computed from the cosigner ID and
 	// the issuance log's ID (Section 5.1), respectively. They contain the
@@ -648,10 +765,14 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("marshaling cosigned message: %s", err)
 	}
 
+	observationStart = m.clk.Now()
 	subtreeSignature, err := m.issuer.Signer.Sign(nil, cosignedMessage, nil)
+	observationDuration = m.clk.Since(observationStart).Seconds()
 	if err != nil {
+		m.metrics.signatureDurations.With(prometheus.Labels{"type": "subtree", "result": "failed"}).Observe(observationDuration)
 		return err
 	}
+	m.metrics.signatureDurations.With(prometheus.Labels{"type": "subtree", "result": "success"}).Observe(observationDuration)
 
 	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
 	// always using 0 for subtreeStart
@@ -670,17 +791,50 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Notify waiting RPCs.
 	for _, e := range entries {
+		m.metrics.pendingEntryPoolWait.Observe(m.clk.Since(e.enqTime).Seconds())
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
 			subtreeID:    subtreeID,
+			eventID:      e.eventID,
 		}
 		serial++
 	}
 	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil
 
+	// make an observation of tree size
+	m.metrics.treeSize.Set(float64(candidate.TreeSize()))
+
 	// Serve the new checkpoint.
 	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: newRootHash}, signedNote)
+}
+
+// sequenceWithMetrics is a wrapper around the primary sequence() call to
+// facilitate metric collection and testablity.
+func (m *mtca) sequenceWithMetrics(ctx context.Context, since time.Time) error {
+	// sequence pass duration measurement (via `start``) is distinct from total
+	// sequencing period timeout measurement (via parameter `since`)
+	start := m.clk.Now()
+	err := m.sequence(ctx)
+	if err != nil {
+		if !errors.Is(err, ErrCheckpointNotReady) {
+			m.log.Errf("sequencing: %s", err)
+			m.metrics.sequenceDuration.With(prometheus.Labels{"result": "failed"}).Observe(m.clk.Since(start).Seconds())
+		} else if time.Since(since) > 10*m.sequencingPeriod {
+			m.log.Errf("after %s: %s", time.Since(since).Round(time.Millisecond), err)
+			m.metrics.sequenceDuration.With(prometheus.Labels{"result": "timeout"}).Observe(m.clk.Since(start).Seconds())
+		}
+		// ErrCheckpointNotReady will happen often, and would dominate metrics
+		// with short duration observations. So we don't observe the duration
+		// metric here, just observe pool size and return from the wrapper.
+		m.metrics.pendingEntryPoolSize.Set(float64(m.pool.len()))
+		return err
+	}
+	// observe current pool size
+	m.metrics.pendingEntryPoolSize.Set(float64(m.pool.len()))
+	m.metrics.lastSeqSuccessTimestamp.Set(float64(m.clk.Now().Unix()))
+	m.metrics.sequenceDuration.With(prometheus.Labels{"result": "success"}).Observe(m.clk.Since(start).Seconds())
+	return nil
 }
 
 // signCheckpoint signs c and returns the raw MTCA signature to store and the
@@ -739,7 +893,16 @@ func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, err
 // serveCheckpoint writes signedNote, the verified checkpoint of tree, to tile
 // storage. It must be called only after the tiles the tree covers are
 // published.
-func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
+func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) (err error) {
+	start := m.clk.Now()
+	defer func() {
+		// This func closes over the named value `err`, so can reference it
+		result := "success"
+		if err != nil {
+			result = "failed"
+		}
+		m.metrics.tileStoreDurations.With(prometheus.Labels{"operation": "serve_checkpoint", "result": result}).Observe(m.clk.Since(start).Seconds())
+	}()
 	etag, err := m.writeCheckpoint(ctx, signedNote, m.servedCheckpointETag)
 	if errors.Is(err, ErrCheckpointChanged) {
 		// The served checkpoint may be an earlier one of ours, from before a

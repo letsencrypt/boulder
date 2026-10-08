@@ -976,6 +976,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 	ctx context.Context,
 	order *corepb.Order,
 	subjectPublicKeyInfo []byte,
+	eventID string,
 ) error {
 	profileName := ra.profileName(order)
 	mtca := ra.profileToMTCA[profileName]
@@ -987,9 +988,15 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		Pubkey:      subjectPublicKeyInfo,
 		Identifiers: order.Identifiers,
 		Profile:     profileName,
+		EventID:     eventID,
 	})
 	if err != nil {
 		return fmt.Errorf("issuing MTC: %s", err)
+	}
+
+	// simple consistency check that the response event matches our request event
+	if resp.EventID != "" && resp.EventID != eventID {
+		ra.log.Warningf("event IDs should not be mismatched. Req: %s, Resp: %s", eventID, resp.EventID)
 	}
 
 	_, err = ra.SA.FinalizeMTCOrder(ctx, &sapb.FinalizeMTCOrderRequest{
@@ -1002,7 +1009,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("finalizing MTC order: %s", err)
 	}
 
-	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcSerialNumber)
+	ra.log.Infof("issued MTC from %s: %d, event: %s", resp.MtcLogID, resp.MtcSerialNumber, resp.EventID)
 	return nil
 }
 
@@ -1181,7 +1188,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	}
 
 	if ra.isMTC(order) {
-		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
+		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo, logEvent.ID)
 		if err != nil {
 			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error issuing MTC"))
 			return nil, err
@@ -1194,7 +1201,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	// Step 3: Issue the Certificate
 	profileName := ra.profileName(order)
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id), logEvent.ID)
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1286,7 +1293,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	isRenewal bool,
 	profileName string,
 	acctID accountID,
-	oID orderID) (*x509.Certificate, error) {
+	oID orderID,
+	eventID string) (*x509.Certificate, error) {
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
@@ -1312,11 +1320,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		RegistrationID:  int64(acctID),
 		OrderID:         int64(oID),
 		CertProfileName: profileName,
+		EventID:         eventID,
 	}
 
 	resp, err := ra.CA.IssueCertificate(ctx, issueReq)
 	if err != nil {
 		return nil, err
+	}
+
+	// simple consistency check that the response event matches our request event
+	if resp.EventID != "" && resp.EventID != eventID {
+		ra.log.Warningf("event IDs should not be mismatched. Req: %s, Resp: %s", eventID, resp.EventID)
 	}
 
 	parsedCertificate, err := x509.ParseCertificate(resp.DER)
