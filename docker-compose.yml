@@ -68,8 +68,8 @@ services:
         condition: service_started
       bpkimetal:
         condition: service_started
-      bseaweedfs:
-        condition: service_started
+      bseaweedfs-configure:
+        condition: service_completed_successfully
       bsunlight:
         condition: service_started
     entrypoint: test/entrypoint.sh
@@ -194,6 +194,10 @@ services:
     # SeaweedFS needs to know its `<host>` name so it can parse the Host header
     # to extract the bucket name.
     command: mini -dir=/data -s3.domainName=boulder-seaweedfs -s3.config=/etc/seaweedfs/seaweedfs.json
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 9333 && nc -z localhost 8888"]
+      interval: 2s
+      retries: 30
     environment:
       AWS_ACCESS_KEY_ID: boulderseaweeduser
       AWS_SECRET_ACCESS_KEY: boulderseaweedpassword
@@ -208,13 +212,28 @@ services:
           # See note above: sunlight uses `<bucket>.<host>` as its S3 backend.
           - boulder-sunlight.boulder-seaweedfs
 
+  # SeaweedFS only fsyncs writes to paths it has been told to. That is a runtime
+  # setting, so this applies it once SeaweedFS is up. Objects live under
+  # /buckets/, so this covers every bucket.
+  bseaweedfs-configure:
+    image: chrislusf/seaweedfs:4.47
+    command: shell fs.configure -locationPrefix=/buckets/ -fsync -apply
+    environment:
+      SHELL_MASTER: boulder-seaweedfs:9333
+      SHELL_FILER: boulder-seaweedfs:8888
+    depends_on:
+      bseaweedfs:
+        condition: service_healthy
+    networks:
+      - bouldernet
+
   bsunlight:
     image: letsencrypt/boulder-sunlight:${BOULDER_SUNLIGHT_TAG:-latest}
     build:
       context: test/sunlight/
     depends_on:
-      bseaweedfs:
-        condition: service_started
+      bseaweedfs-configure:
+        condition: service_completed_successfully
     volumes:
       - .:/boulder:cached
       - mtc-data:/sunlight-data
