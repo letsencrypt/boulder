@@ -15,6 +15,10 @@ import (
 	"path"
 	"time"
 
+	"golang.org/x/crypto/cryptobyte"
+	casn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/unsigned"
 )
 
@@ -72,16 +76,26 @@ func main2() error {
 		return err
 	}
 
+	// https://letsencrypt.org/docs/oids/
+	// 44947 is ISRG; 44947.4.1 will be temporarily for our prototype MTC implementation, with ".1"
+	// representing one CA instance.
+	mtcaID := "44947.4.1"
+	skid, _ := core.EncodeRelativeOID(mtcaID)
+
 	template := &x509.Certificate{
 		// TODO: decide how to generate serial number for MTCA certificates; presumably random?
 		SerialNumber: big.NewInt(123),
-		Subject:      mtcaSubject(),
+		Subject:      mtcaSubject(mtcaID),
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour),
 		// The key usage extension (Section 4.2.1.3 of [RFC5280]) MUST be present and assert at least the keyCertSign bit.
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		// The subject key identifier extension (Section 4.2.1.2 of [RFC5280]), if present, SHOULD be set to the CA ID Section 5.1.
+		// The CA ID is encoded in its binary representation, as defined in Section 4 of [I-D.ietf-tls-trust-anchor-ids].
+		SubjectKeyId:          skid,
 		IsCA:                  true,
 		BasicConstraintsValid: true,
+		MaxPathLenZero:        true,
 		ExtraExtensions:       []pkix.Extension{mtcaExtn, tlogPrefixExtn},
 	}
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
@@ -124,22 +138,31 @@ func main2() error {
 	return pem.Encode(caPubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: caSPKI})
 }
 
-func mtcaSubject() pkix.Name {
+func mtcaSubject(relativeOID string) pkix.Name {
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certification-authority-ide
-	// For initial experimentation, early implementations of this design will:
-	//  - Use UTF8String to represent the attribute's value rather than RELATIVE-OID. The UTF8String contains trust anchor ID's ASCII representation, e.g. 32473.1.
-	//  - Use the OID 1.3.6.1.4.1.44363.47.1 instead of id-rdna-trustAnchorID.
-	// idRDNATrustAnchorID := asn1.ObjectIdentifier{ 1, 3, 6, 1, 5, 5, 7, 25 }
-	idRDNATrustAnchorIDExperimental := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
+	// A CA ID determines a PKIX distinguished name (Section 4.1.2.4 of [RFC5280]) that can be used in the issuer or subject field of an X.509 TBSCertificate.
+	// This distinguished name has a single relative distinguished name, which has a single attribute. The attribute has type id-rdna-trustAnchorID, defined below:
+	// 	id-rdna-trustAnchorID OBJECT IDENTIFIER ::= {
+	// 			iso(1) identified-organization(3) dod(6) internet(1) security(5)
+	// 			mechanisms(5) pkix(7) rdna(25) 3 }
+	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
 
-	// https://letsencrypt.org/docs/oids/
-	// 44947 is ISRG; 44947.4.1 will be temporarily for our prototype MTC implementation, with ".1"
-	// representing one CA instance.
-	mtcaID := "44947.4.1"
+	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certification-authority-ide
+	// The attribute's value is a RELATIVE-OID containing the trust anchor ID's ASN.1 representation.
+	//
+	// https://www.ietf.org/archive/id/draft-housley-asn1-layman-guide-03.html#section-2
+	// 	Type					Decimal Tag Number	Hexadecimal Tag Number
+	// 	RELATIVE-OID	13									0d
+	tagRelativeOID := 13
+
+	// Throw away the err because this is just test setup code and we know that
+	// we're providing well-formed relative OIDs.
+	val, _ := core.EncodeRelativeOID(relativeOID)
+
 	attributes := []pkix.AttributeTypeAndValue{
 		{
-			Type:  idRDNATrustAnchorIDExperimental,
-			Value: asn1.RawValue{Tag: asn1.TagUTF8String, Bytes: []byte(mtcaID)},
+			Type:  idRDNATrustAnchorID,
+			Value: asn1.RawValue{Tag: tagRelativeOID, Bytes: val},
 		},
 	}
 
@@ -149,24 +172,44 @@ func mtcaSubject() pkix.Name {
 }
 
 func mtcaExtension() (pkix.Extension, error) {
-	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-representing-certification-
-	// For initial experimentation, early implementations of this design will use the OID 1.3.6.1.4.1.44363.47.2 instead of id-pe-mtcCertificationAuthority.
-	extnOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 2}
+	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.5
+	// This document defines one extension type, id-pe-mtcCertificationAuthority-SHA256, which indicates hashing with SHA-256.
+	// Other documents MAY define corresponding extensions for other hash functions or new versions of the tree construction.
+	//
+	// id-pe-mtcCertificationAuthority-SHA256 OBJECT IDENTIFIER ::= {
+	//     iso(1) identified-organization(3) dod(6) internet(1) security(5)
+	//     mechanisms(5) pkix(7) pe(1) 38 }
+	//
+	// ext-mtcCertificationAuthority-SHA256 EXTENSION ::= {
+	//     SYNTAX MTCCertificationAuthority
+	//     IDENTIFIED BY id-pe-mtcCertificationAuthority-SHA256
+	//     CRITICALITY TRUE
+	// }
+	//
+	// -- This is 2^48, the minimum possible serial number in this protocol.
+	// mtcMinSerial INTEGER ::= 281474976710656
+	//
+	// -- This is 2^64-1, the maximum possible serial number in this protocol.
+	// mtcMaxSerial INTEGER ::= 18446744073709551615
+	//
+	// MTCCertificationAuthority ::= SEQUENCE {
+	//     sigAlg    AlgorithmIdentifier{SIGNATURE-ALGORITHM, {...}},
+	//     minSerial INTEGER (mtcMinSerial..mtcMaxSerial),
+	//     maxSerial INTEGER (mtcMinSerial..mtcMaxSerial)
+	// }
+	extnOID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 38}
 
-	// Copied from https://cs.opensource.google/go/go/+/refs/tags/go1.26.3:src/crypto/x509/x509.go;l=345-350
-	oidSHA256 := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 	// https://www.rfc-editor.org/info/rfc9881/
 	oidSignatureMLDSA44 := asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 17}
 
 	extnMarshaled, err := asn1.Marshal(struct {
-		LogHash   pkix.AlgorithmIdentifier
 		SigAlg    pkix.AlgorithmIdentifier
 		MinSerial int64
+		MaxSerial int64
 	}{
-		LogHash: pkix.AlgorithmIdentifier{Algorithm: oidSHA256},
-		SigAlg:  pkix.AlgorithmIdentifier{Algorithm: oidSignatureMLDSA44},
+		SigAlg: pkix.AlgorithmIdentifier{Algorithm: oidSignatureMLDSA44},
 		// Just for fun, exercise MinSerial functionality.
-		MinSerial: 999,
+		MinSerial: 281474976710656 + 4,
 	})
 
 	if err != nil {
@@ -185,21 +228,29 @@ func mtcaExtension() (pkix.Extension, error) {
 //
 //	id-mtcTlogPrefixURL OBJECT IDENTIFIER ::= {
 //	    iso(1) org(3) dod(6) internet(1) private(4) enterprise(1) C2SP(64829)
-//	    mtc-tlog(2) 1 }
+//	    mtc-tlog(2) 2 }
 //
-//	ext-mtcTlogPrefixURL EXTENSION ::= {
-//	    SYNTAX IA5String
-//	    IDENTIFIED BY id-mtcTlogPrefixURL
+// MTCTlogPrefixURLs ::= SEQUENCE SIZE (1..MAX) OF IA5String
+//
+//	ext-mtcTlogPrefixURLs EXTENSION ::= {
+//	    SYNTAX MTCTlogPrefixURLs
+//	    IDENTIFIED BY id-mtcTlogPrefixURLs
 //	    CRITICALITY FALSE
 //	}
 func tlogPrefixExtn(url string) (pkix.Extension, error) {
-	extnMarshaled, err := asn1.MarshalWithParams(url, "ia5")
+	extn := cryptobyte.NewBuilder(nil)
+	extn.AddASN1(casn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1(casn1.IA5String, func(b *cryptobyte.Builder) {
+			b.AddBytes([]byte(url))
+		})
+	})
+	extnBytes, err := extn.Bytes()
 	if err != nil {
 		return pkix.Extension{}, err
 	}
 	return pkix.Extension{
-		Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 64829, 2, 1},
+		Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 64829, 2, 2},
 		Critical: false,
-		Value:    extnMarshaled,
+		Value:    extnBytes,
 	}, nil
 }
