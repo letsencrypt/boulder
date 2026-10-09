@@ -28,7 +28,6 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
-	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/pubkey"
@@ -140,7 +139,6 @@ type mtca struct {
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
-	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
 	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
 }
 
@@ -191,6 +189,17 @@ func (m *mtca) InitLog(ctx context.Context) error {
 		err = tx.InsertFirstCheckpoint(ctx, firstCheckpoint)
 		if err != nil {
 			return nil, err
+		}
+		_, err = tx.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
+			MTCLogID:      m.logID.String(),
+			CheckpointID:  firstCheckpoint.ID,
+			MTCASignature: caSig,
+			SubtreeStart:  0,
+			SubtreeEnd:    uint64(candidate.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+			SubtreeHash:   rootHash[:],
+		})
+		if err != nil {
+			return nil, fmt.Errorf("inserting checkpoint subtree: %s", err)
 		}
 
 		return nil, nil
@@ -538,6 +547,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	var caSig []byte
 	var signedNote []byte
+	var subtreeID int64
 	_, err = m.treedb.WithTransaction(ctx, func(tx treedb.Tx) (any, error) {
 		// Lock the latestCheckpoint row for this mtcLogID.
 		latestID, err := tx.SelectLatestForUpdate(ctx, m.logID.String())
@@ -566,6 +576,26 @@ func (m *mtca) sequence(ctx context.Context) error {
 			return nil, fmt.Errorf("updating latestCheckpoint: %s", err)
 		}
 
+		// The subtree is stored in this transaction so that a failure cannot
+		// leave a committed checkpoint without one, which could never be
+		// published.
+		//
+		// TODO(#9020)(#9038): calculate specific subtree coverage rather than
+		// always using 0 for subtreeStart
+		subtreeID, err = tx.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
+			MTCLogID:        m.logID.String(),
+			CheckpointID:    newCheckpoint.ID,
+			MTCASignature:   caSig,
+			MirrorID:        nil,
+			MirrorSignature: nil,
+			SubtreeStart:    0,
+			SubtreeEnd:      uint64(candidate.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+			SubtreeHash:     newRootHash[:],
+		})
+		if err != nil {
+			return nil, fmt.Errorf("inserting checkpoint subtree: %s", err)
+		}
+
 		return nil, nil
 	})
 	if err != nil {
@@ -583,50 +613,6 @@ func (m *mtca) sequence(ctx context.Context) error {
 	err = m.frontier.Publish(ctx, m.s3c, m.logID.TilePrefix())
 	if err != nil {
 		return fmt.Errorf("publishing tiles: %s", err)
-	}
-
-	// `cosigner_name` and `log_origin` are computed from the cosigner ID and
-	// the issuance log's ID (Section 5.1), respectively. They contain the
-	// concatenation of:
-	//   * The 16-byte ASCII string `oid/1.3.6.1.4.1.`
-	//   * The trust anchor ID's ASCII representation (Section 4 of [I-D.ietf-tls-trust-anchor-ids])
-	// This is equivalent to the concatenation of:
-	//   * The four-byte ASCII string `oid/`
-	//   * The trust anchor ID as a full OID, in dotted decimal notation
-	//
-	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-signature-format
-	cosignedMessage, err := (&cosigned.Message{
-		CosignerName: "oid/1.3.6.1.4.1." + m.logID.CAID,
-		// Timestamp should always be zero when signing over a subtree (as
-		// opposed to a checkpoint)
-		Timestamp:   0,
-		LogOrigin:   "oid/1.3.6.1.4.1." + m.logID.String(),
-		Start:       0,
-		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
-		SubtreeHash: newRootHash,
-	}).Marshal()
-	if err != nil {
-		return fmt.Errorf("marshaling cosigned message: %s", err)
-	}
-
-	subtreeSignature, err := m.issuer.Signer.Sign(nil, cosignedMessage, nil)
-	if err != nil {
-		return err
-	}
-
-	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
-	// always using 0 for subtreeStart
-	subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
-		MTCLogID:        m.logID.String(),
-		MTCASignature:   subtreeSignature,
-		MirrorID:        nil,
-		MirrorSignature: nil,
-		SubtreeStart:    0,
-		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
-		SubtreeHash:     newRootHash[:],
-	})
-	if err != nil {
-		return fmt.Errorf("calling treedb.InsertCheckpointSubtree: %s", err)
 	}
 
 	// Notify waiting RPCs.

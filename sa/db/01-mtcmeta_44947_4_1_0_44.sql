@@ -48,14 +48,6 @@ CREATE TABLE `checkpoints` (
     `treeSize` bigint(20) unsigned NOT NULL,
     `rootHash` binary(32) NOT NULL,
 
-    -- The IDs of the one or two subtrees in the `checkpointSubtrees` table implied by the delta between
-    -- this checkpoint and the previous one. These two subtrees must cover all entries between this checkpoint
-    -- and the previous one.
-    -- The first checkpoint of an issuance log will have these both NULL. Subsequent checkpoints will have `subtreeID2` NULL
-    -- if a single subtree covers the delta.
-    `subtreeID1` bigint(20) unsigned,
-    `subtreeID2` bigint(20) unsigned,
-
     `created` datetime DEFAULT current_timestamp(),
     PRIMARY KEY (`id`),
     KEY `mtcLogID_treeSize` (`mtcLogID`, `treeSize`)
@@ -79,6 +71,10 @@ CREATE TABLE `checkpointSubtrees` (
     -- This is redundant with the database/keyspace name and will be used for extra checks to ensure
     -- configuration errors can't result in using the wrong database/keyspace.
     `mtcLogID` varchar(255) NOT NULL,
+    -- ID of the checkpoint in the `checkpoints` table whose one or two subtrees
+    -- this is one of. Together they cover all entries between that checkpoint
+    -- and the previous one.
+    `checkpointID` bigint(20) NOT NULL,
     -- An ML-DSA-44 signature over a CosignedMessage with zero timestamp.
     `mtcaSignature` mediumblob NOT NULL,
 
@@ -95,7 +91,8 @@ CREATE TABLE `checkpointSubtrees` (
     `subtreeHash` binary(32) NOT NULL,
 
     `created` datetime DEFAULT current_timestamp(),
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    KEY `mtcLogID_checkpointID` (`mtcLogID`, `checkpointID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
 

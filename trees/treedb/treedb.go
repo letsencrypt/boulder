@@ -23,8 +23,6 @@ type CheckpointModel struct {
 	MirrorSignature []byte  `db:"mirrorSignature"`
 	TreeSize        int64   `db:"treeSize"`
 	RootHash        []byte  `db:"rootHash"`
-	SubtreeID1      *int64  `db:"subtreeID1"`
-	SubtreeID2      *int64  `db:"subtreeID2"`
 }
 
 func (c *CheckpointModel) Valid() error {
@@ -51,6 +49,7 @@ func (c *CheckpointModel) Mirrored() bool {
 type CheckpointSubtreeModel struct {
 	ID              int64   `db:"id"`
 	MTCLogID        string  `db:"mtcLogID"`
+	CheckpointID    int64   `db:"checkpointID"`
 	MTCASignature   []byte  `db:"mtcaSignature"`
 	MirrorID        *string `db:"mirrorID"`
 	MirrorSignature []byte  `db:"mirrorSignature"`
@@ -97,8 +96,7 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 	var latest CheckpointModel
 	err := i.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash,
-		        subtreeID1, subtreeID2
+		        mirrorSignature, treeSize, rootHash
 		 FROM latestCheckpoint JOIN checkpoints
 		 USING(id)
 		 WHERE latestCheckpoint.mtcLogID = ? AND
@@ -141,7 +139,7 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*CheckpointSubtreeModel, error) {
 	var checkpointSubtree CheckpointSubtreeModel
 	err := i.db.SelectOne(ctx, &checkpointSubtree,
-		`SELECT id, mtcLogID, mtcaSignature,
+		`SELECT id, mtcLogID, checkpointID, mtcaSignature,
 				mirrorID, mirrorSignature,
 				subtreeStart, subtreeEnd, subtreeHash
 		 FROM checkpointSubtrees
@@ -155,17 +153,24 @@ func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int
 	return &checkpointSubtree, nil
 }
 
-// InsertCheckpointSubtree inserts a row into db, and returns the inserted row
-// ID, or an error. Because borp's `Insert` modifies its argument to set the ID
-// when a field is marked as autoincrement (`.SetKeys(true, "ID")`), this method
-// also modifies its argument (in this case, `model`).
-func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSubtreeModel) (int64, error) {
-	err := i.db.Insert(ctx, model)
+// GetSubtreesForCheckpoint returns the subtrees of the checkpoint with the
+// given ID, in order of their start.
+func (i *Impl) GetSubtreesForCheckpoint(ctx context.Context, mtcLogID string, checkpointID int64) ([]*CheckpointSubtreeModel, error) {
+	var subtrees []*CheckpointSubtreeModel
+	_, err := i.db.Select(ctx, &subtrees,
+		`SELECT id, mtcLogID, checkpointID, mtcaSignature,
+				mirrorID, mirrorSignature,
+				subtreeStart, subtreeEnd, subtreeHash
+		 FROM checkpointSubtrees
+		 WHERE mtcLogID = ? AND
+		 	checkpointID = ?
+		 ORDER BY subtreeStart`,
+		mtcLogID,
+		checkpointID)
 	if err != nil {
-		return 0, fmt.Errorf("inserting into checkpointSubtrees table: %s", err)
+		return nil, err
 	}
-
-	return model.ID, nil
+	return subtrees, nil
 }
 
 // WithTransaction calls `github.com/letsencrypt/boulder/db.WithTransaction` for the given
@@ -192,6 +197,7 @@ type Tx interface {
 	AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error
 	SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error)
 	SetLatestCheckpointID(ctx context.Context, mtcLogID string, old, new int64) error
+	InsertCheckpointSubtree(ctx context.Context, subtree *CheckpointSubtreeModel) (int64, error)
 }
 
 type txImpl struct {
@@ -243,6 +249,26 @@ func (tx txImpl) InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *Che
 
 	_, err = tx.tx.ExecContext(ctx, "INSERT INTO latestCheckpoint (id, mtcLogID) VALUES (?, ?)", firstCheckpoint.ID, firstCheckpoint.MTCLogID)
 	return err
+}
+
+// InsertCheckpointSubtree inserts a `CheckpointSubtreeModel` and returns the inserted row's ID.
+func (tx txImpl) InsertCheckpointSubtree(ctx context.Context, subtree *CheckpointSubtreeModel) (int64, error) {
+	err := subtree.Valid()
+	if err != nil {
+		return 0, fmt.Errorf("checkpoint subtree invalid: %s", err)
+	}
+	if subtree.CheckpointID == 0 {
+		return 0, fmt.Errorf("checkpoint subtree needs CheckpointID")
+	}
+	if len(subtree.MTCASignature) == 0 {
+		return 0, fmt.Errorf("checkpoint subtree needs MTCASignature")
+	}
+
+	err = tx.tx.Insert(ctx, subtree)
+	if err != nil {
+		return 0, fmt.Errorf("inserting into checkpointSubtrees table: %s", err)
+	}
+	return subtree.ID, nil
 }
 
 // AddMTCASignature updates an already-existing checkpoint to fill the MTCASignature field.

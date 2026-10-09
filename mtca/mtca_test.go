@@ -142,7 +142,7 @@ func (f *fakeDB) InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel
 	return nil
 }
 
-func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.CheckpointSubtreeModel) (_ int64, _ error) {
+func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.CheckpointSubtreeModel) (int64, error) {
 	if s.MTCLogID != f.mtcLogID {
 		return 0, fmt.Errorf("wrong log")
 	}
@@ -155,7 +155,20 @@ func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.Checkpoi
 	return s.ID, nil
 }
 
-func (f *fakeDB) getCheckpointSubtree(mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error) {
+func (f *fakeDB) GetSubtreesForCheckpoint(ctx context.Context, mtcLogID string, checkpointID int64) ([]*treedb.CheckpointSubtreeModel, error) {
+	if mtcLogID != f.mtcLogID {
+		return nil, fmt.Errorf("wrong log")
+	}
+	var subtrees []*treedb.CheckpointSubtreeModel
+	for i := range f.checkpointSubtrees {
+		if f.checkpointSubtrees[i].CheckpointID == checkpointID {
+			subtrees = append(subtrees, &f.checkpointSubtrees[i])
+		}
+	}
+	return subtrees, nil
+}
+
+func (f *fakeDB) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
@@ -763,7 +776,7 @@ func TestSequence(t *testing.T) {
 
 	for entryIndex, issuanceResult := range got {
 		fake := mtca.treedb.(*fakeDB)
-		subtree, err := fake.getCheckpointSubtree(mtca.logID.String(), issuanceResult.MtcSubtreeID)
+		subtree, err := fake.GetCheckpointSubtree(t.Context(), mtca.logID.String(), issuanceResult.MtcSubtreeID)
 		if err != nil {
 			t.Fatalf("getting subtree: %s", err)
 		}
@@ -803,6 +816,21 @@ func TestSequence(t *testing.T) {
 	// Each client's returned index must point at its own entry in the
 	// published entries tile.
 	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
+
+	fake := mtca.treedb.(*fakeDB)
+	subtrees, err := fake.GetSubtreesForCheckpoint(t.Context(), mtca.logID.String(), latest.ID)
+	if err != nil {
+		t.Fatalf("getting the subtrees of checkpoint %d: %s", latest.ID, err)
+	}
+	if len(subtrees) != 1 {
+		t.Fatalf("checkpoint %d has %d subtrees, want 1", latest.ID, len(subtrees))
+	}
+	subtree := subtrees[0]
+	for _, issuanceResult := range got {
+		if issuanceResult.MtcSubtreeID != subtree.ID {
+			t.Errorf("entry subtree ID = %d, want the checkpoint's %d", issuanceResult.MtcSubtreeID, subtree.ID)
+		}
+	}
 }
 
 // TestSequenceStorageFailure checks that a failed sequencing pass leaves the
