@@ -29,6 +29,12 @@ func RelativeEndpoint(request *http.Request, basePath string, segments ...string
 		proto = specifiedProto
 	}
 
+	// Allow upstream proxies to specify the forwarded host. Allow this value to
+	// override the request host.
+	if specifiedHost := request.Header.Get("X-Forwarded-Host"); specifiedHost != "" {
+		host = specifiedHost
+	}
+
 	// Default to "localhost" when no request.Host is provided. Otherwise requests
 	// with an empty `Host` produce results like `http:///acme/new-authz`
 	if request.Host == "" {
