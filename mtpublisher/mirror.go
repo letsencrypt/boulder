@@ -290,15 +290,12 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
 	}
-	zeroTimestampMirrorCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
+	subtreeCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
 	if err != nil {
 		return nil, fmt.Errorf("cosignature failed verification: %w", err)
 	}
-
-	// Finally, extract the raw cosignature we store in the database.
-	rawMirrorCosignature, err := cosignature.RawSignature(zeroTimestampMirrorCosignature)
-	if err != nil {
-		return nil, fmt.Errorf("cosignature: %w", err)
+	if subtreeCosignature.Timestamp != 0 {
+		return nil, fmt.Errorf("subtree signature has timestamp %d, want 0", subtreeCosignature.Timestamp)
 	}
-	return rawMirrorCosignature, nil
+	return subtreeCosignature.Signature, nil
 }
