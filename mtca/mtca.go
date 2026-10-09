@@ -138,6 +138,7 @@ type mtca struct {
 // substitute their own.
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
+	GetSubtreesForCheckpoint(ctx context.Context, mtcLogID string, checkpointID int64) ([]*treedb.CheckpointSubtreeModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
 	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
 }
@@ -455,9 +456,20 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("validating latest checkpoint: %s", err)
 	}
 
-	if !latest.Mirrored() {
-		return fmt.Errorf("temporary: checkpoint ID %d (tree size %d): %w",
-			latest.ID, latest.TreeSize, ErrCheckpointNotReady)
+	// The subtree signatures are the last thing the publisher stores for a
+	// checkpoint, so they are what says the checkpoint is mirrored.
+	subtrees, err := m.treedb.GetSubtreesForCheckpoint(ctx, m.logID.String(), latest.ID)
+	if err != nil {
+		return fmt.Errorf("selecting the subtrees of checkpoint %d: %s", latest.ID, err)
+	}
+	if len(subtrees) == 0 {
+		return fmt.Errorf("checkpoint ID %d (tree size %d) has no subtrees", latest.ID, latest.TreeSize)
+	}
+	for _, subtree := range subtrees {
+		if !subtree.Mirrored() {
+			return fmt.Errorf("temporary: checkpoint ID %d (tree size %d): %w",
+				latest.ID, latest.TreeSize, ErrCheckpointNotReady)
+		}
 	}
 
 	// Pull the contents of the pool.

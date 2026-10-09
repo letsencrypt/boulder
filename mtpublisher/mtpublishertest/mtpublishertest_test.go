@@ -34,8 +34,8 @@ func testMirror(t *testing.T) (*TestMirror, *mldsa.PrivateKey) {
 	return mirror, key
 }
 
-// TestMirrorCosign checks that the mirror's raw cosignature verifies
-// through trees/cosignature.
+// TestMirrorCosign checks that the checkpoint cosignature carries Timestamp
+// and that it and the subtree signature verify.
 func TestMirrorCosign(t *testing.T) {
 	mirror, key := testMirror(t)
 
@@ -44,9 +44,13 @@ func TestMirrorCosign(t *testing.T) {
 	}
 
 	cp := &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1." + mtcLogID, Tree: tlog.Tree{N: 512}}
-	raw, err := mirror.Cosign(t.Context(), cp, nil)
+	checkpointCosignatureLine, err := mirror.Cosign(t.Context(), cp, nil)
 	if err != nil {
 		t.Fatalf("Cosign: %s", err)
+	}
+	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp, checkpointCosignatureLine)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
 	}
 
 	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
@@ -57,8 +61,15 @@ func TestMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal: %s", err)
 	}
-	if !verifier.Verify(text, append(make([]byte, 8), raw...)) {
-		t.Error("the mirror's cosignature does not verify")
+	checkpointCosignature, err := verifier.FilterByVerify(text, checkpointCosignatureLine)
+	if err != nil {
+		t.Fatalf("FilterByVerify: %s", err)
+	}
+	if checkpointCosignature.Timestamp != Timestamp {
+		t.Errorf("checkpoint cosignature timestamp = %d, want %d", checkpointCosignature.Timestamp, Timestamp)
+	}
+	if !verifier.Verify(text, append(make([]byte, 8), subtreeSignature...)) {
+		t.Error("the mirror's subtree signature does not verify with a zero timestamp")
 	}
 }
 

@@ -257,7 +257,7 @@ func (m *MirrorClient) signSubtree(ctx context.Context, tree tlog.Tree, signedNo
 }
 
 // Cosign runs the c2sp.org/tlog-mirror submission protocol for the checkpoint
-// and returns the mirror's raw signature over the whole tree from sign-subtree,
+// and returns the mirror's checkpoint cosignature line from add-entries,
 // verified against the mirror's key. A mirror that is already up to date,
 // whether from an earlier submission whose cosignature was never stored or
 // from another submitter, still gets the full exchange, since that is the only
@@ -275,8 +275,28 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 		return nil, fmt.Errorf("add-entries: %w", err)
 	}
 
-	// Exchange the mirror's cosignature for its subtree signature.
-	noteForSignSubtree, err := cp.SignedNote(mirrorCosignatureLines)
+	// Verify the mirror's checkpoint cosignature.
+	noteText, err := cp.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
+	}
+	checkpointCosignature, err := m.verifier.FilterByVerify(noteText, mirrorCosignatureLines)
+	if err != nil {
+		return nil, fmt.Errorf("checkpoint cosignature failed verification: %w", err)
+	}
+	// https://c2sp.org/tlog-witness#add-checkpoint: "The cosignature MUST NOT
+	// omit the timestamp, i.e. the timestamp MUST NOT be zero."
+	if checkpointCosignature.Timestamp == 0 {
+		return nil, errors.New("checkpoint cosignature has a zero timestamp")
+	}
+	return checkpointCosignature.Line, nil
+}
+
+// CosignSubtree exchanges the mirror's checkpoint cosignature line for its
+// subtree signature over the whole tree from sign-subtree, verified against
+// the mirror's key.
+func (m *MirrorClient) CosignSubtree(ctx context.Context, cp *checkpoint.Checkpoint, checkpointCosignatureLine []byte) ([]byte, error) {
+	noteForSignSubtree, err := cp.SignedNote(checkpointCosignatureLine)
 	if err != nil {
 		return nil, fmt.Errorf("assembling the sign-subtree note: %w", err)
 	}
@@ -285,14 +305,14 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 		return nil, fmt.Errorf("sign-subtree: %w", err)
 	}
 
-	// Verify the mirror's signature.
+	// Verify the mirror's subtree signature.
 	noteText, err := cp.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
 	}
 	subtreeCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
 	if err != nil {
-		return nil, fmt.Errorf("cosignature failed verification: %w", err)
+		return nil, fmt.Errorf("subtree signature failed verification: %w", err)
 	}
 	if subtreeCosignature.Timestamp != 0 {
 		return nil, fmt.Errorf("subtree signature has timestamp %d, want 0", subtreeCosignature.Timestamp)

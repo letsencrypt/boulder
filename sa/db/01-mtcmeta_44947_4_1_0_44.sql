@@ -27,8 +27,6 @@ CREATE TABLE `checkpoints` (
     -- configuration errors can't result in using the wrong database/keyspace.
     `mtcLogID` varchar(255) NOT NULL,
     -- An ML-DSA-44 signature over a CosignedMessage with `timestamp` and `start` both zero.
-    -- TODO(#8991): Change this to store a signed note signature line instead, since that format can
-    -- carry a nonzero `timestamp`.
     `mtcaSignature` mediumblob,
 
     -- For simplicity we start out with a hardcoded assumption of one mirror signature,
@@ -36,9 +34,8 @@ CREATE TABLE `checkpoints` (
     -- `mirrorID` is an ASCII-format OID relative to 1.3.6.1.4.1.
     -- Note: these two fields start empty and are filled later.
     `mirrorID` varchar(255),
-    -- An ML-DSA-44 signature over a CosignedMessage with `timestamp` and `start` both zero.
-    -- TODO(#8991): Change this to store a signed note signature line instead, since that format can
-    -- carry a nonzero `timestamp`.
+    -- The mirror's checkpoint cosignature (https://c2sp.org/tlog-cosignature), with its `timestamp`,
+    -- as a signed note signature line: https://c2sp.org/signed-note#signatures
     `mirrorSignature` mediumblob,
 
     -- Signed-over data: https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1

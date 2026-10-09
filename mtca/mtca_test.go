@@ -168,6 +168,20 @@ func (f *fakeDB) GetSubtreesForCheckpoint(ctx context.Context, mtcLogID string, 
 	return subtrees, nil
 }
 
+func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	if mtcLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	for i, s := range f.checkpointSubtrees {
+		if s.ID == id {
+			f.checkpointSubtrees[i].MirrorID = &mirrorID
+			f.checkpointSubtrees[i].MirrorSignature = mirrorSignature
+			return nil
+		}
+	}
+	return fmt.Errorf("subtree %d not found", id)
+}
+
 func (f *fakeDB) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
@@ -831,6 +845,49 @@ func TestSequence(t *testing.T) {
 			t.Errorf("entry subtree ID = %d, want the checkpoint's %d", issuanceResult.MtcSubtreeID, subtree.ID)
 		}
 	}
+
+	mirrorCosign(t, mtca)
+	latest = verifyStores(t, mtca, fs3)
+	if !latest.Mirrored() {
+		t.Fatal("latest checkpoint is not mirrored after publishing")
+	}
+	if !bytes.HasPrefix(latest.MirrorSignature, []byte("\u2014 oid/1.3.6.1.4.1."+*latest.MirrorID+" ")) {
+		t.Errorf("latest.MirrorSignature = %q, want the mirror's signature line", latest.MirrorSignature)
+	}
+	subtree, err = fake.GetCheckpointSubtree(t.Context(), mtca.logID.String(), subtree.ID)
+	if err != nil {
+		t.Fatalf("getting subtree %d: %s", subtree.ID, err)
+	}
+	if !subtree.Mirrored() {
+		t.Fatal("subtree is not mirrored after publishing")
+	}
+	if *subtree.MirrorID != *latest.MirrorID {
+		t.Errorf("subtree.MirrorID = %q, want %q", *subtree.MirrorID, *latest.MirrorID)
+	}
+	if len(subtree.MirrorSignature) != mldsa.MLDSA44SignatureSize {
+		t.Errorf("subtree.MirrorSignature is %d bytes, want %d", len(subtree.MirrorSignature), mldsa.MLDSA44SignatureSize)
+	}
+
+	// A publisher pass that died after storing the checkpoint cosignature
+	// must not unblock sequencing.
+	unsigned := &fake.checkpointSubtrees[len(fake.checkpointSubtrees)-1]
+	signature := unsigned.MirrorSignature
+	unsigned.MirrorSignature = nil
+	mtca.pool.maxSize = 1
+	results = issueMany(t, mtca, 1)
+	err = mtca.sequence(t.Context())
+	if !errors.Is(err, ErrCheckpointNotReady) {
+		t.Errorf("sequencing with an unsigned subtree: got %s, want ErrCheckpointNotReady", err)
+	}
+	if mtca.pool.len() != 1 {
+		t.Errorf("pool after refused sequencing: got len %d, want 1", mtca.pool.len())
+	}
+	unsigned.MirrorSignature = signature
+	err = mtca.sequence(t.Context())
+	if err != nil {
+		t.Fatalf("sequencing once the subtree is signed: %s", err)
+	}
+	collectResults(t, results, 6, 1)
 }
 
 // TestSequenceStorageFailure checks that a failed sequencing pass leaves the

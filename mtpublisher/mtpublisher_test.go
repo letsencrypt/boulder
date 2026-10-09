@@ -42,12 +42,13 @@ const (
 
 var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 44}
 
-// fakeCheckpointDB holds the latest checkpoint of one log, or none for a log
-// that is not initialized, and stores the mirror cosignature on it. The mtca
-// tests truncate the mtcmeta database and run in parallel with these, so they
-// cannot share it.
+// fakeCheckpointDB holds the latest checkpoint of one log and its subtree, or
+// none for a log that is not initialized, and stores the mirror cosignatures
+// on them. The mtca tests truncate the mtcmeta database and run in parallel
+// with these, so they cannot share it.
 type fakeCheckpointDB struct {
-	latest *treedb.CheckpointModel
+	latest  *treedb.CheckpointModel
+	subtree *treedb.CheckpointSubtreeModel
 }
 
 func (f *fakeCheckpointDB) LatestCheckpoint(_ context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
@@ -63,6 +64,22 @@ func (f *fakeCheckpointDB) AddMirrorSignature(_ context.Context, id int64, mirro
 	}
 	f.latest.MirrorID = &mirrorID
 	f.latest.MirrorSignature = mirrorSignature
+	return nil
+}
+
+func (f *fakeCheckpointDB) GetSubtreesForCheckpoint(_ context.Context, mtcLogID string, checkpointID int64) ([]*treedb.CheckpointSubtreeModel, error) {
+	if f.subtree == nil || checkpointID != f.subtree.CheckpointID || mtcLogID != f.subtree.MTCLogID {
+		return nil, nil
+	}
+	return []*treedb.CheckpointSubtreeModel{f.subtree}, nil
+}
+
+func (f *fakeCheckpointDB) AddSubtreeMirrorSignature(_ context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	if f.subtree == nil || id != f.subtree.ID || mtcLogID != f.subtree.MTCLogID {
+		return fmt.Errorf("adding mirror signature: subtree %d for %s not found", id, mtcLogID)
+	}
+	f.subtree.MirrorID = &mirrorID
+	f.subtree.MirrorSignature = mirrorSignature
 	return nil
 }
 
@@ -112,8 +129,9 @@ func caSignature(t *testing.T, treeSize int64) []byte {
 }
 
 // testCheckpoint returns a checkpoint of 512 entries with a zero root hash,
-// signed by the MTCA and awaiting the mirror cosignature.
-func testCheckpoint(t *testing.T) *treedb.CheckpointModel {
+// signed by the MTCA and awaiting the mirror cosignature, and the subtree
+// [0, 512) it covers.
+func testCheckpoint(t *testing.T) (*treedb.CheckpointModel, *treedb.CheckpointSubtreeModel) {
 	t.Helper()
 	return &treedb.CheckpointModel{
 		ID:            1,
@@ -121,6 +139,14 @@ func testCheckpoint(t *testing.T) *treedb.CheckpointModel {
 		MTCASignature: caSignature(t, 512),
 		TreeSize:      512,
 		RootHash:      make([]byte, 32),
+	}, &treedb.CheckpointSubtreeModel{
+		ID:            7,
+		MTCLogID:      mtcLogID,
+		CheckpointID:  1,
+		MTCASignature: []byte("placeholder mtca subtree signature"),
+		SubtreeStart:  0,
+		SubtreeEnd:    512,
+		SubtreeHash:   make([]byte, 32),
 	}
 }
 
@@ -161,22 +187,13 @@ func TestPublish(t *testing.T) {
 	}
 
 	// The latest checkpoint, which we expect to be cosigned by p.Publish().
-	latest := testCheckpoint(t)
+	latest, subtree := testCheckpoint(t)
 	checkpoints.latest = latest
+	checkpoints.subtree = subtree
 
 	err = p.Publish(t.Context())
 	if err != nil {
 		t.Fatalf("p.Publish(): %s", err)
-	}
-
-	if latest.MirrorID == nil {
-		t.Fatal("latest checkpoint was not cosigned")
-	}
-	if *latest.MirrorID != mirrorID {
-		t.Errorf("mirrorID = %q, want %q", *latest.MirrorID, mirrorID)
-	}
-	if len(latest.MirrorSignature) != mldsa.MLDSA44SignatureSize {
-		t.Fatalf("latest checkpoint's mirrorSignature is %d bytes, want %d", len(latest.MirrorSignature), mldsa.MLDSA44SignatureSize)
 	}
 
 	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
@@ -184,9 +201,67 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("NewVerifier: %s", err)
 	}
 	text := "oid/1.3.6.1.4.1." + mtcLogID + "\n512\n" + base64.StdEncoding.EncodeToString(make([]byte, 32)) + "\n"
-	timestampedSignature := append(make([]byte, 8), latest.MirrorSignature...)
-	if !verifier.Verify([]byte(text), timestampedSignature) {
-		t.Error("stored mirror cosignature does not verify against the checkpoint text")
+
+	if latest.MirrorID == nil {
+		t.Fatal("latest checkpoint was not cosigned")
+	}
+	if *latest.MirrorID != mirrorID {
+		t.Errorf("mirrorID = %q, want %q", *latest.MirrorID, mirrorID)
+	}
+	stored, err := verifier.FilterByVerify([]byte(text), latest.MirrorSignature)
+	if err != nil {
+		t.Fatalf("stored checkpoint cosignature line: %s", err)
+	}
+	if stored.Timestamp != mtpublishertest.Timestamp {
+		t.Errorf("stored checkpoint cosignature timestamp = %d, want %d", stored.Timestamp, mtpublishertest.Timestamp)
+	}
+
+	if subtree.MirrorID == nil {
+		t.Fatal("subtree was not cosigned")
+	}
+	if *subtree.MirrorID != mirrorID {
+		t.Errorf("subtree mirrorID = %q, want %q", *subtree.MirrorID, mirrorID)
+	}
+	if len(subtree.MirrorSignature) != mldsa.MLDSA44SignatureSize {
+		t.Fatalf("subtree's mirrorSignature is %d bytes, want %d", len(subtree.MirrorSignature), mldsa.MLDSA44SignatureSize)
+	}
+	if !verifier.Verify([]byte(text), append(make([]byte, 8), subtree.MirrorSignature...)) {
+		t.Error("stored subtree signature does not verify against the checkpoint text with a zero timestamp")
+	}
+}
+
+// TestPublishMissingSubtree checks that a checkpoint with no subtree is refused.
+func TestPublishMissingSubtree(t *testing.T) {
+	checkpoints := &fakeCheckpointDB{}
+	p := testPublisher(t, testKey(t), checkpoints)
+	latest, _ := testCheckpoint(t)
+	checkpoints.latest = latest
+
+	err := p.Publish(t.Context())
+	if err == nil {
+		t.Fatal("p.Publish() with a checkpoint that has no subtree: got nil error, want error")
+	}
+	if latest.MirrorID != nil || latest.MirrorSignature != nil {
+		t.Error("checkpoint without a subtree was cosigned")
+	}
+}
+
+// TestPublishSubtreeMismatch checks that a subtree that does not cover the
+// checkpoint's whole tree is refused before anything is published or stored.
+func TestPublishSubtreeMismatch(t *testing.T) {
+	checkpoints := &fakeCheckpointDB{}
+	p := testPublisher(t, testKey(t), checkpoints)
+	latest, subtree := testCheckpoint(t)
+	subtree.SubtreeEnd = 511
+	checkpoints.latest = latest
+	checkpoints.subtree = subtree
+
+	err := p.Publish(t.Context())
+	if err == nil {
+		t.Fatal("p.Publish() with a subtree that does not match the checkpoint: got nil error, want error")
+	}
+	if latest.MirrorID != nil || latest.MirrorSignature != nil {
+		t.Error("checkpoint was cosigned although its subtree was not")
 	}
 }
 
@@ -194,9 +269,9 @@ func TestPublish(t *testing.T) {
 // MTCA signature does not verify is neither submitted nor cosigned.
 func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	// A well-formed MTCA signature over the wrong tree size.
-	latest := testCheckpoint(t)
+	latest, subtree := testCheckpoint(t)
 	latest.MTCASignature = caSignature(t, 999)
-	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest})
+	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtree: subtree})
 
 	err := p.Publish(t.Context())
 	if err == nil {
@@ -209,8 +284,8 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 
 // TestPublishMirrorError checks that a failed cosigning stores nothing.
 func TestPublishMirrorError(t *testing.T) {
-	latest := testCheckpoint(t)
-	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest})
+	latest, subtree := testCheckpoint(t)
+	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtree: subtree})
 	otherLogMirror, err := mtpublishertest.NewTestMirror(mirrorID, "oid/1.3.6.1.4.1.44947.4.2.0.99", privatekey.NewDeterministicSigner(testKey(t)))
 	if err != nil {
 		t.Fatalf("NewTestMirror: %s", err)
@@ -226,13 +301,16 @@ func TestPublishMirrorError(t *testing.T) {
 	}
 }
 
-func TestPublishWhenLatestAlreadySigned(t *testing.T) {
-	// The latest checkpoint is already cosigned, which must be left untouched.
+func TestPublishWhenSubtreeAlreadySigned(t *testing.T) {
+	// The latest checkpoint's subtree is already cosigned, so the checkpoint
+	// must be left untouched.
 	existingMirrorID := "existing.cosigner"
-	latest := testCheckpoint(t)
+	latest, subtree := testCheckpoint(t)
 	latest.MirrorID = &existingMirrorID
 	latest.MirrorSignature = []byte("already-signed-bruh")
-	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest})
+	subtree.MirrorID = &existingMirrorID
+	subtree.MirrorSignature = []byte("already-signed-subtree")
+	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtree: subtree})
 
 	err := p.Publish(t.Context())
 	if err != nil {
@@ -241,6 +319,65 @@ func TestPublishWhenLatestAlreadySigned(t *testing.T) {
 
 	if *latest.MirrorID != existingMirrorID || string(latest.MirrorSignature) != "already-signed-bruh" {
 		t.Errorf("existing cosignature was replaced: %s %q", *latest.MirrorID, latest.MirrorSignature)
+	}
+	if string(subtree.MirrorSignature) != "already-signed-subtree" {
+		t.Errorf("existing subtree signature was replaced: %q", subtree.MirrorSignature)
+	}
+}
+
+// TestPublishReplacesOtherMirrorsCosignature checks that a checkpoint cosigned
+// by a different mirror is submitted again, since its stored line cannot be
+// exchanged for this mirror's subtree signature.
+func TestPublishReplacesOtherMirrorsCosignature(t *testing.T) {
+	checkpoints := &fakeCheckpointDB{}
+	p := testPublisher(t, testKey(t), checkpoints)
+	latest, subtree := testCheckpoint(t)
+	otherMirrorID := "existing.cosigner"
+	latest.MirrorID = &otherMirrorID
+	latest.MirrorSignature = []byte("already-signed-bruh")
+	checkpoints.latest = latest
+	checkpoints.subtree = subtree
+
+	err := p.Publish(t.Context())
+	if err != nil {
+		t.Fatalf("p.Publish(): %s", err)
+	}
+	if *latest.MirrorID != mirrorID || string(latest.MirrorSignature) == "already-signed-bruh" {
+		t.Errorf("checkpoint cosignature = %s %q, want this mirror's", *latest.MirrorID, latest.MirrorSignature)
+	}
+	if !subtree.Mirrored() {
+		t.Error("subtree was not cosigned")
+	}
+}
+
+// TestPublishResumesUnsignedSubtree checks that a checkpoint whose cosignature
+// is stored but whose subtree is unsigned gets its subtree signed from the
+// stored cosignature, without being submitted again.
+func TestPublishResumesUnsignedSubtree(t *testing.T) {
+	key := testKey(t)
+	checkpoints := &fakeCheckpointDB{}
+	p := testPublisher(t, key, checkpoints)
+	latest, subtree := testCheckpoint(t)
+	cp := &checkpoint.Checkpoint{Origin: testLogID.Origin(), Tree: tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}}
+	storedLine, err := testMirror(t, key).Cosign(t.Context(), cp, nil)
+	if err != nil {
+		t.Fatalf("Cosign: %s", err)
+	}
+	storedMirrorID := mirrorID
+	latest.MirrorID = &storedMirrorID
+	latest.MirrorSignature = storedLine
+	checkpoints.latest = latest
+	checkpoints.subtree = subtree
+
+	err = p.Publish(t.Context())
+	if err != nil {
+		t.Fatalf("p.Publish(): %s", err)
+	}
+	if !subtree.Mirrored() {
+		t.Error("subtree was not cosigned")
+	}
+	if !bytes.Equal(latest.MirrorSignature, storedLine) {
+		t.Error("stored checkpoint cosignature was replaced")
 	}
 }
 
@@ -253,11 +390,13 @@ type sourceLog struct {
 	cp         *checkpoint.Checkpoint
 	signedNote []byte
 
-	// mirrorKey signs cosigLine, the mirror's signature line over the newer
-	// tree, which carries the raw cosignature rawCosig.
-	mirrorKey *mldsa.PrivateKey
-	cosigLine []byte
-	rawCosig  []byte
+	// mirrorKey signs checkpointCosignatureLine, the mirror's checkpoint
+	// cosignature line over the newer tree, and subtreeCosignatureLine, its
+	// subtree cosignature line carrying subtreeSignature.
+	mirrorKey                 *mldsa.PrivateKey
+	checkpointCosignatureLine []byte
+	subtreeCosignatureLine    []byte
+	subtreeSignature          []byte
 }
 
 const testTilePrefix = "44947.4.1/44"
@@ -327,29 +466,29 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	mirrorCosigner, err := cosignature.NewCosigner(mirrorID, cp.Origin, privatekey.NewDeterministicSigner(mirrorKey))
+	mirror, err := mtpublishertest.NewTestMirror(mirrorID, cp.Origin, privatekey.NewDeterministicSigner(mirrorKey))
 	if err != nil {
-		t.Fatalf("NewCosigner: %s", err)
+		t.Fatalf("NewTestMirror: %s", err)
 	}
-	timestamped, err := mirrorCosigner.CosignCheckpoint(newer)
+	checkpointCosignatureLine, err := mirror.Cosign(t.Context(), cp, nil)
 	if err != nil {
-		t.Fatalf("CosignCheckpoint: %s", err)
+		t.Fatalf("Cosign: %s", err)
 	}
-	rawCosig, err := cosignature.RawSignature(timestamped)
+	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp, checkpointCosignatureLine)
 	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
+		t.Fatalf("CosignSubtree: %s", err)
 	}
 	mirrorVerifier, err := cosignature.NewVerifier(mirrorID, mirrorKey.PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	cosigLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, rawCosig)
+	subtreeCosignatureLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, subtreeSignature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
 	return &sourceLog{
 		fs3: fs3, older: older, newer: newer, cp: cp, signedNote: signedNote,
-		mirrorKey: mirrorKey, cosigLine: cosigLine, rawCosig: rawCosig,
+		mirrorKey: mirrorKey, checkpointCosignatureLine: checkpointCosignatureLine, subtreeCosignatureLine: subtreeCosignatureLine, subtreeSignature: subtreeSignature,
 	}
 }
 
@@ -457,7 +596,6 @@ func parseUploadHeader(t *testing.T, body []byte) (int64, []byte) {
 // sign-subtree for the subtree signature over the whole tree.
 func TestMirrorCosign(t *testing.T) {
 	source := newSourceLog(t)
-	line := string(source.cosigLine)
 
 	var addCheckpointCalls, addEntriesCalls, signSubtreeCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -511,7 +649,7 @@ func TestMirrorCosign(t *testing.T) {
 				if uploadStart != 512 || string(ticket) != "resume" {
 					t.Errorf("second add-entries upload_start = %d ticket = %q, want 512 and \"resume\"", uploadStart, ticket)
 				}
-				fmt.Fprint(w, line)
+				w.Write(source.checkpointCosignatureLine)
 			}
 		case "/sign-subtree":
 			signSubtreeCalls++
@@ -520,10 +658,10 @@ func TestMirrorCosign(t *testing.T) {
 			if !ok || string(header) != expectHeader {
 				t.Errorf("sign-subtree header %q, want %q", header, expectHeader)
 			}
-			if !bytes.HasSuffix(note, source.cosigLine) {
+			if !bytes.HasSuffix(note, source.checkpointCosignatureLine) {
 				t.Errorf("sign-subtree note %q does not end with the add-entries cosignature line", note)
 			}
-			fmt.Fprint(w, line)
+			w.Write(source.subtreeCosignatureLine)
 		default:
 			t.Errorf("unexpected request to %s", r.URL.Path)
 		}
@@ -534,12 +672,19 @@ func TestMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	got, err := m.Cosign(t.Context(), source.cp, source.signedNote)
+	checkpointCosignatureLine, err := m.Cosign(t.Context(), source.cp, source.signedNote)
 	if err != nil {
 		t.Fatalf("Cosign: %s", err)
 	}
-	if !bytes.Equal(got, source.rawCosig) {
-		t.Errorf("Cosign = %x, want the mirror's raw cosignature %x", got, source.rawCosig)
+	subtreeSignature, err := m.CosignSubtree(t.Context(), source.cp, checkpointCosignatureLine)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	if !bytes.Equal(checkpointCosignatureLine, source.checkpointCosignatureLine) {
+		t.Errorf("Cosign checkpoint cosignature line = %q, want the add-entries line %q", checkpointCosignatureLine, source.checkpointCosignatureLine)
+	}
+	if !bytes.Equal(subtreeSignature, source.subtreeSignature) {
+		t.Errorf("Cosign subtree signature = %x, want the mirror's %x", subtreeSignature, source.subtreeSignature)
 	}
 	if addCheckpointCalls != 2 || addEntriesCalls != 2 || signSubtreeCalls != 1 {
 		t.Errorf("mirror saw %d add-checkpoint, %d add-entries, and %d sign-subtree calls, want 2, 2, and 1", addCheckpointCalls, addEntriesCalls, signSubtreeCalls)
@@ -552,7 +697,6 @@ func TestMirrorCosign(t *testing.T) {
 // advertises a next entry equal to the tree size.
 func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 	source := newSourceLog(t)
-	line := string(source.cosigLine)
 
 	var addEntriesCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -581,9 +725,9 @@ func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 			if uploadStart != source.newer.N {
 				t.Errorf("second add-entries upload_start = %d, want %d", uploadStart, source.newer.N)
 			}
-			fmt.Fprint(w, line)
+			w.Write(source.checkpointCosignatureLine)
 		case "/sign-subtree":
-			fmt.Fprint(w, line)
+			w.Write(source.subtreeCosignatureLine)
 		default:
 			t.Errorf("unexpected request to %s", r.URL.Path)
 		}
@@ -594,12 +738,19 @@ func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	got, err := m.Cosign(t.Context(), source.cp, source.signedNote)
+	checkpointCosignatureLine, err := m.Cosign(t.Context(), source.cp, source.signedNote)
 	if err != nil {
 		t.Fatalf("Cosign: %s", err)
 	}
-	if !bytes.Equal(got, source.rawCosig) {
-		t.Errorf("Cosign = %x, want the mirror's raw cosignature %x", got, source.rawCosig)
+	subtreeSignature, err := m.CosignSubtree(t.Context(), source.cp, checkpointCosignatureLine)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	if !bytes.Equal(checkpointCosignatureLine, source.checkpointCosignatureLine) {
+		t.Errorf("Cosign checkpoint cosignature line = %q, want the add-entries line %q", checkpointCosignatureLine, source.checkpointCosignatureLine)
+	}
+	if !bytes.Equal(subtreeSignature, source.subtreeSignature) {
+		t.Errorf("Cosign subtree signature = %x, want the mirror's %x", subtreeSignature, source.subtreeSignature)
 	}
 	if addEntriesCalls != 2 {
 		t.Errorf("mirror saw %d add-entries calls, want 2", addEntriesCalls)
@@ -732,6 +883,23 @@ func TestMirrorCosignErrors(t *testing.T) {
 	_, err = unreachable.Cosign(t.Context(), source.cp, source.signedNote)
 	if err == nil {
 		t.Error("Cosign against an unreachable mirror = nil error, want error")
+	}
+
+	// A mirror that cosigns the checkpoint with a zero timestamp.
+	undated := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/add-checkpoint" {
+			return
+		}
+		w.Write(source.subtreeCosignatureLine)
+	}))
+	defer undated.Close()
+	m, err = NewMirrorClient(undated.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = m.Cosign(t.Context(), source.cp, source.signedNote)
+	if err == nil || !strings.Contains(err.Error(), "zero timestamp") {
+		t.Errorf("Cosign with a zero timestamp checkpoint cosignature = %s, want a zero timestamp error", err)
 	}
 
 	// A mirror whose signature line names its key but was signed by another,

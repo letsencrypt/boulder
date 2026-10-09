@@ -101,10 +101,11 @@ CREATE USER IF NOT EXISTS 'mtpublisher'@'%';
 CREATE USER IF NOT EXISTS 'mtca'@'%';
 CREATE USER IF NOT EXISTS 'mtcb'@'%';
 
--- mtpublisher stub: follows the latestCheckpoint pointer to a checkpoint
--- awaiting a cosignature and writes one.
+-- mtpublisher: follows the latestCheckpoint pointer to a checkpoint awaiting
+-- a cosignature and writes the mirror's cosignatures on it and its subtree.
 GRANT SELECT,UPDATE ON checkpoints TO 'mtpublisher'@'%';
 GRANT SELECT ON latestCheckpoint TO 'mtpublisher'@'%';
+GRANT SELECT,UPDATE ON checkpointSubtrees TO 'mtpublisher'@'%';
 
 -- MTCA
 GRANT SELECT,INSERT,UPDATE ON checkpoints TO 'mtca'@'%';

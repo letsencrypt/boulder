@@ -136,6 +136,25 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 	return nil
 }
 
+// AddSubtreeMirrorSignature stores the mirror's signature on the checkpoint
+// subtree with the given ID.
+func (i *Impl) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	r, err := i.db.ExecContext(ctx,
+		"UPDATE checkpointSubtrees SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
+		mirrorID, mirrorSignature, id, mtcLogID)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("getting RowsAffected: %s", err)
+	}
+	if n != 1 {
+		return fmt.Errorf("adding mirror signature to subtree %d: %d rows affected (want 1 row affected)", id, n)
+	}
+	return nil
+}
+
 func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*CheckpointSubtreeModel, error) {
 	var checkpointSubtree CheckpointSubtreeModel
 	err := i.db.SelectOne(ctx, &checkpointSubtree,
