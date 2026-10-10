@@ -664,21 +664,39 @@ func containsDuplicates(ids []int64) bool {
 	return false
 }
 
-// SetAuthzProcessing sets the "beganProcessing" bool for an authorization.
-// This does not affect its public-facing status (unlike orders, authzs do not
-// have an RFC 8555 "processing" state), but does prevent further requests to
-// the challenge endpoint from kicking off parallel validation attempts.
-func (ssa *SQLStorageAuthority) SetAuthzProcessing(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
+// SetAuthzProcessing sets the "beganProcessing" bool for an authorization, and
+// records the type of the challenge being validated in its "attempted" column.
+// This does not affect the authorization's public-facing status (unlike orders,
+// authzs do not have an RFC 8555 "processing" state), but it does prevent
+// further requests to the challenge endpoint from kicking off parallel
+// validation attempts, and it allows the attempted challenge to be rendered
+// with the RFC 8555 "processing" status while the authorization is pending.
+func (ssa *SQLStorageAuthority) SetAuthzProcessing(ctx context.Context, req *sapb.SetAuthzProcessingRequest) (*emptypb.Empty, error) {
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
 
+	// The attempted challenge type is optional, so that an RA which predates
+	// this field can still mark authorizations as processing. A pending authz
+	// which has not begun processing never has an attempted challenge, so
+	// leaving the column NULL in that case is a no-op.
+	var attempted *uint8
+	if req.Attempted != "" {
+		attemptedType, ok := challTypeToUint[req.Attempted]
+		if !ok {
+			return nil, berrors.MalformedError("unrecognized challenge type %q", req.Attempted)
+		}
+		attempted = &attemptedType
+	}
+
 	result, err := ssa.dbMap.ExecContext(ctx, `
 		UPDATE authz2
-		SET beganProcessing = ?
+		SET beganProcessing = ?,
+		    attempted = ?
 		WHERE id = ?
 		AND beganProcessing = ?`,
 		true,
+		attempted,
 		req.Id,
 		false,
 	)

@@ -1525,6 +1525,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("authorization must be pending")
 	}
 
+	// A challenge which is already processing has a validation attempt in
+	// flight. Return the same conflict error that the SA would return below,
+	// rather than letting CheckPending turn this into a less helpful
+	// "malformed" error.
+	if ch.Status == core.StatusProcessing {
+		return nil, berrors.ConflictError("Authorization is already being validated. This may indicate your client attempted the same challenge multiple times, possibly due to a client bug.")
+	}
+
 	// Compute the key authorization field based on the registration key
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
 	if err != nil {
@@ -1544,9 +1552,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("cannot validate challenge: %s", cErr.Error())
 	}
 
-	// Set the authorization to "processing", to prevent parallel attempts.
+	// Set the authorization to "processing", to prevent parallel attempts, and
+	// record which challenge is being validated so that it can be rendered with
+	// the "processing" status while the authorization remains pending.
 	if features.Get().SetAuthzProcessing {
-		_, err = ra.SA.SetAuthzProcessing(ctx, &sapb.AuthorizationID2{Id: authz.ID})
+		_, err = ra.SA.SetAuthzProcessing(ctx, &sapb.SetAuthzProcessingRequest{Id: authz.ID, Attempted: string(ch.Type)})
 		if err != nil {
 			return nil, fmt.Errorf("failed to mark authz as processing: %w", err)
 		}
