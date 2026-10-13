@@ -191,7 +191,7 @@ type Tx interface {
 	InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *CheckpointModel) error
 	AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error
 	SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error)
-	SetLatestCheckpointID(ctx context.Context, mtcLogID string, old, new int64) error
+	SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID, newID int64) error
 }
 
 type txImpl struct {
@@ -219,7 +219,7 @@ func (tx txImpl) AlreadyInitialized(ctx context.Context, mtcLogID string) (bool,
 			return true, nil
 		}
 
-		return false, fmt.Errorf("initializing issuance log for %s: already has %d checkpoints and %d latestCheckpoint rows",
+		return false, fmt.Errorf("checkpoints and latestCheckpoint disagree for log %s: %d checkpoints, %d latestCheckpoint rows",
 			mtcLogID, numCheckpoints, numLatestCheckpoints)
 	}
 
@@ -262,7 +262,8 @@ func (tx txImpl) AddMTCASignature(ctx context.Context, id int64, caSig []byte, m
 	return nil
 }
 
-// SelectLatestForUpdate does a `SELECT ... FOR UPDATE` of the `latestCheckpoint` row for the given mtcLogID, returning the row's ID.
+// SelectLatestForUpdate does a `SELECT ... FOR UPDATE` of the `latestCheckpoint` row for
+// the given mtcLogID, returning the row's ID.
 func (tx txImpl) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error) {
 	// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
 	// The FOR UPDATE does the heavy lifting here.
@@ -277,8 +278,9 @@ func (tx txImpl) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (in
 	return latestID, nil
 }
 
-// SetLatestCheckpointID updates the `latestCheckpoint` row for the given mtcLogID to point to the checkpoint with id `new`.
-// Errors if the existing value in `latestCheckpoint was not equal to `old`.
+// SetLatestCheckpointID updates the `latestCheckpoint` row for the given mtcLogID
+// to point to the checkpoint with id `newID`. Errors if the existing value in
+// `latestCheckpoint` was not equal to `oldID`.
 func (tx txImpl) SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID, newID int64) error {
 	result, err := tx.tx.ExecContext(ctx, "UPDATE latestCheckpoint SET id = ? WHERE mtcLogID = ? AND id = ?",
 		newID, mtcLogID, oldID)
@@ -290,7 +292,7 @@ func (tx txImpl) SetLatestCheckpointID(ctx context.Context, mtcLogID string, old
 		return fmt.Errorf("updating latestCheckpoint, getting rows affected: %s", err)
 	}
 	if rowsAffected != 1 {
-		return fmt.Errorf("updating latestCheckpoint: %d rows updated, rolling back", rowsAffected)
+		return fmt.Errorf("updating latestCheckpoint: %d rows updated, want 1", rowsAffected)
 	}
 
 	return nil

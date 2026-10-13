@@ -558,12 +558,12 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 		err = tx.AddMTCASignature(ctx, newCheckpoint.ID, caSig, m.logID.String())
 		if err != nil {
-			return nil, fmt.Errorf("updating checkpoint: %s", err)
+			return nil, err
 		}
 
 		err = tx.SetLatestCheckpointID(ctx, m.logID.String(), latestID, newCheckpoint.ID)
 		if err != nil {
-			return nil, fmt.Errorf("updating latestCheckpoint: %s", err)
+			return nil, err
 		}
 
 		return nil, nil

@@ -225,14 +225,14 @@ func (f *fakeDB) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (in
 	return f.latestCheckpoint, nil
 }
 
-func (f *fakeDB) SetLatestCheckpointID(ctx context.Context, mtcLogID string, old int64, new int64) error {
+func (f *fakeDB) SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID int64, newID int64) error {
 	if mtcLogID != f.mtcLogID {
 		return fmt.Errorf("wrong log")
 	}
-	if f.latestCheckpoint != old {
-		return fmt.Errorf("latestCheckpoint = %d, want %d", f.latestCheckpoint, old)
+	if f.latestCheckpoint != oldID {
+		return fmt.Errorf("latestCheckpoint = %d, want %d", f.latestCheckpoint, oldID)
 	}
-	f.latestCheckpoint = new
+	f.latestCheckpoint = newID
 	return nil
 }
 
