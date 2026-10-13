@@ -59,6 +59,13 @@
 				"hostOverride": "rva1.boulder",
 				"perspective": "cubist",
 				"rir": "ARIN"
+			},
+			{
+				"serverAddress": "rva1.service.consul:9500",
+				"timeout": "15s",
+				"hostOverride": "rva1.boulder",
+				"perspective": "impressionist",
+				"rir": "APNIC"
 			}
 		],
 		"accountURIPrefixes": [

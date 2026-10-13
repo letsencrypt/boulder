@@ -300,16 +300,12 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey crypto.Publ
 			return nil, fmt.Errorf("parsing notAfter: %s", err)
 		}
 		validity := notAfter.Add(time.Second).Sub(notBefore)
-		if ct == rootCert && validity >= 9132*24*time.Hour {
-			// The value 9132 comes directly from the BRs, where it is described
-			// as "approximately 25 years". It's equal to 365 * 25 + 7, to allow
-			// for some leap years.
-			return nil, fmt.Errorf("root cert validity too large: %s >= 25 years", validity)
-		} else if (ct == intermediateCert || ct == crossCert) && validity >= 8*365*24*time.Hour {
-			// Our CP/CPS states "at most 8 years", so we calculate that number
-			// in the most conservative way (i.e. not accounting for leap years)
-			// to give ourselves a buffer.
-			return nil, fmt.Errorf("subordinate CA cert validity too large: %s >= 8 years", validity)
+		if ct == rootCert && validity > 3660*24*time.Hour {
+			// Our CP/CPS states "at most 3660 days (approx. 10 years)"
+			return nil, fmt.Errorf("root cert validity too large: %s > 3660 days", validity)
+		} else if (ct == intermediateCert || ct == crossCert) && validity > 1098*24*time.Hour {
+			// Our CP/CPS states "at most 1098 days (approx. 3 years)"
+			return nil, fmt.Errorf("subordinate CA cert validity too large: %s > 1098 days", validity)
 		}
 		cert.NotBefore = notBefore
 		cert.NotAfter = notAfter

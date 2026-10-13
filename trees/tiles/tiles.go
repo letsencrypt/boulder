@@ -35,6 +35,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/subtree"
@@ -108,7 +109,7 @@ type Frontier struct {
 	fullEntryTiles  []*entryTile
 	fullPubkeyTiles []*pubkeyTile
 
-	// treeSize is the current size of the tree.
+	// treeSize is the current size of the tree. Guaranteed to be <= trees.MaxSize.
 	treeSize int64
 }
 
@@ -228,8 +229,8 @@ func (pk *pubkeyTile) append(val []byte) {
 //
 // Succeeds only if all the frontier tiles for that tree size exist in storage.
 func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefix string) (*Frontier, error) {
-	if treeSize == 0 {
-		return nil, fmt.Errorf("can't load an empty tree")
+	if !(0 < treeSize && treeSize <= trees.MaxSize) {
+		return nil, fmt.Errorf("invalid tree size: %d", treeSize)
 	}
 
 	entryCoords := tlog.Tile{
@@ -340,6 +341,8 @@ func LoadFrontier(ctx context.Context, s3c simpleS3Reader, treeSize int64, prefi
 }
 
 // TreeSize returns the current tree size.
+//
+// The return value is guaranteed to be non-negative and at most trees.MaxSize.
 func (f *Frontier) TreeSize() int64 {
 	return f.treeSize
 }
@@ -397,6 +400,9 @@ func (f *Frontier) RootHash() tlog.Hash {
 //
 // On error, the Frontier is unchanged.
 func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublicKey) error {
+	if f.treeSize >= trees.MaxSize {
+		return fmt.Errorf("tree is full")
+	}
 	// First time appending to a zero Frontier, initialize it.
 	if f.entryTile == nil {
 		f.entryTile = &entryTile{

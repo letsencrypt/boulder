@@ -610,13 +610,12 @@ func summarizeMPIC(passed, failed []string, passedRIRSet map[string]struct{}) *m
 // *probs.ProblemDetails.
 func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) (*mpicSummary, *probs.ProblemDetails) {
 	remoteVACount := len(va.remoteVAs)
-	//  - Mar 15, 2026: MUST implement using at least 3 perspectives
 	//  - Jun 15, 2026: MUST implement using at least 4 perspectives
 	//  - Dec 15, 2026: MUST implement using at least 5 perspectives
 	// See "Phased Implementation Timeline" in
 	// https://github.com/cabforum/servercert/blob/main/docs/BR.md#3229-multi-perspective-issuance-corroboration
-	if remoteVACount < 3 {
-		return nil, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
+	if remoteVACount < 4 {
+		return nil, probs.ServerInternal("Insufficient remote perspectives: need at least 4")
 	}
 
 	type response struct {
