@@ -332,7 +332,7 @@ func (m *mtcb) readCheckpoint(ctx context.Context, logID issuancelog.ID) (*check
 	}
 	cp, _, err := checkpoint.Open(body, verifier)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checkpoint at s3://%s/%s: %s", bucket, path, err)
 	}
 
 	if cp.Origin != logID.Origin() {

@@ -134,7 +134,7 @@ func newTestLog(t *testing.T) *testLog {
 	}
 	log.entries = append(log.entries, issued{})
 
-	signer := newSigner(t)
+	s := newSigner(t)
 
 	for _, batch := range []int{3, 2, 252} {
 		for range batch {
@@ -146,7 +146,7 @@ func newTestLog(t *testing.T) *testLog {
 			t.Fatalf("Publish: %s", err)
 		}
 		root := frontier.RootHash()
-		signedNote := signer.checkpointSignedNote(t, &treedb.CheckpointModel{
+		signedNote := s.checkpointSignedNote(t, &treedb.CheckpointModel{
 			TreeSize: frontier.TreeSize(),
 			RootHash: root[:],
 		})
@@ -297,7 +297,12 @@ func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.Checkpo
 		t.Fatalf("cosigning checkpoint: %s", err)
 	}
 
-	caCosignatureLine, err := s.cosigner.SignatureLine(0, caSig[8:])
+	rawSig, err := cosignature.RawSignature(caSig)
+	if err != nil {
+		t.Fatalf("RawSignature: %s", err)
+	}
+
+	caCosignatureLine, err := s.cosigner.SignatureLine(0, rawSig)
 	if err != nil {
 		t.Fatalf("building CA signature line: %s", err)
 	}
@@ -445,7 +450,7 @@ func TestGetStandalone(t *testing.T) {
 
 func TestGetStandaloneInvalidSubtree(t *testing.T) {
 	t.Parallel()
-	signer := newSigner(t)
+	s := newSigner(t)
 	for _, tc := range []struct {
 		name              string
 		mutateSubtree     func(*treedb.CheckpointSubtreeModel)
@@ -486,7 +491,7 @@ func TestGetStandaloneInvalidSubtree(t *testing.T) {
 				RootHash: make([]byte, 32),
 			}
 
-			signedNote := signer.checkpointSignedNote(t, latest)
+			signedNote := s.checkpointSignedNote(t, latest)
 			fs3 := bs3test.New()
 			fs3.Objects[testLogID.CheckpointPath()] = bs3test.StoredObject{
 				Data: signedNote,
@@ -552,7 +557,7 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 		{
 			name:              "Checkpoint altered after signing",
 			signedNote:        bytes.Replace(validNote, []byte("\n4\n"), []byte("\n5\n"), 1),
-			expectErrContains: "getting latest checkpoint: invalid signature",
+			expectErrContains: "invalid signature",
 		},
 		{
 			name:              "Checkpoint for a different log",

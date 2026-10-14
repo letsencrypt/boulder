@@ -446,6 +446,42 @@ func TestServeCheckpointMismatch(t *testing.T) {
 		t.Errorf("serving over a larger checkpoint of ours = %s, want ErrCheckpointChanged", err)
 	}
 
+	// Build a checkpoint signed by the same key, but for a different log origin. It should error.
+	otherLog := issuancelog.ID{CAID: m.logID.CAID, LogNumber: logNumber + 1}
+	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID, otherLog.Origin(), m.issuer.Signer)
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	otherSignature, err := otherCosigner.CosignCheckpoint(tree)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	otherRaw, err := cosignature.RawSignature(otherSignature)
+	if err != nil {
+		t.Fatalf("RawSignature: %s", err)
+	}
+	otherLine, err := otherCosigner.SignatureLine(0, otherRaw)
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	otherNote, err := (&checkpoint.Checkpoint{Origin: otherLog.Origin(), Tree: tree}).SignedNote(otherLine)
+	if err != nil {
+		t.Fatalf("SignedNote: %s", err)
+	}
+	_, _, err = checkpoint.Open(otherNote, m.verifier)
+	if err != nil {
+		t.Fatalf("opening checkpoint of another log: %s", err)
+	}
+	fs3.Objects[key] = bs3test.StoredObject{Data: otherNote, ETag: "\"other log\""}
+	m.servedCheckpointETag = ""
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("serving over a checkpoint of another log = %s, want ErrCheckpointChanged", err)
+	}
+	if !bytes.Equal(fs3.Objects[key].Data, otherNote) {
+		t.Error("checkpoint of another log was replaced")
+	}
+
 	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
 	for range 2 {
 		err = m.serveCheckpoint(t.Context(), tree, signedNote)
