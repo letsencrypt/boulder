@@ -866,6 +866,17 @@ func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, 
 	return m, 2 * time.Millisecond, nil
 }
 
+// fixedOrderProvider returns its servers in the same order every time.
+type fixedOrderProvider struct {
+	servers []string
+}
+
+func (p *fixedOrderProvider) Addrs() ([]string, error) {
+	return p.servers, nil
+}
+
+func (p *fixedOrderProvider) Stop() {}
+
 // TestRotateServerOnErr ensures that a retryable error returned from a DNS
 // server will result in the retry being performed against the next server in
 // the list.
@@ -879,11 +890,8 @@ func TestRotateServerOnErr(t *testing.T) {
 	// a maximum of 5 times. It's important to choose a maxTries value >= the
 	// number of dnsServers to ensure we always get around to trying the one
 	// working server
-	staticProvider, err := NewStaticProvider(dnsServers)
-	test.AssertNotError(t, err, "Got error creating StaticProvider")
-
 	maxTries := 5
-	client := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, "", blog.UseMock(), tlsConfig)
+	client := New(time.Second*10, &fixedOrderProvider{servers: dnsServers}, metrics.NoopRegisterer, clock.NewFake(), maxTries, "", blog.UseMock(), tlsConfig)
 
 	// Configure a mock exchanger that will always return a retryable error for
 	// servers A and B. This will force server "[2606:4700:4700::1111]:53" to do
@@ -897,11 +905,10 @@ func TestRotateServerOnErr(t *testing.T) {
 	}
 	client.(*impl).exchanger = mock
 
-	// Perform a bunch of lookups. We choose the initial server randomly. Any time
-	// A or B is chosen there should be an error and a retry using the next server
-	// in the list. Since we configured maxTries to be larger than the number of
-	// servers *all* queries should eventually succeed by being retried against
-	// server "[2606:4700:4700::1111]:53".
+	// Perform a bunch of lookups. Any time A or B is chosen there should be an
+	// error and a retry using the next server in the list. Since we configured
+	// maxTries to be larger than the number of servers *all* queries should
+	// eventually succeed by being retried against server "[2606:4700:4700::1111]:53".
 	for range maxTries * 2 {
 		_, resolver, err := client.LookupTXT(context.Background(), "example.com")
 		test.AssertEquals(t, resolver, "[2606:4700:4700::1111]:53")
@@ -910,10 +917,9 @@ func TestRotateServerOnErr(t *testing.T) {
 		test.AssertNotError(t, err, "Expected no error from eventual retry with functional server")
 	}
 
-	// We expect that the A and B servers had a non-zero number of lookups
-	// attempted.
-	test.Assert(t, mock.lookups["a:53"] > 0, "Expected A server to have non-zero lookup attempts")
-	test.Assert(t, mock.lookups["b:53"] > 0, "Expected B server to have non-zero lookup attempts")
+	// We expect that the A and B servers had one lookup attempted per query.
+	test.AssertEquals(t, mock.lookups["a:53"], maxTries*2)
+	test.AssertEquals(t, mock.lookups["b:53"], maxTries*2)
 
 	// We expect that the server "[2606:4700:4700::1111]:53" eventually served
 	// all of the lookups attempted.
