@@ -313,6 +313,59 @@ func TestCosignerRejects(t *testing.T) {
 	if err == nil {
 		t.Error("CosignCheckpoint with an empty tree = nil error, want error")
 	}
+	_, err = ca.CosignSubtree(-1, 1, tlog.Hash{})
+	if err == nil {
+		t.Error("CosignSubtree with a negative start = nil error, want error")
+	}
+	_, err = ca.CosignSubtree(4, 4, tlog.Hash{})
+	if err == nil {
+		t.Error("CosignSubtree with an empty subtree = nil error, want error")
+	}
+}
+
+// TestCosignSubtree checks that a subtree starting at 0 is signed as a
+// checkpoint of its size is, and that a later subtree verifies over its own
+// message.
+func TestCosignSubtree(t *testing.T) {
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	text := ca.origin + "\n20852163\n" + exampleHashB64 + "\n"
+	parsed, err := checkpoint.Unmarshal([]byte(text))
+	if err != nil {
+		t.Fatalf("checkpoint.Unmarshal: %s", err)
+	}
+
+	cosigned, err := ca.CosignCheckpoint(parsed.Tree)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	signature, err := ca.CosignSubtree(0, parsed.Tree.N, parsed.Tree.Hash)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	if !bytes.Equal(signature, cosigned[timestampSize:]) {
+		t.Error("CosignSubtree over [0, N) differs from CosignCheckpoint over the tree of size N")
+	}
+
+	signature, err = ca.CosignSubtree(1024, 1536, parsed.Tree.Hash)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	v, err := NewVerifier("32473.2", testPubKey(t))
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+	if !v.VerifySubtree(ca.origin, 1024, 1536, parsed.Tree.Hash, signature) {
+		t.Error("VerifySubtree rejected the subtree signature")
+	}
+	if v.VerifySubtree(ca.origin, 1024, 2048, parsed.Tree.Hash, signature) {
+		t.Error("VerifySubtree accepted the subtree signature over a different end")
+	}
+	if v.VerifySubtree(ca.origin, 1024, 1536, parsed.Tree.Hash, signature[1:]) {
+		t.Error("VerifySubtree accepted a truncated subtree signature")
+	}
 }
 
 // shortSigner is a crypto.Signer with a valid ML-DSA-44 public key that returns
