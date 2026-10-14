@@ -352,7 +352,7 @@ func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 		Perspective:   "minimalist",
 		RIR:           ripe,
 	}
-	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
+	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}, {rir: apnic}}, nil)
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
 
 	va, mockLog := setup(nil, "", remoteVAs, &txtFakeDNS{})
@@ -375,7 +375,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 		Perspective:   "impressionist",
 		RIR:           arin,
 	}
-	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
+	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}, {rir: apnic}}, nil)
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
 
 	va, mockLog := setup(nil, "", remoteVAs, &txtFakeDNS{})
@@ -646,6 +646,7 @@ func TestMultiVA(t *testing.T) {
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
 				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA: pass,
 		},
@@ -656,27 +657,30 @@ func TestMultiVA(t *testing.T) {
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
 				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA:        fail,
 			ExpectedProbType: string(probs.UnauthorizedProblem),
 		},
 		{
-			// If one out of three remote VAs fails with an internal err it should succeed
-			Name: "Local VA ok, 1/3 remote VA internal err",
+			// If one out of four remote VAs fails with an internal err it should succeed
+			Name: "Local VA ok, 1/4 remote VA internal err",
 			Remotes: []remoteConf{
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
 				{ua: pass, rir: apnic, impl: brokenVA},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA: pass,
 		},
 		{
-			// If two out of three remote VAs fail with an internal err it should fail
-			Name: "Local VA ok, 2/3 remote VAs internal err",
+			// If two out of four remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 2/4 remote VAs internal err",
 			Remotes: []remoteConf{
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, impl: brokenVA},
 				{ua: pass, rir: apnic, impl: brokenVA},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA:        pass,
 			ExpectedProbType: string(probs.ServerInternalProblem),
@@ -725,7 +729,7 @@ func TestMultiVA(t *testing.T) {
 		},
 		{
 			// If three out of six remote VAs fail with an internal err it should fail
-			Name: "Local VA ok, 4/6 remote VAs internal err",
+			Name: "Local VA ok, 3/6 remote VAs internal err",
 			Remotes: []remoteConf{
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
@@ -740,12 +744,13 @@ func TestMultiVA(t *testing.T) {
 			ExpectedLogContains: errBrokenRemoteVA.Error(),
 		},
 		{
-			// With only one working remote VA there should be a validation failure
-			Name: "Local VA and one remote VA OK",
+			// With only two working remote VAs there should be a validation failure
+			Name: "Local VA and two remote VAs OK",
 			Remotes: []remoteConf{
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: fail, rir: ripe, dns: &ipFakeDNS{}},
 				{ua: fail, rir: apnic, dns: &ipFakeDNS{}},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.UnauthorizedProblem),
@@ -753,21 +758,23 @@ func TestMultiVA(t *testing.T) {
 		},
 		{
 			// If one remote VA cancels, it should succeed
-			Name: "Local VA and one remote VA OK, one cancelled VA",
+			Name: "Local VA and remote VAs OK, one cancelled VA",
 			Remotes: []remoteConf{
 				{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 				{ua: pass, rir: ripe, impl: cancelledVA},
 				{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+				{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA: pass,
 		},
 		{
 			// If all remote VAs cancel, it should fail
-			Name: "Local VA OK, three cancelled remote VAs",
+			Name: "Local VA OK, four cancelled remote VAs",
 			Remotes: []remoteConf{
 				{ua: pass, rir: arin, impl: cancelledVA},
 				{ua: pass, rir: ripe, impl: cancelledVA},
 				{ua: pass, rir: apnic, impl: cancelledVA},
+				{ua: pass, rir: lacnic, impl: cancelledVA},
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.ServerInternalProblem),
@@ -780,6 +787,7 @@ func TestMultiVA(t *testing.T) {
 				{ua: fail, rir: arin, dns: &ipFakeDNS{}},
 				{ua: fail, rir: ripe, dns: &ipFakeDNS{}},
 				{ua: fail, rir: apnic, dns: &ipFakeDNS{}},
+				{ua: fail, rir: lacnic, dns: &ipFakeDNS{}},
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.UnauthorizedProblem),
@@ -850,6 +858,7 @@ func TestMultiVALogging(t *testing.T) {
 		{ua: pass, rir: arin, dns: &ipFakeDNS{}},
 		{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
 		{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+		{ua: pass, rir: lacnic, dns: &ipFakeDNS{}},
 	}
 
 	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
@@ -860,6 +869,29 @@ func TestMultiVALogging(t *testing.T) {
 	res, err := va.DoDCV(ctx, req)
 	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed with: %#v", res.Problem))
 	test.AssertNotError(t, err, "performing validation")
+}
+
+func TestMultiVAInsufficientPerspectives(t *testing.T) {
+	t.Parallel()
+
+	remoteConfs := []remoteConf{
+		{ua: pass, rir: arin, dns: &ipFakeDNS{}},
+		{ua: pass, rir: ripe, dns: &ipFakeDNS{}},
+		{ua: pass, rir: apnic, dns: &ipFakeDNS{}},
+	}
+
+	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+	defer ms.Close()
+
+	// With fewer than the minimum number of remote perspectives, validation
+	// should fail even though every perspective would have passed.
+	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, &ipFakeDNS{})
+	req := createValidationRequest(identifier.NewDNS("letsencrypt.org"), core.ChallengeTypeHTTP01)
+	res, err := va.DoDCV(ctx, req)
+	test.AssertNotError(t, err, "performing validation")
+	test.AssertNotNil(t, res.Problem, "validation succeeded with insufficient remote perspectives")
+	test.AssertEquals(t, res.Problem.ProblemType, string(probs.ServerInternalProblem))
+	test.AssertContains(t, res.Problem.Detail, "Insufficient remote perspectives: need at least 4")
 }
 
 func TestDetailedError(t *testing.T) {

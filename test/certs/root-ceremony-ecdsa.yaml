@@ -16,8 +16,8 @@ certificate-profile:
     common-name: root ecdsa
     organization: good guys
     country: US
-    not-before: 2020-01-01 12:00:00
-    not-after: 2040-01-01 12:00:00
+    not-before: 2023-01-01 12:00:00
+    not-after: 2033-01-01 11:59:59
     key-usages:
         - Cert Sign
         - CRL Sign

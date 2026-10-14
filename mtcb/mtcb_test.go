@@ -162,7 +162,7 @@ func newTestLog(t *testing.T) *testLog {
 			MirrorID:        &mirrorID,
 			MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over size %d", frontier.TreeSize()),
 			SubtreeStart:    0,
-			SubtreeEnd:      uint64(frontier.TreeSize()), //nolint:gosec // G115: tree sizes in this test are tiny.
+			SubtreeEnd:      uint64(frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier.
 			SubtreeHash:     root[:],
 		})
 	}

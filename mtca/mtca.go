@@ -21,7 +21,6 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -48,7 +47,7 @@ func New(
 	profiles map[string]*issuance.Profile,
 	logID issuancelog.ID,
 	sequencingPeriod time.Duration,
-	dbMap *db.WrappedMap,
+	treeDB checkpointDB,
 	s3c simpleS3,
 	logger blog.Logger,
 	clk clock.Clock,
@@ -73,7 +72,7 @@ func New(
 
 		sequencingPeriod: sequencingPeriod,
 
-		treedb: treedb.New(dbMap),
+		treedb: treeDB,
 		s3c:    s3c,
 		log:    logger,
 		clk:    clk,
@@ -137,7 +136,7 @@ type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
 	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
-	WithTransaction(ctx context.Context, f db.TxFunc) (any, error)
+	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -162,28 +161,13 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 	var caSig []byte
 	var signedNote []byte
-	_, err = m.treedb.WithTransaction(ctx, func(tx db.Executor) (any, error) {
-		var numLatestCheckpoints int64
-		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
-			m.logID.String())
+	_, err = m.treedb.WithTransaction(ctx, func(tx treedb.Tx) (any, error) {
+		initialized, err := tx.AlreadyInitialized(ctx, m.logID.String())
 		if err != nil {
-			return nil, fmt.Errorf("getting latestCheckpoint: %s", err)
+			return nil, fmt.Errorf("checking log initialization state: %s", err)
 		}
-
-		var numCheckpoints int64
-		err = tx.SelectOne(ctx, &numCheckpoints, "SELECT COUNT(*) FROM checkpoints WHERE mtcLogID = ?",
-			m.logID.String())
-		if err != nil {
-			return nil, fmt.Errorf("getting checkpoints: %s", err)
-		}
-
-		if numCheckpoints > 0 || numLatestCheckpoints > 0 {
-			if numLatestCheckpoints == 1 {
-				return nil, ErrIssuanceLogAlreadyInitialized
-			}
-
-			return nil, fmt.Errorf("initializing issuance log for %s: already has %d checkpoints and %d latestCheckpoint rows",
-				m.logID.String(), numCheckpoints, numLatestCheckpoints)
+		if initialized {
+			return nil, ErrIssuanceLogAlreadyInitialized
 		}
 
 		firstCheckpoint := &treedb.CheckpointModel{
@@ -199,15 +183,9 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 		firstCheckpoint.MTCASignature = caSig
 
-		err = tx.Insert(ctx, firstCheckpoint)
+		err = tx.InsertFirstCheckpoint(ctx, firstCheckpoint)
 		if err != nil {
 			return nil, err
-		}
-
-		_, err = tx.ExecContext(ctx, "INSERT INTO latestCheckpoint (id, mtcLogID) VALUES (?, ?)",
-			firstCheckpoint.ID, m.logID.String())
-		if err != nil {
-			return nil, fmt.Errorf("inserting latestCheckpoint: %s", err)
 		}
 
 		return nil, nil
@@ -485,10 +463,6 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	if latest.TreeSize+int64(len(entries)) > 1<<48-1 {
-		return fmt.Errorf("log is full")
-	}
-
 	serial, err := core.EncodeMTCSerial(m.logID.LogNumber, latest.TreeSize)
 	if err != nil {
 		return err
@@ -555,14 +529,9 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	var caSig []byte
 	var signedNote []byte
-	_, err = m.treedb.WithTransaction(ctx, func(tx db.Executor) (any, error) {
-		var latestID int64
-		// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
-		// The FOR UPDATE does the heavy lifting here.
-		// https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/selecting-data/for-update
-		err := tx.SelectOne(ctx, &latestID,
-			`SELECT id from latestCheckpoint WHERE mtcLogID = ? FOR UPDATE`,
-			m.logID.String())
+	_, err = m.treedb.WithTransaction(ctx, func(tx treedb.Tx) (any, error) {
+		// Lock the latestCheckpoint row for this mtcLogID.
+		latestID, err := tx.SelectLatestForUpdate(ctx, m.logID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -578,30 +547,14 @@ func (m *mtca) sequence(ctx context.Context) error {
 			return nil, err
 		}
 
-		result, err := tx.ExecContext(ctx, "UPDATE checkpoints SET mtcaSignature = ? WHERE mtcLogID = ? AND id = ?",
-			caSig, m.logID.String(), newCheckpoint.ID)
+		err = tx.AddMTCASignature(ctx, newCheckpoint.ID, caSig, m.logID.String())
 		if err != nil {
-			return nil, fmt.Errorf("updating checkpoint: %s", err)
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("updating checkpoint, getting rows affected: %s", err)
-		}
-		if rowsAffected != 1 {
-			return nil, fmt.Errorf("updating checkpoint: %d rows updated, rolling back", rowsAffected)
+			return nil, err
 		}
 
-		result, err = tx.ExecContext(ctx, "UPDATE latestCheckpoint SET id = ? WHERE mtcLogID = ? AND id = ?",
-			newCheckpoint.ID, m.logID.String(), latestID)
+		err = tx.SetLatestCheckpointID(ctx, m.logID.String(), latestID, newCheckpoint.ID)
 		if err != nil {
-			return nil, fmt.Errorf("updating latestCheckpoint: %s", err)
-		}
-		rowsAffected, err = result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("updating latestCheckpoint, getting rows affected: %s", err)
-		}
-		if rowsAffected != 1 {
-			return nil, fmt.Errorf("updating latestCheckpoint: %d rows updated, rolling back", rowsAffected)
+			return nil, err
 		}
 
 		return nil, nil
@@ -640,7 +593,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		Timestamp:   0,
 		LogOrigin:   "oid/1.3.6.1.4.1." + m.logID.String(),
 		Start:       0,
-		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
 		SubtreeHash: newRootHash,
 	}).Marshal()
 	if err != nil {
@@ -660,7 +613,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		MirrorID:        nil,
 		MirrorSignature: nil,
 		SubtreeStart:    0,
-		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: append-only tree will have positive TreeSize
+		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
 		SubtreeHash:     newRootHash[:],
 	})
 	if err != nil {

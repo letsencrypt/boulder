@@ -16,7 +16,7 @@ certificate-profile:
     organization: good guys
     country: US
     not-before: 2025-07-01 00:00:00
-    not-after: 2030-06-30 23:59:59
+    not-after: 2028-06-30 23:59:59
     crl-url:  http://rsa.example.com/crl
     issuer-url:  http://rsa.example.com/cert
     policies:

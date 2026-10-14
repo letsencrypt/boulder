@@ -177,7 +177,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("getting latest checkpoint: %s", err)
 	}
 
-	if subtree.SubtreeEnd > uint64(latestCheckpoint.Tree.N) { //nolint:gosec // G115: TreeSize is positive
+	if subtree.SubtreeEnd > uint64(latestCheckpoint.Tree.N) { //nolint:gosec // G115: guaranteed non-negative by Valid()
 		return nil, fmt.Errorf("subtreeEnd is greater than treeSize (%d > %d)",
 			subtree.SubtreeEnd, latestCheckpoint.Tree.N)
 	}

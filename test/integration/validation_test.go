@@ -20,7 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var expectedUserAgents = []string{"boulder", "remoteva-a", "remoteva-b", "remoteva-c"}
+var expectedUserAgents = []string{"boulder", "remoteva-a", "remoteva-b", "remoteva-c", "remoteva-d"}
 
 func collectUserAgentsFromDNSRequests(requests []challtestsrvclient.DNSRequest) []string {
 	userAgents := make([]string, len(requests))
@@ -33,8 +33,8 @@ func collectUserAgentsFromDNSRequests(requests []challtestsrvclient.DNSRequest) 
 func assertUserAgentsLength(t *testing.T, got []string, checkType string) {
 	t.Helper()
 
-	if len(got) != 4 {
-		t.Errorf("During %s, expected 4 User-Agents, got %d", checkType, len(got))
+	if len(got) != len(expectedUserAgents) {
+		t.Errorf("During %s, expected %d User-Agents, got %d", checkType, len(expectedUserAgents), len(got))
 	}
 }
 
@@ -101,8 +101,8 @@ func TestMPICTLSALPN01(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(validationEvents) != 4 {
-		t.Errorf("expected 4 validation events got %d", len(validationEvents))
+	if len(validationEvents) != len(expectedUserAgents) {
+		t.Errorf("expected %d validation events got %d", len(expectedUserAgents), len(validationEvents))
 	}
 
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
