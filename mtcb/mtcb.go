@@ -83,7 +83,6 @@ func New(
 			certificate:        issuer.Certificate,
 			checkpointVerifier: checkpointVerifier,
 		}
-
 	}
 
 	m := &mtcb{
@@ -160,6 +159,8 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 
+	// TODO(#9085): use the issuer certificate returned here to self-verify the end-entity certificate
+	// before returning.
 	_, ok := m.issuers[requestedLogID.CAID]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
@@ -333,12 +334,12 @@ func (m *mtcb) readCheckpoint(ctx context.Context, logID issuancelog.ID) (*check
 		return nil, fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
 	}
 
-	mtcIssuer, ok := m.issuers[logID.CAID]
+	issuer, ok := m.issuers[logID.CAID]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for MTCAID %q", logID.CAID)
 	}
 
-	cp, _, err := checkpoint.Open(body, mtcIssuer.checkpointVerifier)
+	cp, _, err := checkpoint.Open(body, issuer.checkpointVerifier)
 	if err != nil {
 		return nil, fmt.Errorf("checkpoint at s3://%s/%s: %s", bucket, path, err)
 	}
