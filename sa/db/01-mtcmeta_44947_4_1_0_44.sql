@@ -36,9 +36,8 @@ CREATE TABLE `checkpoints` (
     -- `mirrorID` is an ASCII-format OID relative to 1.3.6.1.4.1.
     -- Note: these two fields start empty and are filled later.
     `mirrorID` varchar(255),
-    -- An ML-DSA-44 signature over a CosignedMessage with `timestamp` and `start` both zero.
-    -- TODO(#8991): Change this to store a signed note signature line instead, since that format can
-    -- carry a nonzero `timestamp`.
+    -- The mirror's checkpoint cosignature (https://c2sp.org/tlog-cosignature), with its `timestamp`,
+    -- as a signed note signature line: https://c2sp.org/signed-note#signatures
     `mirrorSignature` mediumblob,
 
     -- Signed-over data: https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
@@ -47,14 +46,6 @@ CREATE TABLE `checkpoints` (
     -- `treeSize` will be strictly increasing over time, enforced by the application.
     `treeSize` bigint(20) unsigned NOT NULL,
     `rootHash` binary(32) NOT NULL,
-
-    -- The IDs of the one or two subtrees in the `checkpointSubtrees` table implied by the delta between
-    -- this checkpoint and the previous one. These two subtrees must cover all entries between this checkpoint
-    -- and the previous one.
-    -- The first checkpoint of an issuance log will have these both NULL. Subsequent checkpoints will have `subtreeID2` NULL
-    -- if a single subtree covers the delta.
-    `subtreeID1` bigint(20) unsigned,
-    `subtreeID2` bigint(20) unsigned,
 
     `created` datetime DEFAULT current_timestamp(),
     PRIMARY KEY (`id`),
@@ -95,7 +86,9 @@ CREATE TABLE `checkpointSubtrees` (
     `subtreeHash` binary(32) NOT NULL,
 
     `created` datetime DEFAULT current_timestamp(),
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    -- The publisher polls for the subtrees the mirror has not signed yet.
+    KEY `mtcLogID_mirrorID` (`mtcLogID`, `mirrorID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
 

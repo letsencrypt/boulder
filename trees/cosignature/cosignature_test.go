@@ -253,10 +253,10 @@ func TestCosignerRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FilterByVerify on a reassembled note: %s", err)
 	}
-	if !v.Verify([]byte(text), extracted) {
-		t.Error("Verify rejected an extracted cosignature")
+	if extracted.Timestamp != 0 {
+		t.Errorf("extracted cosignature timestamp = %d, want 0", extracted.Timestamp)
 	}
-	rebuilt, err := SignatureLine(ca.name, ca.keyID, 0, extracted[timestampSize:])
+	rebuilt, err := SignatureLine(ca.name, ca.keyID, 0, extracted.Signature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -312,6 +312,59 @@ func TestCosignerRejects(t *testing.T) {
 	_, err = ca.CosignCheckpoint(tlog.Tree{N: 0})
 	if err == nil {
 		t.Error("CosignCheckpoint with an empty tree = nil error, want error")
+	}
+	_, err = ca.CosignSubtree(-1, 1, tlog.Hash{})
+	if err == nil {
+		t.Error("CosignSubtree with a negative start = nil error, want error")
+	}
+	_, err = ca.CosignSubtree(4, 4, tlog.Hash{})
+	if err == nil {
+		t.Error("CosignSubtree with an empty subtree = nil error, want error")
+	}
+}
+
+// TestCosignSubtree checks that a subtree starting at 0 is signed as a
+// checkpoint of its size is, and that a later subtree verifies over its own
+// message.
+func TestCosignSubtree(t *testing.T) {
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	text := ca.origin + "\n20852163\n" + exampleHashB64 + "\n"
+	parsed, err := checkpoint.Unmarshal([]byte(text))
+	if err != nil {
+		t.Fatalf("checkpoint.Unmarshal: %s", err)
+	}
+
+	cosigned, err := ca.CosignCheckpoint(parsed.Tree)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	signature, err := ca.CosignSubtree(0, parsed.Tree.N, parsed.Tree.Hash)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	if !bytes.Equal(signature, cosigned[timestampSize:]) {
+		t.Error("CosignSubtree over [0, N) differs from CosignCheckpoint over the tree of size N")
+	}
+
+	signature, err = ca.CosignSubtree(1024, 1536, parsed.Tree.Hash)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	v, err := NewVerifier("32473.2", testPubKey(t))
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+	if !v.VerifySubtree(ca.origin, 1024, 1536, parsed.Tree.Hash, signature) {
+		t.Error("VerifySubtree rejected the subtree signature")
+	}
+	if v.VerifySubtree(ca.origin, 1024, 2048, parsed.Tree.Hash, signature) {
+		t.Error("VerifySubtree accepted the subtree signature over a different end")
+	}
+	if v.VerifySubtree(ca.origin, 1024, 1536, parsed.Tree.Hash, signature[1:]) {
+		t.Error("VerifySubtree accepted a truncated subtree signature")
 	}
 }
 
@@ -420,12 +473,12 @@ func TestFilterByVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	timestampedSignature, err := v.FilterByVerify([]byte(text), line)
+	extracted, err := v.FilterByVerify([]byte(text), line)
 	if err != nil {
 		t.Fatalf("FilterByVerify for the cosigner that signed the note: %s", err)
 	}
-	if !v.Verify([]byte(text), timestampedSignature) {
-		t.Fatal("Verify rejected an extracted cosignature")
+	if !bytes.Equal(extracted.Signature, cosigned[timestampSize:]) {
+		t.Errorf("FilterByVerify signature = %x, want %x", extracted.Signature, cosigned[timestampSize:])
 	}
 
 	other, err := NewVerifier(cosignerID, testPubKey(t))
@@ -435,6 +488,51 @@ func TestFilterByVerify(t *testing.T) {
 	_, err = other.FilterByVerify([]byte(text), line)
 	if err == nil {
 		t.Error("FilterByVerify for a cosigner that did not sign the note = nil error, want error")
+	}
+}
+
+// TestFilterByVerifyTimestamped checks that FilterByVerify returns the
+// cosigner's own line and timestamp from among lines by other keys.
+func TestFilterByVerifyTimestamped(t *testing.T) {
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	text := ca.origin + "\n20852163\n" + exampleHashB64 + "\n"
+	parsed, err := checkpoint.Unmarshal([]byte(text))
+	if err != nil {
+		t.Fatalf("checkpoint.Unmarshal: %s", err)
+	}
+	message, err := marshalCheckpointMessage(ca.name, 1_700_000_000, ca.origin, parsed.Tree.N, parsed.Tree.Hash)
+	if err != nil {
+		t.Fatalf("marshalCheckpointMessage: %s", err)
+	}
+	signature, err := testSigner(t).Sign(nil, message, nil)
+	if err != nil {
+		t.Fatalf("Sign: %s", err)
+	}
+	line, err := SignatureLine(ca.name, ca.keyID, 1_700_000_000, signature)
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	unknownLine, err := SignatureLine("oid/1.3.6.1.4.1.32473.99", 0x01020304, 5, make([]byte, mldsa.MLDSA44SignatureSize))
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+
+	v, err := NewVerifier("32473.2", testPubKey(t))
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+	got, err := v.FilterByVerify([]byte(text), append(unknownLine, line...))
+	if err != nil {
+		t.Fatalf("FilterByVerify for the cosigner that signed the note: %s", err)
+	}
+	if !bytes.Equal(got.Line, line) {
+		t.Errorf("FilterByVerify line = %q, want the cosigner's line %q", got.Line, line)
+	}
+	if got.Timestamp != 1_700_000_000 {
+		t.Errorf("FilterByVerify timestamp = %d, want 1700000000", got.Timestamp)
 	}
 }
 
@@ -508,8 +606,8 @@ func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FilterByVerify: %s", err)
 	}
-	if !bytes.Equal(filtered, knownSignature) {
-		t.Errorf("FilterByVerify = %x, want the known cosigner's signature %x", filtered, knownSignature)
+	if !bytes.Equal(filtered.Signature, knownSignature[timestampSize:]) {
+		t.Errorf("FilterByVerify = %x, want the known cosigner's signature %x", filtered.Signature, knownSignature[timestampSize:])
 	}
 
 	_, _, err = checkpoint.Open([]byte(text+"\n"+string(lines)), v)
@@ -553,8 +651,8 @@ func TestSignatureLineRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FilterByVerify rejected the reassembled line: %s", err)
 	}
-	if !bytes.Equal(roundTripped, timestamped) {
-		t.Errorf("round-tripped signature = %x, want %x", roundTripped, timestamped)
+	if roundTripped.Timestamp != 0 || !bytes.Equal(roundTripped.Signature, raw) {
+		t.Errorf("round-tripped signature = %d %x, want 0 %x", roundTripped.Timestamp, roundTripped.Signature, raw)
 	}
 
 	_, err = SignatureLine(v.Name(), v.KeyHash(), 0, raw[1:])

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/mldsa"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/mirror"
+	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
 // maxMirrorResponseSize caps how much of a mirror's response body the client
@@ -45,6 +47,7 @@ var _ Mirror = (*MirrorClient)(nil)
 // entries to add-entries until the mirror cosigns.
 type MirrorClient struct {
 	submissionPrefix string
+	monitoringPrefix string
 	client           *http.Client
 	src              *Source
 	mirrorID         string
@@ -61,10 +64,14 @@ type MirrorClient struct {
 }
 
 // NewMirrorClient returns a MirrorClient that submits to the mirror's endpoints
-// under baseURL, giving each request timeout to complete.
-func NewMirrorClient(baseURL string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, timeout time.Duration) (*MirrorClient, error) {
+// under baseURL and reads its checkpoint under monitoringPrefix, giving each
+// request timeout to complete.
+func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, timeout time.Duration) (*MirrorClient, error) {
 	if baseURL == "" {
 		return nil, errors.New("empty mirror base URL")
+	}
+	if monitoringPrefix == "" {
+		return nil, errors.New("empty mirror monitoring prefix")
 	}
 	if timeout <= 0 {
 		return nil, fmt.Errorf("timeout must be positive, got %s", timeout)
@@ -75,6 +82,7 @@ func NewMirrorClient(baseURL string, src *Source, mirrorID string, mirrorPublicK
 	}
 	return &MirrorClient{
 		submissionPrefix: baseURL,
+		monitoringPrefix: monitoringPrefix,
 		client:           &http.Client{Timeout: timeout},
 		src:              src,
 		mirrorID:         mirrorID,
@@ -216,7 +224,7 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 			}
 			if info.TreeSize != tree.N {
 				// The spec has the client adopt the advertised tree size, but
-				// Cosign set the mirror's pending checkpoint to tree.N with
+				// CosignCheckpoint set the mirror's pending checkpoint to tree.N with
 				// add-checkpoint before uploading, so the mirror SHOULD have
 				// echoed it, and a cosignature over any other tree size is no
 				// use here.
@@ -238,11 +246,10 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 	}
 }
 
-// signSubtree requests the mirror's zero timestamp signature over the whole
-// tree from the c2sp.org/tlog-witness sign-subtree endpoint, presenting the
-// checkpoint note carrying the cosignature lines add-entries returned.
-func (m *MirrorClient) signSubtree(ctx context.Context, tree tlog.Tree, signedNote []byte) ([]byte, error) {
-	body, err := mirror.SignSubtreeRequest(0, tree.N, tree.Hash, nil, signedNote)
+// signSubtree requests the mirror's zero timestamp signature over the subtree
+// [start, end) from the c2sp.org/tlog-witness sign-subtree endpoint.
+func (m *MirrorClient) signSubtree(ctx context.Context, start, end int64, subtreeHash tlog.Hash, proof []tlog.Hash, signedNote []byte) ([]byte, error) {
+	body, err := mirror.SignSubtreeRequest(start, end, subtreeHash, proof, signedNote)
 	if err != nil {
 		return nil, err
 	}
@@ -256,13 +263,13 @@ func (m *MirrorClient) signSubtree(ctx context.Context, tree tlog.Tree, signedNo
 	return respBody, nil
 }
 
-// Cosign runs the c2sp.org/tlog-mirror submission protocol for the checkpoint
-// and returns the mirror's raw signature over the whole tree from sign-subtree,
+// CosignCheckpoint runs the c2sp.org/tlog-mirror submission protocol for the
+// checkpoint and returns the mirror's cosignature line from add-entries,
 // verified against the mirror's key. A mirror that is already up to date,
 // whether from an earlier submission whose cosignature was never stored or
 // from another submitter, still gets the full exchange, since that is the only
 // way to obtain its cosignature.
-func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) ([]byte, error) {
+func (m *MirrorClient) CosignCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) ([]byte, error) {
 	// Submit the checkpoint to the mirror.
 	err := m.addCheckpoint(ctx, cp.Tree, signedNoteForMirror)
 	if err != nil {
@@ -275,30 +282,110 @@ func (m *MirrorClient) Cosign(ctx context.Context, cp *checkpoint.Checkpoint, si
 		return nil, fmt.Errorf("add-entries: %w", err)
 	}
 
-	// Exchange the mirror's cosignature for its subtree signature.
-	noteForSignSubtree, err := cp.SignedNote(mirrorCosignatureLines)
-	if err != nil {
-		return nil, fmt.Errorf("assembling the sign-subtree note: %w", err)
-	}
-	subtreeCosignatureLines, err := m.signSubtree(ctx, cp.Tree, noteForSignSubtree)
-	if err != nil {
-		return nil, fmt.Errorf("sign-subtree: %w", err)
-	}
-
 	// Verify the mirror's signature.
 	noteText, err := cp.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
 	}
-	zeroTimestampMirrorCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
+	checkpointCosignature, err := m.verifier.FilterByVerify(noteText, mirrorCosignatureLines)
 	if err != nil {
-		return nil, fmt.Errorf("cosignature failed verification: %w", err)
+		return nil, fmt.Errorf("checkpoint cosignature failed verification: %w", err)
+	}
+	if checkpointCosignature.Timestamp == 0 {
+		return nil, errors.New("checkpoint cosignature has a zero timestamp")
+	}
+	return checkpointCosignature.Line, nil
+}
+
+// mirrorCheckpoint returns the mirror's checkpoint of the log with the given
+// origin and its signed note, with the mirror's cosignature verified.
+//
+// https://c2sp.org/tlog-mirror#introduction
+func (m *MirrorClient) mirrorCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error) {
+	endpoint, err := url.JoinPath(m.monitoringPrefix, fmt.Sprintf("%x", sha256.Sum256([]byte(origin))), "checkpoint")
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(http.MaxBytesReader(nil, resp.Body, maxMirrorResponseSize))
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading mirror checkpoint: %s", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("mirror returned status %d for its checkpoint: %s", resp.StatusCode, errorBody(body))
 	}
 
-	// Finally, extract the raw cosignature we store in the database.
-	rawMirrorCosignature, err := cosignature.RawSignature(zeroTimestampMirrorCosignature)
-	if err != nil {
-		return nil, fmt.Errorf("cosignature: %w", err)
+	separator := bytes.Index(body, []byte("\n\n"))
+	if separator < 0 {
+		return nil, nil, errors.New("mirror checkpoint has no signature lines")
 	}
-	return rawMirrorCosignature, nil
+	noteText := body[:separator+1]
+	signatureLines := body[separator+2:]
+	mirrored, err := checkpoint.Unmarshal(noteText)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing mirror checkpoint: %w", err)
+	}
+	if mirrored.Origin != origin {
+		return nil, nil, fmt.Errorf("mirror checkpoint is of %s, want %s", mirrored.Origin, origin)
+	}
+	cosig, err := m.verifier.FilterByVerify(noteText, signatureLines)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mirror checkpoint cosignature failed verification: %w", err)
+	}
+	signedNote, err := mirrored.SignedNote(cosig.Line)
+	if err != nil {
+		return nil, nil, fmt.Errorf("assembling the mirror's signed note: %w", err)
+	}
+	return mirrored, signedNote, nil
+}
+
+// CosignSubtree returns the mirror's signature over the subtree [start, end)
+// from sign-subtree, proven against the mirror's own checkpoint.
+//
+// TODO(#9038): sign and verify subtrees that do not start at 0.
+func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
+	if start != 0 {
+		return nil, fmt.Errorf("subtree [%d, %d) does not start at 0", start, end)
+	}
+	mirrored, signedNote, err := m.mirrorCheckpoint(ctx, origin)
+	if err != nil {
+		return nil, err
+	}
+	if mirrored.Tree.N < end {
+		return nil, fmt.Errorf("%w: mirror checkpoint at size %d does not include subtree [%d, %d)", ErrSubtreeNotMirrored, mirrored.Tree.N, start, end)
+	}
+	if mirrored.Tree.N == end && mirrored.Tree.Hash != subtreeHash {
+		return nil, fmt.Errorf("mirror checkpoint at size %d has root hash %x, the log's is %x", end, mirrored.Tree.Hash, subtreeHash)
+	}
+	proof, err := subtree.ConsistencyProof(start, end, mirrored.Tree.N, m.src.hashReaderForTree(ctx, mirrored.Tree))
+	if err != nil {
+		return nil, fmt.Errorf("proving subtree [%d, %d) in the mirror's tree of size %d: %s", start, end, mirrored.Tree.N, err)
+	}
+	subtreeCosignatureLines, err := m.signSubtree(ctx, start, end, subtreeHash, proof, signedNote)
+	if err != nil {
+		return nil, fmt.Errorf("sign-subtree: %w", err)
+	}
+
+	// Verify the mirror's signature. A subtree starting at 0 is signed exactly
+	// as a checkpoint of its size would be.
+	noteText, err := (&checkpoint.Checkpoint{Origin: origin, Tree: tlog.Tree{N: end, Hash: subtreeHash}}).Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("marshaling the subtree: %w", err)
+	}
+	subtreeCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
+	if err != nil {
+		return nil, fmt.Errorf("subtree signature failed verification: %w", err)
+	}
+	if subtreeCosignature.Timestamp != 0 {
+		return nil, fmt.Errorf("subtree signature has timestamp %d, want 0", subtreeCosignature.Timestamp)
+	}
+	return subtreeCosignature.Signature, nil
 }

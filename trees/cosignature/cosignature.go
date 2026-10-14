@@ -52,22 +52,31 @@ func keyIDFor(name string, publicKey *mldsa.PublicKey) uint32 {
 	return binary.BigEndian.Uint32(h.Sum(nil)[:keyIDSize])
 }
 
-// marshalCheckpointMessage serializes the cosigned.Message for a checkpoint
-// cosignature, with start 0 and end the tree size as the MTC draft section
-// 5.3.1 requires for checkpoints. It rejects a non-positive end.
-func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
-	if end <= 0 {
-		return nil, fmt.Errorf("non-positive end %d", end)
+// marshalMessage serializes the cosigned.Message for a cosignature over the
+// subtree [start, end). It rejects a negative start and an end not after it.
+//
+// TODO(#9038): reject a [start, end) that is not a valid subtree, as the MTC
+// draft section 5.3.1 requires.
+func marshalMessage(name string, timestamp uint64, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
+	if start < 0 || end <= start {
+		return nil, fmt.Errorf("invalid subtree [%d, %d)", start, end)
 	}
 	cosignedMessage := cosigned.Message{
 		CosignerName: name,
 		Timestamp:    timestamp,
 		LogOrigin:    origin,
-		Start:        0,
-		End:          uint64(end),
-		SubtreeHash:  rootHash,
+		Start:        uint64(start),
+		End:          uint64(end), //nolint:gosec // G115: the check above leaves end > start >= 0.
+		SubtreeHash:  subtreeHash,
 	}
 	return cosignedMessage.Marshal()
+}
+
+// marshalCheckpointMessage serializes the cosigned.Message for a checkpoint
+// cosignature, with start 0 and end the tree size as the MTC draft section
+// 5.3.1 requires for checkpoints. It rejects a non-positive end.
+func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
+	return marshalMessage(name, timestamp, origin, 0, end, rootHash)
 }
 
 // checkRelativeOID returns an error if id is not a dotted decimal OID like
@@ -92,10 +101,10 @@ func checkRelativeOID(id string) error {
 	return nil
 }
 
-// Cosigner produces cosignatures over checkpoints as an MTC cosigner for a
-// single log: the timestamp is zero, as required for cosignatures used in
-// certificates, and the key is a crypto.Signer so it may be stored in an HSM.
-// Both the CA cosigner and the mirror cosigner use this.
+// Cosigner produces cosignatures over checkpoints and subtrees as an MTC
+// cosigner for a single log: the timestamp is zero, as required for
+// cosignatures used in certificates, and the key is a crypto.Signer so it may
+// be stored in an HSM. Both the CA cosigner and the mirror cosigner use this.
 //
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-6.2
@@ -140,13 +149,7 @@ func (c *Cosigner) Origin() string {
 	return c.origin
 }
 
-// CosignCheckpoint cosigns the checkpoint described by tree and returns the
-// cosignature as a timestamped_signature.
-func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
-	message, err := marshalCheckpointMessage(c.name, 0, c.origin, tree.N, tree.Hash)
-	if err != nil {
-		return nil, err
-	}
+func (c *Cosigner) sign(message []byte) ([]byte, error) {
 	signature, err := c.signer.Sign(nil, message, nil)
 	if err != nil {
 		return nil, err
@@ -154,13 +157,37 @@ func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
 	if len(signature) != mldsa.MLDSA44SignatureSize {
 		return nil, fmt.Errorf("signer returned %d bytes, want %d", len(signature), mldsa.MLDSA44SignatureSize)
 	}
+	return signature, nil
+}
+
+// CosignCheckpoint cosigns the checkpoint described by tree and returns the
+// cosignature as a timestamped_signature.
+func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
+	message, err := marshalCheckpointMessage(c.name, 0, c.origin, tree.N, tree.Hash)
+	if err != nil {
+		return nil, err
+	}
+	signature, err := c.sign(message)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]byte, timestampedSignatureSize)
 	copy(out[timestampSize:], signature)
 	return out, nil
 }
 
+// CosignSubtree cosigns the subtree [start, end) with hash subtreeHash and
+// returns the raw signature, which carries no timestamp.
+func (c *Cosigner) CosignSubtree(start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
+	message, err := marshalMessage(c.name, 0, c.origin, start, end, subtreeHash)
+	if err != nil {
+		return nil, err
+	}
+	return c.sign(message)
+}
+
 // Verifier is a note.Verifier that verifies an MTC cosigner's ML-DSA-44
-// cosignatures over checkpoints.
+// cosignatures over checkpoints and subtrees.
 //
 //   - https://c2sp.org/tlog-cosignature
 //   - https://c2sp.org/mtc-tlog
@@ -226,11 +253,37 @@ func (v *Verifier) Verify(noteText, timestampedSignature []byte) bool {
 	return mldsa.Verify(v.publicKey, cosignedMessage, timestampedSignature[timestampSize:], nil) == nil
 }
 
-// FilterByVerify returns the timestamped_signature by this verifier's cosigner
+// VerifySubtree reports whether signature is a valid subtree cosignature by
+// this cosigner over the subtree [start, end) with hash subtreeHash of the log
+// with origin.
+//
+// https://c2sp.org/tlog-cosignature#subtree-cosignatures
+func (v *Verifier) VerifySubtree(origin string, start, end int64, subtreeHash tlog.Hash, signature []byte) bool {
+	cosignedMessage, err := marshalMessage(v.keyName, 0, origin, start, end, subtreeHash)
+	if err != nil {
+		return false
+	}
+	return mldsa.Verify(v.publicKey, cosignedMessage, signature, nil) == nil
+}
+
+// CheckpointCosignature is a verified checkpoint cosignature by one cosigner,
+// parsed from its signature line on the checkpoint.
+//
+// https://c2sp.org/tlog-cosignature#checkpoint-cosignatures
+type CheckpointCosignature struct {
+	// Line is the note signature line carrying the cosignature.
+	Line []byte
+	// Timestamp is the POSIX timestamp the cosigner signed.
+	Timestamp uint64
+	// Signature is the raw ML-DSA-44 signature.
+	Signature []byte
+}
+
+// FilterByVerify returns the checkpoint cosignature by this verifier's cosigner
 // from the signatureLines over noteText, ignoring lines by other keys. It
 // errors if the two do not form a well-formed note, if no line is by that
 // cosigner, or if its signature does not verify.
-func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) ([]byte, error) {
+func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) (*CheckpointCosignature, error) {
 	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLines), note.VerifierList(v))
 	if err != nil {
 		return nil, fmt.Errorf("opening the cosigned note: %w", err)
@@ -239,7 +292,11 @@ func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
 	}
-	return idSignature[keyIDSize:], nil
+	return &CheckpointCosignature{
+		Line:      []byte(noteSignatureLinePrefix + n.Sigs[0].Name + " " + n.Sigs[0].Base64 + "\n"),
+		Timestamp: binary.BigEndian.Uint64(idSignature[keyIDSize : keyIDSize+timestampSize]),
+		Signature: idSignature[keyIDSize+timestampSize:],
+	}, nil
 }
 
 // RawSignature returns the ML-DSA-44 signature from a timestamped_signature,
