@@ -31,7 +31,7 @@ const (
 // MTCB constructs already-issued MTCs from database and log data.
 type MTCBClient interface {
 	// StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
-	// for a standalone certificate to be built.
+	// on its corresponding subtree for a standalone certificate to be built.
 	StandaloneReady(ctx context.Context, in *StandaloneReadyRequest, opts ...grpc.CallOption) (*StandaloneReadyResponse, error)
 	// GetStandalone returns a standalone certificate.
 	GetStandalone(ctx context.Context, in *StandaloneRequest, opts ...grpc.CallOption) (*StandaloneResponse, error)
@@ -84,7 +84,7 @@ func (c *mTCBClient) GetLandmarkRelative(ctx context.Context, in *LandmarkRelati
 // MTCB constructs already-issued MTCs from database and log data.
 type MTCBServer interface {
 	// StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
-	// for a standalone certificate to be built.
+	// on its corresponding subtree for a standalone certificate to be built.
 	StandaloneReady(context.Context, *StandaloneReadyRequest) (*StandaloneReadyResponse, error)
 	// GetStandalone returns a standalone certificate.
 	GetStandalone(context.Context, *StandaloneRequest) (*StandaloneResponse, error)
