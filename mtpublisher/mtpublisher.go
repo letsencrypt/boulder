@@ -23,13 +23,22 @@ import (
 type Mirror interface {
 	// ID returns the mirror's cosigner ID.
 	ID() string
-	// Cosign submits the log's signed note for cp and returns the mirror's raw
-	// cosignature, verified against the mirror's key.
-	Cosign(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error)
+	// CosignCheckpoint submits the log's signed note for cp and returns the
+	// mirror's cosignature line, verified against the mirror's key.
+	CosignCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error)
+	// CosignSubtree returns the mirror's signature over the subtree [start,
+	// end) of the log with origin, verified against the mirror's key. It
+	// returns an error wrapping ErrSubtreeNotMirrored if the mirror's
+	// checkpoint does not include the subtree yet.
+	CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error)
 }
 
-// mtpublisher obtains and stores its mirror's cosignature over the issuance
-// log's latest checkpoint.
+// ErrSubtreeNotMirrored reports that the mirror's checkpoint does not include
+// the subtree yet.
+var ErrSubtreeNotMirrored = errors.New("the mirror has not reached the subtree")
+
+// mtpublisher obtains and stores its mirror's cosignatures over the issuance
+// log's latest checkpoint and the log's subtrees.
 type mtpublisher struct {
 	treedb     checkpointDB
 	interval   time.Duration
@@ -68,12 +77,14 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID issuancelog.ID
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
+	GetUnsignedSubtrees(ctx context.Context, mtcLogID string) ([]*treedb.CheckpointSubtreeModel, error)
+	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
-// Publish submits the latest checkpoint to the mirror if it lacks a mirror
-// cosignature and stores the returned raw cosignature. Start calls it at each
-// interval.
-func (p *mtpublisher) Publish(ctx context.Context) error {
+// PublishCheckpoint submits the latest checkpoint to the mirror if it lacks a
+// mirror cosignature and stores the returned signature line. Start calls it at
+// each interval.
+func (p *mtpublisher) PublishCheckpoint(ctx context.Context) error {
 	latest, err := p.treedb.LatestCheckpoint(ctx, p.logID.String())
 	if errors.Is(err, treedb.ErrIssuanceLogNotInitialized) {
 		p.log.Infof("Issuance log %s has no checkpoint yet, waiting", p.logID)
@@ -115,14 +126,14 @@ func (p *mtpublisher) Publish(ctx context.Context) error {
 	}
 
 	// Submit the signed checkpoint to the mirror for cosigning.
-	mirrorRawCosig, err := p.mirror.Cosign(ctx, cp, signedNoteForMirror)
+	checkpointCosignatureLine, err := p.mirror.CosignCheckpoint(ctx, cp, signedNoteForMirror)
 	if err != nil {
 		return fmt.Errorf("publishing checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
 	p.log.Infof("Published checkpoint %d (%s size %d)", latest.ID, latest.MTCLogID, latest.TreeSize)
 
 	// Store the mirror's cosignature in the database.
-	err = p.treedb.AddMirrorSignature(ctx, latest.ID, p.mirror.ID(), mirrorRawCosig, p.logID.String())
+	err = p.treedb.AddMirrorSignature(ctx, latest.ID, p.mirror.ID(), checkpointCosignatureLine, p.logID.String())
 	if err != nil {
 		return fmt.Errorf("storing checkpoint %d cosignature (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
@@ -130,15 +141,56 @@ func (p *mtpublisher) Publish(ctx context.Context) error {
 	return nil
 }
 
-// Start attempts to publish the latest checkpoint at each interval until ctx is
+// CosignSubtrees stores the mirror's signature on each subtree of the log that
+// lacks one, oldest first, until it reaches one the mirror's checkpoint does
+// not include yet. Start calls it at each interval.
+func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
+	subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String())
+	if err != nil {
+		return fmt.Errorf("selecting the unsigned subtrees of %s: %w", p.logID, err)
+	}
+	for _, subtree := range subtrees {
+		err = subtree.Valid()
+		if err != nil {
+			return fmt.Errorf("validating subtree %d: %s", subtree.ID, err)
+		}
+		start := int64(subtree.SubtreeStart) //nolint:gosec // G115: Valid checked the bounds
+		end := int64(subtree.SubtreeEnd)     //nolint:gosec // G115: Valid checked the bounds
+		subtreeHash := tlog.Hash(subtree.SubtreeHash)
+		if !p.caVerifier.VerifySubtree(p.logID.Origin(), start, end, subtreeHash, subtree.MTCASignature) {
+			return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+		}
+
+		subtreeSignature, err := p.mirror.CosignSubtree(ctx, p.logID.Origin(), start, end, subtreeHash)
+		if err != nil {
+			if errors.Is(err, ErrSubtreeNotMirrored) {
+				p.log.Infof("Subtree %d (%s [%d, %d)) is beyond the mirror's checkpoint, waiting", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+				return nil
+			}
+			return fmt.Errorf("cosigning subtree %d (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
+		}
+		err = p.treedb.AddSubtreeMirrorSignature(ctx, subtree.ID, p.mirror.ID(), subtreeSignature, p.logID.String())
+		if err != nil {
+			return fmt.Errorf("storing subtree %d cosignature (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
+		}
+		p.log.Infof("Stored mirror signature for subtree %d (%s [%d, %d))", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+	}
+	return nil
+}
+
+// Start runs PublishCheckpoint and CosignSubtrees at each interval until ctx is
 // cancelled.
 func (p *mtpublisher) Start(ctx context.Context) {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
-		err := p.Publish(ctx)
+		err := p.PublishCheckpoint(ctx)
 		if err != nil {
-			p.log.Errf("Publishing pass failed: %s", err)
+			p.log.Errf("Publishing checkpoint failed: %s", err)
+		}
+		err = p.CosignSubtrees(ctx)
+		if err != nil {
+			p.log.Errf("Cosigning subtrees failed: %s", err)
 		}
 		select {
 		case <-ctx.Done():

@@ -266,11 +266,24 @@ func (v *Verifier) VerifySubtree(origin string, start, end int64, subtreeHash tl
 	return mldsa.Verify(v.publicKey, cosignedMessage, signature, nil) == nil
 }
 
-// FilterByVerify returns the timestamped_signature by this verifier's cosigner
+// CheckpointCosignature is a verified checkpoint cosignature by one cosigner,
+// parsed from its signature line on the checkpoint.
+//
+// https://c2sp.org/tlog-cosignature#checkpoint-cosignatures
+type CheckpointCosignature struct {
+	// Line is the note signature line carrying the cosignature.
+	Line []byte
+	// Timestamp is the POSIX timestamp the cosigner signed.
+	Timestamp uint64
+	// Signature is the raw ML-DSA-44 signature.
+	Signature []byte
+}
+
+// FilterByVerify returns the checkpoint cosignature by this verifier's cosigner
 // from the signatureLines over noteText, ignoring lines by other keys. It
 // errors if the two do not form a well-formed note, if no line is by that
 // cosigner, or if its signature does not verify.
-func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) ([]byte, error) {
+func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) (*CheckpointCosignature, error) {
 	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLines), note.VerifierList(v))
 	if err != nil {
 		return nil, fmt.Errorf("opening the cosigned note: %w", err)
@@ -279,7 +292,11 @@ func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
 	}
-	return idSignature[keyIDSize:], nil
+	return &CheckpointCosignature{
+		Line:      []byte(noteSignatureLinePrefix + n.Sigs[0].Name + " " + n.Sigs[0].Base64 + "\n"),
+		Timestamp: binary.BigEndian.Uint64(idSignature[keyIDSize : keyIDSize+timestampSize]),
+		Signature: idSignature[keyIDSize+timestampSize:],
+	}, nil
 }
 
 // RawSignature returns the ML-DSA-44 signature from a timestamped_signature,

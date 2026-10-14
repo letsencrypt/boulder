@@ -156,6 +156,33 @@ func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.Checkpoi
 	return s.ID, nil
 }
 
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string) ([]*treedb.CheckpointSubtreeModel, error) {
+	if mtcLogID != f.mtcLogID {
+		return nil, fmt.Errorf("wrong log")
+	}
+	var subtrees []*treedb.CheckpointSubtreeModel
+	for i := range f.checkpointSubtrees {
+		if f.checkpointSubtrees[i].MirrorID == nil {
+			subtrees = append(subtrees, &f.checkpointSubtrees[i])
+		}
+	}
+	return subtrees, nil
+}
+
+func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	if mtcLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	for i, s := range f.checkpointSubtrees {
+		if s.ID == id {
+			f.checkpointSubtrees[i].MirrorID = &mirrorID
+			f.checkpointSubtrees[i].MirrorSignature = mirrorSignature
+			return nil
+		}
+	}
+	return fmt.Errorf("subtree %d not found", id)
+}
+
 func (f *fakeDB) getCheckpointSubtree(mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
@@ -578,9 +605,9 @@ func mirrorCosign(t *testing.T, m *mtca) {
 	if err != nil {
 		t.Fatalf("mtpublisher.New: %s", err)
 	}
-	err = p.Publish(t.Context())
+	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
-		t.Fatalf("mtpublisher.Publish: %s", err)
+		t.Fatalf("mtpublisher.PublishCheckpoint: %s", err)
 	}
 }
 

@@ -54,6 +54,11 @@ type Config struct {
 			// endpoints (e.g. "http://localhost:4700").
 			BaseURL string `validate:"required,url"`
 
+			// MonitoringPrefix is the mirror's tlog-mirror monitoring prefix,
+			// under which it serves its copy of the log and its cosigned
+			// checkpoint (e.g. "http://localhost:8333/mirror").
+			MonitoringPrefix string `validate:"required,url"`
+
 			// Timeout bounds each request to the mirror.
 			Timeout config.Duration `validate:"required"`
 		}
@@ -124,7 +129,7 @@ func main() {
 	mirrorPubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
 	cmd.FailOnError(err, "Loading mirror public key")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, c.MTPublisher.Mirror.MonitoringPrefix, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
 	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
