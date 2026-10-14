@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/mldsa"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -39,7 +40,7 @@ type checkpointDB interface {
 type mtcb struct {
 	mtcbpb.UnimplementedMTCBServer
 
-	issuers map[string]*issuance.Certificate
+	issuers map[string]mtcIssuer
 
 	checkpoints checkpointDB
 	s3c         simpleS3
@@ -58,21 +59,31 @@ func New(
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtcb, error) {
-	// TODO: Make this a map of MTCA IDs to (certificate, checkpointDB), so that a single MTCB
+	// TODO: Make this a map of MTCA IDs to (mtcIssuer, checkpointDB), so that a single MTCB
 	// can talk to multiple different databases to build certs for multiple
 	// different CAs.
-	issuersMap := make(map[string]*issuance.Certificate)
+	issuersMap := make(map[string]mtcIssuer)
 	for _, issuer := range issuers {
 		caID, err := issuer.MTCAID()
 		if err != nil {
 			return nil, fmt.Errorf("computing MTCA ID: %w", err)
 		}
 
-		_, ok := issuer.PublicKey.(*mldsa.PublicKey)
+		pubKey, ok := issuer.PublicKey.(*mldsa.PublicKey)
 		if !ok {
 			return nil, fmt.Errorf("issuer %q not an ML-DSA pubkey (%T)", caID, issuer.PublicKey)
 		}
-		issuersMap[caID] = issuer
+
+		checkpointVerifier, err := cosignature.NewVerifier(caID, pubKey)
+		if err != nil {
+			return nil, fmt.Errorf("creating CA verifier: %s", err)
+		}
+
+		issuersMap[caID] = mtcIssuer{
+			certificate:        issuer.Certificate,
+			checkpointVerifier: checkpointVerifier,
+		}
+
 	}
 
 	m := &mtcb{
@@ -84,6 +95,11 @@ func New(
 	}
 
 	return m, nil
+}
+
+type mtcIssuer struct {
+	certificate        *x509.Certificate
+	checkpointVerifier *cosignature.Verifier
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -317,22 +333,12 @@ func (m *mtcb) readCheckpoint(ctx context.Context, logID issuancelog.ID) (*check
 		return nil, fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
 	}
 
-	issuer, ok := m.issuers[logID.CAID]
+	mtcIssuer, ok := m.issuers[logID.CAID]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for MTCAID %q", logID.CAID)
 	}
 
-	pubKey, ok := issuer.Certificate.PublicKey.(*mldsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("issuer public key is %T, must be ML-DSA-44", issuer.Certificate.PublicKey)
-	}
-
-	verifier, err := cosignature.NewVerifier(logID.CAID, pubKey)
-	if err != nil {
-		return nil, fmt.Errorf("creating CA verifier: %s", err)
-	}
-
-	cp, _, err := checkpoint.Open(body, verifier)
+	cp, _, err := checkpoint.Open(body, mtcIssuer.checkpointVerifier)
 	if err != nil {
 		return nil, fmt.Errorf("checkpoint at s3://%s/%s: %s", bucket, path, err)
 	}
