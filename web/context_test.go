@@ -155,6 +155,32 @@ func TestHostHeaderRewrite(t *testing.T) {
 	test.AssertNotError(t, err, "http.NewRequest failed")
 	req.Host = "localhost:123"
 	th.ServeHTTP(httptest.NewRecorder(), req)
+
+	// A forwarded host gets the same treatment, since it stands in for r.Host
+	// when building and validating URLs. Leaving the port on would make a
+	// proxied deployment advertise URLs a direct one would not.
+	hhh.f = func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
+		t.Helper()
+		test.AssertEquals(t, r.Header.Get("X-Forwarded-Host"), "acme.example")
+	}
+	for _, forwarded := range []string{"acme.example:443", "acme.example:80", "acme.example"} {
+		req, err = http.NewRequest("GET", "/", &bytes.Reader{})
+		test.AssertNotError(t, err, "http.NewRequest failed")
+		req.Host = "backend.example:4001"
+		req.Header.Set("X-Forwarded-Host", forwarded)
+		th.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	// A non-default port is preserved, matching r.Host handling.
+	hhh.f = func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
+		t.Helper()
+		test.AssertEquals(t, r.Header.Get("X-Forwarded-Host"), "acme.example:8443")
+	}
+	req, err = http.NewRequest("GET", "/", &bytes.Reader{})
+	test.AssertNotError(t, err, "http.NewRequest failed")
+	req.Host = "backend.example:4001"
+	req.Header.Set("X-Forwarded-Host", "acme.example:8443")
+	th.ServeHTTP(httptest.NewRecorder(), req)
 }
 
 type cancelHandler struct {

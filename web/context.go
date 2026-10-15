@@ -182,6 +182,15 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Host = strings.TrimSuffix(r.Host, ":443")
 	r.Host = strings.TrimSuffix(r.Host, ":80")
 
+	// Do the same for a forwarded host, which is used in place of r.Host when
+	// present. Otherwise a proxy that forwards "example.com:443" produces URLs
+	// carrying the port where a direct request would not.
+	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		forwardedHost = strings.TrimSuffix(forwardedHost, ":443")
+		forwardedHost = strings.TrimSuffix(forwardedHost, ":80")
+		r.Header.Set("X-Forwarded-Host", forwardedHost)
+	}
+
 	begin := time.Now()
 	rwws := &responseWriterWithStatus{w, 0}
 	defer func() {

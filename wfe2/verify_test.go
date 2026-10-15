@@ -718,6 +718,49 @@ func (rs requestSigner) signExtraHeaders(
 	return parsedJWS, body
 }
 
+// A client signs the URL it actually requested. When the CA sits behind a
+// proxy it must reconstruct that URL from the forwarded host, or every signed
+// request looks like it targets the wrong endpoint and issuance is impossible
+// through the proxy.
+func TestValidPOSTURLForwardedHost(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+
+	// The client signed the public URL it used.
+	_, _, body := signer.embeddedJWK(nil, "https://acme.example/test-path", "")
+	request := makePostRequestWithPath("test-path", body)
+	request.Header.Set("X-Forwarded-Host", "acme.example")
+	request.Header.Set("X-Forwarded-Proto", "https")
+
+	jws, err := jose.ParseSigned(body, getSupportedAlgs())
+	if err != nil {
+		t.Fatalf("parsing signed body: %s", err)
+	}
+
+	err = wfe.validPOSTURL(request, jws.Signatures[0].Header)
+	if err != nil {
+		t.Errorf("validPOSTURL with a forwarded host = %s, want nil", err)
+	}
+}
+
+// Without the header the CA keeps validating against its own host, so a
+// direct deployment is unaffected.
+func TestValidPOSTURLWithoutForwardedHost(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+
+	_, _, body := signer.embeddedJWK(nil, "http://localhost/test-path", "")
+	request := makePostRequestWithPath("test-path", body)
+
+	jws, err := jose.ParseSigned(body, getSupportedAlgs())
+	if err != nil {
+		t.Fatalf("parsing signed body: %s", err)
+	}
+
+	err = wfe.validPOSTURL(request, jws.Signatures[0].Header)
+	if err != nil {
+		t.Errorf("validPOSTURL without a forwarded host = %s, want nil", err)
+	}
+}
+
 func TestValidPOSTURL(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 

@@ -393,6 +393,20 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	return nil
 }
 
+// requestHost returns the host the client addressed, which is the request host
+// unless an upstream proxy specified a forwarded host.
+//
+// This matters for JWS url validation. A client signs the URL it actually
+// requested, so a CA behind a proxy must reconstruct that URL rather than the
+// internal one it received, or every signed request appears to target the
+// wrong endpoint.
+func requestHost(request *http.Request) string {
+	if specifiedHost := request.Header.Get("X-Forwarded-Host"); specifiedHost != "" {
+		return specifiedHost
+	}
+	return request.Host
+}
+
 // requestProto returns "http" for HTTP requests and "https" for HTTPS
 // requests. It supports the use of "X-Forwarded-Proto" to override the protocol.
 func requestProto(request *http.Request) string {
