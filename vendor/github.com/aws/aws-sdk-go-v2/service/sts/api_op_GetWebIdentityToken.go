@@ -14,6 +14,8 @@ import (
 // services that support OIDC discovery. The token is signed by Amazon Web Services
 // STS and can be publicly verified using the verification keys published at the
 // issuer's JWKS endpoint.
+//
+// The GetWebIdentityToken API is not available on the STS Global endpoint.
 func (c *Client) GetWebIdentityToken(ctx context.Context, params *GetWebIdentityTokenInput, optFns ...func(*Options)) (*GetWebIdentityTokenOutput, error) {
 	if params == nil {
 		params = &GetWebIdentityTokenInput{}
@@ -93,9 +95,6 @@ func (c *Client) addOperationGetWebIdentityTokenMiddlewares(stack *middleware.St
 		return err
 	}
 
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
