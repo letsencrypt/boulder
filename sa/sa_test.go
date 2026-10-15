@@ -1345,18 +1345,84 @@ func TestSetAuthzProcessing(t *testing.T) {
 	authzID := createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.com"), expires)
 
 	// Set the authz to processing
-	_, err := sa.SetAuthzProcessing(t.Context(), &sapb.AuthorizationID2{Id: authzID})
+	_, err := sa.SetAuthzProcessing(t.Context(), &sapb.SetAuthzProcessingRequest{Id: authzID, Attempted: string(core.ChallengeTypeHTTP01)})
 	if err != nil {
 		t.Fatalf("SetAuthzProcessing = %q, but want success", err)
 	}
 
+	// The authz should still be pending, but the attempted challenge should
+	// now be rendered as processing.
+	authz, err := sa.GetAuthorization2(t.Context(), &sapb.AuthorizationID2{Id: authzID})
+	if err != nil {
+		t.Fatalf("GetAuthorization2 = %q, but want success", err)
+	}
+	if authz.Status != string(core.StatusPending) {
+		t.Errorf("authz.Status = %q, but want %q", authz.Status, core.StatusPending)
+	}
+	if len(authz.Challenges) != 1 {
+		t.Fatalf("len(authz.Challenges) = %d, but want 1", len(authz.Challenges))
+	}
+	if authz.Challenges[0].Type != string(core.ChallengeTypeHTTP01) {
+		t.Errorf("authz.Challenges[0].Type = %q, but want %q", authz.Challenges[0].Type, core.ChallengeTypeHTTP01)
+	}
+	if authz.Challenges[0].Status != string(core.StatusProcessing) {
+		t.Errorf("authz.Challenges[0].Status = %q, but want %q", authz.Challenges[0].Status, core.StatusProcessing)
+	}
+
 	// Try to set the same authz to be processing again. We should get an error.
-	_, err = sa.SetAuthzProcessing(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	_, err = sa.SetAuthzProcessing(context.Background(), &sapb.SetAuthzProcessingRequest{Id: authzID, Attempted: string(core.ChallengeTypeHTTP01)})
 	if err == nil {
 		t.Fatal("SetAuthzProcessing again succeeded, but want error")
 	}
 	if !errors.Is(err, berrors.Conflict) {
 		t.Errorf("SetAuthzProcessing = %T, but want berrors.Conflict", err)
+	}
+
+	// Finalizing the authz should still work, and should replace the
+	// processing status with the final one.
+	_, err = sa.FinalizeAuthorization2(t.Context(), &sapb.FinalizeAuthorizationRequest{
+		Id:          authzID,
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(fc.Now()),
+	})
+	if err != nil {
+		t.Fatalf("FinalizeAuthorization2 = %q, but want success", err)
+	}
+	authz, err = sa.GetAuthorization2(t.Context(), &sapb.AuthorizationID2{Id: authzID})
+	if err != nil {
+		t.Fatalf("GetAuthorization2 = %q, but want success", err)
+	}
+	if authz.Status != string(core.StatusValid) {
+		t.Errorf("authz.Status = %q, but want %q", authz.Status, core.StatusValid)
+	}
+	if authz.Challenges[0].Status != string(core.StatusValid) {
+		t.Errorf("authz.Challenges[0].Status = %q, but want %q", authz.Challenges[0].Status, core.StatusValid)
+	}
+
+	// An unrecognized challenge type should be rejected.
+	authzID = createPendingAuthorization(t, sa, reg.Id, identifier.NewDNS("example.net"), expires)
+	_, err = sa.SetAuthzProcessing(t.Context(), &sapb.SetAuthzProcessingRequest{Id: authzID, Attempted: "bogus-01"})
+	if err == nil {
+		t.Fatal("SetAuthzProcessing with bogus challenge type succeeded, but want error")
+	}
+	if !errors.Is(err, berrors.Malformed) {
+		t.Errorf("SetAuthzProcessing = %T, but want berrors.Malformed", err)
+	}
+
+	// An omitted challenge type (as sent by an RA which predates the field)
+	// should still mark the authz as processing, leaving its challenges pending.
+	_, err = sa.SetAuthzProcessing(t.Context(), &sapb.SetAuthzProcessingRequest{Id: authzID})
+	if err != nil {
+		t.Fatalf("SetAuthzProcessing without attempted = %q, but want success", err)
+	}
+	authz, err = sa.GetAuthorization2(t.Context(), &sapb.AuthorizationID2{Id: authzID})
+	if err != nil {
+		t.Fatalf("GetAuthorization2 = %q, but want success", err)
+	}
+	if authz.Challenges[0].Status != string(core.StatusPending) {
+		t.Errorf("authz.Challenges[0].Status = %q, but want %q", authz.Challenges[0].Status, core.StatusPending)
 	}
 }
 

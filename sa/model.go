@@ -818,7 +818,9 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	// challenge type is equal to that in the 'attempted' row we set the status
 	// to core.StatusValid or core.StatusInvalid depending on if there is anything
 	// in ValidationError and populate the ValidationRecord and ValidationError
-	// fields.
+	// fields. If the authorization itself is still pending, the attempted
+	// challenge is the one currently being validated, so we set its status to
+	// core.StatusProcessing instead.
 	for pos := range uint8(8) {
 		if (am.Challenges>>pos)&1 == 1 {
 			challType := uintToChallType[pos]
@@ -833,16 +835,23 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 			// challenges "gone" per https://tools.ietf.org/html/rfc8555#section-7.1.4
 			if am.Attempted != nil {
 				if uintToChallType[*am.Attempted] == challType {
-					err := populateAttemptedFields(am, challenge)
-					if err != nil {
-						return nil, err
+					if am.Status == statusUint(core.StatusPending) {
+						// The RA has begun validating this challenge, but has
+						// not yet finalized the authorization. There are no
+						// validation results to populate yet.
+						challenge.Status = string(core.StatusProcessing)
+					} else {
+						err := populateAttemptedFields(am, challenge)
+						if err != nil {
+							return nil, err
+						}
+						// Get the attemptedAt time and assign to the challenge validated time.
+						var validated *timestamppb.Timestamp
+						if am.AttemptedAt != nil {
+							validated = timestamppb.New(*am.AttemptedAt)
+						}
+						challenge.Validated = validated
 					}
-					// Get the attemptedAt time and assign to the challenge validated time.
-					var validated *timestamppb.Timestamp
-					if am.AttemptedAt != nil {
-						validated = timestamppb.New(*am.AttemptedAt)
-					}
-					challenge.Validated = validated
 					pb.Challenges = append(pb.Challenges, challenge)
 				}
 			} else {
