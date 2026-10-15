@@ -48,6 +48,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -432,6 +433,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		1000,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
+		nil,
 		nil,
 		gnc,
 		rnc,
@@ -1129,6 +1131,11 @@ func TestHTTPMethods(t *testing.T) {
 			Name:    "Nonce path should be GET or POST only",
 			Path:    newNoncePath,
 			Allowed: getOrPost,
+		},
+		{
+			Name:    "merkleCert path should be POST only",
+			Path:    merkleCertPath + "1/2/3/4",
+			Allowed: postOnly,
 		},
 	}
 
@@ -4620,5 +4627,304 @@ func TestMaxCumulativeIdentifierLength(t *testing.T) {
 	expected := "Cumulative length of all identifier values was greater than 1000 bytes"
 	if detail != expected {
 		t.Errorf("newOrder with too long identifiers: got %q, want %q", detail, expected)
+	}
+}
+
+// mockRAWithGetOrder returns a specially-crafted order from a set of fixed
+// values in response to GetOrder()
+type mockRAWithGetOrder struct {
+	rapb.RegistrationAuthorityClient
+	clk clock.Clock
+}
+
+func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+
+	now := ra.clk.Now()
+	created := now.AddDate(-30, 0, 0)
+	exp := now.AddDate(30, 0, 0)
+	validClassicOrder := &corepb.Order{
+		Id:                     req.OrderID,
+		RegistrationID:         1,
+		Created:                timestamppb.New(created),
+		Expires:                timestamppb.New(exp),
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
+		Status:                 string(core.StatusValid),
+		V2Authorizations:       []int64{1, 2},
+		CertificateSerial:      "4",
+		Error:                  nil,
+		CertificateProfileName: "default",
+	}
+	validMerkleOrder := &corepb.Order{
+		Id:                     req.OrderID,
+		RegistrationID:         1,
+		Created:                timestamppb.New(created),
+		Expires:                timestamppb.New(exp),
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
+		Status:                 string(core.StatusValid),
+		V2Authorizations:       []int64{1, 2},
+		CertificateSerial:      "4",
+		Error:                  nil,
+		CertificateProfileName: "default",
+		MtcLogID:               "44947.4.1.0.3",
+		MtcSerialNumber:        4,
+		MtcSubtreeID:           5,
+	}
+	// initialize empty order
+	notYetValidMerkleOrder := &corepb.Order{}
+	// dereference and copy valid order
+	*notYetValidMerkleOrder = *validMerkleOrder
+	// modify Status and some Mtc detail
+	notYetValidMerkleOrder.Status = string(core.StatusProcessing)
+	notYetValidMerkleOrder.MtcSerialNumber = 0
+	notYetValidMerkleOrder.MtcSubtreeID = 0
+
+	// initialize empty order
+	validMerkleOrderMissingStandalone := &corepb.Order{}
+	// dereference and copy valid order
+	*validMerkleOrderMissingStandalone = *validMerkleOrder
+	// modify MtcSerialNumber to trigger the mock MTCB to return an error
+	validMerkleOrderMissingStandalone.MtcSerialNumber = 99
+	var orders = []*corepb.Order{
+		{}, // index zero is empty
+		validClassicOrder,
+		validMerkleOrder,
+		notYetValidMerkleOrder,
+		validMerkleOrderMissingStandalone,
+	}
+	if 0 < req.OrderID && req.OrderID <= 4 {
+		return orders[req.OrderID], nil
+	}
+	return nil, berrors.NotFoundError("No order found for ID %d", req.OrderID)
+}
+
+func TestMerkleGetOrder(t *testing.T) {
+	t.Cleanup(features.Reset)
+
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	// This fake clock is assigned as the RA mock clock, and this expiry
+	// timestamp calculation must match that mock.
+	orderExpiry := fc.Now().AddDate(30, 0, 0).Format(time.RFC3339Nano)
+
+	testCases := []struct {
+		name   string
+		path   string
+		expect string
+	}{
+		{
+			// testCase 0 is a special case tested before the wfe is wired-up with an MTCB
+			name:   "Merkle Order without MTCBService",
+			path:   "1/2",
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "certificate": "http://localhost/acme/cert/4" }`,
+		},
+		{
+			name:   "Classic Order",
+			path:   "1/1",
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/1", "profile": "default", "certificate": "http://localhost/acme/cert/4" }`,
+		},
+		{
+			name:   "Merkle Order",
+			path:   "1/2",
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "certificate": "http://localhost/acme/cert/4", "merkle-certificate": "http://localhost/acme/merkle-cert/1/2/44947.4.1.0.3/4" }`,
+		},
+		{
+			name:   "Not Ready Merkle Order",
+			path:   "1/3",
+			expect: `{ "status": "processing", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/3", "profile": "default" }`,
+		},
+		{
+			name:   "Not Found Order",
+			path:   "1/9",
+			expect: `{"type": "urn:ietf:params:acme:error:malformed","detail": "No order for ID 9","status": 404}`,
+		},
+	}
+
+	wfe, _, signer := setupWFE(t)
+
+	makePost := func(keyID int64, path, body string) *http.Request {
+		_, _, jwsBody := signer.byKeyID(keyID, nil, fmt.Sprintf("http://localhost/%s", path), body)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+
+	features.Set(features.Config{WFECallsRAForGetOrder: true})
+
+	mockRA := &mockRAWithGetOrder{}
+	mockRA.clk = fc
+	wfe.ra = mockRA
+
+	// test order retrieval with no MTCBService configured
+	responseWriter := httptest.NewRecorder()
+	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, makePost(1, testCases[0].path, ""))
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), testCases[0].expect)
+
+	// now configure wire-up the wfe with an MTCB mock
+	mockMTCB := &mockMTCBWithGetStandalone{}
+	wfe.mtcb = mockMTCB
+
+	for tcIdx, tc := range testCases {
+		// skip special test-case 0
+		if tcIdx == 0 {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			responseWriter := httptest.NewRecorder()
+			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, makePost(1, tc.path, ""))
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.expect)
+		})
+	}
+}
+
+// mockMTCBWithGetStandalone returns a fixed value in response to
+// GetStandalone()
+type mockMTCBWithGetStandalone struct {
+	mtcbpb.MTCBClient
+}
+
+// GetStandalone in this mock always returns the same palindromic nonsense bytes
+// of primes, unless the request is for MtcSerialNumber 99, in which case an
+// empty StandaloneResponse and a mock error are returned.
+func (mtcb *mockMTCBWithGetStandalone) GetStandalone(_ context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
+	if req.MtcSerialNumber == 99 {
+		return &mtcbpb.StandaloneResponse{}, errors.New("mock error")
+	}
+	return &mtcbpb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
+}
+
+func TestMerkleCertificate(t *testing.T) {
+	t.Parallel()
+
+	type expectResponse struct {
+		isJSON bool
+		expect string
+	}
+
+	testCases := []struct {
+		name    string
+		pathAdd string
+		expResp expectResponse
+	}{
+		{
+			name:    "Request using non-existent Order ID",
+			pathAdd: "1/9/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No order for ID 9", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using wrong Account ID for extant Merkle Order",
+			pathAdd: "9/2/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:unauthorized", "detail": "Not allowed for ID 1", "status": 403}`,
+			},
+		},
+		{
+			name:    "Request using wrong Account ID for extant Classic Order",
+			pathAdd: "9/1/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:unauthorized", "detail": "Not allowed for ID 1", "status": 403}`,
+			},
+		},
+		{
+			name:    "Request using wrong Log ID for extant Merkle Order",
+			pathAdd: "1/2/44947.4.1.0.9/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "Merkle Cert URL details do not match order details", "status": 400}`,
+			},
+		},
+		{
+			name:    "Request using wrong Log ID for extant Classic Order",
+			pathAdd: "1/1/44947.4.1.0.9/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle certificate for order ID 1", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using wrong Serial Number for extant Merkle Order",
+			pathAdd: "1/2/44947.4.1.0.3/9",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "Merkle Cert URL details do not match order details", "status": 400}`,
+			},
+		},
+		{
+			name:    "Request using wrong Serial Number for extant Classic Order",
+			pathAdd: "1/1/44947.4.1.0.3/9",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle certificate for order ID 1", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using trigger-mock Serial Number for error GetStandalone response",
+			pathAdd: "1/4/44947.4.1.0.3/99",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:serverInternal", "detail": "Failed to retrieve Merkle Certificate", "status": 500}`,
+			},
+		},
+		{
+			name:    "Request for order in processing",
+			pathAdd: "1/3/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No order for ID 3", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request is Correct",
+			pathAdd: "1/2/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: false,
+				expect: "-----BEGIN CERTIFICATE-----\nAgMFBwsNERMXHR8dFxMRDQsHBQMC\n-----END CERTIFICATE-----\n",
+			},
+		},
+	}
+
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	makePost := func(keyID int64, path, body string) *http.Request {
+		_, _, jwsBody := signer.byKeyID(keyID, nil, fmt.Sprintf("http://localhost%s", path), body)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+
+	mockRA := &mockRAWithGetOrder{}
+	mockRA.clk = fc
+	wfe.ra = mockRA
+
+	// Test that a merkle-cert path request to  a WFE without an MTCB Client returns "Not Supported"
+	responseWriter := httptest.NewRecorder()
+	requestPath := merkleCertPath + "1/2/44947.4.1.0.3/4"
+	mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{ "type": "urn:ietf:params:acme:error:malformed", "detail": "Not Supported", "status": 400 }`)
+
+	// Now wire-up a mock MTCB
+	mockMTCB := &mockMTCBWithGetStandalone{}
+	wfe.mtcb = mockMTCB
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			responseWriter := httptest.NewRecorder()
+			requestPath := merkleCertPath + tc.pathAdd
+			mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
+
+			if tc.expResp.isJSON {
+				test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.expResp.expect)
+			} else {
+				test.AssertEquals(t, responseWriter.Body.String(), tc.expResp.expect)
+			}
+		})
 	}
 }
