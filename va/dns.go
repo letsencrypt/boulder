@@ -21,10 +21,25 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 )
 
+// dnsError converts an error returned by a bdns lookup into a BoulderError
+// whose detail is formatted like fmt.Sprintf(format, args...). Ordinarily the
+// result is a berrors.DNS error. But if the lookup failed because we couldn't
+// reach our own resolver at all, the result is a berrors.InternalServer error:
+// that's a problem with our infrastructure, not with the subscriber's DNS, and
+// it shouldn't be reported (or counted in metrics) as though it were.
+func dnsError(err error, format string, args ...any) error {
+	bdnsErr, ok := errors.AsType[bdns.Error](err)
+	if ok && bdnsErr.ResolverUnreachable() {
+		return berrors.InternalServerError(format, args...)
+	}
+	return berrors.DNSError(format, args...)
+}
+
 // getAddr queries for all A/AAAA records associated with hostname, and returns
 // all valid addresses resolved and the addresses of all resolvers used. If
 // there is an error resolving the hostname, or if no usable IP addresses are
-// available then a berrors.DNSError instance is returned with a nil netip.Addr
+// available then a berrors.DNS error (or, if we couldn't reach our resolver at
+// all, a berrors.InternalServer error) is returned with a nil netip.Addr
 // slice.
 func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, []string, error) {
 	// Kick off both the A and AAAA lookups in parallel.
@@ -80,7 +95,7 @@ func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string
 	}
 
 	if errA != nil && errAAAA != nil {
-		return nil, nil, berrors.DNSError("%s; %s", errA, errAAAA)
+		return nil, nil, dnsError(errors.Join(errA, errAAAA), "%s; %s", errA, errAAAA)
 	}
 
 	addrs := append(addrsAAAA, addrsA...)
@@ -161,7 +176,7 @@ func (va *ValidationAuthorityImpl) validateDNS(ctx context.Context, ident identi
 	// Look for the required record in the DNS
 	txts, resolver, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		return nil, berrors.DNSError("%s", err)
+		return nil, dnsError(err, "%s", err)
 	}
 
 	// If there weren't any TXT records return a distinct error message to allow
