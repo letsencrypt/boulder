@@ -4752,12 +4752,12 @@ func TestMerkleGetOrder(t *testing.T) {
 	mockRA.clk = fc
 	wfe.ra = mockRA
 
-	// test order retrieval with no MTCBService configured
+	// Test order retrieval with no MTCBService configured
 	responseWriter := httptest.NewRecorder()
 	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, makePost(1, testCases[0].path, ""))
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), testCases[0].expect)
 
-	// now configure wire-up the wfe with an MTCB mock
+	// Now wire-up the wfe with an MTCB mock
 	mockMTCB := &mockMTCBWithGetStandalone{}
 	wfe.mtcb = mockMTCB
 
@@ -4902,7 +4902,8 @@ func TestMerkleCertificate(t *testing.T) {
 	mockRA.clk = fc
 	wfe.ra = mockRA
 
-	// Test that a merkle-cert path request to  a WFE without an MTCB Client returns "Not Supported"
+	// Test that a merkle-cert path request to a WFE without an MTCB Client
+	// correctly returns "Not Supported"
 	responseWriter := httptest.NewRecorder()
 	requestPath := merkleCertPath + "1/2/44947.4.1.0.3/4"
 	mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
