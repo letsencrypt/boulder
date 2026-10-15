@@ -17,6 +17,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	mrand "math/rand/v2"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -259,6 +261,104 @@ func ValidSerial(serial string) bool {
 	}
 	_, err := hex.DecodeString(serial)
 	return err == nil
+}
+
+// EncodeRelativeOID takes the string form of a relative OID and returns its
+// binary representation, i.e. the asn1 RELATIVE-OID DER encoding, sans tag and
+// length bytes.
+//
+// https://www.ietf.org/archive/id/draft-housley-asn1-layman-guide-03.html#name-relative-oid
+// The contents octets encode 'value1', ..., 'valuen', where 'value1', ...,
+// 'valuen' denote the integer values of the components in the relative object
+// identifier. Each value is encoded base 128, most significant digit first,
+// with as few digits as possible, and the most significant bit of each octet
+// except the last in the value's encoding set to "1".
+func EncodeRelativeOID(relativeOID string) ([]byte, error) {
+	var dst []byte
+	for _, component := range strings.Split(relativeOID, ".") {
+		n, err := strconv.Atoi(component)
+		if err != nil {
+			return nil, fmt.Errorf("non-integer relative OID component %q: %w", component, err)
+		}
+
+		if n < 0 || n > math.MaxInt32 || strconv.Itoa(n) != component {
+			return nil, fmt.Errorf("invalid relative OID component %q", component)
+		}
+
+		var l int64
+		if n == 0 {
+			l = 1
+		} else {
+			for i := n; i > 0; i >>= 7 {
+				l++
+			}
+		}
+
+		for i := l - 1; i >= 0; i-- {
+			o := byte(n >> uint(i*7))
+			o &= 0x7f
+			if i != 0 {
+				o |= 0x80
+			}
+
+			dst = append(dst, o)
+		}
+	}
+
+	return dst, nil
+}
+
+// DecodeRelativeOID is the inverse of EncodeRelativeOID.
+func DecodeRelativeOID(binaryOID []byte) (string, error) {
+	if len(binaryOID) == 0 {
+		return "", fmt.Errorf("empty relative OID")
+	}
+
+	var components []string
+	i := 0
+	for i < len(binaryOID) {
+		val, used, err := decodeRelativeOIDComponent(binaryOID[i:])
+		if err != nil {
+			return "", err
+		}
+
+		components = append(components, strconv.Itoa(val))
+		i += used
+	}
+
+	return strings.Join(components, "."), nil
+}
+
+// decodeRelativeOIDComponent parses the head of in as a single OID component.
+// It returns the parsed integer and the number of bytes of input consumed. It
+// returns an error if the leading bytes don't represent an OID-encoded int.
+func decodeRelativeOIDComponent(in []byte) (int, int, error) {
+	var ret64 int64
+	for i, b := range in {
+		if i == 0 && b == 0x80 {
+			// The leading octet of a component should never be 0x80.
+			return 0, 0, fmt.Errorf("OID component not minimally encoded")
+		}
+
+		if i >= 5 {
+			// Each byte is a 7-bit int. If we're decoding more than 5 bytes, that's
+			// at least 7 * 5 = 35 bits, which is too big for an OID component (int32).
+			return 0, 0, fmt.Errorf("OID component too large")
+		}
+
+		// Shift any previous bytes and append the new one.
+		ret64 <<= 7
+		ret64 |= int64(b & 0x7f)
+
+		// If the leading bit is zero, this was the last byte of the component.
+		if b&0x80 == 0 {
+			if ret64 > math.MaxInt32 {
+				return 0, 0, fmt.Errorf("OID component too large")
+			}
+			return int(ret64), i + 1, nil
+		}
+	}
+	return 0, 0, fmt.Errorf("OID component truncated")
 }
 
 // GetBuildID identifies what build is running.

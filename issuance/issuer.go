@@ -18,10 +18,11 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/pkcs11key/v4"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/privatekey"
-	"github.com/letsencrypt/pkcs11key/v4"
 )
 
 // ----- Name ID -----
@@ -76,18 +77,25 @@ func (ic *Certificate) NameID() NameID {
 // MTCAID returns the trust anchor ID from this issuer certificate's Subject. It
 // returns an error for issuers that are not MTC CAs.
 func (ic *Certificate) MTCAID() (string, error) {
-	testingTrustAnchorIDOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
+	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
 	for _, attribute := range ic.Subject.Names {
-		if attribute.Type.Equal(testingTrustAnchorIDOID) {
-			caID, ok := attribute.Value.(string)
+		if attribute.Type.Equal(idRDNATrustAnchorID) {
+			caID, ok := attribute.Value.(asn1.RawValue)
 			if !ok {
 				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
 			}
-			return caID, nil
+			if caID.Tag != 13 {
+				return "", fmt.Errorf("invalid mtcaID asn1 tag %d", caID.Tag)
+			}
+			ret, err := core.DecodeRelativeOID(caID.Bytes)
+			if err != nil {
+				return "", fmt.Errorf("invalid mtcaID relative OID: %w", err)
+			}
+			return ret, nil
 		}
 	}
 	return "", fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
-		ic.Subject, testingTrustAnchorIDOID)
+		ic.Subject, idRDNATrustAnchorID)
 }
 
 // NewCertificate wraps an in-memory cert in an issuance.Certificate, marking it
