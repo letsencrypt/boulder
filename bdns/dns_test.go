@@ -780,7 +780,7 @@ func TestRetry(t *testing.T) {
 					t, dr.timeoutCounter, prometheus.Labels{
 						"qtype":    "TXT",
 						"result":   "out of retries",
-						"resolver": "127.0.0.1",
+						"resolver": "127.0.0.1:4053",
 						"isTLD":    "false",
 					}, tc.metricsAllRetries)
 			}
@@ -810,7 +810,7 @@ func TestRetryMetrics(t *testing.T) {
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"result":   "canceled",
-			"resolver": "127.0.0.1",
+			"resolver": "127.0.0.1:4053",
 		}, 1)
 
 	// Same as above, except rather than cancelling the context ourselves, we
@@ -829,7 +829,7 @@ func TestRetryMetrics(t *testing.T) {
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"result":   "deadline exceeded",
-			"resolver": "127.0.0.1",
+			"resolver": "127.0.0.1:4053",
 		}, 1)
 }
 
@@ -959,13 +959,13 @@ func TestDOHMetric(t *testing.T) {
 	resolver.exchanger = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: testTimeoutError(true)}}
 
 	// Starting out, we should count 0 "out of retries" errors.
-	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 0)
+	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1:4053", "isTLD": "false"}, 0)
 
 	// Trigger the error.
 	_, _, _ = resolver.exchangeOne(context.Background(), "example.com", 0)
 
 	// Now, we should count 1 "out of retries" errors.
-	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 1)
+	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1:4053", "isTLD": "false"}, 1)
 }
 
 // truncatedExchanger returns a truncated (TC bit set) response with the given
