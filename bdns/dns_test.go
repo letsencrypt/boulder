@@ -10,11 +10,12 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
+	"net/http/httptest"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -608,28 +609,26 @@ type testExchanger struct {
 
 var errTooManyRequests = errors.New("too many requests")
 
-func (te *testExchanger) ExchangeContext(ctx context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
-	if ctx.Err() != nil {
-		return nil, 0, ctx.Err()
-	}
-
+func (te *testExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	te.Lock()
 	defer te.Unlock()
 	msg := &dns.Msg{
 		MsgHdr: dns.MsgHdr{Rcode: dns.RcodeSuccess},
 	}
-	if len(te.errs) <= te.count {
+	// Count every call, including ones past the end of errs, so that tests
+	// notice extra requests.
+	te.count++
+	if te.count > len(te.errs) {
 		return nil, 0, errTooManyRequests
 	}
-	err := te.errs[te.count]
-	te.count++
+	err := te.errs[te.count-1]
 
 	return msg, 2 * time.Millisecond, err
 }
 
 func TestRetry(t *testing.T) {
-	isTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
-	nonTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(false)}
+	// transportErr represents any internal error communicating with Unbound, e.g. TLS handshake or dial failure.
+	transportErr := errors.New("transport error")
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
 	timeoutFailError := errors.New("DNS problem: query timed out looking up TXT for example.com")
 	type testCase struct {
@@ -651,41 +650,6 @@ func TestRetry(t *testing.T) {
 			expected:      nil,
 			expectedCount: 1,
 		},
-		// Immediate non-OpError, error returns immediately
-		{
-			name:     "non-operror",
-			maxTries: 3,
-			te: &testExchanger{
-				errs: []error{errors.New("nope")},
-			},
-			expected:      servFailError,
-			expectedCount: 1,
-		},
-		// Timeout err, then non-OpError stops at two tries
-		{
-			name:     "err-then-non-operror",
-			maxTries: 3,
-			te: &testExchanger{
-				errs: []error{isTimeoutErr, errors.New("nope")},
-			},
-			expected:      servFailError,
-			expectedCount: 2,
-		},
-		// Timeout error given always
-		{
-			name:     "persistent-timeout-error",
-			maxTries: 3,
-			te: &testExchanger{
-				errs: []error{
-					isTimeoutErr,
-					isTimeoutErr,
-					isTimeoutErr,
-				},
-			},
-			expected:          timeoutFailError,
-			expectedCount:     3,
-			metricsAllRetries: 1,
-		},
 		// Even with maxTries at 0, we should still let a single request go
 		// through
 		{
@@ -697,60 +661,52 @@ func TestRetry(t *testing.T) {
 			expected:      nil,
 			expectedCount: 1,
 		},
-		// Timeout error given just once causes two tries
 		{
-			name:     "single-timeout-error",
+			name:     "transport-error-then-success",
 			maxTries: 3,
 			te: &testExchanger{
-				errs: []error{
-					isTimeoutErr,
-					nil,
-				},
+				errs: []error{transportErr, nil},
 			},
 			expected:      nil,
 			expectedCount: 2,
 		},
-		// Timeout error given twice causes three tries
 		{
-			name:     "double-timeout-error",
+			name:     "two-transport-errors-then-success",
 			maxTries: 3,
 			te: &testExchanger{
-				errs: []error{
-					isTimeoutErr,
-					isTimeoutErr,
-					nil,
-				},
+				errs: []error{transportErr, transportErr, nil},
 			},
 			expected:      nil,
 			expectedCount: 3,
 		},
-		// Timeout error given thrice causes three tries and fails
 		{
-			name:     "triple-timeout-error",
+			name:     "persistent-transport-error",
 			maxTries: 3,
 			te: &testExchanger{
-				errs: []error{
-					isTimeoutErr,
-					isTimeoutErr,
-					isTimeoutErr,
-				},
+				errs: []error{transportErr, transportErr, transportErr},
+			},
+			expected:          servFailError,
+			expectedCount:     3,
+			metricsAllRetries: 1,
+		},
+		{
+			name:     "response-timeout-then-success",
+			maxTries: 3,
+			te: &testExchanger{
+				errs: []error{errDohQueryTimeout, nil},
+			},
+			expected:      nil,
+			expectedCount: 2,
+		},
+		{
+			name:     "persistent-response-timeout",
+			maxTries: 3,
+			te: &testExchanger{
+				errs: []error{errDohQueryTimeout, errDohQueryTimeout, errDohQueryTimeout},
 			},
 			expected:          timeoutFailError,
 			expectedCount:     3,
 			metricsAllRetries: 1,
-		},
-		// timeout then non-timeout error causes two retries
-		{
-			name:     "timeout-nontimeout-error",
-			maxTries: 3,
-			te: &testExchanger{
-				errs: []error{
-					isTimeoutErr,
-					nonTimeoutErr,
-				},
-			},
-			expected:      servFailError,
-			expectedCount: 2,
 		},
 	}
 
@@ -763,7 +719,7 @@ func TestRetry(t *testing.T) {
 			dr := testClient.(*impl)
 			dr.exchanger = tc.te
 			_, _, err = dr.LookupTXT(context.Background(), "example.com")
-			if err == errTooManyRequests {
+			if tc.te.count > len(tc.te.errs) {
 				t.Errorf("#%d, sent more requests than the test case handles", i)
 			}
 			expectedErr := tc.expected
@@ -792,13 +748,11 @@ func TestRetryMetrics(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	// This lookup should not be retried, because the error comes from the
-	// context itself being cancelled. It should never see the error in the
-	// testExchanger, because the fake exchanger (like the real http package)
-	// checks for cancellation before doing any work.
+	// This lookup should not be retried, because the context is canceled before we start.
 	testClient := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
 	dr := testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{errors.New("oops")}}
+	te := &testExchanger{errs: []error{errDohQueryCanceled}}
+	dr.exchanger = te
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")
@@ -806,37 +760,16 @@ func TestRetryMetrics(t *testing.T) {
 		err.Error() != "DNS problem: query timed out (and was canceled) looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
+	if te.count != 1 {
+		t.Errorf("got %d tries, want 1", te.count)
+	}
 	test.AssertMetricWithLabelsEquals(
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"result":   "canceled",
 			"resolver": "127.0.0.1",
 		}, 1)
-
-	// Same as above, except rather than cancelling the context ourselves, we
-	// let the go runtime cancel it as a result of a deadline in the past.
-	testClient = New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), tlsConfig)
-	dr = testClient.(*impl)
-	dr.exchanger = &testExchanger{errs: []error{errors.New("oops")}}
-	ctx, cancel = context.WithTimeout(t.Context(), -10*time.Hour)
-	defer cancel()
-	_, _, err = dr.LookupTXT(ctx, "example.com")
-	if err == nil ||
-		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
-		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
-	}
-	test.AssertMetricWithLabelsEquals(
-		t, dr.timeoutCounter, prometheus.Labels{
-			"qtype":    "TXT",
-			"result":   "deadline exceeded",
-			"resolver": "127.0.0.1",
-		}, 1)
 }
-
-type testTimeoutError bool
-
-func (t testTimeoutError) Timeout() bool { return bool(t) }
-func (t testTimeoutError) Error() string { return fmt.Sprintf("Timeout: %t", t) }
 
 // rotateFailureExchanger is a dns.Exchange implementation that tracks a count
 // of the number of calls to `Exchange` for a given address in the `lookups`
@@ -849,7 +782,7 @@ type rotateFailureExchanger struct {
 }
 
 // ExchangeContext for rotateFailureExchanger tracks the `a` argument in `lookups` and
-// if present in `brokenAddresses`, returns a timeout error.
+// if present in `brokenAddresses`, returns an error.
 func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
 	e.Lock()
 	defer e.Unlock()
@@ -857,10 +790,9 @@ func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, 
 	// Track that exchange was called for the given server
 	e.lookups[a]++
 
-	// If its a broken server, return a retryable error
+	// If its a broken server, return an error
 	if e.brokenAddresses[a] {
-		isTimeoutErr := &url.Error{Op: "read", Err: testTimeoutError(true)}
-		return nil, 2 * time.Millisecond, isTimeoutErr
+		return nil, 2 * time.Millisecond, errors.New("broken server")
 	}
 
 	return m, 2 * time.Millisecond, nil
@@ -927,47 +859,6 @@ func TestRotateServerOnErr(t *testing.T) {
 
 }
 
-type mockTimeoutURLError struct{}
-
-func (m *mockTimeoutURLError) Error() string { return "whoops, oh gosh" }
-func (m *mockTimeoutURLError) Timeout() bool { return true }
-
-type dohAlwaysRetryExchanger struct {
-	sync.Mutex
-	err error
-}
-
-func (dohE *dohAlwaysRetryExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
-	dohE.Lock()
-	defer dohE.Unlock()
-
-	timeoutURLerror := &url.Error{
-		Op:  "GET",
-		URL: "https://example.com",
-		Err: &mockTimeoutURLError{},
-	}
-
-	return nil, time.Second, timeoutURLerror
-}
-
-func TestDOHMetric(t *testing.T) {
-	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
-	test.AssertNotError(t, err, "Got error creating StaticProvider")
-
-	testClient := New(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, "", blog.UseMock(), tlsConfig)
-	resolver := testClient.(*impl)
-	resolver.exchanger = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: testTimeoutError(true)}}
-
-	// Starting out, we should count 0 "out of retries" errors.
-	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 0)
-
-	// Trigger the error.
-	_, _, _ = resolver.exchangeOne(context.Background(), "example.com", 0)
-
-	// Now, we should count 1 "out of retries" errors.
-	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 1)
-}
-
 // truncatedExchanger returns a truncated (TC bit set) response with the given
 // Rcode. If a caller failed to check for truncation on a CAA query, it would
 // otherwise be fooled into trusting an incomplete set of records, potentially
@@ -1002,4 +893,138 @@ func TestDNSCAATruncatedResponse(t *testing.T) {
 	_, _, err = client.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
 	test.AssertError(t, err, "expected error for truncated CAA response, even when NXDOMAIN-shaped")
 	test.AssertContains(t, err.Error(), "response was truncated")
+}
+
+// newDoHExchanger calls New and extracts the exchanger and transport as pointers
+// so tests can tweak timeout parameters (and therefore run faster).
+func newDoHExchanger(t *testing.T) (*dohExchanger, *http.Transport) {
+	t.Helper()
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+	client := New(time.Second, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig).(*impl)
+	exchanger, ok := client.exchanger.(*dohExchanger)
+	if !ok {
+		t.Fatalf("exchanger is %T, want *dohExchanger", client.exchanger)
+	}
+	transport, ok := exchanger.hc.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport is %T, want *http.Transport", exchanger.hc.Transport)
+	}
+	return exchanger, transport
+}
+
+// TestDialTimeoutError makes every dial exceed net.Dialer.Timeout and
+// confirms that this results in a DeadlineExceeded error. This is really testing
+// Go's behavior, but it's useful for us to confirm Go's behavior since it
+// justifies a string-matching hack in how we detect HTTP response timeouts.
+func TestDialTimeoutError(t *testing.T) {
+	// We set up a real listener so the kernel doesn't reply with "connection refused".
+	// But we don't expect any requests to actually reach this.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listening: %s", err)
+	}
+	defer ln.Close()
+
+	exchanger, transport := newDoHExchanger(t)
+	transport.DialContext = (&net.Dialer{
+		Timeout: 10 * time.Millisecond,
+		// "If Control is not nil, it is called after creating the network connection but before actually dialing."
+		// This lets us simulate a dial timeout.
+		Control: func(string, string, syscall.RawConn) error {
+			time.Sleep(50 * time.Millisecond)
+			return nil
+		},
+	}).DialContext
+
+	req, err := http.NewRequestWithContext(t.Context(), "POST", "https://"+ln.Addr().String()+"/dns-query", nil)
+	if err != nil {
+		t.Fatalf("creating request: %s", err)
+	}
+	_, err = exchanger.hc.Do(req)
+	if err == nil {
+		t.Errorf("got no error, want error")
+	}
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("errors.Is(%s, context.DeadlineExceeded) = false, want true", err)
+	}
+}
+
+// TestDoHExchangerTimeouts starts a real HTTP/2 server and tests timeouts
+// and cancellations against it. This tests the error-matching behavior
+// with an actual http.Client doing real work.
+func TestDoHExchangerTimeouts(t *testing.T) {
+	// exchange starts a server that accepts requests but never answers them,
+	// sets up an exchanger and transport, sets the ResponseHeaderTimeout on
+	// transport, and sends a query. If cancel is non-nil, it is called once the
+	// server has received the request.
+	//
+	// Each call gets its own server, so a request that never reaches the
+	// server (e.g. because ctx expired during the dial) can't be mistaken for
+	// a later call's request.
+	exchange := func(t *testing.T, ctx context.Context, responseHeaderTimeout time.Duration, cancel context.CancelFunc) error {
+		t.Helper()
+		// The `received` channel tells the test that the server got a request.
+		received := make(chan *http.Request, 1)
+		srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			received <- r
+			select {
+			case <-r.Context().Done():
+			case <-t.Context().Done(): // unblock waiting requests when the test returns.
+			}
+		}))
+		srv.EnableHTTP2 = true
+		srv.StartTLS()
+		t.Cleanup(srv.Close)
+
+		exchanger, transport := newDoHExchanger(t)
+		transport.TLSClientConfig = srv.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+		transport.ResponseHeaderTimeout = responseHeaderTimeout
+		defer transport.CloseIdleConnections()
+
+		go func() {
+			select {
+			case receivedReq := <-received:
+				if receivedReq.ProtoMajor != 2 {
+					t.Errorf("server got an HTTP/%d request, want HTTP/2", receivedReq.ProtoMajor)
+				}
+				if cancel != nil {
+					cancel()
+				}
+			case <-t.Context().Done():
+			}
+		}()
+
+		query := new(dns.Msg)
+		query.SetQuestion("example.com.", dns.TypeA)
+
+		_, _, err := exchanger.ExchangeContext(ctx, query, srv.Listener.Addr().String())
+		return err
+	}
+
+	t.Run("response header timeout", func(t *testing.T) {
+		err := exchange(t, t.Context(), 50*time.Millisecond, nil)
+		if !errors.Is(err, errDohQueryTimeout) {
+			t.Errorf("got %v, want dohQueryTimeout", err)
+		}
+	})
+
+	t.Run("context deadline exceeded", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+		err := exchange(t, ctx, time.Minute, nil)
+		if !errors.Is(err, errDohQueryTimeout) {
+			t.Errorf("got %v, want dohQueryTimeout", err)
+		}
+	})
+
+	t.Run("context canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		err := exchange(t, ctx, time.Minute, cancel)
+		if !errors.Is(err, errDohQueryCanceled) {
+			t.Errorf("got %v, want dohQueryCanceled", err)
+		}
+	})
 }
