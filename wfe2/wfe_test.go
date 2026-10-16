@@ -4637,13 +4637,15 @@ type mockRAWithGetOrder struct {
 	clk clock.Clock
 }
 
-func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
-
+// testOrderPB is a mock-internal helper for creating order proto structures.
+// Includes important dates in the returned order structure using the mock RA's
+// clock. Test should match these timestamp calculations using the same clock.
+func (ra *mockRAWithGetOrder) testOrderPB(id int64, typ string) *corepb.Order {
 	now := ra.clk.Now()
 	created := now.AddDate(-30, 0, 0)
 	exp := now.AddDate(30, 0, 0)
-	validClassicOrder := &corepb.Order{
-		Id:                     req.OrderID,
+	orderPB := &corepb.Order{
+		Id:                     id,
 		RegistrationID:         1,
 		Created:                timestamppb.New(created),
 		Expires:                timestamppb.New(exp),
@@ -4654,36 +4656,31 @@ func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequ
 		Error:                  nil,
 		CertificateProfileName: "default",
 	}
-	validMerkleOrder := &corepb.Order{
-		Id:                     req.OrderID,
-		RegistrationID:         1,
-		Created:                timestamppb.New(created),
-		Expires:                timestamppb.New(exp),
-		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
-		Status:                 string(core.StatusValid),
-		V2Authorizations:       []int64{1, 2},
-		CertificateSerial:      "4",
-		Error:                  nil,
-		CertificateProfileName: "default",
-		MtcLogID:               "44947.4.1.0.3",
-		MtcSerialNumber:        4,
-		MtcSubtreeID:           5,
+	if typ == "merkle" {
+		orderPB.MtcLogID = "44947.4.1.0.3"
+		orderPB.MtcSerialNumber = 4
+		orderPB.MtcSubtreeID = 5
 	}
-	// initialize empty order
-	notYetValidMerkleOrder := &corepb.Order{}
-	// dereference and copy valid order
-	*notYetValidMerkleOrder = *validMerkleOrder
-	// modify Status and some Mtc detail
+	return orderPB
+}
+
+// The `Id` in any order returned by a call to this mock's GetOrder is always
+// the same as the input GetOrderRequest.OrderID, if within range of crafted
+// test order fixtures. Otherwise, GetOrder returns a berrors.NotFoundError
+func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	validClassicOrder := ra.testOrderPB(req.OrderID, "classic")
+	validMerkleOrder := ra.testOrderPB(req.OrderID, "merkle")
+
+	// modify Status and some Mtc details for a not-yet-valid order
+	notYetValidMerkleOrder := ra.testOrderPB(req.OrderID, "merkle")
 	notYetValidMerkleOrder.Status = string(core.StatusProcessing)
 	notYetValidMerkleOrder.MtcSerialNumber = 0
 	notYetValidMerkleOrder.MtcSubtreeID = 0
 
-	// initialize empty order
-	validMerkleOrderMissingStandalone := &corepb.Order{}
-	// dereference and copy valid order
-	*validMerkleOrderMissingStandalone = *validMerkleOrder
 	// modify MtcSerialNumber to trigger the mock MTCB to return an error
-	validMerkleOrderMissingStandalone.MtcSerialNumber = 99
+	validMerkleOrderMissingStandalone := ra.testOrderPB(req.OrderID, "merkle")
+	validMerkleOrderMissingStandalone.MtcSerialNumber = 666
+
 	var orders = []*corepb.Order{
 		{}, // index zero is empty
 		validClassicOrder,
@@ -4783,10 +4780,10 @@ type mockMTCBWithGetStandalone struct {
 }
 
 // GetStandalone in this mock always returns the same palindromic nonsense bytes
-// of primes, unless the request is for MtcSerialNumber 99, in which case an
+// of primes, unless the request is for MtcSerialNumber 666, in which case an
 // empty StandaloneResponse and a mock error are returned.
 func (mtcb *mockMTCBWithGetStandalone) GetStandalone(_ context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
-	if req.MtcSerialNumber == 99 {
+	if req.MtcSerialNumber == 666 {
 		return &mtcbpb.StandaloneResponse{}, errors.New("mock error")
 	}
 	return &mtcbpb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
@@ -4863,7 +4860,7 @@ func TestMerkleCertificate(t *testing.T) {
 		},
 		{
 			name:    "Request using trigger-mock Serial Number for error GetStandalone response",
-			pathAdd: "1/4/44947.4.1.0.3/99",
+			pathAdd: "1/4/44947.4.1.0.3/666",
 			expResp: expectResponse{
 				isJSON: true,
 				expect: `{"type": "urn:ietf:params:acme:error:serverInternal", "detail": "Failed to retrieve Merkle Certificate", "status": 500}`,
