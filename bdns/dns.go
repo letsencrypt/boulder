@@ -201,16 +201,6 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		tries = i + 1
 		chosenServer := servers[i%len(servers)]
 
-		// Strip off the IP address part of the server address because
-		// we talk to the same server on multiple ports, and don't want
-		// to blow up the cardinality.
-		// Note: validateServerAddress() has already checked net.SplitHostPort()
-		// and ensures that chosenServer can't be a bare port, e.g. ":1337"
-		chosenServerIP, _, err = net.SplitHostPort(chosenServer)
-		if err != nil {
-			return nil, chosenServer, err
-		}
-
 		// Do a bare assignment (not :=) to populate the `resp` used by the defer above.
 		var rtt time.Duration
 		resp, rtt, err = c.exchanger.ExchangeContext(ctx, req, chosenServer)
@@ -223,7 +213,7 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		c.queryTime.With(prometheus.Labels{
 			"qtype":    qtypeStr,
 			"result":   result,
-			"resolver": chosenServerIP,
+			"resolver": chosenServer,
 		}).Observe(rtt.Seconds())
 
 		if err != nil {
@@ -240,21 +230,21 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"result":   "out of retries",
-					"resolver": chosenServerIP,
+					"resolver": chosenServer,
 					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
 			} else if errors.Is(err, context.DeadlineExceeded) {
 				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"result":   "deadline exceeded",
-					"resolver": chosenServerIP,
+					"resolver": chosenServer,
 					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
 			} else if errors.Is(err, context.Canceled) {
 				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"result":   "canceled",
-					"resolver": chosenServerIP,
+					"resolver": chosenServer,
 					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
 			}
