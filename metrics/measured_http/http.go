@@ -51,6 +51,16 @@ type MeasuredHandler struct {
 	inFlightRequestsGauge *prometheus.GaugeVec
 }
 
+// spanName is a helper used by otelhttp, as configured below, to name server
+// spans according to the ServeMux pattern that matched the request, with a
+// fallback to a span named according to the "operation".
+func spanName(operation string, r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+	return operation
+}
+
 func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelhttp.Option) http.Handler {
 	responseTime := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "response_time",
@@ -67,7 +77,7 @@ func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelh
 		clk:                   clk,
 		stat:                  responseTime,
 		inFlightRequestsGauge: inFlightRequestsGauge,
-	}, "server", opts...)
+	}, "server", append([]otelhttp.Option{otelhttp.WithSpanNameFormatter(spanName)}, opts...)...)
 }
 
 func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
