@@ -443,11 +443,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("RawSignature: %s", err)
 	}
-	caVerifier, err := cosignature.NewVerifier(testLogID.CAID, caKey.PublicKey())
-	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
-	}
-	caLine, err := cosignature.SignatureLine(caVerifier.Name(), caVerifier.KeyHash(), 0, rawCA)
+	caLine, err := ca.SignatureLine(0, rawCA)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -1051,11 +1047,13 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RawSignature: %s", err)
 	}
-	mirrorVerifier, err := cosignature.NewVerifier(mirrorID, source.mirrorKey.PublicKey())
+
+	mirrorCosigner, err := cosignature.NewCosigner(mirrorID, source.cp.Origin, privatekey.NewDeterministicSigner(source.mirrorKey))
 	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
+		t.Fatalf("NewCosigner: %s", err)
 	}
-	forgedLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, forgedRaw)
+
+	forgedLine, err := mirrorCosigner.SignatureLine(0, forgedRaw)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}

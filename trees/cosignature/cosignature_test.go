@@ -241,7 +241,7 @@ func TestCosignerRoundTrip(t *testing.T) {
 		t.Error("Verify accepted a cosignature over a different origin")
 	}
 
-	line, err := SignatureLine(ca.name, ca.keyID, 0, signature[timestampSize:])
+	line, err := ca.SignatureLine(0, signature[timestampSize:])
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -256,7 +256,7 @@ func TestCosignerRoundTrip(t *testing.T) {
 	if extracted.Timestamp != 0 {
 		t.Errorf("extracted cosignature timestamp = %d, want 0", extracted.Timestamp)
 	}
-	rebuilt, err := SignatureLine(ca.name, ca.keyID, 0, extracted.Signature)
+	rebuilt, err := ca.SignatureLine(0, extracted.Signature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -464,7 +464,7 @@ func TestFilterByVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	line, err := SignatureLine(ca.name, ca.keyID, 0, cosigned[timestampSize:])
+	line, err := ca.SignatureLine(0, cosigned[timestampSize:])
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -584,7 +584,7 @@ func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	knownLine, err := SignatureLine(known.name, known.keyID, 0, knownSignature[timestampSize:])
+	knownLine, err := known.SignatureLine(0, knownSignature[timestampSize:])
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -592,7 +592,7 @@ func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	unknownLine, err := SignatureLine(unknown.name, unknown.keyID, 0, unknownSignature[timestampSize:])
+	unknownLine, err := unknown.SignatureLine(0, unknownSignature[timestampSize:])
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -643,7 +643,7 @@ func TestSignatureLineRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	line, err := SignatureLine(v.Name(), v.KeyHash(), 0, raw)
+	line, err := ca.SignatureLine(0, raw)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -655,7 +655,7 @@ func TestSignatureLineRoundTrip(t *testing.T) {
 		t.Errorf("round-tripped signature = %d %x, want 0 %x", roundTripped.Timestamp, roundTripped.Signature, raw)
 	}
 
-	_, err = SignatureLine(v.Name(), v.KeyHash(), 0, raw[1:])
+	_, err = ca.SignatureLine(0, raw[1:])
 	if err == nil {
 		t.Error("SignatureLine with a short signature = nil error, want error")
 	}
