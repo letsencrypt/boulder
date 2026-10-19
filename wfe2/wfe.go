@@ -68,7 +68,7 @@ const (
 	finalizeOrderPath = "/acme/finalize/"
 	certPath          = "/acme/cert/"
 	renewalInfoPath   = "/acme/renewal-info/"
-	merkleCertPath    = "/acme/merkle-cert/"
+	mtcPath           = "/acme/mtc/"
 
 	// Non-ACME paths.
 	getCertPath     = "/get/cert/"
@@ -480,7 +480,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 
 	// POST-as-GETable ACME endpoints
-	wfe.HandleFunc(m, merkleCertPath+"{acctID}/{orderID}/{logID}/{serial}", wfe.MerkleCertificate, "POST")
+	wfe.HandleFunc(m, mtcPath+"{acctID}/{orderID}/{logID}/{serial}", wfe.MerkleTreeCertificate, "POST")
 
 	// Boulder specific endpoints
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
@@ -1871,8 +1871,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	}
 }
 
-// MerkleCertificate is used by client to request a copy of their Merkle Tree Certificate.
-func (wfe *WebFrontEndImpl) MerkleCertificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+// MerkleTreeCertificate is used by client to request a copy of their merkle tree certificate.
+func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
@@ -1907,7 +1907,7 @@ func (wfe *WebFrontEndImpl) MerkleCertificate(ctx context.Context, logEvent *web
 		return
 	}
 
-	// MerkleCertificate does not need deployability protection via
+	// MerkleTreeCertificate does not need deployability protection via
 	// WFECallsRAForGetOrder, and always looks up orders via the RA.
 	order, err := wfe.ra.GetOrder(ctx, &rapb.GetOrderRequest{OrderID: reqOrderID})
 	if err != nil {
@@ -1939,17 +1939,17 @@ func (wfe *WebFrontEndImpl) MerkleCertificate(ctx context.Context, logEvent *web
 		return
 	}
 
-	// If the order does not have Merkle Certificate information, then we did
+	// If the order does not have merkle tree certificate information, then we did
 	// not find what the requester wants.
 	if core.IsAnyNilOrZero(order.MtcLogID, order.MtcSerialNumber, order.MtcSubtreeID) {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No merkle certificate for order ID %d", reqOrderID)), nil)
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No merkle tree certificate for order ID %d", reqOrderID)), nil)
 		return
 	}
 
 	// If the request path is looking for an MTC that doesn't match the
 	// retrieved order, their request is malformed.
 	if request.PathValue("logID") != order.MtcLogID || reqSerial != order.MtcSerialNumber {
-		wfe.sendError(response, logEvent, probs.Malformed("Merkle Cert URL details do not match order details"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("MTC request URL details do not match order details"), nil)
 		return
 	}
 
@@ -1963,12 +1963,12 @@ func (wfe *WebFrontEndImpl) MerkleCertificate(ctx context.Context, logEvent *web
 			MtcSubtreeID:    order.MtcSubtreeID,
 		})
 	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve Merkle Certificate"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve merkle tree certificate"), err)
 		return
 	}
 
 	if standalone.CertDER == nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting Merkle Certificate"), errIncompleteGRPCResponse)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting merkle tree certificate"), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -1980,9 +1980,9 @@ func (wfe *WebFrontEndImpl) MerkleCertificate(ctx context.Context, logEvent *web
 
 	// NOTE(@ezekiel): Similar to Certificate(), we must explicitly set the
 	// Content-Length header here. The Go HTTP library will only add this header
-	// if the body is below a certain size and a PEM encoded Merkle Certificate
-	// will likely exceed this threshold. Since we know the length we can
-	// reliably set it ourselves and not worry.
+	// if the body is below a certain size and a PEM encoded merkle tree
+	// certificate will likely exceed this threshold. Since we know the length
+	// we can reliably set it ourselves and not worry.
 	response.Header().Set("Content-Length", strconv.Itoa(len(standalonePEM)))
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
@@ -2212,7 +2212,6 @@ type orderJSON struct {
 	Finalize       string                     `json:"finalize"`
 	Profile        string                     `json:"profile,omitempty"`
 	Certificate    string                     `json:"certificate,omitempty"`
-	MerkleCert     string                     `json:"merkle-certificate,omitempty"`
 	Error          *probs.ProblemDetails      `json:"error,omitempty"`
 	Replaces       string                     `json:"replaces,omitempty"`
 }
@@ -2256,8 +2255,8 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 				certPath, order.CertificateSerial)
 		}
 		if !core.IsAnyNilOrZero(order.MtcLogID, order.MtcSerialNumber, order.MtcSubtreeID) && wfe.mtcb != nil {
-			respObj.MerkleCert = web.RelativeEndpoint(request,
-				merkleCertPath,
+			respObj.Certificate = web.RelativeEndpoint(request,
+				mtcPath,
 				fmt.Sprintf("%d", order.RegistrationID),
 				fmt.Sprintf("%d", order.Id),
 				order.MtcLogID,

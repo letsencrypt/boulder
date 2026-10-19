@@ -1133,8 +1133,8 @@ func TestHTTPMethods(t *testing.T) {
 			Allowed: getOrPost,
 		},
 		{
-			Name:    "merkleCert path should be POST only",
-			Path:    merkleCertPath + "1/2/3/4",
+			Name:    "MTC path should be POST only",
+			Path:    mtcPath + "1/2/3/4",
 			Allowed: postOnly,
 		},
 	}
@@ -4658,7 +4658,7 @@ func (ra *mockRAWithGetOrder) testOrderPB(id int64, typ string) *corepb.Order {
 	switch typ {
 	case "classic":
 		orderPB.CertificateSerial = "4"
-	case "merkle":
+	case "mtc":
 		orderPB.MtcLogID = "44947.4.1.0.3"
 		orderPB.MtcSerialNumber = 4
 		orderPB.MtcSubtreeID = 5
@@ -4673,24 +4673,24 @@ func (ra *mockRAWithGetOrder) testOrderPB(id int64, typ string) *corepb.Order {
 // test order fixtures. Otherwise, GetOrder returns a berrors.NotFoundError
 func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	validClassicOrder := ra.testOrderPB(req.OrderID, "classic")
-	validMerkleOrder := ra.testOrderPB(req.OrderID, "merkle")
+	validMTCOrder := ra.testOrderPB(req.OrderID, "mtc")
 
 	// modify Status and some Mtc details for a not-yet-valid order
-	notYetValidMerkleOrder := ra.testOrderPB(req.OrderID, "merkle")
-	notYetValidMerkleOrder.Status = string(core.StatusProcessing)
-	notYetValidMerkleOrder.MtcSerialNumber = 0
-	notYetValidMerkleOrder.MtcSubtreeID = 0
+	notYetValidMTCOrder := ra.testOrderPB(req.OrderID, "mtc")
+	notYetValidMTCOrder.Status = string(core.StatusProcessing)
+	notYetValidMTCOrder.MtcSerialNumber = 0
+	notYetValidMTCOrder.MtcSubtreeID = 0
 
 	// modify MtcSerialNumber to trigger the mock MTCB to return an error
-	validMerkleOrderMissingStandalone := ra.testOrderPB(req.OrderID, "merkle")
-	validMerkleOrderMissingStandalone.MtcSerialNumber = 666
+	validMTCOrderMissingStandalone := ra.testOrderPB(req.OrderID, "mtc")
+	validMTCOrderMissingStandalone.MtcSerialNumber = 666
 
 	var orders = []*corepb.Order{
 		{}, // index zero is empty
 		validClassicOrder,
-		validMerkleOrder,
-		notYetValidMerkleOrder,
-		validMerkleOrderMissingStandalone,
+		validMTCOrder,
+		notYetValidMTCOrder,
+		validMTCOrderMissingStandalone,
 	}
 	if 0 < req.OrderID && req.OrderID <= 4 {
 		return orders[req.OrderID], nil
@@ -4698,7 +4698,7 @@ func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequ
 	return nil, berrors.NotFoundError("No order found for ID %d", req.OrderID)
 }
 
-func TestMerkleGetOrder(t *testing.T) {
+func TestMTCGetOrder(t *testing.T) {
 	t.Cleanup(features.Reset)
 
 	fc := clock.NewFake()
@@ -4714,7 +4714,7 @@ func TestMerkleGetOrder(t *testing.T) {
 	}{
 		{
 			// testCase 0 is a special case tested before the wfe is wired-up with an MTCB
-			name:   "Merkle Order without MTCBService",
+			name:   "MTC Order without MTCBService",
 			path:   "1/2",
 			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default" }`,
 		},
@@ -4724,12 +4724,12 @@ func TestMerkleGetOrder(t *testing.T) {
 			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/1", "profile": "default", "certificate": "http://localhost/acme/cert/4" }`,
 		},
 		{
-			name:   "Merkle Order",
+			name:   "MTC Order",
 			path:   "1/2",
-			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "merkle-certificate": "http://localhost/acme/merkle-cert/1/2/44947.4.1.0.3/4" }`,
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "certificate": "http://localhost/acme/mtc/1/2/44947.4.1.0.3/4" }`,
 		},
 		{
-			name:   "Not Ready Merkle Order",
+			name:   "Not Ready MTC Order",
 			path:   "1/3",
 			expect: `{ "status": "processing", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/3", "profile": "default" }`,
 		},
@@ -4793,7 +4793,7 @@ func (mtcb *mockMTCBWithGetStandalone) GetStandalone(_ context.Context, req *mtc
 	return &mtcbpb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
 }
 
-func TestMerkleCertificate(t *testing.T) {
+func TestMerkleTreeCertificate(t *testing.T) {
 	t.Parallel()
 
 	type expectResponse struct {
@@ -4815,7 +4815,7 @@ func TestMerkleCertificate(t *testing.T) {
 			},
 		},
 		{
-			name:    "Request using wrong Account ID for extant Merkle Order",
+			name:    "Request using wrong Account ID for extant MTC Order",
 			pathAdd: "9/2/44947.4.1.0.3/4",
 			expResp: expectResponse{
 				isJSON: true,
@@ -4831,11 +4831,11 @@ func TestMerkleCertificate(t *testing.T) {
 			},
 		},
 		{
-			name:    "Request using wrong Log ID for extant Merkle Order",
+			name:    "Request using wrong Log ID for extant MTC Order",
 			pathAdd: "1/2/44947.4.1.0.9/4",
 			expResp: expectResponse{
 				isJSON: true,
-				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "Merkle Cert URL details do not match order details", "status": 400}`,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "MTC request URL details do not match order details", "status": 400}`,
 			},
 		},
 		{
@@ -4843,15 +4843,15 @@ func TestMerkleCertificate(t *testing.T) {
 			pathAdd: "1/1/44947.4.1.0.9/4",
 			expResp: expectResponse{
 				isJSON: true,
-				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle certificate for order ID 1", "status": 404}`,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle tree certificate for order ID 1", "status": 404}`,
 			},
 		},
 		{
-			name:    "Request using wrong Serial Number for extant Merkle Order",
+			name:    "Request using wrong Serial Number for extant MTC Order",
 			pathAdd: "1/2/44947.4.1.0.3/9",
 			expResp: expectResponse{
 				isJSON: true,
-				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "Merkle Cert URL details do not match order details", "status": 400}`,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "MTC request URL details do not match order details", "status": 400}`,
 			},
 		},
 		{
@@ -4859,7 +4859,7 @@ func TestMerkleCertificate(t *testing.T) {
 			pathAdd: "1/1/44947.4.1.0.3/9",
 			expResp: expectResponse{
 				isJSON: true,
-				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle certificate for order ID 1", "status": 404}`,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle tree certificate for order ID 1", "status": 404}`,
 			},
 		},
 		{
@@ -4867,7 +4867,7 @@ func TestMerkleCertificate(t *testing.T) {
 			pathAdd: "1/4/44947.4.1.0.3/666",
 			expResp: expectResponse{
 				isJSON: true,
-				expect: `{"type": "urn:ietf:params:acme:error:serverInternal", "detail": "Failed to retrieve Merkle Certificate", "status": 500}`,
+				expect: `{"type": "urn:ietf:params:acme:error:serverInternal", "detail": "Failed to retrieve merkle tree certificate", "status": 500}`,
 			},
 		},
 		{
@@ -4903,10 +4903,10 @@ func TestMerkleCertificate(t *testing.T) {
 	mockRA.clk = fc
 	wfe.ra = mockRA
 
-	// Test that a merkle-cert path request to a WFE without an MTCB Client
-	// correctly returns "Not Supported"
+	// Test that an MTC path request to a WFE without an MTCB Client correctly
+	// returns "Not Supported"
 	responseWriter := httptest.NewRecorder()
-	requestPath := merkleCertPath + "1/2/44947.4.1.0.3/4"
+	requestPath := mtcPath + "1/2/44947.4.1.0.3/4"
 	mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{ "type": "urn:ietf:params:acme:error:malformed", "detail": "Not Supported", "status": 400 }`)
 
@@ -4919,7 +4919,7 @@ func TestMerkleCertificate(t *testing.T) {
 			t.Parallel()
 
 			responseWriter := httptest.NewRecorder()
-			requestPath := merkleCertPath + tc.pathAdd
+			requestPath := mtcPath + tc.pathAdd
 			mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
 
 			if tc.expResp.isJSON {
