@@ -57,8 +57,15 @@ conversation once the external conditions are met. Since our repository is
 configured to require all conversations be resolved before merging, this acts as
 a protection against early merges.
 
-# Patch Guidelines
+# Style
 
+* We generally try to follow the [Google Go Style Guide] for new and updated
+  code.
+* Newly added comments should be wrapped to 80 columns, with exceptions for URLs,
+  quotes from other documents, or other things that would be awkward to wrap.
+  When editing an existing comment, use discretion as to whether it needs to be
+  re-wrapped. Growing slightly above 80 columns is fine in the interests of
+  clear diffs.
 * Please include helpful comments. No need to gratuitously comment clear code,
   but make sure it's clear why things are being done. Include information in
   your pull request about what you're trying to accomplish with your patch.
@@ -73,6 +80,8 @@ a protection against early merges.
   // TODO(#<num>): Pending hoverboard/time-machine interface.
   // TODO(@githubusername): Enable hoverboard kickflips once interface is stable.
   ```
+
+[gostyle]: https://google.github.io/styleguide/go/index
 
 # Squash merging
 
