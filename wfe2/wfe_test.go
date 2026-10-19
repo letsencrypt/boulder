@@ -4652,14 +4652,18 @@ func (ra *mockRAWithGetOrder) testOrderPB(id int64, typ string) *corepb.Order {
 		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 		Status:                 string(core.StatusValid),
 		V2Authorizations:       []int64{1, 2},
-		CertificateSerial:      "4",
 		Error:                  nil,
 		CertificateProfileName: "default",
 	}
-	if typ == "merkle" {
+	switch typ {
+	case "classic":
+		orderPB.CertificateSerial = "4"
+	case "merkle":
 		orderPB.MtcLogID = "44947.4.1.0.3"
 		orderPB.MtcSerialNumber = 4
 		orderPB.MtcSubtreeID = 5
+	default:
+		orderPB.Status = string(core.StatusInvalid)
 	}
 	return orderPB
 }
@@ -4712,7 +4716,7 @@ func TestMerkleGetOrder(t *testing.T) {
 			// testCase 0 is a special case tested before the wfe is wired-up with an MTCB
 			name:   "Merkle Order without MTCBService",
 			path:   "1/2",
-			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "certificate": "http://localhost/acme/cert/4" }`,
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default" }`,
 		},
 		{
 			name:   "Classic Order",
@@ -4722,7 +4726,7 @@ func TestMerkleGetOrder(t *testing.T) {
 		{
 			name:   "Merkle Order",
 			path:   "1/2",
-			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "certificate": "http://localhost/acme/cert/4", "merkle-certificate": "http://localhost/acme/merkle-cert/1/2/44947.4.1.0.3/4" }`,
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "merkle-certificate": "http://localhost/acme/merkle-cert/1/2/44947.4.1.0.3/4" }`,
 		},
 		{
 			name:   "Not Ready Merkle Order",
