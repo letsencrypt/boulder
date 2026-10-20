@@ -19,6 +19,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/reloid"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
@@ -186,7 +187,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 	if !isReady {
-		return nil, fmt.Errorf("not ready to build standalone for %q %016x", requestedLogID, req.MtcSerialNumber)
+		return nil, berrors.OrderNotReadyError("Certificate with serial %016x is not yet available because its log entry has not been cosigned by a mirror", req.MtcSerialNumber)
 	}
 
 	// Fetch the latest checkpoint. We'll need the latest treesize to fetch tiles.

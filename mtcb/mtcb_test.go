@@ -9,6 +9,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -104,7 +105,7 @@ func (f *fakeCheckpointDB) GetCheckpointSubtree(_ context.Context, mtcLogID stri
 			return subtree, nil
 		}
 	}
-	return nil, berrors.NotFoundError("not found")
+	return nil, errors.New("not found")
 }
 
 // issued is one entry in the test log, along with the values we expect to find
@@ -463,6 +464,7 @@ func TestGetStandaloneInvalidSubtree(t *testing.T) {
 		name              string
 		mutateSubtree     func(*treedb.CheckpointSubtreeModel)
 		expectErrContains string
+		expectNotReady    bool
 	}{
 		{
 			name:              "Subtree with a short hash",
@@ -472,7 +474,8 @@ func TestGetStandaloneInvalidSubtree(t *testing.T) {
 		{
 			name:              "Subtree with no mirror ID",
 			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.MirrorID = nil },
-			expectErrContains: "not ready",
+			expectErrContains: "not yet available",
+			expectNotReady:    true,
 		},
 		{
 			name:              "Subtree past the latest checkpoint",
@@ -529,6 +532,9 @@ func TestGetStandaloneInvalidSubtree(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Errorf("GetStandalone: got %q, want it to contain %q", err, tc.expectErrContains)
+			}
+			if errors.Is(err, berrors.OrderNotReady) != tc.expectNotReady {
+				t.Errorf("GetStandalone: got %q, want errors.Is(err, berrors.OrderNotReady) = %t", err, tc.expectNotReady)
 			}
 		})
 	}
