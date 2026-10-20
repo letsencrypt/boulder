@@ -244,7 +244,7 @@ func main() {
 	cmd.FailOnError(err, "Unable to create SFE")
 
 	logger.Infof("Server running, listening on %s....", c.SFE.ListenAddress)
-	handler := sfei.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
+	handler := sfei.Handler(stats)
 
 	srv := web.NewServer(c.SFE.ListenAddress, handler, logger)
 	go func() {

@@ -501,7 +501,7 @@ func main() {
 	}
 
 	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
-	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
+	handler := wfe.Handler(stats)
 
 	srv := web.NewServer(c.WFE.ListenAddress, handler, logger)
 	go func() {

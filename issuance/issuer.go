@@ -282,7 +282,13 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 func pubkeyParams(pubkey any) (x509.PublicKeyAlgorithm, x509.SignatureAlgorithm, error) {
 	switch k := pubkey.(type) {
 	case *mldsa.PublicKey:
-		return x509.MLDSA, x509.MLDSA44, nil
+		switch k.Parameters() {
+		case mldsa.MLDSA44():
+			return x509.MLDSA, x509.MLDSA44, nil
+		default:
+			return x509.UnknownPublicKeyAlgorithm, x509.UnknownSignatureAlgorithm,
+				fmt.Errorf("unsupported ML-DSA parameter set: %s", k.Parameters())
+		}
 	case *rsa.PublicKey:
 		return x509.RSA, x509.SHA256WithRSA, nil
 	case *ecdsa.PublicKey:
