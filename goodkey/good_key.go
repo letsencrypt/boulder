@@ -39,7 +39,7 @@ var (
 	smallPrimesSingleton sync.Once
 	smallPrimesProduct   *big.Int
 
-	// These are lazily initalized on first use to a map that can be used to
+	// These are lazily initialized on first use to a map that can be used to
 	// quickly check whether an ECDSA key has a small private scalar.
 	smallScalarsSingleton sync.Once
 	smallScalarXs         map[*elliptic.CurveParams]map[string]struct{}
