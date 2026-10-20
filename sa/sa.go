@@ -680,6 +680,8 @@ func (ssa *SQLStorageAuthority) SetAuthzProcessing(ctx context.Context, req *sap
 	// this field can still mark authorizations as processing. A pending authz
 	// which has not begun processing never has an attempted challenge, so
 	// leaving the column NULL in that case is a no-op.
+	// TODO(#9032): Require req.Attempted when the SetAuthzProcessing flag is
+	// removed, since every RA will then set it.
 	var attempted *uint8
 	if req.Attempted != "" {
 		attemptedType, ok := challTypeToUint[req.Attempted]

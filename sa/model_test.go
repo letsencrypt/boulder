@@ -328,12 +328,14 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 		{
 			Name: "Bad validation error field",
 			Model: &authzModel{
+				Status:          statusUint(core.StatusInvalid),
 				ValidationError: badJSON,
 			},
 		},
 		{
 			Name: "Bad validation record field",
 			Model: &authzModel{
+				Status:           statusUint(core.StatusInvalid),
 				ValidationRecord: badJSON,
 			},
 		},

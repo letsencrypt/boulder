@@ -748,8 +748,18 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 }
 
 // populateAttemptedFields takes a challenge and populates it with the validation fields status,
-// validation records, and error (the latter only if the validation failed) from an authzModel.
+// validation records, error (the latter only if the validation failed), and validated time from an
+// authzModel. If the authorization is still pending, the challenge is the one currently being
+// validated, so it is only given the status core.StatusProcessing.
 func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
+	if am.Status == statusUint(core.StatusPending) {
+		// The RA has begun validating this challenge, but has not yet
+		// finalized the authorization. There are no validation results to
+		// populate yet.
+		challenge.Status = string(core.StatusProcessing)
+		return nil
+	}
+
 	if len(am.ValidationError) != 0 {
 		// If the error is non-empty the challenge must be invalid.
 		challenge.Status = string(core.StatusInvalid)
@@ -789,6 +799,12 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 			return err
 		}
 	}
+	// Get the attemptedAt time and assign to the challenge validated time.
+	var validated *timestamppb.Timestamp
+	if am.AttemptedAt != nil {
+		validated = timestamppb.New(*am.AttemptedAt)
+	}
+	challenge.Validated = validated
 	return nil
 }
 
@@ -811,53 +827,35 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Expires:                timestamppb.New(am.Expires),
 		CertificateProfileName: profile,
 	}
-	// Populate authorization challenge array. We do this by iterating through
-	// the challenge type bitmap and creating a challenge of each type if its
-	// bit is set. Each of these challenges has the token from the authorization
-	// model and has its status set to core.StatusPending by default. If the
-	// challenge type is equal to that in the 'attempted' row we set the status
-	// to core.StatusValid or core.StatusInvalid depending on if there is anything
-	// in ValidationError and populate the ValidationRecord and ValidationError
-	// fields. If the authorization itself is still pending, the attempted
-	// challenge is the one currently being validated, so we set its status to
-	// core.StatusProcessing instead.
-	for pos := range uint8(8) {
-		if (am.Challenges>>pos)&1 == 1 {
-			challType := uintToChallType[pos]
+	// Populate authorization challenge array. Once any challenge has been
+	// attempted, we consider the other challenges "gone" per
+	// https://tools.ietf.org/html/rfc8555#section-7.1.4, so the array holds
+	// only the attempted challenge, populated with its status and validation
+	// results by populateAttemptedFields. Otherwise we iterate through the
+	// challenge type bitmap and create a pending challenge of each type whose
+	// bit is set. Each of these challenges has the token from the
+	// authorization model.
+	token := base64.RawURLEncoding.EncodeToString(am.Token)
+	if am.Attempted != nil {
+		if (am.Challenges>>*am.Attempted)&1 == 1 {
 			challenge := &corepb.Challenge{
-				Type:   challType,
-				Status: string(core.StatusPending),
-				Token:  base64.RawURLEncoding.EncodeToString(am.Token),
+				Type:  uintToChallType[*am.Attempted],
+				Token: token,
 			}
-			// If the challenge type matches the attempted type it must be either
-			// valid or invalid and we need to populate extra fields.
-			// Also, once any challenge has been attempted, we consider the other
-			// challenges "gone" per https://tools.ietf.org/html/rfc8555#section-7.1.4
-			if am.Attempted != nil {
-				if uintToChallType[*am.Attempted] == challType {
-					if am.Status == statusUint(core.StatusPending) {
-						// The RA has begun validating this challenge, but has
-						// not yet finalized the authorization. There are no
-						// validation results to populate yet.
-						challenge.Status = string(core.StatusProcessing)
-					} else {
-						err := populateAttemptedFields(am, challenge)
-						if err != nil {
-							return nil, err
-						}
-						// Get the attemptedAt time and assign to the challenge validated time.
-						var validated *timestamppb.Timestamp
-						if am.AttemptedAt != nil {
-							validated = timestamppb.New(*am.AttemptedAt)
-						}
-						challenge.Validated = validated
-					}
-					pb.Challenges = append(pb.Challenges, challenge)
-				}
-			} else {
-				// When no challenge has been attempted yet, all challenges are still
-				// present.
-				pb.Challenges = append(pb.Challenges, challenge)
+			err := populateAttemptedFields(am, challenge)
+			if err != nil {
+				return nil, err
+			}
+			pb.Challenges = append(pb.Challenges, challenge)
+		}
+	} else {
+		for pos := range uint8(8) {
+			if (am.Challenges>>pos)&1 == 1 {
+				pb.Challenges = append(pb.Challenges, &corepb.Challenge{
+					Type:   uintToChallType[pos],
+					Status: string(core.StatusPending),
+					Token:  token,
+				})
 			}
 		}
 	}
