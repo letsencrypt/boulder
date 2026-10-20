@@ -315,9 +315,6 @@ go.opentelemetry.io/auto/sdk
 go.opentelemetry.io/auto/sdk/internal/telemetry
 # go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
 ## explicit; go 1.23.0
-go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
-go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters
-go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal
 # go.opentelemetry.io/otel v1.45.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel
@@ -332,13 +329,11 @@ go.opentelemetry.io/otel/internal/global
 go.opentelemetry.io/otel/propagation
 go.opentelemetry.io/otel/semconv/v1.24.0
 go.opentelemetry.io/otel/semconv/v1.37.0
-go.opentelemetry.io/otel/semconv/v1.37.0/rpcconv
 go.opentelemetry.io/otel/semconv/v1.43.0
 # go.opentelemetry.io/otel/metric v1.45.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/metric
 go.opentelemetry.io/otel/metric/embedded
-go.opentelemetry.io/otel/metric/noop
 # go.opentelemetry.io/otel/sdk v1.45.0
 ## explicit; go 1.25.0
 # go.opentelemetry.io/otel/sdk/metric v1.45.0

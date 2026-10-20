@@ -30,7 +30,6 @@ require (
 	github.com/weppos/publicsuffix-go v0.50.4-0.20260716074310-43d7adb18c47
 	github.com/zmap/zcrypto v0.0.0-20260514033604-a1159eb3cad9
 	github.com/zmap/zlint/v3 v3.7.2-0.20260531191521-b88ecfaefc52
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
 	go.yaml.in/yaml/v3 v3.0.4
