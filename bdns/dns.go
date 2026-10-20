@@ -195,14 +195,14 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 	}
 
 	// Prepare to increment a latency metric no matter whether we succeed or fail.
-	// The deferred function closes over resp, chosenServerIP, and tries, which
+	// The deferred function closes over resp, chosenServer, and tries, which
 	// are all modified in the loop below.
 	start := c.clk.Now()
 	qtypeStr := dns.TypeToString[qtype]
 	var (
-		resp           *dns.Msg
-		chosenServerIP string
-		tries          int
+		resp         *dns.Msg
+		chosenServer string
+		tries        int
 	)
 	defer func() {
 		result := "failed"
@@ -212,24 +212,14 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		c.totalLookupTime.With(prometheus.Labels{
 			"qtype":    qtypeStr,
 			"result":   result,
-			"resolver": chosenServerIP,
+			"resolver": chosenServer,
 			"attempts": strconv.Itoa(tries),
 		}).Observe(c.clk.Since(start).Seconds())
 	}()
 
 	for i := range c.maxTries {
 		tries = i + 1
-		chosenServer := servers[i%len(servers)]
-
-		// Strip off the IP address part of the server address because
-		// we talk to the same server on multiple ports, and don't want
-		// to blow up the cardinality.
-		// Note: validateServerAddress() has already checked net.SplitHostPort()
-		// and ensures that chosenServer can't be a bare port, e.g. ":1337"
-		chosenServerIP, _, err = net.SplitHostPort(chosenServer)
-		if err != nil {
-			return nil, chosenServer, err
-		}
+		chosenServer = servers[i%len(servers)]
 
 		// Do a bare assignment (not :=) to populate the `resp` used by the defer above.
 		var rtt time.Duration
@@ -243,12 +233,12 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		c.queryTime.With(prometheus.Labels{
 			"qtype":    qtypeStr,
 			"result":   result,
-			"resolver": chosenServerIP,
+			"resolver": chosenServer,
 		}).Observe(rtt.Seconds())
 
 		if err != nil {
 			if !errors.Is(err, errDohQueryTimeout) && !errors.Is(err, errDohQueryCanceled) {
-				c.dohTransportErrors.With(prometheus.Labels{"resolver": chosenServerIP}).Inc()
+				c.dohTransportErrors.With(prometheus.Labels{"resolver": chosenServer}).Inc()
 			}
 
 			c.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]", chosenServer, hostname, qtypeStr, err)
@@ -262,21 +252,21 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"result":   "out of retries",
-					"resolver": chosenServerIP,
+					"resolver": chosenServer,
 					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
 			} else if errors.Is(err, errDohQueryTimeout) {
 				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"result":   "deadline exceeded",
-					"resolver": chosenServerIP,
+					"resolver": chosenServer,
 					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
 			} else if errors.Is(err, errDohQueryCanceled) {
 				c.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"result":   "canceled",
-					"resolver": chosenServerIP,
+					"resolver": chosenServer,
 					"isTLD":    fmt.Sprintf("%t", !strings.Contains(hostname, ".")),
 				}).Inc()
 			}
