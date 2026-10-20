@@ -59,7 +59,7 @@ a protection against early merges.
 
 # Style
 
-* We generally try to follow the [Google Go Style Guide] for new and updated
+* We generally try to follow the [Google Go Style Guide][gostyle] for new and updated
   code.
 * Newly added comments should be wrapped to 80 columns, with exceptions for URLs,
   quotes from other documents, or other things that would be awkward to wrap.
