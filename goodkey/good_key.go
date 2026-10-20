@@ -438,6 +438,12 @@ func checkSmallPrimes(i *big.Int) bool {
 // independently from a uniform random distribution. Basically, if we can factor
 // the key this easily, so can anyone else.
 func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
+	// Trivial case: n = p^2
+	sqrt := new(big.Int).Sqrt(n)
+	if new(big.Int).Mul(sqrt, sqrt).Cmp(n) == 0 {
+		return fmt.Errorf("public modulus n = pq factored in 1 rounds into p: %s and q: %s", sqrt, sqrt)
+	}
+
 	// Pre-allocate some big numbers that we'll use a lot down below.
 	one := big.NewInt(1)
 	bb := new(big.Int)
@@ -455,8 +461,7 @@ func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
 	// first integer greater than the square root of n. Unfortunately, big.Int's
 	// built-in square root function takes the floor, so we have to add one to get
 	// the ceil.
-	a := new(big.Int)
-	a.Sqrt(n).Add(a, one)
+	a := new(big.Int).Add(sqrt, one)
 
 	// We calculate b2 to see if it is a perfect square (i.e. b^2), and therefore
 	// b is an integer. Specifically, b2 = a^2 - n.
