@@ -736,7 +736,7 @@ func TestRetry(t *testing.T) {
 					t, dr.timeoutCounter, prometheus.Labels{
 						"qtype":    "TXT",
 						"result":   "out of retries",
-						"resolver": "127.0.0.1",
+						"resolver": "127.0.0.1:4053",
 						"isTLD":    "false",
 					}, tc.metricsAllRetries)
 			}
@@ -767,7 +767,7 @@ func TestRetryMetrics(t *testing.T) {
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"result":   "canceled",
-			"resolver": "127.0.0.1",
+			"resolver": "127.0.0.1:4053",
 		}, 1)
 }
 
