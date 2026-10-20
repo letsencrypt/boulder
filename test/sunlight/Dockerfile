@@ -1,6 +1,6 @@
 ARG SUNLIGHT_TAG=v0.10.0
 
-FROM golang:1.27.1-trixie AS build
+FROM golang:1.27.3-trixie AS build
 ARG SUNLIGHT_TAG
 RUN CGO_ENABLED=1 go install filippo.io/sunlight/cmd/sunlight@${SUNLIGHT_TAG}
 
