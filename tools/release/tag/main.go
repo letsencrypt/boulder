@@ -155,8 +155,12 @@ func nextTagUnderVersion(baseVersion string) (string, error) {
 		return "", fmt.Errorf("failed to list extant tags under version %q: %w", baseVersion, err)
 	}
 
-	maxPatch := 0
+	maxPatch := -1
 	for tag := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if tag == "" {
+			continue
+		}
+
 		parts := strings.SplitN(tag, ".", 3)
 		if len(parts) != 3 {
 			return "", fmt.Errorf("failed to parse release tag %q as semver", tag)
