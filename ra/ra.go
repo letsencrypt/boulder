@@ -2454,7 +2454,7 @@ func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.Get
 			MtcSubtreeID:    order.MtcSubtreeID,
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checking whether order %d is ready: %w", order.Id, err)
 		}
 		if resp.Ready {
 			order.Status = string(core.StatusValid)

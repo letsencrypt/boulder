@@ -13,6 +13,8 @@ import (
 
 var ErrIssuanceLogNotInitialized = errors.New("issuance log DB not initialized")
 
+var ErrCheckpointSubtreeNotFound = errors.New("checkpoint subtree not found")
+
 // CheckpointModel represents the database storage of a checkpoint and associated signatures.
 //
 // For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Message`.
@@ -151,7 +153,10 @@ func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int
 		mtcLogID,
 		id)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("getting checkpoint subtree %d of %q: %w", id, mtcLogID, ErrCheckpointSubtreeNotFound)
+		}
+		return nil, fmt.Errorf("getting checkpoint subtree %d of %q: %w", id, mtcLogID, err)
 	}
 	return &checkpointSubtree, nil
 }
