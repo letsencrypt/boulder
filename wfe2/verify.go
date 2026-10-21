@@ -281,8 +281,8 @@ func (wfe *WebFrontEndImpl) validPOSTURL(
 	}
 	// Compute the URL we expect to be in the JWS based on the HTTP request
 	expectedURL := url.URL{
-		Scheme: requestProto(request),
-		Host:   requestHost(request),
+		Scheme: web.RequestProto(request),
+		Host:   web.RequestHost(request),
 		Path:   request.RequestURI,
 	}
 	// Check that the URL we expect is the one that was found in the signed JWS

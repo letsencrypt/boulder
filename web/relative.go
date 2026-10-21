@@ -15,25 +15,8 @@ import (
 // segments to be appended to basePath and should not contain slashes.
 func RelativeEndpoint(request *http.Request, basePath string, segments ...string) string {
 	var result string
-	proto := "http"
-	host := request.Host
-
-	// If the request was received via TLS, use `https://` for the protocol
-	if request.TLS != nil {
-		proto = "https"
-	}
-
-	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
-	// to override our own guess.
-	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
-		proto = specifiedProto
-	}
-
-	// Allow upstream proxies to specify the forwarded host. Allow this value to
-	// override the request host.
-	if specifiedHost := request.Header.Get("X-Forwarded-Host"); specifiedHost != "" {
-		host = specifiedHost
-	}
+	proto := RequestProto(request)
+	host := RequestHost(request)
 
 	// Default to "localhost" when no request.Host is provided. Otherwise requests
 	// with an empty `Host` produce results like `http:///acme/new-authz`
@@ -48,4 +31,29 @@ func RelativeEndpoint(request *http.Request, basePath string, segments ...string
 	result = resultUrl.String()
 
 	return result
+}
+
+// RequestHost returns the host the client addressed. It is request.Host unless
+// an upstream proxy set X-Forwarded-Host, which then takes precedence.
+func RequestHost(request *http.Request) string {
+	specifiedHost := request.Header.Get("X-Forwarded-Host")
+	if specifiedHost != "" {
+		return specifiedHost
+	}
+	return request.Host
+}
+
+// RequestProto returns "http" for HTTP requests and "https" for HTTPS requests.
+// X-Forwarded-Proto, when set by an upstream proxy, overrides that choice.
+func RequestProto(request *http.Request) string {
+	proto := "http"
+	if request.TLS != nil {
+		proto = "https"
+	}
+
+	specifiedProto := request.Header.Get("X-Forwarded-Proto")
+	if specifiedProto != "" {
+		proto = specifiedProto
+	}
+	return proto
 }

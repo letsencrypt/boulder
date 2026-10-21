@@ -1,34 +1,76 @@
 package web
 
 import (
+	"crypto/tls"
 	"net/http"
 	"testing"
 )
 
-func TestRelativeEndpointHonorsForwardedHost(t *testing.T) {
-	request := &http.Request{
-		Host:   "backend.example:4001",
-		Header: http.Header{},
-	}
-	request.Header.Set("X-Forwarded-Host", "proxy.example")
-	request.Header.Set("X-Forwarded-Proto", "https")
+func TestRelativeEndpoint(t *testing.T) {
+	t.Parallel()
 
-	got := RelativeEndpoint(request, "/acme/new-order")
-	want := "https://proxy.example/acme/new-order"
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+	testCases := []struct {
+		name   string
+		tls    bool
+		host   string
+		xHost  string
+		xProto string
+		want   string
+	}{
+		{
+			name: "direct http",
+			host: "backend.example:4001",
+			want: "http://backend.example:4001/acme/new-order",
+		},
+		{
+			name: "direct https",
+			tls:  true,
+			host: "backend.example:4001",
+			want: "https://backend.example:4001/acme/new-order",
+		},
+		{
+			name:  "forwarded host only",
+			host:  "backend.example:4001",
+			xHost: "proxy.example",
+			want:  "http://proxy.example/acme/new-order",
+		},
+		{
+			name:   "forwarded proto only",
+			host:   "backend.example:4001",
+			xProto: "https",
+			want:   "https://backend.example:4001/acme/new-order",
+		},
+		{
+			name:   "forwarded host and proto",
+			host:   "backend.example:4001",
+			xHost:  "proxy.example",
+			xProto: "https",
+			want:   "https://proxy.example/acme/new-order",
+		},
 	}
-}
 
-func TestRelativeEndpointWithoutForwardedHost(t *testing.T) {
-	request := &http.Request{
-		Host:   "backend.example:4001",
-		Header: http.Header{},
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	got := RelativeEndpoint(request, "/acme/new-order")
-	want := "http://backend.example:4001/acme/new-order"
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+			request := &http.Request{
+				Host:   tc.host,
+				Header: http.Header{},
+			}
+			if tc.tls {
+				request.TLS = &tls.ConnectionState{}
+			}
+			if tc.xHost != "" {
+				request.Header.Set("X-Forwarded-Host", tc.xHost)
+			}
+			if tc.xProto != "" {
+				request.Header.Set("X-Forwarded-Proto", tc.xProto)
+			}
+
+			got := RelativeEndpoint(request, "/acme/new-order")
+			if got != tc.want {
+				t.Errorf("RelativeEndpoint() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

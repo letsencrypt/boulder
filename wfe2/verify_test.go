@@ -718,46 +718,66 @@ func (rs requestSigner) signExtraHeaders(
 	return parsedJWS, body
 }
 
-// A client signs the URL it actually requested. When the CA sits behind a
-// proxy it must reconstruct that URL from the forwarded host, or every signed
-// request looks like it targets the wrong endpoint and issuance is impossible
-// through the proxy.
-func TestValidPOSTURLForwardedHost(t *testing.T) {
+func TestValidPOSTURLForwardedHeaders(t *testing.T) {
+	t.Parallel()
 	wfe, _, signer := setupWFE(t)
 
-	// The client signed the public URL it used.
-	_, _, body := signer.embeddedJWK(nil, "https://acme.example/test-path", "")
-	request := makePostRequestWithPath("test-path", body)
-	request.Header.Set("X-Forwarded-Host", "acme.example")
-	request.Header.Set("X-Forwarded-Proto", "https")
-
-	jws, err := jose.ParseSigned(body, getSupportedAlgs())
-	if err != nil {
-		t.Fatalf("parsing signed body: %s", err)
+	testCases := []struct {
+		name      string
+		signedURL string
+		xHost     string
+		xProto    string
+		wantErr   bool
+	}{
+		{
+			name:      "no forwarded headers",
+			signedURL: "http://localhost/test-path",
+		},
+		{
+			name:      "forwarded host only",
+			signedURL: "http://acme.example/test-path",
+			xHost:     "acme.example",
+		},
+		{
+			name:      "forwarded proto only",
+			signedURL: "https://localhost/test-path",
+			xProto:    "https",
+		},
+		{
+			name:      "forwarded host and proto",
+			signedURL: "https://acme.example/test-path",
+			xHost:     "acme.example",
+			xProto:    "https",
+		},
+		{
+			name:      "signed for request host despite forwarded host",
+			signedURL: "http://localhost/test-path",
+			xHost:     "acme.example",
+			wantErr:   true,
+		},
 	}
 
-	err = wfe.validPOSTURL(request, jws.Signatures[0].Header)
-	if err != nil {
-		t.Errorf("validPOSTURL with a forwarded host = %s, want nil", err)
-	}
-}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-// Without the header the CA keeps validating against its own host, so a
-// direct deployment is unaffected.
-func TestValidPOSTURLWithoutForwardedHost(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
+			jws, _, body := signer.embeddedJWK(nil, tc.signedURL, "")
+			request := makePostRequestWithPath("test-path", body)
+			if tc.xHost != "" {
+				request.Header.Set("X-Forwarded-Host", tc.xHost)
+			}
+			if tc.xProto != "" {
+				request.Header.Set("X-Forwarded-Proto", tc.xProto)
+			}
 
-	_, _, body := signer.embeddedJWK(nil, "http://localhost/test-path", "")
-	request := makePostRequestWithPath("test-path", body)
-
-	jws, err := jose.ParseSigned(body, getSupportedAlgs())
-	if err != nil {
-		t.Fatalf("parsing signed body: %s", err)
-	}
-
-	err = wfe.validPOSTURL(request, jws.Signatures[0].Header)
-	if err != nil {
-		t.Errorf("validPOSTURL without a forwarded host = %s, want nil", err)
+			err := wfe.validPOSTURL(request, jws.Signatures[0].Header)
+			if tc.wantErr {
+				test.AssertError(t, err, "validPOSTURL succeeded for a mismatched url")
+				test.AssertErrorIs(t, err, berrors.Malformed)
+				return
+			}
+			test.AssertNotError(t, err, "validPOSTURL failed")
+		})
 	}
 }
 

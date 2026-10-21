@@ -156,9 +156,7 @@ func TestHostHeaderRewrite(t *testing.T) {
 	req.Host = "localhost:123"
 	th.ServeHTTP(httptest.NewRecorder(), req)
 
-	// A forwarded host gets the same treatment, since it stands in for r.Host
-	// when building and validating URLs. Leaving the port on would make a
-	// proxied deployment advertise URLs a direct one would not.
+	// X-Forwarded-Host has default ports stripped like r.Host.
 	hhh.f = func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
 		t.Helper()
 		test.AssertEquals(t, r.Header.Get("X-Forwarded-Host"), "acme.example")
@@ -171,7 +169,7 @@ func TestHostHeaderRewrite(t *testing.T) {
 		th.ServeHTTP(httptest.NewRecorder(), req)
 	}
 
-	// A non-default port is preserved, matching r.Host handling.
+	// Non-default ports in X-Forwarded-Host are preserved.
 	hhh.f = func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
 		t.Helper()
 		test.AssertEquals(t, r.Header.Get("X-Forwarded-Host"), "acme.example:8443")
