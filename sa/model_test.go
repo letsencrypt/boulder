@@ -224,6 +224,48 @@ func TestAuthzModel(t *testing.T) {
 	}
 }
 
+// TestAuthzModelProcessing tests that a pending authorization whose attempted
+// column has been set (which is what SetAuthzProcessing does) renders the
+// attempted challenge with the "processing" status and no validation results,
+// while the authorization itself remains pending.
+func TestAuthzModelProcessing(t *testing.T) {
+	attempted := challTypeToUint[string(core.ChallengeTypeDNS01)]
+	model := authzModel{
+		ID:              1,
+		IdentifierType:  identifierTypeToUint[string(identifier.TypeDNS)],
+		IdentifierValue: "example.com",
+		RegistrationID:  1,
+		Status:          statusUint(core.StatusPending),
+		Expires:         time.Now().Add(time.Hour),
+		Challenges:      1<<challTypeToUint[string(core.ChallengeTypeHTTP01)] | 1<<challTypeToUint[string(core.ChallengeTypeDNS01)],
+		Token:           []byte("123"),
+	}
+
+	// Before any challenge has been attempted, every challenge is pending.
+	authzPB, err := modelToAuthzPB(model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	test.AssertEquals(t, authzPB.Status, string(core.StatusPending))
+	test.AssertEquals(t, len(authzPB.Challenges), 2)
+	for _, chall := range authzPB.Challenges {
+		test.AssertEquals(t, chall.Status, string(core.StatusPending))
+	}
+
+	// Once a challenge has been attempted but the authz is still pending, only
+	// the attempted challenge is rendered, and it is processing.
+	model.Attempted = &attempted
+	authzPB, err = modelToAuthzPB(model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	test.AssertEquals(t, authzPB.Status, string(core.StatusPending))
+	test.AssertEquals(t, len(authzPB.Challenges), 1)
+	chall := authzPB.Challenges[0]
+	test.AssertEquals(t, chall.Type, string(core.ChallengeTypeDNS01))
+	test.AssertEquals(t, chall.Status, string(core.StatusProcessing))
+	test.AssertEquals(t, chall.Token, "MTIz")
+	test.Assert(t, chall.Validated == nil, "processing challenge should not have a validated timestamp")
+	test.Assert(t, chall.Error == nil, "processing challenge should not have an error")
+	test.AssertEquals(t, len(chall.Validationrecords), 0)
+}
+
 // TestModelToOrderBADJSON tests that converting an order model with an invalid
 // validation error JSON field to an Order produces the expected bad JSON error.
 func TestModelToOrderBadJSON(t *testing.T) {
@@ -286,12 +328,14 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 		{
 			Name: "Bad validation error field",
 			Model: &authzModel{
+				Status:          statusUint(core.StatusInvalid),
 				ValidationError: badJSON,
 			},
 		},
 		{
 			Name: "Bad validation record field",
 			Model: &authzModel{
+				Status:           statusUint(core.StatusInvalid),
 				ValidationRecord: badJSON,
 			},
 		},
