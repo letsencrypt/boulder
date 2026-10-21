@@ -3015,8 +3015,8 @@ func TestIncidentsForSerial(t *testing.T) {
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertA.Serial,
-			affectedCertA.RegistrationID,
-			affectedCertA.OrderID,
+			*affectedCertA.RegistrationID,
+			*affectedCertA.OrderID,
 			affectedCertA.LastNoticeSent.Format(time.DateTime),
 		),
 	)
@@ -3039,8 +3039,8 @@ func TestIncidentsForSerial(t *testing.T) {
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertB.Serial,
-			affectedCertB.RegistrationID,
-			affectedCertB.OrderID,
+			*affectedCertB.RegistrationID,
+			*affectedCertB.OrderID,
 			affectedCertB.LastNoticeSent.Format(time.DateTime),
 		),
 	)

@@ -244,6 +244,53 @@ func TestECDSAIdentity(t *testing.T) {
 	}
 }
 
+func TestECDSASmallPrivateScalar(t *testing.T) {
+	for _, curve := range validCurves {
+		n := curve.Params().N
+		testCases := []struct {
+			name    string
+			k       *big.Int
+			wantErr bool
+		}{
+			// Boundary conditions.
+			{name: "1", k: big.NewInt(1), wantErr: true},
+			{name: "255", k: big.NewInt(255), wantErr: true},
+			{name: "256", k: big.NewInt(256), wantErr: false},
+			{name: "n-1", k: new(big.Int).Sub(n, big.NewInt(1)), wantErr: true},
+			{name: "n-255", k: new(big.Int).Sub(n, big.NewInt(255)), wantErr: true},
+			{name: "n-256", k: new(big.Int).Sub(n, big.NewInt(256)), wantErr: false},
+			// Known-compromised keys.
+			{name: "4", k: big.NewInt(4), wantErr: true},
+			{name: "56", k: big.NewInt(56), wantErr: true},
+			{name: "66", k: big.NewInt(66), wantErr: true},
+			{name: "115", k: big.NewInt(115), wantErr: true},
+			{name: "155", k: big.NewInt(155), wantErr: true},
+			{name: "156", k: big.NewInt(156), wantErr: true},
+			{name: "230", k: big.NewInt(230), wantErr: true},
+			{name: "237", k: big.NewInt(237), wantErr: true},
+		}
+		for _, tc := range testCases {
+			t.Run(fmt.Sprintf("%s/k=%s", curve.Params().Name, tc.name), func(t *testing.T) {
+				x, y := curve.ScalarBaseMult(tc.k.Bytes())
+				err := testingPolicy.GoodKey(t.Context(), &ecdsa.PublicKey{Curve: curve, X: x, Y: y})
+				if !tc.wantErr {
+					if err != nil {
+						t.Errorf("GoodKey() = %q, want nil", err)
+					}
+					return
+				}
+				if err == nil {
+					t.Fatalf("GoodKey() = nil, want error for small private scalar")
+				}
+				want := "key has a small private scalar and is trivially recoverable"
+				if err.Error() != want {
+					t.Errorf("GoodKey() = %q, want %q", err, want)
+				}
+			})
+		}
+	}
+}
+
 func TestNonRefKey(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error generating key")
@@ -351,6 +398,12 @@ func TestCheckPrimeFactorsTooClose(t *testing.T) {
 			name:         "canon printer (2048 bit, 1 round)",
 			p:            "155536235030272749691472293262418471207550926406427515178205576891522284497518443889075039382254334975506248481615035474816604875321501901699955105345417152355947783063521554077194367454070647740704883461064399268622437721385112646454393005862535727615809073410746393326688230040267160616554768771412289114449",
 			q:            "155536235030272749691472293262418471207550926406427515178205576891522284497518443889075039382254334975506248481615035474816604875321501901699955105345417152355947783063521554077194367454070647740704883461064399268622437721385112646454393005862535727615809073410746393326688230040267160616554768771412289114113",
+			expectRounds: 1,
+		},
+		{
+			name:         "p squared (2048 bit, 1 round)",
+			p:            "155536235030272749691472293262418471207550926406427515178205576891522284497518443889075039382254334975506248481615035474816604875321501901699955105345417152355947783063521554077194367454070647740704883461064399268622437721385112646454393005862535727615809073410746393326688230040267160616554768771412289114449",
+			q:            "155536235030272749691472293262418471207550926406427515178205576891522284497518443889075039382254334975506248481615035474816604875321501901699955105345417152355947783063521554077194367454070647740704883461064399268622437721385112646454393005862535727615809073410746393326688230040267160616554768771412289114449",
 			expectRounds: 1,
 		},
 		{
