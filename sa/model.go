@@ -837,17 +837,15 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	// authorization model.
 	token := base64.RawURLEncoding.EncodeToString(am.Token)
 	if am.Attempted != nil {
-		if (am.Challenges>>*am.Attempted)&1 == 1 {
-			challenge := &corepb.Challenge{
-				Type:  uintToChallType[*am.Attempted],
-				Token: token,
-			}
-			err := populateAttemptedFields(am, challenge)
-			if err != nil {
-				return nil, err
-			}
-			pb.Challenges = append(pb.Challenges, challenge)
+		challenge := &corepb.Challenge{
+			Type:  uintToChallType[*am.Attempted],
+			Token: token,
 		}
+		err := populateAttemptedFields(am, challenge)
+		if err != nil {
+			return nil, err
+		}
+		pb.Challenges = append(pb.Challenges, challenge)
 	} else {
 		for pos := range uint8(8) {
 			if (am.Challenges>>pos)&1 == 1 {
