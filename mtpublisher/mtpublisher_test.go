@@ -503,26 +503,18 @@ func newSourceLog(t *testing.T) *sourceLog {
 	}
 }
 
-// TestMirrorCosignOlderSubtree checks that a subtree the mirror's checkpoint
-// has grown past is proven against that checkpoint and signed.
-func TestMirrorCosignOlderSubtree(t *testing.T) {
-	source := newSourceLog(t)
-	olderSubtreeSignature, err := source.mirror.CosignSubtree(t.Context(), source.cp.Origin, 0, source.older.N, source.older.Hash)
+// signSubtreeServer serves the newer tree's checkpoint and answers sign-subtree
+// for the subtree [start, end) with hash subtreeHash with line, after checking
+// the request's proof against the newer tree.
+func (s *sourceLog) signSubtreeServer(t *testing.T, start, end int64, subtreeHash tlog.Hash, line []byte) *httptest.Server {
+	t.Helper()
+	referenceCheckpoint, err := s.cp.SignedNote(s.checkpointCosignatureLine)
 	if err != nil {
-		t.Fatalf("CosignSubtree: %s", err)
+		t.Fatalf("SignedNote: %s", err)
 	}
-	mirrorVerifier, err := cosignature.NewVerifier(mirrorID, source.mirrorKey.PublicKey())
-	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
-	}
-	olderSubtreeCosignatureLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, olderSubtreeSignature)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			source.serveMirrorCheckpoint(t, w, r)
+			s.serveMirrorCheckpoint(t, w, r)
 			return
 		}
 		if r.URL.Path != "/sign-subtree" {
@@ -531,11 +523,11 @@ func TestMirrorCosignOlderSubtree(t *testing.T) {
 			return
 		}
 		header, note, ok := bytes.Cut(requestBody(t, r), []byte("\n\n"))
-		if !ok || !bytes.HasSuffix(note, source.checkpointCosignatureLine) {
-			t.Errorf("sign-subtree note %q does not end with the mirror's checkpoint cosignature line", note)
+		if !ok || !bytes.Equal(note, referenceCheckpoint) {
+			t.Errorf("sign-subtree note %q, want the mirror's checkpoint with its line alone %q", note, referenceCheckpoint)
 		}
 		lines := strings.Split(string(header), "\n")
-		expectHeader := fmt.Sprintf("subtree 0 %d\n%s", source.older.N, source.older.Hash)
+		expectHeader := fmt.Sprintf("subtree %d %d\n%s", start, end, subtreeHash)
 		if len(lines) < 2 || strings.Join(lines[:2], "\n") != expectHeader {
 			t.Errorf("sign-subtree header %q does not begin with %q", header, expectHeader)
 			http.Error(w, "bad subtree", http.StatusBadRequest)
@@ -551,25 +543,55 @@ func TestMirrorCosignOlderSubtree(t *testing.T) {
 			}
 			proof[i] = h
 		}
-		if !subtree.VerifyConsistency(0, source.older.N, source.newer.N, proof, source.older.Hash, source.newer.Hash) {
-			t.Errorf("client's subtree proof for [0, %d) does not verify against the tree of size %d", source.older.N, source.newer.N)
+		if !subtree.VerifyConsistency(start, end, s.newer.N, proof, subtreeHash, s.newer.Hash) {
+			t.Errorf("client's subtree proof for [%d, %d) does not verify against the tree of size %d", start, end, s.newer.N)
 			http.Error(w, "bad proof", http.StatusBadRequest)
 			return
 		}
-		w.Write(olderSubtreeCosignatureLine)
+		w.Write(line)
 	}))
+}
+
+// TestMirrorCosignPartialSubtree checks that a subtree that does not start at
+// 0 is proven against the mirror's checkpoint and its signature verified over
+// that subtree.
+func TestMirrorCosignPartialSubtree(t *testing.T) {
+	source := newSourceLog(t)
+	indexes := make([]int64, 0, 128)
+	for i := range int64(128) {
+		indexes = append(indexes, tlog.StoredHashIndex(0, 256+i))
+	}
+	leaves, err := tlog.TileHashReader(source.newer, tiles.NewTileReader(t.Context(), source.fs3, testTilePrefix)).ReadHashes(indexes)
+	if err != nil {
+		t.Fatalf("reading leaf hashes: %s", err)
+	}
+	partialHash := subtree.MTH(leaves)
+	partialSignature, err := source.mirror.CosignSubtree(t.Context(), source.cp.Origin, 256, 384, partialHash)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	mirrorVerifier, err := cosignature.NewVerifier(mirrorID, source.mirrorKey.PublicKey())
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+	partialLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, partialSignature)
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+
+	srv := source.signSubtreeServer(t, 256, 384, partialHash, partialLine)
 	defer srv.Close()
 
 	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	subtreeSignature, err := m.CosignSubtree(t.Context(), source.cp.Origin, 0, source.older.N, source.older.Hash)
+	subtreeSignature, err := m.CosignSubtree(t.Context(), source.cp.Origin, 256, 384, partialHash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
-	if !bytes.Equal(subtreeSignature, olderSubtreeSignature) {
-		t.Errorf("CosignSubtree = %x, want the mirror's %x", subtreeSignature, olderSubtreeSignature)
+	if !bytes.Equal(subtreeSignature, partialSignature) {
+		t.Errorf("CosignSubtree = %x, want the mirror's %x", subtreeSignature, partialSignature)
 	}
 }
 

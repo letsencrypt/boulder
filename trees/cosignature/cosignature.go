@@ -1,6 +1,7 @@
 package cosignature
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/mldsa"
 	"crypto/sha256"
@@ -270,6 +271,41 @@ func (v *Verifier) VerifySubtreeSignature(origin string, start, end int64, subtr
 		return false
 	}
 	return mldsa.Verify(v.publicKey, cosignedMessage, signature, nil) == nil
+}
+
+// VerifySubtreeSignatureLine returns the raw subtree cosignature carried by a
+// note signature line by this verifier's cosigner, verified over the subtree
+// [start, end) with hash subtreeHash of the log with origin. It errors if the
+// line is malformed or by another key, carries a nonzero timestamp, or does not
+// verify.
+//
+// TODO: tlog-witness v1.1.0 changed the sign-subtree response from a note
+// signature line to a bare base64 subtree cosignature. Remove this once
+// Sunlight is updated to match.
+func (v *Verifier) VerifySubtreeSignatureLine(origin string, start, end int64, subtreeHash tlog.Hash, line []byte) ([]byte, error) {
+	body, ok := bytes.CutPrefix(bytes.TrimSuffix(line, []byte("\n")), []byte(noteSignatureLinePrefix+v.keyName+" "))
+	if !ok {
+		return nil, fmt.Errorf("signature line is not signed by %s", v.keyName)
+	}
+	idSignature, err := base64.StdEncoding.DecodeString(string(body))
+	if err != nil {
+		return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
+	}
+	if len(idSignature) != keyIDSize+timestampedSignatureSize {
+		return nil, fmt.Errorf("signature line body is %d bytes, want %d", len(idSignature), keyIDSize+timestampedSignatureSize)
+	}
+	if binary.BigEndian.Uint32(idSignature[:keyIDSize]) != v.keyID {
+		return nil, fmt.Errorf("signature line key ID does not match %s", v.keyName)
+	}
+	timestamp := binary.BigEndian.Uint64(idSignature[keyIDSize : keyIDSize+timestampSize])
+	if timestamp != 0 {
+		return nil, fmt.Errorf("subtree cosignature has timestamp %d, want 0", timestamp)
+	}
+	signature := idSignature[keyIDSize+timestampSize:]
+	if !v.VerifySubtreeSignature(origin, start, end, subtreeHash, signature) {
+		return nil, errors.New("subtree cosignature does not verify")
+	}
+	return signature, nil
 }
 
 // CheckpointCosignature is a verified checkpoint cosignature by one cosigner,

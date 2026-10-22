@@ -349,12 +349,7 @@ func (m *MirrorClient) latestCheckpoint(ctx context.Context, origin string) (*ch
 
 // CosignSubtree returns the mirror's signature over the subtree [start, end)
 // from sign-subtree, proven against the mirror's own checkpoint.
-//
-// TODO(#9038): sign and verify subtrees that do not start at 0.
 func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	if start != 0 {
-		return nil, fmt.Errorf("subtree [%d, %d) does not start at 0", start, end)
-	}
 	mirrored, signedNote, err := m.latestCheckpoint(ctx, origin)
 	if err != nil {
 		return nil, err
@@ -369,23 +364,19 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, 
 	if !subtree.VerifyConsistency(start, end, mirrored.Tree.N, proof, subtreeHash, mirrored.Tree.Hash) {
 		return nil, fmt.Errorf("subtree [%d, %d) with hash %x is not consistent with the mirror's checkpoint at size %d with root hash %x", start, end, subtreeHash, mirrored.Tree.N, mirrored.Tree.Hash)
 	}
-	subtreeCosignatureLines, err := m.signSubtree(ctx, start, end, subtreeHash, proof, signedNote)
+	subtreeCosignatureLine, err := m.signSubtree(ctx, start, end, subtreeHash, proof, signedNote)
 	if err != nil {
 		return nil, fmt.Errorf("sign-subtree: %w", err)
 	}
 
-	// Verify the mirror's signature. A subtree starting at 0 is signed exactly
-	// as a checkpoint of its size would be.
-	noteText, err := (&checkpoint.Checkpoint{Origin: origin, Tree: tlog.Tree{N: end, Hash: subtreeHash}}).Marshal()
-	if err != nil {
-		return nil, fmt.Errorf("marshaling the subtree: %w", err)
-	}
-	subtreeCosignature, err := m.verifier.FilterByVerify(noteText, subtreeCosignatureLines)
+	// Verify the mirror's subtree signature.
+	//
+	// TODO: tlog-witness v1.1.0 changed the sign-subtree response from a note
+	// signature line to a bare base64 subtree cosignature. Once Sunlight is
+	// updated to match, decode it and use VerifySubtreeSignature instead.
+	subtreeSignature, err := m.verifier.VerifySubtreeSignatureLine(origin, start, end, subtreeHash, subtreeCosignatureLine)
 	if err != nil {
 		return nil, fmt.Errorf("subtree signature failed verification: %w", err)
 	}
-	if subtreeCosignature.Timestamp != 0 {
-		return nil, fmt.Errorf("subtree signature has timestamp %d, want 0", subtreeCosignature.Timestamp)
-	}
-	return subtreeCosignature.Signature, nil
+	return subtreeSignature, nil
 }
