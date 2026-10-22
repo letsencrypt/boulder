@@ -297,11 +297,11 @@ func (m *MirrorClient) CosignCheckpoint(ctx context.Context, cp *checkpoint.Chec
 	return checkpointCosignature.Line, nil
 }
 
-// mirrorCheckpoint returns the mirror's checkpoint of the log with the given
+// latestCheckpoint returns the mirror's checkpoint of the log with the given
 // origin and its signed note, with the mirror's cosignature verified.
 //
 // https://c2sp.org/tlog-mirror#introduction
-func (m *MirrorClient) mirrorCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error) {
+func (m *MirrorClient) latestCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error) {
 	endpoint, err := url.JoinPath(m.monitoringPrefix, fmt.Sprintf("%x", sha256.Sum256([]byte(origin))), "checkpoint")
 	if err != nil {
 		return nil, nil, err
@@ -355,7 +355,7 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, 
 	if start != 0 {
 		return nil, fmt.Errorf("subtree [%d, %d) does not start at 0", start, end)
 	}
-	mirrored, signedNote, err := m.mirrorCheckpoint(ctx, origin)
+	mirrored, signedNote, err := m.latestCheckpoint(ctx, origin)
 	if err != nil {
 		return nil, err
 	}

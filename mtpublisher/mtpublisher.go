@@ -35,7 +35,7 @@ type Mirror interface {
 
 // ErrSubtreeNotMirrored reports that the mirror's checkpoint does not include
 // the subtree yet.
-var ErrSubtreeNotMirrored = errors.New("the mirror has not reached the subtree")
+var ErrSubtreeNotMirrored = errors.New("the mirror's latest checkpoint does not include the subtree")
 
 // mtpublisher obtains and stores its mirror's cosignatures over the issuance
 // log's latest checkpoint and the log's subtrees.
