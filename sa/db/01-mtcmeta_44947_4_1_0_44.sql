@@ -62,7 +62,7 @@ CREATE TABLE `checkpoints` (
 -- either `subtreeStart` or `subtreeEnd`, since indexes are hierarchical. An index on
 -- (`subtreeStart`, `subtreeEnd`) isn't better than an index on (`subtreeEnd`) for answering
 -- the question "which checkpoint subtrees include N?".
-CREATE TABLE `checkpointSubtrees` (
+CREATE TABLE `subtrees` (
     `id` bigint(20) NOT NULL AUTO_INCREMENT,
     -- ASCII-format OID relative to 1.3.6.1.4.1
     -- https://tlswg.org/tls-trust-anchor-ids/draft-ietf-tls-trust-anchor-ids.html#name-trust-anchor-identifiers

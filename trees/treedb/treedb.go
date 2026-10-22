@@ -88,7 +88,7 @@ type Impl struct {
 // table mappings with borp.
 func New(dbMap *db.WrappedMap) *Impl {
 	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
-	dbMap.AddTableWithName(CheckpointSubtreeModel{}, "checkpointSubtrees").SetKeys(true, "ID")
+	dbMap.AddTableWithName(CheckpointSubtreeModel{}, "subtrees").SetKeys(true, "ID")
 	return &Impl{dbMap}
 }
 
@@ -138,7 +138,7 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 
 func (i *Impl) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
 	r, err := i.db.ExecContext(ctx,
-		"UPDATE checkpointSubtrees SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
+		"UPDATE subtrees SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
 		mirrorID, mirrorSignature, id, mtcLogID)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int
 		`SELECT id, mtcLogID, mtcaSignature,
 				mirrorID, mirrorSignature,
 				subtreeStart, subtreeEnd, subtreeHash
-		 FROM checkpointSubtrees
+		 FROM subtrees
 		 WHERE mtcLogID = ? AND
 		 	id = ?`,
 		mtcLogID,
@@ -177,7 +177,7 @@ func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int
 func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSubtreeModel) (int64, error) {
 	err := i.db.Insert(ctx, model)
 	if err != nil {
-		return 0, fmt.Errorf("inserting into checkpointSubtrees table: %s", err)
+		return 0, fmt.Errorf("inserting into subtrees table: %s", err)
 	}
 
 	return model.ID, nil
@@ -190,7 +190,7 @@ func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string) ([]*Che
 		`SELECT id, mtcLogID, mtcaSignature,
 				mirrorID, mirrorSignature,
 				subtreeStart, subtreeEnd, subtreeHash
-		 FROM checkpointSubtrees
+		 FROM subtrees
 		 WHERE mtcLogID = ? AND
 		 	mirrorID IS NULL
 		 ORDER BY id`,
