@@ -45,9 +45,9 @@ func (m *TestMirror) ID() string {
 	return m.cosignerID
 }
 
-// CosignCheckpoint cosigns the checkpoint and returns the cosignature line. It
+// SubmitCheckpoint cosigns the checkpoint and returns the cosignature line. It
 // errors if the checkpoint is not of the cosigner's log.
-func (m *TestMirror) CosignCheckpoint(_ context.Context, cp *checkpoint.Checkpoint, _ []byte) ([]byte, error) {
+func (m *TestMirror) SubmitCheckpoint(_ context.Context, cp *checkpoint.Checkpoint, _ []byte) ([]byte, error) {
 	if cp.Origin != m.cosigner.Origin() {
 		return nil, fmt.Errorf("checkpoint origin %q is not this mirror's log %q", cp.Origin, m.cosigner.Origin())
 	}

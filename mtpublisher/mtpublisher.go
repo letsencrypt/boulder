@@ -23,9 +23,9 @@ import (
 type Mirror interface {
 	// ID returns the mirror's cosigner ID.
 	ID() string
-	// CosignCheckpoint submits the log's signed note for cp and returns the
+	// SubmitCheckpoint submits the log's signed note for cp and returns the
 	// mirror's cosignature line, verified against the mirror's key.
-	CosignCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error)
+	SubmitCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error)
 	// CosignSubtree returns the mirror's signature over the subtree [start,
 	// end) of the log with origin, verified against the mirror's key. It
 	// returns an error wrapping ErrSubtreeNotMirrored if the mirror's
@@ -127,7 +127,7 @@ func (p *mtpublisher) PublishCheckpoint(ctx context.Context) error {
 	}
 
 	// Submit the signed checkpoint to the mirror for cosigning.
-	checkpointCosignatureLine, err := p.mirror.CosignCheckpoint(ctx, cp, signedNoteForMirror)
+	checkpointCosignatureLine, err := p.mirror.SubmitCheckpoint(ctx, cp, signedNoteForMirror)
 	if err != nil {
 		return fmt.Errorf("publishing checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}

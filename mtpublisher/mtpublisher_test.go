@@ -757,16 +757,16 @@ func TestMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	checkpointCosignatureLine, err := m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	checkpointCosignatureLine, err := m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err != nil {
-		t.Fatalf("CosignCheckpoint: %s", err)
+		t.Fatalf("SubmitCheckpoint: %s", err)
 	}
 	subtreeSignature, err := m.CosignSubtree(t.Context(), source.cp.Origin, 0, source.cp.Tree.N, source.cp.Tree.Hash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
 	if !bytes.Equal(checkpointCosignatureLine, source.checkpointCosignatureLine) {
-		t.Errorf("CosignCheckpoint checkpoint cosignature line = %q, want the add-entries line %q", checkpointCosignatureLine, source.checkpointCosignatureLine)
+		t.Errorf("SubmitCheckpoint checkpoint cosignature line = %q, want the add-entries line %q", checkpointCosignatureLine, source.checkpointCosignatureLine)
 	}
 	if !bytes.Equal(subtreeSignature, source.subtreeSignature) {
 		t.Errorf("CosignSubtree = %x, want the mirror's %x", subtreeSignature, source.subtreeSignature)
@@ -822,12 +822,12 @@ func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	got, err := m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	got, err := m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err != nil {
-		t.Fatalf("CosignCheckpoint: %s", err)
+		t.Fatalf("SubmitCheckpoint: %s", err)
 	}
 	if !bytes.Equal(got, source.checkpointCosignatureLine) {
-		t.Errorf("CosignCheckpoint = %q, want the add-entries line %q", got, source.checkpointCosignatureLine)
+		t.Errorf("SubmitCheckpoint = %q, want the add-entries line %q", got, source.checkpointCosignatureLine)
 	}
 	if addEntriesCalls != 2 {
 		t.Errorf("mirror saw %d add-entries calls, want 2", addEntriesCalls)
@@ -856,12 +856,12 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil {
-		t.Fatal("CosignCheckpoint against a refusing mirror = nil error, want error")
+		t.Fatal("SubmitCheckpoint against a refusing mirror = nil error, want error")
 	}
 	if !strings.Contains(err.Error(), "checkpoint refused") {
-		t.Errorf("CosignCheckpoint error %q does not carry the mirror's response", err)
+		t.Errorf("SubmitCheckpoint error %q does not carry the mirror's response", err)
 	}
 
 	overshooting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -877,12 +877,12 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil {
-		t.Fatal("CosignCheckpoint against a mirror wanting upload_start past the tree size = nil error, want error")
+		t.Fatal("SubmitCheckpoint against a mirror wanting upload_start past the tree size = nil error, want error")
 	}
 	if !strings.Contains(err.Error(), "upload_start") {
-		t.Errorf("CosignCheckpoint error %q does not name upload_start", err)
+		t.Errorf("SubmitCheckpoint error %q does not name upload_start", err)
 	}
 
 	mismatched := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -898,9 +898,9 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil || !strings.Contains(err.Error(), "upload_end") {
-		t.Errorf("CosignCheckpoint against a mismatched mirror = %s, want an upload_end error", err)
+		t.Errorf("SubmitCheckpoint against a mismatched mirror = %s, want an upload_end error", err)
 	}
 
 	conflicting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -913,9 +913,9 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil || !strings.Contains(err.Error(), "after retrying") {
-		t.Errorf("CosignCheckpoint against a mirror that keeps answering 409 = %s, want an error after one retry", err)
+		t.Errorf("SubmitCheckpoint against a mirror that keeps answering 409 = %s, want an error after one retry", err)
 	}
 
 	// A mirror that answers 202 without saving any package, which the spec
@@ -934,9 +934,9 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil || !strings.Contains(err.Error(), "no progress") {
-		t.Errorf("CosignCheckpoint against a mirror that accepts nothing = %s, want a no progress error", err)
+		t.Errorf("SubmitCheckpoint against a mirror that accepts nothing = %s, want a no progress error", err)
 	}
 
 	// A checkpoint smaller than the mirror's last cosigned size is a rolled
@@ -947,23 +947,23 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil || !strings.Contains(err.Error(), "no cosignature lines") {
-		t.Errorf("CosignCheckpoint against a mirror answering add-entries with an empty 200 = %s, want an error", err)
+		t.Errorf("SubmitCheckpoint against a mirror answering add-entries with an empty 200 = %s, want an error", err)
 	}
 	m.oldSize = source.newer.N + 1
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil || !strings.Contains(err.Error(), "already holds") {
-		t.Errorf("CosignCheckpoint for a tree smaller than the mirror's size = %s, want an error", err)
+		t.Errorf("SubmitCheckpoint for a tree smaller than the mirror's size = %s, want an error", err)
 	}
 
 	unreachable, err := NewMirrorClient("http://127.0.0.1:1", "http://127.0.0.1:1", NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = unreachable.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = unreachable.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil {
-		t.Error("CosignCheckpoint against an unreachable mirror = nil error, want error")
+		t.Error("SubmitCheckpoint against an unreachable mirror = nil error, want error")
 	}
 
 	// A mirror that cosigns the checkpoint with a zero timestamp.
@@ -978,17 +978,17 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	if err == nil || !strings.Contains(err.Error(), "zero timestamp") {
-		t.Errorf("CosignCheckpoint with a zero timestamp checkpoint cosignature = %s, want a zero timestamp error", err)
+		t.Errorf("SubmitCheckpoint with a zero timestamp checkpoint cosignature = %s, want a zero timestamp error", err)
 	}
 
 	// A mirror whose checkpoint does not include the subtree yet.
 	behind := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		older := &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: source.older}
-		olderCosignatureLine, err := source.mirror.CosignCheckpoint(t.Context(), older, nil)
+		olderCosignatureLine, err := source.mirror.SubmitCheckpoint(t.Context(), older, nil)
 		if err != nil {
-			t.Errorf("CosignCheckpoint: %s", err)
+			t.Errorf("SubmitCheckpoint: %s", err)
 			return
 		}
 		olderNote, err := older.SignedNote(olderCosignatureLine)
@@ -1011,9 +1011,9 @@ func TestMirrorCosignErrors(t *testing.T) {
 	// A mirror whose checkpoint at the subtree's size has a different root.
 	split := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		other := &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: tlog.Tree{N: source.newer.N, Hash: source.older.Hash}}
-		otherCosignatureLine, err := source.mirror.CosignCheckpoint(t.Context(), other, nil)
+		otherCosignatureLine, err := source.mirror.SubmitCheckpoint(t.Context(), other, nil)
 		if err != nil {
-			t.Errorf("CosignCheckpoint: %s", err)
+			t.Errorf("SubmitCheckpoint: %s", err)
 			return
 		}
 		otherNote, err := other.SignedNote(otherCosignatureLine)
@@ -1068,9 +1068,9 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.CosignCheckpoint(t.Context(), source.cp, source.signedNote)
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
 	_, ok := errors.AsType[*note.InvalidSignatureError](err)
 	if !ok {
-		t.Errorf("CosignCheckpoint with a forged signature = %s, want note.InvalidSignatureError", err)
+		t.Errorf("SubmitCheckpoint with a forged signature = %s, want note.InvalidSignatureError", err)
 	}
 }

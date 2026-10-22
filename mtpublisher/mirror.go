@@ -224,7 +224,7 @@ func (m *MirrorClient) addEntries(ctx context.Context, origin string, tree tlog.
 			}
 			if info.TreeSize != tree.N {
 				// The spec has the client adopt the advertised tree size, but
-				// CosignCheckpoint set the mirror's pending checkpoint to tree.N with
+				// SubmitCheckpoint set the mirror's pending checkpoint to tree.N with
 				// add-checkpoint before uploading, so the mirror SHOULD have
 				// echoed it, and a cosignature over any other tree size is no
 				// use here.
@@ -263,13 +263,13 @@ func (m *MirrorClient) signSubtree(ctx context.Context, start, end int64, subtre
 	return respBody, nil
 }
 
-// CosignCheckpoint runs the c2sp.org/tlog-mirror submission protocol for the
+// SubmitCheckpoint runs the c2sp.org/tlog-mirror submission protocol for the
 // checkpoint and returns the mirror's cosignature line from add-entries,
 // verified against the mirror's key. A mirror that is already up to date,
 // whether from an earlier submission whose cosignature was never stored or
 // from another submitter, still gets the full exchange, since that is the only
 // way to obtain its cosignature.
-func (m *MirrorClient) CosignCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) ([]byte, error) {
+func (m *MirrorClient) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) ([]byte, error) {
 	// Submit the checkpoint to the mirror.
 	err := m.addCheckpoint(ctx, cp.Tree, signedNoteForMirror)
 	if err != nil {

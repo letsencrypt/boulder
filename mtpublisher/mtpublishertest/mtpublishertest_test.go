@@ -44,9 +44,9 @@ func TestMirrorCosign(t *testing.T) {
 	}
 
 	cp := &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1." + mtcLogID, Tree: tlog.Tree{N: 512}}
-	checkpointCosignatureLine, err := mirror.CosignCheckpoint(t.Context(), cp, nil)
+	checkpointCosignatureLine, err := mirror.SubmitCheckpoint(t.Context(), cp, nil)
 	if err != nil {
-		t.Fatalf("CosignCheckpoint: %s", err)
+		t.Fatalf("SubmitCheckpoint: %s", err)
 	}
 	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp.Origin, 0, cp.Tree.N, cp.Tree.Hash)
 	if err != nil {
@@ -75,8 +75,8 @@ func TestMirrorCosign(t *testing.T) {
 func TestMirrorCosignRejects(t *testing.T) {
 	mirror, _ := testMirror(t)
 
-	_, err := mirror.CosignCheckpoint(t.Context(), &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1.32473.999", Tree: tlog.Tree{N: 512}}, nil)
+	_, err := mirror.SubmitCheckpoint(t.Context(), &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1.32473.999", Tree: tlog.Tree{N: 512}}, nil)
 	if err == nil {
-		t.Error("CosignCheckpoint with another log's checkpoint = nil error, want error")
+		t.Error("SubmitCheckpoint with another log's checkpoint = nil error, want error")
 	}
 }
