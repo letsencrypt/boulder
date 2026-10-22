@@ -8,10 +8,10 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 )
 
-// valid reports whether [start, end) is a valid subtree per the MTC draft
+// Valid reports whether [start, end) is a valid subtree per the MTC draft
 // section 4.1 Definition of a Subtree: 0 <= start < end and start is a multiple
 // of BIT_CEIL(end - start).
-func valid(start, end int64) bool {
+func Valid(start, end int64) bool {
 	if start < 0 || start >= end {
 		// A subtree must have 0 <= start < end.
 		return false
@@ -31,10 +31,10 @@ func valid(start, end int64) bool {
 // subtree with a power-of-two size), and if so its level.
 func completeSubtree(start, end int64) (level int, ok bool) {
 	size := end - start
-	if !valid(start, end) || bits.OnesCount64(uint64(size)) != 1 { //nolint:gosec // G115: valid ensures start < end, so size is positive.
+	if !Valid(start, end) || bits.OnesCount64(uint64(size)) != 1 { //nolint:gosec // G115: Valid ensures start < end, so size is positive.
 		return 0, false
 	}
-	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: valid ensures start < end, so size is positive.
+	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: Valid ensures start < end, so size is positive.
 }
 
 // splitPoint returns where to split the subtree [start, end) into a complete
@@ -172,7 +172,7 @@ func subtreeSubProof(start, end, windowStart, windowEnd int64, known bool, reade
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-4.4.1
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#appendix-B.4
 func ConsistencyProof(start, end, treeSize int64, reader tlog.HashReader) ([]tlog.Hash, error) {
-	if !valid(start, end) || end > treeSize {
+	if !Valid(start, end) || end > treeSize {
 		return nil, fmt.Errorf("[%d, %d) is not a valid subtree of a tree of size %d", start, end, treeSize)
 	}
 	return subtreeSubProof(start, end, 0, treeSize, true, reader, nil)
@@ -186,7 +186,7 @@ func ConsistencyProof(start, end, treeSize int64, reader tlog.HashReader) ([]tlo
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-4.4.3
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#appendix-B.5
 func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHash tlog.Hash) bool {
-	if !valid(start, end) || end > n {
+	if !Valid(start, end) || end > n {
 		return false
 	}
 
@@ -271,7 +271,7 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-evaluating-a-subtree-inclus
 func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, end int64) (tlog.Hash, error) {
-	if !valid(start, end) {
+	if !Valid(start, end) {
 		return tlog.Hash{}, fmt.Errorf("invalid subtree: [%d, %d)", start, end)
 	}
 	if !(start <= entryIndex && entryIndex < end) {

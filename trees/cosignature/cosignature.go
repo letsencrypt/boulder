@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosigned"
+	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
 // cosignatureAlg is the ML-DSA-44 algorithm byte in the key ID computation.
@@ -53,20 +54,17 @@ func keyIDFor(name string, publicKey *mldsa.PublicKey) uint32 {
 }
 
 // marshalMessage serializes the cosigned.Message for a cosignature over the
-// subtree [start, end). It rejects a negative start and an end not after it.
-//
-// TODO(#9038): reject a [start, end) that is not a valid subtree, as the MTC
-// draft section 5.3.1 requires.
+// subtree [start, end). It rejects a [start, end) that is not a valid subtree.
 func marshalMessage(name string, timestamp uint64, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	if start < 0 || end <= start {
+	if !subtree.Valid(start, end) {
 		return nil, fmt.Errorf("invalid subtree [%d, %d)", start, end)
 	}
 	cosignedMessage := cosigned.Message{
 		CosignerName: name,
 		Timestamp:    timestamp,
 		LogOrigin:    origin,
-		Start:        uint64(start),
-		End:          uint64(end), //nolint:gosec // G115: the check above leaves end > start >= 0.
+		Start:        uint64(start), //nolint:gosec // G115: Valid leaves end > start >= 0.
+		End:          uint64(end),   //nolint:gosec // G115: Valid leaves end > start >= 0.
 		SubtreeHash:  subtreeHash,
 	}
 	return cosignedMessage.Marshal()

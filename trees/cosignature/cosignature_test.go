@@ -321,6 +321,10 @@ func TestCosignerRejects(t *testing.T) {
 	if err == nil {
 		t.Error("CosignSubtree with an empty subtree = nil error, want error")
 	}
+	_, err = ca.CosignSubtree(1, 3, tlog.Hash{})
+	if err == nil {
+		t.Error("CosignSubtree with a start that is not a multiple of the subtree's width = nil error, want error")
+	}
 }
 
 // TestCosignSubtree checks that a subtree starting at 0 is signed as a
