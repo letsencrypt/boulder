@@ -95,7 +95,7 @@ func (f *fakeCheckpointDB) AddSubtreeMirrorSignature(_ context.Context, id int64
 // key.
 func testPublisher(t *testing.T, key *mldsa.PrivateKey, checkpoints *fakeCheckpointDB) *mtpublisher {
 	t.Helper()
-	p, err := New(checkpoints, time.Second, testLogID, testCAKey(t).PublicKey(), testMirror(t, key), blog.NewMock())
+	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), testMirror(t, key), blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
@@ -115,6 +115,16 @@ func testCAKey(t *testing.T) *mldsa.PrivateKey {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
 	return key
+}
+
+// testCAVerifier returns a verifier for testCAKey.
+func testCAVerifier(t *testing.T) *cosignature.Verifier {
+	t.Helper()
+	v, err := cosignature.NewVerifier(testLogID.CAID, testCAKey(t).PublicKey())
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+	return v
 }
 
 // caSignature returns the raw MTCA signature for a checkpoint of treeSize with
@@ -374,6 +384,8 @@ type sourceLog struct {
 	newer      tlog.Tree
 	cp         *checkpoint.Checkpoint
 	signedNote []byte
+	ca         *cosignature.Cosigner
+	caVerifier *cosignature.Verifier
 
 	// mirror cosigns with mirrorKey. The lines are its checkpoint and subtree
 	// cosignatures over the newer tree, the latter carrying subtreeSignature.
@@ -397,6 +409,28 @@ func (s *sourceLog) serveMirrorCheckpoint(t *testing.T, w http.ResponseWriter, r
 		return
 	}
 	w.Write(append(slices.Clone(s.signedNote), s.checkpointCosignatureLine...))
+}
+
+// servedNote returns cp as the mirror would serve it, with the log's line and
+// the mirror's.
+func (s *sourceLog) servedNote(ctx context.Context, cp *checkpoint.Checkpoint) ([]byte, error) {
+	timestamped, err := s.ca.CosignCheckpoint(cp.Tree)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := cosignature.RawSignature(timestamped)
+	if err != nil {
+		return nil, err
+	}
+	caLine, err := s.ca.SignatureLine(0, raw)
+	if err != nil {
+		return nil, err
+	}
+	mirrorLine, err := s.mirror.SubmitCheckpoint(ctx, cp, nil)
+	if err != nil {
+		return nil, err
+	}
+	return cp.SignedNote(append(caLine, mirrorLine...))
 }
 
 // newSourceLog publishes a 300 entry tree and grows it to 700 entries,
@@ -498,7 +532,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 		t.Fatalf("SignatureLine: %s", err)
 	}
 	return &sourceLog{
-		fs3: fs3, older: older, newer: newer, cp: cp, signedNote: signedNote,
+		fs3: fs3, older: older, newer: newer, cp: cp, signedNote: signedNote, ca: ca, caVerifier: testCAVerifier(t),
 		mirrorKey: mirrorKey, mirror: mirror, checkpointCosignatureLine: checkpointCosignatureLine, subtreeCosignatureLine: subtreeCosignatureLine, subtreeSignature: subtreeSignature,
 	}
 }
@@ -582,7 +616,7 @@ func TestMirrorCosignPartialSubtree(t *testing.T) {
 	srv := source.signSubtreeServer(t, 256, 384, partialHash, partialLine)
 	defer srv.Close()
 
-	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -775,7 +809,7 @@ func TestMirrorCosign(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -840,7 +874,7 @@ func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -860,11 +894,11 @@ func TestMirrorCosignAlreadyMirrored(t *testing.T) {
 // refuses the checkpoint, a mirror demanding an upload_end the checkpoint
 // cannot satisfy, and an unreachable mirror.
 func TestMirrorCosignErrors(t *testing.T) {
-	_, err := NewMirrorClient("", "http://mirror.example", NewSource(nil, testTilePrefix), mirrorID, testKey(t).PublicKey(), 10*time.Second)
+	_, err := NewMirrorClient("", "http://mirror.example", NewSource(nil, testTilePrefix), mirrorID, testKey(t).PublicKey(), testCAVerifier(t), 10*time.Second)
 	if err == nil {
 		t.Error("NewMirrorClient with an empty base URL = nil error, want error")
 	}
-	_, err = NewMirrorClient("http://mirror.example", "", NewSource(nil, testTilePrefix), mirrorID, testKey(t).PublicKey(), 10*time.Second)
+	_, err = NewMirrorClient("http://mirror.example", "", NewSource(nil, testTilePrefix), mirrorID, testKey(t).PublicKey(), testCAVerifier(t), 10*time.Second)
 	if err == nil {
 		t.Error("NewMirrorClient with an empty monitoring prefix = nil error, want error")
 	}
@@ -874,7 +908,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		http.Error(w, "checkpoint refused", http.StatusForbidden)
 	}))
 	defer refusing.Close()
-	m, err := NewMirrorClient(refusing.URL, refusing.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err := NewMirrorClient(refusing.URL, refusing.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -895,7 +929,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		fmt.Fprintf(w, "%d\n%d\n\n", source.newer.N, source.newer.N+1)
 	}))
 	defer overshooting.Close()
-	m, err = NewMirrorClient(overshooting.URL, overshooting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(overshooting.URL, overshooting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -916,7 +950,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		fmt.Fprint(w, "9000\n0\n\n")
 	}))
 	defer mismatched.Close()
-	m, err = NewMirrorClient(mismatched.URL, mismatched.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(mismatched.URL, mismatched.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -931,7 +965,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		fmt.Fprintf(w, "%d\n", source.older.N)
 	}))
 	defer conflicting.Close()
-	m, err = NewMirrorClient(conflicting.URL, conflicting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(conflicting.URL, conflicting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -952,7 +986,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		fmt.Fprintf(w, "%d\n%d\n\n", source.newer.N, uploadStart)
 	}))
 	defer stalled.Close()
-	m, err = NewMirrorClient(stalled.URL, stalled.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(stalled.URL, stalled.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -965,7 +999,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 	// back log, not something to submit.
 	accepting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer accepting.Close()
-	m, err = NewMirrorClient(accepting.URL, accepting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(accepting.URL, accepting.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -979,7 +1013,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		t.Errorf("SubmitCheckpoint for a tree smaller than the mirror's size = %s, want an error", err)
 	}
 
-	unreachable, err := NewMirrorClient("http://127.0.0.1:1", "http://127.0.0.1:1", NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	unreachable, err := NewMirrorClient("http://127.0.0.1:1", "http://127.0.0.1:1", NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -996,7 +1030,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		w.Write(source.subtreeCosignatureLine)
 	}))
 	defer undated.Close()
-	m, err = NewMirrorClient(undated.URL, undated.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(undated.URL, undated.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -1005,23 +1039,36 @@ func TestMirrorCosignErrors(t *testing.T) {
 		t.Errorf("SubmitCheckpoint with a zero timestamp checkpoint cosignature = %s, want a zero timestamp error", err)
 	}
 
-	// A mirror whose checkpoint does not include the subtree yet.
-	behind := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		older := &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: source.older}
-		olderCosignatureLine, err := source.mirror.SubmitCheckpoint(t.Context(), older, nil)
-		if err != nil {
-			t.Errorf("SubmitCheckpoint: %s", err)
-			return
-		}
-		olderNote, err := older.SignedNote(olderCosignatureLine)
+	// A mirror whose served checkpoint lacks the log's line.
+	mirrorOnly := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mirrorOnlyNote, err := source.cp.SignedNote(source.checkpointCosignatureLine)
 		if err != nil {
 			t.Errorf("SignedNote: %s", err)
+			return
+		}
+		w.Write(mirrorOnlyNote)
+	}))
+	defer mirrorOnly.Close()
+	m, err = NewMirrorClient(mirrorOnly.URL, mirrorOnly.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = m.CosignSubtree(t.Context(), source.cp.Origin, 0, source.cp.Tree.N, source.cp.Tree.Hash)
+	if err == nil || !strings.Contains(err.Error(), "verifiers signed") {
+		t.Errorf("CosignSubtree against a mirror serving its checkpoint without the log's line = %s, want an error", err)
+	}
+
+	// A mirror whose checkpoint does not include the subtree yet.
+	behind := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		olderNote, err := source.servedNote(t.Context(), &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: source.older})
+		if err != nil {
+			t.Errorf("servedNote: %s", err)
 			return
 		}
 		w.Write(olderNote)
 	}))
 	defer behind.Close()
-	m, err = NewMirrorClient(behind.URL, behind.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(behind.URL, behind.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -1032,21 +1079,15 @@ func TestMirrorCosignErrors(t *testing.T) {
 
 	// A mirror whose checkpoint at the subtree's size has a different root.
 	split := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		other := &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: tlog.Tree{N: source.newer.N, Hash: source.older.Hash}}
-		otherCosignatureLine, err := source.mirror.SubmitCheckpoint(t.Context(), other, nil)
+		otherNote, err := source.servedNote(t.Context(), &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: tlog.Tree{N: source.newer.N, Hash: source.older.Hash}})
 		if err != nil {
-			t.Errorf("SubmitCheckpoint: %s", err)
-			return
-		}
-		otherNote, err := other.SignedNote(otherCosignatureLine)
-		if err != nil {
-			t.Errorf("SignedNote: %s", err)
+			t.Errorf("servedNote: %s", err)
 			return
 		}
 		w.Write(otherNote)
 	}))
 	defer split.Close()
-	m, err = NewMirrorClient(split.URL, split.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(split.URL, split.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
@@ -1086,7 +1127,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		w.Write(forgedLine)
 	}))
 	defer lying.Close()
-	m, err = NewMirrorClient(lying.URL, lying.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
+	m, err = NewMirrorClient(lying.URL, lying.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}

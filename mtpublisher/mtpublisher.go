@@ -2,7 +2,6 @@ package mtpublisher
 
 import (
 	"context"
-	"crypto/mldsa"
 	"errors"
 	"fmt"
 	"time"
@@ -49,17 +48,15 @@ type mtpublisher struct {
 }
 
 // New returns a publisher for the issuance log logID. It reconstructs each
-// checkpoint's signed note from the stored MTCA signature, verified against
-// mtcaPublicKey, and obtains each cosignature from mirror, which verifies it
+// checkpoint's signed note from the stored MTCA signature, verified with
+// caVerifier, and obtains each cosignature from mirror, which verifies it
 // before returning it.
-func New(checkpointDB checkpointDB, interval time.Duration, logID issuancelog.ID, mtcaPublicKey *mldsa.PublicKey, mirror Mirror, log blog.Logger) (*mtpublisher, error) {
+func New(checkpointDB checkpointDB, interval time.Duration, logID issuancelog.ID, caVerifier *cosignature.Verifier, mirror Mirror, log blog.Logger) (*mtpublisher, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("interval must be positive, got %s", interval)
 	}
-
-	caVerifier, err := cosignature.NewVerifier(logID.CAID, mtcaPublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("creating MTCA verifier: %s", err)
+	if caVerifier == nil {
+		return nil, errors.New("nil MTCA verifier")
 	}
 
 	return &mtpublisher{

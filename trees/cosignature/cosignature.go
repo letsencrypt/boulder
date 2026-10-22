@@ -321,24 +321,27 @@ type CheckpointCosignature struct {
 	Signature []byte
 }
 
-// FilterByVerify returns the checkpoint cosignature by this verifier's cosigner
-// from the signatureLines over noteText, ignoring lines by other keys. It
-// errors if the two do not form a well-formed note, if no line is by that
-// cosigner, or if its signature does not verify.
-func (v *Verifier) FilterByVerify(noteText, signatureLines []byte) (*CheckpointCosignature, error) {
-	n, err := note.Open(fmt.Appendf(nil, "%s\n%s", noteText, signatureLines), note.VerifierList(v))
-	if err != nil {
-		return nil, fmt.Errorf("opening the cosigned note: %w", err)
+// CheckpointCosignature returns this cosigner's checkpoint cosignature from a
+// note that checkpoint.Open already verified.
+func (v *Verifier) CheckpointCosignature(n *note.Note) (*CheckpointCosignature, error) {
+	for _, sig := range n.Sigs {
+		if sig.Name != v.keyName || sig.Hash != v.keyID {
+			continue
+		}
+		idSignature, err := base64.StdEncoding.DecodeString(sig.Base64)
+		if err != nil {
+			return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
+		}
+		if len(idSignature) != keyIDSize+timestampedSignatureSize {
+			return nil, fmt.Errorf("signature by %s is %d bytes, want %d", v.keyName, len(idSignature), keyIDSize+timestampedSignatureSize)
+		}
+		return &CheckpointCosignature{
+			Line:      []byte(noteSignatureLinePrefix + sig.Name + " " + sig.Base64 + "\n"),
+			Timestamp: binary.BigEndian.Uint64(idSignature[keyIDSize : keyIDSize+timestampSize]),
+			Signature: idSignature[keyIDSize+timestampSize:],
+		}, nil
 	}
-	idSignature, err := base64.StdEncoding.DecodeString(n.Sigs[0].Base64)
-	if err != nil {
-		return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
-	}
-	return &CheckpointCosignature{
-		Line:      []byte(noteSignatureLinePrefix + n.Sigs[0].Name + " " + n.Sigs[0].Base64 + "\n"),
-		Timestamp: binary.BigEndian.Uint64(idSignature[keyIDSize : keyIDSize+timestampSize]),
-		Signature: idSignature[keyIDSize+timestampSize:],
-	}, nil
+	return nil, fmt.Errorf("note has no signature by %s", v.keyName)
 }
 
 // RawSignature returns the ML-DSA-44 signature from a timestamped_signature,

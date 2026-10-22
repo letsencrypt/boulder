@@ -623,10 +623,6 @@ func (e *errorS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optF
 // in for the daemon, so sequencing can proceed.
 func mirrorCosign(t *testing.T, m *mtca) {
 	t.Helper()
-	caPub, ok := m.issuer.Signer.Public().(*mldsa.PublicKey)
-	if !ok {
-		t.Fatalf("issuer public key is %T, must be ML-DSA-44", m.issuer.Signer.Public())
-	}
 	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
@@ -637,7 +633,7 @@ func mirrorCosign(t *testing.T, m *mtca) {
 	}
 
 	fake := m.treedb.(*fakeDB)
-	p, err := mtpublisher.New(fake, time.Second, m.logID, caPub, mirror, blog.NewMock())
+	p, err := mtpublisher.New(fake, time.Second, m.logID, m.verifier, mirror, blog.NewMock())
 	if err != nil {
 		t.Fatalf("mtpublisher.New: %s", err)
 	}

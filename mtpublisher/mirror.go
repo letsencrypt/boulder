@@ -52,6 +52,7 @@ type MirrorClient struct {
 	src              *Source
 	mirrorID         string
 	verifier         *cosignature.Verifier
+	caVerifier       *cosignature.Verifier
 
 	// oldSize is the tree size of the mirror's latest cosigned checkpoint, the
 	// old size of the next add-checkpoint request.
@@ -66,12 +67,15 @@ type MirrorClient struct {
 // NewMirrorClient returns a MirrorClient that submits to the mirror's endpoints
 // under baseURL and reads its checkpoint under monitoringPrefix, giving each
 // request timeout to complete.
-func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, timeout time.Duration) (*MirrorClient, error) {
+func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, caVerifier *cosignature.Verifier, timeout time.Duration) (*MirrorClient, error) {
 	if baseURL == "" {
 		return nil, errors.New("empty mirror base URL")
 	}
 	if monitoringPrefix == "" {
 		return nil, errors.New("empty mirror monitoring prefix")
+	}
+	if caVerifier == nil {
+		return nil, errors.New("nil MTCA verifier")
 	}
 	if timeout <= 0 {
 		return nil, fmt.Errorf("timeout must be positive, got %s", timeout)
@@ -87,6 +91,7 @@ func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID str
 		src:              src,
 		mirrorID:         mirrorID,
 		verifier:         verifier,
+		caVerifier:       caVerifier,
 	}, nil
 }
 
@@ -282,14 +287,19 @@ func (m *MirrorClient) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Chec
 		return nil, fmt.Errorf("add-entries: %w", err)
 	}
 
-	// Verify the mirror's signature.
-	noteText, err := cp.Marshal()
+	// Verify the mirror's signature. The CQRP allows a mirror one key, so the
+	// response is exactly one line, where tlog-mirror allows one or more.
+	cosignedNote, err := cp.SignedNote(mirrorCosignatureLines)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling the checkpoint: %w", err)
+		return nil, fmt.Errorf("assembling the cosigned checkpoint: %w", err)
 	}
-	checkpointCosignature, err := m.verifier.FilterByVerify(noteText, mirrorCosignatureLines)
+	_, n, err := checkpoint.Open(cosignedNote, m.verifier)
 	if err != nil {
 		return nil, fmt.Errorf("checkpoint cosignature failed verification: %w", err)
+	}
+	checkpointCosignature, err := m.verifier.CheckpointCosignature(n)
+	if err != nil {
+		return nil, err
 	}
 	if checkpointCosignature.Timestamp == 0 {
 		return nil, errors.New("checkpoint cosignature has a zero timestamp")
@@ -298,7 +308,7 @@ func (m *MirrorClient) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Chec
 }
 
 // latestCheckpoint returns the mirror's checkpoint of the log with the given
-// origin and its signed note, with the mirror's cosignature verified.
+// origin and the mirror's cosignature line on it, verified.
 //
 // https://c2sp.org/tlog-mirror#introduction
 func (m *MirrorClient) latestCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error) {
@@ -323,34 +333,25 @@ func (m *MirrorClient) latestCheckpoint(ctx context.Context, origin string) (*ch
 		return nil, nil, fmt.Errorf("mirror returned status %d for its checkpoint: %s", resp.StatusCode, errorBody(body))
 	}
 
-	separator := bytes.Index(body, []byte("\n\n"))
-	if separator < 0 {
-		return nil, nil, errors.New("mirror checkpoint has no signature lines")
-	}
-	noteText := body[:separator+1]
-	signatureLines := body[separator+2:]
-	mirrored, err := checkpoint.Unmarshal(noteText)
+	// The served checkpoint carries the log's line and the mirror's.
+	mirrored, n, err := checkpoint.Open(body, m.caVerifier, m.verifier)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parsing mirror checkpoint: %w", err)
+		return nil, nil, fmt.Errorf("mirror checkpoint failed verification: %w", err)
 	}
 	if mirrored.Origin != origin {
 		return nil, nil, fmt.Errorf("mirror checkpoint is of %s, want %s", mirrored.Origin, origin)
 	}
-	cosig, err := m.verifier.FilterByVerify(noteText, signatureLines)
+	mirrorCosignature, err := m.verifier.CheckpointCosignature(n)
 	if err != nil {
-		return nil, nil, fmt.Errorf("mirror checkpoint cosignature failed verification: %w", err)
+		return nil, nil, err
 	}
-	signedNote, err := mirrored.SignedNote(cosig.Line)
-	if err != nil {
-		return nil, nil, fmt.Errorf("assembling the mirror's signed note: %w", err)
-	}
-	return mirrored, signedNote, nil
+	return mirrored, mirrorCosignature.Line, nil
 }
 
 // CosignSubtree returns the mirror's signature over the subtree [start, end)
 // from sign-subtree, proven against the mirror's own checkpoint.
 func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	mirrored, signedNote, err := m.latestCheckpoint(ctx, origin)
+	mirrored, mirrorLine, err := m.latestCheckpoint(ctx, origin)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +365,16 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, 
 	if !subtree.VerifyConsistency(start, end, mirrored.Tree.N, proof, subtreeHash, mirrored.Tree.Hash) {
 		return nil, fmt.Errorf("subtree [%d, %d) with hash %x is not consistent with the mirror's checkpoint at size %d with root hash %x", start, end, subtreeHash, mirrored.Tree.N, mirrored.Tree.Hash)
 	}
-	subtreeCosignatureLine, err := m.signSubtree(ctx, start, end, subtreeHash, proof, signedNote)
+
+	// The sign-subtree reference checkpoint "MUST include exactly one note
+	// signature", so the note is rebuilt around the mirror's line alone.
+	//
+	// https://c2sp.org/tlog-witness#sign-subtree
+	referenceCheckpoint, err := mirrored.SignedNote(mirrorLine)
+	if err != nil {
+		return nil, fmt.Errorf("assembling the reference checkpoint: %w", err)
+	}
+	subtreeCosignatureLine, err := m.signSubtree(ctx, start, end, subtreeHash, proof, referenceCheckpoint)
 	if err != nil {
 		return nil, fmt.Errorf("sign-subtree: %w", err)
 	}
