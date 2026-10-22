@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/cryptobyte"
-	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
@@ -409,7 +408,12 @@ func (s *sourceLog) serveMirrorCheckpoint(t *testing.T, w http.ResponseWriter, r
 		return
 	}
 	w.Write(append(slices.Clone(s.signedNote), s.checkpointCosignatureLine...))
+	w.Write(greaseLine)
 }
+
+// greaseLine is a signature line by an unknown key, which some logs and mirrors
+// add to their checkpoints so that clients ignore unknown keys.
+var greaseLine = []byte("— grease.invalid " + base64.StdEncoding.EncodeToString(make([]byte, 4+8+mldsa.MLDSA44SignatureSize)) + "\n")
 
 // servedNote returns cp as the mirror would serve it, with the log's line and
 // the mirror's.
@@ -430,7 +434,7 @@ func (s *sourceLog) servedNote(ctx context.Context, cp *checkpoint.Checkpoint) (
 	if err != nil {
 		return nil, err
 	}
-	return cp.SignedNote(append(caLine, mirrorLine...))
+	return cp.SignedNote(append(append(caLine, mirrorLine...), greaseLine...))
 }
 
 // newSourceLog publishes a 300 entry tree and grows it to 700 entries,
@@ -1039,6 +1043,23 @@ func TestMirrorCosignErrors(t *testing.T) {
 		t.Errorf("SubmitCheckpoint with a zero timestamp checkpoint cosignature = %s, want a zero timestamp error", err)
 	}
 
+	// A mirror that answers add-entries with a line by another key as well.
+	greased := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/add-checkpoint" {
+			return
+		}
+		w.Write(append(slices.Clone(source.checkpointCosignatureLine), greaseLine...))
+	}))
+	defer greased.Close()
+	m, err = NewMirrorClient(greased.URL, greased.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewMirrorClient: %s", err)
+	}
+	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
+	if err == nil || !strings.Contains(err.Error(), "other than the mirror's") {
+		t.Errorf("SubmitCheckpoint with a line by another key in the add-entries response = %s, want an error", err)
+	}
+
 	// A mirror whose served checkpoint lacks the log's line.
 	mirrorOnly := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mirrorOnlyNote, err := source.cp.SignedNote(source.checkpointCosignatureLine)
@@ -1096,44 +1117,4 @@ func TestMirrorCosignErrors(t *testing.T) {
 		t.Errorf("CosignSubtree against a mirror with a different root = %s, want a root hash error", err)
 	}
 
-	// A mirror whose signature line names its key but was signed by another,
-	// so the signature is checked and rejected rather than ignored as unknown.
-	forger, err := cosignature.NewCosigner(mirrorID, source.cp.Origin, privatekey.NewDeterministicSigner(testKey(t)))
-	if err != nil {
-		t.Fatalf("NewCosigner: %s", err)
-	}
-	forgedTimestamped, err := forger.CosignCheckpoint(source.newer)
-	if err != nil {
-		t.Fatalf("CosignCheckpoint: %s", err)
-	}
-	forgedRaw, err := cosignature.RawSignature(forgedTimestamped)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-
-	mirrorCosigner, err := cosignature.NewCosigner(mirrorID, source.cp.Origin, privatekey.NewDeterministicSigner(source.mirrorKey))
-	if err != nil {
-		t.Fatalf("NewCosigner: %s", err)
-	}
-
-	forgedLine, err := mirrorCosigner.SignatureLine(0, forgedRaw)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-	lying := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/add-checkpoint" {
-			return
-		}
-		w.Write(forgedLine)
-	}))
-	defer lying.Close()
-	m, err = NewMirrorClient(lying.URL, lying.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), source.caVerifier, 10*time.Second)
-	if err != nil {
-		t.Fatalf("NewMirrorClient: %s", err)
-	}
-	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
-	_, ok := errors.AsType[*note.InvalidSignatureError](err)
-	if !ok {
-		t.Errorf("SubmitCheckpoint with a forged signature = %s, want note.InvalidSignatureError", err)
-	}
 }

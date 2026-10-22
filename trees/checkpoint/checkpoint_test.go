@@ -2,7 +2,11 @@ package checkpoint
 
 import (
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/binary"
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"golang.org/x/mod/sumdb/note"
@@ -242,17 +246,52 @@ func TestOpenCheckpoint(t *testing.T) {
 		if err != nil {
 			t.Fatalf("note.Sign: %s", err)
 		}
-		_, _, err = Open(twiceSigned, verifier)
-		if err == nil {
-			t.Error("Open with an extra signature from an unknown key = nil error, want error")
+		_, n, err := Open(twiceSigned, verifier)
+		if err != nil {
+			t.Fatalf("Open with an extra signature from an unknown key: %s", err)
+		}
+		if len(n.Sigs) != 1 || len(n.UnverifiedSigs) != 1 {
+			t.Errorf("Open with an extra signature from an unknown key = %d verified and %d unverified signatures, want 1 and 1", len(n.Sigs), len(n.UnverifiedSigs))
 		}
 	})
 
 	t.Run("Repeated signature", func(t *testing.T) {
 		repeated := append(slices.Clone(signed), signed[len(exampleCheckpoint)+1:]...)
-		_, _, err := Open(repeated, verifier)
-		if err == nil {
-			t.Error("Open with a repeated signature = nil error, want error")
+		_, n, err := Open(repeated, verifier)
+		if err != nil {
+			t.Fatalf("Open with a repeated signature: %s", err)
+		}
+		if len(n.Sigs) != 1 {
+			t.Errorf("Open with a repeated signature = %d verified signatures, want 1", len(n.Sigs))
+		}
+	})
+
+	t.Run("Forged signature", func(t *testing.T) {
+		// A line naming the verifier's key that another key signed is
+		// rejected, not ignored as unknown.
+		otherSkey, _, err := note.GenerateKey(rand.Reader, "example.com/behind-the-sofa")
+		if err != nil {
+			t.Fatalf("GenerateKey: %s", err)
+		}
+		otherSigner, err := note.NewSigner(otherSkey)
+		if err != nil {
+			t.Fatalf("NewSigner: %s", err)
+		}
+		otherSigned, err := note.Sign(&note.Note{Text: exampleCheckpoint}, otherSigner)
+		if err != nil {
+			t.Fatalf("note.Sign: %s", err)
+		}
+		prefix := exampleCheckpoint + "\n— example.com/behind-the-sofa "
+		body, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(string(otherSigned[len(prefix):]), "\n"))
+		if err != nil {
+			t.Fatalf("DecodeString: %s", err)
+		}
+		binary.BigEndian.PutUint32(body[:4], verifier.KeyHash())
+		forged := []byte(prefix + base64.StdEncoding.EncodeToString(body) + "\n")
+		_, _, err = Open(forged, verifier)
+		_, ok := errors.AsType[*note.InvalidSignatureError](err)
+		if !ok {
+			t.Errorf("Open with a forged signature = %s, want note.InvalidSignatureError", err)
 		}
 	})
 
