@@ -575,13 +575,13 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
 
+	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
+	// always using 0 for subtreeStart
 	subtreeSignature, err := m.cosigner.CosignSubtree(0, m.frontier.TreeSize(), newRootHash)
 	if err != nil {
 		return fmt.Errorf("signing subtree: %s", err)
 	}
 
-	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
-	// always using 0 for subtreeStart
 	subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
 		MTCLogID:        m.logID.String(),
 		MTCASignature:   subtreeSignature,
