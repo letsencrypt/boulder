@@ -362,12 +362,12 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, 
 	if mirrored.Tree.N < end {
 		return nil, fmt.Errorf("%w: mirror checkpoint at size %d does not include subtree [%d, %d)", ErrSubtreeNotMirrored, mirrored.Tree.N, start, end)
 	}
-	if mirrored.Tree.N == end && mirrored.Tree.Hash != subtreeHash {
-		return nil, fmt.Errorf("mirror checkpoint at size %d has root hash %x, the log's is %x", end, mirrored.Tree.Hash, subtreeHash)
-	}
 	proof, err := subtree.ConsistencyProof(start, end, mirrored.Tree.N, m.src.hashReaderForTree(ctx, mirrored.Tree))
 	if err != nil {
 		return nil, fmt.Errorf("proving subtree [%d, %d) in the mirror's tree of size %d: %s", start, end, mirrored.Tree.N, err)
+	}
+	if !subtree.VerifyConsistency(start, end, mirrored.Tree.N, proof, subtreeHash, mirrored.Tree.Hash) {
+		return nil, fmt.Errorf("subtree [%d, %d) with hash %x is not consistent with the mirror's checkpoint at size %d with root hash %x", start, end, subtreeHash, mirrored.Tree.N, mirrored.Tree.Hash)
 	}
 	subtreeCosignatureLines, err := m.signSubtree(ctx, start, end, subtreeHash, proof, signedNote)
 	if err != nil {
