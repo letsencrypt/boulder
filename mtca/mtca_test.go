@@ -840,7 +840,7 @@ func TestSequence(t *testing.T) {
 		if len(subtree.MTCASignature) == 0 {
 			t.Error("subtree.MTCASignature: got empty slice, want non-empty slice")
 		}
-		if !mtca.verifier.VerifySubtree(mtca.logID.Origin(), int64(subtree.SubtreeStart), int64(subtree.SubtreeEnd), tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) { //nolint:gosec // G115: the subtree covers the 6 entry tree
+		if !mtca.verifier.VerifySubtreeSignature(mtca.logID.Origin(), int64(subtree.SubtreeStart), int64(subtree.SubtreeEnd), tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) { //nolint:gosec // G115: the subtree covers the 6 entry tree
 			t.Error("subtree.MTCASignature: does not verify")
 		}
 

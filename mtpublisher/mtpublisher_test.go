@@ -230,7 +230,7 @@ func TestPublish(t *testing.T) {
 	if *subtree.MirrorID != mirrorID {
 		t.Errorf("subtree mirrorID = %q, want %q", *subtree.MirrorID, mirrorID)
 	}
-	if !verifier.VerifySubtree(testLogID.Origin(), 0, 512, tlog.Hash(subtree.SubtreeHash), subtree.MirrorSignature) {
+	if !verifier.VerifySubtreeSignature(testLogID.Origin(), 0, 512, tlog.Hash(subtree.SubtreeHash), subtree.MirrorSignature) {
 		t.Error("stored subtree signature does not verify")
 	}
 }

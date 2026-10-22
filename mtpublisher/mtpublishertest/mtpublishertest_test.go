@@ -65,7 +65,7 @@ func TestMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Errorf("the mirror's cosignature does not verify: %s", err)
 	}
-	if !verifier.VerifySubtree(cp.Origin, 0, cp.Tree.N, cp.Tree.Hash, subtreeSignature) {
+	if !verifier.VerifySubtreeSignature(cp.Origin, 0, cp.Tree.N, cp.Tree.Hash, subtreeSignature) {
 		t.Error("the mirror's subtree signature does not verify")
 	}
 }

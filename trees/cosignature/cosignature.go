@@ -259,12 +259,12 @@ func (v *Verifier) Verify(noteText, timestampedSignature []byte) bool {
 	return mldsa.Verify(v.publicKey, cosignedMessage, timestampedSignature[timestampSize:], nil) == nil
 }
 
-// VerifySubtree reports whether signature is a valid subtree cosignature by
-// this cosigner over the subtree [start, end) with hash subtreeHash of the log
-// with origin.
+// VerifySubtreeSignature reports whether signature is a valid subtree
+// cosignature by this cosigner over the subtree [start, end) with hash
+// subtreeHash of the log with origin.
 //
 // https://c2sp.org/tlog-cosignature#subtree-cosignatures
-func (v *Verifier) VerifySubtree(origin string, start, end int64, subtreeHash tlog.Hash, signature []byte) bool {
+func (v *Verifier) VerifySubtreeSignature(origin string, start, end int64, subtreeHash tlog.Hash, signature []byte) bool {
 	cosignedMessage, err := marshalMessage(v.keyName, 0, origin, start, end, subtreeHash)
 	if err != nil {
 		return false

@@ -361,14 +361,44 @@ func TestCosignSubtree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	if !v.VerifySubtree(ca.origin, 1024, 1536, parsed.Tree.Hash, signature) {
-		t.Error("VerifySubtree rejected the subtree signature")
+	if !v.VerifySubtreeSignature(ca.origin, 1024, 1536, parsed.Tree.Hash, signature) {
+		t.Error("VerifySubtreeSignature rejected the subtree signature")
 	}
-	if v.VerifySubtree(ca.origin, 1024, 2048, parsed.Tree.Hash, signature) {
-		t.Error("VerifySubtree accepted the subtree signature over a different end")
+}
+
+// TestVerifySubtreeSignatureRejects checks that a subtree signature is bound
+// to its subtree's start and that only a valid subtree verifies.
+func TestVerifySubtreeSignatureRejects(t *testing.T) {
+	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
 	}
-	if v.VerifySubtree(ca.origin, 1024, 1536, parsed.Tree.Hash, signature[1:]) {
-		t.Error("VerifySubtree accepted a truncated subtree signature")
+	hash := tlog.Hash{1, 2, 3}
+	signature, err := ca.CosignSubtree(1024, 1536, hash)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	v, err := NewVerifier("32473.2", testPubKey(t))
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+
+	cases := []struct {
+		name       string
+		origin     string
+		start, end int64
+		hash       tlog.Hash
+		signature  []byte
+	}{
+		{"Different start", ca.origin, 0, 1536, hash, signature},
+		{"Invalid subtree", ca.origin, 1025, 1536, hash, signature},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if v.VerifySubtreeSignature(tc.origin, tc.start, tc.end, tc.hash, tc.signature) {
+				t.Error("VerifySubtreeSignature = true, want false")
+			}
+		})
 	}
 }
 

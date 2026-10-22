@@ -158,7 +158,7 @@ func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
 		start := int64(subtree.SubtreeStart) //nolint:gosec // G115: Valid checked the bounds
 		end := int64(subtree.SubtreeEnd)     //nolint:gosec // G115: Valid checked the bounds
 		subtreeHash := tlog.Hash(subtree.SubtreeHash)
-		if !p.caVerifier.VerifySubtree(p.logID.Origin(), start, end, subtreeHash, subtree.MTCASignature) {
+		if !p.caVerifier.VerifySubtreeSignature(p.logID.Origin(), start, end, subtreeHash, subtree.MTCASignature) {
 			return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
 		}
 
