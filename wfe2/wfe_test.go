@@ -4713,12 +4713,6 @@ func TestMTCGetOrder(t *testing.T) {
 		expect string
 	}{
 		{
-			// testCase 0 is a special case tested before the wfe is wired-up with an MTCB
-			name:   "MTC Order without MTCBService",
-			path:   "1/2",
-			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default" }`,
-		},
-		{
 			name:   "Classic Order",
 			path:   "1/1",
 			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/1", "profile": "default", "certificate": "http://localhost/acme/cert/4" }`,
@@ -4753,20 +4747,11 @@ func TestMTCGetOrder(t *testing.T) {
 	mockRA.clk = fc
 	wfe.ra = mockRA
 
-	// Test order retrieval with no MTCBService configured
-	responseWriter := httptest.NewRecorder()
-	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, makePost(1, testCases[0].path, ""))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), testCases[0].expect)
-
-	// Now wire-up the wfe with an MTCB mock
+	// wire-up the wfe with an MTCB mock
 	mockMTCB := &mockMTCBWithGetStandalone{}
 	wfe.mtcb = mockMTCB
 
-	for tcIdx, tc := range testCases {
-		// skip special test-case 0
-		if tcIdx == 0 {
-			continue
-		}
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -4806,6 +4791,30 @@ func TestMerkleTreeCertificate(t *testing.T) {
 		pathAdd string
 		expResp expectResponse
 	}{
+		{
+			name:    "Request using unparsable acctID",
+			pathAdd: "k/2/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "not found", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using unparsable orderID",
+			pathAdd: "1/k/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "not found", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using unparsable MTCSerial",
+			pathAdd: "1/2/44947.4.1.0.3/k",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "not found", "status": 404}`,
+			},
+		},
 		{
 			name:    "Request using non-existent Order ID",
 			pathAdd: "1/9/44947.4.1.0.3/4",
@@ -4908,7 +4917,7 @@ func TestMerkleTreeCertificate(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	requestPath := mtcPath + "1/2/44947.4.1.0.3/4"
 	mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{ "type": "urn:ietf:params:acme:error:malformed", "detail": "Not Supported", "status": 400 }`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{ "type": "urn:ietf:params:acme:error:malformed", "status": 404 }`)
 
 	// Now wire-up a mock MTCB
 	mockMTCB := &mockMTCBWithGetStandalone{}
