@@ -33,7 +33,7 @@ type Config struct {
 
 		// LogID identifies the issuance log this MTCA sequences. Its CA ID must
 		// match the issuer certificate's.
-		LogID issuancelog.ID `validate:"required"`
+		LogID issuancelog.Config `validate:"required"`
 
 		Issuance struct {
 			CertProfiles map[string]issuance.ProfileConfig `validate:"required,dive,keys,alphanum,min=1,max=32,endkeys"`
@@ -95,6 +95,9 @@ func main() {
 	issuer, err := issuance.LoadIssuer(c.MTCA.Issuance.Issuers[0], clk)
 	cmd.FailOnError(err, "Loading issuer")
 
+	logID, err := c.MTCA.LogID.Load()
+	cmd.FailOnError(err, "Parsing Log ID")
+
 	profiles := make(map[string]*issuance.Profile)
 	for name, profileConfig := range c.MTCA.Issuance.CertProfiles {
 		if !profileConfig.MTC {
@@ -114,7 +117,7 @@ func main() {
 	mtcaImpl, err := mtca.New(
 		issuer,
 		profiles,
-		c.MTCA.LogID,
+		logID,
 		c.MTCA.SequencingPeriod.Duration,
 		treedb.New(dbMap),
 		s3c,

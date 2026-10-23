@@ -123,7 +123,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 		return nil, fmt.Errorf("parsing MTCLogID: %s", err)
 	}
 
-	_, ok := m.issuers[requestedLogID.CAID]
+	_, ok := m.issuers[requestedLogID.CAID().String()]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
 	}
@@ -133,7 +133,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 		return nil, err
 	}
 
-	if requestedLogNumber != requestedLogID.LogNumber {
+	if requestedLogNumber != requestedLogID.LogNumber() {
 		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
@@ -162,7 +162,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	// TODO(#9085): use the issuer certificate returned here to self-verify the end-entity certificate
 	// before returning.
-	_, ok := m.issuers[requestedLogID.CAID]
+	_, ok := m.issuers[requestedLogID.CAID().String()]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
 	}
@@ -171,7 +171,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	if err != nil {
 		return nil, err
 	}
-	if requestedLogNumber != requestedLogID.LogNumber {
+	if requestedLogNumber != requestedLogID.LogNumber() {
 		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
@@ -258,11 +258,6 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
-	mtcaID, err := reloid.FromString(requestedLogID.CAID)
-	if err != nil {
-		return nil, fmt.Errorf("parsing MTCA ID: %w", err)
-	}
-
 	mirrorID, err := reloid.FromString(*subtree.MirrorID)
 	if err != nil {
 		return nil, fmt.Errorf("parsing Mirror ID: %w", err)
@@ -273,7 +268,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		End:            subtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: mtcaID.Bytes(), Signature: subtree.MTCASignature},
+			{CosignerID: requestedLogID.CAID().Bytes(), Signature: subtree.MTCASignature},
 			{CosignerID: mirrorID.Bytes(), Signature: subtree.MirrorSignature},
 		},
 	}
@@ -331,7 +326,7 @@ func buildCertificate(tbs []byte, sig *proof.MTCProof) ([]byte, error) {
 }
 
 // readCheckpoint returns the current checkpoint for a given logID.
-func (m *mtcb) readCheckpoint(ctx context.Context, logID issuancelog.ID) (*checkpoint.Checkpoint, error) {
+func (m *mtcb) readCheckpoint(ctx context.Context, logID *issuancelog.ID) (*checkpoint.Checkpoint, error) {
 	bucket := m.s3c.Bucket()
 	path := logID.CheckpointPath()
 	out, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &path})
@@ -345,9 +340,9 @@ func (m *mtcb) readCheckpoint(ctx context.Context, logID issuancelog.ID) (*check
 		return nil, fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
 	}
 
-	issuer, ok := m.issuers[logID.CAID]
+	issuer, ok := m.issuers[logID.CAID().String()]
 	if !ok {
-		return nil, fmt.Errorf("no issuer configured for MTCAID %q", logID.CAID)
+		return nil, fmt.Errorf("no issuer configured for MTCAID %q", logID.CAID())
 	}
 
 	cp, _, err := checkpoint.Open(body, issuer.checkpointVerifier)

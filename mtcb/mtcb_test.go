@@ -42,8 +42,7 @@ import (
 var (
 	mirrorID  = "32473.9"
 	mirrorOID = must.Do(reloid.FromString(mirrorID))
-	testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 5}
-	testCAOID = must.Do(reloid.FromString(testLogID.CAID))
+	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 5}.Load())
 )
 
 // TestBuildCertificate checks that buildCertificate's output parses as a
@@ -68,7 +67,7 @@ func TestBuildCertificate(t *testing.T) {
 		End:            8,
 		InclusionProof: []tlog.Hash{{1}, {2}, {3}},
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: testCAOID.Bytes(), Signature: []byte("mtca sig")},
+			{CosignerID: testLogID.CAID().Bytes(), Signature: []byte("mtca sig")},
 			{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")},
 		},
 	}
@@ -177,7 +176,7 @@ func newTestLog(t *testing.T) *testLog {
 // testSerial returns the serial of the entry at index in testLogID.
 func testSerial(t *testing.T, index int64) uint64 {
 	t.Helper()
-	serial, err := core.EncodeMTCSerial(testLogID.LogNumber, index)
+	serial, err := core.EncodeMTCSerial(testLogID.LogNumber(), index)
 	if err != nil {
 		t.Fatalf("EncodeMTCSerial: %s", err)
 	}
@@ -252,7 +251,7 @@ func testMTCB(t *testing.T, fs3 *bs3test.FakeS3, subtrees []*treedb.CheckpointSu
 }
 
 type signer struct {
-	logID    issuancelog.ID
+	logID    *issuancelog.ID
 	cosigner *cosignature.Cosigner
 	caPubKey crypto.PublicKey
 }
@@ -279,8 +278,8 @@ func newSigner(t *testing.T) *signer {
 }
 
 // newSignerForLog returns a *signer that signs checkpoints of the given logID with the CA's key.
-func newSignerForLog(t *testing.T, logID issuancelog.ID) *signer {
-	ca, caPubKey := newCosigner(t, "../test/certs/mtpki/mtca1.key.pem", logID.CAID, logID.Origin())
+func newSignerForLog(t *testing.T, logID *issuancelog.ID) *signer {
+	ca, caPubKey := newCosigner(t, "../test/certs/mtpki/mtca1.key.pem", logID.CAID().String(), logID.Origin())
 	return &signer{
 		logID:    logID,
 		cosigner: ca,
@@ -320,7 +319,7 @@ func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.Checkpo
 	signedNote := append(noteText, '\n')
 	signedNote = append(signedNote, caCosignatureLine...)
 
-	verifier, err := cosignature.NewVerifier(s.logID.CAID, s.caPubKey.(*mldsa.PublicKey))
+	verifier, err := cosignature.NewVerifier(s.logID.CAID().String(), s.caPubKey.(*mldsa.PublicKey))
 	if err != nil {
 		t.Fatalf("creating CA verifier: %s", err)
 	}
@@ -404,7 +403,7 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 		// result in anything recognizable, but it still works for use as a map key.
 		sigsByID[string(sig.CosignerID)] = sig.Signature
 	}
-	testLogSig := sigsByID[string(testCAOID.Bytes())]
+	testLogSig := sigsByID[string(testLogID.CAID().Bytes())]
 	if !bytes.Equal(testLogSig, dbSubtree.MTCASignature) {
 		t.Errorf("MTCA cosignature = %x, want %x", testLogSig, dbSubtree.MTCASignature)
 	}
@@ -545,7 +544,7 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 	})
 
 	// The same checkpoint, validly signed by the same CA, but for a different log.
-	otherLog := issuancelog.ID{CAID: testLogID.CAID, LogNumber: testLogID.LogNumber + 1}
+	otherLog := must.Do(issuancelog.Config{CAID: testLogID.CAID().String(), LogNumber: testLogID.LogNumber() + 1}.Load())
 	otherLogNote := newSignerForLog(t, otherLog).checkpointSignedNote(t, &treedb.CheckpointModel{
 		TreeSize: 4,
 		RootHash: make([]byte, 32),
@@ -612,7 +611,7 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 	t.Parallel()
 	serial := testSerial(t, 1)
-	otherLog := issuancelog.ID{CAID: testLogID.CAID, LogNumber: testLogID.LogNumber + 1}
+	otherLog := must.Do(issuancelog.Config{CAID: testLogID.CAID().String(), LogNumber: testLogID.LogNumber() + 1}.Load())
 
 	for _, tc := range []struct {
 		name              string
@@ -622,7 +621,7 @@ func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 		{"Empty log ID", &mtcbpb.StandaloneRequest{MtcSerialNumber: serial, MtcSubtreeID: 123}, "incomplete"},
 		{"Zero serial", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), MtcSubtreeID: 123}, "incomplete"},
 		{"Zero subtreeID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), MtcSerialNumber: serial}, "incomplete"},
-		{"Malformed log ID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.CAID, MtcSerialNumber: serial, MtcSubtreeID: 123}, "before its log number"},
+		{"Malformed log ID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.CAID().String(), MtcSerialNumber: serial, MtcSubtreeID: 123}, "before its log number"},
 		{"Unknown CA", &mtcbpb.StandaloneRequest{MtcLogID: "32473.9.0.5", MtcSerialNumber: serial, MtcSubtreeID: 123}, "no issuer configured"},
 		{"Log number mismatch", &mtcbpb.StandaloneRequest{MtcLogID: otherLog.String(), MtcSerialNumber: serial, MtcSubtreeID: 123}, "encodes log number"},
 	} {
@@ -661,7 +660,7 @@ func TestStandaloneReady(t *testing.T) {
 		SubtreeHash:   make([]byte, 32),
 	}
 	m := testMTCB(t, bs3test.New(), []*treedb.CheckpointSubtreeModel{mirrored, unmirrored})
-	otherLog := issuancelog.ID{CAID: testLogID.CAID, LogNumber: testLogID.LogNumber + 1}
+	otherLog := must.Do(issuancelog.Config{CAID: testLogID.CAID().String(), LogNumber: testLogID.LogNumber() + 1}.Load())
 
 	for _, tc := range []struct {
 		name              string

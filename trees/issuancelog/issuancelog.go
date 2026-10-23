@@ -5,6 +5,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/letsencrypt/boulder/core/reloid"
 )
 
 // oidPrefix begins every mtc-tlog log origin, the IANA private enterprise arc
@@ -13,12 +15,12 @@ import (
 // https://c2sp.org/mtc-tlog
 const oidPrefix = "oid/1.3.6.1.4.1."
 
-// ID is a log ID, identifying one issuance log by the CA ID of the CA operating
-// it and the log's log number. The mtca and the mtpublisher derive the names
-// they configure themselves with from it.
+// Config is how a service can configure a log ID, identifying one issuance log
+// by the CA ID of the CA operating it and the log's log number. The mtca and
+// the mtpublisher derive the names they configure themselves with from it.
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-issuance-logs
-type ID struct {
+type Config struct {
 	// CAID is the CA ID, a trust anchor ID, in its ASCII representation (e.g.
 	// "44947.4.1").
 	CAID string `validate:"required"`
@@ -27,42 +29,67 @@ type ID struct {
 	LogNumber uint16 `validate:"required"`
 }
 
+// Load converts a Config to an ID, checking that the configured CA ID and Log
+// Number form valid relative OIDs.
+func (c Config) Load() (*ID, error) {
+	caID, err := reloid.FromString(c.CAID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CA ID: %w", err)
+	}
+	logID, err := reloid.FromString(fmt.Sprintf("%s.0.%d", c.CAID, c.LogNumber))
+	if err != nil {
+		return nil, fmt.Errorf("invalid log number: %w", err)
+	}
+	return &ID{caID: caID, logID: logID, logNum: c.LogNumber}, nil
+}
+
+// ID represents a Log ID.
+type ID struct {
+	caID   *reloid.RelativeOID
+	logID  *reloid.RelativeOID
+	logNum uint16
+}
+
+// CAID returns the CA ID as a relative OID.
+func (id *ID) CAID() *reloid.RelativeOID {
+	return id.caID
+}
+
+// LogNumber returns the Log ID's log number (the last component of its OID).
+func (id *ID) LogNumber() uint16 {
+	return id.logNum
+}
+
 // String returns the log ID in its ASCII representation, the CA ID followed by
 // the constant 0 and the log number. For instance, the log ID of CA ID
 // "44947.4.1" and log number 44 is "44947.4.1.0.44".
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-issuance-logs
-func (id ID) String() string {
-	return fmt.Sprintf("%s.0.%d", id.CAID, id.LogNumber)
+func (id *ID) String() string {
+	return id.logID.String()
 }
 
 // ParseID parses a log ID from its ASCII representation, the inverse of
 // ID.String. It rejects anything ID.String would not have produced.
-func ParseID(s string) (ID, error) {
+func ParseID(s string) (*ID, error) {
 	arcs := strings.Split(s, ".")
 	if len(arcs) < 3 {
-		return ID{}, fmt.Errorf("log ID %q must have at least three arcs", s)
-	}
-	for _, arc := range arcs {
-		_, err := strconv.ParseUint(arc, 10, 64)
-		if err != nil {
-			return ID{}, fmt.Errorf("parsing arc %q of log ID %q: %w", arc, s, err)
-		}
-		if len(arc) > 1 && arc[0] == '0' {
-			return ID{}, fmt.Errorf("arc %q of log ID %q has a leading zero", arc, s)
-		}
+		return nil, fmt.Errorf("log ID %q must have at least three arcs", s)
 	}
 	if arcs[len(arcs)-2] != "0" {
-		return ID{}, fmt.Errorf("log ID %q must have 0 before its log number, got %q", s, arcs[len(arcs)-2])
+		return nil, fmt.Errorf("log ID %q must have 0 before its log number, got %q", s, arcs[len(arcs)-2])
 	}
 	logNumber, err := strconv.ParseUint(arcs[len(arcs)-1], 10, 16)
 	if err != nil {
-		return ID{}, fmt.Errorf("parsing log number of log ID %q: %w", s, err)
+		return nil, fmt.Errorf("parsing log number of log ID %q: %w", s, err)
+	}
+	if strconv.FormatUint(logNumber, 10) != arcs[len(arcs)-1] {
+		return nil, fmt.Errorf("log number of log ID %q has a leading zero", s)
 	}
 	if logNumber == 0 {
-		return ID{}, fmt.Errorf("log ID %q has log number 0, but log numbers start at 1", s)
+		return nil, fmt.Errorf("log ID %q has log number 0, but log numbers start at 1", s)
 	}
-	return ID{CAID: strings.Join(arcs[:len(arcs)-2], "."), LogNumber: uint16(logNumber)}, nil
+	return Config{CAID: strings.Join(arcs[:len(arcs)-2], "."), LogNumber: uint16(logNumber)}.Load()
 }
 
 // Origin returns the log origin per mtc-tlog, the log ID as an origin. For
@@ -70,7 +97,7 @@ func ParseID(s string) (ID, error) {
 // "oid/1.3.6.1.4.1.44947.4.1.0.44".
 //
 // https://c2sp.org/mtc-tlog
-func (id ID) Origin() string {
+func (id *ID) Origin() string {
 	return oidPrefix + id.String()
 }
 
@@ -91,8 +118,8 @@ func (id ID) Origin() string {
 // As a matter of local convention we will put the CA ID as the path component
 // right before log number. For instance, the prefix of CA ID "44947.4.1" and
 // log number 44 is "44947.4.1/44".
-func (id ID) TilePrefix() string {
-	return fmt.Sprintf("%s/%d", id.CAID, id.LogNumber)
+func (id *ID) TilePrefix() string {
+	return fmt.Sprintf("%s/%d", id.caID.String(), id.logNum)
 }
 
 // CheckpointPath returns the path of the checkpoint file for this log within tile storage.

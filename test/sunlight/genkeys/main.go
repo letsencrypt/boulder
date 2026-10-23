@@ -70,7 +70,10 @@ func logListFile(p, mtcaPublicKeyFile string) error {
 	if !ok {
 		return fmt.Errorf("MTCA public key is %T, must be ML-DSA-44", pub)
 	}
-	logID := issuancelog.ID{CAID: caID, LogNumber: logNumber}
+	logID, err := issuancelog.Config{CAID: caID, LogNumber: logNumber}.Load()
+	if err != nil {
+		return err
+	}
 	logList := "logs/v0\nvkey " + cosignatureVKey("oid/1.3.6.1.4.1."+caID, mtcaKey) +
 		"\norigin " + logID.Origin() + "\n"
 	return os.WriteFile(p, []byte(logList), 0644)
