@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -40,7 +41,7 @@ const (
 	mirrorID = "32473.9"
 )
 
-var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 44}
+var testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 44}.Load())
 
 // fakeCheckpointDB holds the latest checkpoint of one log, or none for a log
 // that is not initialized, and stores the mirror cosignature on it. The mtca
@@ -96,7 +97,7 @@ func testCAKey(t *testing.T) *mldsa.PrivateKey {
 // a zero root hash, as testCheckpoint holds.
 func caSignature(t *testing.T, treeSize int64) []byte {
 	t.Helper()
-	ca, err := cosignature.NewCosigner(testLogID.CAID, testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
+	ca, err := cosignature.NewCosigner(testLogID.CAID().String(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -294,7 +295,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	ca, err := cosignature.NewCosigner(testLogID.CAID, testLogID.Origin(), privatekey.NewDeterministicSigner(caKey))
+	ca, err := cosignature.NewCosigner(testLogID.CAID().String(), testLogID.Origin(), privatekey.NewDeterministicSigner(caKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
