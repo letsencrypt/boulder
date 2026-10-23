@@ -156,13 +156,13 @@ func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.Checkpoi
 	return s.ID, nil
 }
 
-func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string) ([]*treedb.CheckpointSubtreeModel, error) {
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd uint64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
 	var subtrees []*treedb.CheckpointSubtreeModel
-	for i := range f.checkpointSubtrees {
-		if f.checkpointSubtrees[i].MirrorID == nil {
+	for i := len(f.checkpointSubtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
+		if f.checkpointSubtrees[i].MirrorID == nil && f.checkpointSubtrees[i].SubtreeEnd <= maxEnd {
 			subtrees = append(subtrees, &f.checkpointSubtrees[i])
 		}
 	}

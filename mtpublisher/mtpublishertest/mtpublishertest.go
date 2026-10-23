@@ -20,6 +20,10 @@ type TestMirror struct {
 	cosignerID string
 	cosigner   *cosignature.Cosigner
 	verifier   *cosignature.Verifier
+	// latest is the last checkpoint the mirror cosigned and latestLine its
+	// cosignature line, which it serves.
+	latest     *checkpoint.Checkpoint
+	latestLine []byte
 }
 
 // NewTestMirror returns a TestMirror that cosigns checkpoints of the log with
@@ -45,8 +49,9 @@ func (m *TestMirror) ID() string {
 	return m.cosignerID
 }
 
-// SubmitCheckpoint cosigns the checkpoint and returns the cosignature line. It
-// errors if the checkpoint is not of the cosigner's log.
+// SubmitCheckpoint cosigns the checkpoint, serves it as the latest, and returns
+// the cosignature line. It errors if the checkpoint is not of the cosigner's
+// log.
 func (m *TestMirror) SubmitCheckpoint(_ context.Context, cp *checkpoint.Checkpoint, _ []byte) ([]byte, error) {
 	if cp.Origin != m.cosigner.Origin() {
 		return nil, fmt.Errorf("checkpoint origin %q is not this mirror's log %q", cp.Origin, m.cosigner.Origin())
@@ -59,14 +64,38 @@ func (m *TestMirror) SubmitCheckpoint(_ context.Context, cp *checkpoint.Checkpoi
 	if err != nil {
 		return nil, err
 	}
-	return cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), 0, rawCosignature)
+	line, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), 0, rawCosignature)
+	if err != nil {
+		return nil, err
+	}
+	m.latest = cp
+	m.latestLine = line
+	return line, nil
+}
+
+// LatestCheckpoint returns the last checkpoint the mirror cosigned and its
+// cosignature line. It errors if origin is not the cosigner's log or no
+// checkpoint was submitted yet.
+func (m *TestMirror) LatestCheckpoint(_ context.Context, origin string) (*checkpoint.Checkpoint, []byte, error) {
+	if origin != m.cosigner.Origin() {
+		return nil, nil, fmt.Errorf("origin %q is not this mirror's log %q", origin, m.cosigner.Origin())
+	}
+	if m.latest == nil {
+		return nil, nil, fmt.Errorf("no checkpoint of %q was submitted yet", origin)
+	}
+	return m.latest, m.latestLine, nil
 }
 
 // CosignSubtree returns the mirror's signature over the subtree [start, end).
-// It errors if origin is not the cosigner's log.
-func (m *TestMirror) CosignSubtree(_ context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	if origin != m.cosigner.Origin() {
-		return nil, fmt.Errorf("origin %q is not this mirror's log %q", origin, m.cosigner.Origin())
+// It errors if origin is not the cosigner's log or the last checkpoint the
+// mirror cosigned does not include the subtree.
+func (m *TestMirror) CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
+	latest, _, err := m.LatestCheckpoint(ctx, origin)
+	if err != nil {
+		return nil, err
+	}
+	if latest.Tree.N < end {
+		return nil, fmt.Errorf("mirror checkpoint at size %d does not include subtree [%d, %d)", latest.Tree.N, start, end)
 	}
 	return m.cosigner.CosignSubtree(start, end, subtreeHash)
 }

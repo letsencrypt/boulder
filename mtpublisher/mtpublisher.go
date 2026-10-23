@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/mod/sumdb/tlog"
@@ -25,16 +26,15 @@ type Mirror interface {
 	// SubmitCheckpoint submits the log's signed note for cp and returns the
 	// mirror's cosignature line, verified against the mirror's key.
 	SubmitCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error)
+	// LatestCheckpoint returns the mirror's checkpoint of the log with origin
+	// and the mirror's cosignature line on it, verified against the mirror's
+	// key. The mirror signs the subtrees the checkpoint includes.
+	LatestCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error)
 	// CosignSubtree returns the mirror's signature over the subtree [start,
 	// end) of the log with origin, verified against the mirror's key. It
-	// returns an error wrapping ErrSubtreeNotMirrored if the mirror's
-	// checkpoint does not include the subtree yet.
+	// errors if the mirror's checkpoint does not include the subtree.
 	CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error)
 }
-
-// ErrSubtreeNotMirrored reports that the mirror's checkpoint does not include
-// the subtree yet.
-var ErrSubtreeNotMirrored = errors.New("the mirror's latest checkpoint does not include the subtree")
 
 // mtpublisher obtains and stores its mirror's cosignatures over the issuance
 // log's latest checkpoint and the log's subtrees.
@@ -74,7 +74,7 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID issuancelog.ID
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
-	GetUnsignedSubtrees(ctx context.Context, mtcLogID string) ([]*treedb.CheckpointSubtreeModel, error)
+	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd uint64, limit int) ([]*treedb.CheckpointSubtreeModel, error)
 	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
@@ -139,56 +139,75 @@ func (p *mtpublisher) PublishCheckpoint(ctx context.Context) error {
 	return nil
 }
 
-// CosignSubtrees stores the mirror's signature on each subtree of the log that
-// lacks one, oldest first, until it reaches one the mirror's checkpoint does
-// not include yet. Start calls it at each interval.
-func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
-	subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String())
-	if err != nil {
-		return fmt.Errorf("selecting the unsigned subtrees of %s: %w", p.logID, err)
-	}
-	for _, subtree := range subtrees {
-		err = subtree.Valid()
-		if err != nil {
-			return fmt.Errorf("validating subtree %d: %s", subtree.ID, err)
-		}
-		start := int64(subtree.SubtreeStart) //nolint:gosec // G115: Valid checked the bounds
-		end := int64(subtree.SubtreeEnd)     //nolint:gosec // G115: Valid checked the bounds
-		subtreeHash := tlog.Hash(subtree.SubtreeHash)
-		if !p.caVerifier.VerifySubtreeSignature(p.logID.Origin(), start, end, subtreeHash, subtree.MTCASignature) {
-			return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
-		}
+// subtreeBatch is the number of unsigned subtrees CosignSubtrees takes per
+// query. It is small so each query works from a fresh view of the table.
+const subtreeBatch = 2
 
-		subtreeSignature, err := p.mirror.CosignSubtree(ctx, p.logID.Origin(), start, end, subtreeHash)
-		if err != nil {
-			if errors.Is(err, ErrSubtreeNotMirrored) {
-				p.log.Infof("Subtree %d (%s [%d, %d)) is beyond the mirror's checkpoint, waiting", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
-				return nil
-			}
-			return fmt.Errorf("cosigning subtree %d (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
-		}
-		err = p.treedb.AddSubtreeMirrorSignature(ctx, subtree.ID, p.mirror.ID(), subtreeSignature, p.logID.String())
-		if err != nil {
-			return fmt.Errorf("storing subtree %d cosignature (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
-		}
-		p.log.Infof("Stored mirror signature for subtree %d (%s [%d, %d))", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+// CosignSubtrees stores the mirror's signature on each of the log's subtrees
+// that lack one and that the mirror's checkpoint includes, newest first,
+// subtreeBatch at a time until none is left. Start calls it at each interval.
+func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
+	mirrored, _, err := p.mirror.LatestCheckpoint(ctx, p.logID.Origin())
+	if err != nil {
+		return fmt.Errorf("fetching the mirror's checkpoint of %s: %w", p.logID, err)
 	}
-	return nil
+	for {
+		subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String(), uint64(mirrored.Tree.N), subtreeBatch) //nolint:gosec // G115: a tree size is not negative
+		if err != nil {
+			return fmt.Errorf("selecting the unsigned subtrees of %s: %w", p.logID, err)
+		}
+		if len(subtrees) == 0 {
+			return nil
+		}
+		for _, subtree := range subtrees {
+			err = subtree.Valid()
+			if err != nil {
+				return fmt.Errorf("validating subtree %d: %s", subtree.ID, err)
+			}
+			start := int64(subtree.SubtreeStart) //nolint:gosec // G115: Valid checked the bounds
+			end := int64(subtree.SubtreeEnd)     //nolint:gosec // G115: Valid checked the bounds
+			subtreeHash := tlog.Hash(subtree.SubtreeHash)
+			if !p.caVerifier.VerifySubtreeSignature(p.logID.Origin(), start, end, subtreeHash, subtree.MTCASignature) {
+				return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+			}
+
+			subtreeSignature, err := p.mirror.CosignSubtree(ctx, p.logID.Origin(), start, end, subtreeHash)
+			if err != nil {
+				return fmt.Errorf("cosigning subtree %d (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
+			}
+			err = p.treedb.AddSubtreeMirrorSignature(ctx, subtree.ID, p.mirror.ID(), subtreeSignature, p.logID.String())
+			if err != nil {
+				return fmt.Errorf("storing subtree %d cosignature (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
+			}
+			p.log.Infof("Stored mirror signature for subtree %d (%s [%d, %d))", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+		}
+	}
 }
 
-// Start runs PublishCheckpoint and CosignSubtrees at each interval until ctx is
+// Start runs PublishCheckpoint and CosignSubtrees at each interval, each in
+// its own goroutine so that neither waits on the other, until ctx is
 // cancelled.
 func (p *mtpublisher) Start(ctx context.Context) {
+	var wg sync.WaitGroup
+	wg.Go(func() { p.run(ctx, "Publishing checkpoint", p.PublishCheckpoint) })
+	wg.Go(func() { p.run(ctx, "Cosigning subtrees", p.CosignSubtrees) })
+	wg.Wait()
+}
+
+// run calls operationFunc at each interval until ctx is cancelled, logging its
+// errors under operation.
+func (p *mtpublisher) run(ctx context.Context, operation string, operationFunc func(context.Context) error) {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
-		err := p.PublishCheckpoint(ctx)
-		if err != nil {
-			p.log.Errf("Publishing checkpoint failed: %s", err)
+		// Check for context cancellation before doing any work, in case the
+		// last pass overran the tick and both cases were selectable at once.
+		if ctx.Err() != nil {
+			return
 		}
-		err = p.CosignSubtrees(ctx)
+		err := operationFunc(ctx)
 		if err != nil {
-			p.log.Errf("Cosigning subtrees failed: %s", err)
+			p.log.Errf("%s failed: %s", operation, err)
 		}
 		select {
 		case <-ctx.Done():

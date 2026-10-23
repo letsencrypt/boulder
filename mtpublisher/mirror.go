@@ -313,11 +313,11 @@ func (m *MirrorClient) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Chec
 	return checkpointCosignature.Line, nil
 }
 
-// latestCheckpoint returns the mirror's checkpoint of the log with the given
+// LatestCheckpoint returns the mirror's checkpoint of the log with the given
 // origin and the mirror's cosignature line on it, verified.
 //
 // https://c2sp.org/tlog-mirror#introduction
-func (m *MirrorClient) latestCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error) {
+func (m *MirrorClient) LatestCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error) {
 	endpoint, err := url.JoinPath(m.monitoringPrefix, fmt.Sprintf("%x", sha256.Sum256([]byte(origin))), "checkpoint")
 	if err != nil {
 		return nil, nil, err
@@ -357,12 +357,12 @@ func (m *MirrorClient) latestCheckpoint(ctx context.Context, origin string) (*ch
 // CosignSubtree returns the mirror's signature over the subtree [start, end)
 // from sign-subtree, proven against the mirror's own checkpoint.
 func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	mirrored, mirrorLine, err := m.latestCheckpoint(ctx, origin)
+	mirrored, mirrorLine, err := m.LatestCheckpoint(ctx, origin)
 	if err != nil {
 		return nil, err
 	}
 	if mirrored.Tree.N < end {
-		return nil, fmt.Errorf("%w: mirror checkpoint at size %d does not include subtree [%d, %d)", ErrSubtreeNotMirrored, mirrored.Tree.N, start, end)
+		return nil, fmt.Errorf("mirror checkpoint at size %d does not include subtree [%d, %d)", mirrored.Tree.N, start, end)
 	}
 	proof, err := subtree.ConsistencyProof(start, end, mirrored.Tree.N, m.src.hashReaderForTree(ctx, mirrored.Tree))
 	if err != nil {
