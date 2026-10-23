@@ -7,7 +7,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // responseWriterWithStatus satisfies http.ResponseWriter, but keeps track of the
@@ -51,17 +50,7 @@ type MeasuredHandler struct {
 	inFlightRequestsGauge *prometheus.GaugeVec
 }
 
-// spanName is a helper used by otelhttp, as configured below, to name server
-// spans according to the ServeMux pattern that matched the request, with a
-// fallback to a span named according to the "operation".
-func spanName(operation string, r *http.Request) string {
-	if r.Pattern != "" {
-		return r.Pattern
-	}
-	return operation
-}
-
-func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelhttp.Option) http.Handler {
+func New(m serveMux, clk clock.Clock, stats prometheus.Registerer) http.Handler {
 	responseTime := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "response_time",
 		Help: "Time taken to respond to a request",
@@ -72,12 +61,12 @@ func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelh
 		Help: "Tracks the number of WFE requests currently in flight, labeled by endpoint.",
 	}, []string{"endpoint"})
 
-	return otelhttp.NewHandler(&MeasuredHandler{
+	return &MeasuredHandler{
 		serveMux:              m,
 		clk:                   clk,
 		stat:                  responseTime,
 		inFlightRequestsGauge: inFlightRequestsGauge,
-	}, "server", append([]otelhttp.Option{otelhttp.WithSpanNameFormatter(spanName)}, opts...)...)
+	}
 }
 
 func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
