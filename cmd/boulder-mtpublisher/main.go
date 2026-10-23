@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -53,6 +54,11 @@ type Config struct {
 			// BaseURL is the base URL of the mirror's tlog-mirror submission
 			// endpoints (e.g. "http://localhost:4700").
 			BaseURL string `validate:"required,url"`
+
+			// MonitoringPrefix is the mirror's tlog-mirror monitoring prefix,
+			// under which it serves its copy of the log and its cosigned
+			// checkpoint (e.g. "http://localhost:8333/mirror").
+			MonitoringPrefix string `validate:"required,url"`
 
 			// Timeout bounds each request to the mirror.
 			Timeout config.Duration `validate:"required"`
@@ -124,10 +130,13 @@ func main() {
 	mirrorPubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
 	cmd.FailOnError(err, "Loading mirror public key")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
+	caVerifier, err := cosignature.NewVerifier(c.MTPublisher.LogID.CAID, caPubKey)
+	cmd.FailOnError(err, "Creating MTCA verifier")
+
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, c.MTPublisher.Mirror.MonitoringPrefix, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, caVerifier, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
-	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
+	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caVerifier, mirror, logger)
 	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())
