@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/mirror"
@@ -69,7 +70,11 @@ func NewMirrorClient(baseURL string, src *Source, mirrorID string, mirrorPublicK
 	if timeout <= 0 {
 		return nil, fmt.Errorf("timeout must be positive, got %s", timeout)
 	}
-	verifier, err := cosignature.NewVerifier(mirrorID, mirrorPublicKey)
+	mirrorOID, err := reloid.FromString(mirrorID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid mirror ID %q: %s", mirrorID, err)
+	}
+	verifier, err := cosignature.NewVerifier(mirrorOID, mirrorPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating mirror verifier: %s", err)
 	}
