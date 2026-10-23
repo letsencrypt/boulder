@@ -240,7 +240,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
-	mtcaID, err := core.EncodeRelativeOID(subtree.MTCLogID)
+	mtcaID, err := core.EncodeRelativeOID(requestedLogID.CAID)
 	if err != nil {
 		return nil, fmt.Errorf("serializing MTCA ID: %w", err)
 	}

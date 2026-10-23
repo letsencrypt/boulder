@@ -295,8 +295,7 @@ func EncodeRelativeOID(relativeOID string) ([]byte, error) {
 		}
 
 		for i := l - 1; i >= 0; i-- {
-			o := byte(n >> uint(i*7))
-			o &= 0x7f
+			o := byte((n >> uint(i*7)) & 0x7f)
 			if i != 0 {
 				o |= 0x80
 			}

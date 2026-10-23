@@ -84,8 +84,11 @@ func (ic *Certificate) MTCAID() (string, error) {
 			if !ok {
 				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
 			}
-			if caID.Tag != 13 {
-				return "", fmt.Errorf("invalid mtcaID asn1 tag %d", caID.Tag)
+			if len(caID.FullBytes) == 0 {
+				return "", fmt.Errorf("empty mtcaID")
+			}
+			if caID.FullBytes[0] != 0x0d { // Universal Primitive Relative-OID (13)
+				return "", fmt.Errorf("invalid mtcaID asn1 tag byte %x", caID.FullBytes[0])
 			}
 			ret, err := core.DecodeRelativeOID(caID.Bytes)
 			if err != nil {

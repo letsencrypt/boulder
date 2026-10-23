@@ -205,7 +205,8 @@ func mtcaExtension() (pkix.Extension, error) {
 	extnMarshaled, err := asn1.Marshal(struct {
 		SigAlg    pkix.AlgorithmIdentifier
 		MinSerial int64
-		MaxSerial int64
+		// We omit MaxSerial, because there's no reason for a CA to ever set it.
+		// It exists so a root program can set it while distrusting a CA.
 	}{
 		SigAlg: pkix.AlgorithmIdentifier{Algorithm: oidSignatureMLDSA44},
 		// Just for fun, exercise MinSerial functionality.

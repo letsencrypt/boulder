@@ -317,11 +317,19 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 	for _, sig := range mtcProof.Signatures {
 		sigsByID[string(sig.CosignerID)] = sig.Signature
 	}
-	if !bytes.Equal(sigsByID[testLogID.CAID], dbSubtree.MTCASignature) {
-		t.Errorf("MTCA cosignature = %x, want %x", sigsByID[testLogID.CAID], dbSubtree.MTCASignature)
+	caKey, err := core.EncodeRelativeOID(testLogID.CAID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !bytes.Equal(sigsByID[mirrorID], dbSubtree.MirrorSignature) {
-		t.Errorf("mirror cosignature = %x, want %x", sigsByID[mirrorID], dbSubtree.MirrorSignature)
+	mirrorKey, err := core.EncodeRelativeOID(mirrorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sigsByID[string(caKey)], dbSubtree.MTCASignature) {
+		t.Errorf("MTCA cosignature = %x, want %x", sigsByID[string(caKey)], dbSubtree.MTCASignature)
+	}
+	if !bytes.Equal(sigsByID[string(mirrorKey)], dbSubtree.MirrorSignature) {
+		t.Errorf("mirror cosignature = %x, want %x", sigsByID[string(mirrorKey)], dbSubtree.MirrorSignature)
 	}
 }
 
