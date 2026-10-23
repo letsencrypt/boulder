@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -103,24 +102,27 @@ func fromInts(components []uint32) (*RelativeOID, error) {
 	for _, c := range components {
 		strs = append(strs, strconv.FormatUint(uint64(c), 10))
 
+		// Count the number of bytes necessary to hold the component's bits, given
+		// that each byte only encodes 7 bits.
+		var l int64
 		if c == 0 {
-			der = append(der, 0x00)
-			continue
+			l = 1
+		} else {
+			for i := c; i > 0; i >>= 7 {
+				l++
+			}
 		}
 
-		// Construct each byte of the DER encoding, starting with the least
-		// significant 7 bits of the component.
-		var reversed []byte
-		for c != 0 {
-			reversed = append(reversed, byte(c&0x7f|0x80)) //nolint:gosec // G115: bitwise AND with 0x7f guarantees this fits in a byte
-			c >>= 7
-		}
+		// Encode the component starting from its most significant bits, setting
+		// the most significant bit of each byte to 1, unless it is the last byte.
+		for i := l - 1; i >= 0; i-- {
+			o := byte((c >> uint(i*7)) & 0x7f)
+			if i != 0 {
+				o |= 0x80
+			}
 
-		// Unset the "continue" bit from the least significant byte, and then
-		// reverse the bytes to get the actual DER most-significant-first encoding.
-		reversed[0] = reversed[0] & 0x7f
-		slices.Reverse(reversed)
-		der = append(der, reversed...)
+			der = append(der, o)
+		}
 	}
 
 	return &RelativeOID{
