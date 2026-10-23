@@ -58,7 +58,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	if certCAID != logID.CAID {
+	if certCAID.String() != logID.CAID {
 		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID, certCAID)
 	}
 

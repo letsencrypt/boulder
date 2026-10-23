@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
@@ -65,7 +66,7 @@ func New(
 			return nil, fmt.Errorf("computing MTCA ID: %w", err)
 		}
 
-		issuersMap[caID] = struct{}{}
+		issuersMap[caID.String()] = struct{}{}
 	}
 
 	m := &mtcb{
@@ -240,14 +241,14 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
-	mtcaID, err := core.EncodeRelativeOID(requestedLogID.CAID)
+	mtcaID, err := reloid.FromString(requestedLogID.CAID)
 	if err != nil {
-		return nil, fmt.Errorf("serializing MTCA ID: %w", err)
+		return nil, fmt.Errorf("parsing MTCA ID: %w", err)
 	}
 
-	mirrorID, err := core.EncodeRelativeOID(*subtree.MirrorID)
+	mirrorID, err := reloid.FromString(*subtree.MirrorID)
 	if err != nil {
-		return nil, fmt.Errorf("serializing Mirror ID: %w", err)
+		return nil, fmt.Errorf("parsing Mirror ID: %w", err)
 	}
 
 	sig := proof.MTCProof{
@@ -255,8 +256,8 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		End:            subtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: mtcaID, Signature: subtree.MTCASignature},
-			{CosignerID: mirrorID, Signature: subtree.MirrorSignature},
+			{CosignerID: mtcaID.Bytes(), Signature: subtree.MTCASignature},
+			{CosignerID: mirrorID.Bytes(), Signature: subtree.MirrorSignature},
 		},
 	}
 	certBytes, err := buildCertificate(tbs, &sig)

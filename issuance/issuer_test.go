@@ -101,7 +101,7 @@ HQCTMjnYvLIvTCqF3gZm38+h1iShEgMfMT522d60
 	}
 
 	expected := "44947.4.1"
-	if caID != expected {
+	if caID.String() != expected {
 		t.Errorf("MTCAID(): got %s, want %s", caID, expected)
 	}
 }

@@ -20,10 +20,12 @@ import (
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/proof"
@@ -33,9 +35,12 @@ import (
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
-var mirrorID = "32473.9"
-
-var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 5}
+var (
+	mirrorID  = "32473.9"
+	mirrorOID = must.Do(reloid.FromString(mirrorID))
+	testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 5}
+	testCAOID = must.Do(reloid.FromString(testLogID.CAID))
+)
 
 // TestBuildCertificate checks that buildCertificate's output parses as a
 // Certificate.
@@ -59,8 +64,8 @@ func TestBuildCertificate(t *testing.T) {
 		End:            8,
 		InclusionProof: []tlog.Hash{{1}, {2}, {3}},
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: []byte(testLogID.CAID), Signature: []byte("mtca sig")},
-			{CosignerID: []byte(mirrorID), Signature: []byte("mirror sig")},
+			{CosignerID: testCAOID.Bytes(), Signature: []byte("mtca sig")},
+			{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")},
 		},
 	}
 	expectSig, err := sig.Marshal()
@@ -315,21 +320,17 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 	}
 	sigsByID := map[string][]byte{}
 	for _, sig := range mtcProof.Signatures {
+		// sig.CosignerID is a DER-encoded relative OID, so stringifying it doesn't
+		// result in anything recognizable, but it still works for use as a map key.
 		sigsByID[string(sig.CosignerID)] = sig.Signature
 	}
-	caKey, err := core.EncodeRelativeOID(testLogID.CAID)
-	if err != nil {
-		t.Fatal(err)
+	testLogSig := sigsByID[string(testCAOID.Bytes())]
+	if !bytes.Equal(testLogSig, dbSubtree.MTCASignature) {
+		t.Errorf("MTCA cosignature = %x, want %x", testLogSig, dbSubtree.MTCASignature)
 	}
-	mirrorKey, err := core.EncodeRelativeOID(mirrorID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(sigsByID[string(caKey)], dbSubtree.MTCASignature) {
-		t.Errorf("MTCA cosignature = %x, want %x", sigsByID[string(caKey)], dbSubtree.MTCASignature)
-	}
-	if !bytes.Equal(sigsByID[string(mirrorKey)], dbSubtree.MirrorSignature) {
-		t.Errorf("mirror cosignature = %x, want %x", sigsByID[string(mirrorKey)], dbSubtree.MirrorSignature)
+	mirrorSig := sigsByID[string(mirrorOID.Bytes())]
+	if !bytes.Equal(mirrorSig, dbSubtree.MirrorSignature) {
+		t.Errorf("mirror cosignature = %x, want %x", mirrorSig, dbSubtree.MirrorSignature)
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	casn1 "golang.org/x/crypto/cryptobyte/asn1"
 
-	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/unsigned"
 )
 
@@ -79,8 +79,8 @@ func main2() error {
 	// https://letsencrypt.org/docs/oids/
 	// 44947 is ISRG; 44947.4.1 will be temporarily for our prototype MTC implementation, with ".1"
 	// representing one CA instance.
-	mtcaID := "44947.4.1"
-	skid, _ := core.EncodeRelativeOID(mtcaID)
+	// Throw away the error because we know this test string will parse correctly.
+	mtcaID, _ := reloid.FromString("44947.4.1")
 
 	template := &x509.Certificate{
 		// TODO: decide how to generate serial number for MTCA certificates; presumably random?
@@ -92,7 +92,7 @@ func main2() error {
 		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		// The subject key identifier extension (Section 4.2.1.2 of [RFC5280]), if present, SHOULD be set to the CA ID Section 5.1.
 		// The CA ID is encoded in its binary representation, as defined in Section 4 of [I-D.ietf-tls-trust-anchor-ids].
-		SubjectKeyId:          skid,
+		SubjectKeyId:          mtcaID.Bytes(),
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 		MaxPathLenZero:        true,
@@ -138,7 +138,7 @@ func main2() error {
 	return pem.Encode(caPubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: caSPKI})
 }
 
-func mtcaSubject(relativeOID string) pkix.Name {
+func mtcaSubject(relativeOID *reloid.RelativeOID) pkix.Name {
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certification-authority-ide
 	// A CA ID determines a PKIX distinguished name (Section 4.1.2.4 of [RFC5280]) that can be used in the issuer or subject field of an X.509 TBSCertificate.
 	// This distinguished name has a single relative distinguished name, which has a single attribute. The attribute has type id-rdna-trustAnchorID, defined below:
@@ -155,14 +155,10 @@ func mtcaSubject(relativeOID string) pkix.Name {
 	// 	RELATIVE-OID	13									0d
 	tagRelativeOID := 13
 
-	// Throw away the err because this is just test setup code and we know that
-	// we're providing well-formed relative OIDs.
-	val, _ := core.EncodeRelativeOID(relativeOID)
-
 	attributes := []pkix.AttributeTypeAndValue{
 		{
 			Type:  idRDNATrustAnchorID,
-			Value: asn1.RawValue{Tag: tagRelativeOID, Bytes: val},
+			Value: asn1.RawValue{Tag: tagRelativeOID, Bytes: relativeOID.Bytes()},
 		},
 	}
 

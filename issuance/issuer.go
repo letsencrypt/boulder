@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/pkcs11key/v4"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/privatekey"
 )
@@ -76,28 +77,28 @@ func (ic *Certificate) NameID() NameID {
 
 // MTCAID returns the trust anchor ID from this issuer certificate's Subject. It
 // returns an error for issuers that are not MTC CAs.
-func (ic *Certificate) MTCAID() (string, error) {
+func (ic *Certificate) MTCAID() (*reloid.RelativeOID, error) {
 	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
 	for _, attribute := range ic.Subject.Names {
 		if attribute.Type.Equal(idRDNATrustAnchorID) {
 			caID, ok := attribute.Value.(asn1.RawValue)
 			if !ok {
-				return "", fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
+				return nil, fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
 			}
 			if len(caID.FullBytes) == 0 {
-				return "", fmt.Errorf("empty mtcaID")
+				return nil, fmt.Errorf("empty mtcaID")
 			}
 			if caID.FullBytes[0] != 0x0d { // Universal Primitive Relative-OID (13)
-				return "", fmt.Errorf("invalid mtcaID asn1 tag byte %x", caID.FullBytes[0])
+				return nil, fmt.Errorf("invalid mtcaID asn1 tag byte %x", caID.FullBytes[0])
 			}
-			ret, err := core.DecodeRelativeOID(caID.Bytes)
+			ret, err := reloid.FromBytes(caID.Bytes)
 			if err != nil {
-				return "", fmt.Errorf("invalid mtcaID relative OID: %w", err)
+				return nil, fmt.Errorf("invalid mtcaID relative OID: %w", err)
 			}
 			return ret, nil
 		}
 	}
-	return "", fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
+	return nil, fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
 		ic.Subject, idRDNATrustAnchorID)
 }
 
