@@ -258,7 +258,7 @@ type signer struct {
 
 // newCosigner returns a *cosignature.Cosigner that signs with the given privKey over the log
 // with the given origin, and uses `cosignerID` as its name.
-func newCosigner(t *testing.T, privKeyPath, cosignerID, origin string) (*cosignature.Cosigner, crypto.PublicKey) {
+func newCosigner(t *testing.T, privKeyPath string, cosignerID *reloid.RelativeOID, origin string) (*cosignature.Cosigner, crypto.PublicKey) {
 	privKey, _, err := privatekey.Load(privKeyPath)
 	if err != nil {
 		t.Fatal(err)
@@ -279,7 +279,7 @@ func newSigner(t *testing.T) *signer {
 
 // newSignerForLog returns a *signer that signs checkpoints of the given logID with the CA's key.
 func newSignerForLog(t *testing.T, logID *issuancelog.ID) *signer {
-	ca, caPubKey := newCosigner(t, "../test/certs/mtpki/mtca1.key.pem", logID.CAID().String(), logID.Origin())
+	ca, caPubKey := newCosigner(t, "../test/certs/mtpki/mtca1.key.pem", logID.CAID(), logID.Origin())
 	return &signer{
 		logID:    logID,
 		cosigner: ca,
@@ -319,7 +319,7 @@ func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.Checkpo
 	signedNote := append(noteText, '\n')
 	signedNote = append(signedNote, caCosignatureLine...)
 
-	verifier, err := cosignature.NewVerifier(s.logID.CAID().String(), s.caPubKey.(*mldsa.PublicKey))
+	verifier, err := cosignature.NewVerifier(s.logID.CAID(), s.caPubKey.(*mldsa.PublicKey))
 	if err != nil {
 		t.Fatalf("creating CA verifier: %s", err)
 	}

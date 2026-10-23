@@ -7,6 +7,7 @@ import (
 	"crypto"
 	"fmt"
 
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 )
@@ -21,7 +22,11 @@ type TestMirror struct {
 // NewTestMirror returns a TestMirror that cosigns checkpoints of the log with
 // the given origin as the cosigner with ID mirrorID.
 func NewTestMirror(mirrorID, origin string, signer crypto.Signer) (*TestMirror, error) {
-	cosigner, err := cosignature.NewCosigner(mirrorID, origin, signer)
+	mirrorOID, err := reloid.FromString(mirrorID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid mirror ID %q: %s", mirrorID, err)
+	}
+	cosigner, err := cosignature.NewCosigner(mirrorOID, origin, signer)
 	if err != nil {
 		return nil, fmt.Errorf("creating mirror cosigner: %s", err)
 	}

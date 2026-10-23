@@ -75,7 +75,7 @@ func New(
 			return nil, fmt.Errorf("issuer %q not an ML-DSA pubkey (%T)", caID, issuer.PublicKey)
 		}
 
-		checkpointVerifier, err := cosignature.NewVerifier(caID.String(), pubKey)
+		checkpointVerifier, err := cosignature.NewVerifier(caID, pubKey)
 		if err != nil {
 			return nil, fmt.Errorf("creating CA verifier: %s", err)
 		}

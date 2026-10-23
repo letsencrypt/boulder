@@ -6,6 +6,8 @@ import (
 
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/core/reloid"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -49,7 +51,7 @@ func TestMirrorCosign(t *testing.T) {
 		t.Fatalf("Cosign: %s", err)
 	}
 
-	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
+	verifier, err := cosignature.NewVerifier(must.Do(reloid.FromString(mirrorID)), key.PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}

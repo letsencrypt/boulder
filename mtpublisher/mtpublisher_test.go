@@ -21,6 +21,7 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
+	"github.com/letsencrypt/boulder/core/reloid"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/must"
@@ -41,7 +42,10 @@ const (
 	mirrorID = "32473.9"
 )
 
-var testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 44}.Load())
+var (
+	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 44}.Load())
+	mirrorOID = must.Do(reloid.FromString(mirrorID))
+)
 
 // fakeCheckpointDB holds the latest checkpoint of one log, or none for a log
 // that is not initialized, and stores the mirror cosignature on it. The mtca
@@ -97,7 +101,7 @@ func testCAKey(t *testing.T) *mldsa.PrivateKey {
 // a zero root hash, as testCheckpoint holds.
 func caSignature(t *testing.T, treeSize int64) []byte {
 	t.Helper()
-	ca, err := cosignature.NewCosigner(testLogID.CAID().String(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
+	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -180,7 +184,7 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("latest checkpoint's mirrorSignature is %d bytes, want %d", len(latest.MirrorSignature), mldsa.MLDSA44SignatureSize)
 	}
 
-	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
+	verifier, err := cosignature.NewVerifier(mirrorOID, key.PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
@@ -295,7 +299,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	ca, err := cosignature.NewCosigner(testLogID.CAID().String(), testLogID.Origin(), privatekey.NewDeterministicSigner(caKey))
+	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(caKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -324,7 +328,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	mirrorCosigner, err := cosignature.NewCosigner(mirrorID, cp.Origin, privatekey.NewDeterministicSigner(mirrorKey))
+	mirrorCosigner, err := cosignature.NewCosigner(mirrorOID, cp.Origin, privatekey.NewDeterministicSigner(mirrorKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -729,7 +733,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 
 	// A mirror whose signature line names its key but was signed by another,
 	// so the signature is checked and rejected rather than ignored as unknown.
-	forger, err := cosignature.NewCosigner(mirrorID, source.cp.Origin, privatekey.NewDeterministicSigner(testKey(t)))
+	forger, err := cosignature.NewCosigner(mirrorOID, source.cp.Origin, privatekey.NewDeterministicSigner(testKey(t)))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -742,7 +746,7 @@ func TestMirrorCosignErrors(t *testing.T) {
 		t.Fatalf("RawSignature: %s", err)
 	}
 
-	mirrorCosigner, err := cosignature.NewCosigner(mirrorID, source.cp.Origin, privatekey.NewDeterministicSigner(source.mirrorKey))
+	mirrorCosigner, err := cosignature.NewCosigner(mirrorOID, source.cp.Origin, privatekey.NewDeterministicSigner(source.mirrorKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}

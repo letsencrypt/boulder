@@ -537,7 +537,7 @@ func TestServeCheckpointMismatch(t *testing.T) {
 
 	// Build a checkpoint signed by the same key, but for a different log origin. It should error.
 	otherLog := must.Do(issuancelog.Config{CAID: m.logID.CAID().String(), LogNumber: logNumber + 1}.Load())
-	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID().String(), otherLog.Origin(), m.issuer.Signer)
+	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID(), otherLog.Origin(), m.issuer.Signer)
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
