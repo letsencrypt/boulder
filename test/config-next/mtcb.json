@@ -10,7 +10,8 @@
 			"services": {
 				"mtcb.MTCB": {
 					"clientNames": [
-						"ra.boulder"
+						"ra.boulder",
+						"wfe.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {

@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
+	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
@@ -66,6 +67,7 @@ const (
 	finalizeOrderPath = "/acme/finalize/"
 	certPath          = "/acme/cert/"
 	renewalInfoPath   = "/acme/renewal-info/"
+	mtcPath           = "/acme/mtc/"
 
 	// Non-ACME paths.
 	getCertPath     = "/get/cert/"
@@ -89,9 +91,10 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	ra rapb.RegistrationAuthorityClient
-	sa sapb.StorageAuthorityReadOnlyClient
-	ee emailpb.ExporterClient
+	ra   rapb.RegistrationAuthorityClient
+	sa   sapb.StorageAuthorityReadOnlyClient
+	ee   emailpb.ExporterClient
+	mtcb mtcbpb.MTCBClient
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
@@ -211,6 +214,7 @@ func NewWebFrontEndImpl(
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	eec emailpb.ExporterClient,
+	mtcbc mtcbpb.MTCBClient,
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
 	rncKey []byte,
@@ -264,6 +268,7 @@ func NewWebFrontEndImpl(
 		ra:                            rac,
 		sa:                            sac,
 		ee:                            eec,
+		mtcb:                          mtcbc,
 		gnc:                           gnc,
 		rnc:                           rnc,
 		rncKey:                        rncKey,
@@ -310,7 +315,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 		methodsMap["HEAD"] = true
 	}
 	methodsStr := strings.Join(methods, ", ")
-	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
+	var handler http.Handler = web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			span := trace.SpanFromContext(ctx)
 			span.SetName(pattern)
@@ -366,7 +371,14 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			h(ctx, logEvent, response, request)
 			cancel()
 		}),
-	))
+	)
+	// Detect the lack of at least one pair of curly braces as a signal that
+	// there is no wildcard pattern. This gives us a way to migrate handlers
+	// individually to use wildcard patterns, as our non-wildcard handlers need
+	// prefixes stripped.
+	if !strings.Contains(pattern, `{`) && !strings.Contains(pattern, `}`) {
+		handler = http.StripPrefix(pattern, handler)
+	}
 	mux.Handle(pattern, handler)
 }
 
@@ -465,6 +477,9 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	wfe.HandleFunc(m, challengePath, wfe.ChallengeHandler, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 	wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
+
+	// POST-as-GETable ACME endpoints
+	wfe.HandleFunc(m, mtcPath+"{acctID}/{orderID}/{mtcLogID}/{mtcSerial}", wfe.MerkleTreeCertificate, "POST")
 
 	// Boulder specific endpoints
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
@@ -1842,15 +1857,136 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// NOTE(@cpu): We must explicitly set the Content-Length header here. The Go
-	// HTTP library will only add this header if the body is below a certain size
-	// and with the addition of a PEM encoded certificate chain the body size of
-	// this endpoint will exceed this threshold. Since we know the length we can
-	// reliably set it ourselves and not worry.
+	// We explicitly set the Content-Length header here, otherwise our responses
+	// to HEAD requests would have the wrong Content-Length, per HTTP spec (MUST
+	// be the same as if the request had used GET, if set for HEAD at all).
+	// net/http only adds Content-Length automatically "if the total size of all
+	// written data is under a few KB".
 	response.Header().Set("Content-Length", strconv.Itoa(len(responsePEM)))
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(responsePEM); err != nil {
+		wfe.log.Warningf("Could not write response: %s", err)
+	}
+}
+
+// MerkleTreeCertificate is used by clients to request a copy of their merkle tree certificate.
+func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
+		return
+	}
+
+	// wfe instance not configured with an MTCB Client
+	if wfe.mtcb == nil {
+		wfe.sendError(response, logEvent, probs.NotFound(""), nil)
+		return
+	}
+
+	reqAcctID, err := parsePositiveInt(request.PathValue("acctID"))
+	if err != nil {
+		wfe.sendError(response, logEvent, err, nil)
+		return
+	}
+	reqOrderID, err := parsePositiveInt(request.PathValue("orderID"))
+	if err != nil {
+		wfe.sendError(response, logEvent, err, nil)
+		return
+	}
+	reqMtcSerial, err := parsePositiveUint(request.PathValue("mtcSerial"))
+	if err != nil {
+		wfe.sendError(response, logEvent, err, nil)
+		return
+	}
+
+	// Verify that the request path account ID matches the POST-as-GET-validated account ID
+	if reqAcctID != acct.ID {
+		wfe.sendError(response, logEvent, probs.Unauthorized(fmt.Sprintf("Not allowed for ID %d", acct.ID)), nil)
+		return
+	}
+
+	// MerkleTreeCertificate does not need deployability protection via
+	// WFECallsRAForGetOrder, and always looks up orders via the RA.
+	order, err := wfe.ra.GetOrder(ctx, &rapb.GetOrderRequest{OrderID: reqOrderID})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", reqOrderID)), nil)
+			return
+		}
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			fmt.Sprintf("Failed to retrieve order for ID %d", reqOrderID)), err)
+		return
+	}
+
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.Expires) {
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", reqOrderID)), errIncompleteGRPCResponse)
+		return
+	}
+
+	if order.Status != string(core.StatusValid) {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", reqOrderID)), nil)
+		return
+	}
+
+	if acct.ID != order.RegistrationID {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", reqOrderID)), nil)
+		return
+	}
+
+	if order.Expires.AsTime().Before(wfe.clk.Now()) {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No certificate for expired Order ID %d", reqOrderID)), nil)
+		return
+	}
+
+	if core.IsAnyNilOrZero(order.MtcLogID, order.MtcSerialNumber, order.MtcSubtreeID) {
+		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No merkle tree certificate for order ID %d", reqOrderID)), nil)
+		return
+	}
+
+	if request.PathValue("mtcLogID") != order.MtcLogID || reqMtcSerial != order.MtcSerialNumber {
+		wfe.sendError(response, logEvent, probs.Malformed("MTC request URL details do not match order details"), nil)
+		return
+	}
+
+	logEvent.Extra["RequestedMtcSerial"] = reqMtcSerial
+
+	// Now ask the MTCB for the standalone certificate.
+	standalone, err := wfe.mtcb.GetStandalone(ctx,
+		&mtcbpb.StandaloneRequest{
+			MtcLogID:        order.MtcLogID,
+			MtcSerialNumber: order.MtcSerialNumber,
+			MtcSubtreeID:    order.MtcSubtreeID,
+		})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve merkle tree certificate"), err)
+		return
+	}
+
+	if core.IsAnyNilOrZero(standalone.CertDER) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting merkle tree certificate"), errIncompleteGRPCResponse)
+		return
+	}
+
+	// TODO: in the future we should inspect the Accept header, and supply a
+	// Certificate Properties block at the top of the PEM file if the header
+	// indicates the `application/pem-certificate-chain-with-properties` type.
+	standalonePEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: standalone.CertDER,
+	})
+
+	// We explicitly set the Content-Length header here, otherwise our responses
+	// to HEAD requests would have the wrong Content-Length, per HTTP spec (MUST
+	// be the same as if the request had used GET, if set for HEAD at all).
+	// net/http only adds Content-Length automatically "if the total size of all
+	// written data is under a few KB".
+	response.Header().Set("Content-Length", strconv.Itoa(len(standalonePEM)))
+	response.Header().Set("Content-Type", "application/pem-certificate-chain")
+	// TODO: add a "link rel=acme-optional-alternate" header pointing at the
+	// landmark-relative URL.
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(standalonePEM); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)
 	}
 }
@@ -2114,9 +2250,18 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Authorizations = append(respObj.Authorizations, endpoint)
 	}
 	if respObj.Status == core.StatusValid {
-		certURL := web.RelativeEndpoint(request,
-			certPath, order.CertificateSerial)
-		respObj.Certificate = certURL
+		if order.MtcSerialNumber != 0 {
+			respObj.Certificate = web.RelativeEndpoint(request,
+				mtcPath,
+				fmt.Sprintf("%d", order.RegistrationID),
+				fmt.Sprintf("%d", order.Id),
+				order.MtcLogID,
+				fmt.Sprintf("%d", order.MtcSerialNumber),
+			)
+		} else {
+			respObj.Certificate = web.RelativeEndpoint(request,
+				certPath, order.CertificateSerial)
+		}
 	}
 	return respObj
 }
@@ -2887,6 +3032,16 @@ func looksLikeRecursiveOnDemandRequest(idents identifier.ACMEIdentifiers, blocke
 func parsePositiveInt(v string) (int64, error) {
 	parsed, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || parsed <= 0 {
+		return 0, berrors.NotFoundError("")
+	}
+	return parsed, nil
+}
+
+// parsePositiveUint returns the input parsed as an uint64, or a
+// berrors.NotFoundError on parse failure, zero, or negative numbers.
+func parsePositiveUint(v string) (uint64, error) {
+	parsed, err := strconv.ParseUint(v, 10, 64)
+	if err != nil || parsed == 0 {
 		return 0, berrors.NotFoundError("")
 	}
 	return parsed, nil

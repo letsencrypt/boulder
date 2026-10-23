@@ -77,6 +77,16 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
+		"mtcbService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "mtcb",
+				"domain": "service.consul"
+			},
+			"timeout": "20s",
+			"noWaitForReady": true,
+			"hostOverride": "mtcb.boulder"
+		},
 		"nonceHMACKey": {
 			"keyFile": "test/secrets/nonce_prefix_key"
 		},
