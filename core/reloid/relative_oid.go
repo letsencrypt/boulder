@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+// RelativeOID represents an ASN.1 Relative OID. This is similar to the Go
+// stdlib's x509.OID and ans1.OID, except that it does not perform the
+// first-two-components packing optimization that non-relative OIDs use. It also
+// limits each OID component to fit in an int32, a restriction which does not
+// exist in the ASN.1 spec but seems nonetheless reasonable.
 type RelativeOID struct {
 	der []byte
 	str string
@@ -50,20 +55,21 @@ func FromBytes(in []byte) (*RelativeOID, error) {
 	return fromInts(ints...)
 }
 
-// decodeRelativeOIDComponent parses the head of in as a single OID component.
+// decodeRelativeOIDComponent parses the head of `in` as a single OID component.
 // It returns the parsed integer and the number of bytes of input consumed. It
 // returns an error if the leading bytes don't represent an OID-encoded int.
 func decodeRelativeOIDComponent(in []byte) (int, int, error) {
 	var ret64 int64
 	for i, b := range in {
 		if i == 0 && b == 0x80 {
-			// The leading octet of a component should never be 0x80.
+			// The first byte of a component should never be 0x80 (a leading 0).
 			return 0, 0, fmt.Errorf("OID component not minimally encoded")
 		}
 
 		if i >= 5 {
-			// Each byte is a 7-bit int. If we're decoding more than 5 bytes, that's
-			// at least 7 * 5 = 35 bits, which is too big for an OID component (int32).
+			// Each byte represents 7 bits of the resulting int. If we've made it to
+			// a byte at index 5, we've already processed 5 * 7 = 35 bits, which is
+			// too many to fit in a 32-bit int.
 			return 0, 0, fmt.Errorf("OID component too large")
 		}
 
@@ -104,6 +110,8 @@ func fromInts(components ...int) (*RelativeOID, error) {
 
 		strs = append(strs, strconv.Itoa(c))
 
+		// Count the number of bytes necessary to hold the component's bits, given
+		// that each byte only encodes 7 bits.
 		var l int64
 		if c == 0 {
 			l = 1
@@ -113,6 +121,9 @@ func fromInts(components ...int) (*RelativeOID, error) {
 			}
 		}
 
+		// Encode the component starting from its most significant bits, setting
+		// the most significant bit of each byte to 1 if it is *not* the last byte
+		// of the component's encoding.
 		for i := l - 1; i >= 0; i-- {
 			o := byte((c >> uint(i*7)) & 0x7f)
 			if i != 0 {
