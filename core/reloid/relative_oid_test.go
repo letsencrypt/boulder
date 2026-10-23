@@ -84,7 +84,7 @@ func TestFromStringInvalid(t *testing.T) {
 		{name: "negative zero", oid: "-0"},
 		{name: "explicit plus sign", oid: "+5"},
 		{name: "leading zero", oid: "05"},
-		{name: "component exceeds int32", oid: "2147483648"},
+		{name: "component exceeds uint32", oid: "4294967296"},
 		{name: "component exceeds int64", oid: "9223372036854775808"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestFromBytesInvalid(t *testing.T) {
 		{name: "non-minimal zero", encoded: []byte{0x80, 0x00}},
 		{name: "non-minimal first component", encoded: []byte{0x80, 0x01, 0x02}},
 		{name: "non-minimal middle component", encoded: []byte{0x55, 0x80, 0x02}},
-		{name: "exceeds int32", encoded: []byte{0x88, 0x80, 0x80, 0x80, 0x00}},
+		{name: "exceeds uint32", encoded: []byte{0xa8, 0x80, 0x80, 0x80, 0x00}},
 		{name: "six-byte component", encoded: []byte{0x81, 0x80, 0x80, 0x80, 0x80, 0x00}},
 		{name: "oversized truncated component", encoded: []byte{0x55, 0x02, 0xc0, 0x80, 0x80, 0x80, 0x80}},
 		{

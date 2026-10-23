@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -11,7 +12,7 @@ import (
 // RelativeOID represents an ASN.1 Relative OID. This is similar to the Go
 // stdlib's x509.OID and ans1.OID, except that it does not perform the
 // first-two-components packing optimization that non-relative OIDs use. It also
-// limits each OID component to fit in an int32, a restriction which does not
+// limits each OID component to fit in a uint32, a restriction which does not
 // exist in the ASN.1 spec but seems nonetheless reasonable.
 type RelativeOID struct {
 	der []byte
@@ -24,25 +25,25 @@ type RelativeOID struct {
 // components, or has components too large to fit in an int32.
 func FromString(in string) (*RelativeOID, error) {
 	strs := strings.Split(in, ".")
-	var ints []int
+	var ints []uint32
 	for _, s := range strs {
-		c, err := strconv.Atoi(s)
+		comp64, err := strconv.ParseUint(s, 10, 32)
 		if err != nil {
 			return nil, fmt.Errorf("invalid relative oid component %q: %w", s, err)
 		}
-		if strconv.Itoa(c) != s {
+		if strconv.FormatUint(comp64, 10) != s {
 			return nil, fmt.Errorf("relative oid component %q is not in canonical form", s)
 		}
-		ints = append(ints, c)
+		ints = append(ints, uint32(comp64))
 	}
-	return fromInts(ints...)
+	return fromInts(ints)
 }
 
 // FromBytes parses a Relative OID from its DER representation, not including
 // the leading tag and length bytes. It rejects any input which is empty, has
 // incorrectly-encoded components, or has components too large to fit in an int32.
 func FromBytes(in []byte) (*RelativeOID, error) {
-	var ints []int
+	var ints []uint32
 	i := 0
 	for i < len(in) {
 		c, used, err := decodeRelativeOIDComponent(in[i:])
@@ -52,14 +53,14 @@ func FromBytes(in []byte) (*RelativeOID, error) {
 		ints = append(ints, c)
 		i += used
 	}
-	return fromInts(ints...)
+	return fromInts(ints)
 }
 
 // decodeRelativeOIDComponent parses the head of `in` as a single OID component.
 // It returns the parsed integer and the number of bytes of input consumed. It
 // returns an error if the leading bytes don't represent an OID-encoded int.
-func decodeRelativeOIDComponent(in []byte) (int, int, error) {
-	var ret64 int64
+func decodeRelativeOIDComponent(in []byte) (uint32, int, error) {
+	var comp64 uint64
 	for i, b := range in {
 		if i == 0 && b == 0x80 {
 			// The first byte of a component should never be 0x80 (a leading 0).
@@ -74,15 +75,15 @@ func decodeRelativeOIDComponent(in []byte) (int, int, error) {
 		}
 
 		// Shift any previous bytes and append the new one.
-		ret64 <<= 7
-		ret64 |= int64(b & 0x7f)
+		comp64 <<= 7
+		comp64 |= uint64(b & 0x7f)
 
 		// If the leading bit is zero, this was the last byte of the component.
 		if b&0x80 == 0 {
-			if ret64 > math.MaxInt32 {
+			if comp64 > math.MaxUint32 {
 				return 0, 0, fmt.Errorf("OID component too large")
 			}
-			return int(ret64), i + 1, nil
+			return uint32(comp64), i + 1, nil
 		}
 	}
 	return 0, 0, fmt.Errorf("OID component truncated")
@@ -92,7 +93,7 @@ func decodeRelativeOIDComponent(in []byte) (int, int, error) {
 // relative OID, then encodes it to both a string and DER bytes for easy access
 // later. It's easiest to perform those checks on integers, not strings or
 // bytes, hence the input type.
-func fromInts(components ...int) (*RelativeOID, error) {
+func fromInts(components []uint32) (*RelativeOID, error) {
 	if len(components) == 0 {
 		return nil, fmt.Errorf("empty relative OID")
 	}
@@ -100,38 +101,26 @@ func fromInts(components ...int) (*RelativeOID, error) {
 	var der []byte
 	var strs []string
 	for _, c := range components {
-		if c < 0 {
-			return nil, fmt.Errorf("relative OID component %d is negative", c)
-		}
+		strs = append(strs, strconv.FormatUint(uint64(c), 10))
 
-		if c > math.MaxInt32 {
-			return nil, fmt.Errorf("relative OID component %d is too large", c)
-		}
-
-		strs = append(strs, strconv.Itoa(c))
-
-		// Count the number of bytes necessary to hold the component's bits, given
-		// that each byte only encodes 7 bits.
-		var l int64
 		if c == 0 {
-			l = 1
-		} else {
-			for i := c; i > 0; i >>= 7 {
-				l++
-			}
+			der = append(der, 0x00)
+			continue
 		}
 
-		// Encode the component starting from its most significant bits, setting
-		// the most significant bit of each byte to 1 if it is *not* the last byte
-		// of the component's encoding.
-		for i := l - 1; i >= 0; i-- {
-			o := byte((c >> uint(i*7)) & 0x7f)
-			if i != 0 {
-				o |= 0x80
-			}
-
-			der = append(der, o)
+		// Construct each byte of the DER encoding, starting with the least
+		// significant 7 bits of the component.
+		var reversed []byte
+		for c != 0 {
+			reversed = append(reversed, byte(c&0x7f|0x80)) //nolint:gosec // G115: bitwise AND with 0x7f guarantees this fits in a byte
+			c >>= 7
 		}
+
+		// Unset the "continue" bit from the least significant byte, and then
+		// reverse the bytes to get the actual DER most-significant-first encoding.
+		reversed[0] = reversed[0] & 0x7f
+		slices.Reverse(reversed)
+		der = append(der, reversed...)
 	}
 
 	return &RelativeOID{
