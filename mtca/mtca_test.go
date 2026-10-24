@@ -34,6 +34,7 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
@@ -85,8 +86,12 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 		return nil, nil, err
 	}
 
+	logID, err := issuancelog.Config{CAID: "44947.4.1", LogNumber: logNumber}.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	fs3 := bs3test.New()
-	logID := issuancelog.ID{CAID: "44947.4.1", LogNumber: logNumber}
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
@@ -531,8 +536,8 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	}
 
 	// Build a checkpoint signed by the same key, but for a different log origin. It should error.
-	otherLog := issuancelog.ID{CAID: m.logID.CAID, LogNumber: logNumber + 1}
-	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID, otherLog.Origin(), m.issuer.Signer)
+	otherLog := must.Do(issuancelog.Config{CAID: m.logID.CAID().String(), LogNumber: logNumber + 1}.Load())
+	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID().String(), otherLog.Origin(), m.issuer.Signer)
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -922,7 +927,7 @@ func TestInitLog(t *testing.T) {
 func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointModel) {
 	t.Helper()
 	message := cosigned.Message{
-		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID,
+		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID().String(),
 		Timestamp:    0,
 		LogOrigin:    mtca.logID.Origin(),
 		Start:        0,
