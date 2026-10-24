@@ -18,6 +18,7 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
+	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/core"
@@ -227,6 +228,26 @@ func (m *mtca) InitLog(ctx context.Context) error {
 // a previous process stopped between publishing tiles and serving. It must be
 // called on startup, before Loop().
 func (m *mtca) Preflight(ctx context.Context) error {
+	checkpointSignedNote, _, err := m.readCheckpoint(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(checkpointSignedNote) == 0 {
+		return fmt.Errorf("no checkpoint signed note available")
+	}
+
+	_, _, err = checkpoint.Open(checkpointSignedNote, m.verifier)
+	if err != nil {
+		une, ok := errors.AsType[*note.UnverifiedNoteError](err)
+		if ok {
+			return fmt.Errorf("verifying checkpoint signed note: no verifiable signatures "+
+				"(check whether issuer key changed); unverified sigs: %v",
+				une.Note.UnverifiedSigs)
+		}
+		return fmt.Errorf("verifying checkpoint signed note: %s", err)
+	}
+
 	latest, err := m.treedb.LatestCheckpoint(ctx, m.logID.String())
 	if err != nil {
 		return err
