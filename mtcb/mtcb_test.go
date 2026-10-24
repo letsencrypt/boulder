@@ -106,10 +106,11 @@ func (f *fakeCheckpointDB) GetCheckpointSubtree(_ context.Context, mtcLogID stri
 // issued is one entry in the test log, along with the values we expect to find
 // in the standalone certificate the mtcb builds for it.
 type issued struct {
-	index   int64
-	serial  uint64
-	spki    []byte
-	dnsName string
+	index    int64
+	serial   uint64
+	spki     []byte
+	dnsName  string
+	leafHash tlog.Hash
 }
 
 // testLog is an issuance log and the checkpoints that cover it.
@@ -209,6 +210,10 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 	if err != nil {
 		t.Fatalf("FromX509: %s", err)
 	}
+	mtcleBytes, err := mtcle.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %s", err)
+	}
 	mtcpk, err := pubkey.FromCryptoPubkey(key.Public())
 	if err != nil {
 		t.Fatalf("FromCryptoPubkey: %s", err)
@@ -222,11 +227,35 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 		t.Fatalf("MarshalPKIXPublicKey: %s", err)
 	}
 	return issued{
-		index:   index,
-		serial:  testSerial(t, index),
-		spki:    spki,
-		dnsName: dnsName,
+		index:    index,
+		serial:   testSerial(t, index),
+		spki:     spki,
+		dnsName:  dnsName,
+		leafHash: tlog.RecordHash(mtcleBytes),
 	}
+}
+
+// addSubtree adds a mirrored checkpoint subtree over [start, end) to the log,
+// with its hash computed from the entries' leaf hashes, and returns it.
+func (l *testLog) addSubtree(t *testing.T, start, end uint64) *treedb.CheckpointSubtreeModel {
+	t.Helper()
+	var leaves []tlog.Hash
+	for _, e := range l.entries[start:end] {
+		leaves = append(leaves, e.leafHash)
+	}
+	hash := subtree.MTH(leaves)
+	st := &treedb.CheckpointSubtreeModel{
+		ID:              int64(len(l.checkpointSubtrees) + 1),
+		MTCLogID:        testLogID.String(),
+		MTCASignature:   fmt.Appendf(nil, "placeholder mtca signature over [%d, %d)", start, end),
+		MirrorID:        &mirrorID,
+		MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over [%d, %d)", start, end),
+		SubtreeStart:    start,
+		SubtreeEnd:      end,
+		SubtreeHash:     hash[:],
+	}
+	l.checkpointSubtrees = append(l.checkpointSubtrees, st)
+	return st
 }
 
 // testMTCB returns an mtcb over subtrees and the checkpoint and tiles in fs3.
@@ -411,6 +440,13 @@ func TestGetStandalone(t *testing.T) {
 	t.Parallel()
 	l := newTestLog(t)
 
+	// Subtrees that don't start at the beginning of the log. Each start is a
+	// multiple of BIT_CEIL(end - start), as the MTC draft requires.
+	subtree4to6 := l.addSubtree(t, 4, 6)
+	subtree8to14 := l.addSubtree(t, 8, 14)
+	subtree128to256 := l.addSubtree(t, 128, 256)
+	subtree256to258 := l.addSubtree(t, 256, 258)
+
 	// Call GetStandalone for a variety of subtrees. For each one, use a `latest` checkpoint that
 	// has a TreeSize equal to SubtreeEnd, to exercise the partial-tile fetch path, and where the
 	// log has grown past it, a later one.
@@ -427,6 +463,11 @@ func TestGetStandalone(t *testing.T) {
 		{name: "Across the bundle boundary", entries: l.entries[254:], latest: l.signedNotes[2], subtree: l.checkpointSubtrees[2]},
 		{name: "Size 4 subtree under the size 258 checkpoint", entries: l.entries[1:4], latest: l.signedNotes[2], subtree: l.checkpointSubtrees[0]},
 		{name: "Size 6 subtree under the size 258 checkpoint", entries: l.entries[4:6], latest: l.signedNotes[2], subtree: l.checkpointSubtrees[1]},
+		{name: "Subtree [4, 6) at size 6", entries: l.entries[4:6], latest: l.signedNotes[1], subtree: subtree4to6},
+		{name: "Subtree [4, 6) under the size 258 checkpoint", entries: l.entries[4:6], latest: l.signedNotes[2], subtree: subtree4to6},
+		{name: "Incomplete subtree [8, 14)", entries: l.entries[8:14], latest: l.signedNotes[2], subtree: subtree8to14},
+		{name: "Subtree [128, 256)", entries: l.entries[128:256], latest: l.signedNotes[2], subtree: subtree128to256},
+		{name: "Subtree [256, 258) in a partial bundle", entries: l.entries[256:], latest: l.signedNotes[2], subtree: subtree256to258},
 	} {
 		// Serve this case's checkpoint. The cases share one fs3, so the subtests
 		// below must not run in parallel.
@@ -475,11 +516,6 @@ func TestGetStandaloneInvalidSubtree(t *testing.T) {
 			name:              "Subtree that does not include the entry",
 			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeEnd = 1 },
 			expectErrContains: "not in subtree",
-		},
-		{
-			name:              "Subtree starting past the first entry",
-			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeStart = 1 },
-			expectErrContains: "not yet supported",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
