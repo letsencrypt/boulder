@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
@@ -74,12 +75,12 @@ func New(
 			return nil, fmt.Errorf("issuer %q not an ML-DSA pubkey (%T)", caID, issuer.PublicKey)
 		}
 
-		checkpointVerifier, err := cosignature.NewVerifier(caID, pubKey)
+		checkpointVerifier, err := cosignature.NewVerifier(caID.String(), pubKey)
 		if err != nil {
 			return nil, fmt.Errorf("creating CA verifier: %s", err)
 		}
 
-		issuersMap[caID] = mtcIssuer{
+		issuersMap[caID.String()] = mtcIssuer{
 			certificate:        issuer.Certificate,
 			checkpointVerifier: checkpointVerifier,
 		}
@@ -257,13 +258,23 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
+	mtcaID, err := reloid.FromString(requestedLogID.CAID)
+	if err != nil {
+		return nil, fmt.Errorf("parsing MTCA ID: %w", err)
+	}
+
+	mirrorID, err := reloid.FromString(*subtree.MirrorID)
+	if err != nil {
+		return nil, fmt.Errorf("parsing Mirror ID: %w", err)
+	}
+
 	sig := proof.MTCProof{
 		Start:          0,
 		End:            subtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: []byte(requestedLogID.CAID), Signature: subtree.MTCASignature},
-			{CosignerID: []byte(*subtree.MirrorID), Signature: subtree.MirrorSignature},
+			{CosignerID: mtcaID.Bytes(), Signature: subtree.MTCASignature},
+			{CosignerID: mirrorID.Bytes(), Signature: subtree.MirrorSignature},
 		},
 	}
 	certBytes, err := buildCertificate(tbs, &sig)
