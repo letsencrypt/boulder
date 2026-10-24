@@ -412,12 +412,14 @@ type caaParameter struct {
 	val string
 }
 
-// ASCII alpha, digits, and hyphens in the middle.
+// https://www.rfc-editor.org/info/rfc8659/#section-4.2
 // tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+// ASCII alpha, digits, and hyphens in the middle; length at least 1.
 var caaParameterTagRegexp = regexp.MustCompile(`^[[:alnum:]](-*[[:alnum:]])*$`)
 
-// ASCII without whitespace/semi-colons.
+// https://www.rfc-editor.org/info/rfc8659/#section-4.2
 // value = *(%x21-3A / %x3C-7E)
+// ASCII without whitespace/semi-colons.
 var caaParameterValueRegexp = regexp.MustCompile(`^[\x21-\x3a\x3c-\x7e]*$`)
 
 // parseCAARecord extracts the domain and parameters (if any) from a

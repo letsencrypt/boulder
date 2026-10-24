@@ -1710,7 +1710,7 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 		},
 		{
 			name:            "empty param tag between valid params is invalid",
-			value:           "letsencrypt.org; a=b; =c",
+			value:           "letsencrypt.org; =a; b=c",
 			expectErrSubstr: "tag contains disallowed character",
 		},
 		{
