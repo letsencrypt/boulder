@@ -16,6 +16,8 @@ import (
 
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/core/reloid"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 )
@@ -28,8 +30,13 @@ const exampleHashB64 = "CsUYapGGPo4dkMgIAUqom/Xajj7h2fB2MPA3j2jxq2I="
 // newline and no signature lines.
 const exampleCheckpoint = "example.com/behind-the-sofa\n20852163\n" + exampleHashB64 + "\n"
 
-const cosignerID = "32473.9"
-const cosignerName = oidPrefix + cosignerID
+var (
+	cosignerID   = must.Do(reloid.FromString("32473.9"))
+	cosignerName = oidPrefix + cosignerID.String()
+
+	// caID is the cosigner ID of the CA operating the log the tests cosign.
+	caID = must.Do(reloid.FromString("32473.2"))
+)
 
 // testSigner returns a deterministic signer over a fixed-seed ML-DSA-44 key,
 // so cosignature tests are reproducible.
@@ -105,11 +112,9 @@ func TestVerifyRejectsMalformedInput(t *testing.T) {
 
 func TestNewVerifierRejects(t *testing.T) {
 	pub := testPubKey(t)
-	for _, id := range []string{"", "has space", "32473..2", "32473.x", ".32473", "32473.", "32473.02"} {
-		_, err := NewVerifier(id, pub)
-		if err == nil {
-			t.Errorf("NewVerifier(%q) = nil error, want error", id)
-		}
+	_, err := NewVerifier(nil, pub)
+	if err == nil {
+		t.Error("NewVerifier with a nil cosigner ID = nil error, want error")
 	}
 
 	// An ML-DSA-65 key is the wrong size for an ML-DSA-44 cosigner.
@@ -194,7 +199,7 @@ func TestVerifyRejects(t *testing.T) {
 // verifier against the matching checkpoint text, and reassembles into a
 // signature line that opens.
 func TestCosignerRoundTrip(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -219,7 +224,7 @@ func TestCosignerRoundTrip(t *testing.T) {
 		t.Errorf("timestamp = %d, want 0", binary.BigEndian.Uint64(signature[:8]))
 	}
 
-	v, err := NewVerifier("32473.2", testPubKey(t))
+	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
@@ -268,13 +273,11 @@ func TestCosignerRoundTrip(t *testing.T) {
 func TestCosignerRejects(t *testing.T) {
 	signer := testSigner(t)
 
-	for _, id := range []string{"", "has space", "32473..2", "32473.x", ".32473", "32473.", "32473.02"} {
-		_, err := NewCosigner(id, "oid/1.3.6.1.4.1.32473.2.0.42", signer)
-		if err == nil {
-			t.Errorf("NewCosigner with cosigner ID %q = nil error, want error", id)
-		}
+	_, err := NewCosigner(nil, "oid/1.3.6.1.4.1.32473.2.0.42", signer)
+	if err == nil {
+		t.Error("NewCosigner with a nil cosigner ID = nil error, want error")
 	}
-	_, err := NewCosigner("32473.2", "", signer)
+	_, err = NewCosigner(caID, "", signer)
 	if err == nil {
 		t.Error("NewCosigner with an empty origin = nil error, want error")
 	}
@@ -284,7 +287,7 @@ func TestCosignerRejects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey(MLDSA65): %s", err)
 	}
-	_, err = NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", wrong)
+	_, err = NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", wrong)
 	if err == nil {
 		t.Error("NewCosigner with an ML-DSA-65 key = nil error, want error")
 	}
@@ -294,12 +297,12 @@ func TestCosignerRejects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ed25519.GenerateKey: %s", err)
 	}
-	_, err = NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", edKey)
+	_, err = NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", edKey)
 	if err == nil {
 		t.Error("NewCosigner with an Ed25519 key = nil error, want error")
 	}
 
-	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", signer)
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", signer)
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -331,7 +334,7 @@ func (s shortSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, e
 }
 
 func TestCosignerRejectsShortSignature(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", shortSigner{pubKey: testPubKey(t)})
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", shortSigner{pubKey: testPubKey(t)})
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -356,7 +359,7 @@ func (s errSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, err
 }
 
 func TestCosignerPropagatesSignerError(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", errSigner{pubKey: testPubKey(t)})
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", errSigner{pubKey: testPubKey(t)})
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -398,7 +401,7 @@ func TestRawSignature(t *testing.T) {
 // verifies on its own, and that extraction errors for a verifier that did not
 // sign.
 func TestFilterByVerify(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -416,7 +419,7 @@ func TestFilterByVerify(t *testing.T) {
 		t.Fatalf("SignatureLine: %s", err)
 	}
 
-	v, err := NewVerifier("32473.2", testPubKey(t))
+	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
@@ -459,7 +462,7 @@ func TestFilterByVerifyRejectsForeignFormat(t *testing.T) {
 // exchange. checkpoint.Open, which only opens notes we assembled, rejects the
 // same note.
 func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
-	known, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	known, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -472,7 +475,7 @@ func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	unknown, err := NewCosigner("32473.9", "oid/1.3.6.1.4.1.32473.2.0.42", privatekey.NewDeterministicSigner(otherKey))
+	unknown, err := NewCosigner(cosignerID, "oid/1.3.6.1.4.1.32473.2.0.42", privatekey.NewDeterministicSigner(otherKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -500,7 +503,7 @@ func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
 	}
 	lines := append(knownLine, unknownLine...)
 
-	v, err := NewVerifier("32473.2", testPubKey(t))
+	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
@@ -523,7 +526,7 @@ func TestFilterByVerifyIgnoresUnknownSignatures(t *testing.T) {
 // checkpoint it covers and not against another, and that reassembly rejects
 // short signatures.
 func TestSignatureLineRoundTrip(t *testing.T) {
-	ca, err := NewCosigner("32473.2", "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -541,7 +544,7 @@ func TestSignatureLineRoundTrip(t *testing.T) {
 		t.Fatalf("RawSignature: %s", err)
 	}
 
-	v, err := NewVerifier("32473.2", testPubKey(t))
+	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}

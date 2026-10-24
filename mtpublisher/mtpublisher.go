@@ -48,7 +48,7 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.I
 		return nil, fmt.Errorf("interval must be positive, got %s", interval)
 	}
 
-	caVerifier, err := cosignature.NewVerifier(logID.CAID().String(), mtcaPublicKey)
+	caVerifier, err := cosignature.NewVerifier(logID.CAID(), mtcaPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating MTCA verifier: %s", err)
 	}
