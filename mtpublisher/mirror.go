@@ -350,11 +350,7 @@ func (m *MirrorClient) LatestCheckpoint(ctx context.Context, origin string) (*ch
 
 // CosignSubtree returns the mirror's signature over the subtree [start, end)
 // from sign-subtree, proven against the mirror's own checkpoint.
-func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	mirrored, mirrorLine, err := m.LatestCheckpoint(ctx, origin)
-	if err != nil {
-		return nil, err
-	}
+func (m *MirrorClient) CosignSubtree(ctx context.Context, mirrored *checkpoint.Checkpoint, mirrorLine []byte, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
 	if mirrored.Tree.N < end {
 		return nil, fmt.Errorf("mirror checkpoint at size %d does not include subtree [%d, %d)", mirrored.Tree.N, start, end)
 	}
@@ -384,7 +380,7 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, 
 	// TODO: tlog-witness v1.1.0 changed the sign-subtree response from a note
 	// signature line to a bare base64 subtree cosignature. Once Sunlight is
 	// updated to match, decode it and use VerifySubtreeSignature instead.
-	subtreeSignature, err := m.verifier.VerifySubtreeSignatureLine(origin, start, end, subtreeHash, subtreeCosignatureLine)
+	subtreeSignature, err := m.verifier.VerifySubtreeSignatureLine(mirrored.Origin, start, end, subtreeHash, subtreeCosignatureLine)
 	if err != nil {
 		return nil, fmt.Errorf("subtree signature failed verification: %w", err)
 	}

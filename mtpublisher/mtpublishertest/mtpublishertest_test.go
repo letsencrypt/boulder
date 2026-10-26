@@ -48,7 +48,7 @@ func TestMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SubmitCheckpoint: %s", err)
 	}
-	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp.Origin, 0, cp.Tree.N, cp.Tree.Hash)
+	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp, checkpointCosignatureLine, 0, cp.Tree.N, cp.Tree.Hash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}

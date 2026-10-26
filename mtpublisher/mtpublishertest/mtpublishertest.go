@@ -87,15 +87,14 @@ func (m *TestMirror) LatestCheckpoint(_ context.Context, origin string) (*checkp
 }
 
 // CosignSubtree returns the mirror's signature over the subtree [start, end).
-// It errors if origin is not the cosigner's log or the last checkpoint the
-// mirror cosigned does not include the subtree.
-func (m *TestMirror) CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	latest, _, err := m.LatestCheckpoint(ctx, origin)
-	if err != nil {
-		return nil, err
+// It errors if mirrored is not of the cosigner's log or does not include the
+// subtree.
+func (m *TestMirror) CosignSubtree(_ context.Context, mirrored *checkpoint.Checkpoint, _ []byte, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
+	if mirrored.Origin != m.cosigner.Origin() {
+		return nil, fmt.Errorf("origin %q is not this mirror's log %q", mirrored.Origin, m.cosigner.Origin())
 	}
-	if latest.Tree.N < end {
-		return nil, fmt.Errorf("mirror checkpoint at size %d does not include subtree [%d, %d)", latest.Tree.N, start, end)
+	if mirrored.Tree.N < end {
+		return nil, fmt.Errorf("mirror checkpoint at size %d does not include subtree [%d, %d)", mirrored.Tree.N, start, end)
 	}
 	return m.cosigner.CosignSubtree(start, end, subtreeHash)
 }

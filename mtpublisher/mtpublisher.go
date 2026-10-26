@@ -31,9 +31,10 @@ type Mirror interface {
 	// key. The mirror signs the subtrees the checkpoint includes.
 	LatestCheckpoint(ctx context.Context, origin string) (*checkpoint.Checkpoint, []byte, error)
 	// CosignSubtree returns the mirror's signature over the subtree [start,
-	// end) of the log with origin, verified against the mirror's key. It
-	// errors if the mirror's checkpoint does not include the subtree.
-	CosignSubtree(ctx context.Context, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error)
+	// end) of mirrored, the mirror's checkpoint from LatestCheckpoint,
+	// verified against the mirror's key. It errors if the mirror's checkpoint
+	// does not include the subtree.
+	CosignSubtree(ctx context.Context, mirrored *checkpoint.Checkpoint, mirrorLine []byte, start, end int64, subtreeHash tlog.Hash) ([]byte, error)
 }
 
 // mtpublisher obtains and stores its mirror's cosignatures over the issuance
@@ -148,7 +149,7 @@ const subtreeBatch = 100
 // that lack one and that the mirror's checkpoint includes, newest first, up to
 // subtreeBatch per pass. Start calls it at each interval.
 func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
-	mirrored, _, err := p.mirror.LatestCheckpoint(ctx, p.logID.Origin())
+	mirrored, mirrorLine, err := p.mirror.LatestCheckpoint(ctx, p.logID.Origin())
 	if err != nil {
 		return fmt.Errorf("fetching the mirror's checkpoint of %s: %w", p.logID, err)
 	}
@@ -171,7 +172,7 @@ func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
 			return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
 		}
 
-		subtreeSignature, err := p.mirror.CosignSubtree(ctx, p.logID.Origin(), start, end, subtreeHash)
+		subtreeSignature, err := p.mirror.CosignSubtree(ctx, mirrored, mirrorLine, start, end, subtreeHash)
 		if err != nil {
 			return fmt.Errorf("cosigning subtree %d (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
 		}

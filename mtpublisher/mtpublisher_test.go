@@ -439,28 +439,6 @@ func (s *sourceLog) serveMirrorCheckpoint(t *testing.T, w http.ResponseWriter, r
 // add to their checkpoints so that clients ignore unknown keys.
 var greaseLine = []byte("— grease.invalid " + base64.StdEncoding.EncodeToString(make([]byte, 4+8+mldsa.MLDSA44SignatureSize)) + "\n")
 
-// servedNote returns cp as the mirror would serve it, with the log's line and
-// the mirror's.
-func (s *sourceLog) servedNote(ctx context.Context, cp *checkpoint.Checkpoint) ([]byte, error) {
-	timestamped, err := s.ca.CosignCheckpoint(cp.Tree)
-	if err != nil {
-		return nil, err
-	}
-	raw, err := cosignature.RawSignature(timestamped)
-	if err != nil {
-		return nil, err
-	}
-	caLine, err := s.ca.SignatureLine(0, raw)
-	if err != nil {
-		return nil, err
-	}
-	mirrorLine, err := s.mirror.SubmitCheckpoint(ctx, cp, nil)
-	if err != nil {
-		return nil, err
-	}
-	return cp.SignedNote(append(append(caLine, mirrorLine...), greaseLine...))
-}
-
 // newSourceLog publishes a 300 entry tree and grows it to 700 entries,
 // returning the storage and the newer tree's checkpoint text.
 func newSourceLog(t *testing.T) *sourceLog {
@@ -555,7 +533,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("SubmitCheckpoint: %s", err)
 	}
-	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp.Origin, 0, cp.Tree.N, cp.Tree.Hash)
+	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp, checkpointCosignatureLine, 0, cp.Tree.N, cp.Tree.Hash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
@@ -632,7 +610,7 @@ func TestMirrorCosignPartialSubtree(t *testing.T) {
 		t.Fatalf("reading leaf hashes: %s", err)
 	}
 	partialHash := subtree.MTH(leaves)
-	partialSignature, err := source.mirror.CosignSubtree(t.Context(), source.cp.Origin, 256, 384, partialHash)
+	partialSignature, err := source.mirror.CosignSubtree(t.Context(), source.cp, source.checkpointCosignatureLine, 256, 384, partialHash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
@@ -652,7 +630,11 @@ func TestMirrorCosignPartialSubtree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	subtreeSignature, err := m.CosignSubtree(t.Context(), source.cp.Origin, 256, 384, partialHash)
+	mirrored, mirrorLine, err := m.LatestCheckpoint(t.Context(), source.cp.Origin)
+	if err != nil {
+		t.Fatalf("LatestCheckpoint: %s", err)
+	}
+	subtreeSignature, err := m.CosignSubtree(t.Context(), mirrored, mirrorLine, 256, 384, partialHash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
@@ -849,7 +831,11 @@ func TestMirrorCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SubmitCheckpoint: %s", err)
 	}
-	subtreeSignature, err := m.CosignSubtree(t.Context(), source.cp.Origin, 0, source.cp.Tree.N, source.cp.Tree.Hash)
+	mirrored, mirrorLine, err := m.LatestCheckpoint(t.Context(), source.cp.Origin)
+	if err != nil {
+		t.Fatalf("LatestCheckpoint: %s", err)
+	}
+	subtreeSignature, err := m.CosignSubtree(t.Context(), mirrored, mirrorLine, 0, source.cp.Tree.N, source.cp.Tree.Hash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
@@ -1089,41 +1075,14 @@ func TestMirrorCosignErrors(t *testing.T) {
 	}
 
 	// A mirror whose checkpoint does not include the subtree yet.
-	behind := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		olderNote, err := source.servedNote(t.Context(), &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: source.older})
-		if err != nil {
-			t.Errorf("servedNote: %s", err)
-			return
-		}
-		w.Write(olderNote)
-	}))
-	defer behind.Close()
-	m, err = NewMirrorClient(behind.URL, behind.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
-	if err != nil {
-		t.Fatalf("NewMirrorClient: %s", err)
-	}
-	_, err = m.CosignSubtree(t.Context(), source.cp.Origin, 0, source.cp.Tree.N, source.cp.Tree.Hash)
+	_, err = m.CosignSubtree(t.Context(), &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: source.older}, nil, 0, source.cp.Tree.N, source.cp.Tree.Hash)
 	if err == nil || !strings.Contains(err.Error(), "does not include") {
 		t.Errorf("CosignSubtree against a mirror behind the subtree = %s, want an error", err)
 	}
 
 	// A mirror whose checkpoint at the subtree's size has a different root.
-	split := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		otherNote, err := source.servedNote(t.Context(), &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: tlog.Tree{N: source.newer.N, Hash: source.older.Hash}})
-		if err != nil {
-			t.Errorf("servedNote: %s", err)
-			return
-		}
-		w.Write(otherNote)
-	}))
-	defer split.Close()
-	m, err = NewMirrorClient(split.URL, split.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
-	if err != nil {
-		t.Fatalf("NewMirrorClient: %s", err)
-	}
-	_, err = m.CosignSubtree(t.Context(), source.cp.Origin, 0, source.cp.Tree.N, source.cp.Tree.Hash)
+	_, err = m.CosignSubtree(t.Context(), &checkpoint.Checkpoint{Origin: source.cp.Origin, Tree: tlog.Tree{N: source.newer.N, Hash: source.older.Hash}}, nil, 0, source.cp.Tree.N, source.cp.Tree.Hash)
 	if err == nil || !strings.Contains(err.Error(), "root hash") {
 		t.Errorf("CosignSubtree against a mirror with a different root = %s, want a root hash error", err)
 	}
-
 }
