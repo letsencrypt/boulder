@@ -189,6 +189,11 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 	// present.
 	req.SetEdns0(4096, false)
 
+	qBytes, err := req.Pack()
+	if err != nil {
+		return nil, "", err
+	}
+
 	servers, err := c.servers.Addrs()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to list DNS servers: %w", err)
@@ -223,7 +228,7 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 
 		// Do a bare assignment (not :=) to populate the `resp` used by the defer above.
 		var rtt time.Duration
-		resp, rtt, err = c.exchanger.ExchangeContext(ctx, req, chosenServer)
+		resp, rtt, err = c.exchanger.dohQuery(ctx, qBytes, chosenServer)
 
 		// Do some metrics handling before we do error handling.
 		result := "failed"
@@ -346,7 +351,7 @@ func (c *impl) LookupTXT(ctx context.Context, hostname string) (*Result[*dns.TXT
 // exchanger represents an underlying DNS client. This interface exists solely
 // so that its implementation can be swapped out in unit tests.
 type exchanger interface {
-	ExchangeContext(ctx context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
+	dohQuery(ctx context.Context, queryBytes []byte, a string) (*dns.Msg, time.Duration, error)
 }
 
 // dohExchanger implements the exchanger interface. It routes all of its DNS
@@ -368,21 +373,16 @@ var errDohQueryTimeout = errors.New("query timed out")
 // count as a DoH transport error.
 var errDohQueryCanceled = errors.New("query timed out (and was canceled)")
 
-// ExchangeContext sends a DoH query to the provided DoH server and returns the response.
+// dohQuery sends a DoH query to the provided DoH server and returns the response.
 //
 // Returns `dohQueryTimeout` or `dohQueryCanceled` if the HTTP request times out or is
 // canceled (which generally indicates Somebody Else's Problem). All other errors, including
 // connection refused, TLS handshake failures, or dial timeouts talking to Unbound, are
 // of other error types and can be considered a DoH transport error.
-func (d *dohExchanger) ExchangeContext(ctx context.Context, query *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
-	q, err := query.Pack()
-	if err != nil {
-		return nil, 0, err
-	}
-
+func (d *dohExchanger) dohQuery(ctx context.Context, queryBytes []byte, server string) (*dns.Msg, time.Duration, error) {
 	// The default Unbound URL template
 	url := fmt.Sprintf("https://%s/dns-query", server)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(q)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(queryBytes)))
 	if err != nil {
 		return nil, 0, err
 	}

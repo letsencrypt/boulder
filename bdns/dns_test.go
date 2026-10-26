@@ -609,7 +609,7 @@ type testExchanger struct {
 
 var errTooManyRequests = errors.New("too many requests")
 
-func (te *testExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (te *testExchanger) dohQuery(_ context.Context, _ []byte, a string) (*dns.Msg, time.Duration, error) {
 	te.Lock()
 	defer te.Unlock()
 	msg := &dns.Msg{
@@ -781,9 +781,9 @@ type rotateFailureExchanger struct {
 	brokenAddresses map[string]bool
 }
 
-// ExchangeContext for rotateFailureExchanger tracks the `a` argument in `lookups` and
+// dohQuery for rotateFailureExchanger tracks the `a` argument in `lookups` and
 // if present in `brokenAddresses`, returns an error.
-func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (e *rotateFailureExchanger) dohQuery(_ context.Context, _ []byte, a string) (*dns.Msg, time.Duration, error) {
 	e.Lock()
 	defer e.Unlock()
 
@@ -795,7 +795,7 @@ func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, 
 		return nil, 2 * time.Millisecond, errors.New("broken server")
 	}
 
-	return m, 2 * time.Millisecond, nil
+	return &dns.Msg{}, 2 * time.Millisecond, nil
 }
 
 // fixedOrderProvider returns its servers in the same order every time.
@@ -867,9 +867,15 @@ type truncatedExchanger struct {
 	rcode int
 }
 
-func (te truncatedExchanger) ExchangeContext(_ context.Context, m *dns.Msg, _ string) (*dns.Msg, time.Duration, error) {
+func (te truncatedExchanger) dohQuery(_ context.Context, queryBytes []byte, _ string) (*dns.Msg, time.Duration, error) {
+	query := new(dns.Msg)
+	err := query.Unpack(queryBytes)
+	if err != nil {
+		return nil, time.Duration(0), err
+	}
+
 	resp := new(dns.Msg)
-	resp.SetReply(m)
+	resp.SetReply(query)
 	resp.Rcode = te.rcode
 	resp.Truncated = true
 	return resp, time.Millisecond, nil
@@ -998,8 +1004,12 @@ func TestDoHExchangerTimeouts(t *testing.T) {
 
 		query := new(dns.Msg)
 		query.SetQuestion("example.com.", dns.TypeA)
+		queryBytes, err := query.Pack()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		_, _, err := exchanger.ExchangeContext(ctx, query, srv.Listener.Addr().String())
+		_, _, err = exchanger.dohQuery(ctx, queryBytes, srv.Listener.Addr().String())
 		return err
 	}
 
