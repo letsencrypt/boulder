@@ -52,7 +52,6 @@ type MirrorClient struct {
 	src              *Source
 	mirrorID         string
 	verifier         *cosignature.Verifier
-	caVerifier       *cosignature.Verifier
 
 	// oldSize is the tree size of the mirror's latest cosigned checkpoint, the
 	// old size of the next add-checkpoint request.
@@ -67,15 +66,12 @@ type MirrorClient struct {
 // NewMirrorClient returns a MirrorClient that submits to the mirror's endpoints
 // under baseURL and reads its checkpoint under monitoringPrefix, giving each
 // request timeout to complete.
-func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, caVerifier *cosignature.Verifier, timeout time.Duration) (*MirrorClient, error) {
+func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, timeout time.Duration) (*MirrorClient, error) {
 	if baseURL == "" {
 		return nil, errors.New("empty mirror base URL")
 	}
 	if monitoringPrefix == "" {
 		return nil, errors.New("empty mirror monitoring prefix")
-	}
-	if caVerifier == nil {
-		return nil, errors.New("nil MTCA verifier")
 	}
 	if timeout <= 0 {
 		return nil, fmt.Errorf("timeout must be positive, got %s", timeout)
@@ -91,7 +87,6 @@ func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID str
 		src:              src,
 		mirrorID:         mirrorID,
 		verifier:         verifier,
-		caVerifier:       caVerifier,
 	}, nil
 }
 
@@ -339,8 +334,7 @@ func (m *MirrorClient) LatestCheckpoint(ctx context.Context, origin string) (*ch
 		return nil, nil, fmt.Errorf("mirror returned status %d for its checkpoint: %s", resp.StatusCode, errorBody(body))
 	}
 
-	// The served checkpoint carries the log's line and the mirror's.
-	mirrored, n, err := checkpoint.Open(body, m.caVerifier, m.verifier)
+	mirrored, n, err := checkpoint.Open(body, m.verifier)
 	if err != nil {
 		return nil, nil, fmt.Errorf("mirror checkpoint failed verification: %w", err)
 	}

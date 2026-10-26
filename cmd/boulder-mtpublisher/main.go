@@ -133,7 +133,7 @@ func main() {
 	caVerifier, err := cosignature.NewVerifier(c.MTPublisher.LogID.CAID, caPubKey)
 	cmd.FailOnError(err, "Creating MTCA verifier")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, c.MTPublisher.Mirror.MonitoringPrefix, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, caVerifier, c.MTPublisher.Mirror.Timeout.Duration)
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, c.MTPublisher.Mirror.MonitoringPrefix, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
 	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caVerifier, mirror, logger)
