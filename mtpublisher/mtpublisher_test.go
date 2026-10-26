@@ -304,8 +304,8 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 }
 
 // TestCosignSubtreesWithinMirrorCheckpoint checks that a pass signs every
-// subtree the mirror's checkpoint includes, across more than one batch, and
-// leaves those beyond it for a later pass.
+// subtree the mirror's checkpoint includes and leaves those beyond it for a
+// later pass.
 func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 	_, subtree := testCheckpoint(t)
 	subtrees := []*treedb.CheckpointSubtreeModel{subtree}
