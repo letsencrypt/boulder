@@ -204,11 +204,14 @@ func TestIssuanceMTC(t *testing.T) {
 
 	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
 
-	_, err = authAndIssue(client, key, idents, true, "mtcshortlived")
-	// "finalized order timeout" is as far as we get for now. Once we are collecting
-	// signatures and constructing standalone certificates, we'll expect this to succeed.
-	if err == nil || !strings.Contains(err.Error(), "finalized order timeout") {
-		t.Fatalf("issuing certificate: expected 'finalized order timeout', got %q", err)
+	// A valid order is as far as we get for now. Once the WFE serves standalone
+	// certificates for MTC orders, we'll fetch the certificate too.
+	_, order, err := makeClientAndOrder(client, key, idents, true, "mtcshortlived", nil)
+	if err != nil {
+		t.Fatalf("finalizing MTC order: %s", err)
+	}
+	if order.Status != "valid" {
+		t.Fatalf("finalized MTC order status = %q, want valid", order.Status)
 	}
 
 	// The mtca serves each checkpoint as soon as it is sequenced, and the

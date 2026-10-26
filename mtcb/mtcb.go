@@ -111,7 +111,7 @@ type simpleS3 interface {
 
 // StandaloneReady checks if the requested TBSCertificateLogEntry is ready to be built into a standalone certificate.
 //
-// Note that this only checks the contents of the `checkpointSubtrees` table and not the latest checkpoint signed note
+// Note that this only checks the contents of the `subtrees` table and not the latest checkpoint signed note
 // from tile storage.
 func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyRequest) (*mtcbpb.StandaloneReadyResponse, error) {
 	if core.IsAnyNilOrZero(req.MtcLogID, req.MtcSerialNumber, req.MtcSubtreeID) {
