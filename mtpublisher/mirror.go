@@ -370,8 +370,8 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, mirrored *checkpoint.C
 
 	// Verify the mirror's subtree signature.
 	//
-	// TODO: tlog-witness v1.1.0 changed the sign-subtree response from a note
-	// signature line to a bare base64 subtree cosignature. Once Sunlight is
+	// TODO(#9121): tlog-witness v1.1.0 changed the sign-subtree response from a
+	// note signature line to a bare base64 subtree cosignature. Once Sunlight is
 	// updated to match, decode it and use VerifySubtreeSignature instead.
 	subtreeSignature, err := m.verifier.VerifySubtreeSignatureLine(mirrored.Origin, start, end, subtreeHash, subtreeCosignatureLine)
 	if err != nil {

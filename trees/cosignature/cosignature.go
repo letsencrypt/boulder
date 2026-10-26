@@ -279,8 +279,8 @@ func (v *Verifier) VerifySubtreeSignature(origin string, start, end int64, subtr
 // line is malformed or by another key, carries a nonzero timestamp, or does not
 // verify.
 //
-// TODO: tlog-witness v1.1.0 changed the sign-subtree response from a note
-// signature line to a bare base64 subtree cosignature. Remove this once
+// TODO(#9121): tlog-witness v1.1.0 changed the sign-subtree response from a
+// note signature line to a bare base64 subtree cosignature. Remove this once
 // Sunlight is updated to match.
 func (v *Verifier) VerifySubtreeSignatureLine(origin string, start, end int64, subtreeHash tlog.Hash, line []byte) ([]byte, error) {
 	body, ok := bytes.CutPrefix(bytes.TrimSuffix(line, []byte("\n")), []byte(noteSignatureLinePrefix+v.keyName+" "))
