@@ -157,9 +157,12 @@ func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
 		return fmt.Errorf("selecting the unsigned subtrees of %s: %w", p.logID, err)
 	}
 	for _, subtree := range subtrees {
+		if len(subtree.MTCASignature) == 0 {
+			return fmt.Errorf("subtree %d (%s [%d, %d)) has no MTCA signature", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+		}
 		err = subtree.Valid()
 		if err != nil {
-			return fmt.Errorf("validating subtree %d: %s", subtree.ID, err)
+			return fmt.Errorf("compliance problem: the MTCA signed an invalid subtree %d (%s [%d, %d)): %s", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
 		}
 		start := int64(subtree.SubtreeStart) //nolint:gosec // G115: Valid checked the bounds
 		end := int64(subtree.SubtreeEnd)     //nolint:gosec // G115: Valid checked the bounds
