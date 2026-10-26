@@ -245,8 +245,8 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	hr := tlog.TileHashReader(latestCheckpoint.Tree, tr)
 	inclusionProof, err := subtree.InclusionProof(
 		entryIndex,
-		int64(dbSubtree.SubtreeStart), //nolint:gosec // G115 - less than 1<<48
-		int64(dbSubtree.SubtreeEnd),   //nolint:gosec // G115 - less than 1<<48
+		int64(dbSubtree.SubtreeStart), //nolint:gosec // G115: less than 1<<48
+		int64(dbSubtree.SubtreeEnd),   //nolint:gosec // G115: less than 1<<48
 		hr)
 	if err != nil {
 		return nil, fmt.Errorf("computing inclusion proof: %w", err)
