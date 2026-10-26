@@ -21,8 +21,10 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/bs3/bs3test"
+	"github.com/letsencrypt/boulder/core/reloid"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -41,7 +43,10 @@ const (
 	mirrorID = "32473.9"
 )
 
-var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 44}
+var (
+	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 44}.Load())
+	mirrorOID = must.Do(reloid.FromString(mirrorID))
+)
 
 // fakeCheckpointDB holds the latest checkpoint of one log and its subtrees, or
 // none for a log that is not initialized, and stores the mirror cosignatures
@@ -121,7 +126,7 @@ func testCAKey(t *testing.T) *mldsa.PrivateKey {
 // testCAVerifier returns a verifier for testCAKey.
 func testCAVerifier(t *testing.T) *cosignature.Verifier {
 	t.Helper()
-	v, err := cosignature.NewVerifier(testLogID.CAID, testCAKey(t).PublicKey())
+	v, err := cosignature.NewVerifier(testLogID.CAID(), testCAKey(t).PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
@@ -132,7 +137,7 @@ func testCAVerifier(t *testing.T) *cosignature.Verifier {
 // a zero root hash, as testCheckpoint holds.
 func caSignature(t *testing.T, treeSize int64) []byte {
 	t.Helper()
-	ca, err := cosignature.NewCosigner(testLogID.CAID, testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
+	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -232,7 +237,7 @@ func TestPublish(t *testing.T) {
 		t.Errorf("mirrorID = %q, want %q", *latest.MirrorID, mirrorID)
 	}
 
-	verifier, err := cosignature.NewVerifier(mirrorID, key.PublicKey())
+	verifier, err := cosignature.NewVerifier(mirrorOID, key.PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
@@ -471,7 +476,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
 	}
-	ca, err := cosignature.NewCosigner(testLogID.CAID, testLogID.Origin(), privatekey.NewDeterministicSigner(caKey))
+	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(caKey))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -504,7 +509,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewTestMirror: %s", err)
 	}
-	mirrorVerifier, err := cosignature.NewVerifier(mirrorID, mirrorKey.PublicKey())
+	mirrorVerifier, err := cosignature.NewVerifier(mirrorOID, mirrorKey.PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
@@ -614,7 +619,7 @@ func TestMirrorCosignPartialSubtree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
-	mirrorVerifier, err := cosignature.NewVerifier(mirrorID, source.mirrorKey.PublicKey())
+	mirrorVerifier, err := cosignature.NewVerifier(mirrorOID, source.mirrorKey.PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}

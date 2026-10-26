@@ -44,7 +44,7 @@ var _ mtcapb.MTCAServer = &mtca{}
 func New(
 	issuer *issuance.Issuer,
 	profiles map[string]*issuance.Profile,
-	logID issuancelog.ID,
+	logID *issuancelog.ID,
 	sequencingPeriod time.Duration,
 	treeDB checkpointDB,
 	s3c simpleS3,
@@ -55,8 +55,8 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	if certCAID != logID.CAID {
-		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID, certCAID)
+	if certCAID.String() != logID.CAID().String() {
+		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID(), certCAID)
 	}
 
 	if sequencingPeriod == 0 {
@@ -77,7 +77,7 @@ func New(
 		clk:    clk,
 	}
 
-	cosigner, err := cosignature.NewCosigner(logID.CAID, logID.Origin(), issuer.Signer)
+	cosigner, err := cosignature.NewCosigner(logID.CAID(), logID.Origin(), issuer.Signer)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA cosigner: %s", err)
 	}
@@ -87,7 +87,7 @@ func New(
 	if !ok {
 		return nil, fmt.Errorf("issuer public key is %T, must be ML-DSA-44", issuer.Signer.Public())
 	}
-	verifier, err := cosignature.NewVerifier(logID.CAID, pubKey)
+	verifier, err := cosignature.NewVerifier(logID.CAID(), pubKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA verifier: %s", err)
 	}
@@ -101,7 +101,7 @@ type mtca struct {
 
 	issuer   *issuance.Issuer
 	profiles map[string]*issuance.Profile
-	logID    issuancelog.ID
+	logID    *issuancelog.ID
 	cosigner *cosignature.Cosigner
 	verifier *cosignature.Verifier
 
@@ -462,7 +462,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	serial, err := core.EncodeMTCSerial(m.logID.LogNumber, latest.TreeSize)
+	serial, err := core.EncodeMTCSerial(m.logID.LogNumber(), latest.TreeSize)
 	if err != nil {
 		return err
 	}

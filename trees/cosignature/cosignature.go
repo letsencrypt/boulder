@@ -10,11 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/subtree"
@@ -78,28 +78,6 @@ func marshalCheckpointMessage(name string, timestamp uint64, origin string, end 
 	return marshalMessage(name, timestamp, origin, 0, end, rootHash)
 }
 
-// checkRelativeOID returns an error if id is not a dotted decimal OID like
-// "32473.2", nil otherwise.
-func checkRelativeOID(id string) error {
-	if id == "" {
-		return errors.New("empty relative OID")
-	}
-	for arc := range strings.SplitSeq(id, ".") {
-		if arc == "" {
-			return errors.New("empty arc")
-		}
-		if len(arc) > 1 && arc[0] == '0' {
-			return fmt.Errorf("arc %q has a leading zero", arc)
-		}
-		for _, r := range arc {
-			if r < '0' || r > '9' {
-				return fmt.Errorf("arc %q is not decimal", arc)
-			}
-		}
-	}
-	return nil
-}
-
 // Cosigner produces cosignatures over checkpoints and subtrees as an MTC
 // cosigner for a single log: the timestamp is zero, as required for
 // cosignatures used in certificates, and the key is a crypto.Signer so it may
@@ -118,12 +96,10 @@ type Cosigner struct {
 // NewCosigner returns a Cosigner for the cosigner with the given ID over the
 // log with the given log origin, deriving its cosigner name per mtc-tlog:
 // cosigner ID "32473.2" signs as "oid/1.3.6.1.4.1.32473.2". It errors if
-// cosignerID is not a dotted decimal OID, origin is empty, or signer's public
-// key is not ML-DSA-44.
-func NewCosigner(cosignerID, origin string, signer crypto.Signer) (*Cosigner, error) {
-	err := checkRelativeOID(cosignerID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid cosigner ID %q: %w", cosignerID, err)
+// cosignerID is nil, origin is empty, or signer's public key is not ML-DSA-44.
+func NewCosigner(cosignerID *reloid.RelativeOID, origin string, signer crypto.Signer) (*Cosigner, error) {
+	if cosignerID == nil {
+		return nil, errors.New("nil cosigner ID")
 	}
 	if origin == "" {
 		return nil, errors.New("empty log origin")
@@ -136,9 +112,9 @@ func NewCosigner(cosignerID, origin string, signer crypto.Signer) (*Cosigner, er
 		return nil, errors.New("cosigner key must be ML-DSA-44")
 	}
 	return &Cosigner{
-		name:   oidPrefix + cosignerID,
+		name:   oidPrefix + cosignerID.String(),
 		origin: origin,
-		keyID:  keyIDFor(oidPrefix+cosignerID, pubKey),
+		keyID:  keyIDFor(oidPrefix+cosignerID.String(), pubKey),
 		signer: signer,
 	}, nil
 }
@@ -208,18 +184,17 @@ var _ note.Verifier = (*Verifier)(nil)
 
 // NewVerifier returns a Verifier for the MTC cosigner with the given ID,
 // deriving its name per mtc-tlog like NewCosigner. It errors if cosignerID is
-// not a dotted decimal OID or publicKey is not ML-DSA-44.
-func NewVerifier(cosignerID string, publicKey *mldsa.PublicKey) (*Verifier, error) {
-	err := checkRelativeOID(cosignerID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid cosigner ID %q: %w", cosignerID, err)
+// nil or publicKey is not ML-DSA-44.
+func NewVerifier(cosignerID *reloid.RelativeOID, publicKey *mldsa.PublicKey) (*Verifier, error) {
+	if cosignerID == nil {
+		return nil, errors.New("nil cosigner ID")
 	}
 	if publicKey.Parameters().PublicKeySize() != mldsa.MLDSA44PublicKeySize {
 		return nil, errors.New("public key must be ML-DSA-44")
 	}
 	return &Verifier{
-		keyName:   oidPrefix + cosignerID,
-		keyID:     keyIDFor(oidPrefix+cosignerID, publicKey),
+		keyName:   oidPrefix + cosignerID.String(),
+		keyID:     keyIDFor(oidPrefix+cosignerID.String(), publicKey),
 		publicKey: publicKey,
 	}, nil
 }

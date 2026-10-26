@@ -42,7 +42,7 @@ type Mirror interface {
 type mtpublisher struct {
 	treedb     checkpointDB
 	interval   time.Duration
-	logID      issuancelog.ID
+	logID      *issuancelog.ID
 	mirror     Mirror
 	caVerifier *cosignature.Verifier
 	log        blog.Logger
@@ -52,7 +52,7 @@ type mtpublisher struct {
 // checkpoint's signed note from the stored MTCA signature, verified with
 // caVerifier, and obtains each cosignature from mirror, which verifies it
 // before returning it.
-func New(checkpointDB checkpointDB, interval time.Duration, logID issuancelog.ID, caVerifier *cosignature.Verifier, mirror Mirror, log blog.Logger) (*mtpublisher, error) {
+func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.ID, caVerifier *cosignature.Verifier, mirror Mirror, log blog.Logger) (*mtpublisher, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("interval must be positive, got %s", interval)
 	}
