@@ -3434,7 +3434,7 @@ func (sa *mockSAWithGetOrder) GetOrder(_ context.Context, _ *sapb.OrderRequest, 
 // mockMTCBStandaloneReady returns a fixed value in response to StandaloneReady()
 // and records whether it was called.
 type mockMTCBStandaloneReady struct {
-	mtcapb.MTCAClient
+	mtcbpb.MTCBClient
 	ready  bool
 	called bool
 }
@@ -3442,14 +3442,6 @@ type mockMTCBStandaloneReady struct {
 func (mtcb *mockMTCBStandaloneReady) StandaloneReady(_ context.Context, _ *mtcbpb.StandaloneReadyRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneReadyResponse, error) {
 	mtcb.called = true
 	return &mtcbpb.StandaloneReadyResponse{Ready: mtcb.ready}, nil
-}
-
-func (mtcb *mockMTCBStandaloneReady) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
-	return nil, fmt.Errorf("unimplemented")
-}
-
-func (mtcb *mockMTCBStandaloneReady) GetLandmarkRelative(ctx context.Context, req *mtcbpb.LandmarkRelativeRequest, _ ...grpc.CallOption) (*mtcbpb.LandmarkRelativeResponse, error) {
-	return nil, fmt.Errorf("unimplemented")
 }
 
 func TestGetOrder(t *testing.T) {
@@ -4454,4 +4446,75 @@ func TestAddRateLimitOverride(t *testing.T) {
 	test.AssertEquals(t, mockSA.inserted.Override.Period.AsDuration(), ov.Override.Period.AsDuration())
 	test.AssertEquals(t, mockSA.inserted.Override.Count, ov.Override.Count)
 	test.AssertEquals(t, mockSA.inserted.Override.Burst, ov.Override.Burst)
+}
+
+// mockMTCBGetStandalone returns some fixed values in response to
+// GetStandalone()
+type mockMTCBGetStandalone struct {
+	mtcbpb.MTCBClient
+}
+
+var errMockMTCBError error = errors.New("mock error")
+
+// GetStandalone in this mock always returns the same palindromic nonsense bytes
+// of primes, unless the request is for MtcSerialNumber 666, in which case an
+// empty StandaloneResponse and a mock error are returned; or Serial 667, in
+// which case an empty StandaloneResponse and a nil error are returned (which
+// would be abnormal MTCB behavior).
+func (mtcb *mockMTCBGetStandalone) GetStandalone(_ context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
+	if req.MtcSerialNumber == 666 {
+		return &mtcbpb.StandaloneResponse{}, errMockMTCBError
+	}
+	if req.MtcSerialNumber == 667 {
+		// return an empty response and nil error, which would be a weird thing
+		return &mtcbpb.StandaloneResponse{}, nil
+	}
+	return &mtcbpb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
+}
+
+func TestGetStandalone(t *testing.T) {
+	_, _, ra, _, _, _, cleanup := initAuthorities(t)
+	defer cleanup()
+
+	// test error when the RA has no MTCB backend
+	_, err := ra.GetStandalone(ctx, &rapb.StandaloneRequest{MtcLogID: "3", MtcSerialNumber: 3, MtcSubtreeID: 3})
+	test.AssertError(t, err, "expected failure")
+	test.AssertContains(t, err.Error(), "no MTCB backend")
+
+	mockMTCB := &mockMTCBGetStandalone{}
+	ra.mtcb = mockMTCB
+
+	testCases := []struct {
+		Name        string
+		Request     *rapb.StandaloneRequest
+		ExpectError error
+	}{
+		{
+			Name:        "Send Incomplete gRPC",
+			Request:     &rapb.StandaloneRequest{MtcLogID: "3", MtcSerialNumber: 3},
+			ExpectError: errIncompleteGRPCRequest,
+		},
+		{
+			Name:        "Expect Mock Error",
+			Request:     &rapb.StandaloneRequest{MtcLogID: "6", MtcSerialNumber: 666, MtcSubtreeID: 3},
+			ExpectError: errMockMTCBError,
+		},
+		{
+			Name:        "Expect Incomplete gRPC",
+			Request:     &rapb.StandaloneRequest{MtcLogID: "9", MtcSerialNumber: 667, MtcSubtreeID: 3},
+			ExpectError: errIncompleteGRPCResponse,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			_, err := ra.GetStandalone(ctx, tc.Request)
+			test.AssertDeepEquals(t, err, tc.ExpectError)
+		})
+	}
+
+	// finally test a non-error case
+	resp, err := ra.GetStandalone(ctx, &rapb.StandaloneRequest{MtcLogID: "3", MtcSerialNumber: 3, MtcSubtreeID: 3})
+	test.AssertNotError(t, err, "expected success")
+	test.AssertDeepEquals(t, resp.CertDER, []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2})
 }

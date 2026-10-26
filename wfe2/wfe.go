@@ -36,7 +36,6 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
-	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
@@ -91,10 +90,9 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	ra   rapb.RegistrationAuthorityClient
-	sa   sapb.StorageAuthorityReadOnlyClient
-	ee   emailpb.ExporterClient
-	mtcb mtcbpb.MTCBClient
+	ra rapb.RegistrationAuthorityClient
+	sa sapb.StorageAuthorityReadOnlyClient
+	ee emailpb.ExporterClient
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
@@ -214,7 +212,6 @@ func NewWebFrontEndImpl(
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	eec emailpb.ExporterClient,
-	mtcbc mtcbpb.MTCBClient,
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
 	rncKey []byte,
@@ -268,7 +265,6 @@ func NewWebFrontEndImpl(
 		ra:                            rac,
 		sa:                            sac,
 		ee:                            eec,
-		mtcb:                          mtcbc,
 		gnc:                           gnc,
 		rnc:                           rnc,
 		rncKey:                        rncKey,
@@ -1878,12 +1874,6 @@ func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent 
 		return
 	}
 
-	// wfe instance not configured with an MTCB Client
-	if wfe.mtcb == nil {
-		wfe.sendError(response, logEvent, probs.NotFound(""), nil)
-		return
-	}
-
 	reqAcctID, err := parsePositiveInt(request.PathValue("acctID"))
 	if err != nil {
 		wfe.sendError(response, logEvent, err, nil)
@@ -1951,9 +1941,9 @@ func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent 
 
 	logEvent.Extra["RequestedMtcSerial"] = reqMtcSerial
 
-	// Now ask the MTCB for the standalone certificate.
-	standalone, err := wfe.mtcb.GetStandalone(ctx,
-		&mtcbpb.StandaloneRequest{
+	// Now ask the RA for the standalone certificate.
+	standalone, err := wfe.ra.GetStandalone(ctx,
+		&rapb.StandaloneRequest{
 			MtcLogID:        order.MtcLogID,
 			MtcSerialNumber: order.MtcSerialNumber,
 			MtcSubtreeID:    order.MtcSubtreeID,
@@ -1968,9 +1958,9 @@ func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent 
 		return
 	}
 
-	// TODO: in the future we should inspect the Accept header, and supply a
-	// Certificate Properties block at the top of the PEM file if the header
-	// indicates the `application/pem-certificate-chain-with-properties` type.
+	// TODO(#9125): inspect the Accept header, and supply a Certificate
+	// Properties block at the top of the PEM file if the header indicates the
+	// `application/pem-certificate-chain-with-properties` type.
 	standalonePEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: standalone.CertDER,
@@ -1983,8 +1973,8 @@ func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent 
 	// written data is under a few KB".
 	response.Header().Set("Content-Length", strconv.Itoa(len(standalonePEM)))
 	response.Header().Set("Content-Type", "application/pem-certificate-chain")
-	// TODO: add a "link rel=acme-optional-alternate" header pointing at the
-	// landmark-relative URL.
+	// TODO(#9126): add a "link rel=acme-optional-alternate" header pointing at
+	// the landmark-relative URL.
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(standalonePEM); err != nil {
 		wfe.log.Warningf("Could not write response: %s", err)

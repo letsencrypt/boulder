@@ -2567,6 +2567,32 @@ func (ra *RegistrationAuthorityImpl) AddRateLimitOverride(ctx context.Context, r
 	}, nil
 }
 
+func (ra *RegistrationAuthorityImpl) GetStandalone(ctx context.Context, req *rapb.StandaloneRequest) (*rapb.StandaloneResponse, error) {
+	if core.IsAnyNilOrZero(req.MtcLogID, req.MtcSerialNumber, req.MtcSubtreeID) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	if ra.mtcb == nil {
+		return nil, fmt.Errorf("handling GetStandalone for an MTC order: no MTCB backend")
+	}
+
+	mtcbResp, err := ra.mtcb.GetStandalone(ctx, &mtcbpb.StandaloneRequest{
+		MtcLogID:        req.MtcLogID,
+		MtcSerialNumber: req.MtcSerialNumber,
+		MtcSubtreeID:    req.MtcSubtreeID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if core.IsAnyNilOrZero(mtcbResp.CertDER) {
+		return nil, errIncompleteGRPCResponse
+	}
+	return &rapb.StandaloneResponse{
+		CertDER: mtcbResp.CertDER,
+	}, nil
+}
+
 // Drain blocks until all detached goroutines are done.
 //
 // The RA runs detached goroutines for challenge validation and finalization,

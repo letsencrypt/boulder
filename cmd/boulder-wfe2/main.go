@@ -22,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	noncebalancerv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
 	"github.com/letsencrypt/boulder/issuance"
-	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimits"
@@ -69,7 +68,6 @@ type Config struct {
 		RAService     *cmd.GRPCClientConfig
 		SAService     *cmd.GRPCClientConfig
 		EmailExporter *cmd.GRPCClientConfig
-		MTCBService   *cmd.GRPCClientConfig
 
 		// GetNonceService is a gRPC config which contains a single SRV name
 		// used to lookup nonce-service instances used exclusively for nonce
@@ -384,13 +382,6 @@ func main() {
 		eec = emailpb.NewExporterClient(emailExporterConn)
 	}
 
-	var mtcbc mtcbpb.MTCBClient
-	if c.WFE.MTCBService != nil {
-		mtcbConn, err := bgrpc.ClientSetup(c.WFE.MTCBService, tlsConfig, stats, clk)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to MTCB")
-		mtcbc = mtcbpb.NewMTCBClient(mtcbConn)
-	}
-
 	if c.WFE.RedeemNonceService == nil {
 		cmd.Fail("'redeemNonceService' must be configured.")
 	}
@@ -474,7 +465,6 @@ func main() {
 		rac,
 		sac,
 		eec,
-		mtcbc,
 		gnc,
 		rnc,
 		noncePrefixKey,

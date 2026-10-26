@@ -48,7 +48,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
-	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -433,7 +432,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		1000,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
-		nil,
 		nil,
 		gnc,
 		rnc,
@@ -4681,7 +4679,7 @@ func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequ
 	notYetValidMTCOrder.MtcSerialNumber = 0
 	notYetValidMTCOrder.MtcSubtreeID = 0
 
-	// modify MtcSerialNumber to trigger the mock MTCB to return an error
+	// modify MtcSerialNumber to trigger the mock to return an error
 	validMTCOrderMissingStandalone := ra.testOrderPB(req.OrderID, "mtc")
 	validMTCOrderMissingStandalone.MtcSerialNumber = 666
 
@@ -4696,6 +4694,13 @@ func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequ
 		return orders[req.OrderID], nil
 	}
 	return nil, berrors.NotFoundError("No order found for ID %d", req.OrderID)
+}
+
+func (ra *mockRAWithGetOrder) GetStandalone(_ context.Context, req *rapb.StandaloneRequest, _ ...grpc.CallOption) (*rapb.StandaloneResponse, error) {
+	if req.MtcSerialNumber == 666 {
+		return &rapb.StandaloneResponse{}, errors.New("mock error")
+	}
+	return &rapb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
 }
 
 func TestMTCGetOrder(t *testing.T) {
@@ -4747,10 +4752,6 @@ func TestMTCGetOrder(t *testing.T) {
 	mockRA.clk = fc
 	wfe.ra = mockRA
 
-	// wire-up the wfe with an MTCB mock
-	mockMTCB := &mockMTCBWithGetStandalone{}
-	wfe.mtcb = mockMTCB
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -4760,22 +4761,6 @@ func TestMTCGetOrder(t *testing.T) {
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.expect)
 		})
 	}
-}
-
-// mockMTCBWithGetStandalone returns a fixed value in response to
-// GetStandalone()
-type mockMTCBWithGetStandalone struct {
-	mtcbpb.MTCBClient
-}
-
-// GetStandalone in this mock always returns the same palindromic nonsense bytes
-// of primes, unless the request is for MtcSerialNumber 666, in which case an
-// empty StandaloneResponse and a mock error are returned.
-func (mtcb *mockMTCBWithGetStandalone) GetStandalone(_ context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
-	if req.MtcSerialNumber == 666 {
-		return &mtcbpb.StandaloneResponse{}, errors.New("mock error")
-	}
-	return &mtcbpb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
 }
 
 func TestMerkleTreeCertificate(t *testing.T) {
@@ -4911,17 +4896,6 @@ func TestMerkleTreeCertificate(t *testing.T) {
 	mockRA := &mockRAWithGetOrder{}
 	mockRA.clk = fc
 	wfe.ra = mockRA
-
-	// Test that an MTC path request to a WFE without an MTCB Client correctly
-	// returns "Not Supported"
-	responseWriter := httptest.NewRecorder()
-	requestPath := mtcPath + "1/2/44947.4.1.0.3/4"
-	mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{ "type": "urn:ietf:params:acme:error:malformed", "status": 404 }`)
-
-	// Now wire-up a mock MTCB
-	mockMTCB := &mockMTCBWithGetStandalone{}
-	wfe.mtcb = mockMTCB
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
