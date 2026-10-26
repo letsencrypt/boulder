@@ -363,7 +363,7 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, origin string, start, 
 		return nil, fmt.Errorf("proving subtree [%d, %d) in the mirror's tree of size %d: %s", start, end, mirrored.Tree.N, err)
 	}
 	if !subtree.VerifyConsistency(start, end, mirrored.Tree.N, proof, subtreeHash, mirrored.Tree.Hash) {
-		return nil, fmt.Errorf("subtree [%d, %d) with hash %x is not consistent with the mirror's checkpoint at size %d with root hash %x", start, end, subtreeHash, mirrored.Tree.N, mirrored.Tree.Hash)
+		return nil, fmt.Errorf("subtree [%d, %d) with hash %s is not consistent with the mirror's checkpoint at size %d with root hash %s", start, end, subtreeHash, mirrored.Tree.N, mirrored.Tree.Hash)
 	}
 
 	// The sign-subtree reference checkpoint "MUST include exactly one note
