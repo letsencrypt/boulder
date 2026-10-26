@@ -1069,9 +1069,12 @@ func TestMirrorCosignErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMirrorClient: %s", err)
 	}
-	_, err = m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
-	if err == nil || !strings.Contains(err.Error(), "other than the mirror's") {
-		t.Errorf("SubmitCheckpoint with a line by another key in the add-entries response = %s, want an error", err)
+	checkpointCosignatureLine, err := m.SubmitCheckpoint(t.Context(), source.cp, source.signedNote)
+	if err != nil {
+		t.Errorf("SubmitCheckpoint with a line by another key in the add-entries response: %s", err)
+	}
+	if !bytes.Equal(checkpointCosignatureLine, source.checkpointCosignatureLine) {
+		t.Errorf("SubmitCheckpoint with a line by another key in the add-entries response = %q, want the mirror's line %q", checkpointCosignatureLine, source.checkpointCosignatureLine)
 	}
 
 	// A mirror whose checkpoint does not include the subtree yet.

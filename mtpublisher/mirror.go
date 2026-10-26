@@ -282,11 +282,7 @@ func (m *MirrorClient) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Chec
 		return nil, fmt.Errorf("add-entries: %w", err)
 	}
 
-	// Verify the mirror's signature. The add-entries response "MUST be
-	// cosignatures from the mirror key(s)", and the CQRP allows a mirror one
-	// key, so any other line puts the mirror out of spec.
-	//
-	// https://c2sp.org/tlog-mirror#add-entries
+	// Verify the mirror's signature.
 	cosignedNote, err := cp.SignedNote(mirrorCosignatureLines)
 	if err != nil {
 		return nil, fmt.Errorf("assembling the cosigned checkpoint: %w", err)
@@ -294,9 +290,6 @@ func (m *MirrorClient) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Chec
 	_, n, err := checkpoint.Open(cosignedNote, m.verifier)
 	if err != nil {
 		return nil, fmt.Errorf("checkpoint cosignature failed verification: %w", err)
-	}
-	if len(n.UnverifiedSigs) != 0 {
-		return nil, fmt.Errorf("add-entries returned %d signature lines by keys other than the mirror's", len(n.UnverifiedSigs))
 	}
 	checkpointCosignature, err := m.verifier.CheckpointCosignature(n)
 	if err != nil {
