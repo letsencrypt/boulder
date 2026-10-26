@@ -34,6 +34,7 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
@@ -85,8 +86,12 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 		return nil, nil, err
 	}
 
+	logID, err := issuancelog.Config{CAID: "44947.4.1", LogNumber: logNumber}.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	fs3 := bs3test.New()
-	logID := issuancelog.ID{CAID: "44947.4.1", LogNumber: logNumber}
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
@@ -154,6 +159,33 @@ func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.Checkpoi
 	}
 	f.checkpointSubtrees = append(f.checkpointSubtrees, *s)
 	return s.ID, nil
+}
+
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd uint64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
+	if mtcLogID != f.mtcLogID {
+		return nil, fmt.Errorf("wrong log")
+	}
+	var subtrees []*treedb.CheckpointSubtreeModel
+	for i := len(f.checkpointSubtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
+		if f.checkpointSubtrees[i].MirrorID == nil && f.checkpointSubtrees[i].SubtreeEnd <= maxEnd {
+			subtrees = append(subtrees, &f.checkpointSubtrees[i])
+		}
+	}
+	return subtrees, nil
+}
+
+func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	if mtcLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	for i, s := range f.checkpointSubtrees {
+		if s.ID == id {
+			f.checkpointSubtrees[i].MirrorID = &mirrorID
+			f.checkpointSubtrees[i].MirrorSignature = mirrorSignature
+			return nil
+		}
+	}
+	return fmt.Errorf("subtree %d not found", id)
 }
 
 func (f *fakeDB) getCheckpointSubtree(mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error) {
@@ -531,8 +563,8 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	}
 
 	// Build a checkpoint signed by the same key, but for a different log origin. It should error.
-	otherLog := issuancelog.ID{CAID: m.logID.CAID, LogNumber: logNumber + 1}
-	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID, otherLog.Origin(), m.issuer.Signer)
+	otherLog := must.Do(issuancelog.Config{CAID: m.logID.CAID().String(), LogNumber: logNumber + 1}.Load())
+	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID(), otherLog.Origin(), m.issuer.Signer)
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
@@ -596,10 +628,6 @@ func (e *errorS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optF
 // in for the daemon, so sequencing can proceed.
 func mirrorCosign(t *testing.T, m *mtca) {
 	t.Helper()
-	caPub, ok := m.issuer.Signer.Public().(*mldsa.PublicKey)
-	if !ok {
-		t.Fatalf("issuer public key is %T, must be ML-DSA-44", m.issuer.Signer.Public())
-	}
 	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
@@ -610,13 +638,13 @@ func mirrorCosign(t *testing.T, m *mtca) {
 	}
 
 	fake := m.treedb.(*fakeDB)
-	p, err := mtpublisher.New(fake, time.Second, m.logID, caPub, mirror, blog.NewMock())
+	p, err := mtpublisher.New(fake, time.Second, m.logID, m.verifier, mirror, blog.NewMock())
 	if err != nil {
 		t.Fatalf("mtpublisher.New: %s", err)
 	}
-	err = p.Publish(t.Context())
+	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
-		t.Fatalf("mtpublisher.Publish: %s", err)
+		t.Fatalf("mtpublisher.PublishCheckpoint: %s", err)
 	}
 }
 
@@ -813,6 +841,9 @@ func TestSequence(t *testing.T) {
 		if len(subtree.MTCASignature) == 0 {
 			t.Error("subtree.MTCASignature: got empty slice, want non-empty slice")
 		}
+		if !mtca.verifier.VerifySubtreeSignature(mtca.logID.Origin(), int64(subtree.SubtreeStart), int64(subtree.SubtreeEnd), tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) { //nolint:gosec // G115: the subtree covers the 6 entry tree
+			t.Error("subtree.MTCASignature: does not verify")
+		}
 
 		if subtree.MirrorID != nil {
 			t.Error("subtree.MirrorID: got non-nil string pointer, want nil")
@@ -922,7 +953,7 @@ func TestInitLog(t *testing.T) {
 func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointModel) {
 	t.Helper()
 	message := cosigned.Message{
-		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID,
+		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID().String(),
 		Timestamp:    0,
 		LogOrigin:    mtca.logID.Origin(),
 		Start:        0,

@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -31,7 +32,7 @@ type Config struct {
 
 		// LogID identifies the issuance log this publisher operates on. It must
 		// match the mtca's.
-		LogID issuancelog.ID `validate:"required"`
+		LogID issuancelog.Config `validate:"required"`
 
 		// MTCACertFile holds the PEM-encoded certificate of the mtca, whose
 		// ML-DSA-44 public key is used to reconstruct each checkpoint's signed
@@ -53,6 +54,11 @@ type Config struct {
 			// BaseURL is the base URL of the mirror's tlog-mirror submission
 			// endpoints (e.g. "http://localhost:4700").
 			BaseURL string `validate:"required,url"`
+
+			// MonitoringPrefix is the mirror's tlog-mirror monitoring prefix,
+			// under which it serves its copy of the log and its cosigned
+			// checkpoint (e.g. "http://localhost:8333/mirror").
+			MonitoringPrefix string `validate:"required,url"`
 
 			// Timeout bounds each request to the mirror.
 			Timeout config.Duration `validate:"required"`
@@ -121,13 +127,19 @@ func main() {
 		cmd.Fail(fmt.Sprintf("MTCA certificate public key is %T, must be ML-DSA-44", caCert.PublicKey))
 	}
 
+	logID, err := c.MTPublisher.LogID.Load()
+	cmd.FailOnError(err, "Parsing Log ID")
+
 	mirrorPubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
 	cmd.FailOnError(err, "Loading mirror public key")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, mtpublisher.NewSource(s3c, c.MTPublisher.LogID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
+	caVerifier, err := cosignature.NewVerifier(logID.CAID(), caPubKey)
+	cmd.FailOnError(err, "Creating MTCA verifier")
+
+	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, c.MTPublisher.Mirror.MonitoringPrefix, mtpublisher.NewSource(s3c, logID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
-	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, c.MTPublisher.LogID, caPubKey, mirror, logger)
+	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, logID, caVerifier, mirror, logger)
 	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())
