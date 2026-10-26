@@ -78,7 +78,7 @@ func New(
 		clk:    clk,
 	}
 
-	cosigner, err := cosignature.NewCosigner(logID.CAID().String(), logID.Origin(), issuer.Signer)
+	cosigner, err := cosignature.NewCosigner(logID.CAID(), logID.Origin(), issuer.Signer)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA cosigner: %s", err)
 	}
@@ -88,7 +88,7 @@ func New(
 	if !ok {
 		return nil, fmt.Errorf("issuer public key is %T, must be ML-DSA-44", issuer.Signer.Public())
 	}
-	verifier, err := cosignature.NewVerifier(logID.CAID().String(), pubKey)
+	verifier, err := cosignature.NewVerifier(logID.CAID(), pubKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA verifier: %s", err)
 	}
