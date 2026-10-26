@@ -570,8 +570,8 @@ func TestPerformValidationSuccess(t *testing.T) {
 		test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 		test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
-		// Sleep so the RA has a chance to write to the SA
-		time.Sleep(100 * time.Millisecond)
+		// Wait for the RA to write to the SA.
+		ra.drainWG.Wait()
 
 		dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
 		t.Log("dbAuthz:", dbAuthzPB)
@@ -786,8 +786,8 @@ func TestPerformValidationVAError(t *testing.T) {
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
-	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the RA to write to the SA.
+	ra.drainWG.Wait()
 
 	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
