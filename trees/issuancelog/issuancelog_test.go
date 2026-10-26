@@ -1,33 +1,44 @@
 package issuancelog
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+// mustLoad loads the given Config, failing the test if it is invalid.
+func mustLoad(t *testing.T, c Config) *ID {
+	t.Helper()
+	id, err := c.Load()
+	if err != nil {
+		t.Fatalf("Config{CAID: %q, LogNumber: %d}.Load() = %s, want success", c.CAID, c.LogNumber, err)
+	}
+	return id
+}
 
 // TestIDDerivations pins the derived names to mtc-tlog's own examples and
 // the identifiers the dev environment uses.
 func TestIDDerivations(t *testing.T) {
 	for _, tc := range []struct {
-		id               ID
+		id               *ID
 		expectString     string
 		expectOrigin     string
 		expectTilePrefix string
 	}{
 		{
-			id:               ID{CAID: "32473.2", LogNumber: 42},
+			id:               mustLoad(t, Config{CAID: "32473.2", LogNumber: 42}),
 			expectString:     "32473.2.0.42",
 			expectOrigin:     "oid/1.3.6.1.4.1.32473.2.0.42",
 			expectTilePrefix: "32473.2/42",
 		},
 		{
-			id:               ID{CAID: "44947.4.1", LogNumber: 44},
+			id:               mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 44}),
 			expectString:     "44947.4.1.0.44",
 			expectOrigin:     "oid/1.3.6.1.4.1.44947.4.1.0.44",
 			expectTilePrefix: "44947.4.1/44",
 		},
 		{
-			id:               ID{CAID: "1", LogNumber: 1},
+			id:               mustLoad(t, Config{CAID: "1", LogNumber: 1}),
 			expectString:     "1.0.1",
 			expectOrigin:     "oid/1.3.6.1.4.1.1.0.1",
 			expectTilePrefix: "1/1",
@@ -50,28 +61,28 @@ func TestIDDerivations(t *testing.T) {
 func TestParseID(t *testing.T) {
 	for _, tc := range []struct {
 		in        string
-		expectID  ID
+		expectID  *ID
 		expectErr string
 	}{
-		{in: "32473.2.0.42", expectID: ID{CAID: "32473.2", LogNumber: 42}},
-		{in: "44947.4.1.0.44", expectID: ID{CAID: "44947.4.1", LogNumber: 44}},
-		{in: "1.0.1", expectID: ID{CAID: "1", LogNumber: 1}},
-		{in: "44947.0.1.0.5", expectID: ID{CAID: "44947.0.1", LogNumber: 5}},
-		{in: "44947.4.1.0.65535", expectID: ID{CAID: "44947.4.1", LogNumber: 65535}},
+		{in: "32473.2.0.42", expectID: mustLoad(t, Config{CAID: "32473.2", LogNumber: 42})},
+		{in: "44947.4.1.0.44", expectID: mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 44})},
+		{in: "1.0.1", expectID: mustLoad(t, Config{CAID: "1", LogNumber: 1})},
+		{in: "44947.0.1.0.5", expectID: mustLoad(t, Config{CAID: "44947.0.1", LogNumber: 5})},
+		{in: "44947.4.1.0.65535", expectID: mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 65535})},
 		{in: "", expectErr: "at least three arcs"},
 		{in: "44947.0", expectErr: "at least three arcs"},
 		{in: "44947.4.1", expectErr: "must have 0 before its log number"},
-		{in: ".0.44", expectErr: "parsing arc"},
-		{in: "44947.4.1.0.", expectErr: "parsing arc"},
-		{in: "44947.4.1.0.x", expectErr: "parsing arc"},
-		{in: "44947.-4.1.0.44", expectErr: "parsing arc"},
-		{in: "44947.4.1.0.+44", expectErr: "parsing arc"},
+		{in: ".0.44", expectErr: "invalid CA ID"},
+		{in: "44947.4.1.0.", expectErr: "parsing log number"},
+		{in: "44947.4.1.0.x", expectErr: "parsing log number"},
+		{in: "44947.-4.1.0.44", expectErr: "invalid CA ID"},
+		{in: "44947.4.1.0.+44", expectErr: "parsing log number"},
 		{in: "44947.4.1.0.65536", expectErr: "parsing log number"},
 		{in: "44947.4.1.0.0", expectErr: "log number 0"},
 		{in: "44947.4.1.0.044", expectErr: "leading zero"},
-		{in: "44947.4.1.00.44", expectErr: "leading zero"},
-		{in: "44947.04.1.0.44", expectErr: "leading zero"},
-		{in: "044947.4.1.0.44", expectErr: "leading zero"},
+		{in: "44947.4.1.00.44", expectErr: "must have 0 before its log number"},
+		{in: "44947.04.1.0.44", expectErr: "invalid CA ID"},
+		{in: "044947.4.1.0.44", expectErr: "invalid CA ID"},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			id, err := ParseID(tc.in)
@@ -87,8 +98,9 @@ func TestParseID(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParseID(%q): %s", tc.in, err)
 			}
-			if id != tc.expectID {
-				t.Errorf("ParseID(%q) = %v, want %v", tc.in, id, tc.expectID)
+			if !reflect.DeepEqual(id, tc.expectID) {
+				t.Errorf("ParseID(%q) = {CAID: %s, LogNumber: %d}, want {CAID: %s, LogNumber: %d}",
+					tc.in, id.CAID(), id.LogNumber(), tc.expectID.CAID(), tc.expectID.LogNumber())
 			}
 		})
 	}
