@@ -166,7 +166,7 @@ func newTestLog(t *testing.T) *testLog {
 			MirrorID:        &mirrorID,
 			MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over size %d", frontier.TreeSize()),
 			SubtreeStart:    0,
-			SubtreeEnd:      uint64(frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier.
+			SubtreeEnd:      frontier.TreeSize(),
 			SubtreeHash:     root[:],
 		})
 	}
@@ -383,8 +383,8 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 		tlog.RecordHash(mtcleMarshaled),
 		mtcProof.InclusionProof,
 		entryIndex,
-		int64(mtcProof.Start), //nolint:gosec // G115: we know these are < 1<<48 in tests
-		int64(mtcProof.End),   //nolint:gosec // G115: we know these are < 1<<48 in tests
+		mtcProof.Start,
+		mtcProof.End,
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 
 	"golang.org/x/crypto/cryptobyte"
 )
@@ -17,8 +18,8 @@ type Message struct {
 	CosignerName string
 	Timestamp    uint64
 	LogOrigin    string
-	Start        uint64
-	End          uint64
+	Start        int64
+	End          int64
 	SubtreeHash  [sha256.Size]byte
 }
 
@@ -49,6 +50,13 @@ func (message *Message) Marshal() ([]byte, error) {
 		return nil, fmt.Errorf("invalid log_origin length %d", len(message.LogOrigin))
 	}
 
+	if message.Start < 0 {
+		return nil, fmt.Errorf("negative start %d", message.Start)
+	}
+	if message.End < 0 {
+		return nil, fmt.Errorf("negative end %d", message.End)
+	}
+
 	var b cryptobyte.Builder
 	b.AddBytes([]byte(subtreeLabel))
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
@@ -58,8 +66,8 @@ func (message *Message) Marshal() ([]byte, error) {
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes([]byte(message.LogOrigin))
 	})
-	b.AddUint64(message.Start)
-	b.AddUint64(message.End)
+	b.AddUint64(uint64(message.Start))
+	b.AddUint64(uint64(message.End))
 	b.AddBytes(message.SubtreeHash[:])
 
 	return b.Bytes()
@@ -100,13 +108,22 @@ func Unmarshal(input []byte) (*Message, error) {
 	}
 	out.LogOrigin = string(logOrigin)
 
-	if !s.ReadUint64(&out.Start) {
+	var start, end uint64
+	if !s.ReadUint64(&start) {
 		return nil, errors.New("invalid start")
 	}
+	if start > math.MaxInt64 {
+		return nil, fmt.Errorf("start %d out of range", start)
+	}
+	out.Start = int64(start)
 
-	if !s.ReadUint64(&out.End) {
+	if !s.ReadUint64(&end) {
 		return nil, errors.New("invalid end")
 	}
+	if end > math.MaxInt64 {
+		return nil, fmt.Errorf("end %d out of range", end)
+	}
+	out.End = int64(end)
 
 	var subtreeHash []byte
 	if !s.ReadBytes(&subtreeHash, len(out.SubtreeHash)) {
