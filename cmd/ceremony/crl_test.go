@@ -79,12 +79,16 @@ func TestGenerateCRLLints(t *testing.T) {
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse test cert")
 
+	// The CP/CPS CRL profiles require revoked serials to be more than 100 bits
+	// long, like those of the Certificates they revoke.
+	serial := new(big.Int).Lsh(big.NewInt(12345), 128)
+
 	// This CRL should fail the "e_crl_next_update_invalid" lint because the
 	// validity interval is more than 10 days, and this lint can't tell the
 	// difference between end-entity and CA CRLs.
 	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
-			SerialNumber:   big.NewInt(12345),
+			SerialNumber:   serial,
 			RevocationTime: time.Now().Add(time.Hour),
 			ReasonCode:     4,
 		},
@@ -95,12 +99,25 @@ func TestGenerateCRLLints(t *testing.T) {
 	// But we can tell it to ignore that lint, too.
 	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
-			SerialNumber:   big.NewInt(12345),
+			SerialNumber:   serial,
 			RevocationTime: time.Now().Add(time.Hour),
 			ReasonCode:     4,
 		},
 	}, []string{"e_crl_next_update_invalid"})
 	test.AssertNotError(t, err, "generateCRL should have ignored the failing lint")
+
+	// The BRs permit affiliationChanged, but our CP/CPS does not. This shows
+	// that the CP/CPS CA CRL profile lint is correctly configured and runs.
+	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
+		{
+			SerialNumber:   serial,
+			RevocationTime: time.Now(),
+			ReasonCode:     3, // affiliationChanged
+		},
+	}, []string{"e_crl_next_update_invalid"})
+	test.AssertError(t, err, "generateCRL did not fail")
+	test.AssertContains(t, err.Error(), "e_ca_crl_matches_cps_profile")
+	test.AssertContains(t, err.Error(), "reasonCode 3 is not one of 1, 4, 5, or 9")
 }
 
 func TestGenerateCRL(t *testing.T) {
