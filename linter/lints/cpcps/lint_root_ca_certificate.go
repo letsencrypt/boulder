@@ -52,8 +52,7 @@ func (l *rootCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) b
 // ### Root CA Certificate Profile
 func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
 	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1010
-	// |     `version`                  | See [Section 7.1.1](#711-version-numbers) |
-	// Section 7.1.1 says "All certificates use X.509 version 3".
+	// |     `version`                            | X.509 v3 (integer value 2) |
 	if c.Version != 3 {
 		return errResult("version is not v3")
 	}

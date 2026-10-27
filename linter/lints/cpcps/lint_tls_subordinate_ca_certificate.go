@@ -72,8 +72,7 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	}
 
 	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1059
-	// |     `version`                        | See [Section 7.1.1](#711-version-numbers) |
-	// Section 7.1.1 says "All certificates use X.509 version 3".
+	// |     `version`                            | X.509 v3 (integer value 2) |
 	if c.Version != 3 {
 		return errResult("version is not v3")
 	}
