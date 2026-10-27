@@ -1,13 +1,15 @@
 package cpcps
 
 // This file contains constants and parsing utilities shared by the lints which
-// enforce the certificate profiles found in Section 7.1 of our CP/CPS. Only
-// mechanical helpers (extracting bytes, computing hashes, constructing
-// results) live here: every actual profile check is written out inline in the
-// lint which enforces it, so that each lint can be read top-to-bottom against
-// the text of the CP/CPS, and so that the profiles can diverge independently.
+// enforce the certificate and CRL profiles found in Sections 7.1 and 7.2 of
+// our CP/CPS. Only mechanical helpers (extracting bytes, computing hashes,
+// constructing results) live here: every actual profile check is written out
+// inline in the lint which enforces it, so that each lint can be read
+// top-to-bottom against the text of the CP/CPS, and so that the profiles can
+// diverge independently.
 
 import (
+	"bytes"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -18,6 +20,8 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/linter/lints"
 )
 
 var (
@@ -49,6 +53,10 @@ var (
 	spkiAlgorithmP256 = "301306072a8648ce3d020106082a8648ce3d030107"
 	spkiAlgorithmP384 = "301006072a8648ce3d020106052b81040022"
 	spkiAlgorithmP521 = "301006072a8648ce3d020106052b81040023"
+
+	// issuingDistributionPointOID is id-ce-issuingDistributionPoint, which
+	// zlint's util package does not define.
+	issuingDistributionPointOID = asn1.ObjectIdentifier{2, 5, 29, 28}
 )
 
 // Keys within the shared configuration stanza. These must match the toml
@@ -123,15 +131,15 @@ func fatalResult(details string) *lint.LintResult {
 }
 
 // getOuterSignatureAlgorithm returns the DER bytes (including tag and length)
-// of the signatureAlgorithm field of the outer Certificate sequence.
+// of the signatureAlgorithm field of the outer Certificate or CRL sequence.
 func getOuterSignatureAlgorithm(der []byte) ([]byte, error) {
 	input := cryptobyte.String(der)
 	var certificate cryptobyte.String
 	if !input.ReadASN1(&certificate, cryptobyte_asn1.SEQUENCE) {
-		return nil, fmt.Errorf("failed to parse certificate")
+		return nil, fmt.Errorf("failed to parse outer sequence")
 	}
 	if !certificate.SkipASN1(cryptobyte_asn1.SEQUENCE) {
-		return nil, fmt.Errorf("failed to parse tbsCertificate")
+		return nil, fmt.Errorf("failed to skip inner tbs sequence")
 	}
 	var signatureAlgorithm cryptobyte.String
 	if !certificate.ReadASN1Element(&signatureAlgorithm, cryptobyte_asn1.SEQUENCE) {
@@ -175,6 +183,38 @@ func getExtension(c *x509.Certificate, oid asn1.ObjectIdentifier) *pkix.Extensio
 		}
 	}
 	return nil
+}
+
+// getCRLScope returns whether the given CRL's issuingDistributionPoint
+// extension sets its onlyContainsUserCerts and onlyContainsCACerts fields to
+// true, both false if that extension is absent or cannot be parsed. RFC 5280
+// Section 5.2.5 requires a CRL to assert the field corresponding to its scope,
+// so these fields are how a CRL declares which CRL Profile it follows.
+//
+//	IssuingDistributionPoint ::= SEQUENCE {
+//	    distributionPoint          [0] DistributionPointName OPTIONAL,
+//	    onlyContainsUserCerts      [1] BOOLEAN DEFAULT FALSE,
+//	    onlyContainsCACerts        [2] BOOLEAN DEFAULT FALSE,
+//	    ... }
+func getCRLScope(c *x509.RevocationList) (onlyContainsUserCerts bool, onlyContainsCACerts bool) {
+	idpExt := lints.GetExtWithOID(c.Extensions, issuingDistributionPointOID)
+	if idpExt == nil {
+		return false, false
+	}
+	idpValue := cryptobyte.String(idpExt.Value)
+	var idp cryptobyte.String
+	if !idpValue.ReadASN1(&idp, cryptobyte_asn1.SEQUENCE) {
+		return false, false
+	}
+	var userCerts, caCerts cryptobyte.String
+	if !idp.SkipOptionalASN1(cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) ||
+		!idp.ReadOptionalASN1(&userCerts, nil, cryptobyte_asn1.Tag(1).ContextSpecific()) ||
+		!idp.ReadOptionalASN1(&caCerts, nil, cryptobyte_asn1.Tag(2).ContextSpecific()) {
+		return false, false
+	}
+	// DER encodes TRUE as 0xFF, and omits a BOOLEAN whose value is its DEFAULT
+	// of FALSE.
+	return bytes.Equal(userCerts, []byte{0xFF}), bytes.Equal(caCerts, []byte{0xFF})
 }
 
 // parseConfiguredCertificate parses a PEM certificate provided via lint
