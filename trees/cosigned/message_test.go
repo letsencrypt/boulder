@@ -62,6 +62,12 @@ func TestMarshalErrors(t *testing.T) {
 		{"long LogOrigin", "invalid log_origin length 256", func(target *Message) {
 			target.LogOrigin = strings.Repeat("a", 256)
 		}},
+		{"negative Start", "negative start -1", func(target *Message) {
+			target.Start = -1
+		}},
+		{"negative End", "negative end -1", func(target *Message) {
+			target.End = -1
+		}},
 	}
 
 	for _, tc := range testCases {
@@ -122,5 +128,23 @@ func TestUnmarshalErrors(t *testing.T) {
 	_, err = Unmarshal(emptyLogOrigin)
 	if err == nil {
 		t.Errorf("unmarshal with empty log_origin: got no error")
+	}
+
+	startTooBig, err := hex.DecodeString("737562747265652f76310a00054465627574000000000000d90304506f7374800000000000000b00000000000000160000000000000000000000000000000000000000000000000000000000000000")
+	if err != nil {
+		t.Errorf("decoding hex: %s", err)
+	}
+	_, err = Unmarshal(startTooBig)
+	if err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("unmarshal with start > MaxInt64: got %v, want out of range error", err)
+	}
+
+	endTooBig, err := hex.DecodeString("737562747265652f76310a00054465627574000000000000d90304506f7374000000000000000b80000000000000160000000000000000000000000000000000000000000000000000000000000000")
+	if err != nil {
+		t.Errorf("decoding hex: %s", err)
+	}
+	_, err = Unmarshal(endTooBig)
+	if err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("unmarshal with end > MaxInt64: got %v, want out of range error", err)
 	}
 }
