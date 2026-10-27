@@ -200,19 +200,19 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 	}
 
 	// Prepare to increment a latency metric no matter whether we succeed or fail.
-	// The deferred function closes over resp, chosenServer, and tries, which
+	// The deferred function closes over parsedResponse, chosenServer, and tries, which
 	// are all modified in the loop below.
 	start := c.clk.Now()
 	qtypeStr := dns.TypeToString[qtype]
 	var (
-		resp         *dns.Msg
-		chosenServer string
-		tries        int
+		parsedResponse *dns.Msg
+		chosenServer   string
+		tries          int
 	)
 	defer func() {
 		result := "failed"
-		if resp != nil {
-			result = dns.RcodeToString[resp.Rcode]
+		if parsedResponse != nil {
+			result = dns.RcodeToString[parsedResponse.Rcode]
 		}
 		c.totalLookupTime.With(prometheus.Labels{
 			"qtype":    qtypeStr,
@@ -226,20 +226,19 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		tries = i + 1
 		chosenServer = servers[i%len(servers)]
 
-		// Do a bare assignment (not :=) to populate the `resp` used by the defer above.
-		var rtt time.Duration
-		resp, rtt, err = c.exchanger.dohQuery(ctx, qBytes, chosenServer)
+		queryBegin := c.clk.Now()
+		resp, err := c.exchanger.dohQuery(ctx, qBytes, chosenServer)
 
 		// Do some metrics handling before we do error handling.
-		result := "failed"
-		if resp != nil {
-			result = dns.RcodeToString[resp.Rcode]
+		result := "ok"
+		if err != nil {
+			result = "failed"
 		}
 		c.queryTime.With(prometheus.Labels{
 			"qtype":    qtypeStr,
 			"result":   result,
 			"resolver": chosenServer,
-		}).Observe(rtt.Seconds())
+		}).Observe(c.clk.Since(queryBegin).Seconds())
 
 		if err != nil {
 			if !errors.Is(err, errDohQueryTimeout) && !errors.Is(err, errDohQueryCanceled) {
@@ -279,7 +278,13 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 			return nil, chosenServer, err
 		}
 
-		return resp, chosenServer, nil
+		parsedResponse = new(dns.Msg)
+		err = parsedResponse.Unpack(resp)
+		if err != nil {
+			return nil, chosenServer, fmt.Errorf("doh: unpacking response: %w", err)
+		}
+
+		return parsedResponse, chosenServer, nil
 	}
 
 	// It's impossible to get past the bottom of the loop: on the last attempt
@@ -351,7 +356,7 @@ func (c *impl) LookupTXT(ctx context.Context, hostname string) (*Result[*dns.TXT
 // exchanger represents an underlying DNS client. This interface exists solely
 // so that its implementation can be swapped out in unit tests.
 type exchanger interface {
-	dohQuery(ctx context.Context, queryBytes []byte, a string) (*dns.Msg, time.Duration, error)
+	dohQuery(ctx context.Context, queryBytes []byte, a string) ([]byte, error)
 }
 
 // dohExchanger implements the exchanger interface. It routes all of its DNS
@@ -379,12 +384,12 @@ var errDohQueryCanceled = errors.New("query timed out (and was canceled)")
 // canceled (which generally indicates Somebody Else's Problem). All other errors, including
 // connection refused, TLS handshake failures, or dial timeouts talking to Unbound, are
 // of other error types and can be considered a DoH transport error.
-func (d *dohExchanger) dohQuery(ctx context.Context, queryBytes []byte, server string) (*dns.Msg, time.Duration, error) {
+func (d *dohExchanger) dohQuery(ctx context.Context, queryBytes []byte, server string) ([]byte, error) {
 	// The default Unbound URL template
 	url := fmt.Sprintf("https://%s/dns-query", server)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(queryBytes)))
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/dns-message")
 	req.Header.Set("Accept", "application/dns-message")
@@ -392,9 +397,7 @@ func (d *dohExchanger) dohQuery(ctx context.Context, queryBytes []byte, server s
 		req.Header.Set("User-Agent", d.userAgent)
 	}
 
-	start := d.clk.Now()
 	resp, err := d.hc.Do(req)
-	elapsed := d.clk.Since(start)
 	if err != nil {
 		// If the context is done, we'll consider that a user-caused error. Some of these
 		// will actually be our fault. For instance, if a request came in with a
@@ -406,10 +409,10 @@ func (d *dohExchanger) dohQuery(ctx context.Context, queryBytes []byte, server s
 		// bucket.
 		if ctx.Err() != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return nil, elapsed, errDohQueryTimeout
+				return nil, errDohQueryTimeout
 			}
 			if errors.Is(ctx.Err(), context.Canceled) {
-				return nil, elapsed, errDohQueryCanceled
+				return nil, errDohQueryCanceled
 			}
 		}
 		// Hack: The most common case for a user-caused error is that we hit
@@ -425,27 +428,21 @@ func (d *dohExchanger) dohQuery(ctx context.Context, queryBytes []byte, server s
 		// because we can get an error matching `DeadlineExceeded` if the Dial times out.
 		// See TestDialTimeoutError for confirmation.
 		if strings.Contains(err.Error(), "timeout awaiting response headers") {
-			return nil, elapsed, errDohQueryTimeout
+			return nil, errDohQueryTimeout
 		}
-		return nil, elapsed, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, d.clk.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
+		return nil, fmt.Errorf("doh: http status %d", resp.StatusCode)
 	}
 
 	// DNS response over 65535 is malformed https://datatracker.ietf.org/doc/html/rfc8484#section-6
 	b, err := io.ReadAll(core.ErrOnLimitReader(resp.Body, 65_535))
 	if err != nil {
-		return nil, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
+		return nil, fmt.Errorf("doh: reading response body: %w", err)
 	}
 
-	response := new(dns.Msg)
-	err = response.Unpack(b)
-	if err != nil {
-		return nil, d.clk.Since(start), fmt.Errorf("doh: unpacking response: %w", err)
-	}
-
-	return response, d.clk.Since(start), nil
+	return b, nil
 }
