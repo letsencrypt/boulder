@@ -83,7 +83,7 @@ func TestValidSubtree(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := valid(tc.start, tc.end)
+			got := Valid(tc.start, tc.end)
 			if got != tc.expect {
 				t.Errorf("Valid(%d, %d) = %v, want %v", tc.start, tc.end, got, tc.expect)
 			}
@@ -105,7 +105,7 @@ func TestMTHAppendixVector(t *testing.T) {
 	h := sha256.New()
 	for end := int64(1); end <= 130; end++ {
 		for start := int64(0); start < end; start++ {
-			if !valid(start, end) {
+			if !Valid(start, end) {
 				continue
 			}
 			subtree := MTH(leaves[start:end])
@@ -190,7 +190,7 @@ func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
 		root := MTH(leaves[:n])
 		for end := int64(1); end <= n; end++ {
 			for start := int64(0); start < end; start++ {
-				if !valid(start, end) {
+				if !Valid(start, end) {
 					continue
 				}
 				proof, err := ConsistencyProof(start, end, n, reader)
@@ -437,7 +437,7 @@ func TestConsistencyProofRoundTrip(t *testing.T) {
 
 		for start := int64(0); start < n; start++ {
 			for end := start + 1; end <= n; end++ {
-				if !valid(start, end) {
+				if !Valid(start, end) {
 					continue
 				}
 				node := MTH(leaves[start:end])
@@ -499,7 +499,7 @@ func TestInclusionProofRoundTrip(t *testing.T) {
 
 	for start := int64(0); start <= int64(treeSize); start++ {
 		for end := start + 1; end <= int64(treeSize); end++ {
-			if !valid(start, end) {
+			if !Valid(start, end) {
 				continue
 			}
 			for i := start; i < end; i++ {

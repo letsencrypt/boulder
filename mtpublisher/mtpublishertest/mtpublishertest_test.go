@@ -36,8 +36,8 @@ func testMirror(t *testing.T) (*TestMirror, *mldsa.PrivateKey) {
 	return mirror, key
 }
 
-// TestMirrorCosign checks that the mirror's raw cosignature verifies
-// through trees/cosignature.
+// TestMirrorCosign checks that the checkpoint cosignature line and the subtree
+// signature verify.
 func TestMirrorCosign(t *testing.T) {
 	mirror, key := testMirror(t)
 
@@ -46,21 +46,29 @@ func TestMirrorCosign(t *testing.T) {
 	}
 
 	cp := &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1." + mtcLogID, Tree: tlog.Tree{N: 512}}
-	raw, err := mirror.Cosign(t.Context(), cp, nil)
+	checkpointCosignatureLine, err := mirror.SubmitCheckpoint(t.Context(), cp, nil)
 	if err != nil {
-		t.Fatalf("Cosign: %s", err)
+		t.Fatalf("SubmitCheckpoint: %s", err)
+	}
+	subtreeSignature, err := mirror.CosignSubtree(t.Context(), cp, checkpointCosignatureLine, 0, cp.Tree.N, cp.Tree.Hash)
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
 	}
 
 	verifier, err := cosignature.NewVerifier(must.Do(reloid.FromString(mirrorID)), key.PublicKey())
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	text, err := cp.Marshal()
+	signedNote, err := cp.SignedNote(checkpointCosignatureLine)
 	if err != nil {
-		t.Fatalf("Marshal: %s", err)
+		t.Fatalf("SignedNote: %s", err)
 	}
-	if !verifier.Verify(text, append(make([]byte, 8), raw...)) {
-		t.Error("the mirror's cosignature does not verify")
+	_, _, err = checkpoint.Open(signedNote, verifier)
+	if err != nil {
+		t.Errorf("the mirror's cosignature does not verify: %s", err)
+	}
+	if !verifier.VerifySubtreeSignature(cp.Origin, 0, cp.Tree.N, cp.Tree.Hash, subtreeSignature) {
+		t.Error("the mirror's subtree signature does not verify")
 	}
 }
 
@@ -69,8 +77,8 @@ func TestMirrorCosign(t *testing.T) {
 func TestMirrorCosignRejects(t *testing.T) {
 	mirror, _ := testMirror(t)
 
-	_, err := mirror.Cosign(t.Context(), &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1.32473.999", Tree: tlog.Tree{N: 512}}, nil)
+	_, err := mirror.SubmitCheckpoint(t.Context(), &checkpoint.Checkpoint{Origin: "oid/1.3.6.1.4.1.32473.999", Tree: tlog.Tree{N: 512}}, nil)
 	if err == nil {
-		t.Error("Cosign with another log's checkpoint = nil error, want error")
+		t.Error("SubmitCheckpoint with another log's checkpoint = nil error, want error")
 	}
 }
