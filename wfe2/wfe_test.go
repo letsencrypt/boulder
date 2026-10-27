@@ -4710,7 +4710,7 @@ func TestMTCGetOrder(t *testing.T) {
 	fc.Set(time.Now())
 	// This fake clock is assigned as the RA mock clock, and this expiry
 	// timestamp calculation must match that mock.
-	orderExpiry := fc.Now().AddDate(30, 0, 0).Format(time.RFC3339Nano)
+	orderExpiry := fc.Now().AddDate(30, 0, 0).UTC().Format(time.RFC3339Nano)
 
 	testCases := []struct {
 		name   string
