@@ -243,9 +243,14 @@ func (c *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (
 		if err != nil {
 			if !errors.Is(err, errDohQueryTimeout) && !errors.Is(err, errDohQueryCanceled) {
 				c.dohTransportErrors.With(prometheus.Labels{"resolver": chosenServer}).Inc()
+			} else {
+				c.log.InfoObject("logDNSError", map[string]string{
+					"resolver":  chosenServer,
+					"hostname":  hostname,
+					"queryType": qtypeStr,
+					"err":       err.Error(),
+				})
 			}
-
-			c.log.Infof("logDNSError chosenServer=[%s] hostname=[%s] queryType=[%s] err=[%s]", chosenServer, hostname, qtypeStr, err)
 
 			// Retry all errors up to the maxTries limit and the context deadline or cancellation.
 			isRetryable := ctx.Err() == nil
