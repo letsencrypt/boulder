@@ -162,8 +162,8 @@ func (l *caCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.LintResul
 			util.ReasonCodeOID.String(): false,
 		}
 		for _, ext := range rc.Extensions {
-			seen, allowed := entryExtensions[ext.Id.String()]
-			if !allowed {
+			seen, ok := entryExtensions[ext.Id.String()]
+			if !ok {
 				return errResult(fmt.Sprintf("entry %x: unexpected extension %s", rc.SerialNumber, ext.Id.String()))
 			}
 			if seen {

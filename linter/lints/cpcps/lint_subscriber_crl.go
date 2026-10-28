@@ -52,7 +52,7 @@ func (l *subscriberCRLMatchesCPSProfile) CheckApplies(c *x509.RevocationList) bo
 	return onlyContainsUserCerts
 }
 
-// Execute checks the given CRL against the Subscriber CRL Profile, row by row.
+// Execute checks the given CRL against the Subscriber CRL Profile.
 // https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1186
 // ### Subscriber CRL Profile
 func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.LintResult {
@@ -68,9 +68,6 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 
 	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1193
 	// |     `version`                          | X.509 v2 (integer value 1) |
-	// zcrypto doesn't expose a CRL's version, so we read it ourselves. RFC 5280
-	// Section 5.1.2.1 makes the field optional, its absence indicating a v1
-	// CRL, so an absent version is left as 0.
 	tbs := cryptobyte.String(c.RawTBSRevocationList)
 	var tbsCertList cryptobyte.String
 	if !tbs.ReadASN1(&tbsCertList, cryptobyte_asn1.SEQUENCE) {
@@ -88,8 +85,7 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 	// |     `signature`                        | See [Section 7.1.3.2](#7132-signature-algorithmidentifier) |
 	// Section 7.1.3.2 requires signature AlgorithmIdentifiers to be
 	// byte-for-byte identical with one of the hexadecimal encodings specified
-	// by Section 7.1.3.2 of the Baseline Requirements. The signature field
-	// immediately follows the version field read above.
+	// by Section 7.1.3.2 of the Baseline Requirements.
 	var tbsSignature cryptobyte.String
 	if !tbsCertList.ReadASN1Element(&tbsSignature, cryptobyte_asn1.SEQUENCE) {
 		return errResult("failed to parse tbsCertList.signature")
@@ -168,14 +164,15 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 
 		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1203
 		// |              Any other extension       | Not present |
-		// Unlike in the CA CRL Profile, the reasonCode extension is optional
-		// here, so its absence is not an error.
+		// Note that (unlike the CA CRL lint) we don't check that every extension is
+		// seen. This is because the reasonCode extension is optional, omitted if if
+		// the revocation reason is 0.
 		entryExtensions := map[string]bool{
 			util.ReasonCodeOID.String(): false,
 		}
 		for _, ext := range rc.Extensions {
-			seen, allowed := entryExtensions[ext.Id.String()]
-			if !allowed {
+			seen, ok := entryExtensions[ext.Id.String()]
+			if !ok {
 				return errResult(fmt.Sprintf("entry %x: unexpected extension %s", rc.SerialNumber, ext.Id.String()))
 			}
 			if seen {
