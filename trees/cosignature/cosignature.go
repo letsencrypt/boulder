@@ -54,15 +54,15 @@ func keyIDFor(name string, publicKey *mldsa.PublicKey) uint32 {
 	return binary.BigEndian.Uint32(h.Sum(nil)[:keyIDSize])
 }
 
-// marshalMessage serializes the cosigned.Subtree for a cosignature over the
-// subtree [start, end). It rejects a [start, end) that is not a valid subtree.
-func marshalMessage(name string, timestamp uint64, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
+// marshalSubtreeMessage serializes the cosigned.Subtree for a cosignature over
+// the subtree [start, end), with a zero timestamp. It rejects a [start, end)
+// that is not a valid subtree.
+func marshalSubtreeMessage(name, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
 	if !subtree.Valid(start, end) {
 		return nil, fmt.Errorf("invalid subtree [%d, %d)", start, end)
 	}
 	message := cosigned.Subtree{
 		CosignerName: name,
-		Timestamp:    timestamp,
 		LogOrigin:    origin,
 		Start:        uint64(start), //nolint:gosec // G115: Valid leaves end >= start >= 0.
 		End:          uint64(end),   //nolint:gosec // G115: Valid leaves end >= start >= 0.
@@ -75,7 +75,17 @@ func marshalMessage(name string, timestamp uint64, origin string, start, end int
 // cosignature, with start 0 and end the tree size as the MTC draft section
 // 5.3.1 requires for checkpoints. It rejects a negative end.
 func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
-	return marshalMessage(name, timestamp, origin, 0, end, rootHash)
+	if end < 0 {
+		return nil, fmt.Errorf("negative tree size %d", end)
+	}
+	message := cosigned.Subtree{
+		CosignerName: name,
+		Timestamp:    timestamp,
+		LogOrigin:    origin,
+		End:          uint64(end),
+		SubtreeHash:  rootHash,
+	}
+	return message.Marshal()
 }
 
 // Cosigner produces cosignatures over checkpoints and subtrees as an MTC
@@ -154,7 +164,7 @@ func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
 // CosignSubtree cosigns the subtree [start, end) with hash subtreeHash and
 // returns the raw signature, which carries no timestamp.
 func (c *Cosigner) CosignSubtree(start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
-	message, err := marshalMessage(c.name, 0, c.origin, start, end, subtreeHash)
+	message, err := marshalSubtreeMessage(c.name, c.origin, start, end, subtreeHash)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +251,7 @@ func (v *Verifier) Verify(noteText, timestampedSignature []byte) bool {
 //
 // https://c2sp.org/tlog-cosignature#subtree-cosignatures
 func (v *Verifier) VerifySubtreeSignature(origin string, start, end int64, subtreeHash tlog.Hash, signature []byte) bool {
-	cosignedMessage, err := marshalMessage(v.keyName, 0, origin, start, end, subtreeHash)
+	cosignedMessage, err := marshalSubtreeMessage(v.keyName, origin, start, end, subtreeHash)
 	if err != nil {
 		return false
 	}
