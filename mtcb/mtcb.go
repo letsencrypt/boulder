@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
+	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -176,12 +177,12 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	}
 
 	// Fetch the relevant subtree from the database.
-	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
+	dbSubtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
 
-	isReady, err := ready(subtree, uint64(entryIndex)) //nolint:gosec // G115: entryIndex is positive from DecodeMTCSerial
+	isReady, err := ready(dbSubtree, uint64(entryIndex)) //nolint:gosec // G115: entryIndex is positive from DecodeMTCSerial
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +196,9 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("getting latest checkpoint: %s", err)
 	}
 
-	if subtree.SubtreeEnd > uint64(latestCheckpoint.Tree.N) { //nolint:gosec // G115: guaranteed non-negative by Valid()
+	if dbSubtree.SubtreeEnd > uint64(latestCheckpoint.Tree.N) { //nolint:gosec // G115: guaranteed non-negative by Valid()
 		return nil, fmt.Errorf("subtreeEnd is greater than treeSize (%d > %d)",
-			subtree.SubtreeEnd, latestCheckpoint.Tree.N)
+			dbSubtree.SubtreeEnd, latestCheckpoint.Tree.N)
 	}
 
 	// Fetch the tbsCertificateLogEntry and pubkey from the log.
@@ -240,13 +241,12 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	// Build the inclusion proof from the log.
 	tr := tiles.NewTileReader(ctx, m.s3c, requestedLogID.TilePrefix())
-	// The tile reader has to know the latest tree size, while the proof
-	// should go to the size of the subtree.
+	// The tile reader has to know the latest tree size (for partial tiles).
 	hr := tlog.TileHashReader(latestCheckpoint.Tree, tr)
-
-	inclusionProof, err := tlog.ProveRecord(
-		int64(subtree.SubtreeEnd), //nolint:gosec // G115: SubtreeEnd is less than 1<<48.
+	inclusionProof, err := subtree.InclusionProof(
 		entryIndex,
+		int64(dbSubtree.SubtreeStart), //nolint:gosec // G115: less than 1<<48
+		int64(dbSubtree.SubtreeEnd),   //nolint:gosec // G115: less than 1<<48
 		hr)
 	if err != nil {
 		return nil, fmt.Errorf("computing inclusion proof: %w", err)
@@ -258,18 +258,18 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
-	mirrorID, err := reloid.FromString(*subtree.MirrorID)
+	mirrorID, err := reloid.FromString(*dbSubtree.MirrorID)
 	if err != nil {
 		return nil, fmt.Errorf("parsing Mirror ID: %w", err)
 	}
 
 	sig := proof.MTCProof{
-		Start:          0,
-		End:            subtree.SubtreeEnd,
+		Start:          dbSubtree.SubtreeStart,
+		End:            dbSubtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
 		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: requestedLogID.CAID().Bytes(), Signature: subtree.MTCASignature},
-			{CosignerID: mirrorID.Bytes(), Signature: subtree.MirrorSignature},
+			{CosignerID: requestedLogID.CAID().Bytes(), Signature: dbSubtree.MTCASignature},
+			{CosignerID: mirrorID.Bytes(), Signature: dbSubtree.MirrorSignature},
 		},
 	}
 	certBytes, err := buildCertificate(tbs, &sig)
@@ -280,22 +280,18 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }
 
-func ready(subtree *treedb.CheckpointSubtreeModel, entryIndex uint64) (bool, error) {
-	err := subtree.Valid()
+func ready(dbSubtree *treedb.CheckpointSubtreeModel, entryIndex uint64) (bool, error) {
+	err := dbSubtree.Valid()
 	if err != nil {
-		return false, fmt.Errorf("validating checkpoint subtree %d: %w", subtree.ID, err)
+		return false, fmt.Errorf("validating checkpoint subtree %d: %w", dbSubtree.ID, err)
 	}
 
-	if entryIndex < subtree.SubtreeStart || entryIndex >= subtree.SubtreeEnd {
+	if entryIndex < dbSubtree.SubtreeStart || entryIndex >= dbSubtree.SubtreeEnd {
 		return false, fmt.Errorf("entryIndex is not in subtree ID %d [%d, %d)",
-			subtree.ID, subtree.SubtreeStart, subtree.SubtreeEnd)
+			dbSubtree.ID, dbSubtree.SubtreeStart, dbSubtree.SubtreeEnd)
 	}
 
-	if subtree.SubtreeStart != 0 {
-		return false, fmt.Errorf("inclusion proofs from start > 0 not yet supported")
-	}
-
-	return subtree.Mirrored(), nil
+	return dbSubtree.Mirrored(), nil
 }
 
 // buildCertificate wraps a DER-encoded tbsCertificate and an MTCProof into a

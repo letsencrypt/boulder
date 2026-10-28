@@ -178,6 +178,38 @@ func ConsistencyProof(start, end, treeSize int64, reader tlog.HashReader) ([]tlo
 	return subtreeSubProof(start, end, 0, treeSize, true, reader, nil)
 }
 
+// InclusionProof returns a Subtree Inclusion Proof.
+//
+// The range [start, end) must be a valid subtree with end <= treeSize.
+//
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-subtree-inclusion-proofs
+func InclusionProof(entryIndex, start, end int64, reader tlog.HashReader) ([]tlog.Hash, error) {
+	if !Valid(start, end) {
+		return nil, fmt.Errorf("subtree [%d, %d) not valid", start, end)
+	}
+	if !(start <= entryIndex && entryIndex < end) {
+		return nil, fmt.Errorf("entryIndex %d not in subtree [%d, %d)", entryIndex, start, end)
+	}
+	offset := start
+	// `tlog.ProveRecord` operates over a Merkle Tree, so we give it a HashReader
+	// that acts as if the subtree is a Merkle Tree unto itself.
+	offsetHashReader := func(hashIndexes []int64) ([]tlog.Hash, error) {
+		var newHashIndexes []int64
+		for _, i := range hashIndexes {
+			level, n := tlog.SplitStoredHashIndex(i)
+			// Node `n` in the subtree will be found at a larger (or equal)
+			// index in the whole Merkle Tree.
+			n += offset >> level
+			newHashIndexes = append(newHashIndexes, tlog.StoredHashIndex(level, n))
+		}
+		return reader.ReadHashes(newHashIndexes)
+	}
+	return tlog.ProveRecord(
+		end-start,
+		entryIndex-start,
+		tlog.HashReaderFunc(offsetHashReader))
+}
+
 // VerifyConsistency reports whether proof shows that the subtree [start, end),
 // whose hash is nodeHash, sits at those positions in the tree of size n with
 // root rootHash. It follows the procedure in MTC draft section 4.4.3, detailed
