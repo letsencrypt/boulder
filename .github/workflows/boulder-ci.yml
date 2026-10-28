@@ -71,7 +71,7 @@ jobs:
       # defined in the matrix.
       BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
       BOULDER_VTCOMBOSERVER_TAG: vitessv24.0.3_2026-09-24
-      BOULDER_SUNLIGHT_TAG: sunlightv0.10.0_2026-09-24
+      BOULDER_SUNLIGHT_TAG: sunlightv0.10.2_2026-10-29
 
     # Sequence of tasks that will be executed as part of the job.
     steps:
