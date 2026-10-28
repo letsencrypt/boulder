@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -58,13 +59,17 @@ func TestMakeIssuer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idRDNATrustAnchorIDExperimental := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 1}
+	caID, err := reloid.FromString("44947.4.2.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
 	template := &x509.Certificate{
 		Subject: pkix.Name{
 			ExtraNames: []pkix.AttributeTypeAndValue{
 				{
-					Type:  idRDNATrustAnchorIDExperimental,
-					Value: asn1.RawValue{Tag: asn1.TagUTF8String, Bytes: []byte("44947.4.2.1")},
+					Type:  idRDNATrustAnchorID,
+					Value: asn1.RawValue{Tag: 13, Bytes: caID.Bytes()}, // Universal Primitive RELATIVE-OID
 				},
 			},
 		},
@@ -79,7 +84,7 @@ func TestMakeIssuer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedSubject, err := hex.DecodeString("301d311b3019060a2b0601040182da4b2f010c0b34343934372e342e322e31")
+	expectedSubject, err := hex.DecodeString("30163114301206082b060105050719030d0682df13040201")
 	if err != nil {
 		t.Fatal(err)
 	}
