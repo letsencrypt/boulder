@@ -16,14 +16,11 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 )
 
-var idAlgMTCProofExperimental = encoding_asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44363, 47, 0}
+var idAlgMTCProof = encoding_asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 6, 67}
 
 // SigAlgEncoded returns a DER-encoded AlgorithmIdentifier suitable for
-// use with MTCProof signatures. Currently it returns 1.3.6.1.4.1.44363.47.0,
-// per https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format:
-//
-// "For initial experimentation, early implementations of this design will use the OID 1.3.6.1.4.1.44363.47.0
-// instead of id-alg-mtcProof."
+// use with MTCProof signatures. Currently it returns 1.3.6.1.5.5.7.6.67, per
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format.
 //
 // AlgorithmIdentifier is encoded per https://www.rfc-editor.org/info/rfc5280/#section-4.1.1.2:
 //
@@ -33,7 +30,7 @@ var idAlgMTCProofExperimental = encoding_asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1,
 func SigAlgEncoded() []byte {
 	var builder cryptobyte.Builder
 	builder.AddASN1(asn1.SEQUENCE, func(sigAlg *cryptobyte.Builder) {
-		sigAlg.AddASN1ObjectIdentifier(idAlgMTCProofExperimental)
+		sigAlg.AddASN1ObjectIdentifier(idAlgMTCProof)
 	})
 	return builder.BytesOrPanic()
 }

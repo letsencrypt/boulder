@@ -11,8 +11,8 @@ import (
 )
 
 func TestSigAlgEncoded(t *testing.T) {
-	// SEQUENCE { OBJECT IDENTIFIER 1.3.6.1.4.1.44363.47.0 }, parameters omitted.
-	expected, err := hex.DecodeString("300c060a2b0601040182da4b2f00")
+	// SEQUENCE { OBJECT IDENTIFIER 1.3.6.1.5.5.7.6.67 }, parameters omitted.
+	expected, err := hex.DecodeString("300a06082b06010505070643")
 	if err != nil {
 		t.Fatal(err)
 	}
