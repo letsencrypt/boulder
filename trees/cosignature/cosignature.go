@@ -64,8 +64,8 @@ func marshalMessage(name string, timestamp uint64, origin string, start, end int
 		CosignerName: name,
 		Timestamp:    timestamp,
 		LogOrigin:    origin,
-		Start:        uint64(start), //nolint:gosec // G115: Valid leaves end > start >= 0.
-		End:          uint64(end),   //nolint:gosec // G115: Valid leaves end > start >= 0.
+		Start:        uint64(start), //nolint:gosec // G115: Valid leaves end >= start >= 0.
+		End:          uint64(end),   //nolint:gosec // G115: Valid leaves end >= start >= 0.
 		SubtreeHash:  subtreeHash,
 	}
 	return cosignedMessage.Marshal()
@@ -73,7 +73,7 @@ func marshalMessage(name string, timestamp uint64, origin string, start, end int
 
 // marshalCheckpointMessage serializes the cosigned.Message for a checkpoint
 // cosignature, with start 0 and end the tree size as the MTC draft section
-// 5.3.1 requires for checkpoints. It rejects a non-positive end.
+// 5.3.1 requires for checkpoints. It rejects a negative end.
 func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
 	return marshalMessage(name, timestamp, origin, 0, end, rootHash)
 }

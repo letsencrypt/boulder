@@ -218,9 +218,9 @@ func TestSignSubtreeRequest(t *testing.T) {
 	if err == nil {
 		t.Error("SignSubtreeRequest with end before start = nil error, want error")
 	}
-	_, err = SignSubtreeRequest(512, 512, hash, nil, note)
+	_, err = SignSubtreeRequest(1, 3, hash, nil, note)
 	if err == nil {
-		t.Error("SignSubtreeRequest with an empty subtree = nil error, want error")
+		t.Error("SignSubtreeRequest with a misaligned subtree = nil error, want error")
 	}
 	_, err = SignSubtreeRequest(0, 512, hash, make([]tlog.Hash, 64), note)
 	if err == nil {
