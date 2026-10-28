@@ -1,4 +1,4 @@
-// Package proof implements the MTCProof and SubtreeSignature types from
+// Package proof implements the MTCProof and Cosignature types from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format.
 //
 // These are used to generate the signature field of MTCs.
@@ -42,14 +42,14 @@ func SigAlgEncoded() []byte {
 //	    MTCLogEntryExtension extensions<0..2^16-1>;
 //	    uint48 start;
 //	    uint48 end;
-//	    HashValue inclusion_proof<0..2^16-1>;
-//	    SubtreeSignature signatures<0..2^24-1>;
+//	    opaque inclusion_proof<0..2^16-1>;
+//	    Cosignature signatures<0..2^24-1>;
 //	} MTCProof;
 type MTCProof struct {
 	Extensions     []byte
 	Start, End     uint64
 	InclusionProof []tlog.Hash
-	Signatures     []*SubtreeSignature
+	Signatures     []*Cosignature
 }
 
 // Marshal serializes the bytes of an MTCProof.
@@ -81,7 +81,7 @@ func (m *MTCProof) Marshal() ([]byte, error) {
 
 	// Elements [of the signatures field] MUST be ordered by cosigner_id.
 	signatures := slices.Clone(m.Signatures)
-	slices.SortFunc(signatures, func(a, b *SubtreeSignature) int {
+	slices.SortFunc(signatures, func(a, b *Cosignature) int {
 		if len(a.CosignerID) != len(b.CosignerID) {
 			return len(a.CosignerID) - len(b.CosignerID)
 		}
@@ -161,7 +161,7 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 		return nil, fmt.Errorf("trailing bytes")
 	}
 
-	var signatures []*SubtreeSignature
+	var signatures []*Cosignature
 	var previousCosignerID cryptobyte.String
 	for !signaturesBytes.Empty() {
 		var cosignerID cryptobyte.String
@@ -195,7 +195,7 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 			return nil, fmt.Errorf("malformed signature")
 		}
 
-		signatures = append(signatures, &SubtreeSignature{
+		signatures = append(signatures, &Cosignature{
 			CosignerID: cosignerID,
 			Signature:  sig,
 		})
@@ -210,28 +210,26 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 	}, nil
 }
 
-// SubtreeSignature represents the struct of that name in
+// Cosignature represents the struct of that name in
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certificate-format.
 //
 // Standalone certificates carry two or more of these in addition to their inclusion proof. Landmark-relative certificates
 // carry none.
 //
-// /* From Section 4.1 of draft-ietf-tls-trust-anchor-ids */
+// /* From Section 4 of draft-ietf-tls-trust-anchor-ids */
 // opaque TrustAnchorID<1..2^8-1>;
-//
-// opaque HashValue[HASH_SIZE];
 //
 //	struct {
 //	    TrustAnchorID cosigner_id;
 //	    opaque signature<0..2^16-1>;
-//	} SubtreeSignature;
-type SubtreeSignature struct {
+//	} Cosignature;
+type Cosignature struct {
 	CosignerID []byte
 	Signature  []byte
 }
 
-// Marshal serializes the bytes of a SubtreeSignature.
-func (ms *SubtreeSignature) Marshal() ([]byte, error) {
+// Marshal serializes the bytes of a Cosignature.
+func (ms *Cosignature) Marshal() ([]byte, error) {
 	var builder cryptobyte.Builder
 	if len(ms.CosignerID) == 0 {
 		// TrustAnchorID is defined as minimum 1 byte.

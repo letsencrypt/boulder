@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestMessageRoundtrip(t *testing.T) {
-	m := Message{
+func TestSubtreeRoundtrip(t *testing.T) {
+	m := Subtree{
 		CosignerName: "alpha",
 		Timestamp:    1234,
 		LogOrigin:    "beta",
@@ -35,7 +35,7 @@ func TestMessageRoundtrip(t *testing.T) {
 }
 
 func TestMarshalErrors(t *testing.T) {
-	m := Message{
+	m := Subtree{
 		CosignerName: "Michigan",
 		Timestamp:    1337000,
 		LogOrigin:    "Illinois",
@@ -46,20 +46,20 @@ func TestMarshalErrors(t *testing.T) {
 
 	type testCase struct {
 		name, expected string
-		distorter      func(target *Message)
+		distorter      func(target *Subtree)
 	}
 
 	testCases := []testCase{
-		{"short CosignerName", "invalid cosigner_name length 0", func(target *Message) {
+		{"short CosignerName", "invalid cosigner_name length 0", func(target *Subtree) {
 			target.CosignerName = ""
 		}},
-		{"long CosignerName", "invalid cosigner_name length 256", func(target *Message) {
+		{"long CosignerName", "invalid cosigner_name length 256", func(target *Subtree) {
 			target.CosignerName = strings.Repeat("a", 256)
 		}},
-		{"short LogOrigin", "invalid log_origin length 0", func(target *Message) {
+		{"short LogOrigin", "invalid log_origin length 0", func(target *Subtree) {
 			target.LogOrigin = ""
 		}},
-		{"long LogOrigin", "invalid log_origin length 256", func(target *Message) {
+		{"long LogOrigin", "invalid log_origin length 256", func(target *Subtree) {
 			target.LogOrigin = strings.Repeat("a", 256)
 		}},
 	}
@@ -80,7 +80,7 @@ func TestMarshalErrors(t *testing.T) {
 }
 
 func TestUnmarshalErrors(t *testing.T) {
-	m := Message{
+	m := Subtree{
 		CosignerName: "Debut",
 		Timestamp:    55555,
 		LogOrigin:    "Post",

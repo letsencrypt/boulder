@@ -515,7 +515,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	}
 	// A witness cosigns its checkpoint at the current time, which the
 	// TestMirror cannot, so the line is signed by hand.
-	message, err := (&cosigned.Message{
+	message, err := (&cosigned.Subtree{
 		CosignerName: mirrorVerifier.Name(),
 		Timestamp:    1_700_000_000,
 		LogOrigin:    cp.Origin,

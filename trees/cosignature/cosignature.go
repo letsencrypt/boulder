@@ -28,10 +28,10 @@ const cosignatureAlg = 0x06
 const keyIDSize = 4
 
 // timestampSize is the length of the big-endian timestamp that begins a
-// timestamped_signature.
+// TimestampedSignature.
 const timestampSize = 8
 
-// timestampedSignatureSize is the length of an ML-DSA-44 timestamped_signature:
+// timestampedSignatureSize is the length of an ML-DSA-44 TimestampedSignature:
 // the timestamp followed by the signature.
 const timestampedSignatureSize = timestampSize + mldsa.MLDSA44SignatureSize
 
@@ -54,13 +54,13 @@ func keyIDFor(name string, publicKey *mldsa.PublicKey) uint32 {
 	return binary.BigEndian.Uint32(h.Sum(nil)[:keyIDSize])
 }
 
-// marshalMessage serializes the cosigned.Message for a cosignature over the
+// marshalMessage serializes the cosigned.Subtree for a cosignature over the
 // subtree [start, end). It rejects a [start, end) that is not a valid subtree.
 func marshalMessage(name string, timestamp uint64, origin string, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
 	if !subtree.Valid(start, end) {
 		return nil, fmt.Errorf("invalid subtree [%d, %d)", start, end)
 	}
-	cosignedMessage := cosigned.Message{
+	message := cosigned.Subtree{
 		CosignerName: name,
 		Timestamp:    timestamp,
 		LogOrigin:    origin,
@@ -68,10 +68,10 @@ func marshalMessage(name string, timestamp uint64, origin string, start, end int
 		End:          uint64(end),   //nolint:gosec // G115: Valid leaves end >= start >= 0.
 		SubtreeHash:  subtreeHash,
 	}
-	return cosignedMessage.Marshal()
+	return message.Marshal()
 }
 
-// marshalCheckpointMessage serializes the cosigned.Message for a checkpoint
+// marshalCheckpointMessage serializes the cosigned.Subtree for a checkpoint
 // cosignature, with start 0 and end the tree size as the MTC draft section
 // 5.3.1 requires for checkpoints. It rejects a negative end.
 func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
@@ -136,7 +136,7 @@ func (c *Cosigner) sign(message []byte) ([]byte, error) {
 }
 
 // CosignCheckpoint cosigns the checkpoint described by tree and returns the
-// cosignature as a timestamped_signature.
+// cosignature as a TimestampedSignature.
 func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
 	message, err := marshalCheckpointMessage(c.name, 0, c.origin, tree.N, tree.Hash)
 	if err != nil {
@@ -163,7 +163,7 @@ func (c *Cosigner) CosignSubtree(start, end int64, subtreeHash tlog.Hash) ([]byt
 
 // SignatureLine assembles the note signature line of the cosigner with the
 // Cosigner's name and key ID plus the provided timestamp and rawSignature as
-// its timestamped_signature. Callers are responsible for ensuring the signature
+// its TimestampedSignature. Callers are responsible for ensuring the signature
 // line is valid for any note text they append it to.
 func (c *Cosigner) SignatureLine(timestamp uint64, rawSignature []byte) ([]byte, error) {
 	return SignatureLine(c.name, c.keyID, timestamp, rawSignature)
@@ -319,7 +319,7 @@ func (v *Verifier) CheckpointCosignature(n *note.Note) (*CheckpointCosignature, 
 	return nil, fmt.Errorf("note has no signature by %s", v.keyName)
 }
 
-// RawSignature returns the ML-DSA-44 signature from a timestamped_signature,
+// RawSignature returns the ML-DSA-44 signature from a TimestampedSignature,
 // the form certificates embed. It errors if the input has the wrong length or a
 // non-zero timestamp, which certificates cannot carry.
 //
@@ -336,7 +336,7 @@ func RawSignature(timestampedSignature []byte) ([]byte, error) {
 }
 
 // SignatureLine assembles the note signature line of the cosigner with the
-// given keyName, keyID, timestamp and rawSignature as its timestamped_signature.
+// given keyName, keyID, timestamp and rawSignature as its TimestampedSignature.
 // Callers are responsible for ensuring the signature line is valid for any note
 // text they append it to.
 //
