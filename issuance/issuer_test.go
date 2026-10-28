@@ -30,7 +30,7 @@ func defaultProfileConfig() ProfileConfig {
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
 			// Ignore the two SCT lints because these tests don't get SCTs.
-			"w_ct_sct_policy_count_unsatisfied",
+			"n_ct_sct_policy_count_unsatisfied",
 			"e_scts_from_same_operator",
 			// Ignore the warning about including the SubjectKeyIdentifier extension:
 			// we include it on purpose, but plan to remove it soon.
