@@ -311,14 +311,18 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 		methodsMap["HEAD"] = true
 	}
 	methodsStr := strings.Join(methods, ", ")
+	// identify a wildcard handler and its endpoint so we can log in the same
+	// format as non-widlcard handlers.
+	endpoint, _, isWildcard := strings.Cut(pattern, `{`)
 	var handler http.Handler = web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			span := trace.SpanFromContext(ctx)
-			span.SetName(pattern)
+			span.SetName(endpoint)
 
-			logEvent.Endpoint = pattern
+			logEvent.Endpoint = endpoint
 			if request.URL != nil {
-				logEvent.Slug = request.URL.Path
+				// No-op for non-wildcard handlers inside StripPrefix
+				logEvent.Slug = strings.TrimPrefix(request.URL.Path, endpoint)
 			}
 			if request.Method != "GET" || pattern == newNoncePath {
 				nonceMsg, err := wfe.gnc.Nonce(ctx, &emptypb.Empty{})
@@ -372,7 +376,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	// there is no wildcard pattern. This gives us a way to migrate handlers
 	// individually to use wildcard patterns, as our non-wildcard handlers need
 	// prefixes stripped.
-	if !strings.Contains(pattern, `{`) && !strings.Contains(pattern, `}`) {
+	if !isWildcard {
 		handler = http.StripPrefix(pattern, handler)
 	}
 	mux.Handle(pattern, handler)
@@ -1890,6 +1894,8 @@ func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent 
 		return
 	}
 
+	logEvent.Extra["RequestedMtcSerial"] = reqMtcSerial
+
 	// Verify that the request path account ID matches the POST-as-GET-validated account ID
 	if reqAcctID != acct.ID {
 		wfe.sendError(response, logEvent, probs.Unauthorized(fmt.Sprintf("Not allowed for ID %d", acct.ID)), nil)
@@ -1938,8 +1944,6 @@ func (wfe *WebFrontEndImpl) MerkleTreeCertificate(ctx context.Context, logEvent 
 		wfe.sendError(response, logEvent, probs.Malformed("MTC request URL details do not match order details"), nil)
 		return
 	}
-
-	logEvent.Extra["RequestedMtcSerial"] = reqMtcSerial
 
 	// Now ask the RA for the standalone certificate.
 	standalone, err := wfe.ra.GetStandalone(ctx,
