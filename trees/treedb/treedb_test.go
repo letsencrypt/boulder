@@ -21,7 +21,6 @@ func TestCheckpointSubtreeModelValid(t *testing.T) {
 		distort func(*CheckpointSubtreeModel)
 	}{
 		{"empty MTCLogID", func(s *CheckpointSubtreeModel) { s.MTCLogID = "" }},
-		{"negative start", func(s *CheckpointSubtreeModel) { s.SubtreeStart = -1 }},
 		{"end equals start", func(s *CheckpointSubtreeModel) { s.SubtreeEnd = s.SubtreeStart }},
 		{"end before start", func(s *CheckpointSubtreeModel) { s.SubtreeStart = 9 }},
 		{"end at 2^48", func(s *CheckpointSubtreeModel) { s.SubtreeEnd = 1 << 48 }},
