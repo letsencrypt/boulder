@@ -311,9 +311,10 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 		methodsMap["HEAD"] = true
 	}
 	methodsStr := strings.Join(methods, ", ")
-	// identify a wildcard handler and its endpoint so we can log in the same
-	// format as non-widlcard handlers.
-	endpoint, _, isWildcard := strings.Cut(pattern, `{`)
+	// Identify a wildcard handler and extract its endpoint before the first
+	// curly brace so `logEvent`s can maintain the same format as non-widlcard
+	// handlers.
+	endpoint, _, isWildcard := strings.Cut(pattern, "{")
 	var handler http.Handler = web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			span := trace.SpanFromContext(ctx)
@@ -372,10 +373,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			cancel()
 		}),
 	)
-	// Detect the lack of at least one pair of curly braces as a signal that
-	// there is no wildcard pattern. This gives us a way to migrate handlers
-	// individually to use wildcard patterns, as our non-wildcard handlers need
-	// prefixes stripped.
+	// This gives us a way to migrate handlers individually to use wildcard
+	// patterns, as our non-wildcard handlers need prefixes stripped.
 	if !isWildcard {
 		handler = http.StripPrefix(pattern, handler)
 	}
