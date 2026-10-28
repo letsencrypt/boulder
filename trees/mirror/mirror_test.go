@@ -70,6 +70,43 @@ func TestAddCheckpointRequestRejects(t *testing.T) {
 	}
 }
 
+func TestParseSubtreeCosignature(t *testing.T) {
+	cases := []struct {
+		name              string
+		body              string
+		expectSignature   []byte
+		expectErrContains string
+	}{
+		{"Valid", "c3VidHJlZQ==\n", []byte("subtree"), ""},
+		{"Empty body", "", nil, "malformed"},
+		{"Empty cosignature", "\n", nil, "malformed"},
+		{"No trailing newline", "c3VidHJlZQ==", nil, "malformed"},
+		{"Two trailing newlines", "c3VidHJlZQ==\n\n", nil, "malformed"},
+		{"CRLF line ending", "c3VidHJlZQ==\r\n", nil, "malformed"},
+		{"Embedded newline", "c3Vi\ndHJlZQ==\n", nil, "malformed"},
+		{"Non-canonical padding bits", "c3VidHJlZR==\n", nil, "not canonical"},
+		{"Extra padding", "c3VidHJlZQ===\n", nil, "illegal base64"},
+		{"Not base64", "!!!\n", nil, "illegal base64"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			signature, err := ParseSubtreeCosignature([]byte(tc.body))
+			if tc.expectErrContains != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.expectErrContains) {
+					t.Errorf("ParseSubtreeCosignature = %v, want error containing %q", err, tc.expectErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseSubtreeCosignature: %s", err)
+			}
+			if !bytes.Equal(signature, tc.expectSignature) {
+				t.Errorf("ParseSubtreeCosignature = %x, want %x", signature, tc.expectSignature)
+			}
+		})
+	}
+}
+
 func TestParseSizeResponse(t *testing.T) {
 	size, err := ParseSizeResponse([]byte("20852014\n"))
 	if err != nil {

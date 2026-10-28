@@ -553,9 +553,9 @@ func newSourceLog(t *testing.T) *sourceLog {
 }
 
 // signSubtreeServer serves the newer tree's checkpoint and answers sign-subtree
-// for the subtree [start, end) with hash subtreeHash with line, after checking
+// for the subtree [start, end) with hash subtreeHash with signature, after checking
 // the request's proof against the newer tree.
-func (s *sourceLog) signSubtreeServer(t *testing.T, start, end int64, subtreeHash tlog.Hash, line []byte) *httptest.Server {
+func (s *sourceLog) signSubtreeServer(t *testing.T, start, end int64, subtreeHash tlog.Hash, signature []byte) *httptest.Server {
 	t.Helper()
 	referenceCheckpoint, err := s.cp.SignedNote(s.checkpointCosignatureLine)
 	if err != nil {
@@ -597,7 +597,7 @@ func (s *sourceLog) signSubtreeServer(t *testing.T, start, end int64, subtreeHas
 			http.Error(w, "bad proof", http.StatusBadRequest)
 			return
 		}
-		w.Write(line)
+		w.Write([]byte(base64.StdEncoding.EncodeToString(signature) + "\n"))
 	}))
 }
 
@@ -619,16 +619,7 @@ func TestMirrorCosignPartialSubtree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
-	mirrorVerifier, err := cosignature.NewVerifier(mirrorOID, source.mirrorKey.PublicKey())
-	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
-	}
-	partialLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, partialSignature)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-
-	srv := source.signSubtreeServer(t, 256, 384, partialHash, partialLine)
+	srv := source.signSubtreeServer(t, 256, 384, partialHash, partialSignature)
 	defer srv.Close()
 
 	m, err := NewMirrorClient(srv.URL, srv.URL, NewSource(source.fs3, testTilePrefix), mirrorID, source.mirrorKey.PublicKey(), 10*time.Second)
@@ -821,7 +812,7 @@ func TestMirrorCosign(t *testing.T) {
 			if !bytes.HasSuffix(note, source.checkpointCosignatureLine) {
 				t.Errorf("sign-subtree note %q does not end with the add-entries cosignature line", note)
 			}
-			w.Write(source.subtreeCosignatureLine)
+			w.Write([]byte(base64.StdEncoding.EncodeToString(source.subtreeSignature) + "\n"))
 		default:
 			t.Errorf("unexpected request to %s", r.URL.Path)
 		}

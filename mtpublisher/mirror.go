@@ -265,7 +265,7 @@ func (m *MirrorClient) signSubtree(ctx context.Context, start, end int64, subtre
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("mirror returned status %d: %s", status, errorBody(respBody))
 	}
-	return respBody, nil
+	return mirror.ParseSubtreeCosignature(respBody)
 }
 
 // SubmitCheckpoint runs the c2sp.org/tlog-mirror submission protocol for the
@@ -368,19 +368,12 @@ func (m *MirrorClient) CosignSubtree(ctx context.Context, mirrored *checkpoint.C
 	if err != nil {
 		return nil, fmt.Errorf("assembling the reference checkpoint: %w", err)
 	}
-	subtreeCosignatureLine, err := m.signSubtree(ctx, start, end, subtreeHash, proof, referenceCheckpoint)
+	subtreeSignature, err := m.signSubtree(ctx, start, end, subtreeHash, proof, referenceCheckpoint)
 	if err != nil {
 		return nil, fmt.Errorf("sign-subtree: %w", err)
 	}
-
-	// Verify the mirror's subtree signature.
-	//
-	// TODO(#9121): tlog-witness v1.1.0 changed the sign-subtree response from a
-	// note signature line to a bare base64 subtree cosignature. Once Sunlight is
-	// updated to match, decode it and use VerifySubtreeSignature instead.
-	subtreeSignature, err := m.verifier.VerifySubtreeSignatureLine(mirrored.Origin, start, end, subtreeHash, subtreeCosignatureLine)
-	if err != nil {
-		return nil, fmt.Errorf("subtree signature failed verification: %w", err)
+	if !m.verifier.VerifySubtreeSignature(mirrored.Origin, start, end, subtreeHash, subtreeSignature) {
+		return nil, errors.New("subtree cosignature does not verify")
 	}
 	return subtreeSignature, nil
 }

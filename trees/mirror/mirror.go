@@ -106,6 +106,23 @@ func ParseSizeResponse(body []byte) (int64, error) {
 	return parseDecimal(line)
 }
 
+// ParseSubtreeCosignature parses the body of a "200 Success" sign-subtree
+// response, a base64-encoded subtree cosignature followed by a newline.
+func ParseSubtreeCosignature(body []byte) ([]byte, error) {
+	line, ok := strings.CutSuffix(string(body), "\n")
+	if !ok || line == "" || strings.ContainsAny(line, "\r\n") {
+		return nil, fmt.Errorf("malformed subtree cosignature response %q", body)
+	}
+	signature, err := base64.StdEncoding.DecodeString(line)
+	if err != nil {
+		return nil, fmt.Errorf("subtree cosignature: %s", err)
+	}
+	if base64.StdEncoding.EncodeToString(signature) != line {
+		return nil, errors.New("subtree cosignature is not canonical base64")
+	}
+	return signature, nil
+}
+
 // MirrorInfo is a parsed text/x.tlog.mirror-info body from a "409 Conflict" or
 // "202 Accepted" add-entries response.
 type MirrorInfo struct {
