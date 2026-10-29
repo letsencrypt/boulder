@@ -242,7 +242,7 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 
 // addSubtree adds a mirrored checkpoint subtree over [start, end) to the log,
 // with its hash computed from the entries' leaf hashes, and returns it.
-func (l *testLog) addSubtree(t *testing.T, start, end uint64) *treedb.CheckpointSubtreeModel {
+func (l *testLog) addSubtree(t *testing.T, start, end int64) *treedb.CheckpointSubtreeModel {
 	t.Helper()
 	var leaves []tlog.Hash
 	for _, e := range l.entries[start:end] {
