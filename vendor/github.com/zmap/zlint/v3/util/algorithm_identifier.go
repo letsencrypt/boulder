@@ -9,6 +9,7 @@ import (
 	cryptobyte_asn1 "github.com/zmap/zcrypto/cryptobyte/asn1"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	"github.com/zmap/zcrypto/x509"
+	"golang.org/x/crypto/ocsp"
 )
 
 // additional OIDs not provided by the x509 package.
@@ -135,6 +136,97 @@ func GetSignatureAlgorithmInTBSEncoded(c *x509.Certificate) ([]byte, error) {
 		return nil, errors.New("error reading tbsCertificate.signature")
 	}
 
+	return signatureAlgoID, nil
+}
+
+// Returns the signature algorithm ID of the tbsCertList as DER encoded bytes or
+// an error.
+//
+//	RFC 5280: 5.1
+//	CertificateList  ::=  SEQUENCE  {
+//	     tbsCertList          TBSCertList,
+//	     signatureAlgorithm   AlgorithmIdentifier,
+//	     signatureValue       BIT STRING  }
+//
+//	TBSCertList  ::=  SEQUENCE  {
+//	     version                 Version OPTIONAL,
+//	     signature               AlgorithmIdentifier,
+//	     ...
+func GetSignatureAlgorithmInTBSCertListEncoded(r *x509.RevocationList) ([]byte, error) {
+	input := cryptobyte.String(r.RawTBSRevocationList)
+	var tbsCertList cryptobyte.String
+	if !input.ReadASN1(&tbsCertList, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading tbsCertList")
+	}
+	if !tbsCertList.SkipOptionalASN1(cryptobyte_asn1.INTEGER) {
+		return nil, errors.New("error reading tbsCertList.version")
+	}
+	var signatureAlgoID cryptobyte.String
+	if !tbsCertList.ReadASN1Element(&signatureAlgoID, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading tbsCertList.signature")
+	}
+	return signatureAlgoID, nil
+}
+
+// Returns the algorithm OID of a DER encoded AlgorithmIdentifier or an error.
+func GetAlgorithmIdentifierOID(encoded []byte) (asn1.ObjectIdentifier, error) {
+	input := cryptobyte.String(encoded)
+	var algorithmIdentifier cryptobyte.String
+	if !input.ReadASN1(&algorithmIdentifier, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading AlgorithmIdentifier")
+	}
+	oid := asn1.ObjectIdentifier{}
+	if !algorithmIdentifier.ReadASN1ObjectIdentifier(&oid) {
+		return nil, errors.New("error reading AlgorithmIdentifier.algorithm")
+	}
+	return oid, nil
+}
+
+// Returns the signatureAlgorithm of the BasicOCSPResponse as DER encoded bytes
+// or an error.
+//
+//	RFC 6960: 4.2.1
+//	OCSPResponse ::= SEQUENCE {
+//	     responseStatus         OCSPResponseStatus,
+//	     responseBytes          [0] EXPLICIT ResponseBytes OPTIONAL }
+//
+//	ResponseBytes ::=       SEQUENCE {
+//	     responseType   OBJECT IDENTIFIER,
+//	     response       OCTET STRING }
+//
+//	BasicOCSPResponse       ::= SEQUENCE {
+//	     tbsResponseData      ResponseData,
+//	     signatureAlgorithm   AlgorithmIdentifier,
+//	     ...
+func GetSignatureAlgorithmInBasicOCSPResponseEncoded(o *ocsp.Response) ([]byte, error) {
+	input := cryptobyte.String(o.Raw)
+	var ocspResponse cryptobyte.String
+	if !input.ReadASN1(&ocspResponse, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading OCSPResponse")
+	}
+	if !ocspResponse.SkipASN1(cryptobyte_asn1.ENUM) {
+		return nil, errors.New("error reading OCSPResponse.responseStatus")
+	}
+	var explicitResponseBytes, responseBytes cryptobyte.String
+	if !ocspResponse.ReadASN1(&explicitResponseBytes, cryptobyte_asn1.Tag(0).Constructed().ContextSpecific()) ||
+		!explicitResponseBytes.ReadASN1(&responseBytes, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading OCSPResponse.responseBytes")
+	}
+	if !responseBytes.SkipASN1(cryptobyte_asn1.OBJECT_IDENTIFIER) {
+		return nil, errors.New("error reading ResponseBytes.responseType")
+	}
+	var response, basicResponse cryptobyte.String
+	if !responseBytes.ReadASN1(&response, cryptobyte_asn1.OCTET_STRING) ||
+		!response.ReadASN1(&basicResponse, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading BasicOCSPResponse")
+	}
+	if !basicResponse.SkipASN1(cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading BasicOCSPResponse.tbsResponseData")
+	}
+	var signatureAlgoID cryptobyte.String
+	if !basicResponse.ReadASN1Element(&signatureAlgoID, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("error reading BasicOCSPResponse.signatureAlgorithm")
+	}
 	return signatureAlgoID, nil
 }
 

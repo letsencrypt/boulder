@@ -78,7 +78,7 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 		LintConfig:          "",
 		IgnoredLints: []string{
 			"w_ext_subject_key_identifier_missing_sub_cert",
-			"w_ct_sct_policy_count_unsatisfied",
+			"n_ct_sct_policy_count_unsatisfied",
 			"e_signature_algorithm_not_supported",
 		},
 	})
