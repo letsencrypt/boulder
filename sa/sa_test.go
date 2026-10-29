@@ -1433,7 +1433,7 @@ func TestFinalizeMTCOrder(t *testing.T) {
 	// Finalize the order with MTC data.
 	_, err = sa.FinalizeMTCOrder(context.Background(), &sapb.FinalizeMTCOrderRequest{
 		Id:              order.Id,
-		MtcLogID:        "44947.4.1.0.44",
+		MtcLogID:        "44947.4.1.0.3",
 		MtcSerialNumber: 23,
 		MtcSubtreeID:    99,
 	})
@@ -1444,7 +1444,7 @@ func TestFinalizeMTCOrder(t *testing.T) {
 		context.Background(),
 		&sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "GetOrder failed")
-	test.AssertEquals(t, updatedOrder.MtcLogID, "44947.4.1.0.44")
+	test.AssertEquals(t, updatedOrder.MtcLogID, "44947.4.1.0.3")
 	test.AssertEquals(t, updatedOrder.MtcSerialNumber, uint64(23))
 	test.AssertEquals(t, updatedOrder.MtcSubtreeID, int64(99))
 
@@ -1452,7 +1452,7 @@ func TestFinalizeMTCOrder(t *testing.T) {
 
 	_, err = sa.FinalizeMTCOrder(context.Background(), &sapb.FinalizeMTCOrderRequest{
 		Id:              order.Id,
-		MtcLogID:        "44947.4.1.0.44",
+		MtcLogID:        "44947.4.1.0.3",
 		MtcSerialNumber: 71,
 		MtcSubtreeID:    101,
 	})

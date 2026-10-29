@@ -32,10 +32,10 @@ func TestIDDerivations(t *testing.T) {
 			expectTilePrefix: "32473.2/42",
 		},
 		{
-			id:               mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 44}),
-			expectString:     "44947.4.1.0.44",
-			expectOrigin:     "oid/1.3.6.1.4.1.44947.4.1.0.44",
-			expectTilePrefix: "44947.4.1/44",
+			id:               mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 3}),
+			expectString:     "44947.4.1.0.3",
+			expectOrigin:     "oid/1.3.6.1.4.1.44947.4.1.0.3",
+			expectTilePrefix: "44947.4.1/3",
 		},
 		{
 			id:               mustLoad(t, Config{CAID: "1", LogNumber: 1}),
@@ -65,24 +65,24 @@ func TestParseID(t *testing.T) {
 		expectErr string
 	}{
 		{in: "32473.2.0.42", expectID: mustLoad(t, Config{CAID: "32473.2", LogNumber: 42})},
-		{in: "44947.4.1.0.44", expectID: mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 44})},
+		{in: "44947.4.1.0.3", expectID: mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 3})},
 		{in: "1.0.1", expectID: mustLoad(t, Config{CAID: "1", LogNumber: 1})},
 		{in: "44947.0.1.0.5", expectID: mustLoad(t, Config{CAID: "44947.0.1", LogNumber: 5})},
 		{in: "44947.4.1.0.65535", expectID: mustLoad(t, Config{CAID: "44947.4.1", LogNumber: 65535})},
 		{in: "", expectErr: "at least three arcs"},
 		{in: "44947.0", expectErr: "at least three arcs"},
 		{in: "44947.4.1", expectErr: "must have 0 before its log number"},
-		{in: ".0.44", expectErr: "invalid CA ID"},
+		{in: ".0.3", expectErr: "invalid CA ID"},
 		{in: "44947.4.1.0.", expectErr: "parsing log number"},
 		{in: "44947.4.1.0.x", expectErr: "parsing log number"},
-		{in: "44947.-4.1.0.44", expectErr: "invalid CA ID"},
-		{in: "44947.4.1.0.+44", expectErr: "parsing log number"},
+		{in: "44947.-4.1.0.3", expectErr: "invalid CA ID"},
+		{in: "44947.4.1.0.+3", expectErr: "parsing log number"},
 		{in: "44947.4.1.0.65536", expectErr: "parsing log number"},
 		{in: "44947.4.1.0.0", expectErr: "log number 0"},
-		{in: "44947.4.1.0.044", expectErr: "leading zero"},
-		{in: "44947.4.1.00.44", expectErr: "must have 0 before its log number"},
-		{in: "44947.04.1.0.44", expectErr: "invalid CA ID"},
-		{in: "044947.4.1.0.44", expectErr: "invalid CA ID"},
+		{in: "44947.4.1.0.03", expectErr: "leading zero"},
+		{in: "44947.4.1.00.3", expectErr: "must have 0 before its log number"},
+		{in: "44947.04.1.0.3", expectErr: "invalid CA ID"},
+		{in: "044947.4.1.0.3", expectErr: "invalid CA ID"},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			id, err := ParseID(tc.in)

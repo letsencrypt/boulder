@@ -62,7 +62,7 @@ func (id *ID) LogNumber() uint16 {
 
 // String returns the log ID in its ASCII representation, the CA ID followed by
 // the constant 0 and the log number. For instance, the log ID of CA ID
-// "44947.4.1" and log number 44 is "44947.4.1.0.44".
+// "44947.4.1" and log number 3 is "44947.4.1.0.3".
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-issuance-logs
 func (id *ID) String() string {
@@ -93,8 +93,8 @@ func ParseID(s string) (*ID, error) {
 }
 
 // Origin returns the log origin per mtc-tlog, the log ID as an origin. For
-// instance, the log origin of CA ID "44947.4.1" and log number 44 is
-// "oid/1.3.6.1.4.1.44947.4.1.0.44".
+// instance, the log origin of CA ID "44947.4.1" and log number 3 is
+// "oid/1.3.6.1.4.1.44947.4.1.0.3".
 //
 // https://c2sp.org/mtc-tlog
 func (id *ID) Origin() string {
@@ -117,7 +117,7 @@ func (id *ID) Origin() string {
 //
 // As a matter of local convention we will put the CA ID as the path component
 // right before log number. For instance, the prefix of CA ID "44947.4.1" and
-// log number 44 is "44947.4.1/44".
+// log number 3 is "44947.4.1/3".
 func (id *ID) TilePrefix() string {
 	return fmt.Sprintf("%s/%d", id.caID.String(), id.logNum)
 }
