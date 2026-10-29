@@ -204,15 +204,11 @@ func TestIssuanceMTC(t *testing.T) {
 
 	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
 
-	// A valid order is as far as we get for now. Once the WFE serves standalone
-	// certificates for MTC orders, we'll fetch the certificate too.
-	_, order, err := makeClientAndOrder(client, key, idents, true, "mtcshortlived", nil)
-	if err != nil {
-		t.Fatalf("finalizing MTC order: %s", err)
-	}
-	if order.Status != "valid" {
-		t.Fatalf("finalized MTC order status = %q, want valid", order.Status)
-	}
+	ir, err := authAndIssue(client, key, idents, true, "mtcshortlived")
+	test.AssertNotError(t, err, "failed to issue test MTC")
+
+	// Ensure that the SANs are correct.
+	test.AssertSliceContains(t, ir.certs[0].DNSNames, idents[0].Value)
 
 	// The mtca serves each checkpoint as soon as it is sequenced, and the
 	// mtpublisher then submits it to the sunlight mirror, so the mirror's
