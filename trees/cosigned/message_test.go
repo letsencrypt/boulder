@@ -50,17 +50,23 @@ func TestMarshalErrors(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		{"short CosignerName", "invalid cosigner_name length 0", func(target *Subtree) {
+		{"short CosignerName", "invalid cosigner_name: empty", func(target *Subtree) {
 			target.CosignerName = ""
 		}},
-		{"long CosignerName", "invalid cosigner_name length 256", func(target *Subtree) {
+		{"long CosignerName", "invalid cosigner_name: 256 bytes, want at most 255", func(target *Subtree) {
 			target.CosignerName = strings.Repeat("a", 256)
 		}},
-		{"short LogOrigin", "invalid log_origin length 0", func(target *Subtree) {
+		{"plus in CosignerName", "invalid cosigner_name: contains '+'", func(target *Subtree) {
+			target.CosignerName = "example.com/cosigner+1"
+		}},
+		{"short LogOrigin", "invalid log_origin: empty", func(target *Subtree) {
 			target.LogOrigin = ""
 		}},
-		{"long LogOrigin", "invalid log_origin length 256", func(target *Subtree) {
+		{"long LogOrigin", "invalid log_origin: 256 bytes, want at most 255", func(target *Subtree) {
 			target.LogOrigin = strings.Repeat("a", 256)
+		}},
+		{"space in LogOrigin", "invalid log_origin: contains ' '", func(target *Subtree) {
+			target.LogOrigin = "example.com/log 1"
 		}},
 	}
 

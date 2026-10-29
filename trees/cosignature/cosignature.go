@@ -15,6 +15,7 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/core/reloid"
+	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/subtree"
@@ -106,13 +107,15 @@ type Cosigner struct {
 // NewCosigner returns a Cosigner for the cosigner with the given ID over the
 // log with the given log origin, deriving its cosigner name per mtc-tlog:
 // cosigner ID "32473.2" signs as "oid/1.3.6.1.4.1.32473.2". It errors if
-// cosignerID is nil, origin is empty, or signer's public key is not ML-DSA-44.
+// cosignerID is nil, origin is not a valid log origin, or signer's public key
+// is not ML-DSA-44.
 func NewCosigner(cosignerID *reloid.RelativeOID, origin string, signer crypto.Signer) (*Cosigner, error) {
 	if cosignerID == nil {
 		return nil, errors.New("nil cosigner ID")
 	}
-	if origin == "" {
-		return nil, errors.New("empty log origin")
+	err := trees.CheckName(origin)
+	if err != nil {
+		return nil, fmt.Errorf("invalid log origin: %w", err)
 	}
 	pubKey, ok := signer.Public().(*mldsa.PublicKey)
 	if !ok {

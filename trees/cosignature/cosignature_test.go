@@ -291,6 +291,10 @@ func TestCosignerRejects(t *testing.T) {
 	if err == nil {
 		t.Error("NewCosigner with an empty origin = nil error, want error")
 	}
+	_, err = NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42 ", signer)
+	if err == nil {
+		t.Error("NewCosigner with a space in the origin = nil error, want error")
+	}
 
 	// An ML-DSA-65 key has an mldsa public key of the wrong size.
 	wrong, err := mldsa.GenerateKey(mldsa.MLDSA65())

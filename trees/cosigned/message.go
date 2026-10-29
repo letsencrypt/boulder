@@ -9,6 +9,8 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/cryptobyte"
+
+	"github.com/letsencrypt/boulder/trees"
 )
 
 // Subtree represents a CosignedSubtree from
@@ -26,7 +28,7 @@ const subtreeLabel = "subtree/v1\n\x00"
 
 // Marshal encodes the Subtree as bytes.
 //
-// It errors if cosigner_name or log_origin are too long or too short. It does not validate semantic constraints,
+// It errors if cosigner_name or log_origin are not valid names. It does not validate semantic constraints,
 // like [start, end) being a valid subtree.
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
@@ -42,11 +44,13 @@ const subtreeLabel = "subtree/v1\n\x00"
 //	    HashValue subtree_hash;
 //	} CosignedSubtree;
 func (subtree *Subtree) Marshal() ([]byte, error) {
-	if len(subtree.CosignerName) < 1 || len(subtree.CosignerName) > 255 {
-		return nil, fmt.Errorf("invalid cosigner_name length %d", len(subtree.CosignerName))
+	err := trees.CheckName(subtree.CosignerName)
+	if err != nil {
+		return nil, fmt.Errorf("invalid cosigner_name: %w", err)
 	}
-	if len(subtree.LogOrigin) < 1 || len(subtree.LogOrigin) > 255 {
-		return nil, fmt.Errorf("invalid log_origin length %d", len(subtree.LogOrigin))
+	err = trees.CheckName(subtree.LogOrigin)
+	if err != nil {
+		return nil, fmt.Errorf("invalid log_origin: %w", err)
 	}
 
 	var b cryptobyte.Builder
@@ -82,8 +86,9 @@ func Unmarshal(input []byte) (*Subtree, error) {
 	if !s.ReadUint8LengthPrefixed(&cosignerName) {
 		return nil, errors.New("invalid cosigner_name")
 	}
-	if len(cosignerName) < 1 {
-		return nil, errors.New("empty cosigner_name")
+	err := trees.CheckName(string(cosignerName))
+	if err != nil {
+		return nil, fmt.Errorf("invalid cosigner_name: %w", err)
 	}
 	out.CosignerName = string(cosignerName)
 
@@ -95,8 +100,9 @@ func Unmarshal(input []byte) (*Subtree, error) {
 	if !s.ReadUint8LengthPrefixed(&logOrigin) {
 		return nil, errors.New("invalid log_origin")
 	}
-	if len(logOrigin) < 1 {
-		return nil, errors.New("empty log_origin")
+	err = trees.CheckName(string(logOrigin))
+	if err != nil {
+		return nil, fmt.Errorf("invalid log_origin: %w", err)
 	}
 	out.LogOrigin = string(logOrigin)
 
