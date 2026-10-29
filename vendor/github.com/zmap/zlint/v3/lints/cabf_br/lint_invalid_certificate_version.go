@@ -1,7 +1,7 @@
 package cabf_br
 
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -30,7 +30,7 @@ func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
 			Name:          "e_invalid_certificate_version",
-			Description:   "Certificates MUST be of type X.590 v3",
+			Description:   "Certificates MUST be of type X.509 v3",
 			Citation:      "BRs: 7.1.1",
 			Source:        lint.CABFBaselineRequirements,
 			EffectiveDate: util.CABV130Date,
