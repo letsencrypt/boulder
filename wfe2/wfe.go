@@ -392,25 +392,6 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 	return nil
 }
 
-// requestProto returns "http" for HTTP requests and "https" for HTTPS
-// requests. It supports the use of "X-Forwarded-Proto" to override the protocol.
-func requestProto(request *http.Request) string {
-	proto := "http"
-
-	// If the request was received via TLS, use `https://` for the protocol
-	if request.TLS != nil {
-		proto = "https"
-	}
-
-	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
-	// to override our own guess.
-	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
-		proto = specifiedProto
-	}
-
-	return proto
-}
-
 const randomDirKeyExplanationLink = "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417"
 
 func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]any) ([]byte, error) {

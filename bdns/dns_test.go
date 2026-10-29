@@ -609,7 +609,7 @@ type testExchanger struct {
 
 var errTooManyRequests = errors.New("too many requests")
 
-func (te *testExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (te *testExchanger) dohQuery(_ context.Context, _ []byte, a string) ([]byte, error) {
 	te.Lock()
 	defer te.Unlock()
 	msg := &dns.Msg{
@@ -619,11 +619,15 @@ func (te *testExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string
 	// notice extra requests.
 	te.count++
 	if te.count > len(te.errs) {
-		return nil, 0, errTooManyRequests
+		return nil, errTooManyRequests
 	}
 	err := te.errs[te.count-1]
 
-	return msg, 2 * time.Millisecond, err
+	packed, packErr := msg.Pack()
+	if packErr != nil {
+		panic("error packing")
+	}
+	return packed, err
 }
 
 func TestRetry(t *testing.T) {
@@ -781,9 +785,9 @@ type rotateFailureExchanger struct {
 	brokenAddresses map[string]bool
 }
 
-// ExchangeContext for rotateFailureExchanger tracks the `a` argument in `lookups` and
+// dohQuery for rotateFailureExchanger tracks the `a` argument in `lookups` and
 // if present in `brokenAddresses`, returns an error.
-func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+func (e *rotateFailureExchanger) dohQuery(_ context.Context, _ []byte, a string) ([]byte, error) {
 	e.Lock()
 	defer e.Unlock()
 
@@ -792,10 +796,10 @@ func (e *rotateFailureExchanger) ExchangeContext(_ context.Context, m *dns.Msg, 
 
 	// If its a broken server, return an error
 	if e.brokenAddresses[a] {
-		return nil, 2 * time.Millisecond, errors.New("broken server")
+		return nil, errors.New("broken server")
 	}
 
-	return m, 2 * time.Millisecond, nil
+	return new(dns.Msg).Pack()
 }
 
 // fixedOrderProvider returns its servers in the same order every time.
@@ -867,12 +871,23 @@ type truncatedExchanger struct {
 	rcode int
 }
 
-func (te truncatedExchanger) ExchangeContext(_ context.Context, m *dns.Msg, _ string) (*dns.Msg, time.Duration, error) {
+func (te truncatedExchanger) dohQuery(_ context.Context, queryBytes []byte, _ string) ([]byte, error) {
+	query := new(dns.Msg)
+	err := query.Unpack(queryBytes)
+	if err != nil {
+		return nil, err
+	}
+
 	resp := new(dns.Msg)
-	resp.SetReply(m)
+	resp.SetReply(query)
 	resp.Rcode = te.rcode
 	resp.Truncated = true
-	return resp, time.Millisecond, nil
+
+	packed, err := resp.Pack()
+	if err != nil {
+		return nil, err
+	}
+	return packed, nil
 }
 
 func TestDNSCAATruncatedResponse(t *testing.T) {
@@ -998,8 +1013,12 @@ func TestDoHExchangerTimeouts(t *testing.T) {
 
 		query := new(dns.Msg)
 		query.SetQuestion("example.com.", dns.TypeA)
+		queryBytes, err := query.Pack()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		_, _, err := exchanger.ExchangeContext(ctx, query, srv.Listener.Addr().String())
+		_, err = exchanger.dohQuery(ctx, queryBytes, srv.Listener.Addr().String())
 		return err
 	}
 

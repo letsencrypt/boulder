@@ -166,7 +166,7 @@ func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int
 		mtcLogID,
 		id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting checkpoint subtree %d of %q: %w", id, mtcLogID, err)
 	}
 	return &checkpointSubtree, nil
 }
