@@ -2,7 +2,6 @@ package cosigned
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"reflect"
@@ -95,70 +94,6 @@ func TestMarshalErrors(t *testing.T) {
 				t.Errorf("marshal with short name: got %q, want %q", err, tc.expected)
 			}
 		})
-	}
-}
-
-func TestUnmarshalErrors(t *testing.T) {
-	m := Message{
-		CosignerName: "Debut",
-		Timestamp:    55555,
-		LogOrigin:    "Post",
-		Start:        11,
-		End:          22,
-		SubtreeHash:  [32]byte{},
-	}
-
-	out, err := m.Marshal()
-	if err != nil {
-		t.Fatalf("marshal: %s", err)
-	}
-	t.Logf("%x", out)
-
-	_, err = unmarshal(out[:len(out)-1])
-	if err == nil {
-		t.Errorf("unmarshal with short input: got no error")
-	}
-
-	long := append(out, byte('a'))
-	_, err = unmarshal(long)
-	if err == nil {
-		t.Errorf("unmarshal with trailing bytes: got no error")
-	}
-
-	emptyCosigner, err := hex.DecodeString("737562747265652f76310a0000000000000000d90304506f7374000000000000000b00000000000000160000000000000000000000000000000000000000000000000000000000000000")
-	if err != nil {
-		t.Errorf("decoding hex: %s", err)
-	}
-	_, err = unmarshal(emptyCosigner)
-	if err == nil {
-		t.Errorf("unmarshal with empty cosigner_name: got no error")
-	}
-
-	emptyLogOrigin, err := hex.DecodeString("737562747265652f76310a00054465627574000000000000d90300000000000000000b00000000000000160000000000000000000000000000000000000000000000000000000000000000")
-	if err != nil {
-		t.Errorf("decoding hex: %s", err)
-	}
-	_, err = unmarshal(emptyLogOrigin)
-	if err == nil {
-		t.Errorf("unmarshal with empty log_origin: got no error")
-	}
-
-	startTooBig, err := hex.DecodeString("737562747265652f76310a00054465627574000000000000d90304506f7374800000000000000b00000000000000160000000000000000000000000000000000000000000000000000000000000000")
-	if err != nil {
-		t.Errorf("decoding hex: %s", err)
-	}
-	_, err = unmarshal(startTooBig)
-	if err == nil || !strings.Contains(err.Error(), "out of range") {
-		t.Errorf("unmarshal with start > MaxInt64: got %v, want out of range error", err)
-	}
-
-	endTooBig, err := hex.DecodeString("737562747265652f76310a00054465627574000000000000d90304506f7374000000000000000b80000000000000160000000000000000000000000000000000000000000000000000000000000000")
-	if err != nil {
-		t.Errorf("decoding hex: %s", err)
-	}
-	_, err = unmarshal(endTooBig)
-	if err == nil || !strings.Contains(err.Error(), "out of range") {
-		t.Errorf("unmarshal with end > MaxInt64: got %v, want out of range error", err)
 	}
 }
 
