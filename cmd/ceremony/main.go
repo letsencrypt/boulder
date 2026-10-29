@@ -889,15 +889,23 @@ func crlCeremony(configBytes []byte) error {
 		if err != nil {
 			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")
 		}
-		revokedCert := x509.RevocationListEntry{
-			SerialNumber:   cert.SerialNumber,
-			RevocationTime: revokedAt,
+		if revokedAt.After(thisUpdate) {
+			return fmt.Errorf("certificate with serial %d has revokedAt after CRL thisUpdate", cert.SerialNumber)
 		}
 		reasonCode, err := revocation.StringToReason(rc.RevocationReason)
 		if err != nil {
 			return fmt.Errorf("looking up revocation reason: %w", err)
 		}
-		revokedCert.ReasonCode = int(reasonCode)
+		switch reasonCode {
+		case 1, 4, 5, 9:
+		default:
+			return fmt.Errorf("certificate with serial %d has unacceptable reason code %d", cert.SerialNumber, reasonCode)
+		}
+		revokedCert := x509.RevocationListEntry{
+			SerialNumber:   cert.SerialNumber,
+			RevocationTime: revokedAt,
+			ReasonCode:     int(reasonCode),
+		}
 		revokedCertificates = append(revokedCertificates, revokedCert)
 	}
 
