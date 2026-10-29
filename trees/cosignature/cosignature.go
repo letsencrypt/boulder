@@ -276,6 +276,9 @@ func (v *Verifier) VerifySubtreeSignatureLine(origin string, start, end int64, s
 	if err != nil {
 		return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
 	}
+	if base64.StdEncoding.EncodeToString(idSignature) != string(body) {
+		return nil, fmt.Errorf("signature by %s is not canonical base64", v.keyName)
+	}
 	if len(idSignature) != keyIDSize+timestampedSignatureSize {
 		return nil, fmt.Errorf("signature line body is %d bytes, want %d", len(idSignature), keyIDSize+timestampedSignatureSize)
 	}
@@ -316,6 +319,9 @@ func (v *Verifier) CheckpointCosignature(n *note.Note) (*CheckpointCosignature, 
 		idSignature, err := base64.StdEncoding.DecodeString(sig.Base64)
 		if err != nil {
 			return nil, fmt.Errorf("decoding the signature by %s: %w", v.keyName, err)
+		}
+		if base64.StdEncoding.EncodeToString(idSignature) != sig.Base64 {
+			return nil, fmt.Errorf("signature by %s is not canonical base64", v.keyName)
 		}
 		if len(idSignature) != keyIDSize+timestampedSignatureSize {
 			return nil, fmt.Errorf("signature by %s is %d bytes, want %d", v.keyName, len(idSignature), keyIDSize+timestampedSignatureSize)

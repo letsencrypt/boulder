@@ -447,6 +447,10 @@ func TestVerifySubtreeSignatureLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	nonCanonical := bytes.Clone(line)
+	last := bytes.IndexByte(nonCanonical, '=') - 1
+	nonCanonical[last] = alphabet[strings.IndexByte(alphabet, nonCanonical[last])+1]
 	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
@@ -468,6 +472,7 @@ func TestVerifySubtreeSignatureLine(t *testing.T) {
 		{"Timestamped line", 1024, 1536, timestamped},
 		{"Another cosigner's line", 1024, 1536, otherLine},
 		{"Malformed line", 1024, 1536, []byte("not a signature line\n")},
+		{"Non-canonical line", 1024, 1536, nonCanonical},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -593,6 +598,21 @@ func TestCheckpointCosignature(t *testing.T) {
 	}
 	if !bytes.Equal(extracted.Signature, cosigned[timestampSize:]) {
 		t.Errorf("CheckpointCosignature signature = %x, want %x", extracted.Signature, cosigned[timestampSize:])
+	}
+
+	// Setting a padding bit in the last data character decodes to the same
+	// bytes but is not canonical base64.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	nonCanonical := bytes.Clone(line)
+	last := bytes.IndexByte(nonCanonical, '=') - 1
+	nonCanonical[last] = alphabet[strings.IndexByte(alphabet, nonCanonical[last])+1]
+	_, n, err = checkpoint.Open(signedNote(text, nonCanonical), v)
+	if err != nil {
+		t.Fatalf("checkpoint.Open with a non-canonical signature line: %s", err)
+	}
+	_, err = v.CheckpointCosignature(n)
+	if err == nil {
+		t.Error("CheckpointCosignature accepted a non-canonical signature line")
 	}
 }
 

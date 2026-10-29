@@ -141,6 +141,9 @@ func ParseMirrorInfo(body []byte) (MirrorInfo, error) {
 	if err != nil {
 		return MirrorInfo{}, fmt.Errorf("mirror-info ticket: %s", err)
 	}
+	if base64.StdEncoding.EncodeToString(ticket) != lines[2] {
+		return MirrorInfo{}, errors.New("mirror-info ticket is not canonical base64")
+	}
 	return MirrorInfo{TreeSize: treeSize, NextEntry: nextEntry, Ticket: ticket}, nil
 }
 

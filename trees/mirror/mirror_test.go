@@ -114,7 +114,7 @@ func TestParseMirrorInfo(t *testing.T) {
 		t.Errorf("Ticket = %q, want empty", info.Ticket)
 	}
 
-	for _, malformed := range []string{"", "512\n300\n", "512\n300\ndGlja2V0", "512\n300\n!!!\n", "512\n-1\n\n", "512\n300\n\n\n"} {
+	for _, malformed := range []string{"", "512\n300\n", "512\n300\ndGlja2V0", "512\n300\n!!!\n", "512\n300\nAQJ=\n", "512\n-1\n\n", "512\n300\n\n\n"} {
 		_, err := ParseMirrorInfo([]byte(malformed))
 		if err == nil {
 			t.Errorf("ParseMirrorInfo(%q) = nil error, want error", malformed)
