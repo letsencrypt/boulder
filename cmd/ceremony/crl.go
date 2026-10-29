@@ -3,6 +3,7 @@ package main
 import (
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -11,16 +12,10 @@ import (
 
 	"github.com/letsencrypt/boulder/crl/idp"
 	"github.com/letsencrypt/boulder/linter"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nextUpdate time.Time, number int64, revokedCertificates []x509.RevocationListEntry, skipLints []string) ([]byte, error) {
-	template := &x509.RevocationList{
-		RevokedCertificateEntries: revokedCertificates,
-		Number:                    big.NewInt(number),
-		ThisUpdate:                thisUpdate,
-		NextUpdate:                nextUpdate,
-	}
-
 	if nextUpdate.Before(thisUpdate) {
 		return nil, errors.New("thisUpdate must be before nextUpdate")
 	}
@@ -35,12 +30,35 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	if nextUpdate.Sub(thisUpdate) > time.Hour*24*365 {
 		return nil, errors.New("nextUpdate must be less than 12 months after thisUpdate")
 	}
-	// Add the Issuing Distribution Point extension.
+
+	for _, entry := range revokedCertificates {
+		if entry.RevocationTime.After(thisUpdate) {
+			return nil, fmt.Errorf("entry with serial %x has revocation date after CRL thisUpdate", entry.SerialNumber)
+		}
+
+		switch revocation.Reason(entry.ReasonCode) {
+		case revocation.KeyCompromise,
+			revocation.CessationOfOperation,
+			revocation.Superseded,
+			revocation.PrivilegeWithdrawn:
+		default:
+			return nil, fmt.Errorf("entry with serial %x has unacceptable reason code %d", entry.SerialNumber, entry.ReasonCode)
+		}
+	}
+
+	// Create the Issuing Distribution Point extension.
 	idp, err := idp.MakeCACertsExt()
 	if err != nil {
 		return nil, fmt.Errorf("creating IDP extension: %w", err)
 	}
-	template.ExtraExtensions = append(template.ExtraExtensions, *idp)
+
+	template := &x509.RevocationList{
+		ThisUpdate:                thisUpdate,
+		NextUpdate:                nextUpdate,
+		RevokedCertificateEntries: revokedCertificates,
+		Number:                    big.NewInt(number),
+		ExtraExtensions:           []pkix.Extension{*idp},
+	}
 
 	err = linter.CheckCRL(template, issuer, signer, skipLints)
 	if err != nil {
