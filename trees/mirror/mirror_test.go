@@ -278,7 +278,7 @@ func TestAddEntriesRequest(t *testing.T) {
 	}
 
 	var expect cryptobyte.Builder
-	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+	expect.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes([]byte(origin))
 	})
 	expect.AddUint64(300)
@@ -299,7 +299,7 @@ func TestAddEntriesRequest(t *testing.T) {
 	if err == nil {
 		t.Error("AddEntriesRequest with an inverted interval = nil error, want error")
 	}
-	_, err = AddEntriesRequest(strings.Repeat("a", 0x10000), 0, 1, nil, nil)
+	_, err = AddEntriesRequest(strings.Repeat("a", 256), 0, 1, nil, nil)
 	if err == nil {
 		t.Error("AddEntriesRequest with an oversize origin = nil error, want error")
 	}

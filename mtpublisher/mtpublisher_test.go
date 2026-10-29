@@ -728,8 +728,8 @@ func requestBody(t *testing.T, r *http.Request) []byte {
 // request body.
 func parseUploadHeader(t *testing.T, body []byte) (int64, []byte) {
 	t.Helper()
-	originLen := int(binary.BigEndian.Uint16(body[:2]))
-	rest := body[2+originLen:]
+	originLen := int(body[0])
+	rest := body[1+originLen:]
 	uploadStart := int64(binary.BigEndian.Uint64(rest[:8])) //nolint:gosec // G115: the client writes upload_start from an int64 entry index.
 	ticketLen := int(binary.BigEndian.Uint16(rest[16:18]))
 	return uploadStart, rest[18 : 18+ticketLen]

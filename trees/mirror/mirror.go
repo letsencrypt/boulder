@@ -226,7 +226,7 @@ func EntryPackage(entries []byte, proof []tlog.Hash) ([]byte, error) {
 // prefix of the canonical sequence for [uploadStart, uploadEnd), marshaled by
 // EntryPackage.
 func AddEntriesRequest(logOrigin string, uploadStart, uploadEnd int64, ticket []byte, packages [][]byte) ([]byte, error) {
-	if logOrigin == "" || len(logOrigin) > 0xFFFF {
+	if logOrigin == "" || len(logOrigin) > 0xFF {
 		return nil, fmt.Errorf("invalid log origin length %d", len(logOrigin))
 	}
 	if uploadStart < 0 || uploadStart > uploadEnd {
@@ -236,7 +236,7 @@ func AddEntriesRequest(logOrigin string, uploadStart, uploadEnd int64, ticket []
 		return nil, fmt.Errorf("ticket is %d bytes, want at most %d", len(ticket), 0xFFFF)
 	}
 	var b cryptobyte.Builder
-	b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes([]byte(logOrigin))
 	})
 	b.AddUint64(uint64(uploadStart))
