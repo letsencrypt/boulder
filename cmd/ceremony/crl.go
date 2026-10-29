@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/crl/idp"
 	"github.com/letsencrypt/boulder/linter"
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nextUpdate time.Time, number int64, revokedCertificates []x509.RevocationListEntry, skipLints []string) ([]byte, error) {
@@ -28,6 +29,21 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	// CABF BRs Section 4.9.7
 	if nextUpdate.Sub(thisUpdate) > time.Hour*24*365 {
 		return nil, errors.New("nextUpdate must be less than 12 months after thisUpdate")
+	}
+
+	for _, entry := range revokedCertificates {
+		if entry.RevocationTime.After(thisUpdate) {
+			return nil, fmt.Errorf("entry with serial %x has revocation date after CRL thisUpdate", entry.SerialNumber)
+		}
+
+		switch revocation.Reason(entry.ReasonCode) {
+		case revocation.KeyCompromise,
+			revocation.CessationOfOperation,
+			revocation.Superseded,
+			revocation.PrivilegeWithdrawn:
+		default:
+			return nil, fmt.Errorf("entry with serial %x has unacceptable reason code %d", entry.SerialNumber, entry.ReasonCode)
+		}
 	}
 
 	// Create the Issuing Distribution Point extension.
