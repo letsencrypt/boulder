@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/cryptobyte"
+
+	"github.com/letsencrypt/boulder/trees"
 )
 
 // Message represents a CosignedMessage from
@@ -47,11 +49,11 @@ func (message *Message) Marshal() ([]byte, error) {
 		return nil, fmt.Errorf("invalid log_origin length %d", len(message.LogOrigin))
 	}
 
-	if message.Start < 0 {
-		return nil, fmt.Errorf("negative start %d", message.Start)
+	if message.Start < 0 || message.Start > trees.MaxSize {
+		return nil, fmt.Errorf("start is out of range: %d", message.Start)
 	}
-	if message.End < 0 {
-		return nil, fmt.Errorf("negative end %d", message.End)
+	if message.End < 0 || message.End > trees.MaxSize {
+		return nil, fmt.Errorf("end is out of range: %d", message.End)
 	}
 
 	var b cryptobyte.Builder

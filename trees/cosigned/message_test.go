@@ -5,12 +5,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"strings"
 	"testing"
 
 	"golang.org/x/crypto/cryptobyte"
+
+	"github.com/letsencrypt/boulder/trees"
 )
 
 func TestMessageRoundtrip(t *testing.T) {
@@ -68,11 +69,17 @@ func TestMarshalErrors(t *testing.T) {
 		{"long LogOrigin", "invalid log_origin length 256", func(target *Message) {
 			target.LogOrigin = strings.Repeat("a", 256)
 		}},
-		{"negative Start", "negative start -1", func(target *Message) {
+		{"negative Start", "start is out of range: -1", func(target *Message) {
 			target.Start = -1
 		}},
-		{"negative End", "negative end -1", func(target *Message) {
+		{"too-large Start", "start is out of range: 281474976710656", func(target *Message) {
+			target.Start = trees.MaxSize + 1
+		}},
+		{"negative End", "end is out of range: -1", func(target *Message) {
 			target.End = -1
+		}},
+		{"too-large End", "end is out of range: 281474976710656", func(target *Message) {
+			target.End = trees.MaxSize + 1
 		}},
 	}
 
@@ -194,7 +201,7 @@ func unmarshal(input []byte) (*Message, error) {
 	if !s.ReadUint64(&start) {
 		return nil, errors.New("invalid start")
 	}
-	if start > math.MaxInt64 {
+	if start > trees.MaxSize {
 		return nil, fmt.Errorf("start %d out of range", start)
 	}
 	out.Start = int64(start)
@@ -202,7 +209,7 @@ func unmarshal(input []byte) (*Message, error) {
 	if !s.ReadUint64(&end) {
 		return nil, errors.New("invalid end")
 	}
-	if end > math.MaxInt64 {
+	if end > trees.MaxSize {
 		return nil, fmt.Errorf("end %d out of range", end)
 	}
 	out.End = int64(end)
