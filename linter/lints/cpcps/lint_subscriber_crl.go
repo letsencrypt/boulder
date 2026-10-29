@@ -165,7 +165,7 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1204
 		// |              Any other extension       | Not present |
 		// Note that (unlike the CA CRL lint) we don't check that every extension is
-		// seen. This is because the reasonCode extension is optional, omitted if if
+		// seen. This is because the reasonCode extension is optional, omitted if
 		// the revocation reason is 0.
 		entryExtensions := map[string]bool{
 			util.ReasonCodeOID.String(): false,
