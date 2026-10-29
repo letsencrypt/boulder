@@ -1,10 +1,16 @@
 package cosigned
 
 import (
+	"bytes"
 	"encoding/hex"
+	"errors"
+	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/cryptobyte"
 )
 
 func TestMessageRoundtrip(t *testing.T) {
@@ -24,7 +30,7 @@ func TestMessageRoundtrip(t *testing.T) {
 		t.Fatalf("marshaling: %s", err)
 	}
 
-	m2, err := Unmarshal(out)
+	m2, err := unmarshal(out)
 	if err != nil {
 		t.Fatalf("unmarshaling encoded message: %s", err)
 	}
@@ -101,13 +107,13 @@ func TestUnmarshalErrors(t *testing.T) {
 	}
 	t.Logf("%x", out)
 
-	_, err = Unmarshal(out[:len(out)-1])
+	_, err = unmarshal(out[:len(out)-1])
 	if err == nil {
 		t.Errorf("unmarshal with short input: got no error")
 	}
 
 	long := append(out, byte('a'))
-	_, err = Unmarshal(long)
+	_, err = unmarshal(long)
 	if err == nil {
 		t.Errorf("unmarshal with trailing bytes: got no error")
 	}
@@ -116,7 +122,7 @@ func TestUnmarshalErrors(t *testing.T) {
 	if err != nil {
 		t.Errorf("decoding hex: %s", err)
 	}
-	_, err = Unmarshal(emptyCosigner)
+	_, err = unmarshal(emptyCosigner)
 	if err == nil {
 		t.Errorf("unmarshal with empty cosigner_name: got no error")
 	}
@@ -125,7 +131,7 @@ func TestUnmarshalErrors(t *testing.T) {
 	if err != nil {
 		t.Errorf("decoding hex: %s", err)
 	}
-	_, err = Unmarshal(emptyLogOrigin)
+	_, err = unmarshal(emptyLogOrigin)
 	if err == nil {
 		t.Errorf("unmarshal with empty log_origin: got no error")
 	}
@@ -134,7 +140,7 @@ func TestUnmarshalErrors(t *testing.T) {
 	if err != nil {
 		t.Errorf("decoding hex: %s", err)
 	}
-	_, err = Unmarshal(startTooBig)
+	_, err = unmarshal(startTooBig)
 	if err == nil || !strings.Contains(err.Error(), "out of range") {
 		t.Errorf("unmarshal with start > MaxInt64: got %v, want out of range error", err)
 	}
@@ -143,8 +149,73 @@ func TestUnmarshalErrors(t *testing.T) {
 	if err != nil {
 		t.Errorf("decoding hex: %s", err)
 	}
-	_, err = Unmarshal(endTooBig)
+	_, err = unmarshal(endTooBig)
 	if err == nil || !strings.Contains(err.Error(), "out of range") {
 		t.Errorf("unmarshal with end > MaxInt64: got %v, want out of range error", err)
 	}
+}
+
+// unmarshal unmarshals the input bytes and returns a *Message.
+func unmarshal(input []byte) (*Message, error) {
+	var out Message
+
+	s := cryptobyte.String(input)
+	var label []byte
+	if !s.ReadBytes(&label, len(subtreeLabel)) {
+		return nil, errors.New("invalid label")
+	}
+	if !bytes.Equal(label, []byte(subtreeLabel)) {
+		return nil, errors.New("label was not subtree/v1")
+	}
+
+	var cosignerName cryptobyte.String
+	if !s.ReadUint8LengthPrefixed(&cosignerName) {
+		return nil, errors.New("invalid cosigner_name")
+	}
+	if len(cosignerName) < 1 {
+		return nil, errors.New("empty cosigner_name")
+	}
+	out.CosignerName = string(cosignerName)
+
+	if !s.ReadUint64(&out.Timestamp) {
+		return nil, errors.New("invalid timestamp")
+	}
+
+	var logOrigin cryptobyte.String
+	if !s.ReadUint8LengthPrefixed(&logOrigin) {
+		return nil, errors.New("invalid log_origin")
+	}
+	if len(logOrigin) < 1 {
+		return nil, errors.New("empty log_origin")
+	}
+	out.LogOrigin = string(logOrigin)
+
+	var start, end uint64
+	if !s.ReadUint64(&start) {
+		return nil, errors.New("invalid start")
+	}
+	if start > math.MaxInt64 {
+		return nil, fmt.Errorf("start %d out of range", start)
+	}
+	out.Start = int64(start)
+
+	if !s.ReadUint64(&end) {
+		return nil, errors.New("invalid end")
+	}
+	if end > math.MaxInt64 {
+		return nil, fmt.Errorf("end %d out of range", end)
+	}
+	out.End = int64(end)
+
+	var subtreeHash []byte
+	if !s.ReadBytes(&subtreeHash, len(out.SubtreeHash)) {
+		return nil, errors.New("invalid subtree hash")
+	}
+	copy(out.SubtreeHash[:], subtreeHash)
+
+	if !s.Empty() {
+		return nil, errors.New("trailing bytes")
+	}
+
+	return &out, nil
 }
