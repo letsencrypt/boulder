@@ -53,7 +53,7 @@ func (l *subscriberCRLMatchesCPSProfile) CheckApplies(c *x509.RevocationList) bo
 }
 
 // Execute checks the given CRL against the Subscriber CRL Profile.
-// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1186
+// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1187
 // ### Subscriber CRL Profile
 func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.LintResult {
 	// Several rows of the profile require byte-for-byte correspondence with
@@ -66,8 +66,8 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return fatalResult("lint has not been configured with the Issuing CA's certificate (issuer_certificate)")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1193
-	// |     `version`                          | X.509 v2 (integer value 1) |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1194
+	// |     `version`                          | X.509 v2 (integer value 1) |
 	tbs := cryptobyte.String(c.RawTBSRevocationList)
 	var tbsCertList cryptobyte.String
 	if !tbs.ReadASN1(&tbsCertList, cryptobyte_asn1.SEQUENCE) {
@@ -81,8 +81,8 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return errResult("version is not v2")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1194
-	// |     `signature`                        | See [Section 7.1.3.2](#7132-signature-algorithmidentifier) |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1195
+	// |     `signature`                        | See [Section 7.1.3.2](#7132-signature-algorithmidentifier) |
 	// Section 7.1.3.2 requires signature AlgorithmIdentifiers to be
 	// byte-for-byte identical with one of the hexadecimal encodings specified
 	// by Section 7.1.3.2 of the Baseline Requirements.
@@ -94,19 +94,19 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return errResult("signature is not byte-for-byte identical to a BRs Section 7.1.3.2 encoding")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1195
-	// |     `issuer`                           | Byte-for-byte identical to the `subject` field of the Issuing CA |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1196
+	// |     `issuer`                           | Byte-for-byte identical to the `subject` field of the Issuing CA |
 	if !bytes.Equal(c.RawIssuer, issuer.RawSubject) {
 		return errResult("issuer is not byte-for-byte identical to the subject of the configured Issuing CA")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1196
-	// |     `thisUpdate`                       | The date and time at which the CRL validity begins |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1197
+	// |     `thisUpdate`                       | The date and time at which the CRL validity begins |
 	// Nothing to check here, since zcrypto refuses to parse a CRL without a
 	// thisUpdate, and our CPS places no restrictions on the field.
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1197
-	// |     `nextUpdate`                       | At most 10 days after the `thisUpdate` |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1198
+	// |     `nextUpdate`                       | At most 10 days after the `thisUpdate` |
 	if c.NextUpdate.IsZero() {
 		return errResult("nextUpdate is not present")
 	}
@@ -119,15 +119,15 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return errResult("nextUpdate is more than 10 days after thisUpdate")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1198
-	// |     `revokedCertificates`              | Present if and only if there is at least one revoked certificate entry |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1199
+	// |     `revokedCertificates`              | Present if and only if there is at least one revoked certificate entry |
 	// A nil slice represents the field being omitted.
 	if c.RevokedCertificates != nil && len(c.RevokedCertificates) == 0 {
 		return errResult("revokedCertificates is present but contains no entries")
 	}
 	for _, rc := range c.RevokedCertificates {
-		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1199
-		// |         `serialNumber`                 | Byte-for-byte identical to the `serialNumber` of the revoked Certificate |
+		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1200
+		// |         `serialNumber`                 | Byte-for-byte identical to the `serialNumber` of the revoked Certificate |
 		// We can't test correspondence here, so we instead run the same serial
 		// number checks that the certificate linters run.
 		if rc.SerialNumber == nil || rc.SerialNumber.Sign() <= 0 {
@@ -137,14 +137,14 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 			return errResult(fmt.Sprintf("entry %x: serialNumber is not more than 100 bits long", rc.SerialNumber))
 		}
 
-		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1200
-		// |         `revocationDate`               | The date and time at which ISRG recorded the Certificate as revoked, no later than `thisUpdate` |
+		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1201
+		// |         `revocationDate`               | The date and time at which ISRG recorded the Certificate as revoked, no later than `thisUpdate` |
 		if rc.RevocationTime.After(c.ThisUpdate) {
 			return errResult(fmt.Sprintf("entry %x: revocationDate is later than thisUpdate", rc.SerialNumber))
 		}
 
-		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1202
-		// |              `reasonCode`              | Contains the most appropriate revocation reason code from among 1, 4, 5, or 9, or not present if the revocation reason is unspecified (0) |
+		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1203
+		// |              `reasonCode`              | Contains the most appropriate revocation reason code from among 1, 4, 5, or 9, or not present if the revocation reason is unspecified (0) |
 		reasonCodeExt := lints.GetExtWithOID(rc.Extensions, util.ReasonCodeOID)
 		if reasonCodeExt != nil {
 			if reasonCodeExt.Critical {
@@ -162,8 +162,8 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 			}
 		}
 
-		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1203
-		// |              Any other extension       | Not present |
+		// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1204
+		// |              Any other extension       | Not present |
 		// Note that (unlike the CA CRL lint) we don't check that every extension is
 		// seen. This is because the reasonCode extension is optional, omitted if if
 		// the revocation reason is 0.
@@ -182,8 +182,8 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		}
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1205
-	// |         `authorityKeyIdentifier`       | Contains a `keyIdentifier` byte-for-byte identical to the `subjectKeyIdentifier` of the Issuing CA |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1206
+	// |         `authorityKeyIdentifier`       | Contains a `keyIdentifier` byte-for-byte identical to the `subjectKeyIdentifier` of the Issuing CA |
 	akidExt := lints.GetExtWithOID(c.Extensions, util.AuthkeyOID)
 	if akidExt == nil {
 		return errResult("authorityKeyIdentifier extension is not present")
@@ -207,8 +207,8 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return errResult("authorityKeyIdentifier keyIdentifier is not byte-for-byte identical to the subjectKeyIdentifier of the configured Issuing CA")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1206
-	// |         `CRLNumber`                    | Contains a strictly-increasing positive integer less than 2^159 |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1207
+	// |         `CRLNumber`                    | Contains a strictly-increasing positive integer less than 2^159 |
 	crlNumberExt := lints.GetExtWithOID(c.Extensions, util.CRLNumberOID)
 	if crlNumberExt == nil {
 		return errResult("CRLNumber extension is not present")
@@ -223,8 +223,8 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return errResult("CRLNumber is not less than 2^159")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1207
-	// |         `issuingDistributionPoint`     | Critical, with only `onlyContainsUserCerts` set to true, and contains an HTTP URI byte-for-byte identical to that contained in the `crlDistributionPoints` extension of each Certificate in the CRL's scope |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1208
+	// |         `issuingDistributionPoint`     | Critical, with only `onlyContainsUserCerts` set to true, and contains an HTTP URI byte-for-byte identical to that contained in the `crlDistributionPoints` extension of each Certificate in the CRL's scope |
 	idpExt := lints.GetExtWithOID(c.Extensions, issuingDistributionPointOID)
 	if idpExt == nil {
 		return errResult("issuingDistributionPoint extension is not present")
@@ -265,8 +265,8 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return errResult("issuingDistributionPoint contains fields other than distributionPoint and onlyContainsUserCerts")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1208
-	// |         Any other extension            | Not present |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1209
+	// |         Any other extension            | Not present |
 	extensions := map[string]bool{
 		util.AuthkeyOID.String():             false,
 		util.CRLNumberOID.String():           false,
@@ -288,7 +288,7 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		}
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1209
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1210
 	// | `signatureAlgorithm`                   | Byte-for-byte identical to the `tbsCertList.signature` |
 	signatureAlgorithm, err := getOuterSignatureAlgorithm(c.Raw)
 	if err != nil {
@@ -298,7 +298,7 @@ func (l *subscriberCRLMatchesCPSProfile) Execute(c *x509.RevocationList) *lint.L
 		return errResult("signatureAlgorithm is not byte-for-byte identical to the tbsCertList.signature")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1210
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1211
 	// | `signatureValue`                       | A signature appropriate to the `signatureAlgorithm` field |
 	// We can't verify the signature here: pre-issuance linting operates on a
 	// CRL signed by a throwaway key.

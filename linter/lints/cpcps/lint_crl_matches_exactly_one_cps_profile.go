@@ -34,7 +34,7 @@ func (l *crlMatchesExactlyOneCPSProfile) CheckApplies(c *x509.RevocationList) bo
 
 // Execute checks that the given CRL meets the "CheckApplies" criteria of
 // exactly one of the two lints which enforce each of our CP/CPS CRL profiles.
-// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1158
+// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1159
 // All ISRG CRLs are issued in accordance with one of the following CRL Profiles. ISRG does not issue any CRLs whose scope includes both CA and Subscriber Certificates.
 func (l *crlMatchesExactlyOneCPSProfile) Execute(c *x509.RevocationList) *lint.LintResult {
 	onlyContainsUserCerts, onlyContainsCACerts := getCRLScope(c)

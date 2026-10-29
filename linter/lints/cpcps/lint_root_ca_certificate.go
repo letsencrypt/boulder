@@ -48,16 +48,16 @@ func (l *rootCACertificateMatchesCPSProfile) CheckApplies(c *x509.Certificate) b
 // Profile, row by row. Root CA Certificates are self-signed, so unlike the
 // other profiles there is no Issuing CA to be configured with: the issuer
 // correspondence is checked against the certificate's own subject.
-// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1005
+// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1006
 // ### Root CA Certificate Profile
 func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.LintResult {
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1010
-	// |     `version`                            | X.509 v3 (integer value 2) |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1011
+	// |     `version`                  | X.509 v3 (integer value 2) |
 	if c.Version != 3 {
 		return errResult("version is not v3")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1011
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1012
 	// |     `serialNumber`             | More than 100 bits of output from a CSPRNG, optionally with additional non-random bits |
 	// We can't test randomness here, but a serial containing more than 100
 	// bits of CSPRNG output must itself be more than 100 bits long.
@@ -68,7 +68,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("serialNumber is not more than 100 bits long")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1012
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1013
 	// |     `signature`                | See [Section 7.1.3.2](#7132-signature-algorithmidentifier) |
 	// Section 7.1.3.2 requires signature AlgorithmIdentifiers to be
 	// byte-for-byte identical with one of the hexadecimal encodings specified
@@ -81,13 +81,13 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("signature is not byte-for-byte identical to a BRs Section 7.1.3.2 encoding")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1013
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1014
 	// |     `issuer`                   | Byte-for-byte identical to the `subject` field |
 	if !bytes.Equal(c.RawIssuer, c.RawSubject) {
 		return errResult("issuer is not byte-for-byte identical to the subject")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1014
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1015
 	// |     `validity`                 | At most 3660 days (approx. 10 years) |
 	// RFC 5280 4.1.2.5: "The validity period for a certificate is the period
 	// of time from notBefore through notAfter, inclusive."
@@ -98,7 +98,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("validity is more than 3660 days")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1015
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1016
 	// |     `subject`                  | C=US, O=ISRG, and a unique CN |
 	// We can't test for CN uniqueness here, but the rest we can check.
 	if len(c.Subject.Names) != 3 {
@@ -114,7 +114,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("subject commonName is empty")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1016
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1017
 	// |     `subjectPublicKeyInfo`     | See Sections [6.1.5](#615-key-sizes), [6.1.6](#616-public-key-parameters-generation-and-quality-checking), and [7.1.3.1](#7131-subjectpublickeyinfo) |
 	// Section 6.1.5 says Root CA key pairs are "either RSA keys whose encoded
 	// modulus size is 4096 bits, or ECDSA keys which are a valid point on the
@@ -174,19 +174,19 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult(fmt.Sprintf("unsupported public key type %T", c.PublicKey))
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1017
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1018
 	// |     `issuerUniqueID`           | Not present |
 	if c.IssuerUniqueId.Bytes != nil {
 		return errResult("issuerUniqueID is present")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1018
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1019
 	// |     `subjectUniqueID`          | Not present |
 	if c.SubjectUniqueId.Bytes != nil {
 		return errResult("subjectUniqueID is present")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1020
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1021
 	// |         `basicConstraints`     | Critical, with `cA` set to true |
 	bcExt := getExtension(c, util.BasicConstOID)
 	if bcExt == nil {
@@ -202,7 +202,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("basicConstraints contains a pathLenConstraint")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1021
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1022
 	// |         `keyUsage`             | Critical, with only the `keyCertSign` (5) and `cRLSign` (6) bits set |
 	kuExt := getExtension(c, util.KeyUsageOID)
 	if kuExt == nil {
@@ -215,7 +215,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("keyUsage does not assert exactly the bits required by the profile")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1022
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1023
 	// |         `subjectKeyIdentifier` | Contains a truncated hash of the `subjectPublicKey`, per Section 2(1) of RFC 7093 |
 	skidExt := getExtension(c, util.SubjectKeyIdentityOID)
 	if skidExt == nil {
@@ -237,7 +237,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("subjectKeyIdentifier is not the RFC 7093 Section 2(1) truncated hash of the subjectPublicKey")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1023
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1024
 	// |         Any other extension    | Not present |
 	extensions := map[string]bool{
 		util.BasicConstOID.String():         false,
@@ -260,7 +260,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		}
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1024
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1025
 	// | `signatureAlgorithm`           | Byte-for-byte identical to the `tbsCertificate.signature` |
 	signatureAlgorithm, err := getOuterSignatureAlgorithm(c.Raw)
 	if err != nil {
@@ -270,7 +270,7 @@ func (l *rootCACertificateMatchesCPSProfile) Execute(c *x509.Certificate) *lint.
 		return errResult("signatureAlgorithm is not byte-for-byte identical to the tbsCertificate.signature")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1025
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1026
 	// | `signatureValue`               | A signature appropriate to the `signatureAlgorithm` field |
 	// We can't verify the signature under pre-issuance linting (the
 	// certificate is signed by a throwaway key), but CheckApplies only
