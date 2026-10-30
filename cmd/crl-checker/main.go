@@ -43,7 +43,7 @@ func downloadShard(url string, maxCRLSize int64) (*x509.RevocationList, error) {
 
 func main() {
 	urlFile := flag.String("crls", "", "path to a file containing a JSON Array of CRL URLs")
-	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk, required, '-' to disable validation")
+	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk, required")
 	ageLimitStr := flag.String("ageLimit", "168h", "maximum allowable age of a CRL shard")
 	emitRevoked := flag.Bool("emitRevoked", false, "emit revoked serial numbers on stdout, one per line, hex-encoded")
 	save := flag.Bool("save", false, "save CRLs to files named after the URL")
@@ -61,16 +61,11 @@ func main() {
 	cmd.FailOnError(err, "Parsing JSON Array of CRL URLs")
 
 	if *issuerFile == "" {
-		cmd.Fail("-issuer is required, but may be '-' to disable validation")
+		cmd.Fail("-issuer is required")
 	}
 
-	var issuer *x509.Certificate
-	if *issuerFile != "-" {
-		issuer, err = core.LoadCert(*issuerFile)
-		cmd.FailOnError(err, "Loading issuer certificate")
-	} else {
-		logger.Warning("CRL signature validation disabled")
-	}
+	issuer, err := core.LoadCert(*issuerFile)
+	cmd.FailOnError(err, "Loading issuer certificate")
 
 	ageLimit, err := time.ParseDuration(*ageLimitStr)
 	cmd.FailOnError(err, "Parsing age limit")

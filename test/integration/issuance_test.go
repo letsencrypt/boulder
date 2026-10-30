@@ -23,6 +23,7 @@ import (
 	"github.com/eggsampler/acme/v3"
 
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
 // TestCommonNameInCSR ensures that CSRs which have a CN set result in certs
@@ -213,9 +214,11 @@ func TestIssuanceMTC(t *testing.T) {
 	// The mtca serves each checkpoint as soon as it is sequenced, and the
 	// mtpublisher then submits it to the sunlight mirror, so the mirror's
 	// checkpoint must converge on the served tree head. Poll until they agree.
-	origin := "oid/1.3.6.1.4.1.44947.4.1.0.44"
+	logID, err := issuancelog.Config{CAID: "44947.4.1", LogNumber: 3}.Load()
+	test.AssertNotError(t, err, "loading the dev issuance log ID")
+	origin := logID.Origin()
 	originHash := sha256.Sum256([]byte(origin))
-	localURL := "http://boulder-seaweedfs:8333/boulder-mtc-tiles/44947.4.1/44/checkpoint"
+	localURL := "http://boulder-seaweedfs:8333/boulder-mtc-tiles/" + logID.CheckpointPath()
 	mirrorURL := "http://boulder-seaweedfs:8333/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
 
 	deadline := time.Now().Add(5 * time.Second)

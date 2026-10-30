@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	mtcLogID = "44947.4.1.0.44"
+	mtcLogID = "44947.4.1.0.3"
 	mirrorID = "32473.9"
 )
 

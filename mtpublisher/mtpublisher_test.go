@@ -39,12 +39,12 @@ import (
 )
 
 const (
-	mtcLogID = "44947.4.1.0.44"
+	mtcLogID = "44947.4.1.0.3"
 	mirrorID = "32473.9"
 )
 
 var (
-	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 44}.Load())
+	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 3}.Load())
 	mirrorOID = must.Do(reloid.FromString(mirrorID))
 )
 
@@ -73,7 +73,7 @@ func (f *fakeCheckpointDB) AddMirrorSignature(_ context.Context, id int64, mirro
 	return nil
 }
 
-func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, maxEnd uint64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
+func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
 	var unsigned []*treedb.CheckpointSubtreeModel
 	for _, subtree := range slices.Backward(f.subtrees) {
 		if len(unsigned) == limit {
@@ -314,11 +314,11 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 	_, subtree := testCheckpoint(t)
 	subtrees := []*treedb.CheckpointSubtreeModel{subtree}
-	for i, end := range []uint64{256, 1024, 2048} {
+	for i, end := range []int64{256, 1024, 2048} {
 		subtrees = append(subtrees, &treedb.CheckpointSubtreeModel{
 			ID:            subtree.ID + int64(i) + 1,
 			MTCLogID:      mtcLogID,
-			MTCASignature: caSignature(t, int64(end)), //nolint:gosec // G115: the ends above fit.
+			MTCASignature: caSignature(t, end),
 			SubtreeEnd:    end,
 			SubtreeHash:   make([]byte, 32),
 		})
@@ -424,7 +424,7 @@ type sourceLog struct {
 	subtreeSignature          []byte
 }
 
-const testTilePrefix = "44947.4.1/44"
+const testTilePrefix = "44947.4.1/3"
 
 // serveMirrorCheckpoint serves the newer tree's checkpoint with the mirror's
 // cosignature at the path c2sp.org/tlog-mirror puts it.
@@ -520,7 +520,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 		Timestamp:    1_700_000_000,
 		LogOrigin:    cp.Origin,
 		Start:        0,
-		End:          uint64(newer.N), //nolint:gosec // G115: the tree has 700 entries
+		End:          newer.N,
 		SubtreeHash:  newer.Hash,
 	}).Marshal()
 	if err != nil {
