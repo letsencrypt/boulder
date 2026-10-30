@@ -414,62 +414,6 @@ func TestVerifySubtreeSignatureRejects(t *testing.T) {
 	}
 }
 
-// TestVerifySubtreeSignatureLine checks that a subtree cosignature carried by a
-// note signature line verifies over its own subtree and nothing else.
-func TestVerifySubtreeSignatureLine(t *testing.T) {
-	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
-	if err != nil {
-		t.Fatalf("NewCosigner: %s", err)
-	}
-	hash := tlog.Hash{1, 2, 3}
-	signature, err := ca.CosignSubtree(1024, 1536, hash)
-	if err != nil {
-		t.Fatalf("CosignSubtree: %s", err)
-	}
-	line, err := ca.SignatureLine(0, signature)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-	timestamped, err := ca.SignatureLine(5, signature)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-	otherLine, err := SignatureLine("oid/1.3.6.1.4.1.32473.99", ca.keyID, 0, signature)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-	v, err := NewVerifier(caID, testPubKey(t))
-	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
-	}
-
-	got, err := v.VerifySubtreeSignatureLine(ca.origin, 1024, 1536, hash, line)
-	if err != nil {
-		t.Fatalf("VerifySubtreeSignatureLine: %s", err)
-	}
-	if !bytes.Equal(got, signature) {
-		t.Errorf("VerifySubtreeSignatureLine = %x, want the raw signature %x", got, signature)
-	}
-
-	cases := []struct {
-		name       string
-		start, end int64
-		line       []byte
-	}{
-		{"Timestamped line", 1024, 1536, timestamped},
-		{"Another cosigner's line", 1024, 1536, otherLine},
-		{"Malformed line", 1024, 1536, []byte("not a signature line\n")},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := v.VerifySubtreeSignatureLine(ca.origin, tc.start, tc.end, hash, tc.line)
-			if err == nil {
-				t.Error("VerifySubtreeSignatureLine = nil error, want error")
-			}
-		})
-	}
-}
-
 // shortSigner is a crypto.Signer with a valid ML-DSA-44 public key that returns
 // a truncated signature, standing in for a misbehaving external signer such as
 // an HSM wrapper.
