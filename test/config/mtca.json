@@ -2,7 +2,7 @@
 	"mtca": {
 		"logID": {
 			"caID": "44947.4.1",
-			"logNumber": 44
+			"logNumber": 3
 		},
 		"sequencingPeriod": "100ms",
 		"db": {

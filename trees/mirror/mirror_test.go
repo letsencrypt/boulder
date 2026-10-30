@@ -233,7 +233,7 @@ func TestSignSubtreeRequest(t *testing.T) {
 }
 
 func TestAddEntriesRequest(t *testing.T) {
-	origin := "oid/1.3.6.1.4.1.44947.4.1.0.44"
+	origin := "oid/1.3.6.1.4.1.44947.4.1.0.3"
 	pkg := []byte{0, 1, 'x', 0}
 	body, err := AddEntriesRequest(origin, 300, 700, []byte("ticket"), [][]byte{pkg})
 	if err != nil {

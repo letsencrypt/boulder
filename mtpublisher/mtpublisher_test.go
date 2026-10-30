@@ -39,12 +39,12 @@ import (
 )
 
 const (
-	mtcLogID = "44947.4.1.0.44"
+	mtcLogID = "44947.4.1.0.3"
 	mirrorID = "32473.9"
 )
 
 var (
-	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 44}.Load())
+	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 3}.Load())
 	mirrorOID = must.Do(reloid.FromString(mirrorID))
 )
 
@@ -424,7 +424,7 @@ type sourceLog struct {
 	subtreeSignature          []byte
 }
 
-const testTilePrefix = "44947.4.1/44"
+const testTilePrefix = "44947.4.1/3"
 
 // serveMirrorCheckpoint serves the newer tree's checkpoint with the mirror's
 // cosignature at the path c2sp.org/tlog-mirror puts it.
