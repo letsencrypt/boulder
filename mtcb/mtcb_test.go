@@ -168,7 +168,7 @@ func newTestLog(t *testing.T) *testLog {
 			MirrorID:        &mirrorID,
 			MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over size %d", frontier.TreeSize()),
 			SubtreeStart:    0,
-			SubtreeEnd:      uint64(frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier.
+			SubtreeEnd:      frontier.TreeSize(),
 			SubtreeHash:     root[:],
 		})
 	}
@@ -242,7 +242,7 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 
 // addSubtree adds a mirrored checkpoint subtree over [start, end) to the log,
 // with its hash computed from the entries' leaf hashes, and returns it.
-func (l *testLog) addSubtree(t *testing.T, start, end uint64) *treedb.CheckpointSubtreeModel {
+func (l *testLog) addSubtree(t *testing.T, start, end int64) *treedb.CheckpointSubtreeModel {
 	t.Helper()
 	var leaves []tlog.Hash
 	for _, e := range l.entries[start:end] {
@@ -413,8 +413,8 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 		tlog.RecordHash(mtcleMarshaled),
 		mtcProof.InclusionProof,
 		entryIndex,
-		int64(mtcProof.Start), //nolint:gosec // G115: we know these are < 1<<48 in tests
-		int64(mtcProof.End),   //nolint:gosec // G115: we know these are < 1<<48 in tests
+		mtcProof.Start,
+		mtcProof.End,
 	)
 	if err != nil {
 		t.Fatal(err)

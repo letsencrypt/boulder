@@ -161,7 +161,7 @@ func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.Checkpoi
 	return s.ID, nil
 }
 
-func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd uint64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
@@ -841,7 +841,7 @@ func TestSequence(t *testing.T) {
 		if len(subtree.MTCASignature) == 0 {
 			t.Error("subtree.MTCASignature: got empty slice, want non-empty slice")
 		}
-		if !mtca.verifier.VerifySubtreeSignature(mtca.logID.Origin(), int64(subtree.SubtreeStart), int64(subtree.SubtreeEnd), tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) { //nolint:gosec // G115: the subtree covers the 6 entry tree
+		if !mtca.verifier.VerifySubtreeSignature(mtca.logID.Origin(), subtree.SubtreeStart, subtree.SubtreeEnd, tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) {
 			t.Error("subtree.MTCASignature: does not verify")
 		}
 
@@ -853,8 +853,7 @@ func TestSequence(t *testing.T) {
 			t.Error("subtree.MirrorSignature: got non-empty slice, want empty slice")
 		}
 
-		index := uint64(entryIndex) //nolint:gosec // G115: collectResults keys by entry index, which is never negative.
-		if !(subtree.SubtreeStart <= index && index < subtree.SubtreeEnd) {
+		if !(subtree.SubtreeStart <= entryIndex && entryIndex < subtree.SubtreeEnd) {
 			t.Errorf("subtree.MTCSerialNumber: got entryIndex %d, want entryIndex in interval [%d,%d)",
 				entryIndex, subtree.SubtreeStart, subtree.SubtreeEnd)
 		}
@@ -957,7 +956,7 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointMod
 		Timestamp:    0,
 		LogOrigin:    mtca.logID.Origin(),
 		Start:        0,
-		End:          uint64(checkpoint.TreeSize), //nolint:gosec // G115: we know that tree sizes are positive in these tests
+		End:          checkpoint.TreeSize,
 		SubtreeHash:  [32]byte(checkpoint.RootHash),
 	}
 

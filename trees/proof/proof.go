@@ -7,7 +7,6 @@ package proof
 import (
 	"bytes"
 	encoding_asn1 "encoding/asn1"
-	"encoding/binary"
 	"fmt"
 	"slices"
 
@@ -47,7 +46,7 @@ func SigAlgEncoded() []byte {
 //	} MTCProof;
 type MTCProof struct {
 	Extensions     []byte
-	Start, End     uint64
+	Start, End     int64
 	InclusionProof []tlog.Hash
 	Signatures     []*Cosignature
 }
@@ -59,19 +58,15 @@ func (m *MTCProof) Marshal() ([]byte, error) {
 		builder.AddBytes(m.Extensions)
 	})
 
-	var startBytes, endBytes [8]byte
-	binary.BigEndian.PutUint64(startBytes[:], m.Start)
-	binary.BigEndian.PutUint64(endBytes[:], m.End)
-
-	if startBytes[0] != 0 || startBytes[1] != 0 {
-		return nil, fmt.Errorf("start too big: %d", m.Start)
+	if m.Start < 0 || m.Start >= 1<<48 {
+		return nil, fmt.Errorf("start out of range: %d", m.Start)
 	}
-	if endBytes[0] != 0 || endBytes[1] != 0 {
-		return nil, fmt.Errorf("end too big: %d", m.End)
+	if m.End < 0 || m.End >= 1<<48 {
+		return nil, fmt.Errorf("end out of range: %d", m.End)
 	}
 
-	builder.AddBytes(startBytes[2:])
-	builder.AddBytes(endBytes[2:])
+	builder.AddUint48(uint64(m.Start))
+	builder.AddUint48(uint64(m.End))
 
 	builder.AddUint16LengthPrefixed(func(builder *cryptobyte.Builder) {
 		for _, h := range m.InclusionProof {
@@ -125,16 +120,13 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 		return nil, fmt.Errorf("malformed MTCLogEntry extensions")
 	}
 
-	var startBytesLower, endBytesLower []byte
-	if !input.ReadBytes(&startBytesLower, 6) {
+	var start, end uint64
+	if !input.ReadUint48(&start) {
 		return nil, fmt.Errorf("malformed start")
 	}
-	if !input.ReadBytes(&endBytesLower, 6) {
+	if !input.ReadUint48(&end) {
 		return nil, fmt.Errorf("malformed end")
 	}
-
-	start := binary.BigEndian.Uint64(append([]byte{0, 0}, startBytesLower[:6]...))
-	end := binary.BigEndian.Uint64(append([]byte{0, 0}, endBytesLower[:6]...))
 
 	var inclusionProofBytes cryptobyte.String
 	if !input.ReadUint16LengthPrefixed(&inclusionProofBytes) {
@@ -203,8 +195,8 @@ func UnmarshalMTCProof(in []byte) (*MTCProof, error) {
 
 	return &MTCProof{
 		Extensions:     []byte(extensions),
-		Start:          start,
-		End:            end,
+		Start:          int64(start),
+		End:            int64(end),
 		InclusionProof: inclusionProof,
 		Signatures:     signatures,
 	}, nil

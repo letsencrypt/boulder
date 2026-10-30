@@ -3,9 +3,7 @@
 package cosigned
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/cryptobyte"
@@ -19,8 +17,8 @@ type Subtree struct {
 	CosignerName string
 	Timestamp    uint64
 	LogOrigin    string
-	Start        uint64
-	End          uint64
+	Start        int64
+	End          int64
 	SubtreeHash  [sha256.Size]byte
 }
 
@@ -53,6 +51,13 @@ func (subtree *Subtree) Marshal() ([]byte, error) {
 		return nil, fmt.Errorf("invalid log_origin: %w", err)
 	}
 
+	if subtree.Start < 0 || subtree.Start > trees.MaxSize {
+		return nil, fmt.Errorf("start is out of range: %d", subtree.Start)
+	}
+	if subtree.End < 0 || subtree.End > trees.MaxSize {
+		return nil, fmt.Errorf("end is out of range: %d", subtree.End)
+	}
+
 	var b cryptobyte.Builder
 	b.AddBytes([]byte(subtreeLabel))
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
@@ -62,67 +67,9 @@ func (subtree *Subtree) Marshal() ([]byte, error) {
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes([]byte(subtree.LogOrigin))
 	})
-	b.AddUint64(subtree.Start)
-	b.AddUint64(subtree.End)
+	b.AddUint64(uint64(subtree.Start))
+	b.AddUint64(uint64(subtree.End))
 	b.AddBytes(subtree.SubtreeHash[:])
 
 	return b.Bytes()
-}
-
-// Unmarshal unmarshals the input bytes and returns a *Subtree.
-func Unmarshal(input []byte) (*Subtree, error) {
-	var out Subtree
-
-	s := cryptobyte.String(input)
-	var label []byte
-	if !s.ReadBytes(&label, len(subtreeLabel)) {
-		return nil, errors.New("invalid label")
-	}
-	if !bytes.Equal(label, []byte(subtreeLabel)) {
-		return nil, errors.New("label was not subtree/v1")
-	}
-
-	var cosignerName cryptobyte.String
-	if !s.ReadUint8LengthPrefixed(&cosignerName) {
-		return nil, errors.New("invalid cosigner_name")
-	}
-	err := trees.CheckName(string(cosignerName))
-	if err != nil {
-		return nil, fmt.Errorf("invalid cosigner_name: %w", err)
-	}
-	out.CosignerName = string(cosignerName)
-
-	if !s.ReadUint64(&out.Timestamp) {
-		return nil, errors.New("invalid timestamp")
-	}
-
-	var logOrigin cryptobyte.String
-	if !s.ReadUint8LengthPrefixed(&logOrigin) {
-		return nil, errors.New("invalid log_origin")
-	}
-	err = trees.CheckName(string(logOrigin))
-	if err != nil {
-		return nil, fmt.Errorf("invalid log_origin: %w", err)
-	}
-	out.LogOrigin = string(logOrigin)
-
-	if !s.ReadUint64(&out.Start) {
-		return nil, errors.New("invalid start")
-	}
-
-	if !s.ReadUint64(&out.End) {
-		return nil, errors.New("invalid end")
-	}
-
-	var subtreeHash []byte
-	if !s.ReadBytes(&subtreeHash, len(out.SubtreeHash)) {
-		return nil, errors.New("invalid subtree hash")
-	}
-	copy(out.SubtreeHash[:], subtreeHash)
-
-	if !s.Empty() {
-		return nil, errors.New("trailing bytes")
-	}
-
-	return &out, nil
 }

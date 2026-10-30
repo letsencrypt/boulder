@@ -65,8 +65,8 @@ func marshalSubtreeMessage(name, origin string, start, end int64, subtreeHash tl
 	message := cosigned.Subtree{
 		CosignerName: name,
 		LogOrigin:    origin,
-		Start:        uint64(start), //nolint:gosec // G115: Valid leaves end >= start >= 0.
-		End:          uint64(end),   //nolint:gosec // G115: Valid leaves end >= start >= 0.
+		Start:        start,
+		End:          end,
 		SubtreeHash:  subtreeHash,
 	}
 	return message.Marshal()
@@ -74,16 +74,13 @@ func marshalSubtreeMessage(name, origin string, start, end int64, subtreeHash tl
 
 // marshalCheckpointMessage serializes the cosigned.Subtree for a checkpoint
 // cosignature, with start 0 and end the tree size as the MTC draft section
-// 5.3.1 requires for checkpoints. It rejects a negative end.
+// 5.3.1 requires for checkpoints.
 func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
-	if end < 0 {
-		return nil, fmt.Errorf("negative tree size %d", end)
-	}
 	message := cosigned.Subtree{
 		CosignerName: name,
 		Timestamp:    timestamp,
 		LogOrigin:    origin,
-		End:          uint64(end),
+		End:          end,
 		SubtreeHash:  rootHash,
 	}
 	return message.Marshal()

@@ -1,10 +1,16 @@
 package cosigned
 
 import (
-	"encoding/hex"
+	"bytes"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/cryptobyte"
+
+	"github.com/letsencrypt/boulder/trees"
 )
 
 func TestSubtreeRoundtrip(t *testing.T) {
@@ -24,7 +30,7 @@ func TestSubtreeRoundtrip(t *testing.T) {
 		t.Fatalf("marshaling: %s", err)
 	}
 
-	m2, err := Unmarshal(out)
+	m2, err := unmarshal(out)
 	if err != nil {
 		t.Fatalf("unmarshaling encoded message: %s", err)
 	}
@@ -68,6 +74,18 @@ func TestMarshalErrors(t *testing.T) {
 		{"space in LogOrigin", "invalid log_origin: contains ' '", func(target *Subtree) {
 			target.LogOrigin = "example.com/log 1"
 		}},
+		{"negative Start", "start is out of range: -1", func(target *Subtree) {
+			target.Start = -1
+		}},
+		{"too-large Start", "start is out of range: 281474976710656", func(target *Subtree) {
+			target.Start = trees.MaxSize + 1
+		}},
+		{"negative End", "end is out of range: -1", func(target *Subtree) {
+			target.End = -1
+		}},
+		{"too-large End", "end is out of range: 281474976710656", func(target *Subtree) {
+			target.End = trees.MaxSize + 1
+		}},
 	}
 
 	for _, tc := range testCases {
@@ -85,48 +103,67 @@ func TestMarshalErrors(t *testing.T) {
 	}
 }
 
-func TestUnmarshalErrors(t *testing.T) {
-	m := Subtree{
-		CosignerName: "Debut",
-		Timestamp:    55555,
-		LogOrigin:    "Post",
-		Start:        11,
-		End:          22,
-		SubtreeHash:  [32]byte{},
+// unmarshal unmarshals the input bytes and returns a *Subtree.
+func unmarshal(input []byte) (*Subtree, error) {
+	var out Subtree
+
+	s := cryptobyte.String(input)
+	var label []byte
+	if !s.ReadBytes(&label, len(subtreeLabel)) {
+		return nil, errors.New("invalid label")
+	}
+	if !bytes.Equal(label, []byte(subtreeLabel)) {
+		return nil, errors.New("label was not subtree/v1")
 	}
 
-	out, err := m.Marshal()
-	if err != nil {
-		t.Fatalf("marshal: %s", err)
+	var cosignerName cryptobyte.String
+	if !s.ReadUint8LengthPrefixed(&cosignerName) {
+		return nil, errors.New("invalid cosigner_name")
 	}
-	t.Logf("%x", out)
-
-	_, err = Unmarshal(out[:len(out)-1])
-	if err == nil {
-		t.Errorf("unmarshal with short input: got no error")
+	if len(cosignerName) < 1 {
+		return nil, errors.New("empty cosigner_name")
 	}
+	out.CosignerName = string(cosignerName)
 
-	long := append(out, byte('a'))
-	_, err = Unmarshal(long)
-	if err == nil {
-		t.Errorf("unmarshal with trailing bytes: got no error")
+	if !s.ReadUint64(&out.Timestamp) {
+		return nil, errors.New("invalid timestamp")
 	}
 
-	emptyCosigner, err := hex.DecodeString("737562747265652f76310a0000000000000000d90304506f7374000000000000000b00000000000000160000000000000000000000000000000000000000000000000000000000000000")
-	if err != nil {
-		t.Errorf("decoding hex: %s", err)
+	var logOrigin cryptobyte.String
+	if !s.ReadUint8LengthPrefixed(&logOrigin) {
+		return nil, errors.New("invalid log_origin")
 	}
-	_, err = Unmarshal(emptyCosigner)
-	if err == nil {
-		t.Errorf("unmarshal with empty cosigner_name: got no error")
+	if len(logOrigin) < 1 {
+		return nil, errors.New("empty log_origin")
+	}
+	out.LogOrigin = string(logOrigin)
+
+	var start, end uint64
+	if !s.ReadUint64(&start) {
+		return nil, errors.New("invalid start")
+	}
+	if start > trees.MaxSize {
+		return nil, fmt.Errorf("start %d out of range", start)
+	}
+	out.Start = int64(start)
+
+	if !s.ReadUint64(&end) {
+		return nil, errors.New("invalid end")
+	}
+	if end > trees.MaxSize {
+		return nil, fmt.Errorf("end %d out of range", end)
+	}
+	out.End = int64(end)
+
+	var subtreeHash []byte
+	if !s.ReadBytes(&subtreeHash, len(out.SubtreeHash)) {
+		return nil, errors.New("invalid subtree hash")
+	}
+	copy(out.SubtreeHash[:], subtreeHash)
+
+	if !s.Empty() {
+		return nil, errors.New("trailing bytes")
 	}
 
-	emptyLogOrigin, err := hex.DecodeString("737562747265652f76310a00054465627574000000000000d90300000000000000000b00000000000000160000000000000000000000000000000000000000000000000000000000000000")
-	if err != nil {
-		t.Errorf("decoding hex: %s", err)
-	}
-	_, err = Unmarshal(emptyLogOrigin)
-	if err == nil {
-		t.Errorf("unmarshal with empty log_origin: got no error")
-	}
+	return &out, nil
 }

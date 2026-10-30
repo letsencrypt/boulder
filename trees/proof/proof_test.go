@@ -167,6 +167,18 @@ func TestMTCProofMarshalRange(t *testing.T) {
 		t.Errorf("Marshal() with start 2^48: got nil err, want error")
 	}
 
+	negativeStart := MTCProof{Start: -1}
+	_, err = negativeStart.Marshal()
+	if err == nil {
+		t.Errorf("Marshal() with start -1: got nil err, want error")
+	}
+
+	negativeEnd := MTCProof{End: -1}
+	_, err = negativeEnd.Marshal()
+	if err == nil {
+		t.Errorf("Marshal() with end -1: got nil err, want error")
+	}
+
 	endTooBig := MTCProof{End: maxUint48 + 1}
 	_, err = endTooBig.Marshal()
 	if err == nil {

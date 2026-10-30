@@ -95,13 +95,15 @@ func TestIssueCRL(t *testing.T) {
 		lints:            lint.GlobalRegistry(),
 	}
 
+	// The CP/CPS CRL profiles require revoked serials to be more than 100 bits
+	// long, like those of the Certificates they revoke.
 	defaultRequest := CRLRequest{
 		Number:     big.NewInt(123),
 		Shard:      100,
 		ThisUpdate: clk.Now().Add(-time.Second),
 		Entries: []x509.RevocationListEntry{
 			{
-				SerialNumber:   big.NewInt(987),
+				SerialNumber:   new(big.Int).Lsh(big.NewInt(987), 128),
 				RevocationTime: clk.Now().Add(-24 * time.Hour),
 				ReasonCode:     1,
 			},
@@ -122,13 +124,15 @@ func TestIssueCRL(t *testing.T) {
 
 	req = defaultRequest
 	req.Entries = append(req.Entries, x509.RevocationListEntry{
-		SerialNumber:   big.NewInt(876),
+		SerialNumber:   new(big.Int).Lsh(big.NewInt(876), 128),
 		RevocationTime: clk.Now().Add(-24 * time.Hour),
 		ReasonCode:     6,
 	})
 	_, err = issuer.IssueCRL(&defaultProfile, &req)
 	test.AssertError(t, err, "invalid reason code should result in lint failure")
+	// Check that both a default zlint and our custom CPS lint failed correctly.
 	test.AssertContains(t, err.Error(), "Reason code not included in BR")
+	test.AssertContains(t, err.Error(), "reasonCode 6 is not one of 1, 4, 5, or 9")
 
 	req = defaultRequest
 	res, err := issuer.IssueCRL(&defaultProfile, &req)

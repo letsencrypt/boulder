@@ -588,7 +588,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		MirrorID:        nil,
 		MirrorSignature: nil,
 		SubtreeStart:    0,
-		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
+		SubtreeEnd:      m.frontier.TreeSize(),
 		SubtreeHash:     newRootHash[:],
 	})
 	if err != nil {
