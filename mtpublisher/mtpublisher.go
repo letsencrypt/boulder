@@ -75,7 +75,7 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.I
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
-	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd uint64, limit int) ([]*treedb.CheckpointSubtreeModel, error)
+	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error)
 	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
@@ -153,7 +153,7 @@ func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("fetching the mirror's checkpoint of %s: %w", p.logID, err)
 	}
-	subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String(), uint64(mirrored.Tree.N), subtreeBatch) //nolint:gosec // G115: a tree size is not negative
+	subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String(), mirrored.Tree.N, subtreeBatch)
 	if err != nil {
 		return fmt.Errorf("selecting the unsigned subtrees of %s: %w", p.logID, err)
 	}
@@ -165,8 +165,8 @@ func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("compliance problem: the MTCA signed an invalid subtree %d (%s [%d, %d)): %s", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
 		}
-		start := int64(subtree.SubtreeStart) //nolint:gosec // G115: Valid checked the bounds
-		end := int64(subtree.SubtreeEnd)     //nolint:gosec // G115: Valid checked the bounds
+		start := subtree.SubtreeStart
+		end := subtree.SubtreeEnd
 		subtreeHash := tlog.Hash(subtree.SubtreeHash)
 		if !p.caVerifier.VerifySubtreeSignature(p.logID.Origin(), start, end, subtreeHash, subtree.MTCASignature) {
 			return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)

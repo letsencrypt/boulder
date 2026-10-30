@@ -144,7 +144,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 		return nil, err
 	}
 
-	isReady, err := ready(subtree, uint64(entryIndex)) //nolint:gosec // G115: entryIndex is positive from DecodeMTCSerial
+	isReady, err := ready(subtree, entryIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 
-	isReady, err := ready(dbSubtree, uint64(entryIndex)) //nolint:gosec // G115: entryIndex is positive from DecodeMTCSerial
+	isReady, err := ready(dbSubtree, entryIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("getting latest checkpoint: %s", err)
 	}
 
-	if dbSubtree.SubtreeEnd > uint64(latestCheckpoint.Tree.N) { //nolint:gosec // G115: guaranteed non-negative by Valid()
+	if dbSubtree.SubtreeEnd > latestCheckpoint.Tree.N {
 		return nil, fmt.Errorf("subtreeEnd is greater than treeSize (%d > %d)",
 			dbSubtree.SubtreeEnd, latestCheckpoint.Tree.N)
 	}
@@ -246,8 +246,8 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	hr := tlog.TileHashReader(latestCheckpoint.Tree, tr)
 	inclusionProof, err := subtree.InclusionProof(
 		entryIndex,
-		int64(dbSubtree.SubtreeStart), //nolint:gosec // G115: less than 1<<48
-		int64(dbSubtree.SubtreeEnd),   //nolint:gosec // G115: less than 1<<48
+		dbSubtree.SubtreeStart,
+		dbSubtree.SubtreeEnd,
 		hr)
 	if err != nil {
 		return nil, fmt.Errorf("computing inclusion proof: %w", err)
@@ -281,7 +281,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }
 
-func ready(dbSubtree *treedb.CheckpointSubtreeModel, entryIndex uint64) (bool, error) {
+func ready(dbSubtree *treedb.CheckpointSubtreeModel, entryIndex int64) (bool, error) {
 	err := dbSubtree.Valid()
 	if err != nil {
 		return false, fmt.Errorf("validating checkpoint subtree %d: %w", dbSubtree.ID, err)

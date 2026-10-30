@@ -64,8 +64,8 @@ func marshalMessage(name string, timestamp uint64, origin string, start, end int
 		CosignerName: name,
 		Timestamp:    timestamp,
 		LogOrigin:    origin,
-		Start:        uint64(start), //nolint:gosec // G115: Valid leaves end > start >= 0.
-		End:          uint64(end),   //nolint:gosec // G115: Valid leaves end > start >= 0.
+		Start:        start,
+		End:          end,
 		SubtreeHash:  subtreeHash,
 	}
 	return cosignedMessage.Marshal()

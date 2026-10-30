@@ -53,8 +53,8 @@ type CheckpointSubtreeModel struct {
 	MTCASignature   []byte  `db:"mtcaSignature"`
 	MirrorID        *string `db:"mirrorID"`
 	MirrorSignature []byte  `db:"mirrorSignature"`
-	SubtreeStart    uint64  `db:"subtreeStart"`
-	SubtreeEnd      uint64  `db:"subtreeEnd"`
+	SubtreeStart    int64   `db:"subtreeStart"`
+	SubtreeEnd      int64   `db:"subtreeEnd"`
 	SubtreeHash     []byte  `db:"subtreeHash"`
 }
 
@@ -62,7 +62,8 @@ func (s *CheckpointSubtreeModel) Valid() error {
 	if len(s.MTCLogID) == 0 {
 		return errors.New("MTCLogID is empty")
 	}
-	if s.SubtreeEnd <= s.SubtreeStart ||
+	if s.SubtreeStart < 0 ||
+		s.SubtreeEnd <= s.SubtreeStart ||
 		s.SubtreeEnd >= 1<<48 {
 		return fmt.Errorf("Subtree [%d, %d) is invalid", s.SubtreeStart, s.SubtreeEnd)
 	}
@@ -185,7 +186,7 @@ func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSub
 
 // GetUnsignedSubtrees returns up to limit of the log's newest subtrees that end
 // at or before maxEnd and lack a mirror signature.
-func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd uint64, limit int) ([]*CheckpointSubtreeModel, error) {
+func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*CheckpointSubtreeModel, error) {
 	var subtrees []*CheckpointSubtreeModel
 	_, err := i.db.Select(ctx, &subtrees,
 		`SELECT id, mtcLogID, mtcaSignature,
