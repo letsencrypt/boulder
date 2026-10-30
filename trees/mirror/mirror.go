@@ -10,6 +10,8 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
+
+	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
 // maxProofLines is the most consistency proof lines a client may send in an
@@ -59,11 +61,8 @@ func AddCheckpointRequest(oldSize int64, proof []tlog.Hash, signedCheckpoint []b
 // c2sp.org/tlog-witness. The proof must be a Subtree Consistency Proof from the
 // subtree to the checkpoint, empty when the subtree is the whole tree.
 func SignSubtreeRequest(start, end int64, subtreeHash tlog.Hash, proof []tlog.Hash, signedCheckpoint []byte) ([]byte, error) {
-	if start < 0 {
-		return nil, fmt.Errorf("negative subtree start %d", start)
-	}
-	if end <= start {
-		return nil, fmt.Errorf("subtree end %d not after start %d", end, start)
+	if !subtree.Valid(start, end) {
+		return nil, fmt.Errorf("invalid subtree [%d, %d)", start, end)
 	}
 	if len(proof) > maxProofLines {
 		return nil, fmt.Errorf("consistency proof has %d lines, want at most %d", len(proof), maxProofLines)
@@ -141,6 +140,9 @@ func ParseMirrorInfo(body []byte) (MirrorInfo, error) {
 	ticket, err := base64.StdEncoding.DecodeString(lines[2])
 	if err != nil {
 		return MirrorInfo{}, fmt.Errorf("mirror-info ticket: %s", err)
+	}
+	if base64.StdEncoding.EncodeToString(ticket) != lines[2] {
+		return MirrorInfo{}, errors.New("mirror-info ticket is not canonical base64")
 	}
 	return MirrorInfo{TreeSize: treeSize, NextEntry: nextEntry, Ticket: ticket}, nil
 }

@@ -1,4 +1,4 @@
-// Package cosigned implements CosignedMessage from
+// Package cosigned implements CosignedSubtree from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1.
 package cosigned
 
@@ -11,9 +11,9 @@ import (
 	"github.com/letsencrypt/boulder/trees"
 )
 
-// Message represents a CosignedMessage from
+// Subtree represents a CosignedSubtree from
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1.
-type Message struct {
+type Subtree struct {
 	CosignerName string
 	Timestamp    uint64
 	LogOrigin    string
@@ -24,10 +24,10 @@ type Message struct {
 
 const subtreeLabel = "subtree/v1\n\x00"
 
-// Marshal encodes the Message as bytes.
+// Marshal encodes the Subtree as bytes.
 //
-// It errors if cosigner_name or log_origin are too long or too short. It does not validate semantic constraints,
-// like start < end.
+// It errors if cosigner_name or log_origin are not valid names. It does not validate semantic constraints,
+// like [start, end) being a valid subtree.
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
 // opaque HashValue[HASH_SIZE];
@@ -40,34 +40,36 @@ const subtreeLabel = "subtree/v1\n\x00"
 //	    uint64 start;
 //	    uint64 end;
 //	    HashValue subtree_hash;
-//	} CosignedMessage;
-func (message *Message) Marshal() ([]byte, error) {
-	if len(message.CosignerName) < 1 || len(message.CosignerName) > 255 {
-		return nil, fmt.Errorf("invalid cosigner_name length %d", len(message.CosignerName))
+//	} CosignedSubtree;
+func (subtree *Subtree) Marshal() ([]byte, error) {
+	err := trees.CheckName(subtree.CosignerName)
+	if err != nil {
+		return nil, fmt.Errorf("invalid cosigner_name: %w", err)
 	}
-	if len(message.LogOrigin) < 1 || len(message.LogOrigin) > 255 {
-		return nil, fmt.Errorf("invalid log_origin length %d", len(message.LogOrigin))
+	err = trees.CheckName(subtree.LogOrigin)
+	if err != nil {
+		return nil, fmt.Errorf("invalid log_origin: %w", err)
 	}
 
-	if message.Start < 0 || message.Start > trees.MaxSize {
-		return nil, fmt.Errorf("start is out of range: %d", message.Start)
+	if subtree.Start < 0 || subtree.Start > trees.MaxSize {
+		return nil, fmt.Errorf("start is out of range: %d", subtree.Start)
 	}
-	if message.End < 0 || message.End > trees.MaxSize {
-		return nil, fmt.Errorf("end is out of range: %d", message.End)
+	if subtree.End < 0 || subtree.End > trees.MaxSize {
+		return nil, fmt.Errorf("end is out of range: %d", subtree.End)
 	}
 
 	var b cryptobyte.Builder
 	b.AddBytes([]byte(subtreeLabel))
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte(message.CosignerName))
+		child.AddBytes([]byte(subtree.CosignerName))
 	})
-	b.AddUint64(message.Timestamp)
+	b.AddUint64(subtree.Timestamp)
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte(message.LogOrigin))
+		child.AddBytes([]byte(subtree.LogOrigin))
 	})
-	b.AddUint64(uint64(message.Start))
-	b.AddUint64(uint64(message.End))
-	b.AddBytes(message.SubtreeHash[:])
+	b.AddUint64(uint64(subtree.Start))
+	b.AddUint64(uint64(subtree.End))
+	b.AddBytes(subtree.SubtreeHash[:])
 
 	return b.Bytes()
 }

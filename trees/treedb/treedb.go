@@ -15,7 +15,7 @@ var ErrIssuanceLogNotInitialized = errors.New("issuance log DB not initialized")
 
 // CheckpointModel represents the database storage of a checkpoint and associated signatures.
 //
-// For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Message`.
+// For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Subtree`.
 type CheckpointModel struct {
 	ID              int64   `db:"id"`
 	MTCLogID        string  `db:"mtcLogID"`

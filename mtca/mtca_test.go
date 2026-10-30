@@ -951,7 +951,7 @@ func TestInitLog(t *testing.T) {
 
 func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointModel) {
 	t.Helper()
-	message := cosigned.Message{
+	message := cosigned.Subtree{
 		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID().String(),
 		Timestamp:    0,
 		LogOrigin:    mtca.logID.Origin(),
@@ -962,7 +962,7 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointMod
 
 	marshaled, err := message.Marshal()
 	if err != nil {
-		t.Fatalf("marshaling cosigned.Message: %s", err)
+		t.Fatalf("marshaling cosigned.Subtree: %s", err)
 	}
 
 	pubkey, ok := mtca.issuer.Signer.Public().(*mldsa.PublicKey)

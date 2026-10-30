@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
+	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
 // exampleCheckpoint is a canonical tlog-checkpoint note body the cosignature
@@ -290,6 +291,10 @@ func TestCosignerRejects(t *testing.T) {
 	if err == nil {
 		t.Error("NewCosigner with an empty origin = nil error, want error")
 	}
+	_, err = NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42 ", signer)
+	if err == nil {
+		t.Error("NewCosigner with a space in the origin = nil error, want error")
+	}
 
 	// An ML-DSA-65 key has an mldsa public key of the wrong size.
 	wrong, err := mldsa.GenerateKey(mldsa.MLDSA65())
@@ -320,18 +325,9 @@ func TestCosignerRejects(t *testing.T) {
 		t.Error("CosignCheckpoint with a negative tree size = nil error, want error")
 	}
 
-	// An empty tree [0, 0) is not a valid subtree.
-	_, err = ca.CosignCheckpoint(tlog.Tree{N: 0})
-	if err == nil {
-		t.Error("CosignCheckpoint with an empty tree = nil error, want error")
-	}
 	_, err = ca.CosignSubtree(-1, 1, tlog.Hash{})
 	if err == nil {
 		t.Error("CosignSubtree with a negative start = nil error, want error")
-	}
-	_, err = ca.CosignSubtree(4, 4, tlog.Hash{})
-	if err == nil {
-		t.Error("CosignSubtree with an empty subtree = nil error, want error")
 	}
 	_, err = ca.CosignSubtree(1, 3, tlog.Hash{})
 	if err == nil {
@@ -340,8 +336,8 @@ func TestCosignerRejects(t *testing.T) {
 }
 
 // TestCosignSubtree checks that a subtree starting at 0 is signed as a
-// checkpoint of its size is, and that a later subtree verifies over its own
-// message.
+// checkpoint of its size is, that a later subtree verifies over its own
+// message, and that an empty subtree and an empty tree can be signed.
 func TestCosignSubtree(t *testing.T) {
 	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
@@ -375,6 +371,23 @@ func TestCosignSubtree(t *testing.T) {
 	}
 	if !v.VerifySubtreeSignature(ca.origin, 1024, 1536, parsed.Tree.Hash, signature) {
 		t.Error("VerifySubtreeSignature rejected the subtree signature")
+	}
+
+	emptyHash := subtree.MTH(nil)
+	signature, err = ca.CosignSubtree(4, 4, emptyHash)
+	if err != nil {
+		t.Fatalf("CosignSubtree over an empty subtree: %s", err)
+	}
+	if !v.VerifySubtreeSignature(ca.origin, 4, 4, emptyHash, signature) {
+		t.Error("VerifySubtreeSignature rejected the empty subtree signature")
+	}
+
+	cosigned, err = ca.CosignCheckpoint(tlog.Tree{N: 0, Hash: emptyHash})
+	if err != nil {
+		t.Fatalf("CosignCheckpoint over an empty tree: %s", err)
+	}
+	if !v.Verify([]byte(ca.origin+"\n0\n"+emptyHash.String()+"\n"), cosigned) {
+		t.Error("Verify rejected the empty tree cosignature")
 	}
 }
 
@@ -438,6 +451,10 @@ func TestVerifySubtreeSignatureLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	nonCanonical := bytes.Clone(line)
+	last := bytes.IndexByte(nonCanonical, '=') - 1
+	nonCanonical[last] = alphabet[strings.IndexByte(alphabet, nonCanonical[last])+1]
 	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
@@ -459,6 +476,7 @@ func TestVerifySubtreeSignatureLine(t *testing.T) {
 		{"Timestamped line", 1024, 1536, timestamped},
 		{"Another cosigner's line", 1024, 1536, otherLine},
 		{"Malformed line", 1024, 1536, []byte("not a signature line\n")},
+		{"Non-canonical line", 1024, 1536, nonCanonical},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -584,6 +602,21 @@ func TestCheckpointCosignature(t *testing.T) {
 	}
 	if !bytes.Equal(extracted.Signature, cosigned[timestampSize:]) {
 		t.Errorf("CheckpointCosignature signature = %x, want %x", extracted.Signature, cosigned[timestampSize:])
+	}
+
+	// Setting a padding bit in the last data character decodes to the same
+	// bytes but is not canonical base64.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	nonCanonical := bytes.Clone(line)
+	last := bytes.IndexByte(nonCanonical, '=') - 1
+	nonCanonical[last] = alphabet[strings.IndexByte(alphabet, nonCanonical[last])+1]
+	_, n, err = checkpoint.Open(signedNote(text, nonCanonical), v)
+	if err != nil {
+		t.Fatalf("checkpoint.Open with a non-canonical signature line: %s", err)
+	}
+	_, err = v.CheckpointCosignature(n)
+	if err == nil {
+		t.Error("CheckpointCosignature accepted a non-canonical signature line")
 	}
 }
 

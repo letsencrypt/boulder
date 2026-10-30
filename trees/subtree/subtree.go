@@ -9,18 +9,22 @@ import (
 )
 
 // Valid reports whether [start, end) is a valid subtree per the MTC draft
-// section 4.1 Definition of a Subtree: 0 <= start < end and start is a multiple
+// section 4.1 Definition of a Subtree: 0 <= start <= end and start is a multiple
 // of BIT_CEIL(end - start).
 func Valid(start, end int64) bool {
-	if start < 0 || start >= end {
-		// A subtree must have 0 <= start < end.
+	if start < 0 || start > end {
+		// A subtree must have 0 <= start <= end.
 		return false
+	}
+	if start == end {
+		// BIT_CEIL(0) is 1, so any start aligns.
+		return true
 	}
 	// start must be a multiple of BIT_CEIL(end-start). bits.Len64(x) is the bit
 	// width of x, so 1<<bits.Len64(x) is the smallest power of two strictly
 	// above x, an exclusive ceiling. BIT_CEIL(x) is inclusive, the smallest
 	// power of two at least x, so we apply it to end-start-1.
-	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: the start >= end check above leaves end-start positive, so end-start-1 is non-negative.
+	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: the start == end return above leaves end-start positive, so end-start-1 is non-negative.
 
 	// bitCeil-1 masks the bits below bitCeil, so start & (bitCeil-1) is zero
 	// exactly when start is a multiple of bitCeil.
@@ -36,10 +40,10 @@ func contains(entryIndex, start, end int64) bool {
 // subtree with a power-of-two size), and if so its level.
 func completeSubtree(start, end int64) (level int, ok bool) {
 	size := end - start
-	if !Valid(start, end) || bits.OnesCount64(uint64(size)) != 1 { //nolint:gosec // G115: Valid ensures start < end, so size is positive.
+	if !Valid(start, end) || bits.OnesCount64(uint64(size)) != 1 { //nolint:gosec // G115: Valid ensures start <= end, so size is non-negative.
 		return 0, false
 	}
-	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: Valid ensures start < end, so size is positive.
+	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: Valid ensures start <= end, so size is non-negative.
 }
 
 // splitPoint returns where to split the subtree [start, end) into a complete
@@ -61,7 +65,7 @@ func combineSubtreeRoots(start, end int64, hashes []tlog.Hash) (tlog.Hash, []tlo
 		return hashes[0], hashes[1:]
 	}
 	// completeSubtree accepts single leaves, and the input is always a valid
-	// subtree (end > start), so end-start >= 2 here.
+	// non-empty subtree, so end-start >= 2 here.
 	mid := splitPoint(start, end)
 	left, rest := combineSubtreeRoots(start, mid, hashes)
 	right, rest := combineSubtreeRoots(mid, end, rest)
@@ -77,7 +81,7 @@ func completeSubtreeIndexes(start, end int64) []int64 {
 		return []int64{tlog.StoredHashIndex(level, start>>level)}
 	}
 	// completeSubtree accepts single leaves, and the input is always a valid
-	// subtree (end > start), so end-start >= 2 here.
+	// non-empty subtree, so end-start >= 2 here.
 	mid := splitPoint(start, end)
 	return append(completeSubtreeIndexes(start, mid), completeSubtreeIndexes(mid, end)...)
 }
@@ -180,6 +184,10 @@ func ConsistencyProof(start, end, treeSize int64, reader tlog.HashReader) ([]tlo
 	if !Valid(start, end) || end > treeSize {
 		return nil, fmt.Errorf("[%d, %d) is not a valid subtree of a tree of size %d", start, end, treeSize)
 	}
+	if start == end {
+		// SUBTREE_PROOF(start, start, D_n) = {}
+		return nil, nil
+	}
 	return subtreeSubProof(start, end, 0, treeSize, true, reader, nil)
 }
 
@@ -225,6 +233,9 @@ func InclusionProof(entryIndex, start, end int64, reader tlog.HashReader) ([]tlo
 func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHash tlog.Hash) bool {
 	if !Valid(start, end) || end > n {
 		return false
+	}
+	if start == end {
+		return len(proof) == 0 && nodeHash == MTH(nil)
 	}
 
 	// fn, sn, tn track the subtree's first leaf, its last leaf, and the tree's

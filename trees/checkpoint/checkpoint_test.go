@@ -52,15 +52,6 @@ func TestCheckpointUnmarshalRoundTrip(t *testing.T) {
 			origin: "example.com/log",
 			size:   0,
 		},
-		{
-			// tlog-checkpoint: clients MUST NOT assume the origin follows the
-			// schema-less-URL recommendation, so spaces and plus signs (banned
-			// only in signature-line key names) must be accepted here.
-			name:   "Origin not following the URL recommendation",
-			text:   "a space and + plus/log\n20852163\n" + exampleHashB64 + "\n",
-			origin: "a space and + plus/log",
-			size:   20852163,
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -111,6 +102,9 @@ func TestCheckpointUnmarshalRejects(t *testing.T) {
 		{"Empty extension line", "example.com/log\n1\n" + exampleHashB64 + "\n\n"},
 		{"Carriage return in origin", "example.com/log\r\n1\n" + exampleHashB64 + "\n"},
 		{"Invalid UTF-8 in origin", "example.com/\xff\n1\n" + exampleHashB64 + "\n"},
+		{"Origin over 255 bytes", strings.Repeat("a", 256) + "\n1\n" + exampleHashB64 + "\n"},
+		{"Space in origin", "example.com/log 1\n1\n" + exampleHashB64 + "\n"},
+		{"Plus in origin", "example.com/log+1\n1\n" + exampleHashB64 + "\n"},
 		{"Control character in extension", "example.com/log\n1\n" + exampleHashB64 + "\next\x01ension\n"},
 	}
 	for _, tc := range cases {

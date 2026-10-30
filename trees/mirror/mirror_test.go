@@ -114,7 +114,7 @@ func TestParseMirrorInfo(t *testing.T) {
 		t.Errorf("Ticket = %q, want empty", info.Ticket)
 	}
 
-	for _, malformed := range []string{"", "512\n300\n", "512\n300\ndGlja2V0", "512\n300\n!!!\n", "512\n-1\n\n", "512\n300\n\n\n"} {
+	for _, malformed := range []string{"", "512\n300\n", "512\n300\ndGlja2V0", "512\n300\n!!!\n", "512\n300\nAQJ=\n", "512\n-1\n\n", "512\n300\n\n\n"} {
 		_, err := ParseMirrorInfo([]byte(malformed))
 		if err == nil {
 			t.Errorf("ParseMirrorInfo(%q) = nil error, want error", malformed)
@@ -218,9 +218,9 @@ func TestSignSubtreeRequest(t *testing.T) {
 	if err == nil {
 		t.Error("SignSubtreeRequest with end before start = nil error, want error")
 	}
-	_, err = SignSubtreeRequest(512, 512, hash, nil, note)
+	_, err = SignSubtreeRequest(1, 3, hash, nil, note)
 	if err == nil {
-		t.Error("SignSubtreeRequest with an empty subtree = nil error, want error")
+		t.Error("SignSubtreeRequest with a misaligned subtree = nil error, want error")
 	}
 	_, err = SignSubtreeRequest(0, 512, hash, make([]tlog.Hash, 64), note)
 	if err == nil {
