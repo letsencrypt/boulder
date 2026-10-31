@@ -19,6 +19,7 @@ import (
 	"math/big"
 	mrand "math/rand/v2"
 	"net/netip"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -592,6 +593,116 @@ func TestPerformValidationSuccess(t *testing.T) {
 		expectedValidated := fc.Now()
 		test.AssertEquals(t, *challenge.Validated, expectedValidated)
 	}
+}
+
+// mockSAWithProcessingCapture is a mock sapb.StorageAuthorityClient that
+// forwards all method calls to an inner SA, but also records the request
+// passed to SetAuthzProcessing and the authorization as the inner SA renders it
+// immediately afterwards (i.e. while it is still processing).
+type mockSAWithProcessingCapture struct {
+	sapb.StorageAuthorityClient
+	req   *sapb.SetAuthzProcessingRequest
+	authz *corepb.Authorization
+}
+
+func (msa *mockSAWithProcessingCapture) SetAuthzProcessing(ctx context.Context, req *sapb.SetAuthzProcessingRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	res, err := msa.StorageAuthorityClient.SetAuthzProcessing(ctx, req)
+	if err != nil {
+		return res, err
+	}
+	msa.req = req
+	msa.authz, err = msa.StorageAuthorityClient.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: req.Id})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func TestPerformValidationSetsChallengeProcessing(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("TestPerformValidationSetsChallengeProcessing requires config-next")
+	}
+
+	va, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	features.Set(features.Config{SetAuthzProcessing: true})
+	defer features.Reset()
+
+	msa := &mockSAWithProcessingCapture{StorageAuthorityClient: sa}
+	ra.SA = msa
+
+	authzPB := createPendingAuthorization(t, sa, registration.Id, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
+
+	va.doDCVResult = &vapb.ValidationResult{Problem: nil}
+	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
+
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
+	_, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: challIdx,
+	})
+	test.AssertNotError(t, err, "PerformValidation failed")
+
+	// The RA should have told the SA which challenge it is validating.
+	test.AssertNotNil(t, msa.req, "SetAuthzProcessing was not called")
+	test.AssertEquals(t, msa.req.Id, authzPB.Id)
+	test.AssertEquals(t, msa.req.Attempted, string(core.ChallengeTypeDNS01))
+
+	// While validation is in flight, the authz is still pending but the
+	// attempted challenge is processing.
+	test.AssertNotNil(t, msa.authz, "authz was not fetched after SetAuthzProcessing")
+	test.AssertEquals(t, msa.authz.Status, string(core.StatusPending))
+	test.AssertEquals(t, len(msa.authz.Challenges), 1)
+	test.AssertEquals(t, msa.authz.Challenges[0].Type, string(core.ChallengeTypeDNS01))
+	test.AssertEquals(t, msa.authz.Challenges[0].Status, string(core.StatusProcessing))
+
+	select {
+	case <-va.doDCVRequest:
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Sleep so the RA has a chance to write to the SA
+	time.Sleep(100 * time.Millisecond)
+
+	// Once validation completes, the challenge should be valid.
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	test.AssertEquals(t, dbAuthzPB.Status, string(core.StatusValid))
+	test.AssertEquals(t, dbAuthzPB.Challenges[0].Status, string(core.StatusValid))
+}
+
+func TestPerformValidationChallengeProcessing(t *testing.T) {
+	_, _, ra, _, fc, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// An authz whose challenge is already processing has a validation attempt
+	// in flight, so a second attempt should be rejected as a conflict rather
+	// than as a malformed request.
+	exp := fc.Now().Add(10 * time.Hour)
+	authz := core.Authorization{
+		ID:             1337,
+		Identifier:     identifier.NewDNS("not-example.com"),
+		RegistrationID: 1,
+		Status:         core.StatusPending,
+		Challenges: []core.Challenge{
+			{
+				Status: core.StatusProcessing,
+				Type:   core.ChallengeTypeDNS01,
+				Token:  "exampleToken",
+			},
+		},
+		Expires: &exp,
+	}
+	authzPB, err := bgrpc.AuthzToPB(authz)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+
+	_, err = ra.PerformValidation(context.Background(), &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: 0,
+	})
+	test.AssertError(t, err, "ra.PerformValidation allowed a second attempt at a processing challenge")
+	test.AssertErrorIs(t, err, berrors.Conflict)
 }
 
 // mockSAWithSyncPause is a mock sapb.StorageAuthorityClient that forwards all
