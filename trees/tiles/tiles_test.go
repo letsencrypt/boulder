@@ -628,7 +628,7 @@ func TestClone(t *testing.T) {
 	}
 }
 
-const testPrefix = "44947.4.1/44"
+const testPrefix = "44947.4.1/3"
 
 // publishedTree appends n null entries to an empty log in fs3 and publishes
 // it, returning the resulting tree.

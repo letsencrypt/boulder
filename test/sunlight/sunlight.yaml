@@ -1,6 +1,6 @@
 # A sunlight witness operating as the c2sp.org/tlog-mirror for the test MTC
 # issuance log. Config reference:
-# https://github.com/FiloSottile/sunlight/blob/v0.9.0/cmd/sunlight/sunlight.go#L67
+# https://github.com/FiloSottile/sunlight/blob/v0.10.2/cmd/sunlight/sunlight.go
 listen:
   - ":4700"
 # The checkpoint lock database, stored in the same volume as the S3-compatible tile storage

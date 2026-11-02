@@ -7,7 +7,7 @@
 		"pollInterval": "1s",
 		"logID": {
 			"caID": "44947.4.1",
-			"logNumber": 44
+			"logNumber": 3
 		},
 		"mtcaCertFile": "test/certs/mtpki/mtca1.cert.pem",
 		"mirror": {

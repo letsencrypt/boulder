@@ -167,7 +167,7 @@ services:
     environment:
       # By specifying KEYSPACES vttestserver will create the corresponding
       # databases on startup.
-      KEYSPACES: boulder_sa,incidents_sa,boulder_sa_next,incidents_sa_next,mtcmeta_44947_4_1_0_44
+      KEYSPACES: boulder_sa,incidents_sa,boulder_sa_next,incidents_sa_next,mtcmeta_44947_4_1_0_3
       NUM_SHARDS: 1,1,1,1,1
     healthcheck:
       # Make sure the service is up and the tables are created. Use `serials` because it happens

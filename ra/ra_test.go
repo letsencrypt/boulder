@@ -3375,7 +3375,7 @@ type mockMTCA struct{}
 
 func (mtca mockMTCA) Issue(_ context.Context, req *mtcapb.IssueRequest, _ ...grpc.CallOption) (*mtcapb.IssueResponse, error) {
 	return &mtcapb.IssueResponse{
-		MtcLogID:        "44947.4.1.0.44",
+		MtcLogID:        "44947.4.1.0.3",
 		MtcSerialNumber: 56,
 		MtcSubtreeID:    34,
 	}, nil
@@ -3410,8 +3410,8 @@ func TestIssueMTC(t *testing.T) {
 	if mockSA.storage.orderID != 1234 {
 		t.Errorf("orderID: got %d, want %d", mockSA.storage.orderID, 1234)
 	}
-	if mockSA.storage.mtcLogID != "44947.4.1.0.44" {
-		t.Errorf("mtcLogID: got %q, want %q", mockSA.storage.mtcLogID, "44947.4.1.0.44")
+	if mockSA.storage.mtcLogID != "44947.4.1.0.3" {
+		t.Errorf("mtcLogID: got %q, want %q", mockSA.storage.mtcLogID, "44947.4.1.0.3")
 	}
 	if mockSA.storage.mtcSerialNumber != 56 {
 		t.Errorf("mtcSerialNumber: got %d, want %d", mockSA.storage.mtcSerialNumber, 56)
@@ -3499,7 +3499,7 @@ func TestGetOrder(t *testing.T) {
 			order: &corepb.Order{
 				Status:                 string(core.StatusProcessing),
 				CertificateProfileName: "mtcshortlived",
-				MtcLogID:               "44947.4.1.0.44",
+				MtcLogID:               "44947.4.1.0.3",
 				MtcSerialNumber:        56,
 				MtcSubtreeID:           34,
 			},
@@ -3511,7 +3511,7 @@ func TestGetOrder(t *testing.T) {
 			order: &corepb.Order{
 				Status:                 string(core.StatusProcessing),
 				CertificateProfileName: "mtcshortlived",
-				MtcLogID:               "44947.4.1.0.44",
+				MtcLogID:               "44947.4.1.0.3",
 				MtcSerialNumber:        56,
 				MtcSubtreeID:           34,
 			},

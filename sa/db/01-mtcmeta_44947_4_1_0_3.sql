@@ -1,6 +1,6 @@
 -- This schema is written to work either in a DB-per-issuance-log configuration (current MariaDB),
 -- or optionally as a Vitess sharded keyspace where each issuance log is in a separate shard.
-USE mtcmeta_44947_4_1_0_44;
+USE mtcmeta_44947_4_1_0_3;
 
 -- latestCheckpoint contains the latest checkpoint for a specific MTC log ID.
 --
