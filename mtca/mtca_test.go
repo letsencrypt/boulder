@@ -550,7 +550,11 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RawSignature: %s", err)
 	}
-	largerNote, err := m.checkpointNote(larger, largerRaw)
+	largerLine, err := m.cosigner.SignatureLine(0, largerRaw)
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	largerNote, err := m.checkpointNote(larger, largerLine)
 	if err != nil {
 		t.Fatalf("checkpointNote: %s", err)
 	}
@@ -969,7 +973,24 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointMod
 		t.Fatalf("issuer pubkey: got %T, want %T", mtca.issuer.Signer.Public(), &mldsa.PublicKey{})
 	}
 
-	err = mldsa.Verify(pubkey, marshaled, checkpoint.MTCASignature, nil)
+	// MTCASignature is a note signature line: "— <name> <base64(keyID || timestamp || signature)>\n".
+	line, ok := strings.CutPrefix(string(checkpoint.MTCASignature), "— "+message.CosignerName+" ")
+	if !ok {
+		t.Fatalf("MTCASignature %q: want prefix %q", checkpoint.MTCASignature, "— "+message.CosignerName+" ")
+	}
+	line, ok = strings.CutSuffix(line, "\n")
+	if !ok {
+		t.Fatalf("MTCASignature %q: want trailing newline", checkpoint.MTCASignature)
+	}
+	idSignature, err := base64.StdEncoding.DecodeString(line)
+	if err != nil {
+		t.Fatalf("decoding MTCASignature: %s", err)
+	}
+	if len(idSignature) != 4+8+mldsa.MLDSA44SignatureSize {
+		t.Fatalf("MTCASignature: got %d decoded bytes, want %d", len(idSignature), 4+8+mldsa.MLDSA44SignatureSize)
+	}
+
+	err = mldsa.Verify(pubkey, marshaled, idSignature[4+8:], nil)
 	if err != nil {
 		t.Errorf("verifying MTCASignature: %s", err)
 	}

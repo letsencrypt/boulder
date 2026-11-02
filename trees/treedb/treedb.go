@@ -17,13 +17,15 @@ var ErrIssuanceLogNotInitialized = errors.New("issuance log DB not initialized")
 //
 // For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Subtree`.
 type CheckpointModel struct {
-	ID              int64   `db:"id"`
-	MTCLogID        string  `db:"mtcLogID"`
-	MTCASignature   []byte  `db:"mtcaSignature"`
-	MirrorID        *string `db:"mirrorID"`
-	MirrorSignature []byte  `db:"mirrorSignature"`
-	TreeSize        int64   `db:"treeSize"`
-	RootHash        []byte  `db:"rootHash"`
+	ID       int64  `db:"id"`
+	MTCLogID string `db:"mtcLogID"`
+	// MTCASignature is a signed note signature line for a checkpoint.
+	MTCASignature []byte  `db:"mtcaSignature"`
+	MirrorID      *string `db:"mirrorID"`
+	// MirrorSignature is a signed note signature line for a checkpoint.
+	MirrorSignature []byte `db:"mirrorSignature"`
+	TreeSize        int64  `db:"treeSize"`
+	RootHash        []byte `db:"rootHash"`
 }
 
 func (c *CheckpointModel) Valid() error {
@@ -48,14 +50,18 @@ func (c *CheckpointModel) Mirrored() bool {
 }
 
 type CheckpointSubtreeModel struct {
-	ID              int64   `db:"id"`
-	MTCLogID        string  `db:"mtcLogID"`
-	MTCASignature   []byte  `db:"mtcaSignature"`
-	MirrorID        *string `db:"mirrorID"`
-	MirrorSignature []byte  `db:"mirrorSignature"`
-	SubtreeStart    int64   `db:"subtreeStart"`
-	SubtreeEnd      int64   `db:"subtreeEnd"`
-	SubtreeHash     []byte  `db:"subtreeHash"`
+	ID       int64  `db:"id"`
+	MTCLogID string `db:"mtcLogID"`
+	// MTCASignature is an ML-DSA-44 signature over a CosignedMessage with
+	// zero timestamp.
+	MTCASignature []byte  `db:"mtcaSignature"`
+	MirrorID      *string `db:"mirrorID"`
+	// MirrorSignature is an ML-DSA-44 signature over a CosignedMessage with
+	// zero timestamp.
+	MirrorSignature []byte `db:"mirrorSignature"`
+	SubtreeStart    int64  `db:"subtreeStart"`
+	SubtreeEnd      int64  `db:"subtreeEnd"`
+	SubtreeHash     []byte `db:"subtreeHash"`
 }
 
 func (s *CheckpointSubtreeModel) Valid() error {
