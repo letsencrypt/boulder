@@ -59,11 +59,11 @@ func TestMakeIssuer(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
 	caID, err := reloid.FromString("44947.4.2.1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
 	template := &x509.Certificate{
 		Subject: pkix.Name{
 			ExtraNames: []pkix.AttributeTypeAndValue{
