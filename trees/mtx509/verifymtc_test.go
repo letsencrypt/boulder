@@ -1,4 +1,4 @@
-package verifymtc
+package mtx509
 
 import (
 	"bytes"
@@ -156,7 +156,7 @@ func loadMTCA(t *testing.T) *testMTCA {
 	if err != nil {
 		t.Fatalf("LoadCert: %s", err)
 	}
-	mtcaID, err := issuancelog.MTCAID(cert)
+	mtcaID, err := MTCAID(cert.Issuer)
 	if err != nil {
 		t.Fatalf("MTCAID: %s", err)
 	}
@@ -375,7 +375,7 @@ func TestStandalone(t *testing.T) {
 			tc.modify(inputs, &issuer)
 			result := mkStandalone(t, inputs)
 
-			err := Standalone(result, issuer)
+			err := VerifyStandalone(result, issuer)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("Standalone: %s", err)
@@ -394,7 +394,7 @@ func TestStandalone(t *testing.T) {
 
 func TestStandaloneUnparsable(t *testing.T) {
 	t.Parallel()
-	err := Standalone([]byte("not a certificate"), loadMTCA(t).cert)
+	err := VerifyStandalone([]byte("not a certificate"), loadMTCA(t).cert)
 	if err == nil {
 		t.Fatal("Standalone: got nil error, want error")
 	}
@@ -426,7 +426,7 @@ func TestStandaloneOversizeSerial(t *testing.T) {
 		t.Fatalf("CreateCertificate: %s", err)
 	}
 
-	err = Standalone(certDER, mtca.cert)
+	err = VerifyStandalone(certDER, mtca.cert)
 	if err == nil {
 		t.Fatal("Standalone: got nil error, want error")
 	}

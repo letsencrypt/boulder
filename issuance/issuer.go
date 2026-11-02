@@ -23,7 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/privatekey"
-	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 )
 
 // ----- Name ID -----
@@ -78,7 +78,7 @@ func (ic *Certificate) NameID() NameID {
 // MTCAID returns the trust anchor ID from this issuer certificate's Subject. It
 // returns an error for issuers that are not MTC CAs.
 func (ic *Certificate) MTCAID() (*reloid.RelativeOID, error) {
-	return issuancelog.MTCAID(ic.Certificate)
+	return mtx509.MTCAID(ic.Certificate.Subject)
 }
 
 // NewCertificate wraps an in-memory cert in an issuance.Certificate, marking it

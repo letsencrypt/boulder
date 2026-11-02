@@ -1,8 +1,6 @@
 package issuancelog
 
 import (
-	"crypto/x509"
-	"encoding/asn1"
 	"fmt"
 	"path"
 	"strconv"
@@ -135,31 +133,4 @@ func (id *ID) TilePrefix() string {
 // CheckpointPath returns the path of the checkpoint file for this log within tile storage.
 func (id ID) CheckpointPath() string {
 	return path.Join(id.TilePrefix(), "checkpoint")
-}
-
-// MTCAID returns the trust anchor ID from this issuer certificate's Subject. It
-// returns an error for issuers that are not MTC CAs.
-func MTCAID(caCert *x509.Certificate) (*reloid.RelativeOID, error) {
-	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
-	for _, attribute := range caCert.Subject.Names {
-		if attribute.Type.Equal(idRDNATrustAnchorID) {
-			caID, ok := attribute.Value.(asn1.RawValue)
-			if !ok {
-				return nil, fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
-			}
-			if len(caID.FullBytes) == 0 {
-				return nil, fmt.Errorf("empty mtcaID")
-			}
-			if caID.FullBytes[0] != 0x0d { // Universal Primitive Relative-OID (13)
-				return nil, fmt.Errorf("invalid mtcaID asn1 tag byte %x", caID.FullBytes[0])
-			}
-			ret, err := reloid.FromBytes(caID.Bytes)
-			if err != nil {
-				return nil, fmt.Errorf("invalid mtcaID relative OID: %w", err)
-			}
-			return ret, nil
-		}
-	}
-	return nil, fmt.Errorf("issuer subject %q did not contain trust anchor ID OID %q",
-		caCert.Subject, idRDNATrustAnchorID)
 }

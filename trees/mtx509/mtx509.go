@@ -1,16 +1,18 @@
-// Package verifymtc has functions to verify MTCs.
-package verifymtc
+package mtx509
 
 import (
 	"bytes"
 	"crypto"
 	"crypto/mldsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"fmt"
 
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
@@ -18,13 +20,40 @@ import (
 	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
-// Standalone verifies the given certificate as a standalone MTC against solely
+// MTCAID returns the trust anchor ID from an issuer certificate's Subject or an
+// MTC certificate's Issuer. It returns an error if no trust anchor ID is found.
+func MTCAID(rdn pkix.Name) (*reloid.RelativeOID, error) {
+	idRDNATrustAnchorID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 25, 3}
+	for _, attribute := range rdn.Names {
+		if attribute.Type.Equal(idRDNATrustAnchorID) {
+			caID, ok := attribute.Value.(asn1.RawValue)
+			if !ok {
+				return nil, fmt.Errorf("invalid trust anchor attribute type %T", attribute.Value)
+			}
+			if len(caID.FullBytes) == 0 {
+				return nil, fmt.Errorf("empty mtcaID")
+			}
+			if caID.FullBytes[0] != 0x0d { // Universal Primitive Relative-OID (13)
+				return nil, fmt.Errorf("invalid mtcaID asn1 tag byte %x", caID.FullBytes[0])
+			}
+			ret, err := reloid.FromBytes(caID.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("invalid mtcaID relative OID: %w", err)
+			}
+			return ret, nil
+		}
+	}
+	return nil, fmt.Errorf("DistinguishedName %q did not contain trust anchor ID OID %q",
+		rdn, idRDNATrustAnchorID)
+}
+
+// VerifyStandalone verifies the given certificate as a standalone MTC against solely
 // the given issuer.
 //
 // TODO(#9085): this should accept a list of acceptable CA cosigners and a list
 // of acceptable mirror cosigners, and enforce the minimum policy we want across
 // root programs.
-func Standalone(certDER []byte, issuer *x509.Certificate) error {
+func VerifyStandalone(certDER []byte, issuer *x509.Certificate) error {
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return fmt.Errorf("x509.ParseCertificate: %s", err)
@@ -35,7 +64,7 @@ func Standalone(certDER []byte, issuer *x509.Certificate) error {
 			cert.Issuer, issuer.Subject)
 	}
 
-	mtcaID, err := issuancelog.MTCAID(issuer)
+	mtcaID, err := MTCAID(cert.Issuer)
 	if err != nil {
 		return err
 	}
@@ -66,7 +95,7 @@ func Standalone(certDER []byte, issuer *x509.Certificate) error {
 	}
 
 	if len(mtcProof.Extensions) > 0 {
-		return fmt.Errorf("unrecognized extensions in MTCProof")
+		return fmt.Errorf("MTCProof extensions are not supported")
 	}
 
 	// Transform into an MTCLogEntry containing a TBSCertificateLogEntry.
@@ -113,7 +142,7 @@ func Standalone(certDER []byte, issuer *x509.Certificate) error {
 
 	for _, sig := range mtcProof.Signatures {
 		// Ignore all signatures except the one for the CA we are verifying against.
-		// TODO: also check mirror signatures for mirrors we recognize.
+		// TODO(#9085) also check mirror signatures for mirrors we recognize.
 		if !bytes.Equal(sig.CosignerID, mtcaID.Bytes()) {
 			continue
 		}

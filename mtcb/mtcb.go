@@ -26,11 +26,11 @@ import (
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
-	"github.com/letsencrypt/boulder/trees/verifymtc"
 )
 
 // checkpointDB is the subset of treedb.Impl the mtcb uses, so tests can supply
@@ -277,7 +277,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 
-	err = verifymtc.Standalone(certBytes, issuer.certificate)
+	err = mtx509.VerifyStandalone(certBytes, issuer.certificate)
 	if err != nil {
 		return nil, fmt.Errorf("during self-verify of standalone certificate: %s", err)
 	}

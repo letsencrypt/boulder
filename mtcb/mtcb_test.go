@@ -33,11 +33,11 @@ import (
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
-	"github.com/letsencrypt/boulder/trees/verifymtc"
 )
 
 var (
@@ -360,9 +360,9 @@ func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.Checkpo
 // issuer, for expected, and that it carries dbSubtree's cosignatures.
 func verifyStandalone(t *testing.T, certDER []byte, issuer *x509.Certificate, expected issued, dbSubtree *treedb.CheckpointSubtreeModel) {
 	t.Helper()
-	err := verifymtc.Standalone(certDER, issuer)
+	err := mtx509.VerifyStandalone(certDER, issuer)
 	if err != nil {
-		t.Fatalf("verifymtc.Standalone: %s", err)
+		t.Fatalf("mtx509.VerifyStandalone: %s", err)
 	}
 
 	cert, err := x509.ParseCertificate(certDER)
