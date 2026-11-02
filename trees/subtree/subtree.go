@@ -24,7 +24,7 @@ func Valid(start, end int64) bool {
 	// width of x, so 1<<bits.Len64(x) is the smallest power of two strictly
 	// above x, an exclusive ceiling. BIT_CEIL(x) is inclusive, the smallest
 	// power of two at least x, so we apply it to end-start-1.
-	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: the start == end return above leaves end-start positive, so end-start-1 is non-negative.
+	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: the checks above mean that end-start is positive, so end-start-1 is non-negative.
 
 	// bitCeil-1 masks the bits below bitCeil, so start & (bitCeil-1) is zero
 	// exactly when start is a multiple of bitCeil.
