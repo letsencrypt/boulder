@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/core/reloid"
@@ -530,19 +531,14 @@ func TestCheckpointCosignature(t *testing.T) {
 		t.Errorf("CheckpointCosignature signature = %x, want %x", extracted.Signature, cosigned[timestampSize:])
 	}
 
-	// Setting a padding bit in the last data character decodes to the same
-	// bytes but is not canonical base64.
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	nonCanonical := bytes.Clone(line)
-	last := bytes.IndexByte(nonCanonical, '=') - 1
-	nonCanonical[last] = alphabet[strings.IndexByte(alphabet, nonCanonical[last])+1]
-	_, n, err = checkpoint.Open(signedNote(text, nonCanonical), v)
-	if err != nil {
-		t.Fatalf("checkpoint.Open with a non-canonical signature line: %s", err)
-	}
-	_, err = v.CheckpointCosignature(n)
+	// "TWF=" has a padding bit set, so it decodes but is not canonical base64.
+	nonCanonical := &note.Note{Text: text, Sigs: []note.Signature{{Name: v.keyName, Hash: v.keyID, Base64: "TWF="}}}
+	_, err = v.CheckpointCosignature(nonCanonical)
 	if err == nil {
-		t.Error("CheckpointCosignature accepted a non-canonical signature line")
+		t.Fatal("CheckpointCosignature accepted a non-canonical signature line")
+	}
+	if !strings.Contains(err.Error(), "not canonical base64") {
+		t.Errorf("CheckpointCosignature with a non-canonical signature line: %s", err)
 	}
 }
 
