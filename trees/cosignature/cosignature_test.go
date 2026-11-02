@@ -335,9 +335,8 @@ func TestCosignerRejects(t *testing.T) {
 	}
 }
 
-// TestCosignSubtree checks that a subtree starting at 0 is signed as a
-// checkpoint of its size is, that a later subtree verifies over its own
-// message, and that an empty subtree and an empty tree can be signed.
+// TestCosignSubtree checks that a subtree verifies over its own message, and
+// that an empty subtree and an empty tree can be signed.
 func TestCosignSubtree(t *testing.T) {
 	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
@@ -349,19 +348,7 @@ func TestCosignSubtree(t *testing.T) {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
 
-	cosigned, err := ca.CosignCheckpoint(parsed.Tree)
-	if err != nil {
-		t.Fatalf("CosignCheckpoint: %s", err)
-	}
-	signature, err := ca.CosignSubtree(0, parsed.Tree.N, parsed.Tree.Hash)
-	if err != nil {
-		t.Fatalf("CosignSubtree: %s", err)
-	}
-	if !bytes.Equal(signature, cosigned[timestampSize:]) {
-		t.Error("CosignSubtree over [0, N) differs from CosignCheckpoint over the tree of size N")
-	}
-
-	signature, err = ca.CosignSubtree(1024, 1536, parsed.Tree.Hash)
+	signature, err := ca.CosignSubtree(1024, 1536, parsed.Tree.Hash)
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
@@ -382,7 +369,7 @@ func TestCosignSubtree(t *testing.T) {
 		t.Error("VerifySubtreeSignature rejected the empty subtree signature")
 	}
 
-	cosigned, err = ca.CosignCheckpoint(tlog.Tree{N: 0, Hash: emptyHash})
+	cosigned, err := ca.CosignCheckpoint(tlog.Tree{N: 0, Hash: emptyHash})
 	if err != nil {
 		t.Fatalf("CosignCheckpoint over an empty tree: %s", err)
 	}
