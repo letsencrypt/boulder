@@ -41,35 +41,35 @@ const subtreeLabel = "subtree/v1\n\x00"
 //	    uint64 end;
 //	    HashValue subtree_hash;
 //	} CosignedSubtree;
-func (subtree *Subtree) Marshal() ([]byte, error) {
-	err := trees.CheckName(subtree.CosignerName)
+func (s *Subtree) Marshal() ([]byte, error) {
+	err := trees.CheckName(s.CosignerName)
 	if err != nil {
 		return nil, fmt.Errorf("invalid cosigner_name: %w", err)
 	}
-	err = trees.CheckName(subtree.LogOrigin)
+	err = trees.CheckName(s.LogOrigin)
 	if err != nil {
 		return nil, fmt.Errorf("invalid log_origin: %w", err)
 	}
 
-	if subtree.Start < 0 || subtree.Start > trees.MaxSize {
-		return nil, fmt.Errorf("start is out of range: %d", subtree.Start)
+	if s.Start < 0 || s.Start > trees.MaxSize {
+		return nil, fmt.Errorf("start is out of range: %d", s.Start)
 	}
-	if subtree.End < 0 || subtree.End > trees.MaxSize {
-		return nil, fmt.Errorf("end is out of range: %d", subtree.End)
+	if s.End < 0 || s.End > trees.MaxSize {
+		return nil, fmt.Errorf("end is out of range: %d", s.End)
 	}
 
 	var b cryptobyte.Builder
 	b.AddBytes([]byte(subtreeLabel))
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte(subtree.CosignerName))
+		child.AddBytes([]byte(s.CosignerName))
 	})
-	b.AddUint64(subtree.Timestamp)
+	b.AddUint64(s.Timestamp)
 	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
-		child.AddBytes([]byte(subtree.LogOrigin))
+		child.AddBytes([]byte(s.LogOrigin))
 	})
-	b.AddUint64(uint64(subtree.Start))
-	b.AddUint64(uint64(subtree.End))
-	b.AddBytes(subtree.SubtreeHash[:])
+	b.AddUint64(uint64(s.Start))
+	b.AddUint64(uint64(s.End))
+	b.AddBytes(s.SubtreeHash[:])
 
 	return b.Bytes()
 }
