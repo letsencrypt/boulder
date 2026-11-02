@@ -18,7 +18,7 @@ func TestSubtreeRoundtrip(t *testing.T) {
 		CosignerName: "alpha",
 		Timestamp:    1234,
 		LogOrigin:    "beta",
-		Start:        999,
+		Start:        0,
 		End:          1000,
 		SubtreeHash:  [32]byte{},
 	}
@@ -43,10 +43,9 @@ func TestSubtreeRoundtrip(t *testing.T) {
 func TestMarshalErrors(t *testing.T) {
 	m := Subtree{
 		CosignerName: "Michigan",
-		Timestamp:    1337000,
 		LogOrigin:    "Illinois",
-		Start:        9,
-		End:          87654321,
+		Start:        8,
+		End:          16,
 		SubtreeHash:  [32]byte{},
 	}
 
@@ -74,17 +73,21 @@ func TestMarshalErrors(t *testing.T) {
 		{"space in LogOrigin", "invalid log_origin: contains ' '", func(target *Subtree) {
 			target.LogOrigin = "example.com/log 1"
 		}},
-		{"negative Start", "start is out of range: -1", func(target *Subtree) {
+		{"negative Start", "invalid subtree [-1, 16)", func(target *Subtree) {
 			target.Start = -1
 		}},
-		{"too-large Start", "start is out of range: 281474976710656", func(target *Subtree) {
-			target.Start = trees.MaxSize + 1
+		{"Start past End", "invalid subtree [17, 16)", func(target *Subtree) {
+			target.Start = 17
 		}},
-		{"negative End", "end is out of range: -1", func(target *Subtree) {
-			target.End = -1
+		{"misaligned subtree", "invalid subtree [8, 24)", func(target *Subtree) {
+			target.End = 24
 		}},
 		{"too-large End", "end is out of range: 281474976710656", func(target *Subtree) {
+			target.Start = 0
 			target.End = trees.MaxSize + 1
+		}},
+		{"nonzero Timestamp with nonzero Start", "timestamp 1337000 requires start 0, got 8", func(target *Subtree) {
+			target.Timestamp = 1337000
 		}},
 	}
 
@@ -97,7 +100,7 @@ func TestMarshalErrors(t *testing.T) {
 				t.Fatalf("got no error, want %q", tc.expected)
 			}
 			if err.Error() != tc.expected {
-				t.Errorf("marshal with short name: got %q, want %q", err, tc.expected)
+				t.Errorf("Marshal: got %q, want %q", err, tc.expected)
 			}
 		})
 	}
