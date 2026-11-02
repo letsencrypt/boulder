@@ -67,8 +67,10 @@ func marshalSubtreeMessage(name, origin string, start, end int64, subtreeHash tl
 }
 
 // marshalCheckpointMessage serializes the cosigned.Subtree for a checkpoint
-// cosignature, with start 0 and end the tree size as the MTC draft section
-// 5.3.1 requires for checkpoints.
+// cosignature, with start 0, as tlog-cosignature defines a checkpoint
+// cosignature.
+//
+// https://c2sp.org/tlog-cosignature#ml-dsa-44
 func marshalCheckpointMessage(name string, timestamp uint64, origin string, end int64, rootHash tlog.Hash) ([]byte, error) {
 	message := cosigned.Subtree{
 		CosignerName: name,
