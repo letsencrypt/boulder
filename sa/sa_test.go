@@ -525,6 +525,14 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	test.Assert(t, bytes.Equal(keyHashes[0].KeyHash, spkiHash[:]), "spki hash mismatch")
 }
 
+func TestGetCertificateInvalidSerial(t *testing.T) {
+	sa, _ := initSA(t)
+	_, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: "123"})
+	if err == nil || !errors.Is(err, berrors.NotFound) {
+		t.Errorf("GetCertificate(123): got %v, want NotFound error", err)
+	}
+}
+
 func TestAddCertificate(t *testing.T) {
 	sa, clk := initSA(t)
 
