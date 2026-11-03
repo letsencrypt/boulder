@@ -125,6 +125,7 @@ type testLog struct {
 	fs3     *bs3test.FakeS3
 	entries []issued
 	issuer  *x509.Certificate
+	signer  *signer
 	// signedNotes are the CA-signed checkpoints at each published tree size, in
 	// order. The last one is also stored at the checkpoint path in fs3.
 	signedNotes        [][]byte
@@ -139,15 +140,14 @@ func newTestLog(t *testing.T) *testLog {
 	if err != nil {
 		t.Fatalf("LoadCert: %s", err)
 	}
-	log := &testLog{fs3: bs3test.New(), issuer: issuer}
+	s := newSigner(t)
+	log := &testLog{fs3: bs3test.New(), issuer: issuer, signer: s}
 	frontier := &tiles.Frontier{}
 	err = frontier.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 	if err != nil {
 		t.Fatalf("AppendEntry: %s", err)
 	}
 	log.entries = append(log.entries, issued{})
-
-	s := newSigner(t)
 
 	for _, batch := range []int{3, 2, 252} {
 		for range batch {
@@ -168,27 +168,10 @@ func newTestLog(t *testing.T) *testLog {
 		}
 		log.signedNotes = append(log.signedNotes, signedNote)
 
-		msg, err := (&cosigned.Subtree{
-			CosignerName: s.logID.CACosignerName(),
-			Timestamp:    0,
-			LogOrigin:    s.logID.Origin(),
-			Start:        0,
-			End:          frontier.TreeSize(),
-			SubtreeHash:  root,
-		}).Marshal()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		subtreeSignature, err := s.caPrivKey.Sign(nil, msg, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		log.checkpointSubtrees = append(log.checkpointSubtrees, &treedb.CheckpointSubtreeModel{
 			ID:              int64(len(log.checkpointSubtrees) + 1),
 			MTCLogID:        testLogID.String(),
-			MTCASignature:   subtreeSignature,
+			MTCASignature:   s.signSubtree(t, 0, frontier.TreeSize(), root),
 			MirrorID:        &mirrorID,
 			MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over size %d", frontier.TreeSize()),
 			SubtreeStart:    0,
@@ -277,7 +260,7 @@ func (l *testLog) addSubtree(t *testing.T, start, end int64) *treedb.CheckpointS
 	st := &treedb.CheckpointSubtreeModel{
 		ID:              int64(len(l.checkpointSubtrees) + 1),
 		MTCLogID:        testLogID.String(),
-		MTCASignature:   fmt.Appendf(nil, "placeholder mtca signature over [%d, %d)", start, end),
+		MTCASignature:   l.signer.signSubtree(t, start, end, hash),
 		MirrorID:        &mirrorID,
 		MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over [%d, %d)", start, end),
 		SubtreeStart:    start,
@@ -385,6 +368,29 @@ func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.Checkpo
 	}
 
 	return signedNote
+}
+
+// signSubtree returns the CA's cosignature over the subtree [start, end) with
+// the given hash.
+func (s *signer) signSubtree(t *testing.T, start, end int64, hash tlog.Hash) []byte {
+	t.Helper()
+	msg, err := (&cosigned.Subtree{
+		CosignerName: s.logID.CACosignerName(),
+		Timestamp:    0,
+		LogOrigin:    s.logID.Origin(),
+		Start:        start,
+		End:          end,
+		SubtreeHash:  hash,
+	}).Marshal()
+	if err != nil {
+		t.Fatalf("marshaling cosigned subtree: %s", err)
+	}
+
+	sig, err := s.caPrivKey.Sign(nil, msg, nil)
+	if err != nil {
+		t.Fatalf("signing subtree: %s", err)
+	}
+	return sig
 }
 
 // verifyStandalone checks that certDER is a valid standalone certificate from
