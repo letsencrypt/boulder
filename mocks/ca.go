@@ -27,7 +27,7 @@ func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertifica
 	if err != nil {
 		return nil, err
 	}
-	return &capb.IssueCertificateResponse{DER: sampleDER.Raw}, nil
+	return &capb.IssueCertificateResponse{DER: sampleDER.Raw, EventID: req.EventID}, nil
 }
 
 type MockCRLGenerator struct{}
