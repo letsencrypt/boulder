@@ -264,7 +264,6 @@ type pool struct {
 // an enqueue time for measuring pool wait duration.
 type pendingEntry struct {
 	eventID string
-	enqTime time.Time
 	mtcle   *entry.MTCLogEntry
 	mtcpk   *pubkey.MTCPublicKey
 	ch      chan<- issuanceNotification
@@ -355,7 +354,6 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	ch := make(chan issuanceNotification, 1)
 	err = m.pool.append(pendingEntry{
 		eventID: req.EventID,
-		enqTime: m.clk.Now(),
 		mtcle:   mtcle,
 		mtcpk:   mtcpk,
 		ch:      ch,
