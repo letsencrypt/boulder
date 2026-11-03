@@ -113,8 +113,8 @@ func VerifyStandalone(certDER []byte, issuer *x509.Certificate) error {
 		tlog.RecordHash(mtcleMarshaled),
 		mtcProof.InclusionProof,
 		entryIndex,
-		int64(mtcProof.Start), //nolint:gosec // G115: UnmarshalMTCProof guarantees these are < 1<<48
-		int64(mtcProof.End),   //nolint:gosec // G115: UnmarshalMTCProof guarantees these are < 1<<48
+		mtcProof.Start,
+		mtcProof.End,
 	)
 	if err != nil {
 		return fmt.Errorf("evaluating subtree inclusion proof: %s", err)
