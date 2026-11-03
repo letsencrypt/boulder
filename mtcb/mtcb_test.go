@@ -412,7 +412,7 @@ func TestGetStandalone(t *testing.T) {
 	l := newTestLog(t)
 
 	// Call GetStandalone for a variety of subtrees. For each one, use a `latest` checkpoint that
-	// has a TreeSize equal to SubtreeEnd, to exercise the partial-tile fetch path, and where the
+	// has a TreeSize equal to subtree.SubtreeEnd, to exercise the partial-tile fetch path, and where the
 	// log has grown past it, a later one.
 	for _, tc := range []struct {
 		name    string
@@ -523,6 +523,24 @@ func TestGetStandaloneInvalidSubtree(t *testing.T) {
 				t.Errorf("GetStandalone: got %q, want it to contain %q", err, tc.expectErrContains)
 			}
 		})
+	}
+}
+
+func TestGetStandaloneInvalidSignature(t *testing.T) {
+	t.Parallel()
+	l := newTestLog(t)
+
+	subtree := *l.checkpointSubtrees[0]
+	subtree.MTCASignature[0] ^= 0xFF
+	m := testMTCB(t, l.fs3, []*treedb.CheckpointSubtreeModel{&subtree})
+	_, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{
+		MtcLogID:        testLogID.String(),
+		MtcSerialNumber: testSerial(t, 1),
+		MtcSubtreeID:    subtree.ID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid signature") {
+		t.Errorf("GetStandalone of a checkpoint subtree with invalid signature: got %v, want 'invalid signature' error",
+			err)
 	}
 }
 
