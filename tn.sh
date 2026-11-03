@@ -19,4 +19,4 @@ if [ -t 0 ] ; then
   TERMFLAGS="-it"
 fi
 
-exec docker compose -f docker-compose.yml -f docker-compose.next.yml run "${TERMFLAGS}" -e USE_VITESS --rm --name boulder_tests boulder ./test.sh -n "$@"
+exec docker compose -f docker-compose.yml -f docker-compose.next.yml run ${TERMFLAGS} -e USE_VITESS --rm --name boulder_tests boulder ./test.sh -n "$@"

@@ -19,4 +19,4 @@ if [ -t 0 ] ; then
   TERMFLAGS="-it"
 fi
 
-exec docker compose run "${TERMFLAGS}" -e USE_VITESS --rm --name boulder_tests boulder ./test.sh "$@"
+exec docker compose run ${TERMFLAGS} -e USE_VITESS --rm --name boulder_tests boulder ./test.sh "$@"
