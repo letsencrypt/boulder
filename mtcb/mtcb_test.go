@@ -34,12 +34,12 @@ import (
 	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
-	"github.com/letsencrypt/boulder/trees/verifymtc"
 )
 
 var (
@@ -69,7 +69,7 @@ func TestBuildCertificate(t *testing.T) {
 		Start:          0,
 		End:            8,
 		InclusionProof: []tlog.Hash{{1}, {2}, {3}},
-		Signatures: []*proof.SubtreeSignature{
+		Signatures: []*proof.Cosignature{
 			{CosignerID: testLogID.CAID().Bytes(), Signature: []byte("mtca sig")},
 			{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")},
 		},
@@ -168,12 +168,12 @@ func newTestLog(t *testing.T) *testLog {
 		}
 		log.signedNotes = append(log.signedNotes, signedNote)
 
-		msg, err := (&cosigned.Message{
+		msg, err := (&cosigned.Subtree{
 			CosignerName: s.logID.CACosignerName(),
 			Timestamp:    0,
 			LogOrigin:    s.logID.Origin(),
 			Start:        0,
-			End:          uint64(frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
+			End:          frontier.TreeSize(),
 			SubtreeHash:  root,
 		}).Marshal()
 		if err != nil {
@@ -391,7 +391,7 @@ func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.Checkpo
 // issuer, for expected, and that it carries dbSubtree's cosignatures.
 func verifyStandalone(t *testing.T, certDER []byte, issuer *x509.Certificate, expected issued, dbSubtree *treedb.CheckpointSubtreeModel) {
 	t.Helper()
-	err := verifymtc.Standalone(certDER, issuer)
+	err := mtx509.VerifyStandalone(certDER, issuer)
 	if err != nil {
 		t.Fatalf("verifymtc.Standalone: %s", err)
 	}

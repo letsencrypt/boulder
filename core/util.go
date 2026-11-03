@@ -37,6 +37,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/trees"
 )
 
 const Unspecified = "Unspecified"
@@ -228,8 +229,8 @@ func EncodeMTCSerial(logNumber uint16, index int64) (uint64, error) {
 	if logNumber == 0 {
 		return 0, errors.New("encoding MTC serial: log number is zero")
 	}
-	if index < 0 || index > 1<<48-1 {
-		return 0, fmt.Errorf("encoding MTC serial: index %d is not between 0 and 2^48-1", index)
+	if index < 0 || index > trees.MaxSize-1 {
+		return 0, fmt.Errorf("encoding MTC serial: index %d is not between 0 and 2^48-2", index)
 	}
 	return uint64(logNumber)<<48 | uint64(index), nil
 }

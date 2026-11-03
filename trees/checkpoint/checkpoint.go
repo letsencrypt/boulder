@@ -11,6 +11,8 @@ import (
 
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
+
+	"github.com/letsencrypt/boulder/trees"
 )
 
 // Checkpoint represents a tlog-checkpoint note text.
@@ -50,10 +52,7 @@ func checkNoteField(field string) error {
 // validate returns an error if the checkpoint's fields violate the
 // tlog-checkpoint requirements, nil otherwise.
 func (c *Checkpoint) validate() error {
-	if c.Origin == "" {
-		return errors.New("empty checkpoint origin")
-	}
-	err := checkNoteField(c.Origin)
+	err := trees.CheckName(c.Origin)
 	if err != nil {
 		return fmt.Errorf("validating checkpoint origin: %w", err)
 	}

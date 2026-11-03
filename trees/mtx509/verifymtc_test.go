@@ -201,7 +201,7 @@ func newBasicInputs(t *testing.T, mtca *testMTCA) *certInputs {
 		t.Fatal(err)
 	}
 
-	msg, err := (&cosigned.Message{
+	msg, err := (&cosigned.Subtree{
 		CosignerName: mtca.logID.CACosignerName(),
 		LogOrigin:    mtca.logID.Origin(),
 		Start:        subtreeStart,
@@ -209,7 +209,7 @@ func newBasicInputs(t *testing.T, mtca *testMTCA) *certInputs {
 		SubtreeHash:  subtreeHash,
 	}).Marshal()
 	if err != nil {
-		t.Fatalf("cosigned.Message.Marshal(): %s", err)
+		t.Fatalf("cosigned.Subtree.Marshal(): %s", err)
 	}
 
 	sig, err := mtca.privKey.Sign(nil, msg, nil)
@@ -225,7 +225,7 @@ func newBasicInputs(t *testing.T, mtca *testMTCA) *certInputs {
 			Start:          subtreeStart,
 			End:            subtreeEnd,
 			InclusionProof: inclusionProof,
-			Signatures: []*proof.SubtreeSignature{
+			Signatures: []*proof.Cosignature{
 				{CosignerID: mtca.logID.CAID().Bytes(), Signature: sig},
 			},
 		}}
@@ -255,7 +255,7 @@ func TestStandalone(t *testing.T) {
 			name: "valid with unrecognized mirror signature",
 			modify: func(s *certInputs, _ **x509.Certificate) {
 				s.proof.Signatures = append(s.proof.Signatures,
-					&proof.SubtreeSignature{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")})
+					&proof.Cosignature{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")})
 			},
 		},
 		{
@@ -311,7 +311,7 @@ func TestStandalone(t *testing.T) {
 		{
 			name: "no signature by the CA",
 			modify: func(s *certInputs, _ **x509.Certificate) {
-				s.proof.Signatures = []*proof.SubtreeSignature{
+				s.proof.Signatures = []*proof.Cosignature{
 					{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")},
 				}
 			},

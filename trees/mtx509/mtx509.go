@@ -128,7 +128,7 @@ func VerifyStandalone(certDER []byte, issuer *x509.Certificate) error {
 		return err
 	}
 
-	cosignedMessage, err := (&cosigned.Message{
+	cosignedMessage, err := (&cosigned.Subtree{
 		CosignerName: logID.CACosignerName(),
 		Timestamp:    0,
 		LogOrigin:    logID.Origin(),
