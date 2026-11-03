@@ -53,7 +53,7 @@ func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
 			Name:            "e_server_cert_valid_time_longer_than_200_days",
-			Description:     "TLS server certificates issued on or after on or after March 15, 2026 00:00 GMT/UTC must not have a validity period greater than 200 days",
+			Description:     "TLS server certificates issued on or after March 15, 2026 00:00 GMT/UTC must not have a validity period greater than 200 days",
 			Citation:        "https://github.com/cabforum/servercert/pull/553",
 			Source:          lint.CABFBaselineRequirements,
 			EffectiveDate:   util.CABF_SC081_FIRST_MILESTONE,

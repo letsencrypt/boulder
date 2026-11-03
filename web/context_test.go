@@ -155,6 +155,30 @@ func TestHostHeaderRewrite(t *testing.T) {
 	test.AssertNotError(t, err, "http.NewRequest failed")
 	req.Host = "localhost:123"
 	th.ServeHTTP(httptest.NewRecorder(), req)
+
+	// X-Forwarded-Host has default ports stripped like r.Host.
+	hhh.f = func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
+		t.Helper()
+		test.AssertEquals(t, r.Header.Get("X-Forwarded-Host"), "acme.example")
+	}
+	for _, forwarded := range []string{"acme.example:443", "acme.example:80", "acme.example"} {
+		req, err = http.NewRequest("GET", "/", &bytes.Reader{})
+		test.AssertNotError(t, err, "http.NewRequest failed")
+		req.Host = "backend.example:4001"
+		req.Header.Set("X-Forwarded-Host", forwarded)
+		th.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	// Non-default ports in X-Forwarded-Host are preserved.
+	hhh.f = func(_ *RequestEvent, _ http.ResponseWriter, r *http.Request) {
+		t.Helper()
+		test.AssertEquals(t, r.Header.Get("X-Forwarded-Host"), "acme.example:8443")
+	}
+	req, err = http.NewRequest("GET", "/", &bytes.Reader{})
+	test.AssertNotError(t, err, "http.NewRequest failed")
+	req.Host = "backend.example:4001"
+	req.Header.Set("X-Forwarded-Host", "acme.example:8443")
+	th.ServeHTTP(httptest.NewRecorder(), req)
 }
 
 type cancelHandler struct {

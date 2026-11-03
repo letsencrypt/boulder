@@ -2454,7 +2454,7 @@ func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.Get
 			MtcSubtreeID:    order.MtcSubtreeID,
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checking whether order %d is ready: %w", order.Id, err)
 		}
 		if resp.Ready {
 			order.Status = string(core.StatusValid)
@@ -2564,6 +2564,32 @@ func (ra *RegistrationAuthorityImpl) AddRateLimitOverride(ctx context.Context, r
 		Inserted: resp.Inserted,
 		Enabled:  resp.Enabled,
 		Existing: existing,
+	}, nil
+}
+
+func (ra *RegistrationAuthorityImpl) GetStandalone(ctx context.Context, req *rapb.StandaloneRequest) (*rapb.StandaloneResponse, error) {
+	if core.IsAnyNilOrZero(req.MtcLogID, req.MtcSerialNumber, req.MtcSubtreeID) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	if ra.mtcb == nil {
+		return nil, fmt.Errorf("handling GetStandalone for an MTC order: no MTCB backend")
+	}
+
+	mtcbResp, err := ra.mtcb.GetStandalone(ctx, &mtcbpb.StandaloneRequest{
+		MtcLogID:        req.MtcLogID,
+		MtcSerialNumber: req.MtcSerialNumber,
+		MtcSubtreeID:    req.MtcSubtreeID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if core.IsAnyNilOrZero(mtcbResp.CertDER) {
+		return nil, errIncompleteGRPCResponse
+	}
+	return &rapb.StandaloneResponse{
+		CertDER: mtcbResp.CertDER,
 	}, nil
 }
 

@@ -83,7 +83,7 @@ func TestValidSubtree(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := valid(tc.start, tc.end)
+			got := Valid(tc.start, tc.end)
 			if got != tc.expect {
 				t.Errorf("Valid(%d, %d) = %v, want %v", tc.start, tc.end, got, tc.expect)
 			}
@@ -105,7 +105,7 @@ func TestMTHAppendixVector(t *testing.T) {
 	h := sha256.New()
 	for end := int64(1); end <= 130; end++ {
 		for start := int64(0); start < end; start++ {
-			if !valid(start, end) {
+			if !Valid(start, end) {
 				continue
 			}
 			subtree := MTH(leaves[start:end])
@@ -190,7 +190,7 @@ func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
 		root := MTH(leaves[:n])
 		for end := int64(1); end <= n; end++ {
 			for start := int64(0); start < end; start++ {
-				if !valid(start, end) {
+				if !Valid(start, end) {
 					continue
 				}
 				proof, err := ConsistencyProof(start, end, n, reader)
@@ -437,7 +437,7 @@ func TestConsistencyProofRoundTrip(t *testing.T) {
 
 		for start := int64(0); start < n; start++ {
 			for end := start + 1; end <= n; end++ {
-				if !valid(start, end) {
+				if !Valid(start, end) {
 					continue
 				}
 				node := MTH(leaves[start:end])
@@ -495,19 +495,17 @@ func TestInclusionProofRoundTrip(t *testing.T) {
 	treeSize := 48
 	entries := seqLeaves(treeSize)
 	leaves := leafHashes(entries)
+	reader := buildHashReader(t, entries)
 
 	for start := int64(0); start <= int64(treeSize); start++ {
 		for end := start + 1; end <= int64(treeSize); end++ {
-			if !valid(start, end) {
+			if !Valid(start, end) {
 				continue
 			}
 			for i := start; i < end; i++ {
 				t.Run(fmt.Sprintf("index=%d,subtree=[%d,%d)", i, start, end), func(t *testing.T) {
 					rootHash := MTH(leaves[start:end])
-					inclusionProof, err := tlog.ProveRecord(
-						end-start,
-						i-start,
-						buildHashReader(t, entries[start:end]))
+					inclusionProof, err := InclusionProof(i, start, end, reader)
 					if err != nil {
 						t.Fatalf("computing inclusion proof: %s", err)
 					}
@@ -563,5 +561,36 @@ func TestInclusionProofRoundTrip(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestSubtreeInclusionProofRejectsBadInput(t *testing.T) {
+	reader := buildHashReader(t, seqLeaves(14))
+	cases := []struct {
+		name       string
+		entryIndex int64
+		start      int64
+		end        int64
+	}{
+		{"Misaligned subtree", 1, 1, 3},
+		{"Empty interval", 4, 4, 4},
+		{"Negative start", -1, -1, 0},
+		{"Index before subtree", 3, 4, 8},
+		{"Index at subtree end", 8, 4, 8},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := InclusionProof(tc.entryIndex, tc.start, tc.end, reader)
+			if err == nil {
+				t.Errorf("InclusionProof(%d, %d, %d) = nil error, want error", tc.entryIndex, tc.start, tc.end)
+			}
+		})
+	}
+}
+
+func TestSubtreeInclusionProofPropagatesReadError(t *testing.T) {
+	_, err := InclusionProof(5, 4, 8, failingHashReader{})
+	if err == nil {
+		t.Error("InclusionProof with a failing reader = nil error, want error")
 	}
 }

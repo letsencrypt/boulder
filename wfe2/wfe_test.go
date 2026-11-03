@@ -1130,6 +1130,11 @@ func TestHTTPMethods(t *testing.T) {
 			Path:    newNoncePath,
 			Allowed: getOrPost,
 		},
+		{
+			Name:    "MTC path should be POST only",
+			Path:    mtcPath + "1/2/3/4",
+			Allowed: postOnly,
+		},
 	}
 
 	// NOTE: We omit http.MethodOptions because all requests with this method are
@@ -4620,5 +4625,291 @@ func TestMaxCumulativeIdentifierLength(t *testing.T) {
 	expected := "Cumulative length of all identifier values was greater than 1000 bytes"
 	if detail != expected {
 		t.Errorf("newOrder with too long identifiers: got %q, want %q", detail, expected)
+	}
+}
+
+// mockRAWithGetOrder returns a specially-crafted order from a set of fixed
+// values in response to GetOrder()
+type mockRAWithGetOrder struct {
+	rapb.RegistrationAuthorityClient
+	clk clock.Clock
+}
+
+// testOrderPB is a mock-internal helper for creating order proto structures.
+// Includes important dates in the returned order structure using the mock RA's
+// clock. Test should match these timestamp calculations using the same clock.
+func (ra *mockRAWithGetOrder) testOrderPB(id int64, typ string) *corepb.Order {
+	now := ra.clk.Now()
+	created := now.AddDate(-30, 0, 0)
+	exp := now.AddDate(30, 0, 0)
+	orderPB := &corepb.Order{
+		Id:                     id,
+		RegistrationID:         1,
+		Created:                timestamppb.New(created),
+		Expires:                timestamppb.New(exp),
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
+		Status:                 string(core.StatusValid),
+		V2Authorizations:       []int64{1, 2},
+		Error:                  nil,
+		CertificateProfileName: "default",
+	}
+	switch typ {
+	case "classic":
+		orderPB.CertificateSerial = "4"
+	case "mtc":
+		orderPB.MtcLogID = "44947.4.1.0.3"
+		orderPB.MtcSerialNumber = 4
+		orderPB.MtcSubtreeID = 5
+	default:
+		orderPB.Status = string(core.StatusInvalid)
+	}
+	return orderPB
+}
+
+// The `Id` in any order returned by a call to this mock's GetOrder is always
+// the same as the input GetOrderRequest.OrderID, if within range of crafted
+// test order fixtures. Otherwise, GetOrder returns a berrors.NotFoundError
+func (ra *mockRAWithGetOrder) GetOrder(_ context.Context, req *rapb.GetOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	validClassicOrder := ra.testOrderPB(req.OrderID, "classic")
+	validMTCOrder := ra.testOrderPB(req.OrderID, "mtc")
+
+	// modify Status and some Mtc details for a not-yet-valid order
+	notYetValidMTCOrder := ra.testOrderPB(req.OrderID, "mtc")
+	notYetValidMTCOrder.Status = string(core.StatusProcessing)
+	notYetValidMTCOrder.MtcSerialNumber = 0
+	notYetValidMTCOrder.MtcSubtreeID = 0
+
+	// modify MtcSerialNumber to trigger the mock to return an error
+	validMTCOrderMissingStandalone := ra.testOrderPB(req.OrderID, "mtc")
+	validMTCOrderMissingStandalone.MtcSerialNumber = 666
+
+	var orders = []*corepb.Order{
+		{}, // index zero is empty
+		validClassicOrder,
+		validMTCOrder,
+		notYetValidMTCOrder,
+		validMTCOrderMissingStandalone,
+	}
+	if 0 < req.OrderID && req.OrderID <= 4 {
+		return orders[req.OrderID], nil
+	}
+	return nil, berrors.NotFoundError("No order found for ID %d", req.OrderID)
+}
+
+func (ra *mockRAWithGetOrder) GetStandalone(_ context.Context, req *rapb.StandaloneRequest, _ ...grpc.CallOption) (*rapb.StandaloneResponse, error) {
+	if req.MtcSerialNumber == 666 {
+		return &rapb.StandaloneResponse{}, errors.New("mock error")
+	}
+	return &rapb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
+}
+
+func TestMTCGetOrder(t *testing.T) {
+	t.Cleanup(features.Reset)
+
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	// This fake clock is assigned as the RA mock clock, and this expiry
+	// timestamp calculation must match that mock.
+	orderExpiry := fc.Now().AddDate(30, 0, 0).UTC().Format(time.RFC3339Nano)
+
+	testCases := []struct {
+		name   string
+		path   string
+		expect string
+	}{
+		{
+			name:   "Classic Order",
+			path:   "1/1",
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/1", "profile": "default", "certificate": "http://localhost/acme/cert/4" }`,
+		},
+		{
+			name:   "MTC Order",
+			path:   "1/2",
+			expect: `{ "status": "valid", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/2", "profile": "default", "certificate": "http://localhost/acme/mtc/1/2/44947.4.1.0.3/4" }`,
+		},
+		{
+			name:   "Not Ready MTC Order",
+			path:   "1/3",
+			expect: `{ "status": "processing", "expires": "` + orderExpiry + `", "identifiers": [ { "type": "dns", "value": "example.com" } ], "authorizations": [ "http://localhost/acme/authz/1/1", "http://localhost/acme/authz/1/2" ], "finalize": "http://localhost/acme/finalize/1/3", "profile": "default" }`,
+		},
+		{
+			name:   "Not Found Order",
+			path:   "1/9",
+			expect: `{"type": "urn:ietf:params:acme:error:malformed","detail": "No order for ID 9","status": 404}`,
+		},
+	}
+
+	wfe, _, signer := setupWFE(t)
+
+	makePost := func(keyID int64, path, body string) *http.Request {
+		_, _, jwsBody := signer.byKeyID(keyID, nil, fmt.Sprintf("http://localhost/%s", path), body)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+
+	features.Set(features.Config{WFECallsRAForGetOrder: true})
+
+	mockRA := &mockRAWithGetOrder{}
+	mockRA.clk = fc
+	wfe.ra = mockRA
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			responseWriter := httptest.NewRecorder()
+			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, makePost(1, tc.path, ""))
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.expect)
+		})
+	}
+}
+
+func TestMerkleTreeCertificate(t *testing.T) {
+	t.Parallel()
+
+	type expectResponse struct {
+		isJSON bool
+		expect string
+	}
+
+	testCases := []struct {
+		name    string
+		pathAdd string
+		expResp expectResponse
+	}{
+		{
+			name:    "Request using unparsable acctID",
+			pathAdd: "k/2/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "not found", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using unparsable orderID",
+			pathAdd: "1/k/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "not found", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using unparsable MTCSerial",
+			pathAdd: "1/2/44947.4.1.0.3/k",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "not found", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using non-existent Order ID",
+			pathAdd: "1/9/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No order for ID 9", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using wrong Account ID for extant MTC Order",
+			pathAdd: "9/2/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:unauthorized", "detail": "Not allowed for ID 1", "status": 403}`,
+			},
+		},
+		{
+			name:    "Request using wrong Account ID for extant Classic Order",
+			pathAdd: "9/1/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:unauthorized", "detail": "Not allowed for ID 1", "status": 403}`,
+			},
+		},
+		{
+			name:    "Request using wrong Log ID for extant MTC Order",
+			pathAdd: "1/2/44947.4.1.0.9/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "MTC request URL details do not match order details", "status": 400}`,
+			},
+		},
+		{
+			name:    "Request using wrong Log ID for extant Classic Order",
+			pathAdd: "1/1/44947.4.1.0.9/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle tree certificate for order ID 1", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using wrong Serial Number for extant MTC Order",
+			pathAdd: "1/2/44947.4.1.0.3/9",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "MTC request URL details do not match order details", "status": 400}`,
+			},
+		},
+		{
+			name:    "Request using wrong Serial Number for extant Classic Order",
+			pathAdd: "1/1/44947.4.1.0.3/9",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No merkle tree certificate for order ID 1", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request using trigger-mock Serial Number for error GetStandalone response",
+			pathAdd: "1/4/44947.4.1.0.3/666",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:serverInternal", "detail": "Failed to retrieve merkle tree certificate", "status": 500}`,
+			},
+		},
+		{
+			name:    "Request for order in processing",
+			pathAdd: "1/3/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: true,
+				expect: `{"type": "urn:ietf:params:acme:error:malformed", "detail": "No order for ID 3", "status": 404}`,
+			},
+		},
+		{
+			name:    "Request is Correct",
+			pathAdd: "1/2/44947.4.1.0.3/4",
+			expResp: expectResponse{
+				isJSON: false,
+				expect: "-----BEGIN CERTIFICATE-----\nAgMFBwsNERMXHR8dFxMRDQsHBQMC\n-----END CERTIFICATE-----\n",
+			},
+		},
+	}
+
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
+	wfe, _, signer := setupWFE(t)
+	mux := wfe.Handler(metrics.NoopRegisterer)
+
+	makePost := func(keyID int64, path, body string) *http.Request {
+		_, _, jwsBody := signer.byKeyID(keyID, nil, fmt.Sprintf("http://localhost%s", path), body)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+
+	mockRA := &mockRAWithGetOrder{}
+	mockRA.clk = fc
+	wfe.ra = mockRA
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			responseWriter := httptest.NewRecorder()
+			requestPath := mtcPath + tc.pathAdd
+			mux.ServeHTTP(responseWriter, makePost(1, requestPath, ""))
+
+			if tc.expResp.isJSON {
+				test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.expResp.expect)
+			} else {
+				test.AssertEquals(t, responseWriter.Body.String(), tc.expResp.expect)
+			}
+		})
 	}
 }

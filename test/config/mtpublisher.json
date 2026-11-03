@@ -7,13 +7,14 @@
 		"pollInterval": "1s",
 		"logID": {
 			"caID": "44947.4.1",
-			"logNumber": 44
+			"logNumber": 3
 		},
 		"mtcaCertFile": "test/certs/mtpki/mtca1.cert.pem",
 		"mirror": {
 			"id": "32473.9",
 			"publicKeyFile": "test/certs/sunlight/mirror.pub.pem",
 			"baseURL": "http://boulder-sunlight:4700",
+			"monitoringPrefix": "http://boulder-seaweedfs:8333/boulder-sunlight/mirror",
 			"timeout": "15s"
 		},
 		"s3": {

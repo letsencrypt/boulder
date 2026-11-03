@@ -30,7 +30,14 @@ type CRLProfile struct {
 	validityInterval time.Duration
 	maxBackdate      time.Duration
 
+	// lints is the registry of lints to run against CRLs issued under this
+	// profile. It carries no lint configuration of its own: at issuance time
+	// it is combined with a configuration derived from lintConfig.
 	lints lint.Registry
+	// lintConfig is the in-memory contents of this profile's zlint config
+	// file. At issuance time it is augmented with the issuing Issuer's
+	// certificate via WithIssuer.
+	lintConfig linter.Config
 }
 
 func NewCRLProfile(config CRLProfileConfig) (*CRLProfile, error) {
@@ -49,18 +56,17 @@ func NewCRLProfile(config CRLProfileConfig) (*CRLProfile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating lint registry: %w", err)
 	}
-	if config.LintConfig != "" {
-		lintconfig, err := lint.NewConfigFromFile(config.LintConfig)
-		if err != nil {
-			return nil, fmt.Errorf("loading zlint config file: %w", err)
-		}
-		reg.SetConfiguration(lintconfig)
+
+	lintConfig, err := linter.LoadConfigFile(config.LintConfig)
+	if err != nil {
+		return nil, fmt.Errorf("loading zlint config file: %w", err)
 	}
 
 	return &CRLProfile{
 		validityInterval: config.ValidityInterval.Duration,
 		maxBackdate:      config.MaxBackdate.Duration,
 		lints:            reg,
+		lintConfig:       lintConfig,
 	}, nil
 }
 
@@ -108,7 +114,12 @@ func (i *Issuer) IssueCRL(prof *CRLProfile, req *CRLRequest) ([]byte, error) {
 	}
 	template.ExtraExtensions = append(template.ExtraExtensions, idp)
 
-	err = i.Linter.CheckCRL(template, prof.lints)
+	lintConfig, err := prof.lintConfig.WithIssuer(i.Cert.Certificate)
+	if err != nil {
+		return nil, fmt.Errorf("building lint config: %w", err)
+	}
+
+	err = i.Linter.CheckCRL(template, prof.lints, lintConfig)
 	if err != nil {
 		return nil, err
 	}

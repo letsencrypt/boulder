@@ -306,7 +306,7 @@ func TestStandalone(t *testing.T) {
 			modify: func(s *certInputs, _ **x509.Certificate) {
 				s.proof.Extensions = []byte{0, 1, 0, 0}
 			},
-			wantErr: "unrecognized extensions",
+			wantErr: "extensions are not supported",
 		},
 		{
 			name: "no signature by the CA",

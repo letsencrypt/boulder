@@ -16,3 +16,13 @@ func IsCodeSigning(policies []asn1.ObjectIdentifier) bool {
 
 	return false
 }
+
+func IsEVCodeSigning(policies []asn1.ObjectIdentifier) bool {
+	for _, policy := range policies {
+		if policy.String() == evCodeSigningPolicy {
+			return true
+		}
+	}
+
+	return false
+}

@@ -1,5 +1,5 @@
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -127,6 +127,9 @@ var (
 	QEVCPwPolicyOID            = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 4}
 	QNCPwPolicyOID             = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 5}
 	QNCPwgenPolicyOID          = asn1.ObjectIdentifier{0, 4, 0, 194112, 1, 6}
+	IdEtsiPsd2Statem           = asn1.ObjectIdentifier{0, 4, 0, 19495, 2}    // ETSI TS 119 495 V1.1.2, Annex A: id-etsi-psd2-qcStatement
+	IdEtsiPsd2RolePspCb        = asn1.ObjectIdentifier{0, 4, 0, 19495, 1, 5} // ETSI TS 119 495, Annex A: id-psd2-role-psp-cb (Central Bank)
+	IdEtsiPsd2RolePspPa        = asn1.ObjectIdentifier{0, 4, 0, 19495, 1, 6} // ETSI TS 119 495, Annex A: id-psd2-role-psp-pa (Public authority)
 )
 
 const (

@@ -79,8 +79,10 @@ func main2() error {
 	// https://letsencrypt.org/docs/oids/
 	// 44947 is ISRG; 44947.4.1 will be temporarily for our prototype MTC implementation, with ".1"
 	// representing one CA instance.
-	// Throw away the error because we know this test string will parse correctly.
-	mtcaID, _ := reloid.FromString("44947.4.1")
+	mtcaID, err := reloid.FromString("44947.4.1")
+	if err != nil {
+		return err
+	}
 
 	template := &x509.Certificate{
 		// TODO: decide how to generate serial number for MTCA certificates; presumably random?
@@ -150,9 +152,8 @@ func mtcaSubject(relativeOID *reloid.RelativeOID) pkix.Name {
 	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-certification-authority-ide
 	// The attribute's value is a RELATIVE-OID containing the trust anchor ID's ASN.1 representation.
 	//
-	// https://www.ietf.org/archive/id/draft-housley-asn1-layman-guide-03.html#section-2
-	// 	Type					Decimal Tag Number	Hexadecimal Tag Number
-	// 	RELATIVE-OID	13									0d
+	// https://www.itu.int/itu-t/recommendations/rec.aspx?rec=x.680
+	// 33.2 This type has a tag which is universal class, number 13.
 	tagRelativeOID := 13
 
 	attributes := []pkix.AttributeTypeAndValue{

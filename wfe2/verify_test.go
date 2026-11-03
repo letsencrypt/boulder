@@ -718,6 +718,69 @@ func (rs requestSigner) signExtraHeaders(
 	return parsedJWS, body
 }
 
+func TestValidPOSTURLForwardedHeaders(t *testing.T) {
+	t.Parallel()
+	wfe, _, signer := setupWFE(t)
+
+	testCases := []struct {
+		name      string
+		signedURL string
+		xHost     string
+		xProto    string
+		wantErr   bool
+	}{
+		{
+			name:      "no forwarded headers",
+			signedURL: "http://localhost/test-path",
+		},
+		{
+			name:      "forwarded host only",
+			signedURL: "http://acme.example/test-path",
+			xHost:     "acme.example",
+		},
+		{
+			name:      "forwarded proto only",
+			signedURL: "https://localhost/test-path",
+			xProto:    "https",
+		},
+		{
+			name:      "forwarded host and proto",
+			signedURL: "https://acme.example/test-path",
+			xHost:     "acme.example",
+			xProto:    "https",
+		},
+		{
+			name:      "signed for request host despite forwarded host",
+			signedURL: "http://localhost/test-path",
+			xHost:     "acme.example",
+			wantErr:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jws, _, body := signer.embeddedJWK(nil, tc.signedURL, "")
+			request := makePostRequestWithPath("test-path", body)
+			if tc.xHost != "" {
+				request.Header.Set("X-Forwarded-Host", tc.xHost)
+			}
+			if tc.xProto != "" {
+				request.Header.Set("X-Forwarded-Proto", tc.xProto)
+			}
+
+			err := wfe.validPOSTURL(request, jws.Signatures[0].Header)
+			if tc.wantErr {
+				test.AssertError(t, err, "validPOSTURL succeeded for a mismatched url")
+				test.AssertErrorIs(t, err, berrors.Malformed)
+				return
+			}
+			test.AssertNotError(t, err, "validPOSTURL failed")
+		})
+	}
+}
+
 func TestValidPOSTURL(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 

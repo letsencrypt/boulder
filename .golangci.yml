@@ -68,9 +68,7 @@ linters:
       checks:
         - all
         # TODO: Identify, fix, and remove violations of most of these rules
-        - -S1029  # Range over the string directly
         - -SA1019 # Using a deprecated function, variable, constant or field
-        - -SA6003 # Converting a string to a slice of runes before ranging over it
         - -ST1000 # Incorrect or missing package comment
         - -ST1003 # Poorly chosen identifier
         - -ST1005 # Incorrectly formatted error string

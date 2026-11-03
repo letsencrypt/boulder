@@ -137,7 +137,7 @@ func newCAArgs(t *testing.T) *caArgs {
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
 			"e_sub_cert_aia_does_not_contain_ocsp_url",
-			"w_ct_sct_policy_count_unsatisfied",
+			"n_ct_sct_policy_count_unsatisfied",
 			"n_subject_common_name_included",
 		},
 	})
@@ -151,7 +151,7 @@ func newCAArgs(t *testing.T) *caArgs {
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
 			"e_sub_cert_aia_does_not_contain_ocsp_url",
-			"w_ct_sct_policy_count_unsatisfied",
+			"n_ct_sct_policy_count_unsatisfied",
 			"w_ext_subject_key_identifier_missing_sub_cert",
 		},
 	})

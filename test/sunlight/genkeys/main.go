@@ -36,7 +36,7 @@ const mirrorName = "oid/1.3.6.1.4.1.32473.9"
 // caID and logNumber identify the test MTCA and its issuance log, matching the
 // logID in the mtca and mtpublisher configs.
 const caID = "44947.4.1"
-const logNumber = 44
+const logNumber = 3
 
 // cosignatureVKey encodes an ML-DSA-44 cosignature verifier key in the note
 // vkey form sunlight's log lists require.

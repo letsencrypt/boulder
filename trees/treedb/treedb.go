@@ -24,8 +24,6 @@ type CheckpointModel struct {
 	MirrorSignature []byte  `db:"mirrorSignature"`
 	TreeSize        int64   `db:"treeSize"`
 	RootHash        []byte  `db:"rootHash"`
-	SubtreeID1      *int64  `db:"subtreeID1"`
-	SubtreeID2      *int64  `db:"subtreeID2"`
 }
 
 func (c *CheckpointModel) Valid() error {
@@ -55,8 +53,8 @@ type CheckpointSubtreeModel struct {
 	MTCASignature   []byte  `db:"mtcaSignature"`
 	MirrorID        *string `db:"mirrorID"`
 	MirrorSignature []byte  `db:"mirrorSignature"`
-	SubtreeStart    uint64  `db:"subtreeStart"`
-	SubtreeEnd      uint64  `db:"subtreeEnd"`
+	SubtreeStart    int64   `db:"subtreeStart"`
+	SubtreeEnd      int64   `db:"subtreeEnd"`
 	SubtreeHash     []byte  `db:"subtreeHash"`
 }
 
@@ -64,7 +62,8 @@ func (s *CheckpointSubtreeModel) Valid() error {
 	if len(s.MTCLogID) == 0 {
 		return errors.New("MTCLogID is empty")
 	}
-	if s.SubtreeEnd <= s.SubtreeStart ||
+	if s.SubtreeStart < 0 ||
+		s.SubtreeEnd <= s.SubtreeStart ||
 		s.SubtreeEnd >= 1<<48 {
 		return fmt.Errorf("Subtree [%d, %d) is invalid", s.SubtreeStart, s.SubtreeEnd)
 	}
@@ -90,7 +89,7 @@ type Impl struct {
 // table mappings with borp.
 func New(dbMap *db.WrappedMap) *Impl {
 	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
-	dbMap.AddTableWithName(CheckpointSubtreeModel{}, "checkpointSubtrees").SetKeys(true, "ID")
+	dbMap.AddTableWithName(CheckpointSubtreeModel{}, "subtrees").SetKeys(true, "ID")
 	return &Impl{dbMap}
 }
 
@@ -98,8 +97,7 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 	var latest CheckpointModel
 	err := i.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash,
-		        subtreeID1, subtreeID2
+		        mirrorSignature, treeSize, rootHash
 		 FROM latestCheckpoint JOIN checkpoints
 		 USING(id)
 		 WHERE latestCheckpoint.mtcLogID = ? AND
@@ -139,19 +137,36 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 	return nil
 }
 
+func (i *Impl) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	r, err := i.db.ExecContext(ctx,
+		"UPDATE subtrees SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
+		mirrorID, mirrorSignature, id, mtcLogID)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("getting RowsAffected: %s", err)
+	}
+	if n != 1 {
+		return fmt.Errorf("adding mirror signature to subtree %d: %d rows affected (want 1 row affected)", id, n)
+	}
+	return nil
+}
+
 func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*CheckpointSubtreeModel, error) {
 	var checkpointSubtree CheckpointSubtreeModel
 	err := i.db.SelectOne(ctx, &checkpointSubtree,
 		`SELECT id, mtcLogID, mtcaSignature,
 				mirrorID, mirrorSignature,
 				subtreeStart, subtreeEnd, subtreeHash
-		 FROM checkpointSubtrees
+		 FROM subtrees
 		 WHERE mtcLogID = ? AND
 		 	id = ?`,
 		mtcLogID,
 		id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting checkpoint subtree %d of %q: %w", id, mtcLogID, err)
 	}
 	return &checkpointSubtree, nil
 }
@@ -163,10 +178,33 @@ func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int
 func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSubtreeModel) (int64, error) {
 	err := i.db.Insert(ctx, model)
 	if err != nil {
-		return 0, fmt.Errorf("inserting into checkpointSubtrees table: %s", err)
+		return 0, fmt.Errorf("inserting into subtrees table: %s", err)
 	}
 
 	return model.ID, nil
+}
+
+// GetUnsignedSubtrees returns up to limit of the log's newest subtrees that end
+// at or before maxEnd and lack a mirror signature.
+func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*CheckpointSubtreeModel, error) {
+	var subtrees []*CheckpointSubtreeModel
+	_, err := i.db.Select(ctx, &subtrees,
+		`SELECT id, mtcLogID, mtcaSignature,
+				mirrorID, mirrorSignature,
+				subtreeStart, subtreeEnd, subtreeHash
+		 FROM subtrees
+		 WHERE mtcLogID = ? AND
+		 	mirrorID IS NULL AND
+		 	subtreeEnd <= ?
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		mtcLogID,
+		maxEnd,
+		limit)
+	if err != nil {
+		return nil, err
+	}
+	return subtrees, nil
 }
 
 // WithTransaction calls `github.com/letsencrypt/boulder/db.WithTransaction` for the given

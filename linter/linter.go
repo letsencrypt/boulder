@@ -67,12 +67,17 @@ func CheckCRL(tbs *x509.RevocationList, realIssuer *x509.Certificate, realSigner
 		return err
 	}
 
+	config, err := Config{}.WithIssuer(realIssuer)
+	if err != nil {
+		return err
+	}
+
 	reg, err := NewRegistry(skipLints)
 	if err != nil {
 		return err
 	}
 
-	return linter.CheckCRL(tbs, reg)
+	return linter.CheckCRL(tbs, reg, config)
 }
 
 // Linter is capable of linting a to-be-signed (TBS) certificate. It does so by
@@ -171,7 +176,18 @@ func (l *Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, re
 // CheckCRL signs the given RevocationList template using the Linter's fake
 // issuer cert and private key, then runs the resulting CRL through all CRL
 // lints in the registry. It returns an error if any check fails.
-func (l *Linter) CheckCRL(tbs *x509.RevocationList, reg lint.Registry) error {
+func (l *Linter) CheckCRL(tbs *x509.RevocationList, reg lint.Registry, config Config) error {
+	if reg == nil {
+		reg = lint.GlobalRegistry()
+	}
+
+	lintConfig, err := config.build()
+	if err != nil {
+		return err
+	}
+
+	reg = configuredRegistry{reg, lintConfig}
+
 	crl, err := makeLintCRL(tbs, l.issuer, l.signer)
 	if err != nil {
 		return err
