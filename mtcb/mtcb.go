@@ -268,7 +268,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		Start:          dbSubtree.SubtreeStart,
 		End:            dbSubtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
-		Signatures: []*proof.SubtreeSignature{
+		Signatures: []*proof.Cosignature{
 			{CosignerID: requestedLogID.CAID().Bytes(), Signature: dbSubtree.MTCASignature},
 			{CosignerID: mirrorID.Bytes(), Signature: dbSubtree.MirrorSignature},
 		},

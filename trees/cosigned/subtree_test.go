@@ -13,12 +13,12 @@ import (
 	"github.com/letsencrypt/boulder/trees"
 )
 
-func TestMessageRoundtrip(t *testing.T) {
-	m := Message{
+func TestSubtreeRoundtrip(t *testing.T) {
+	m := Subtree{
 		CosignerName: "alpha",
 		Timestamp:    1234,
 		LogOrigin:    "beta",
-		Start:        999,
+		Start:        0,
 		End:          1000,
 		SubtreeHash:  [32]byte{},
 	}
@@ -41,44 +41,53 @@ func TestMessageRoundtrip(t *testing.T) {
 }
 
 func TestMarshalErrors(t *testing.T) {
-	m := Message{
+	m := Subtree{
 		CosignerName: "Michigan",
-		Timestamp:    1337000,
 		LogOrigin:    "Illinois",
-		Start:        9,
-		End:          87654321,
+		Start:        8,
+		End:          16,
 		SubtreeHash:  [32]byte{},
 	}
 
 	type testCase struct {
 		name, expected string
-		distorter      func(target *Message)
+		distorter      func(target *Subtree)
 	}
 
 	testCases := []testCase{
-		{"short CosignerName", "invalid cosigner_name length 0", func(target *Message) {
+		{"short CosignerName", "invalid cosigner_name: empty", func(target *Subtree) {
 			target.CosignerName = ""
 		}},
-		{"long CosignerName", "invalid cosigner_name length 256", func(target *Message) {
+		{"long CosignerName", "invalid cosigner_name: 256 bytes, want at most 255", func(target *Subtree) {
 			target.CosignerName = strings.Repeat("a", 256)
 		}},
-		{"short LogOrigin", "invalid log_origin length 0", func(target *Message) {
+		{"plus in CosignerName", "invalid cosigner_name: contains '+'", func(target *Subtree) {
+			target.CosignerName = "example.com/cosigner+1"
+		}},
+		{"short LogOrigin", "invalid log_origin: empty", func(target *Subtree) {
 			target.LogOrigin = ""
 		}},
-		{"long LogOrigin", "invalid log_origin length 256", func(target *Message) {
+		{"long LogOrigin", "invalid log_origin: 256 bytes, want at most 255", func(target *Subtree) {
 			target.LogOrigin = strings.Repeat("a", 256)
 		}},
-		{"negative Start", "start is out of range: -1", func(target *Message) {
+		{"space in LogOrigin", "invalid log_origin: contains ' '", func(target *Subtree) {
+			target.LogOrigin = "example.com/log 1"
+		}},
+		{"negative Start", "invalid subtree [-1, 16)", func(target *Subtree) {
 			target.Start = -1
 		}},
-		{"too-large Start", "start is out of range: 281474976710656", func(target *Message) {
-			target.Start = trees.MaxSize + 1
+		{"Start past End", "invalid subtree [17, 16)", func(target *Subtree) {
+			target.Start = 17
 		}},
-		{"negative End", "end is out of range: -1", func(target *Message) {
-			target.End = -1
+		{"misaligned subtree", "invalid subtree [8, 24)", func(target *Subtree) {
+			target.End = 24
 		}},
-		{"too-large End", "end is out of range: 281474976710656", func(target *Message) {
+		{"too-large End", "end is out of range: 281474976710656", func(target *Subtree) {
+			target.Start = 0
 			target.End = trees.MaxSize + 1
+		}},
+		{"nonzero Timestamp with nonzero Start", "timestamp 1337000 requires start 0, got 8", func(target *Subtree) {
+			target.Timestamp = 1337000
 		}},
 	}
 
@@ -91,15 +100,15 @@ func TestMarshalErrors(t *testing.T) {
 				t.Fatalf("got no error, want %q", tc.expected)
 			}
 			if err.Error() != tc.expected {
-				t.Errorf("marshal with short name: got %q, want %q", err, tc.expected)
+				t.Errorf("Marshal: got %q, want %q", err, tc.expected)
 			}
 		})
 	}
 }
 
-// unmarshal unmarshals the input bytes and returns a *Message.
-func unmarshal(input []byte) (*Message, error) {
-	var out Message
+// unmarshal unmarshals the input bytes and returns a *Subtree.
+func unmarshal(input []byte) (*Subtree, error) {
+	var out Subtree
 
 	s := cryptobyte.String(input)
 	var label []byte

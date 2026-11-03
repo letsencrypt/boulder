@@ -67,7 +67,7 @@ func TestBuildCertificate(t *testing.T) {
 		Start:          0,
 		End:            8,
 		InclusionProof: []tlog.Hash{{1}, {2}, {3}},
-		Signatures: []*proof.SubtreeSignature{
+		Signatures: []*proof.Cosignature{
 			{CosignerID: testLogID.CAID().Bytes(), Signature: []byte("mtca sig")},
 			{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")},
 		},
