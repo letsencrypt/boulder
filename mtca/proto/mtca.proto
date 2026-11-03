@@ -25,9 +25,8 @@ message IssueRequest {
 }
 
 message IssueResponse {
-  // Next unused field number: 5
+  // Next unused field number: 4
   string mtcLogID = 1;
   uint64 mtcSerialNumber = 2;
   int64 mtcSubtreeID = 3;
-  string eventID = 4;
 }

@@ -32,7 +32,6 @@ message IssueCertificateRequest {
 
 message IssueCertificateResponse {
   bytes DER = 1;
-  string eventID = 2;
 }
 
 // CRLGenerator signs CRLs. It is separated for the same reason as OCSPGenerator.

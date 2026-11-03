@@ -458,7 +458,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 		return nil, fmt.Errorf("persisting cert to database: %w", err)
 	}
 
-	return &capb.IssueCertificateResponse{DER: certDER, EventID: req.EventID}, nil
+	return &capb.IssueCertificateResponse{DER: certDER}, nil
 }
 
 // pickIssuer returns an issuer which is willing to issue certificates for the

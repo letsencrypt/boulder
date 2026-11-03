@@ -260,8 +260,7 @@ type pool struct {
 }
 
 // pendingEntry represents a pending entry in the pool, along with a channel to
-// notify a pending RPC. Each pendingEntry carries an RA-generated eventID, and
-// an enqueue time for measuring pool wait duration.
+// notify a pending RPC. Each pendingEntry carries an RA-generated eventID.
 type pendingEntry struct {
 	eventID string
 	mtcle   *entry.MTCLogEntry
@@ -373,7 +372,6 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 			MtcLogID:        m.logID.String(),
 			MtcSerialNumber: res.serialNumber,
 			MtcSubtreeID:    res.subtreeID,
-			EventID:         res.eventID,
 		}, nil
 	}
 }

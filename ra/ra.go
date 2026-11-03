@@ -994,11 +994,6 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("issuing MTC: %s", err)
 	}
 
-	// simple consistency check that the response event matches our request event
-	if resp.EventID != "" && resp.EventID != eventID {
-		ra.log.Warningf("event IDs should not be mismatched. Req: %s, Resp: %s", eventID, resp.EventID)
-	}
-
 	_, err = ra.SA.FinalizeMTCOrder(ctx, &sapb.FinalizeMTCOrderRequest{
 		Id:              order.Id,
 		MtcLogID:        resp.MtcLogID,
@@ -1009,7 +1004,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("finalizing MTC order: %s", err)
 	}
 
-	ra.log.Infof("issued MTC from %s: %d, event: %s", resp.MtcLogID, resp.MtcSerialNumber, resp.EventID)
+	ra.log.Infof("issued MTC from %s: %d, event: %s", resp.MtcLogID, resp.MtcSerialNumber, eventID)
 	return nil
 }
 
@@ -1326,11 +1321,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	resp, err := ra.CA.IssueCertificate(ctx, issueReq)
 	if err != nil {
 		return nil, err
-	}
-
-	// simple consistency check that the response event matches our request event
-	if resp.EventID != "" && resp.EventID != eventID {
-		ra.log.Warningf("event IDs should not be mismatched. Req: %s, Resp: %s", eventID, resp.EventID)
 	}
 
 	parsedCertificate, err := x509.ParseCertificate(resp.DER)
