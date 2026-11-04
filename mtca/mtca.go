@@ -30,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/pubkey"
+	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -575,28 +576,55 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
 
-	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
-	// always using 0 for subtreeStart
-	subtreeSignature, err := m.cosigner.CosignSubtree(0, m.frontier.TreeSize(), newRootHash)
+	coveringSubtrees, err := subtree.FindSubtrees(latest.TreeSize, candidate.TreeSize())
 	if err != nil {
-		return fmt.Errorf("signing subtree: %s", err)
+		return fmt.Errorf("finding subtrees: %s", err)
 	}
 
-	subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
-		MTCLogID:        m.logID.String(),
-		MTCASignature:   subtreeSignature,
-		MirrorID:        nil,
-		MirrorSignature: nil,
-		SubtreeStart:    0,
-		SubtreeEnd:      m.frontier.TreeSize(),
-		SubtreeHash:     newRootHash[:],
-	})
-	if err != nil {
-		return fmt.Errorf("calling treedb.InsertCheckpointSubtree: %s", err)
+	// ?? tlog.TileForIndex, tlog.HashFromTile, tlog.StoredHashIndex
+	tr := tiles.NewTileReader(ctx, m.s3c, m.logID.TilePrefix())
+	hr := tlog.TileHashReader(tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, tr)
+
+	// Here we range over the returned subtree and re-read necessary information
+	// from S3 in order to get a subtree hash. The Frontier should typically
+	// have all the infromation required to get a subtree hash, if we use that
+	// information instead we would avoid the potential for this S3 read to
+	// impact sequence(). At the end of this loop, each subtree struct is
+	// updated with the row ID that was written to the DB.
+	for idx, subt := range coveringSubtrees {
+		subtreeHash, err := subtree.HashSubtree(subt.Start, subt.End, hr)
+		if err != nil {
+			return fmt.Errorf("hashing subtree: %s", err)
+		}
+		subtreeSig, err := m.cosigner.CosignSubtree(subt.Start, subt.End, subtreeHash)
+		if err != nil {
+			return fmt.Errorf("signing subtree: %s", err)
+		}
+		subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
+			MTCLogID:        m.logID.String(),
+			MTCASignature:   subtreeSig,
+			MirrorID:        nil,
+			MirrorSignature: nil,
+			SubtreeStart:    subt.Start,
+			SubtreeEnd:      subt.End,
+			SubtreeHash:     subtreeHash[:],
+		})
+		if err != nil {
+			return fmt.Errorf("calling treedb.InsertCheckpointSubtree: %s", err)
+		}
+		// update the subtree with the returned row ID
+		coveringSubtrees[idx].ID = subtreeID
 	}
 
 	// Notify waiting RPCs.
-	for _, e := range entries {
+	for i, e := range entries {
+		var subtreeID int64
+		entryIndex := latest.TreeSize + int64(i)
+		for _, subTree := range coveringSubtrees {
+			if subtree.Contains(entryIndex, subTree.Start, subTree.End) {
+				subtreeID = subTree.ID
+			}
+		}
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
 			subtreeID:    subtreeID,
