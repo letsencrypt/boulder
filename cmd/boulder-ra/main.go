@@ -105,10 +105,10 @@ type Config struct {
 			// Account is the policy to be applied to ACME account keys.
 			Account goodkey.Config
 			// CA is the policy to be applied to keys signed by our non-MTC
-			// issuers.  It must be compatible with our CP-CPS.
+			// issuers. It must be compatible with our CP-CPS.
 			CA goodkey.Config
 			// MTCA is the policy to be applied to keys signed by our MTC
-			// issuers.  It must be compatible with the various post-quantum
+			// issuers. It must be compatible with the various post-quantum
 			// root programs we intend to apply to.
 			MTCA goodkey.Config
 		}
