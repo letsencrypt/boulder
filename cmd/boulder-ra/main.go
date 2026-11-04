@@ -281,18 +281,10 @@ func main() {
 	}
 
 	var keyPolicies ra.KeyPolicies
-	if c.RA.GoodKey != nil {
-		if c.RA.GoodKeys != nil {
-			cmd.Fail("both GoodKey and GoodKeys were set")
-		}
-		kp, err := sagoodkey.NewPolicy(c.RA.GoodKey, sac.KeyBlocked)
-		cmd.FailOnError(err, "Unable to create key policy")
-		keyPolicies = ra.KeyPolicies{
-			Account: kp,
-			CA:      kp,
-			MTCA:    kp,
-		}
-	} else {
+	if c.RA.GoodKey != nil && c.RA.GoodKeys != nil {
+		cmd.Fail("only one of 'goodkey' and 'goodkeys' config fields may be set")
+	}
+	if c.RA.GoodKeys != nil {
 		accountKP, err := sagoodkey.NewPolicy(&c.RA.GoodKeys.Account, sac.KeyBlocked)
 		cmd.FailOnError(err, "Unable to create key policy")
 		caKP, err := sagoodkey.NewPolicy(&c.RA.GoodKeys.CA, sac.KeyBlocked)
@@ -303,6 +295,14 @@ func main() {
 			Account: accountKP,
 			CA:      caKP,
 			MTCA:    mtcaKP,
+		}
+	} else {
+		kp, err := sagoodkey.NewPolicy(c.RA.GoodKey, sac.KeyBlocked)
+		cmd.FailOnError(err, "Unable to create key policy")
+		keyPolicies = ra.KeyPolicies{
+			Account: kp,
+			CA:      kp,
+			MTCA:    kp,
 		}
 	}
 
