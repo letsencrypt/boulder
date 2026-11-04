@@ -1004,7 +1004,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("finalizing MTC order: %s", err)
 	}
 
-	ra.log.Infof("issued MTC from %s: %d, event: %s", resp.MtcLogID, resp.MtcSerialNumber, eventID)
+	ra.log.Infof("issued MTC from %s: %d, eventID: %s", resp.MtcLogID, resp.MtcSerialNumber, eventID)
 	return nil
 }
 
