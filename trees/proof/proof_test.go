@@ -11,8 +11,8 @@ import (
 )
 
 func TestSigAlgEncoded(t *testing.T) {
-	// SEQUENCE { OBJECT IDENTIFIER 1.3.6.1.4.1.44363.47.0 }, parameters omitted.
-	expected, err := hex.DecodeString("300c060a2b0601040182da4b2f00")
+	// SEQUENCE { OBJECT IDENTIFIER 1.3.6.1.5.5.7.6.67 }, parameters omitted.
+	expected, err := hex.DecodeString("300a06082b06010505070643")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,22 +22,22 @@ func TestSigAlgEncoded(t *testing.T) {
 	}
 }
 
-func TestSubtreeSignatureMarshal(t *testing.T) {
+func TestCosignatureMarshal(t *testing.T) {
 	type testCase struct {
 		name     string
-		sig      SubtreeSignature
+		sig      Cosignature
 		expected string
 	}
 
 	testCases := []testCase{
 		{
 			"empty signature",
-			SubtreeSignature{CosignerID: []byte{1}},
+			Cosignature{CosignerID: []byte{1}},
 			"0101" + "0000",
 		},
 		{
 			"basic",
-			SubtreeSignature{CosignerID: []byte{1, 2}, Signature: []byte{3, 4, 5}},
+			Cosignature{CosignerID: []byte{1, 2}, Signature: []byte{3, 4, 5}},
 			"020102" + "0003030405",
 		},
 	}
@@ -60,7 +60,7 @@ func TestSubtreeSignatureMarshal(t *testing.T) {
 
 	// TrustAnchorID has a minimum length of 1 byte, so an empty CosignerID
 	// must be rejected.
-	empty := SubtreeSignature{}
+	empty := Cosignature{}
 	_, err := empty.Marshal()
 	if err == nil {
 		t.Errorf("Marshal() with empty CosignerID: got nil err, want error")
@@ -80,7 +80,7 @@ func TestMTCProofMarshal(t *testing.T) {
 			hash1,
 			hash2,
 		},
-		Signatures: []*SubtreeSignature{
+		Signatures: []*Cosignature{
 			{CosignerID: []byte{0xAA}, Signature: []byte{0xBB, 0xCC}},
 			{CosignerID: []byte{0x01, 0x02}, Signature: nil},
 		},
@@ -111,9 +111,9 @@ func TestMTCProofMarshal(t *testing.T) {
 }
 
 func TestMTCProofSignatureOrdering(t *testing.T) {
-	a := &SubtreeSignature{CosignerID: []byte{0xAA}, Signature: []byte{1}}
-	b := &SubtreeSignature{CosignerID: []byte{0x01, 0x02}, Signature: []byte{2}}
-	c := &SubtreeSignature{CosignerID: []byte{0x01, 0x03}, Signature: []byte{3}}
+	a := &Cosignature{CosignerID: []byte{0xAA}, Signature: []byte{1}}
+	b := &Cosignature{CosignerID: []byte{0x01, 0x02}, Signature: []byte{2}}
+	c := &Cosignature{CosignerID: []byte{0x01, 0x03}, Signature: []byte{3}}
 
 	expected, err := hex.DecodeString(
 		"0000" + "000000000000" + "000000000000" + "0000" +
@@ -125,7 +125,7 @@ func TestMTCProofSignatureOrdering(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	callerOrder := []*SubtreeSignature{c, a, b}
+	callerOrder := []*Cosignature{c, a, b}
 	proof := MTCProof{Signatures: callerOrder}
 	got, err := proof.Marshal()
 	if err != nil {
@@ -142,7 +142,7 @@ func TestMTCProofSignatureOrdering(t *testing.T) {
 }
 
 func TestMTCProofDuplicateCosignerID(t *testing.T) {
-	proof := MTCProof{Signatures: []*SubtreeSignature{
+	proof := MTCProof{Signatures: []*Cosignature{
 		{CosignerID: []byte{1}, Signature: []byte{2}},
 		{CosignerID: []byte{1}, Signature: []byte{3}},
 	}}
@@ -241,7 +241,7 @@ func TestMTCProofRoundTrip(t *testing.T) {
 				{4, 5, 6},
 				{7, 8, 9},
 			},
-			Signatures: []*SubtreeSignature{
+			Signatures: []*Cosignature{
 				{CosignerID: []byte{0xAA}, Signature: []byte{0xBB, 0xCC}},
 				{CosignerID: []byte{0x01, 0x02}, Signature: []byte{0x03}},
 			},
