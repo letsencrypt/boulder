@@ -587,7 +587,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Here we range over the returned subtree and re-read necessary information
 	// from S3 in order to get a subtree hash. The Frontier should typically
-	// have all the infromation required to get a subtree hash, if we use that
+	// have all the information required to get a subtree hash, if we use that
 	// information instead we would avoid the potential for this S3 read to
 	// impact sequence(). At the end of this loop, each subtree struct is
 	// updated with the row ID that was written to the DB.
