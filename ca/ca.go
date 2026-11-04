@@ -51,7 +51,7 @@ const (
 // ad-hoc search for sequences or OIDs in logs. Other data, like public key within CSR,
 // is logged as base64 because it doesn't have interesting DER structure.
 type issuanceEvent struct {
-	ID              string
+	EventID         string
 	Requester       int64
 	OrderID         int64
 	Profile         string
@@ -332,7 +332,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	}
 
 	ca.log.AuditInfo("Signing precert", issuanceEvent{
-		ID:              req.EventID,
+		EventID:         req.EventID,
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
@@ -351,7 +351,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 
 	ca.log.AuditInfo("Signing precert success", issuanceEvent{
-		ID:              req.EventID,
+		EventID:         req.EventID,
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
@@ -414,7 +414,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	}
 
 	ca.log.AuditInfo("Signing cert", issuanceEvent{
-		ID:              req.EventID,
+		EventID:         req.EventID,
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
@@ -433,7 +433,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, req *c
 	ca.metrics.certificates.With(prometheus.Labels{"profile": req.CertProfileName}).Inc()
 
 	ca.log.AuditInfo("Signing cert success", issuanceEvent{
-		ID:              req.EventID,
+		EventID:         req.EventID,
 		Requester:       req.RegistrationID,
 		OrderID:         req.OrderID,
 		Profile:         req.CertProfileName,
