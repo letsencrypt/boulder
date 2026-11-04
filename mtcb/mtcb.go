@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
@@ -282,6 +283,12 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	if err != nil {
 		return nil, fmt.Errorf("during self-verify of standalone certificate: %s", err)
 	}
+
+	m.log.Info(ctx, "Built standalone",
+		blog.MTCLogID(req.MtcLogID),
+		blog.MTCSerial(req.MtcSerialNumber),
+		slog.Int("prooflen", len(inclusionProof)),
+	)
 
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }

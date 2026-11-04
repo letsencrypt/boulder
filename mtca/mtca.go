@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -388,9 +389,10 @@ func (m *mtca) Loop(ctx context.Context) {
 			err := m.sequence(ctx)
 			if err != nil {
 				if !errors.Is(err, ErrCheckpointNotReady) {
-					m.log.Errf("sequencing: %s", err)
+					m.log.Error(ctx, "Sequence failed", err)
 				} else if time.Since(since) > 10*m.sequencingPeriod {
-					m.log.Errf("after %s: %s", time.Since(since).Round(time.Millisecond), err)
+					m.log.Error(ctx, "Sequence timed out", err,
+						slog.Duration("wait", time.Since(since).Round(time.Millisecond)))
 				}
 				continue
 			}
@@ -402,7 +404,9 @@ func (m *mtca) Loop(ctx context.Context) {
 			// they timed out, in which case emitting this error is appropriate).
 			poolSize := m.pool.len()
 			if poolSize != 0 {
-				m.log.Errf("shouldn't happen: pool has %d entries left after Loop() context canceled. ungraceful stop?", poolSize)
+				m.log.Error(ctx, "Unclean shutdown",
+					fmt.Errorf("Sequence pool not empty after context canceled"),
+					slog.Int("poolsize", poolSize))
 			}
 			return
 		}
@@ -481,12 +485,12 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Log each leaf along with the root hash it will be included in.
 	for i, e := range entries {
-		m.log.AuditInfo("issuing", map[string]any{
-			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
-			"entryIndex":             latest.TreeSize + int64(i),
-			"mtcLogID":               m.logID.String(),
-			"newRootHash":            newRootHash.String(),
-		})
+		m.log.AuditInfo(ctx, "Issuing",
+			blog.MTCLogID(m.logID.String()),
+			slog.Int64("entryIndex", latest.TreeSize+int64(i)),
+			slog.String("TBSCertificateLogEntry", hex.EncodeToString(e.mtcle.TBS())),
+			slog.String("newRootHash", newRootHash.String()),
+		)
 	}
 
 	// First stage to a pending area. After signing and storing to the DB

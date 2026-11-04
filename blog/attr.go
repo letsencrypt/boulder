@@ -19,6 +19,7 @@ package blog
 
 import (
 	"log/slog"
+	"strconv"
 
 	"github.com/letsencrypt/boulder/identifier"
 )
@@ -45,6 +46,18 @@ func Authz(authzID int64) slog.Attr {
 // given string. The argument should be hex-encoded.
 func Serial(serial string) slog.Attr {
 	return slog.String("serial", serial)
+}
+
+// MTCLogID returns a slog.Attr whose key is "mtclogid" and whose value is the
+// given string, which should be the log's relative OID.
+func MTCLogID(mtcLogID string) slog.Attr {
+	return slog.String("mtclogid", mtcLogID)
+}
+
+// MTCSerial returns a slog.Attr whose key is "serial" and whose value is the
+// hex encoding of the given uint64.
+func MTCSerial(serial uint64) slog.Attr {
+	return slog.String("serial", strconv.FormatUint(serial, 16))
 }
 
 // Idents returns a slog.Attr whose key is "idents" and whose value is a list
