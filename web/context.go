@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
@@ -229,6 +230,8 @@ func KeyTypeToString(pub crypto.PublicKey) string {
 		return fmt.Sprintf("RSA %d", pk.N.BitLen())
 	case *ecdsa.PublicKey:
 		return fmt.Sprintf("ECDSA %s", pk.Params().Name)
+	case *mldsa.PublicKey:
+		return pk.Parameters().String()
 	}
 	return "unknown"
 }

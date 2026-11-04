@@ -65,6 +65,12 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
+type KeyPolicies struct {
+	Account goodkey.KeyPolicy
+	CA      goodkey.KeyPolicy
+	MTCA    goodkey.KeyPolicy
+}
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -82,7 +88,7 @@ type RegistrationAuthorityImpl struct {
 
 	clk               clock.Clock
 	log               blog.Logger
-	keyPolicy         goodkey.KeyPolicy
+	keyPolicies       KeyPolicies
 	profiles          *validationProfiles
 	maxContactsPerReg int
 	limiter           *ratelimits.Limiter
@@ -122,7 +128,7 @@ func NewRegistrationAuthorityImpl(
 	logger blog.Logger,
 	stats prometheus.Registerer,
 	maxContactsPerReg int,
-	keyPolicy goodkey.KeyPolicy,
+	keyPolicies KeyPolicies,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	profiles *validationProfiles,
@@ -217,7 +223,7 @@ func NewRegistrationAuthorityImpl(
 		log:                     logger,
 		profiles:                profiles,
 		maxContactsPerReg:       maxContactsPerReg,
-		keyPolicy:               keyPolicy,
+		keyPolicies:             keyPolicies,
 		limiter:                 limiter,
 		txnBuilder:              txnBuilder,
 		publisher:               pubc,
@@ -502,7 +508,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
-	err = ra.keyPolicy.GoodKey(ctx, key.Key)
+	err = ra.keyPolicies.Account.GoodKey(ctx, key.Key)
 	if err != nil {
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
@@ -1075,7 +1081,14 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		)
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, &ra.keyPolicy, ra.PA)
+	var kp goodkey.KeyPolicy
+	if ra.isMTC(req.Order) {
+		kp = ra.keyPolicies.MTCA
+	} else {
+		kp = ra.keyPolicies.CA
+	}
+
+	err = csrlib.VerifyCSR(ctx, csr, &kp, ra.PA)
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
@@ -1377,6 +1390,16 @@ func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *ra
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, req *rapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
 		return nil, errIncompleteGRPCRequest
+	}
+
+	var key jose.JSONWebKey
+	err := key.UnmarshalJSON(req.Jwk)
+	if err != nil {
+		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
+	}
+	err = ra.keyPolicies.Account.GoodKey(ctx, key.Key)
+	if err != nil {
+		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 
 	update, err := ra.SA.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{

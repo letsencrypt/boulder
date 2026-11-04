@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -60,7 +61,7 @@ func makeClient(contacts ...string) (*client, error) {
 	return &client{account, c}, nil
 }
 
-func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool, profile string, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
+func makeClientAndOrder(c *client, csrKey crypto.Signer, idents []acme.Identifier, cn bool, profile string, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {
 		c, err = makeClient()
@@ -123,7 +124,7 @@ type issuanceResult struct {
 	certs []*x509.Certificate
 }
 
-func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool, profile string) (*issuanceResult, error) {
+func authAndIssue(c *client, csrKey crypto.Signer, idents []acme.Identifier, cn bool, profile string) (*issuanceResult, error) {
 	var err error
 
 	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, profile, nil)
@@ -143,7 +144,7 @@ type issuanceResultAllChains struct {
 	certs map[string][]*x509.Certificate
 }
 
-func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*issuanceResultAllChains, error) {
+func authAndIssueFetchAllChains(c *client, csrKey crypto.Signer, idents []acme.Identifier, cn bool) (*issuanceResultAllChains, error) {
 	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, "", nil)
 	if err != nil {
 		return nil, err
@@ -158,7 +159,7 @@ func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []ac
 	return &issuanceResultAllChains{*order, certs}, nil
 }
 
-func makeCSR(k *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*x509.CertificateRequest, error) {
+func makeCSR(k crypto.Signer, idents []acme.Identifier, cn bool) (*x509.CertificateRequest, error) {
 	var err error
 	if k == nil {
 		k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -181,11 +182,9 @@ func makeCSR(k *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*x509.Cert
 	}
 
 	tmpl := &x509.CertificateRequest{
-		SignatureAlgorithm: x509.ECDSAWithSHA256,
-		PublicKeyAlgorithm: x509.ECDSA,
-		PublicKey:          k.Public(),
-		DNSNames:           names,
-		IPAddresses:        ips,
+		PublicKey:   k.Public(),
+		DNSNames:    names,
+		IPAddresses: ips,
 	}
 	if cn && len(names) > 0 {
 		tmpl.Subject = pkix.Name{CommonName: names[0]}
