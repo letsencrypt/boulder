@@ -29,7 +29,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
-	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer" // imported for its init function.
 	"github.com/letsencrypt/boulder/identifier"
@@ -144,9 +143,6 @@ type WebFrontEndImpl struct {
 	// AccountURIPrefixes field.
 	AccountURIPrefix string
 
-	// Key policy.
-	keyPolicy goodkey.KeyPolicy
-
 	// CORS settings
 	AllowOrigins []string
 
@@ -201,7 +197,6 @@ type AccountBlocker interface {
 func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
 	clk clock.Clock,
-	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[issuance.NameID][][]byte,
 	issuerCertificates map[issuance.NameID]*issuance.Certificate,
 	logger blog.Logger,
@@ -254,7 +249,6 @@ func NewWebFrontEndImpl(
 	wfe := WebFrontEndImpl{
 		log:                           logger,
 		clk:                           clk,
-		keyPolicy:                     keyPolicy,
 		certificateChains:             certificateChains,
 		issuerCertificates:            issuerCertificates,
 		stats:                         initStats(stats),

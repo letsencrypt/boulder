@@ -3,6 +3,7 @@ package wfe2
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
@@ -21,7 +22,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
 	nb "github.com/letsencrypt/boulder/grpc/noncebalancer"
 	nbv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
@@ -51,8 +51,13 @@ func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
 		case "P-521":
 			return jose.ES512, nil
 		}
+	case *mldsa.PublicKey:
+		switch k.Parameters() {
+		case mldsa.MLDSA44():
+			return jose.MLDSA44, nil
+		}
 	}
-	return "", berrors.BadPublicKeyError("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)")
+	return "", berrors.BadPublicKeyError("JWK contains unsupported key type (expected RSA, ECDSA P-256, P-384 or P-521, or ML-DSA-44)")
 }
 
 // getSupportedAlgs returns a sorted slice of joseSignatureAlgorithm's from a
@@ -64,6 +69,7 @@ func getSupportedAlgs() []jose.SignatureAlgorithm {
 		jose.ES256,
 		jose.ES384,
 		jose.ES512,
+		jose.MLDSA44,
 	}
 }
 
@@ -700,8 +706,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 }
 
 // validSelfAuthenticatedPOST checks that a given POST request has a valid JWS
-// using `validSelfAuthenticatedJWS`. It enforces that the JWK abides by our
-// goodkey policies (key algorithm, length, blocklist, etc).
+// using `validSelfAuthenticatedJWS`.
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	ctx context.Context,
 	request *http.Request) ([]byte, *jose.JSONWebKey, error) {
@@ -715,16 +720,6 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	payload, pubKey, err := wfe.validSelfAuthenticatedJWS(ctx, jws, request)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	// If the key doesn't meet the GoodKey policy return a error
-	err = wfe.keyPolicy.GoodKey(ctx, pubKey.Key)
-	if err != nil {
-		if errors.Is(err, goodkey.ErrBadKey) {
-			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
-			return nil, nil, berrors.BadPublicKeyError("invalid request signing key: %s", err.Error())
-		}
-		return nil, nil, berrors.InternalServerError("internal error while checking JWK: %s", err)
 	}
 
 	return payload, pubKey, nil
@@ -773,13 +768,6 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	innerJWK, err := wfe.extractJWK(innerJWS.Signatures[0].Header)
 	if err != nil {
 		return nil, err
-	}
-
-	// If the key doesn't meet the GoodKey policy return a error immediately
-	err = wfe.keyPolicy.GoodKey(ctx, innerJWK.Key)
-	if err != nil {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
-		return nil, berrors.BadPublicKeyError("invalid request signing key: %s", err.Error())
 	}
 
 	// Check that the public key and JWS algorithms match expected
