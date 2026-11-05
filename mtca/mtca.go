@@ -487,10 +487,16 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Log each leaf along with the root hash it will be included in.
 	for _, e := range entries {
+		serial, err := core.EncodeMTCSerial(m.logID.LogNumber(), e.index)
+		if err != nil {
+			return err
+		}
+
 		m.log.AuditInfo("issuing", map[string]any{
 			"EventID":                e.eventID,
 			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
 			"entryIndex":             e.index,
+			"serial":                 serial,
 			"mtcLogID":               m.logID.String(),
 			"newRootHash":            newRootHash.String(),
 		})
