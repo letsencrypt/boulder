@@ -422,7 +422,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	wfe, err := NewWebFrontEndImpl(
 		stats,
 		fc,
-		testKeyPolicy,
 		certChains,
 		issuerCertificates,
 		logger,
