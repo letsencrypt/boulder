@@ -593,7 +593,6 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("finding subtrees: %s", err)
 	}
 
-	// ?? tlog.TileForIndex, tlog.HashFromTile, tlog.StoredHashIndex
 	tr := tiles.NewTileReader(ctx, m.s3c, m.logID.TilePrefix())
 	hr := tlog.TileHashReader(tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, tr)
 
