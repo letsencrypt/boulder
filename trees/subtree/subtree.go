@@ -396,7 +396,7 @@ func MTH(leaves []tlog.Hash) tlog.Hash {
 	}
 }
 
-// FindCoveringSubtrees calculates two subtrees to effeciently cover an
+// FindCoveringSubtrees calculates two subtrees to efficiently cover an
 // arbitrary interval from `start` to `end`. It will always return at least one
 // non-zero subtree (i.e. covering a single entry) or an error.
 //
