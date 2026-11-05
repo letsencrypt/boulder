@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -26,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,7 +44,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
-	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -360,9 +361,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	stats := metrics.NoopRegisterer
 	logger := blog.NewMock()
 
-	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
-	test.AssertNotError(t, err, "creating test keypolicy")
-
 	certChains := map[issuance.NameID][][]byte{}
 	issuerCertificates := map[issuance.NameID]*issuance.Certificate{}
 	for _, files := range [][]string{
@@ -422,7 +420,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	wfe, err := NewWebFrontEndImpl(
 		stats,
 		fc,
-		testKeyPolicy,
 		certChains,
 		issuerCertificates,
 		logger,
@@ -1587,52 +1584,147 @@ func TestNewAccount(t *testing.T) {
 		mux.ServeHTTP(responseWriter, rt.r)
 		test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), rt.respBody)
 	}
+}
 
-	responseWriter := httptest.NewRecorder()
+type accountStorage struct {
+	sync.Mutex
+	// accounts is keyed by serialized JWK
+	accounts map[string]*corepb.Registration
+}
 
-	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
-	_, _, body := signer.embeddedJWK(key, signedURL, payload)
-	request := makePostRequestWithPath(path, body)
+func (as *accountStorage) put(jwk string, reg *corepb.Registration) {
+	as.Lock()
+	defer as.Unlock()
+	reg.Id = int64(len(as.accounts) + 5678)
+	reg.Status = "valid"
+	as.accounts[jwk] = reg
+}
 
-	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+func (as *accountStorage) get(jwk string) *corepb.Registration {
+	as.Lock()
+	defer as.Unlock()
+	return as.accounts[jwk]
+}
 
-	var acct core.Registration
-	responseBody := responseWriter.Body.String()
-	err := json.Unmarshal([]byte(responseBody), &acct)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
-	// Agreement is an ACMEv1 field and should not be present
-	test.AssertEquals(t, acct.Agreement, "")
+type mockSAWithStorage struct {
+	sapb.StorageAuthorityReadOnlyClient
+	storage *accountStorage
+}
 
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/acct/1")
+func newMockSAWithStorage(inner sapb.StorageAuthorityReadOnlyClient) *mockSAWithStorage {
+	return &mockSAWithStorage{
+		StorageAuthorityReadOnlyClient: inner,
+		storage:                        &accountStorage{accounts: make(map[string]*corepb.Registration)},
+	}
+}
 
-	// Load an existing key
-	key = loadKey(t, []byte(test1KeyPrivatePEM))
-	_, ok = key.(*rsa.PrivateKey)
-	test.Assert(t, ok, "Couldn't load test1 key")
+func (sa *mockSAWithStorage) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	res := sa.storage.get(string(req.Jwk))
+	if res == nil {
+		return nil, berrors.NotFound
+	}
+	return res, nil
+}
 
-	// Reset the body and status code
-	responseWriter = httptest.NewRecorder()
-	// POST, Valid JSON, Key already in use
-	_, _, body = signer.embeddedJWK(key, signedURL, payload)
-	request = makePostRequestWithPath(path, body)
-	// POST the NewAccount request
-	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
-	// We expect a Location header and a 200 response with an empty body
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/acct/1")
-	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{
-		"key": {
-			"kty": "RSA",
-			"n": "yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
-			"e": "AQAB"
-		},
-		"status": "valid"
-	}`)
+type mockRAWithStorage struct {
+	rapb.RegistrationAuthorityClient
+	sa *mockSAWithStorage
+}
+
+func (ra *mockRAWithStorage) NewRegistration(_ context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	ra.sa.storage.put(string(in.Key), in)
+	return in, nil
+}
+
+func TestNewAccountSuccess(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+	saWithStorage := newMockSAWithStorage(wfe.sa)
+	wfe.sa = saWithStorage
+	wfe.ra = &mockRAWithStorage{sa: saWithStorage}
+
+	rsaKey, err := rsa.GenerateKey(nil, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mldsaKey, err := mldsa.GenerateKey(mldsa.MLDSA44())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, key := range []crypto.Signer{rsaKey, ecdsaKey, mldsaKey} {
+		t.Run(fmt.Sprintf("%T", key), func(t *testing.T) {
+			path := newAcctPath
+			signedURL := fmt.Sprintf("http://localhost%s", path)
+
+			responseWriter := httptest.NewRecorder()
+
+			payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+			_, _, body := signer.embeddedJWK(key, signedURL, payload)
+			request := makePostRequestWithPath(path, body)
+
+			wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+			if responseWriter.Code != 201 {
+				t.Fatalf("account creation: got %d, want %d: %s", responseWriter.Code, 201, responseWriter.Body.String())
+			}
+
+			var acct core.Registration
+			err := json.Unmarshal(responseWriter.Body.Bytes(), &acct)
+			test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
+			// Agreement is an ACMEv1 field and should not be present
+			test.AssertEquals(t, acct.Agreement, "")
+
+			location := responseWriter.Header().Get("Location")
+			expectedLocation := "http://localhost/acme/acct/"
+			if !strings.HasPrefix(location, expectedLocation) {
+				t.Errorf(`Location header: got %q, want string starting with %q`,
+					responseWriter.Header().Get("Location"), expectedLocation)
+			}
+
+			if acct.Status != "valid" {
+				t.Errorf("status of returned account object: got %q, want %q", acct.Status, "valid")
+			}
+			if !acct.Key.Valid() {
+				t.Errorf("key of returned account object: wanted a valid key, got %#v", acct.Key)
+			}
+
+			// POST again, same key: should get back a 200.
+			_, _, body = signer.embeddedJWK(key, signedURL, payload)
+			request = makePostRequestWithPath(path, body)
+
+			// Reset the recorder
+			responseWriter = httptest.NewRecorder()
+			wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
+
+			if responseWriter.Code != 200 {
+				t.Errorf("fetching existing account by key: got %d, want %d", responseWriter.Code, 200)
+			}
+
+			// Should return the same account at the same URL.
+			location2 := responseWriter.Header().Get("Location")
+			if location2 != location {
+				t.Errorf("Location header on second POST: got %q, want %q", location2, location)
+			}
+
+			acct = core.Registration{}
+			err = json.Unmarshal(responseWriter.Body.Bytes(), &acct)
+			if err != nil {
+				t.Fatalf("Unmarshal: %s", err)
+			}
+
+			if acct.Status != "valid" {
+				t.Errorf("status of returned account object: got %q, want %q", acct.Status, "valid")
+			}
+			if !acct.Key.Valid() {
+				t.Errorf("key of returned account object: wanted a valid key, got %#v", acct.Key)
+			}
+		})
+	}
 }
 
 func TestNewAccountWhenAccountHasBeenDeactivated(t *testing.T) {

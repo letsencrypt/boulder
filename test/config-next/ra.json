@@ -32,7 +32,16 @@
 			"reasonNameTwo": "test/reasonName-ident-policy.yaml"
 		},
 		"goodkeys": {
-			"Account": {},
+			"Account": {
+				"AllowedKeys": {
+					"RSA2048": true,
+					"RSA3072": true,
+					"RSA4096": true,
+					"ECDSAP256": true,
+					"ECDSAP384": true,
+					"MLDSA44": true
+				}
+			},
 			"CA": {},
 			"MTCA": {
 				"AllowedKeys": {

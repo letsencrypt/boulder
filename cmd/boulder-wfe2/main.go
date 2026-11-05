@@ -17,7 +17,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	noncebalancerv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
@@ -130,7 +129,7 @@ type Config struct {
 		// it required.
 		AccountURIPrefix string `validate:"omitempty,url,endswith=/"`
 
-		// GoodKey is an embedded config stanza for the goodkey library.
+		// Deprecated: This field no longer has any effect.
 		GoodKey goodkey.Config
 
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
@@ -407,9 +406,6 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 	rnc := nonce.NewRedeemer(redeemNonceConn)
 
-	kp, err := sagoodkey.NewPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
-	cmd.FailOnError(err, "Unable to create key policy")
-
 	if c.WFE.StaleTimeout.Duration == 0 {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
@@ -454,7 +450,6 @@ func main() {
 	wfe, err := wfe2.NewWebFrontEndImpl(
 		stats,
 		clk,
-		kp,
 		certChains,
 		issuerCerts,
 		logger,
