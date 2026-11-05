@@ -41,7 +41,7 @@ func Valid(start, end int64) bool {
 	return uint64(start)&(bitCeil-1) == 0
 }
 
-// contains returns true if start ≤ entryIndex < end.
+// contains returns true if and only if start ≤ entryIndex < end.
 func contains(entryIndex, start, end int64) bool {
 	return start <= entryIndex && entryIndex < end
 }
