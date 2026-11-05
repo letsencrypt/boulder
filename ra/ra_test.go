@@ -3402,7 +3402,7 @@ func TestIssueMTC(t *testing.T) {
 		CertificateProfileName: "mtcshortlived",
 	}
 
-	err = ra.issueMTC(t.Context(), order, testKeyBytes)
+	err = ra.issueMTC(t.Context(), order, testKeyBytes, core.NewToken())
 	if err != nil {
 		t.Fatalf("issuing MTC: %s", err)
 	}
