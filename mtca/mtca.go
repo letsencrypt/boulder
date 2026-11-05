@@ -259,11 +259,13 @@ type pool struct {
 	maxSize int
 }
 
-// pendingEntry represents a pending entry in the pool, along with a channel to notify a pending RPC.
+// pendingEntry represents a pending entry in the pool, along with a channel to
+// notify a pending RPC. Each pendingEntry carries an RA-generated eventID.
 type pendingEntry struct {
-	mtcle *entry.MTCLogEntry
-	mtcpk *pubkey.MTCPublicKey
-	ch    chan<- issuanceNotification
+	eventID string
+	mtcle   *entry.MTCLogEntry
+	mtcpk   *pubkey.MTCPublicKey
+	ch      chan<- issuanceNotification
 }
 
 func (p *pool) take() []pendingEntry {
@@ -294,7 +296,9 @@ type issuanceNotification struct {
 	serialNumber uint64
 	// A reference to a row in the mtcmeta subtrees table.
 	subtreeID int64
-	errored   bool
+	// An issuance event identifier token originating in the RA
+	eventID string
+	errored bool
 }
 
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
@@ -348,9 +352,10 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan issuanceNotification, 1)
 	err = m.pool.append(pendingEntry{
-		mtcle: mtcle,
-		mtcpk: mtcpk,
-		ch:    ch,
+		eventID: req.EventID,
+		mtcle:   mtcle,
+		mtcpk:   mtcpk,
+		ch:      ch,
 	})
 	if err != nil {
 		return nil, err
@@ -482,6 +487,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Log each leaf along with the root hash it will be included in.
 	for i, e := range entries {
 		m.log.AuditInfo("issuing", map[string]any{
+			"EventID":                e.eventID,
 			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
 			"entryIndex":             latest.TreeSize + int64(i),
 			"mtcLogID":               m.logID.String(),
@@ -600,6 +606,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
 			subtreeID:    subtreeID,
+			eventID:      e.eventID,
 		}
 		serial++
 	}
