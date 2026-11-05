@@ -52,6 +52,8 @@ type GetDelegatedAccessTokenOutput struct {
 	// The policy size is calculated as the sum of all the session policies and
 	// permission boundaries attached to the session. If the packed size exceeds 100%,
 	// the request fails.
+	//
+	// Deprecated: Deprecated. This field is not populated for GetDelegatedAccessToken.
 	PackedPolicySize *int32
 
 	// Metadata pertaining to the operation's result.
@@ -70,9 +72,6 @@ func (c *Client) addOperationGetDelegatedAccessTokenMiddlewares(stack *middlewar
 		return err
 	}
 
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}

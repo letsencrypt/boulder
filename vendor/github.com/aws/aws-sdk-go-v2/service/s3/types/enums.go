@@ -506,6 +506,7 @@ const (
 	EventS3ObjectAnnotation                             Event = "s3:ObjectAnnotation:*"
 	EventS3ObjectAnnotationPut                          Event = "s3:ObjectAnnotation:Put"
 	EventS3ObjectAnnotationDelete                       Event = "s3:ObjectAnnotation:Delete"
+	EventS3ObjectRetentionPut                           Event = "s3:ObjectRetention:Put"
 )
 
 // Values returns all known values for Event. Note that this can be expanded in
@@ -544,6 +545,7 @@ func (Event) Values() []Event {
 		"s3:ObjectAnnotation:*",
 		"s3:ObjectAnnotation:Put",
 		"s3:ObjectAnnotation:Delete",
+		"s3:ObjectRetention:Put",
 	}
 }
 
@@ -784,22 +786,25 @@ type InventoryOptionalField string
 
 // Enum values for InventoryOptionalField
 const (
-	InventoryOptionalFieldSize                         InventoryOptionalField = "Size"
-	InventoryOptionalFieldLastModifiedDate             InventoryOptionalField = "LastModifiedDate"
-	InventoryOptionalFieldStorageClass                 InventoryOptionalField = "StorageClass"
-	InventoryOptionalFieldETag                         InventoryOptionalField = "ETag"
-	InventoryOptionalFieldIsMultipartUploaded          InventoryOptionalField = "IsMultipartUploaded"
-	InventoryOptionalFieldReplicationStatus            InventoryOptionalField = "ReplicationStatus"
-	InventoryOptionalFieldEncryptionStatus             InventoryOptionalField = "EncryptionStatus"
-	InventoryOptionalFieldObjectLockRetainUntilDate    InventoryOptionalField = "ObjectLockRetainUntilDate"
-	InventoryOptionalFieldObjectLockMode               InventoryOptionalField = "ObjectLockMode"
-	InventoryOptionalFieldObjectLockLegalHoldStatus    InventoryOptionalField = "ObjectLockLegalHoldStatus"
-	InventoryOptionalFieldIntelligentTieringAccessTier InventoryOptionalField = "IntelligentTieringAccessTier"
-	InventoryOptionalFieldBucketKeyStatus              InventoryOptionalField = "BucketKeyStatus"
-	InventoryOptionalFieldChecksumAlgorithm            InventoryOptionalField = "ChecksumAlgorithm"
-	InventoryOptionalFieldObjectAccessControlList      InventoryOptionalField = "ObjectAccessControlList"
-	InventoryOptionalFieldObjectOwner                  InventoryOptionalField = "ObjectOwner"
-	InventoryOptionalFieldLifecycleExpirationDate      InventoryOptionalField = "LifecycleExpirationDate"
+	InventoryOptionalFieldSize                            InventoryOptionalField = "Size"
+	InventoryOptionalFieldLastModifiedDate                InventoryOptionalField = "LastModifiedDate"
+	InventoryOptionalFieldStorageClass                    InventoryOptionalField = "StorageClass"
+	InventoryOptionalFieldETag                            InventoryOptionalField = "ETag"
+	InventoryOptionalFieldIsMultipartUploaded             InventoryOptionalField = "IsMultipartUploaded"
+	InventoryOptionalFieldReplicationStatus               InventoryOptionalField = "ReplicationStatus"
+	InventoryOptionalFieldEncryptionStatus                InventoryOptionalField = "EncryptionStatus"
+	InventoryOptionalFieldObjectLockRetainUntilDate       InventoryOptionalField = "ObjectLockRetainUntilDate"
+	InventoryOptionalFieldObjectLockMode                  InventoryOptionalField = "ObjectLockMode"
+	InventoryOptionalFieldObjectLockLegalHoldStatus       InventoryOptionalField = "ObjectLockLegalHoldStatus"
+	InventoryOptionalFieldObjectLockEventHoldStatus       InventoryOptionalField = "ObjectLockEventHoldStatus"
+	InventoryOptionalFieldObjectLockEventHoldDuration     InventoryOptionalField = "ObjectLockEventHoldDuration"
+	InventoryOptionalFieldIntelligentTieringAccessTier    InventoryOptionalField = "IntelligentTieringAccessTier"
+	InventoryOptionalFieldBucketKeyStatus                 InventoryOptionalField = "BucketKeyStatus"
+	InventoryOptionalFieldChecksumAlgorithm               InventoryOptionalField = "ChecksumAlgorithm"
+	InventoryOptionalFieldObjectAccessControlList         InventoryOptionalField = "ObjectAccessControlList"
+	InventoryOptionalFieldObjectOwner                     InventoryOptionalField = "ObjectOwner"
+	InventoryOptionalFieldLifecycleExpirationDate         InventoryOptionalField = "LifecycleExpirationDate"
+	InventoryOptionalFieldIntelligentTieringReferenceDate InventoryOptionalField = "IntelligentTieringReferenceDate"
 )
 
 // Values returns all known values for InventoryOptionalField. Note that this can
@@ -818,12 +823,15 @@ func (InventoryOptionalField) Values() []InventoryOptionalField {
 		"ObjectLockRetainUntilDate",
 		"ObjectLockMode",
 		"ObjectLockLegalHoldStatus",
+		"ObjectLockEventHoldStatus",
+		"ObjectLockEventHoldDuration",
 		"IntelligentTieringAccessTier",
 		"BucketKeyStatus",
 		"ChecksumAlgorithm",
 		"ObjectAccessControlList",
 		"ObjectOwner",
 		"LifecycleExpirationDate",
+		"IntelligentTieringReferenceDate",
 	}
 }
 
@@ -1009,6 +1017,25 @@ const (
 func (ObjectLockEnabled) Values() []ObjectLockEnabled {
 	return []ObjectLockEnabled{
 		"Enabled",
+	}
+}
+
+type ObjectLockEventHold string
+
+// Enum values for ObjectLockEventHold
+const (
+	ObjectLockEventHoldOn  ObjectLockEventHold = "ON"
+	ObjectLockEventHoldOff ObjectLockEventHold = "OFF"
+)
+
+// Values returns all known values for ObjectLockEventHold. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ObjectLockEventHold) Values() []ObjectLockEventHold {
+	return []ObjectLockEventHold{
+		"ON",
+		"OFF",
 	}
 }
 
