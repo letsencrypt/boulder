@@ -19,9 +19,9 @@ type simpleS3 interface {
 }
 
 // Source builds consistency proofs and entry packages from the log's tile
-// storage. In the future, when we want to support multiple mirrors, we may want
-// to improve Source to memoize the tiles, consistency proofs, and entry
-// packages built for the latest tree, purging the memo when the tree changes.
+// storage.
+//
+// TODO(#9054): Cache the tiles read, since every mirror reads the same ones.
 type Source struct {
 	s3c        simpleS3
 	tilePrefix string
