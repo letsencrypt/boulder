@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/subtree"
@@ -162,9 +163,8 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 
-	// TODO(#9085): use the issuer certificate returned here to self-verify the end-entity certificate
-	// before returning.
-	_, ok := m.issuers[requestedLogID.CAID().String()]
+	requestedMTCAID := requestedLogID.CAID()
+	issuer, ok := m.issuers[requestedMTCAID.String()]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
 	}
@@ -268,14 +268,19 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		Start:          dbSubtree.SubtreeStart,
 		End:            dbSubtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
-		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: requestedLogID.CAID().Bytes(), Signature: dbSubtree.MTCASignature},
+		Signatures: []*proof.Cosignature{
+			{CosignerID: requestedMTCAID.Bytes(), Signature: dbSubtree.MTCASignature},
 			{CosignerID: mirrorID.Bytes(), Signature: dbSubtree.MirrorSignature},
 		},
 	}
 	certBytes, err := buildCertificate(tbs, &sig)
 	if err != nil {
 		return nil, err
+	}
+
+	err = mtx509.VerifyStandalone(certBytes, issuer.certificate)
+	if err != nil {
+		return nil, fmt.Errorf("during self-verify of standalone certificate: %s", err)
 	}
 
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil

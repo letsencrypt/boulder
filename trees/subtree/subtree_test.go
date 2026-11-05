@@ -73,13 +73,22 @@ func TestValidSubtree(t *testing.T) {
 		{"Aligned size-4 block", 4, 8, true},
 		{"Aligned size-4 block, start a higher multiple of size", 8, 12, true},
 		{"Non-power-of-two size, start aligned to BIT_CEIL", 8, 13, true},
+		{"Empty", 4, 4, true},
+		{"Empty at zero", 0, 0, true},
 		{"Start 0 aligns to the 2^63 ceiling", 0, math.MaxInt64, true},
 		// Invalid
 		{"Misaligned start", 1, 3, false},
 		{"Misaligned start, higher offset", 7, 9, false},
-		{"Empty", 4, 4, false},
 		{"Inverted", 5, 4, false},
 		{"Nonzero start can't align to the 2^63 ceiling", 1, math.MaxInt64, false},
+		// Appendix C.2.1 Subtree Validity, up to the int64 limit
+		{"Start 0, end 2^47+1", 0, 1<<47 + 1, true},
+		{"Start 0, end 2^48-1", 0, 1<<48 - 1, true},
+		{"Start 0, end 2^62+1", 0, 1<<62 + 1, true},
+		{"Start 2^46, end 2^47+1", 1 << 46, 1<<47 + 1, false},
+		{"Start 2^46, end 2^48-1", 1 << 46, 1<<48 - 1, false},
+		{"Start 2^61, end 2^62+1", 1 << 61, 1<<62 + 1, false},
+		{"Start 2^61, end 2^63-1", 1 << 61, math.MaxInt64, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,10 +101,10 @@ func TestValidSubtree(t *testing.T) {
 }
 
 // TestMTHAppendixVector pins mth to the accumulated digest in the MTC draft
-// appendix C.1 Subtree Hashes for every valid subtree up to size 130, which the
+// appendix C.1.1 Subtree Hashes for every valid subtree up to size 130, which the
 // draft's reference implementation also reproduces.
 func TestMTHAppendixVector(t *testing.T) {
-	want := "94a95384a8c69acea9b50d035a58285b3a777cb7a724005faa5e1f1e1190007f"
+	want := "b82806ad4265bb151c1119c0f4db437bb4d1a1f887b3a7fba1cd4ebf552e3e81"
 	entries := make([][]byte, 130)
 	for i := range entries {
 		entries[i] = []byte{byte(i)}
@@ -103,8 +112,8 @@ func TestMTHAppendixVector(t *testing.T) {
 	leaves := leafHashes(entries)
 
 	h := sha256.New()
-	for end := int64(1); end <= 130; end++ {
-		for start := int64(0); start < end; start++ {
+	for end := int64(0); end <= 130; end++ {
+		for start := int64(0); start <= end; start++ {
 			if !Valid(start, end) {
 				continue
 			}
@@ -171,13 +180,13 @@ func TestSubtreeProofExamples(t *testing.T) {
 }
 
 // TestSubtreeConsistencyProofAppendixVector pins ConsistencyProof to the
-// accumulated digest in MTC draft appendix C.3 Subtree Consistency Proofs,
+// accumulated digest in MTC draft appendix C.1.3 Subtree Consistency Proofs,
 // covering every valid subtree of every tree up to size 130. It also runs each
 // generated proof through VerifyConsistency, pinning the verifier's accept path
 // across the full range, including the start > 0 proofs that x/mod/sumdb/tlog's
 // CheckTree (prefix-only) cannot oracle.
 func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
-	want := "c586ebbb73a5621baf2140095d87dde934e3b6503a562a1a5215b8209edd083d"
+	want := "10fa99b37bf9bf9ffa26b412fbd98bd75363256d0b75d61bc4538b9c9c5a0a74"
 	entries := make([][]byte, 130)
 	for i := range entries {
 		entries[i] = []byte{byte(i)}
@@ -188,8 +197,8 @@ func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
 	h := sha256.New()
 	for n := int64(0); n <= 130; n++ {
 		root := MTH(leaves[:n])
-		for end := int64(1); end <= n; end++ {
-			for start := int64(0); start < end; start++ {
+		for end := int64(0); end <= n; end++ {
+			for start := int64(0); start <= end; start++ {
 				if !Valid(start, end) {
 					continue
 				}
@@ -225,7 +234,6 @@ func TestSubtreeConsistencyProofRejectsBadInput(t *testing.T) {
 	}{
 		{"Misaligned subtree", 1, 3, 14},
 		{"End past tree size", 0, 5, 4},
-		{"Empty interval", 4, 4, 14},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -326,6 +334,8 @@ func TestVerifySubtreeConsistencyRejectsBadInput(t *testing.T) {
 		{"Empty proof where one is required", 8, 13, 14, nil},
 		{"Over-long proof", 8, 13, 14, append(slices.Clone(proof), proof...)},
 		{"Too short proof", 8, 13, 14, proof[:len(proof)-1]},
+		{"Empty subtree with a non-empty proof", 4, 4, 14, proof},
+		{"Empty subtree with a node hash other than HASH()", 4, 4, 14, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

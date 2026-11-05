@@ -234,7 +234,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificate(ctx context.Context, req *sapb.
 		return nil, errIncompleteRequest
 	}
 	if !core.ValidSerial(req.Serial) {
-		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
+		return nil, berrors.NotFoundError("invalid certificate serial %s", req.Serial)
 	}
 
 	cert, err := SelectCertificate(ctx, ssa.dbReadOnlyMap, req.Serial)
