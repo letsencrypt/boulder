@@ -38,7 +38,7 @@ import (
 // checkpointDB is the subset of treedb.Impl the mtcb uses, so tests can supply
 // checkpoints without a database.
 type checkpointDB interface {
-	GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error)
+	GetSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.SubtreesModel, error)
 }
 
 type mtcb struct {
@@ -140,7 +140,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
-	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
+	subtree, err := m.checkpoints.GetSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	}
 
 	// Fetch the relevant subtree from the database.
-	dbSubtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
+	dbSubtree, err := m.checkpoints.GetSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }
 
-func ready(dbSubtree *treedb.CheckpointSubtreeModel, entryIndex int64) (bool, error) {
+func ready(dbSubtree *treedb.SubtreesModel, entryIndex int64) (bool, error) {
 	err := dbSubtree.Valid()
 	if err != nil {
 		return false, fmt.Errorf("validating checkpoint subtree %d: %w", dbSubtree.ID, err)

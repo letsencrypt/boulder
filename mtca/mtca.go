@@ -135,7 +135,7 @@ type mtca struct {
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
-	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
+	InsertSubtree(ctx context.Context, model *treedb.SubtreesModel) (int64, error)
 	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
 }
 
@@ -152,7 +152,7 @@ type simpleS3 interface {
 func (m *mtca) InitLog(ctx context.Context) error {
 	candidate := &tiles.Frontier{}
 
-	err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+	_, err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 	if err != nil {
 		return err
 	}
@@ -260,8 +260,11 @@ type pool struct {
 	maxSize int
 }
 
-// pendingEntry represents a pending entry in the pool, along with a channel to notify a pending RPC.
+// pendingEntry represents a pending entry in the pool, along with a channel to
+// notify a pending RPC. When Append()-ed to an entryTile, the pendingEntry
+// object gets updated with an entry index.
 type pendingEntry struct {
+	index int64
 	mtcle *entry.MTCLogEntry
 	mtcpk *pubkey.MTCPublicKey
 	ch    chan<- issuanceNotification
@@ -463,28 +466,24 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	serial, err := core.EncodeMTCSerial(m.logID.LogNumber(), latest.TreeSize)
-	if err != nil {
-		return err
-	}
-
 	candidate := m.frontier.Clone()
 
 	// Add leaves to the candidate.
-	for _, e := range entries {
-		err = candidate.AppendEntry(e.mtcle, e.mtcpk)
+	for i, e := range entries {
+		entryIndex, err := candidate.AppendEntry(e.mtcle, e.mtcpk)
 		if err != nil {
 			return err
 		}
+		entries[i].index = entryIndex
 	}
 
 	newRootHash := candidate.RootHash()
 
 	// Log each leaf along with the root hash it will be included in.
-	for i, e := range entries {
+	for _, e := range entries {
 		m.log.AuditInfo("issuing", map[string]any{
 			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
-			"entryIndex":             latest.TreeSize + int64(i),
+			"entryIndex":             e.index,
 			"mtcLogID":               m.logID.String(),
 			"newRootHash":            newRootHash.String(),
 		})
@@ -576,7 +575,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
 
-	coveringSubtrees, err := subtree.FindSubtrees(latest.TreeSize, candidate.TreeSize())
+	coveringSubtrees, err := subtree.FindCoveringSubtrees(latest.TreeSize, candidate.TreeSize())
 	if err != nil {
 		return fmt.Errorf("finding subtrees: %s", err)
 	}
@@ -585,51 +584,62 @@ func (m *mtca) sequence(ctx context.Context) error {
 	tr := tiles.NewTileReader(ctx, m.s3c, m.logID.TilePrefix())
 	hr := tlog.TileHashReader(tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, tr)
 
-	// Here we range over the returned subtree and re-read necessary information
-	// from S3 in order to get a subtree hash. The Frontier should typically
-	// have all the information required to get a subtree hash, if we use that
-	// information instead we would avoid the potential for this S3 read to
-	// impact sequence(). At the end of this loop, each subtree struct is
-	// updated with the row ID that was written to the DB.
-	for idx, subt := range coveringSubtrees {
-		subtreeHash, err := subtree.HashSubtree(subt.Start, subt.End, hr)
+	// Here we range over the covering subtrees and re-read necessary
+	// information from S3 in order to get a subtree hash. As a possible future
+	// optimization, we may be able to get the hash from the Frontier, which
+	// should typically have all the information required. This would avoid the
+	// potential for the S3 read to impact sequence().
+	//
+	// At the end of this loop, each Subtree{} struct is updated with the row ID
+	// that was written to the DB.
+	for i, s := range coveringSubtrees {
+		// thank you for the subtree, we don't need to sign this one
+		if s.IsEmpty() || s.Start == s.End {
+			continue
+		}
+		subtreeHash, err := subtree.HashSubtree(s.Start, s.End, hr)
 		if err != nil {
 			return fmt.Errorf("hashing subtree: %s", err)
 		}
-		subtreeSig, err := m.cosigner.CosignSubtree(subt.Start, subt.End, subtreeHash)
+		subtreeSig, err := m.cosigner.CosignSubtree(s.Start, s.End, subtreeHash)
 		if err != nil {
 			return fmt.Errorf("signing subtree: %s", err)
 		}
-		subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
+		subtreeID, err := m.treedb.InsertSubtree(ctx, &treedb.SubtreesModel{
 			MTCLogID:        m.logID.String(),
 			MTCASignature:   subtreeSig,
 			MirrorID:        nil,
 			MirrorSignature: nil,
-			SubtreeStart:    subt.Start,
-			SubtreeEnd:      subt.End,
+			SubtreeStart:    s.Start,
+			SubtreeEnd:      s.End,
 			SubtreeHash:     subtreeHash[:],
 		})
 		if err != nil {
-			return fmt.Errorf("calling treedb.InsertCheckpointSubtree: %s", err)
+			return fmt.Errorf("calling treedb.InsertSubtree: %s", err)
 		}
 		// update the subtree with the returned row ID
-		coveringSubtrees[idx].ID = subtreeID
+		coveringSubtrees[i].ID = subtreeID
 	}
 
 	// Notify waiting RPCs.
-	for i, e := range entries {
+	for _, e := range entries {
 		var subtreeID int64
-		entryIndex := latest.TreeSize + int64(i)
-		for _, subTree := range coveringSubtrees {
-			if subtree.Contains(entryIndex, subTree.Start, subTree.End) {
-				subtreeID = subTree.ID
-			}
+		if e.index < coveringSubtrees[0].End {
+			subtreeID = coveringSubtrees[0].ID
+		} else {
+			subtreeID = coveringSubtrees[1].ID
+
 		}
+
+		serial, err := core.EncodeMTCSerial(m.logID.LogNumber(), e.index)
+		if err != nil {
+			return err
+		}
+
 		e.ch <- issuanceNotification{
 			serialNumber: serial,
 			subtreeID:    subtreeID,
 		}
-		serial++
 	}
 	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil

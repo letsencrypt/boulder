@@ -111,7 +111,7 @@ func appendEntries(t *testing.T, f *Frontier, fs3 *bs3test.FakeS3, start, end in
 	testPubkey := testPubkey()
 
 	for i := start; i < end; i++ {
-		err := f.AppendEntry(testEntry(i), testPubkey)
+		_, err := f.AppendEntry(testEntry(i), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d): %s", i, err)
 		}
@@ -445,7 +445,7 @@ func TestAppendToFullTree(t *testing.T) {
 
 	// Fake up an almost full Frontier.
 	f := &Frontier{treeSize: trees.MaxSize - 1}
-	err := f.AppendEntry(testEntry(0), mtcpk)
+	_, err := f.AppendEntry(testEntry(0), mtcpk)
 	if err != nil {
 		t.Fatalf("AppendEntry to tree of size %d: %s", int64(trees.MaxSize-1), err)
 	}
@@ -454,7 +454,7 @@ func TestAppendToFullTree(t *testing.T) {
 	}
 
 	want := f.Clone()
-	err = f.AppendEntry(testEntry(1), mtcpk)
+	_, err = f.AppendEntry(testEntry(1), mtcpk)
 	if err == nil {
 		t.Errorf("AppendEntry to full tree: got nil, want error")
 	}
@@ -474,7 +474,7 @@ func TestAppendMaxSizeEntry(t *testing.T) {
 	mtcpk := testPubkey()
 
 	f := &Frontier{}
-	err = f.AppendEntry(mtcle, mtcpk)
+	_, err = f.AppendEntry(mtcle, mtcpk)
 	if err != nil {
 		t.Fatalf("AppendEntry(65535-byte entry): %s", err)
 	}
@@ -527,7 +527,7 @@ func TestRootHash(t *testing.T) {
 		mtcpk := testPubkey
 		leafHashes = append(leafHashes, tlog.RecordHash(testEntryBody(i)))
 
-		err := f.AppendEntry(mtcle, mtcpk)
+		_, err := f.AppendEntry(mtcle, mtcpk)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d): %s", i, err)
 		}
@@ -568,7 +568,7 @@ func TestClone(t *testing.T) {
 	// fullHashesTiles, fullEntryTiles, and fullPubkeyTiles.
 	frontier := &Frontier{}
 	for i := range 260 {
-		err := frontier.AppendEntry(testEntry(i), testPubkey)
+		_, err := frontier.AppendEntry(testEntry(i), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d): %s", i, err)
 		}
@@ -586,7 +586,7 @@ func TestClone(t *testing.T) {
 	// Add another full tile's worth of entries.
 	const growTo = 520
 	for i := clonedAt; i < growTo; i++ {
-		err := candidate.AppendEntry(testEntry(int(i)), testPubkey)
+		_, err := candidate.AppendEntry(testEntry(int(i)), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d) to clone: %s", i, err)
 		}
@@ -604,7 +604,7 @@ func TestClone(t *testing.T) {
 
 	// Append the same entries to the original and check for equality.
 	for i := clonedAt; i < growTo; i++ {
-		err := frontier.AppendEntry(testEntry(int(i)), testPubkey)
+		_, err := frontier.AppendEntry(testEntry(int(i)), testPubkey)
 		if err != nil {
 			t.Fatalf("AppendEntry(%d) to original: %s", i, err)
 		}
@@ -636,7 +636,7 @@ func publishedTree(t *testing.T, fs3 *bs3test.FakeS3, n int64) tlog.Tree {
 	t.Helper()
 	f := &Frontier{}
 	for range n {
-		err := f.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+		_, err := f.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 		if err != nil {
 			t.Fatalf("AppendEntry: %s", err)
 		}

@@ -14,6 +14,10 @@ type Subtree struct {
 	End   int64
 }
 
+func (s Subtree) IsEmpty() bool {
+	return s.ID == 0 && s.Start == 0 && s.End == 0
+}
+
 // Valid reports whether [start, end) is a valid subtree per the MTC draft
 // section 4.1 Definition of a Subtree: 0 <= start <= end and start is a multiple
 // of BIT_CEIL(end - start).
@@ -37,8 +41,8 @@ func Valid(start, end int64) bool {
 	return uint64(start)&(bitCeil-1) == 0
 }
 
-// Contains returns true if start ≤ entryIndex < end.
-func Contains(entryIndex, start, end int64) bool {
+// contains returns true if start ≤ entryIndex < end.
+func contains(entryIndex, start, end int64) bool {
 	return start <= entryIndex && entryIndex < end
 }
 
@@ -206,7 +210,7 @@ func InclusionProof(entryIndex, start, end int64, reader tlog.HashReader) ([]tlo
 	if !Valid(start, end) {
 		return nil, fmt.Errorf("subtree [%d, %d) not valid", start, end)
 	}
-	if !Contains(entryIndex, start, end) {
+	if !contains(entryIndex, start, end) {
 		return nil, fmt.Errorf("entryIndex %d not in subtree [%d, %d)", entryIndex, start, end)
 	}
 	offset := start
@@ -328,7 +332,7 @@ func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, en
 	if !Valid(start, end) {
 		return tlog.Hash{}, fmt.Errorf("invalid subtree: [%d, %d)", start, end)
 	}
-	if !Contains(entryIndex, start, end) {
+	if !contains(entryIndex, start, end) {
 		return tlog.Hash{}, fmt.Errorf("entryIndex %d not in [%d, %d)", entryIndex, start, end)
 	}
 
@@ -392,10 +396,10 @@ func MTH(leaves []tlog.Hash) tlog.Hash {
 	}
 }
 
-// FindSubtrees calculates two covering subtrees
+// FindCoveringSubtrees calculates two covering subtrees from a start and end index.
 //
 // https://www.ietf.org/archive/id/draft-ietf-plants-merkle-tree-certs-08.html#section-4.5.1-4
-func FindSubtrees(start, end int64) (subtrees []Subtree, err error) {
+func FindCoveringSubtrees(start, end int64) (subtrees []Subtree, err error) {
 	if start < 0 || end < 0 {
 		return []Subtree{}, fmt.Errorf("start and end must be positive")
 	}
@@ -405,28 +409,25 @@ func FindSubtrees(start, end int64) (subtrees []Subtree, err error) {
 	}
 
 	if (end - start) <= 1 {
-		if start == end {
-			return []Subtree{{Start: start, End: end}}, nil
-		}
 		return []Subtree{{Start: start, End: end}, {Start: end, End: end}}, nil
 	}
 
 	lastIndex := (end - 1)
-	splitIndex := bits.Len64(uint64(start^lastIndex)) - 1 //nolint:gosec // G115: this is why
+	splitIndex := bits.Len64(uint64(start^lastIndex)) - 1 //nolint:gosec // G115: the three checks above ensure these values are positive
 	mask := int64(1<<splitIndex) - 1
 	midIndex := lastIndex &^ mask
 
-	leftSplitIndex := bits.Len64(uint64(^start & mask)) //nolint:gosec // G115: this is why
-	leftStartIndex := start & ^((1 << leftSplitIndex) - 1)
+	leftHeight := bits.Len64(uint64(^start & mask)) //nolint:gosec // G115: the same three checks a start of function
+	leftStart := start & ^((1 << leftHeight) - 1)
 
-	_, ok := completeSubtree(leftStartIndex, midIndex)
+	_, ok := completeSubtree(leftStart, midIndex)
 	if !ok {
 		return []Subtree{}, fmt.Errorf("failed to find complete left subtree")
 	}
+
 	// the subtree on the right of `mid` may not be complete, but should be valid.
 	if !Valid(midIndex, end) {
 		return []Subtree{}, fmt.Errorf("failed to find valid right subtree")
 	}
-
-	return []Subtree{{Start: leftStartIndex, End: midIndex}, {Start: midIndex, End: end}}, nil
+	return []Subtree{{Start: leftStart, End: midIndex}, {Start: midIndex, End: end}}, nil
 }

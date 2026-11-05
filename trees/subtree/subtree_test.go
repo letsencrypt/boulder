@@ -618,15 +618,15 @@ func TestFindSubtrees(t *testing.T) {
 		{"Left can contain extra elements", 11, 24, []Subtree{{Start: 8, End: 16}, {Start: 16, End: 24}}, false},
 		{"Right may be partial", 8, 25, []Subtree{{Start: 8, End: 16}, {Start: 16, End: 25}}, false},
 		{"Very small", 3, 4, []Subtree{{Start: 3, End: 4}, {Start: 4, End: 4}}, false},
-		{"Start same as End", 3, 3, []Subtree{{Start: 3, End: 3}}, false},
+		{"Start same as End", 3, 3, []Subtree{{Start: 3, End: 3}, {Start: 3, End: 3}}, false},
 		{"Start is negative", -1, 7, []Subtree{}, true},
 		{"End is negative", 7, -1, []Subtree{}, true},
 		{"Start greater than End", 9, 2, []Subtree{}, true},
-		{"Start and End are zero", 0, 0, []Subtree{{Start: 0, End: 0}}, false},
+		{"Start and End are zero", 0, 0, []Subtree{{Start: 0, End: 0}, {Start: 0, End: 0}}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			subtrees, err := FindSubtrees(tc.start, tc.end)
+			subtrees, err := FindCoveringSubtrees(tc.start, tc.end)
 			if err != nil && !tc.expectErr {
 				t.Errorf("got error, wanted no error: %q", err)
 			}

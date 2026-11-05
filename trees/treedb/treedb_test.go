@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-func TestCheckpointSubtreeModelValid(t *testing.T) {
-	valid := CheckpointSubtreeModel{
+func TestSubtreesModelValid(t *testing.T) {
+	valid := SubtreesModel{
 		MTCLogID:     "44947.1",
 		SubtreeStart: 0,
 		SubtreeEnd:   8,
@@ -18,14 +18,14 @@ func TestCheckpointSubtreeModelValid(t *testing.T) {
 
 	testCases := []struct {
 		name    string
-		distort func(*CheckpointSubtreeModel)
+		distort func(*SubtreesModel)
 	}{
-		{"empty MTCLogID", func(s *CheckpointSubtreeModel) { s.MTCLogID = "" }},
-		{"end equals start", func(s *CheckpointSubtreeModel) { s.SubtreeEnd = s.SubtreeStart }},
-		{"end before start", func(s *CheckpointSubtreeModel) { s.SubtreeStart = 9 }},
-		{"end at 2^48", func(s *CheckpointSubtreeModel) { s.SubtreeEnd = 1 << 48 }},
-		{"empty hash", func(s *CheckpointSubtreeModel) { s.SubtreeHash = nil }},
-		{"short hash", func(s *CheckpointSubtreeModel) { s.SubtreeHash = make([]byte, 31) }},
+		{"empty MTCLogID", func(s *SubtreesModel) { s.MTCLogID = "" }},
+		{"end equals start", func(s *SubtreesModel) { s.SubtreeEnd = s.SubtreeStart }},
+		{"end before start", func(s *SubtreesModel) { s.SubtreeStart = 9 }},
+		{"end at 2^48", func(s *SubtreesModel) { s.SubtreeEnd = 1 << 48 }},
+		{"empty hash", func(s *SubtreesModel) { s.SubtreeHash = nil }},
+		{"short hash", func(s *SubtreesModel) { s.SubtreeHash = make([]byte, 31) }},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
