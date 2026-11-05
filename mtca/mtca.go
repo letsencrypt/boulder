@@ -622,7 +622,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 			SubtreeHash:     subtreeHash[:],
 		})
 		if err != nil {
-			return fmt.Errorf("inserting subtree: %s", err)
+			return fmt.Errorf("inserting subtree: %w", err)
 		}
 		// update the subtree with the returned row ID
 		coveringSubtrees[i].ID = subtreeID
