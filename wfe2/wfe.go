@@ -29,7 +29,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
-	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer" // imported for its init function.
 	"github.com/letsencrypt/boulder/identifier"
@@ -144,9 +143,6 @@ type WebFrontEndImpl struct {
 	// AccountURIPrefixes field.
 	AccountURIPrefix string
 
-	// Key policy.
-	keyPolicy goodkey.KeyPolicy
-
 	// CORS settings
 	AllowOrigins []string
 
@@ -201,7 +197,6 @@ type AccountBlocker interface {
 func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
 	clk clock.Clock,
-	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[issuance.NameID][][]byte,
 	issuerCertificates map[issuance.NameID]*issuance.Certificate,
 	logger blog.Logger,
@@ -254,7 +249,6 @@ func NewWebFrontEndImpl(
 	wfe := WebFrontEndImpl{
 		log:                           logger,
 		clk:                           clk,
-		keyPolicy:                     keyPolicy,
 		certificateChains:             certificateChains,
 		issuerCertificates:            issuerCertificates,
 		stats:                         initStats(stats),
@@ -2087,7 +2081,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Validate the inner JWS as a key rollover request for the outer JWS
-	rolloverOperation, err := wfe.validKeyRollover(ctx, outerJWS, innerJWS, oldKey)
+	rolloverOperation, err := wfe.validKeyRollover(outerJWS, innerJWS, oldKey)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
