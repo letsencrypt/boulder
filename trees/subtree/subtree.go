@@ -396,7 +396,9 @@ func MTH(leaves []tlog.Hash) tlog.Hash {
 	}
 }
 
-// FindCoveringSubtrees calculates two covering subtrees from a start and end index.
+// FindCoveringSubtrees calculates two subtrees to effeciently cover an
+// arbitrary interval from `start` to `end`. It will always return at least one
+// non-zero subtree (i.e. covering a single entry) or an error.
 //
 // https://www.ietf.org/archive/id/draft-ietf-plants-merkle-tree-certs-08.html#section-4.5.1-4
 func FindCoveringSubtrees(start, end int64) (subtrees []Subtree, err error) {
@@ -417,7 +419,7 @@ func FindCoveringSubtrees(start, end int64) (subtrees []Subtree, err error) {
 	mask := int64(1<<splitIndex) - 1
 	midIndex := lastIndex &^ mask
 
-	leftHeight := bits.Len64(uint64(^start & mask)) //nolint:gosec // G115: the same three checks a start of function
+	leftHeight := bits.Len64(uint64(^start & mask)) //nolint:gosec // G115: the same three checks at start of function
 	leftStart := start & ^((1 << leftHeight) - 1)
 
 	_, ok := completeSubtree(leftStart, midIndex)
