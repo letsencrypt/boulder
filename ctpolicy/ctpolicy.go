@@ -204,7 +204,7 @@ loop:
 // compliantSet returns a slice of SCTs which complies with all relevant CT Log
 // Policy requirements, namely that the set of SCTs:
 // - contain at least two SCTs, which
-// - come from logs run by at least two different operators
+// - come from logs run by at least two different operators.
 //
 // If no such set of SCTs exists, returns nil.
 func compliantSet(results []result) core.SCTDERs {
