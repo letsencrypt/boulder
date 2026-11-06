@@ -493,7 +493,7 @@ func (m *mtca) sequence(ctx context.Context) error {
 	// Log each leaf along with the root hash it will be included in.
 	for i, e := range entries {
 		m.log.AuditInfo(ctx, "Issuing",
-			slog.String("eventId", e.eventID),
+			slog.String("eventID", e.eventID),
 			blog.MTCLogID(m.logID.String()),
 			slog.Int64("entryIndex", latest.TreeSize+int64(i)),
 			slog.String("TBSCertificateLogEntry", hex.EncodeToString(e.mtcle.TBS())),
