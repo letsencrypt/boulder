@@ -13,6 +13,10 @@ import (
 
 var ErrIssuanceLogNotInitialized = errors.New("issuance log DB not initialized")
 
+// ErrAlreadyCosigned is returned when a checkpoint or subtree already has a
+// mirror signature, so the given one was not stored.
+var ErrAlreadyCosigned = errors.New("already has a mirror signature")
+
 // CheckpointModel represents the database storage of a checkpoint and associated signatures.
 //
 // For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Subtree`.
@@ -120,9 +124,12 @@ func (i *Impl) InsertCheckpoint(ctx context.Context, c *CheckpointModel) error {
 	return i.db.Insert(ctx, c)
 }
 
+// AddMirrorSignature stores mirrorCosig as the mirror signature of the
+// checkpoint with the given id, which must exist. It returns ErrAlreadyCosigned
+// if the checkpoint already has one.
 func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorCosig []byte, mtcLogID string) error {
 	r, err := i.db.ExecContext(ctx,
-		"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
+		"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ? AND mirrorID IS NULL",
 		mirrorID, mirrorCosig, id, mtcLogID)
 	if err != nil {
 		return err
@@ -131,15 +138,21 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 	if err != nil {
 		return fmt.Errorf("getting RowsAffected: %s", err)
 	}
+	if n == 0 {
+		return fmt.Errorf("checkpoint %d %w", id, ErrAlreadyCosigned)
+	}
 	if n != 1 {
 		return fmt.Errorf("adding mirror signature: %d rows affected (want 1 row affected)", n)
 	}
 	return nil
 }
 
+// AddSubtreeMirrorSignature stores mirrorSignature as the mirror signature of
+// the subtree with the given id, which must exist. It returns
+// ErrAlreadyCosigned if the subtree already has one.
 func (i *Impl) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
 	r, err := i.db.ExecContext(ctx,
-		"UPDATE subtrees SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
+		"UPDATE subtrees SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ? AND mirrorID IS NULL",
 		mirrorID, mirrorSignature, id, mtcLogID)
 	if err != nil {
 		return err
@@ -147,6 +160,9 @@ func (i *Impl) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID
 	n, err := r.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("getting RowsAffected: %s", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("subtree %d %w", id, ErrAlreadyCosigned)
 	}
 	if n != 1 {
 		return fmt.Errorf("adding mirror signature to subtree %d: %d rows affected (want 1 row affected)", id, n)

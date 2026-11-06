@@ -1,8 +1,9 @@
-// genkeys generates the sunlight witness's seed and the throwaway CT log's
-// accepted roots file, derives the mirror cosigner's public key for the mtca
-// and mtpublisher configs the way cmd/sunlight derives the private key, and
-// writes the mirror log list.
-// https://github.com/FiloSottile/sunlight/blob/v0.9.0/cmd/sunlight/sunlight.go#L933-L940
+// genkeys generates the seed the sunlight mirrors share and the throwaway CT
+// log's accepted roots file, and writes the mirror log list. It also derives
+// each mirror cosigner's public key the way cmd/sunlight derives the private
+// key, and writes them in the form of Chrome's cosigners.json and
+// cosigners.pem for the mtpublisher config.
+// https://github.com/FiloSottile/sunlight/blob/v0.10.2/cmd/sunlight/sunlight.go#L1028-L1040
 package main
 
 import (
@@ -16,6 +17,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -29,9 +31,40 @@ import (
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
-// mirrorName must match the mirrorname in test/sunlight/sunlight.yaml and the
-// oid form of the mirror ID in the mtca and mtpublisher configs.
-const mirrorName = "oid/1.3.6.1.4.1.32473.9"
+// mirror describes a sunlight mirror of the dev stack.
+type mirror struct {
+	friendlyName string
+	// id is the mirror's cosigner ID, whose oid form must match the mirrorname
+	// in the mirror's sunlight config.
+	id string
+	// submissionPrefix and monitoringPrefix are where the mtpublisher reaches
+	// the mirror, matching its sunlight config and docker-compose.yml.
+	submissionPrefix string
+	monitoringPrefix string
+}
+
+// mirrors are the dev stack's mirrors, one per sunlight config in
+// test/sunlight. They derive distinct keys from the shared seed by name.
+var mirrors = []mirror{
+	{
+		friendlyName:     "concave",
+		id:               "32473.9",
+		submissionPrefix: "http://boulder-sunlight:4700",
+		monitoringPrefix: "http://boulder-seaweedfs:8333/boulder-sunlight/mirror",
+	},
+	{
+		friendlyName:     "convex",
+		id:               "32473.10",
+		submissionPrefix: "http://boulder-sunlight2:4700",
+		monitoringPrefix: "http://boulder-seaweedfs:8333/boulder-sunlight2/mirror",
+	},
+}
+
+// name returns the mirror's cosigner name, the HKDF info cmd/sunlight derives
+// its key with.
+func (m mirror) name() string {
+	return "oid/1.3.6.1.4.1." + m.id
+}
 
 // caID and logNumber identify the test MTCA and its issuance log, matching the
 // logID in the mtca and mtpublisher configs.
@@ -77,6 +110,77 @@ func logListFile(p, mtcaPublicKeyFile string) error {
 	logList := "logs/v0\nvkey " + cosignatureVKey("oid/1.3.6.1.4.1."+caID, mtcaKey) +
 		"\norigin " + logID.Origin() + "\n"
 	return os.WriteFile(p, []byte(logList), 0644)
+}
+
+// cosignerFiles writes cosigners.json and cosigners.pem under dir, listing
+// each mirror as a Usable mirror in the UNTRUSTED_VALIDATION_ONLY realm with
+// the key it derives from seed.
+func cosignerFiles(dir string, seed []byte) error {
+	type stateChange struct {
+		State      string `json:"state"`
+		StateStart string `json:"state_start"`
+	}
+	type operatorChange struct {
+		Name          string `json:"name"`
+		OperatorStart string `json:"operator_start"`
+	}
+	type signer struct {
+		FriendlyName     string           `json:"friendly_name"`
+		BaseID           string           `json:"base_id"`
+		StateHistory     []stateChange    `json:"state_history"`
+		OperatorHistory  []operatorChange `json:"operator_history"`
+		BaseURL          string           `json:"base_url"`
+		SubmissionPrefix string           `json:"submission_prefix"`
+		Type             string           `json:"type"`
+		Realm            string           `json:"realm"`
+		KeySHA256        string           `json:"key_sha256"`
+	}
+	list := struct {
+		Timestamp string   `json:"timestamp"`
+		Version   string   `json:"version"`
+		Mirrors   []signer `json:"mirrors"`
+	}{
+		Timestamp: "2026-01-01T00:00:00Z",
+		Version:   "0.0.1",
+	}
+	var cosignersPEM []byte
+	for _, m := range mirrors {
+		secret, err := hkdf.Key(sha256.New, seed, []byte("sunlight ML-DSA-44 mirror key"), m.name(), 32)
+		if err != nil {
+			return err
+		}
+		key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), secret)
+		if err != nil {
+			return err
+		}
+		spki, err := x509.MarshalPKIXPublicKey(key.PublicKey())
+		if err != nil {
+			return err
+		}
+		keySHA256 := fmt.Sprintf("%x", sha256.Sum256(spki))
+		list.Mirrors = append(list.Mirrors, signer{
+			FriendlyName:     m.friendlyName,
+			BaseID:           m.id,
+			StateHistory:     []stateChange{{State: "USABLE", StateStart: "2026-01-01T00:00:00Z"}},
+			OperatorHistory:  []operatorChange{{Name: "Boulder", OperatorStart: "2026-01-01T00:00:00Z"}},
+			BaseURL:          m.monitoringPrefix,
+			SubmissionPrefix: m.submissionPrefix,
+			Type:             "MIRROR",
+			Realm:            "UNTRUSTED_VALIDATION_ONLY",
+			KeySHA256:        keySHA256,
+		})
+		cosignersPEM = append(cosignersPEM, []byte("# "+keySHA256+"\n")...)
+		cosignersPEM = append(cosignersPEM, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: spki})...)
+	}
+	cosignersJSON, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(path.Join(dir, "cosigners.json"), append(cosignersJSON, '\n'), 0644)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path.Join(dir, "cosigners.pem"), cosignersPEM, 0644)
 }
 
 func rootsFile(p string) error {
@@ -148,24 +252,7 @@ func main2() error {
 		return err
 	}
 
-	mirrorSecret, err := hkdf.Key(sha256.New, seed, []byte("sunlight ML-DSA-44 mirror key"), mirrorName, 32)
-	if err != nil {
-		return err
-	}
-	mirrorKey, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), mirrorSecret)
-	if err != nil {
-		return err
-	}
-	mirrorSPKI, err := x509.MarshalPKIXPublicKey(mirrorKey.PublicKey())
-	if err != nil {
-		return err
-	}
-	mirrorPubFile, err := os.OpenFile(path.Join(*outputDir, "mirror.pub.pem"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer mirrorPubFile.Close()
-	err = pem.Encode(mirrorPubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: mirrorSPKI})
+	err = cosignerFiles(*outputDir, seed)
 	if err != nil {
 		return err
 	}

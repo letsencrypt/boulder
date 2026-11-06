@@ -31,7 +31,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
-	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
@@ -179,6 +178,9 @@ func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirror
 	}
 	for i, s := range f.checkpointSubtrees {
 		if s.ID == id {
+			if s.MirrorID != nil {
+				return fmt.Errorf("subtree %d %w", id, treedb.ErrAlreadyCosigned)
+			}
 			f.checkpointSubtrees[i].MirrorID = &mirrorID
 			f.checkpointSubtrees[i].MirrorSignature = mirrorSignature
 			return nil
@@ -242,6 +244,9 @@ func (f *fakeDB) AddMirrorSignature(ctx context.Context, id int64, mirrorID stri
 	}
 	for i, c := range f.checkpoints {
 		if c.ID == id {
+			if c.MirrorID != nil {
+				return fmt.Errorf("checkpoint %d %w", id, treedb.ErrAlreadyCosigned)
+			}
 			f.checkpoints[i].MirrorID = &mirrorID
 			f.checkpoints[i].MirrorSignature = mirrorCosig
 			return nil
@@ -623,8 +628,8 @@ func (e *errorS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optF
 	return e.FakeS3.PutObject(ctx, params, optFns...)
 }
 
-// mirrorCosign cosigns the latest checkpoint with a real mtpublisher, standing
-// in for the daemon, so sequencing can proceed.
+// mirrorCosign stores a test mirror's cosignature on the latest checkpoint,
+// standing in for the mtpublisher, so sequencing can proceed.
 func mirrorCosign(t *testing.T, m *mtca) {
 	t.Helper()
 	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
@@ -637,13 +642,18 @@ func mirrorCosign(t *testing.T, m *mtca) {
 	}
 
 	fake := m.treedb.(*fakeDB)
-	p, err := mtpublisher.New(fake, time.Second, m.logID, m.verifier, mirror, blog.NewMock())
+	latest, err := fake.LatestCheckpoint(t.Context(), m.logID.String())
 	if err != nil {
-		t.Fatalf("mtpublisher.New: %s", err)
+		t.Fatalf("LatestCheckpoint: %s", err)
 	}
-	err = p.PublishCheckpoint(t.Context())
+	cp := &checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}}
+	line, err := mirror.SubmitCheckpoint(t.Context(), cp, nil)
 	if err != nil {
-		t.Fatalf("mtpublisher.PublishCheckpoint: %s", err)
+		t.Fatalf("SubmitCheckpoint: %s", err)
+	}
+	err = fake.AddMirrorSignature(t.Context(), latest.ID, mirror.ID(), line, m.logID.String())
+	if err != nil {
+		t.Fatalf("AddMirrorSignature: %s", err)
 	}
 }
 
