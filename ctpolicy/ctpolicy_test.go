@@ -223,50 +223,50 @@ func TestCompliantSet(t *testing.T) {
 		{
 			name: "only one result",
 			results: []result{
-				{log: loglist.Log{Operator: "A", Tiled: false}, sct: []byte("sct1")},
+				{log: loglist.Log{Operator: "A"}, sct: []byte("sct1")},
 			},
 			want: nil,
 		},
 		{
 			name: "only one good result",
 			results: []result{
-				{log: loglist.Log{Operator: "A", Tiled: false}, sct: []byte("sct1")},
-				{log: loglist.Log{Operator: "B", Tiled: false}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "A"}, sct: []byte("sct1")},
+				{log: loglist.Log{Operator: "B"}, err: errors.New("oops")},
 			},
 			want: nil,
 		},
 		{
 			name: "only one operator",
 			results: []result{
-				{log: loglist.Log{Operator: "A", Tiled: false}, sct: []byte("sct1")},
-				{log: loglist.Log{Operator: "A", Tiled: false}, sct: []byte("sct2")},
+				{log: loglist.Log{Operator: "A"}, sct: []byte("sct1")},
+				{log: loglist.Log{Operator: "A"}, sct: []byte("sct2")},
 			},
 			want: nil,
 		},
 		{
-			name: "all tiled",
+			name: "minimum set",
 			results: []result{
-				{log: loglist.Log{Operator: "A", Tiled: true}, sct: []byte("sct1")},
-				{log: loglist.Log{Operator: "B", Tiled: true}, sct: []byte("sct2")},
+				{log: loglist.Log{Operator: "A"}, sct: []byte("sct1")},
+				{log: loglist.Log{Operator: "B"}, sct: []byte("sct2")},
 			},
-			want: nil,
+			want: core.SCTDERs{[]byte("sct1"), []byte("sct2")},
 		},
 		{
 			name: "happy path",
 			results: []result{
-				{log: loglist.Log{Operator: "A", Tiled: false}, err: errors.New("oops")},
-				{log: loglist.Log{Operator: "A", Tiled: true}, sct: []byte("sct2")},
-				{log: loglist.Log{Operator: "A", Tiled: false}, sct: []byte("sct3")},
-				{log: loglist.Log{Operator: "B", Tiled: false}, err: errors.New("oops")},
-				{log: loglist.Log{Operator: "B", Tiled: true}, sct: []byte("sct4")},
-				{log: loglist.Log{Operator: "B", Tiled: false}, sct: []byte("sct6")},
-				{log: loglist.Log{Operator: "C", Tiled: false}, err: errors.New("oops")},
-				{log: loglist.Log{Operator: "C", Tiled: true}, sct: []byte("sct8")},
-				{log: loglist.Log{Operator: "C", Tiled: false}, sct: []byte("sct9")},
+				{log: loglist.Log{Operator: "A"}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "A"}, sct: []byte("sct2")},
+				{log: loglist.Log{Operator: "A"}, sct: []byte("sct3")},
+				{log: loglist.Log{Operator: "B"}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "B"}, sct: []byte("sct4")},
+				{log: loglist.Log{Operator: "B"}, sct: []byte("sct6")},
+				{log: loglist.Log{Operator: "C"}, err: errors.New("oops")},
+				{log: loglist.Log{Operator: "C"}, sct: []byte("sct8")},
+				{log: loglist.Log{Operator: "C"}, sct: []byte("sct9")},
 			},
-			// The second and sixth results should be picked, because first and fourth
-			// are skipped for being errors, and fifth is skipped for also being tiled.
-			want: core.SCTDERs{[]byte("sct2"), []byte("sct6")},
+			// The second and fifth results should be picked, because first and fourth
+			// are skipped for being errors.
+			want: core.SCTDERs{[]byte("sct2"), []byte("sct4")},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
