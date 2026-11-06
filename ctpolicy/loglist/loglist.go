@@ -224,9 +224,7 @@ func (ll List) ForTime(expiry time.Time) List {
 }
 
 // Shuffle returns a new log list containing the exact same logs, but in a
-// nearly-randomly-shuffled order. If possible, it ensures that the first two
-// logs consist of one tiled log and one non-tiled log, to boost the percentage
-// of certs which include an SCT from a static log.
+// nearly-randomly-shuffled order.
 func (ll List) Shuffle() List {
 	res := slices.Clone(ll)
 	rand.Shuffle(len(res), func(i int, j int) {
