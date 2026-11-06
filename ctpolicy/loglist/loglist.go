@@ -47,7 +47,6 @@ type Log struct {
 	StartInclusive time.Time
 	EndExclusive   time.Time
 	State          loglist3.LogStatus
-	Tiled          bool
 	Type           string
 }
 
@@ -101,7 +100,6 @@ func newHelper(file []byte) (List, error) {
 				Key:      log.Key,
 				Url:      log.URL,
 				State:    log.State.LogStatus(),
-				Tiled:    false,
 				Type:     log.Type,
 			}
 
@@ -121,7 +119,6 @@ func newHelper(file []byte) (List, error) {
 				Key:      log.Key,
 				Url:      log.SubmissionURL,
 				State:    log.State.LogStatus(),
-				Tiled:    true,
 				Type:     log.Type,
 			}
 
