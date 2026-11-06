@@ -244,7 +244,7 @@ func TestCompliantSet(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "all tiled",
+			name: "minimum set",
 			results: []result{
 				{log: loglist.Log{Operator: "A"}, sct: []byte("sct1")},
 				{log: loglist.Log{Operator: "B"}, sct: []byte("sct2")},
