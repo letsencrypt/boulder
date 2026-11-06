@@ -64,7 +64,7 @@ func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid KeyID, nonce, ur
 		return nil, errors.New("nil key")
 	}
 	alg, sha := jwsHasher(key.Public())
-	if alg == "" || !sha.Available() {
+	if alg == "" || (!sha.Available() && sha != 0) {
 		return nil, ErrUnsupportedKey
 	}
 	headers := struct {
@@ -103,11 +103,21 @@ func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid KeyID, nonce, ur
 		}
 		payload = base64.RawURLEncoding.EncodeToString(cs)
 	}
-	hash := sha.New()
-	hash.Write([]byte(phead + "." + payload))
-	sig, err := jwsSign(key, sha, hash.Sum(nil))
-	if err != nil {
-		return nil, err
+	message := []byte(phead + "." + payload)
+	var sig []byte
+	if sha == 0 {
+		sig, err = jwsSign(key, message, sha)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		hash := sha.New()
+		hash.Write(message)
+		digest := hash.Sum(nil)
+		sig, err = jwsSign(key, digest, sha)
+		if err != nil {
+			return nil, err
+		}
 	}
 	enc := jsonWebSignature{
 		Protected: phead,
@@ -154,7 +164,7 @@ func jwsWithMAC(key []byte, kid, url string, rawPayload []byte) (*jsonWebSignatu
 	}, nil
 }
 
-// jwkEncode encodes public part of an RSA or ECDSA key into a JWK.
+// jwkEncode encodes public part of an RSA, ECDSA, or ML-DSA key into a JWK.
 // The result is also suitable for creating a JWK thumbprint.
 // https://tools.ietf.org/html/rfc7517
 func jwkEncode(pub crypto.PublicKey) (string, error) {
@@ -191,13 +201,16 @@ func jwkEncode(pub crypto.PublicKey) (string, error) {
 			base64.RawURLEncoding.EncodeToString(x),
 			base64.RawURLEncoding.EncodeToString(y),
 		), nil
+	default:
+		return maybeMLDSAEncodeJWK(pub)
 	}
-	return "", ErrUnsupportedKey
 }
 
-// jwsSign signs the digest using the given key.
-// The hash is unused for ECDSA keys.
-func jwsSign(key crypto.Signer, hash crypto.Hash, digest []byte) ([]byte, error) {
+// jwsSign signs the digest (or message) using the given key.
+//
+// For ML-DSA, the input is expected to be a message, and hashing happens
+// internal to the stdlib.
+func jwsSign(key crypto.Signer, digest []byte, hash crypto.Hash) ([]byte, error) {
 	switch pub := key.Public().(type) {
 	case *rsa.PublicKey:
 		return key.Sign(rand.Reader, digest, hash)
@@ -221,12 +234,14 @@ func jwsSign(key crypto.Signer, hash crypto.Hash, digest []byte) ([]byte, error)
 		copy(sig[size-len(rb):], rb)
 		copy(sig[size*2-len(sb):], sb)
 		return sig, nil
+	default:
+		return maybeMLDSASign(key, digest)
 	}
-	return nil, ErrUnsupportedKey
 }
 
 // jwsHasher indicates suitable JWS algorithm name and a hash function
 // to use for signing a digest with the provided key.
+// For algorithms that do their own hashing, returns `crypto.Hash(0)`.
 // It returns ("", 0) if the key is not supported.
 func jwsHasher(pub crypto.PublicKey) (string, crypto.Hash) {
 	switch pub := pub.(type) {
@@ -240,9 +255,12 @@ func jwsHasher(pub crypto.PublicKey) (string, crypto.Hash) {
 			return "ES384", crypto.SHA384
 		case "P-521":
 			return "ES512", crypto.SHA512
+		default:
+			return "", crypto.Hash(0)
 		}
+	default:
+		return maybeMLDSAHasher(pub)
 	}
-	return "", 0
 }
 
 // JWKThumbprint creates a JWK thumbprint out of pub

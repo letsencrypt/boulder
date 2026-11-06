@@ -7,6 +7,15 @@ BOULDER_PATH ?= $(GOPATH)/src/github.com/letsencrypt/boulder
 PEBBLE_PATH ?= $(GOPATH)/src/github.com/letsencrypt/pebble
 TEST_PATH ?= github.com/eggsampler/acme/v3
 CLIENT ?= unknown
+DOCKER_COMPOSE ?= docker compose
+
+# boulder-tools:latest isn't published, so use the tags boulder's own CI pins
+# Shell-expanded per recipe: the checkout doesn't exist when make parses this
+BOULDER_CI_YML = $(BOULDER_PATH)/.github/workflows/boulder-ci.yml
+BOULDER_TAGS = \
+	BOULDER_TOOLS_TAG=$$(awk '/^ *BOULDER_TOOLS_TAG: *$$/{getline; sub(/^ *- */,""); print; exit}' $(BOULDER_CI_YML)) \
+	BOULDER_VTCOMBOSERVER_TAG=$$(awk '/^ *BOULDER_VTCOMBOSERVER_TAG: *[^ ]/{sub(/^[^:]*: */,""); print; exit}' $(BOULDER_CI_YML))
+
 
 # tests the code against an already running ca instance
 # to actually do a test against pebble or boulder, including , see the 'pebble' or 'boulder' targets
@@ -39,7 +48,7 @@ pebble_setup:
 
 # runs an instance of pebble using docker
 pebble_start:
-	docker-compose -f $(PEBBLE_PATH)/docker-compose.yml up -d
+	$(DOCKER_COMPOSE) -f $(PEBBLE_PATH)/docker-compose.yml up -d
 
 # waits until pebble responds
 pebble_wait:
@@ -47,7 +56,7 @@ pebble_wait:
 
 # stops the running pebble instance
 pebble_stop:
-	docker-compose -f $(PEBBLE_PATH)/docker-compose.yml down
+	$(DOCKER_COMPOSE) -f $(PEBBLE_PATH)/docker-compose.yml down
 
 
 # sets up & runs boulder (in docker), tests, then stops boulder
@@ -55,16 +64,18 @@ boulder: CLIENT = boulder
 boulder: boulder_setup boulder_start boulder_wait test boulder_stop
 
 # NB: this edits docker-compose.yml
+# The test/certs wipe is needed because generate.sh skips certs that already
+# exist, so stale state from an older boulder revision starves new services.
 boulder_setup:
 	mkdir -p $(BOULDER_PATH)
 	-git clone --depth 1 https://github.com/letsencrypt/boulder.git $(BOULDER_PATH)
-	(cd $(BOULDER_PATH); git checkout -f main && git reset --hard HEAD && git pull -q)
+	(cd $(BOULDER_PATH); git checkout -f main && git reset --hard HEAD && git pull -q && git clean -qfdx test/certs/)
 	make boulder_stop
-	(cd $(BOULDER_PATH); docker compose run --rm bsetup)
+	(cd $(BOULDER_PATH); $(BOULDER_TAGS) docker compose run --rm bsetup)
 
 # runs an instance of boulder
 boulder_start:
-	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml up -d
+	$(BOULDER_TAGS) $(DOCKER_COMPOSE) -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml up -d
 
 # waits until boulder responds
 boulder_wait:
@@ -72,4 +83,4 @@ boulder_wait:
 
 # stops the running docker instance
 boulder_stop:
-	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml down
+	$(BOULDER_TAGS) $(DOCKER_COMPOSE) -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml down

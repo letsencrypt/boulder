@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -263,7 +262,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)",
+			"JWK contains unsupported key type (expected RSA, ECDSA P-256, P-384, P-521, or ML-DSA-44)",
 		},
 		{
 			jose.JSONWebKey{
@@ -279,7 +278,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
+			"JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512 ML-DSA-44]",
 		},
 		{
 			jose.JSONWebKey{
@@ -295,7 +294,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)",
+			"JWK contains unsupported key type (expected RSA, ECDSA P-256, P-384, P-521, or ML-DSA-44)",
 		},
 		{
 			jose.JSONWebKey{
@@ -483,15 +482,15 @@ func TestEnforceJWSAuthType(t *testing.T) {
 	conflictJWSBody := `
 {
   "header": {
-    "alg": "RS256", 
+    "alg": "RS256",
     "jwk": {
-      "e": "AQAB", 
-      "kty": "RSA", 
+      "e": "AQAB",
+      "kty": "RSA",
       "n": "ppbqGaMFnnq9TeMUryR6WW4Lr5WMgp46KlBXZkNaGDNQoifWt6LheeR5j9MgYkIFU7Z8Jw5-bpJzuBeEVwb-yHGh4Umwo_qKtvAJd44iLjBmhBSxq-OSe6P5hX1LGCByEZlYCyoy98zOtio8VK_XyS5VoOXqchCzBXYf32ksVUTrtH1jSlamKHGz0Q0pRKIsA2fLqkE_MD3jP6wUDD6ExMw_tKYLx21lGcK41WSrRpDH-kcZo1QdgCy2ceNzaliBX1eHmKG0-H8tY4tPQudk-oHQmWTdvUIiHO6gSKMGDZNWv6bq74VTCsRfUEAkuWhqUhgRSGzlvlZ24wjHv5Qdlw"
     }
-  }, 
-  "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ", 
-  "payload": "Zm9v", 
+  },
+  "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ",
+  "payload": "Zm9v",
   "signature": "ghTIjrhiRl2pQ09vAkUUBbF5KziJdhzOTB-okM9SPRzU8Hyj0W1H5JA1Zoc-A-LuJGNAtYYHWqMw1SeZbT0l9FHcbMPeWDaJNkHS9jz5_g_Oyol8vcrWur2GDtB2Jgw6APtZKrbuGATbrF7g41Wijk6Kk9GXDoCnlfOQOhHhsrFFcWlCPLG-03TtKD6EBBoVBhmlp8DRLs7YguWRZ6jWNaEX-1WiRntBmhLqoqQFtvZxCBw_PRuaRw_RZBd1x2_BNYqEdOmVNC43UHMSJg3y_3yrPo905ur09aUTscf-C_m4Sa4M0FuDKn3bQ_pFrtz-aCCq6rcTIyxYpDqNvHMT2Q"
 }
 `
@@ -925,7 +924,7 @@ func TestParseJWSRequest(t *testing.T) {
     "alg": "RS256",
     "kid": "unprotected key id"
   },
-  "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ", 
+  "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ",
   "payload": "Zm9v",
   "signature": "PKWWclRsiHF4bm-nmpxDez6Y_3Mdtu263YeYklbGYt1EiMOLiKY_dr_EqhUUKAKEWysFLO-hQLXVU7kVkHeYWQFFOA18oFgcZgkSF2Pr3DNZrVj9e2gl0eZ2i2jk6X5GYPt1lIfok_DrL92wrxEKGcrmxqXXGm0JgP6Al2VGapKZK2HaYbCHoGvtzNmzUX9rC21sKewq5CquJRvTmvQp5bmU7Q9KeafGibFr0jl6IA3W5LBGgf6xftuUtEVEbKmKaKtaG7tXsQH1mIVOPUZZoLWz9sWJSFLmV0QSXm3ZHV0DrOhLfcADbOCoQBMeGdseBQZuUO541A3BEKGv2Aikjw"
 }
@@ -933,7 +932,7 @@ func TestParseJWSRequest(t *testing.T) {
 
 	wrongSignaturesFieldJWSBody := `
 {
-  "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ", 
+  "protected": "eyJub25jZSI6ICJibTl1WTJVIiwgInVybCI6ICJodHRwOi8vbG9jYWxob3N0L3Rlc3QiLCAia2lkIjogInRlc3RrZXkifQ",
   "payload": "Zm9v",
   "signatures": ["PKWWclRsiHF4bm-nmpxDez6Y_3Mdtu263YeYklbGYt1EiMOLiKY_dr_EqhUUKAKEWysFLO-hQLXVU7kVkHeYWQFFOA18oFgcZgkSF2Pr3DNZrVj9e2gl0eZ2i2jk6X5GYPt1lIfok_DrL92wrxEKGcrmxqXXGm0JgP6Al2VGapKZK2HaYbCHoGvtzNmzUX9rC21sKewq5CquJRvTmvQp5bmU7Q9KeafGibFr0jl6IA3W5LBGgf6xftuUtEVEbKmKaKtaG7tXsQH1mIVOPUZZoLWz9sWJSFLmV0QSXm3ZHV0DrOhLfcADbOCoQBMeGdseBQZuUO541A3BEKGv2Aikjw"]
 }
@@ -992,7 +991,7 @@ func TestParseJWSRequest(t *testing.T) {
 			Name:          "JWS with an invalid algorithm",
 			Request:       makePostRequestWithPath("test-path", wrongSignatureTypeJWSBody),
 			WantErrType:   berrors.BadSignatureAlgorithm,
-			WantErrDetail: "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
+			WantErrDetail: "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512 ML-DSA-44]",
 			WantStatType:  "JWSAlgorithmCheckFailed",
 		},
 		{
@@ -1314,7 +1313,7 @@ func TestValidJWSForKey(t *testing.T) {
 			JWS:           bJSONWebSignature{wrongAlgJWS},
 			JWK:           goodJWK,
 			WantErrType:   berrors.BadSignatureAlgorithm,
-			WantErrDetail: "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
+			WantErrDetail: "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512 ML-DSA-44]",
 			WantStatType:  "JWSAlgorithmCheckFailed",
 		},
 		{
@@ -1574,40 +1573,6 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	test.AssertError(t, err, "No error returned for request signed by wrong key")
 	test.AssertErrorIs(t, err, berrors.Malformed)
 	test.AssertContains(t, err.Error(), "JWS verification error")
-}
-
-func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-
-	timeoutErrCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
-		return false, context.DeadlineExceeded
-	}
-
-	kp, err := goodkey.NewPolicy(nil, timeoutErrCheckFunc)
-	test.AssertNotError(t, err, "making key policy")
-
-	wfe.keyPolicy = kp
-
-	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
-	request := makePostRequestWithPath("test", validJWSBody)
-
-	_, _, err = wfe.validSelfAuthenticatedPOST(context.Background(), request)
-	test.AssertErrorIs(t, err, berrors.InternalServer)
-
-	badKeyCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
-		return false, fmt.Errorf("oh no: %w", goodkey.ErrBadKey)
-	}
-
-	kp, err = goodkey.NewPolicy(nil, badKeyCheckFunc)
-	test.AssertNotError(t, err, "making key policy")
-
-	wfe.keyPolicy = kp
-
-	_, _, validJWSBody = signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
-	request = makePostRequestWithPath("test", validJWSBody)
-
-	_, _, err = wfe.validSelfAuthenticatedPOST(context.Background(), request)
-	test.AssertErrorIs(t, err, berrors.BadPublicKey)
 }
 
 func TestValidSelfAuthenticatedPOST(t *testing.T) {

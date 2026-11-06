@@ -42,7 +42,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
-	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -360,9 +359,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	stats := metrics.NoopRegisterer
 	logger := blog.NewMock()
 
-	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
-	test.AssertNotError(t, err, "creating test keypolicy")
-
 	certChains := map[issuance.NameID][][]byte{}
 	issuerCertificates := map[issuance.NameID]*issuance.Certificate{}
 	for _, files := range [][]string{
@@ -422,7 +418,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	wfe, err := NewWebFrontEndImpl(
 		stats,
 		fc,
-		testKeyPolicy,
 		certChains,
 		issuerCertificates,
 		logger,

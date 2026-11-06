@@ -83,3 +83,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
+
+replace github.com/eggsampler/acme/v3 => github.com/jsha/acme-eggsampler/v3 v3.0.0-20261105183907-47508ff8ced0

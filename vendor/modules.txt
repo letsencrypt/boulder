@@ -140,7 +140,7 @@ github.com/beorn7/perks/quantile
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/eggsampler/acme/v3 v3.8.1
+# github.com/eggsampler/acme/v3 v3.8.1 => github.com/jsha/acme-eggsampler/v3 v3.0.0-20261105183907-47508ff8ced0
 ## explicit; go 1.11
 github.com/eggsampler/acme/v3
 # github.com/fsnotify/fsnotify v1.6.0
@@ -533,3 +533,4 @@ google.golang.org/protobuf/types/known/timestamppb
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 ## explicit
 gopkg.in/tomb.v1
+# github.com/eggsampler/acme/v3 => github.com/jsha/acme-eggsampler/v3 v3.0.0-20261105183907-47508ff8ced0
