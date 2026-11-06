@@ -8,15 +8,20 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"path"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/miekg/pkcs11"
+
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/pkcs11"
 )
 
 func setupCtx() pkcs11helpers.MockCtx {
@@ -107,6 +112,101 @@ func TestGenerateKeyEC(t *testing.T) {
 	diskKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	test.AssertNotError(t, err, "Failed to parse disk key")
 	test.AssertDeepEquals(t, diskKey, keyInfo.key)
+}
+
+// fmtAttrs formats attrs as their types and values, for test failure messages.
+func fmtAttrs(attrs []*pkcs11.Attribute) string {
+	var parts []string
+	for _, a := range attrs {
+		parts = append(parts, fmt.Sprintf("%#x=%x", a.Type, a.Value))
+	}
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
+// fakeKeyGen is a keyGenerator which returns fixed values.
+type fakeKeyGen struct {
+	pub crypto.PublicKey
+	err error
+}
+
+func (f fakeKeyGen) mechanism() uint {
+	return pkcs11.CKM_VENDOR_DEFINED
+}
+
+func (f fakeKeyGen) publicAttrs() []*pkcs11.Attribute {
+	return []*pkcs11.Attribute{pkcs11.NewAttribute(pkcs11.CKA_VENDOR_DEFINED, "fake")}
+}
+
+func (f fakeKeyGen) publicKey(*pkcs11helpers.Session, pkcs11.ObjectHandle) (crypto.PublicKey, error) {
+	return f.pub, f.err
+}
+
+func TestGenerateKeyPair(t *testing.T) {
+	keyID := []byte{0xa, 0xb, 0xc, 0xd}
+	ctx := setupCtx()
+	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
+		return keyID, nil
+	}
+	var gotMechs []*pkcs11.Mechanism
+	var gotPubTmpl, gotPrivTmpl []*pkcs11.Attribute
+	ctx.GenerateKeyPairFunc = func(_ pkcs11.SessionHandle, mechs []*pkcs11.Mechanism, pubTmpl []*pkcs11.Attribute, privTmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
+		gotMechs = mechs
+		gotPubTmpl = pubTmpl
+		gotPrivTmpl = privTmpl
+		return 0, 0, nil
+	}
+	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
+	wantPub := &rsa.PublicKey{N: big.NewInt(1337), E: 65537}
+
+	gotPub, gotKeyID, err := generateKeyPair(s, "label", fakeKeyGen{pub: wantPub})
+	if err != nil {
+		t.Fatalf("generateKeyPair() = %v, want success", err)
+	}
+	if gotPub != wantPub {
+		t.Errorf("generateKeyPair() returned key %v, want the keyGenerator's %v", gotPub, wantPub)
+	}
+	if !slices.Equal(gotKeyID, keyID) {
+		t.Errorf("generateKeyPair() returned key ID %x, want %x", gotKeyID, keyID)
+	}
+
+	wantMechs := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_VENDOR_DEFINED, nil)}
+	if !reflect.DeepEqual(gotMechs, wantMechs) {
+		t.Errorf("GenerateKeyPair got mechanisms %v, want %v", gotMechs, wantMechs)
+	}
+	// The public template is the common attributes followed by the
+	// keyGenerator's attributes.
+	wantPubTmpl := []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, "label"),
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+		pkcs11.NewAttribute(pkcs11.CKA_VERIFY, true),
+		pkcs11.NewAttribute(pkcs11.CKA_VENDOR_DEFINED, "fake"),
+	}
+	if !reflect.DeepEqual(gotPubTmpl, wantPubTmpl) {
+		t.Errorf("GenerateKeyPair got public template %s, want %s", fmtAttrs(gotPubTmpl), fmtAttrs(wantPubTmpl))
+	}
+	wantPrivTmpl := []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, "label"),
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
+		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, false),
+		pkcs11.NewAttribute(pkcs11.CKA_SIGN, true),
+	}
+	if !reflect.DeepEqual(gotPrivTmpl, wantPrivTmpl) {
+		t.Errorf("GenerateKeyPair got private template %s, want %s", fmtAttrs(gotPrivTmpl), fmtAttrs(wantPrivTmpl))
+	}
+
+	// When the keyGenerator fails to retrieve the public key, generateKeyPair
+	// fails and returns a nil key, even if the keyGenerator returned a typed
+	// nil pointer.
+	gotPub, _, err = generateKeyPair(s, "label", fakeKeyGen{pub: (*rsa.PublicKey)(nil), err: errors.New("publicKey broke")})
+	if err == nil || !strings.Contains(err.Error(), "publicKey broke") {
+		t.Errorf("generateKeyPair() = %v, want publicKey error", err)
+	}
+	if gotPub != nil {
+		t.Errorf("generateKeyPair() returned key %#v alongside error, want nil", gotPub)
+	}
 }
 
 func setFindObjectsFuncs(label string, ctx *pkcs11helpers.MockCtx) {
