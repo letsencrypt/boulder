@@ -10,6 +10,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -49,7 +50,7 @@ type Config struct {
 		SequencingPeriod config.Duration `validate:"required"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -80,9 +81,13 @@ func main() {
 		c.MTCA.DebugAddr = *debugAddr
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.MTCA.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(
+		cmd.SyslogConfig{StdoutLevel: c.Syslog.StdoutLevel, SyslogLevel: c.Syslog.SyslogLevel},
+		c.OpenTelemetry, c.MTCA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
+
+	slogger := cmd.NewSlogger(c.Syslog)
 
 	tlsConfig, err := c.MTCA.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading TLS config")
@@ -121,7 +126,7 @@ func main() {
 		c.MTCA.SequencingPeriod.Duration,
 		treedb.New(dbMap),
 		s3c,
-		logger,
+		slogger,
 		clk)
 	cmd.FailOnError(err, "Building MTCA")
 

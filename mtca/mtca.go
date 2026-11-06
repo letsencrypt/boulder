@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -20,10 +21,10 @@ import (
 	"github.com/jmhodges/clock"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -392,10 +393,13 @@ func (m *mtca) Loop(ctx context.Context) {
 		case <-ticker.C:
 			err := m.sequence(ctx)
 			if err != nil {
-				if !errors.Is(err, ErrCheckpointNotReady) {
-					m.log.Errf("sequencing: %s", err)
-				} else if time.Since(since) > 10*m.sequencingPeriod {
-					m.log.Errf("after %s: %s", time.Since(since).Round(time.Millisecond), err)
+				if errors.Is(err, ErrCheckpointNotReady) {
+					if time.Since(since) > 10*m.sequencingPeriod {
+						m.log.Error(ctx, "can't sequence, latest checkpoint lacks mirror cosignature", err,
+							slog.Duration("wait", time.Since(since).Round(time.Millisecond)))
+					}
+				} else {
+					m.log.Error(ctx, "Sequence failed", err)
 				}
 				continue
 			}
@@ -407,7 +411,9 @@ func (m *mtca) Loop(ctx context.Context) {
 			// they timed out, in which case emitting this error is appropriate).
 			poolSize := m.pool.len()
 			if poolSize != 0 {
-				m.log.Errf("shouldn't happen: pool has %d entries left after Loop() context canceled. ungraceful stop?", poolSize)
+				m.log.Error(ctx, "Unclean shutdown",
+					fmt.Errorf("Sequence pool not empty after context canceled"),
+					slog.Int("poolsize", poolSize))
 			}
 			return
 		}
@@ -486,13 +492,13 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Log each leaf along with the root hash it will be included in.
 	for i, e := range entries {
-		m.log.AuditInfo("issuing", map[string]any{
-			"EventID":                e.eventID,
-			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
-			"entryIndex":             latest.TreeSize + int64(i),
-			"mtcLogID":               m.logID.String(),
-			"newRootHash":            newRootHash.String(),
-		})
+		m.log.AuditInfo(ctx, "Issuing",
+			slog.String("eventID", e.eventID),
+			blog.MTCLogID(m.logID.String()),
+			slog.Int64("entryIndex", latest.TreeSize+int64(i)),
+			slog.String("TBSCertificateLogEntry", hex.EncodeToString(e.mtcle.TBS())),
+			slog.String("newRootHash", newRootHash.String()),
+		)
 	}
 
 	// First stage to a pending area. After signing and storing to the DB

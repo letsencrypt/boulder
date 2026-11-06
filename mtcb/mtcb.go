@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
@@ -17,11 +18,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/reloid"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -282,6 +283,12 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	if err != nil {
 		return nil, fmt.Errorf("during self-verify of standalone certificate: %s", err)
 	}
+
+	m.log.Info(ctx, "Built standalone",
+		blog.MTCLogID(req.MtcLogID),
+		blog.MTCSerial(req.MtcSerialNumber),
+		slog.Int("prooflen", len(inclusionProof)),
+	)
 
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }
