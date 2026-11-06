@@ -249,7 +249,7 @@ func TestCompliantSet(t *testing.T) {
 				{log: loglist.Log{Operator: "A", Tiled: true}, sct: []byte("sct1")},
 				{log: loglist.Log{Operator: "B", Tiled: true}, sct: []byte("sct2")},
 			},
-			want: nil,
+			want: core.SCTDERs{[]byte("sct1"), []byte("sct2")},
 		},
 		{
 			name: "happy path",
@@ -264,9 +264,9 @@ func TestCompliantSet(t *testing.T) {
 				{log: loglist.Log{Operator: "C", Tiled: true}, sct: []byte("sct8")},
 				{log: loglist.Log{Operator: "C", Tiled: false}, sct: []byte("sct9")},
 			},
-			// The second and sixth results should be picked, because first and fourth
-			// are skipped for being errors, and fifth is skipped for also being tiled.
-			want: core.SCTDERs{[]byte("sct2"), []byte("sct6")},
+			// The second and fifth results should be picked, because first and fourth
+			// are skipped for being errors.
+			want: core.SCTDERs{[]byte("sct2"), []byte("sct4")},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

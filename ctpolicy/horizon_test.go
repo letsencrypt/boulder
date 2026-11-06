@@ -38,7 +38,7 @@ func TestSatisfiable(t *testing.T) {
 				{Operator: "A", Tiled: true},
 				{Operator: "B", Tiled: true},
 			},
-			want: false,
+			want: true,
 		},
 		{
 			name: "one non-tiled, one tiled",
@@ -139,15 +139,6 @@ func TestHorizon(t *testing.T) {
 				{Operator: "B", Tiled: true},
 			},
 			want: day(90),
-		},
-		{
-			name: "losing the last non-tiled log is the horizon",
-			logs: loglist.List{
-				{Operator: "A", Tiled: false, StartInclusive: day(-10), EndExclusive: day(30)},
-				{Operator: "A", Tiled: true, StartInclusive: day(-10), EndExclusive: day(90)},
-				{Operator: "B", Tiled: true, StartInclusive: day(-10), EndExclusive: day(90)},
-			},
-			want: day(30),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

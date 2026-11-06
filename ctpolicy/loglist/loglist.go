@@ -235,16 +235,6 @@ func (ll List) Shuffle() List {
 	rand.Shuffle(len(res), func(i int, j int) {
 		res[i], res[j] = res[j], res[i]
 	})
-	if len(res) > 2 && res[0].Tiled == res[1].Tiled {
-		// If we have more than two logs, and both are either tiled or not,
-		// try to bring another log to the front of the list.
-		for i := 2; i < len(res); i++ {
-			if res[0].Tiled != res[i].Tiled {
-				res[0], res[i] = res[i], res[0]
-				break
-			}
-		}
-	}
 	return res
 }
 
