@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"errors"
 	"fmt"
@@ -73,6 +74,12 @@ type AllowedKeys struct {
 	ECDSAP256 bool
 	ECDSAP384 bool
 	ECDSAP521 bool
+	// MLDSA end-entity keys are not allowed under the Baseline Requirements. They
+	// will be allowed in the Chrome Quantum-resistant Root Program.
+	//
+	// This field MUST NOT be enabled in boulder-ca's config. It SHOULD be enabled
+	// in the RA's config for MTCs.
+	MLDSA44 bool
 }
 
 // LetsEncryptCPS encodes the five key algorithms and sizes allowed by the Let's
@@ -119,6 +126,8 @@ type KeyPolicy struct {
 // defaults. If the config's AllowedKeys is nil, the LetsEncryptCPS AllowedKeys
 // is used. If the configured FermatRounds is 0, Fermat Factorization defaults to
 // attempting 110 rounds.
+//
+// If the BlockedKeyCheckFunc is nil, nothing is called to check blocked keys.
 func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	if config == nil {
 		config = &Config{}
@@ -150,7 +159,7 @@ func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) error {
 	// Early rejection of unacceptable key types to guard subsequent checks.
 	switch t := key.(type) {
-	case *rsa.PublicKey, *ecdsa.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey:
 		break
 	default:
 		return badKey("unsupported key type %T", t)
@@ -172,12 +181,14 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		return policy.goodKeyRSA(t)
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(t)
+	case *mldsa.PublicKey:
+		return policy.goodKeyMLDSA(t)
 	default:
 		return badKey("unsupported key type %T", key)
 	}
 }
 
-// GoodKeyECDSA determines if an ECDSA pubkey meets our requirements
+// goodKeyECDSA determines if an ECDSA pubkey meets our requirements
 func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	// Check the curve.
 	//
@@ -200,6 +211,19 @@ func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	}
 
 	return nil
+}
+
+func (policy *KeyPolicy) goodKeyMLDSA(key *mldsa.PublicKey) (err error) {
+	if !policy.allowedKeys.MLDSA44 {
+		return badKey("ML-DSA keys not supported")
+	}
+	// The key quality check for ML-DSA is "pubkey has correct length," and
+	// stdlib already does that for us at parse time, so we don't do additional
+	// key quality checks.
+	if key.Parameters() == mldsa.MLDSA44() {
+		return nil
+	}
+	return badKey("parameters not allowed: %s", key.Parameters())
 }
 
 // GoodCurve determines if an elliptic curve meets our requirements.
@@ -342,7 +366,7 @@ func checkSmallPrivateScalar(key *ecdsa.PublicKey) error {
 	return nil
 }
 
-// GoodKeyRSA determines if a RSA pubkey meets our requirements
+// goodKeyRSA determines if a RSA pubkey meets our requirements
 func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) error {
 	modulus := key.N
 

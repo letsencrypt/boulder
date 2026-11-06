@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -139,7 +140,7 @@ func (p *Profile) GenerateValidity(now time.Time) (time.Time, time.Time) {
 // request doesn't match the signing profile an error is returned.
 func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceRequest) error {
 	switch req.PublicKey.PublicKey.(type) {
-	case *rsa.PublicKey, *ecdsa.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey:
 	default:
 		return errors.New("unsupported public key type")
 	}
@@ -326,16 +327,20 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	}
 	template.DNSNames = req.DNSNames
 	template.IPAddresses = req.IPAddresses
+	template.KeyUsage = x509.KeyUsageDigitalSignature
 
 	switch req.PublicKey.PublicKey.(type) {
 	case *rsa.PublicKey:
-		if prof.omitKeyEncipherment {
-			template.KeyUsage = x509.KeyUsageDigitalSignature
-		} else {
+		// Set keyEncipherment as a keyUsage only when:
+		//  - The profile allows it, and
+		//  - The key is RSA, and
+		//  - The certificate will be directly-signed (not MTC)
+		//
+		// The last clause is because draft CQRP only allows digitalSignature:
+		// https://googlechrome.github.io/chromerootprogram/cqrp/draft-policy/#2432-subscriber-tls-server-authentication-certificate-profile
+		if !prof.omitKeyEncipherment && !prof.mtc {
 			template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 		}
-	case *ecdsa.PublicKey:
-		template.KeyUsage = x509.KeyUsageDigitalSignature
 	}
 
 	if !prof.omitSKID {
