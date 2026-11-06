@@ -18,8 +18,8 @@ package blog
 //   - "audit": used by our blog.AuditError and blog.AuditInfo helpers
 
 import (
+	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/letsencrypt/boulder/identifier"
 )
@@ -57,7 +57,7 @@ func MTCLogID(mtcLogID string) slog.Attr {
 // MTCSerial returns a slog.Attr whose key is "serial" and whose value is the
 // hex encoding of the given uint64.
 func MTCSerial(serial uint64) slog.Attr {
-	return slog.String("serial", strconv.FormatUint(serial, 16))
+	return slog.String("serial", fmt.Sprintf("%016x", serial))
 }
 
 // Idents returns a slog.Attr whose key is "idents" and whose value is a list
