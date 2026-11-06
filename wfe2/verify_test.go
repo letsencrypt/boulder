@@ -262,7 +262,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, P-521, or ML-DSA-44)",
+			"JWK contains unsupported key type (expected RSA, ECDSA P-256, P-384, P-521, or ML-DSA-44)",
 		},
 		{
 			jose.JSONWebKey{
@@ -294,7 +294,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, P-521, or ML-DSA-44)",
+			"JWK contains unsupported key type (expected RSA, ECDSA P-256, P-384, P-521, or ML-DSA-44)",
 		},
 		{
 			jose.JSONWebKey{
