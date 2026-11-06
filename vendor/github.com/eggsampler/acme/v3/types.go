@@ -10,7 +10,7 @@ import (
 
 var (
 	// ErrUnsupportedKey is returned when an unsupported key type is encountered.
-	ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+	ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA, ECDSA, and ML-DSA are supported")
 
 	// ErrRenewalInfoNotSupported is returned by Client.GetRenewalInfo if the
 	// renewal info entry isn't present on the acme directory (ie, it's not
@@ -152,7 +152,7 @@ type Order struct {
 	Status         string       `json:"status"`
 	Expires        time.Time    `json:"expires"`
 	Identifiers    []Identifier `json:"identifiers"`
-	Profile        string       `json:"Profile,omitempty"`
+	Profile        string       `json:"profile,omitempty"`
 	NotBefore      time.Time    `json:"notBefore"`
 	NotAfter       time.Time    `json:"notAfter"`
 	Error          Problem      `json:"error"`

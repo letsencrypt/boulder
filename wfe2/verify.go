@@ -57,7 +57,7 @@ func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
 			return jose.MLDSA44, nil
 		}
 	}
-	return "", berrors.BadPublicKeyError("JWK contains unsupported key type (expected RSA, ECDSA P-256, P-384 or P-521, or ML-DSA-44)")
+	return "", berrors.BadPublicKeyError("JWK contains unsupported key type (expected RSA, ECDSA P-256, P-384, P-521, or ML-DSA-44)")
 }
 
 // getSupportedAlgs returns a sorted slice of joseSignatureAlgorithm's from a

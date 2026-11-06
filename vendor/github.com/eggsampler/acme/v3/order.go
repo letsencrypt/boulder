@@ -13,6 +13,12 @@ type OrderExtension struct {
 	Profile string
 }
 
+type newOrderRequest struct {
+	Identifiers []Identifier `json:"identifiers"`
+	Replaces    string       `json:"replaces,omitempty"`
+	Profile     string       `json:"profile,omitempty"`
+}
+
 // NewOrder initiates a new order for a new certificate. This method does not use ACME Renewal Info.
 func (c Client) NewOrder(account Account, identifiers []Identifier) (Order, error) {
 	return c.ReplacementOrder(account, nil, identifiers)
@@ -54,11 +60,7 @@ func (c Client) ReplacementOrderExtension(account Account, oldCert *x509.Certifi
 
 	// optional fields are listed as 'omitempty' so the json encoder doesn't
 	// include those keys if their values are not provided.
-	newOrderReq := struct {
-		Identifiers []Identifier `json:"identifiers"`
-		Replaces    string       `json:"replaces,omitempty"`
-		Profile     string       `json:"Profile,omitempty"`
-	}{
+	newOrderReq := newOrderRequest{
 		Identifiers: identifiers,
 	}
 
