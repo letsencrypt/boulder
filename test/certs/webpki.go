@@ -93,10 +93,12 @@ func main() {
 	err = genKey("test/certs/root-ceremony-ecdsa.yaml", ecdsaRootKeySlot)
 	cmd.FailOnError(err, "failed to generate ECDSA root key + root cert")
 
-	// Generate the MTCA signing key.
+	// Generate the MTCA signing key and certificate
 	// No need to create a slot, because this ceremony doesn't use an HSM (yet!).
 	err = runCeremony("test/certs/mtca-key-ceremony.yaml")
-	cmd.FailOnError(err, "failed to generate MLDSA MTC key")
+	cmd.FailOnError(err, "failed to generate MLDSA MTCA key")
+	err = runCeremony("test/certs/mtca-cert-ceremony.yaml")
+	cmd.FailOnError(err, "failed to create MLDSA MTCA cert")
 
 	// Do everything for all of the intermediates
 	for _, alg := range []string{"rsa", "ecdsa"} {

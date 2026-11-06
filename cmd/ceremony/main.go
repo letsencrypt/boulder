@@ -1000,7 +1000,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("mldsa key file ceremony failed: %s", err)
 		}
+	case "mtca":
+		err = mtcaCeremony(configBytes)
+		if err != nil {
+			log.Fatalf("mtca ceremony failed: %s", err)
+		}
 	default:
-		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, crl")
+		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, crl, mtca")
 	}
 }

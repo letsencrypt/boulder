@@ -1,0 +1,38 @@
+ceremony-type: mtca
+inputs:
+    public-key-path: test/certs/webpki/mtca-1.pubkey.pem
+outputs:
+    certificate-path: test/certs/webpki/mtca-1.cert.pem
+certificate-profile:
+    # NOTE: This policy URL is very fake and doesn't exist yet!
+    policy-url: https://github.com/letsencrypt/cp-cps/blob/v7.0/CP-CPS.md#74-mtca-profile
+    mtcaid: 44947.4.1
+    not-before: 2025-07-01 00:00:00
+    not-after: 2035-07-01 23:59:59
+    tlog-prefix: https://ignored.example.com 
+skip-lints:
+  # CQRP Policy, Section 2.4.3.1, exempts MTC CA certificates from the BRs'
+  # algorithm restrictions when using ML-DSA.
+  - e_algorithm_identifier_improper_encoding
+  - e_public_key_type_not_allowed
+  - e_signature_algorithm_not_supported
+  # draft-ietf-plants-merkle-tree-certs-07, Section 5.5, requires the subject
+  # to be only the CA ID, as a RELATIVE-OID.
+  - e_ca_common_name_missing
+  - e_ca_country_name_missing
+  - e_ca_organization_name_missing
+  - e_subject_dn_not_printable_characters
+  # RFC 9925, Section 3.3 says that unsigned certs should omit the AKID.
+  - e_ext_authority_key_identifier_no_key_identifier
+  # zlint treats the cert as a subordinate CA, because it's signed by a
+  # throwaway key rather than its own (and zcrypto can't verify ML-DSA
+  # signatures anyway), but it doesn't have to match that profile.
+  - e_invalid_ca_certificate_policies
+  - e_sub_ca_certificate_policies_missing
+  - e_sub_ca_crl_distribution_points_missing
+  - e_validity_period_greater_than_8_years
+  - n_mp_allowed_eku
+  - n_sub_ca_eku_missing
+  - w_sub_ca_aia_missing
+  # CA cosigner keys sign subtrees and checkpoints, not OCSP responses.
+  - n_ca_digital_signature_not_set
