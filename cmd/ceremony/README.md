@@ -294,6 +294,37 @@ outputs:
 
 This config generates an ECDSA P-384 key in the HSM with the object label `intermediate signing key`. The public key is written to `/home/user/intermediate-signing-pub.pem`.
 
+### Staging Keyfile (No HSM) Ceremony
+
+- `ceremony-type`: string describing the ceremony type, `staging-mldsa-keyfile-no-hsm`.
+- `key`: object containing key generation related fields.
+
+    | Field | Description |
+    | --- | --- |
+    | `type` | Specifies the type of key to be generated. Must be 'mldsa'. |
+    | `mldsa-parameter-set` | Specifies the ML-DSA parameter set to use when generating key, either `ML-DSA-44` or `ML-DSA-87`. |
+
+- `outputs`: object containing paths to write outputs.
+
+    | Field | Description |
+    | --- | --- |
+    | `public-key-path`  | Path to store generated PEM public key. |
+    | `private-key-path` | Path to store generated PEM private key. |
+
+Example:
+
+```yaml
+ceremony-type: staging-mldsa-keyfile-no-hsm
+key:
+    type: mldsa
+    ecdsa-curve: ML-DSA-44
+outputs:
+    public-key-path: /home/user/mtca.pub.pem
+    private-key-path: /home/user/mtca.key.pem
+```
+
+This config generates an ML-DSA-44 key and write the private key to `/home/user/mtca.key.pem`.
+
 ### CRL ceremony
 
 - `ceremony-type`: string describing the ceremony type, `crl`.

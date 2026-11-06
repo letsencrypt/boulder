@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -114,9 +115,10 @@ func postIssuanceLinting(fc, issuer, existing *x509.Certificate, skipLints []str
 }
 
 type keyGenConfig struct {
-	Type         string `yaml:"type"`
-	RSAModLength int    `yaml:"rsa-mod-length"`
-	ECDSACurve   string `yaml:"ecdsa-curve"`
+	Type              string `yaml:"type"`
+	RSAModLength      int    `yaml:"rsa-mod-length"`
+	ECDSACurve        string `yaml:"ecdsa-curve"`
+	MLDSAParameterSet string `yaml:"mldsa-parameter-set"`
 }
 
 var allowedCurves = map[string]bool{
@@ -125,24 +127,40 @@ var allowedCurves = map[string]bool{
 	"P-521": true,
 }
 
+var allowedMLDSAParams = map[string]bool{
+	mldsa.MLDSA44().String(): true,
+	mldsa.MLDSA65().String(): false,
+	mldsa.MLDSA87().String(): true,
+}
+
 func (kgc keyGenConfig) validate() error {
-	if kgc.Type == "" {
-		return errors.New("key.type is required")
-	}
-	if kgc.Type != "rsa" && kgc.Type != "ecdsa" {
-		return errors.New("key.type can only be 'rsa' or 'ecdsa'")
-	}
-	if kgc.Type == "rsa" && (kgc.RSAModLength != 2048 && kgc.RSAModLength != 4096) {
-		return errors.New("key.rsa-mod-length can only be 2048 or 4096")
-	}
-	if kgc.Type == "rsa" && kgc.ECDSACurve != "" {
-		return errors.New("if key.type = 'rsa' then key.ecdsa-curve is not used")
-	}
-	if kgc.Type == "ecdsa" && !allowedCurves[kgc.ECDSACurve] {
-		return errors.New("key.ecdsa-curve can only be 'P-256', 'P-384', or 'P-521'")
-	}
-	if kgc.Type == "ecdsa" && kgc.RSAModLength != 0 {
-		return errors.New("if key.type = 'ecdsa' then key.rsa-mod-length is not used")
+	switch kgc.Type {
+	case "rsa":
+		if kgc.RSAModLength != 2048 && kgc.RSAModLength != 4096 {
+			return errors.New("key.rsa-mod-length can only be 2048 or 4096")
+		}
+		if kgc.ECDSACurve != "" || kgc.MLDSAParameterSet != "" {
+			return errors.New("key.type = rsa must only have key.rsa-mod-length set")
+		}
+
+	case "ecdsa":
+		if !allowedCurves[kgc.ECDSACurve] {
+			return errors.New("key.ecdsa-curve can only be 'P-256', 'P-384', or 'P-521'")
+		}
+		if kgc.RSAModLength != 0 || kgc.MLDSAParameterSet != "" {
+			return errors.New("key.type = ecdsa must only have key.ecdsa-curve set")
+		}
+
+	case "mldsa":
+		if !allowedMLDSAParams[kgc.MLDSAParameterSet] {
+			return errors.New("key.mldsa-parameter-set can only be 'ML-DSA-44' or 'ML-DSA-87'")
+		}
+		if kgc.RSAModLength != 0 || kgc.ECDSACurve != "" {
+			return errors.New("key.type = mldsa must only have key.mldsa-parameter-set set")
+		}
+
+	default:
+		return fmt.Errorf("key.type is required and must be one of 'rsa', 'ecdsa', or 'mldsa'")
 	}
 
 	return nil
@@ -204,6 +222,9 @@ func (rc rootConfig) validate() error {
 	err = rc.Key.validate()
 	if err != nil {
 		return err
+	}
+	if rc.Key.Type == "mldsa" {
+		return errors.New("key.type 'mldsa' is not yet supported for root ceremonies")
 	}
 
 	// Output fields
@@ -385,6 +406,9 @@ func (kc keyConfig) validate() error {
 	err = kc.Key.validate()
 	if err != nil {
 		return err
+	}
+	if kc.Key.Type == "mldsa" {
+		return errors.New("key.type 'mldsa' is not yet supported for standalone key ceremonies")
 	}
 
 	// Output fields
@@ -970,6 +994,11 @@ func main() {
 		err = crlCeremony(configBytes)
 		if err != nil {
 			log.Fatalf("crl ceremony failed: %s", err)
+		}
+	case "staging-mldsa-keyfile-no-hsm":
+		err = keyfileCeremony(configBytes)
+		if err != nil {
+			log.Fatalf("mldsa key file ceremony failed: %s", err)
 		}
 	default:
 		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, crl")
