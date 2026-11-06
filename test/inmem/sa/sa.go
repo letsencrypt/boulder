@@ -69,6 +69,10 @@ func (sa SA) SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest, 
 	return sa.Impl.SetOrderError(ctx, req)
 }
 
+func (sa SA) SetAuthzProcessing(ctx context.Context, req *sapb.SetAuthzProcessingRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return sa.Impl.SetAuthzProcessing(ctx, req)
+}
+
 func (sa SA) SetOrderProcessing(ctx context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.SetOrderProcessing(ctx, req)
 }
