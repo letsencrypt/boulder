@@ -393,11 +393,13 @@ func (m *mtca) Loop(ctx context.Context) {
 		case <-ticker.C:
 			err := m.sequence(ctx)
 			if err != nil {
-				if !errors.Is(err, ErrCheckpointNotReady) {
+				if errors.Is(err, ErrCheckpointNotReady) {
+					if time.Since(since) > 10*m.sequencingPeriod {
+						m.log.Error(ctx, "can't sequence, latest checkpoint lacks mirror cosignature", err,
+							slog.Duration("wait", time.Since(since).Round(time.Millisecond)))
+					}
+				} else {
 					m.log.Error(ctx, "Sequence failed", err)
-				} else if time.Since(since) > 10*m.sequencingPeriod {
-					m.log.Error(ctx, "Sequence timed out", err,
-						slog.Duration("wait", time.Since(since).Round(time.Millisecond)))
 				}
 				continue
 			}

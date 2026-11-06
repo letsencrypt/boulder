@@ -31,6 +31,8 @@ var auditAttr = slog.Bool(auditKey, true)
 
 // auditWriter implements the io.Writer interface. It prepends the string
 // `[AUDIT] ` to each line written to it.
+//
+// It is safe for concurrent access if the underlying io.Writer is.
 type auditWriter struct {
 	inner io.Writer
 }
@@ -59,14 +61,7 @@ func (w *auditWriter) Write(in []byte) (int, error) {
 // wrapped is determined by the build environment: json for prod, and text for
 // integration tests.
 //
-// Warning: the two wrapped handlers each hold their own internal lock, so the
-// shared io.Writer receives whole-line Write calls from both of them
-// concurrently. Any writer placed here must tolerate that. All of today's
-// writers do: os.File serializes concurrent Write calls internally, and
-// syslog.Writer and the test mock's in-memory writer hold their own locks. An
-// unsynchronized wrapper inserted below this point (for example a
-// bufio.Writer added for buffering) would be subject to data races and
-// interleaved lines.
+// The provided io.Writer must be safe for concurrent access.
 func newAuditHandler(w io.Writer, opts *slog.HandlerOptions) *auditHandler {
 	origReplaceAttr := opts.ReplaceAttr
 	opts.ReplaceAttr = func(groups []string, attr slog.Attr) slog.Attr {

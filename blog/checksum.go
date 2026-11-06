@@ -22,6 +22,8 @@ func newChecksumWriter(inner io.Writer) *checksumWriter {
 // checksum of each line written to it before passing the result through to a
 // wrapped io.Writer. It is intended for use as the io.Writer passed to a slog
 // Handler.
+//
+// It is safe for concurrent access if the underlying io.Writer is.
 type checksumWriter struct {
 	inner io.Writer
 }

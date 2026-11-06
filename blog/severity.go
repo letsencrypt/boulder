@@ -61,10 +61,10 @@ var _ slog.Handler = (*severityHandler)(nil)
 // The confLevel argument is the syslog-style (0-7) level from our Config.
 func newSeverityHandler(w syslogWriter, confLevel int) *severityHandler {
 	build := func(fn func(string) error) slog.Handler {
-		// configToSlogLevel never returns a level below LevelDebug, so these
-		// chains accept every record that severityHandler.Enabled accepts.
-		// Each chain gets its own HandlerOptions because newAuditHandler
-		// modifies opts.ReplaceAttr in place.
+		// Give each sub-handler its own HandlerOptions, because those opts are
+		// modified in-place by newAuditHandler.
+		// Set each sub-handler's internal log level to LevelDebug, to ensure it
+		// will never reject a message that the severity handler wants it to log.
 		opts := &slog.HandlerOptions{Level: slog.LevelDebug}
 		return newAuditHandler(newChecksumWriter(&severityWriter{fn: fn}), opts)
 	}
