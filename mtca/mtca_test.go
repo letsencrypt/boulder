@@ -57,8 +57,8 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 		CRLURLBase: "http://ignored.letsencrypt.org/",
 		CRLShards:  1,
 		Location: issuance.IssuerLoc{
-			File:     "../test/certs/mtpki/mtca1.key.pem",
-			CertFile: "../test/certs/mtpki/mtca1.cert.pem",
+			File:     "../test/certs/webpki/mtca-1.privkey.pem",
+			CertFile: "../test/certs/webpki/mtca-1.cert.pem",
 		},
 	}, clock.NewFake())
 	if err != nil {

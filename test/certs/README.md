@@ -31,21 +31,13 @@ new subdirectory to this directory's `.gitignore` file.
 
 The "webpki" PKI emulates our publicly-trusted hierarchy. It consists of RSA and
 ECDSA roots, several intermediates and cross-signed intermediates, and CRLs.
+It also has one MTCA, which emulates our expected Merkle Cert issuer profile.
 These certificates and their keys are generated using the `ceremony` tool. The
 private keys are stored in SoftHSM in the `.softhsm-tokens` subdirectory.
 
 This PKI is loaded by the CA, RA, and other components. It is used as the
 issuance hierarchy for all end-entity certificates issued as part of the
 integration tests.
-
-### mtpki
-
-The "mtpki" PKI emulates our experimental MTC issuer. It has a single issuer and
-key. It doesn't use SoftHSM because we expect to deploy this to Staging
-before SoftHSM gets support for ML-DSA keys. It's loaded by the MTCA component.
-
-For now we are using an ECDSA signing key for our experimental MTC issuer.
-TODO: change that to ML-DSA for our staging deployment goals.
 
 ### ipki
 
