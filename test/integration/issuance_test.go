@@ -213,28 +213,37 @@ func TestIssuanceMTC(t *testing.T) {
 	test.AssertSliceContains(t, ir.certs[0].DNSNames, idents[0].Value)
 
 	// The mtca serves each checkpoint as soon as it is sequenced, and the
-	// mtpublisher then submits it to the sunlight mirror, so the mirror's
+	// mtpublisher then submits it to both sunlight mirrors, so each mirror's
 	// checkpoint must converge on the served tree head. Poll until they agree.
 	logID, err := issuancelog.Config{CAID: "44947.4.1", LogNumber: 3}.Load()
 	test.AssertNotError(t, err, "loading the dev issuance log ID")
 	origin := logID.Origin()
 	originHash := sha256.Sum256([]byte(origin))
 	localURL := "http://boulder-seaweedfs:8333/boulder-mtc-tiles/" + logID.CheckpointPath()
-	mirrorURL := "http://boulder-seaweedfs:8333/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
+	mirrorURLs := []string{
+		"http://boulder-seaweedfs:8333/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint",
+		"http://boulder-seaweedfs:8333/boulder-sunlight2/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint",
+	}
 
 	deadline := time.Now().Add(5 * time.Second)
 	var localText string
 	var localSignatures string
-	var mirrorSignatures string
+	mirrorSignatures := make([]string, len(mirrorURLs))
 	for {
-		var mirrorText string
 		localText, localSignatures = checkpointNote(t, localURL)
-		mirrorText, mirrorSignatures = checkpointNote(t, mirrorURL)
-		if localText != "" && localText == mirrorText {
-			break
+		converged := localText != ""
+		for i, mirrorURL := range mirrorURLs {
+			var mirrorText string
+			mirrorText, mirrorSignatures[i] = checkpointNote(t, mirrorURL)
+			if mirrorText != localText {
+				converged = false
+				if time.Now().After(deadline) {
+					t.Fatalf("served checkpoint %q and mirror checkpoint %q at %s have not converged", localText, mirrorText, mirrorURL)
+				}
+			}
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("served checkpoint %q and mirror checkpoint %q have not converged", localText, mirrorText)
+		if converged {
+			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -250,14 +259,16 @@ func TestIssuanceMTC(t *testing.T) {
 		t.Errorf("checkpoint tree size = %q, want at least 2", lines[1])
 	}
 
-	// The served checkpoint carries only the MTCA's signature. The mirror's
+	// The served checkpoint carries only the MTCA's signature. Each mirror's
 	// checkpoint carries that same line.
 	caLine := "— oid/1.3.6.1.4.1.44947.4.1 "
 	if strings.Count(localSignatures, "\n") != 1 || !strings.HasPrefix(localSignatures, caLine) {
 		t.Errorf("served checkpoint signatures %q, want one line by the MTCA", localSignatures)
 	}
-	if !strings.Contains(mirrorSignatures, localSignatures) {
-		t.Errorf("mirror checkpoint signatures %q do not include the served MTCA line %q", mirrorSignatures, localSignatures)
+	for i, signatures := range mirrorSignatures {
+		if !strings.Contains(signatures, localSignatures) {
+			t.Errorf("mirror checkpoint signatures %q at %s do not include the served MTCA line %q", signatures, mirrorURLs[i], localSignatures)
+		}
 	}
 }
 
