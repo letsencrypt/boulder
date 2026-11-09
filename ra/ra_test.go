@@ -366,6 +366,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "making keypolicy")
 
+	testKeyPolicies := KeyPolicies{
+		Account: testKeyPolicy,
+		CA:      testKeyPolicy,
+		MTCA:    testKeyPolicy,
+	}
+
 	profiles, err := NewValidationProfiles("test", map[string]*ValidationProfileConfig{
 		"test": {
 			PendingAuthzLifetime: config.Duration{Duration: 7 * 24 * time.Hour},
@@ -381,7 +387,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
-		1, testKeyPolicy, limiter, txnBuilder,
+		1, testKeyPolicies, limiter, txnBuilder,
 		profiles, nil, 5*time.Minute, ctp, nil, profileToMTCA, nil)
 	ra.SA = sa
 	ra.VA = va

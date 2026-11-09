@@ -27,7 +27,6 @@
 		"maxContactsPerRegistration": 3,
 		"debugAddr": ":8002",
 		"hostnamePolicyFile": "test/ident-policy.yaml",
-		"goodkey": {},
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",
 			"test/certs/webpki/int-rsa-b.cert.pem",

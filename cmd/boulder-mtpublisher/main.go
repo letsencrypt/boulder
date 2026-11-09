@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -68,7 +69,7 @@ type Config struct {
 		// entries and proof hashes from when submitting to the mirror.
 		S3 bs3.Config `validate:"required"`
 	}
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -110,9 +111,13 @@ func main() {
 		c.MTPublisher.DebugAddr = *debugAddr
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.MTPublisher.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(
+		cmd.SyslogConfig{StdoutLevel: c.Syslog.StdoutLevel, SyslogLevel: c.Syslog.SyslogLevel},
+		c.OpenTelemetry, c.MTPublisher.DebugAddr)
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
+
+	slogger := cmd.NewSlogger(c.Syslog)
 
 	dbMap, err := sa.InitDB(c.MTPublisher.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
@@ -139,7 +144,7 @@ func main() {
 	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, c.MTPublisher.Mirror.MonitoringPrefix, mtpublisher.NewSource(s3c, logID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
 	cmd.FailOnError(err, "Creating mirror client")
 
-	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, logID, caVerifier, mirror, logger)
+	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, logID, caVerifier, mirror, slogger)
 	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -5,6 +5,7 @@ package integration
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -198,7 +199,7 @@ func TestIssuanceMTC(t *testing.T) {
 		t.Fatalf("creating acme client: %s", err)
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err := mldsa.GenerateKey(mldsa.MLDSA44())
 	if err != nil {
 		t.Fatalf("generating keypair: %s", err)
 	}

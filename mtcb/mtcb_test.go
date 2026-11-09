@@ -20,12 +20,12 @@ import (
 	"github.com/jmhodges/clock"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/reloid"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"

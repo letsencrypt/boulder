@@ -96,7 +96,22 @@ type Config struct {
 		DefaultProfileName string `validate:"required"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
-		GoodKey goodkey.Config
+		GoodKey *goodkey.Config
+
+		// GoodKeys is a set of config stanzas for the three different contexts in
+		// which we check key validity. Each may be empty, which defaults the allowed
+		// key types to those specified by goodkey.LetsEncryptCPS().
+		GoodKeys *struct {
+			// Account is the policy to be applied to ACME account keys.
+			Account goodkey.Config
+			// CA is the policy to be applied to keys signed by our non-MTC
+			// issuers. It must be compatible with our CP-CPS.
+			CA goodkey.Config
+			// MTCA is the policy to be applied to keys signed by our MTC
+			// issuers. It must be compatible with the various post-quantum
+			// root programs we intend to apply to.
+			MTCA goodkey.Config
+		}
 
 		// FinalizeTimeout is how long the RA is willing to wait for the Order
 		// finalization process to take. This config parameter only has an effect
@@ -265,8 +280,31 @@ func main() {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
 
-	kp, err := sagoodkey.NewPolicy(&c.RA.GoodKey, sac.KeyBlocked)
-	cmd.FailOnError(err, "Unable to create key policy")
+	var keyPolicies ra.KeyPolicies
+	if c.RA.GoodKey != nil && c.RA.GoodKeys != nil {
+		cmd.Fail("only one of 'goodkey' and 'goodkeys' config fields may be set")
+	}
+	if c.RA.GoodKeys != nil {
+		accountKP, err := sagoodkey.NewPolicy(&c.RA.GoodKeys.Account, sac.KeyBlocked)
+		cmd.FailOnError(err, "Unable to create key policy")
+		caKP, err := sagoodkey.NewPolicy(&c.RA.GoodKeys.CA, sac.KeyBlocked)
+		cmd.FailOnError(err, "Unable to create key policy")
+		mtcaKP, err := sagoodkey.NewPolicy(&c.RA.GoodKeys.MTCA, sac.KeyBlocked)
+		cmd.FailOnError(err, "Unable to create key policy")
+		keyPolicies = ra.KeyPolicies{
+			Account: accountKP,
+			CA:      caKP,
+			MTCA:    mtcaKP,
+		}
+	} else {
+		kp, err := sagoodkey.NewPolicy(c.RA.GoodKey, sac.KeyBlocked)
+		cmd.FailOnError(err, "Unable to create key policy")
+		keyPolicies = ra.KeyPolicies{
+			Account: kp,
+			CA:      kp,
+			MTCA:    kp,
+		}
+	}
 
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
@@ -301,7 +339,7 @@ func main() {
 		logger,
 		scope,
 		c.RA.MaxContactsPerRegistration,
-		kp,
+		keyPolicies,
 		limiter,
 		txnBuilder,
 		validationProfiles,

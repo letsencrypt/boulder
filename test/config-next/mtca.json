@@ -46,6 +46,8 @@
 					"maxCertificateSize": 10000,
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
+						"e_algorithm_identifier_improper_encoding",
+						"e_public_key_type_not_allowed",
 						"e_pkimetal_lint_cabf_serverauth_cert",
 						"e_signature_algorithm_not_supported",
 						"e_ext_authority_key_identifier_no_key_identifier",
