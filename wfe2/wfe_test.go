@@ -280,6 +280,17 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 				{Id: 3, Type: "tls-alpn-01", Status: string(core.StatusPending), Token: "token"},
 			},
 		}, nil
+	case 6: // Return a pending authorization with a single processing challenge.
+		return &corepb.Authorization{
+			Id:             6,
+			RegistrationID: 1,
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
+			Status:         string(core.StatusPending),
+			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
+			Challenges: []*corepb.Challenge{
+				{Id: 1, Type: "http-01", Status: string(core.StatusProcessing), Token: "token"},
+			},
+		}, nil
 	}
 
 	return nil, berrors.NotFoundError("no authorization found with id %d", in.Id)
@@ -1282,6 +1293,16 @@ func TestChallengeHandler(t *testing.T) {
 			ExpectedStatus: http.StatusOK,
 			ExpectedBody:   `{"status": "valid", "type":"http-01", "token":"token", "url": "http://localhost/acme/chall/1/1/7TyhFQ"}`,
 		},
+		{
+			Name:           "Processing challenge POST-as-GET",
+			Request:        postAsGet(1, "1/6/7TyhFQ", ""),
+			ExpectedStatus: http.StatusOK,
+			ExpectedHeaders: map[string]string{
+				"Location": "http://localhost/acme/chall/1/6/7TyhFQ",
+				"Link":     `<http://localhost/acme/authz/1/6>;rel="up"`,
+			},
+			ExpectedBody: `{"status": "processing", "type":"http-01", "token":"token", "url": "http://localhost/acme/chall/1/6/7TyhFQ"}`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1843,6 +1864,33 @@ func TestGetAuthorizationHandler(t *testing.T) {
 				"type": "http-01",
 				"token":"token",
 				"url": "http://localhost/acme/chall/1/1/7TyhFQ"
+			}
+		]
+	}`)
+
+	// Ensure that an authorization whose challenge is being validated is
+	// rendered as pending, with the challenge rendered as processing.
+	_, _, jwsBody = signer.byKeyID(1, nil, "http://localhost/1/6", "")
+	postAsGet = makePostRequestWithPath("1/6", jwsBody)
+
+	responseWriter = httptest.NewRecorder()
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, postAsGet)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	body = responseWriter.Body.String()
+	test.AssertUnmarshaledEquals(t, body, `
+	{
+		"identifier": {
+			"type": "dns",
+			"value": "not-an-example.com"
+		},
+		"status": "pending",
+		"expires": "2070-01-01T00:00:00Z",
+		"challenges": [
+			{
+			  "status": "processing",
+				"type": "http-01",
+				"token":"token",
+				"url": "http://localhost/acme/chall/1/6/7TyhFQ"
 			}
 		]
 	}`)
