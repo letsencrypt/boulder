@@ -204,8 +204,7 @@ loop:
 // compliantSet returns a slice of SCTs which complies with all relevant CT Log
 // Policy requirements, namely that the set of SCTs:
 // - contain at least two SCTs, which
-// - come from logs run by at least two different operators, and
-// - contain at least one RFC6962-compliant (i.e. non-static/tiled) log.
+// - come from logs run by at least two different operators.
 //
 // If no such set of SCTs exists, returns nil.
 func compliantSet(results []result) core.SCTDERs {
@@ -219,10 +218,6 @@ func compliantSet(results []result) core.SCTDERs {
 			}
 			if first.log.Operator == second.log.Operator {
 				// The two SCTs must come from different operators.
-				continue
-			}
-			if first.log.Tiled && second.log.Tiled {
-				// At least one must come from a non-tiled log.
 				continue
 			}
 			return core.SCTDERs{first.sct, second.sct}
