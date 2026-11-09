@@ -9,13 +9,8 @@ import (
 )
 
 type Subtree struct {
-	ID    int64 // updated with DB row ID
 	Start int64
 	End   int64
-}
-
-func (s Subtree) IsEmpty() bool {
-	return s.ID == 0 && s.Start == 0 && s.End == 0
 }
 
 // Valid reports whether [start, end) is a valid subtree per the MTC draft
@@ -41,8 +36,8 @@ func Valid(start, end int64) bool {
 	return uint64(start)&(bitCeil-1) == 0
 }
 
-// contains returns true if and only if start ≤ entryIndex < end.
-func contains(entryIndex, start, end int64) bool {
+// Contains returns true if and only if start ≤ entryIndex < end.
+func Contains(entryIndex, start, end int64) bool {
 	return start <= entryIndex && entryIndex < end
 }
 
@@ -100,8 +95,16 @@ func completeSubtreeIndexes(start, end int64) []int64 {
 // from RFC 9162 section 2.1.1. It splits [start, end) into the largest
 // power-of-two subtrees the tree already keeps a single stored hash for, reads
 // those hashes through the provided reader in a single ReadHashes call, and
-// combines them.
+// combines them. It errors if [start, end) is not a valid subtree. The hash of
+// an empty subtree is the hash of an empty string, MTH({}) from the same
+// section.
 func HashSubtree(start, end int64, reader tlog.HashReader) (tlog.Hash, error) {
+	if !Valid(start, end) {
+		return tlog.Hash{}, fmt.Errorf("[%d, %d) is not a valid subtree", start, end)
+	}
+	if start == end {
+		return tlog.Hash(sha256.Sum256(nil)), nil
+	}
 	indexes := completeSubtreeIndexes(start, end)
 	hashes, err := reader.ReadHashes(indexes)
 	if err != nil {
@@ -210,7 +213,7 @@ func InclusionProof(entryIndex, start, end int64, reader tlog.HashReader) ([]tlo
 	if !Valid(start, end) {
 		return nil, fmt.Errorf("subtree [%d, %d) not valid", start, end)
 	}
-	if !contains(entryIndex, start, end) {
+	if !Contains(entryIndex, start, end) {
 		return nil, fmt.Errorf("entryIndex %d not in subtree [%d, %d)", entryIndex, start, end)
 	}
 	offset := start
@@ -332,7 +335,7 @@ func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, en
 	if !Valid(start, end) {
 		return tlog.Hash{}, fmt.Errorf("invalid subtree: [%d, %d)", start, end)
 	}
-	if !contains(entryIndex, start, end) {
+	if !Contains(entryIndex, start, end) {
 		return tlog.Hash{}, fmt.Errorf("entryIndex %d not in [%d, %d)", entryIndex, start, end)
 	}
 

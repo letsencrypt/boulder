@@ -47,7 +47,7 @@ func (c *CheckpointModel) Mirrored() bool {
 	return len(c.MTCASignature) > 0 && c.MirrorID != nil && len(c.MirrorSignature) > 0
 }
 
-type SubtreesModel struct {
+type SubtreeModel struct {
 	ID              int64   `db:"id"`
 	MTCLogID        string  `db:"mtcLogID"`
 	MTCASignature   []byte  `db:"mtcaSignature"`
@@ -58,7 +58,7 @@ type SubtreesModel struct {
 	SubtreeHash     []byte  `db:"subtreeHash"`
 }
 
-func (s *SubtreesModel) Valid() error {
+func (s *SubtreeModel) Valid() error {
 	if len(s.MTCLogID) == 0 {
 		return errors.New("MTCLogID is empty")
 	}
@@ -77,7 +77,7 @@ func (s *SubtreesModel) Valid() error {
 	return nil
 }
 
-func (s *SubtreesModel) Mirrored() bool {
+func (s *SubtreeModel) Mirrored() bool {
 	return len(s.MTCASignature) > 0 && s.MirrorID != nil && len(s.MirrorSignature) > 0
 }
 
@@ -89,7 +89,7 @@ type Impl struct {
 // table mappings with borp.
 func New(dbMap *db.WrappedMap) *Impl {
 	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
-	dbMap.AddTableWithName(SubtreesModel{}, "subtrees").SetKeys(true, "ID")
+	dbMap.AddTableWithName(SubtreeModel{}, "subtrees").SetKeys(true, "ID")
 	return &Impl{dbMap}
 }
 
@@ -154,8 +154,8 @@ func (i *Impl) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID
 	return nil
 }
 
-func (i *Impl) GetSubtree(ctx context.Context, mtcLogID string, id int64) (*SubtreesModel, error) {
-	var subtree SubtreesModel
+func (i *Impl) GetSubtree(ctx context.Context, mtcLogID string, id int64) (*SubtreeModel, error) {
+	var subtree SubtreeModel
 	err := i.db.SelectOne(ctx, &subtree,
 		`SELECT id, mtcLogID, mtcaSignature,
 				mirrorID, mirrorSignature,
@@ -166,7 +166,7 @@ func (i *Impl) GetSubtree(ctx context.Context, mtcLogID string, id int64) (*Subt
 		mtcLogID,
 		id)
 	if err != nil {
-		return nil, fmt.Errorf("getting checkpoint subtree %d of %q: %w", id, mtcLogID, err)
+		return nil, fmt.Errorf("getting subtree %d of %q: %w", id, mtcLogID, err)
 	}
 	return &subtree, nil
 }
@@ -175,7 +175,7 @@ func (i *Impl) GetSubtree(ctx context.Context, mtcLogID string, id int64) (*Subt
 // ID, or an error. Because borp's `Insert` modifies its argument to set the ID
 // when a field is marked as autoincrement (`.SetKeys(true, "ID")`), this method
 // also modifies its argument (in this case, `model`).
-func (i *Impl) InsertSubtree(ctx context.Context, model *SubtreesModel) (int64, error) {
+func (i *Impl) InsertSubtree(ctx context.Context, model *SubtreeModel) (int64, error) {
 	err := i.db.Insert(ctx, model)
 	if err != nil {
 		return 0, fmt.Errorf("inserting into subtrees table: %s", err)
@@ -186,8 +186,8 @@ func (i *Impl) InsertSubtree(ctx context.Context, model *SubtreesModel) (int64, 
 
 // GetUnsignedSubtrees returns up to limit of the log's newest subtrees that end
 // at or before maxEnd and lack a mirror signature.
-func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*SubtreesModel, error) {
-	var subtrees []*SubtreesModel
+func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*SubtreeModel, error) {
+	var subtrees []*SubtreeModel
 	_, err := i.db.Select(ctx, &subtrees,
 		`SELECT id, mtcLogID, mtcaSignature,
 				mirrorID, mirrorSignature,

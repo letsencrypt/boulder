@@ -39,7 +39,7 @@ import (
 // checkpointDB is the subset of treedb.Impl the mtcb uses, so tests can supply
 // checkpoints without a database.
 type checkpointDB interface {
-	GetSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.SubtreesModel, error)
+	GetSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.SubtreeModel, error)
 }
 
 type mtcb struct {
@@ -293,10 +293,10 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }
 
-func ready(dbSubtree *treedb.SubtreesModel, entryIndex int64) (bool, error) {
+func ready(dbSubtree *treedb.SubtreeModel, entryIndex int64) (bool, error) {
 	err := dbSubtree.Valid()
 	if err != nil {
-		return false, fmt.Errorf("validating checkpoint subtree %d: %w", dbSubtree.ID, err)
+		return false, fmt.Errorf("validating subtree %d: %w", dbSubtree.ID, err)
 	}
 
 	if entryIndex < dbSubtree.SubtreeStart || entryIndex >= dbSubtree.SubtreeEnd {

@@ -116,7 +116,7 @@ type fakeDB struct {
 	mtcLogID         string
 	latestCheckpoint int64
 	checkpoints      []treedb.CheckpointModel
-	subtrees         []treedb.SubtreesModel
+	subtrees         []treedb.SubtreeModel
 }
 
 func newFakeDB(mtcLogID string) *fakeDB {
@@ -147,7 +147,7 @@ func (f *fakeDB) InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel
 	return nil
 }
 
-func (f *fakeDB) InsertSubtree(ctx context.Context, s *treedb.SubtreesModel) (_ int64, _ error) {
+func (f *fakeDB) InsertSubtree(ctx context.Context, s *treedb.SubtreeModel) (_ int64, _ error) {
 	if s.MTCLogID != f.mtcLogID {
 		return 0, fmt.Errorf("wrong log")
 	}
@@ -160,11 +160,11 @@ func (f *fakeDB) InsertSubtree(ctx context.Context, s *treedb.SubtreesModel) (_ 
 	return s.ID, nil
 }
 
-func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreesModel, error) {
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
-	var subtrees []*treedb.SubtreesModel
+	var subtrees []*treedb.SubtreeModel
 	for i := len(f.subtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
 		if f.subtrees[i].MirrorID == nil && f.subtrees[i].SubtreeEnd <= maxEnd {
 			subtrees = append(subtrees, &f.subtrees[i])
@@ -187,7 +187,7 @@ func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirror
 	return fmt.Errorf("subtree %d not found", id)
 }
 
-func (f *fakeDB) getSubtree(mtcLogID string, id int64) (*treedb.SubtreesModel, error) {
+func (f *fakeDB) getSubtree(mtcLogID string, id int64) (*treedb.SubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}

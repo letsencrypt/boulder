@@ -76,7 +76,7 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.I
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
-	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreesModel, error)
+	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error)
 	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
