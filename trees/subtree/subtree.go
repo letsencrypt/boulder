@@ -36,8 +36,8 @@ func Valid(start, end int64) bool {
 	return uint64(start)&(bitCeil-1) == 0
 }
 
-// Contains returns true if and only if start ≤ entryIndex < end.
-func Contains(entryIndex, start, end int64) bool {
+// contains returns true if and only if start ≤ entryIndex < end.
+func contains(entryIndex, start, end int64) bool {
 	return start <= entryIndex && entryIndex < end
 }
 
@@ -213,7 +213,7 @@ func InclusionProof(entryIndex, start, end int64, reader tlog.HashReader) ([]tlo
 	if !Valid(start, end) {
 		return nil, fmt.Errorf("subtree [%d, %d) not valid", start, end)
 	}
-	if !Contains(entryIndex, start, end) {
+	if !contains(entryIndex, start, end) {
 		return nil, fmt.Errorf("entryIndex %d not in subtree [%d, %d)", entryIndex, start, end)
 	}
 	offset := start
@@ -335,7 +335,7 @@ func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, en
 	if !Valid(start, end) {
 		return tlog.Hash{}, fmt.Errorf("invalid subtree: [%d, %d)", start, end)
 	}
-	if !Contains(entryIndex, start, end) {
+	if !contains(entryIndex, start, end) {
 		return tlog.Hash{}, fmt.Errorf("entryIndex %d not in [%d, %d)", entryIndex, start, end)
 	}
 
