@@ -604,6 +604,9 @@ func (m *mtca) sequence(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("finding subtrees: %s", err)
 	}
+	if len(coveringSubtrees) != 2 {
+		return fmt.Errorf("got unexpected number of covering subtrees: %d", len(coveringSubtrees))
+	}
 
 	tr := tiles.NewTileReader(ctx, m.s3c, m.logID.TilePrefix())
 	hr := tlog.TileHashReader(tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, tr)
