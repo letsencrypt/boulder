@@ -93,6 +93,10 @@ func (c *ipFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result
 	return wrapAAAA()
 }
 
+func (c *ipFakeDNS) LookupHTTPS(_ context.Context, hostname string) (*bdns.Result[*dns.HTTPS], string, error) {
+	return &bdns.Result[*dns.HTTPS]{}, "ipFakeDNS", nil
+}
+
 // TestDialerMismatchError tests that using a preresolvedDialer for one host for
 // a dial to another host produces the expected dialerMismatchError.
 func TestDialerMismatchError(t *testing.T) {
@@ -129,6 +133,10 @@ func (c *unroutableFakeDNS) LookupA(_ context.Context, hostname string) (*bdns.R
 
 func (c *unroutableFakeDNS) LookupAAAA(_ context.Context, hostname string) (*bdns.Result[*dns.AAAA], string, error) {
 	return nil, "dnsFakeUnroutable", errors.New("SERVFAIL")
+}
+
+func (c *unroutableFakeDNS) LookupHTTPS(_ context.Context, hostname string) (*bdns.Result[*dns.HTTPS], string, error) {
+	return &bdns.Result[*dns.HTTPS]{}, "dnsFakeUnroutable", nil
 }
 
 // TestDialerTimeout tests that the preresolvedDialer's DialContext
