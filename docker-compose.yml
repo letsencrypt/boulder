@@ -230,9 +230,6 @@ services:
     networks:
       - bouldernet
 
-  # Two sunlight mirrors, so the mtpublisher submits to more than one and
-  # whichever cosigns a subtree first has its signature stored. Only the first
-  # builds the image.
   bsunlight:
     <<: &sunlight
       image: letsencrypt/boulder-sunlight:${BOULDER_SUNLIGHT_TAG:-latest}
