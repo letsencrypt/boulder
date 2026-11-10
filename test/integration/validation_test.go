@@ -613,3 +613,128 @@ func TestTLSALPN01ECH(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTP01RedirectECH(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("ECH is only enabled in config-next")
+	}
+
+	echConfigList, err := testSrvClient.ECHConfigList()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name          string
+		echConfigList string
+		wantECH       core.ECHStatus
+	}{
+		{
+			name:          "accepted",
+			echConfigList: echConfigList,
+			wantECH:       core.ECHAccepted,
+		},
+		{
+			name:          "malformed config falls back",
+			echConfigList: base64.StdEncoding.EncodeToString([]byte{0x00, 0x04, 0xfe, 0x0d, 0x00, 0x00}),
+			wantECH:       core.ECHFailed,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Conduct a http-01 validation for a name which 3XX redirects to an https:// URI.
+			t.Parallel()
+
+			client, err := makeClient()
+			if err != nil {
+				t.Fatalf("creating acme client: %s", err)
+			}
+
+			domain := randomDomain(t)
+
+			order, err := client.Client.NewOrder(client.Account, []acme.Identifier{{Type: "dns", Value: domain}})
+			if err != nil {
+				t.Fatalf("creating order: %s", err)
+			}
+
+			authz, err := client.Client.FetchAuthorization(client.Account, order.Authorizations[0])
+			if err != nil {
+				t.Fatalf("fetching authorization: %s", err)
+			}
+
+			chal, ok := authz.ChallengeMap[acme.ChallengeTypeHTTP01]
+			if !ok {
+				t.Fatalf("no HTTP-01 challenge found in %#v", authz)
+			}
+
+			_, err = testSrvClient.AddARecord(domain, []string{"64.112.117.122"})
+			if err != nil {
+				t.Fatalf("adding A record: %s", err)
+			}
+			defer func() {
+				_, _ = testSrvClient.RemoveARecord(domain)
+			}()
+
+			_, err = testSrvClient.AddHTTPSRecord(domain, "1 . ech="+tc.echConfigList)
+			if err != nil {
+				t.Fatalf("adding HTTPS record: %s", err)
+			}
+			defer func() {
+				_, _ = testSrvClient.RemoveHTTPSRecords(domain)
+			}()
+
+			_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				_, _ = testSrvClient.RemoveHTTP01Response(chal.Token)
+			}()
+
+			path := "/.well-known/acme-challenge/" + chal.Token
+			_, err = testSrvClient.AddHTTPRedirect(path, "https://"+domain+path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				_, _ = testSrvClient.RemoveHTTPRedirect(path)
+			}()
+
+			_, err = client.Client.UpdateChallenge(client.Account, chal)
+			if err != nil {
+				t.Fatalf("completing HTTP-01 validation: %s", err)
+			}
+
+			// Check that every perspective did an HTTPS DNS lookup.
+			dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var httpsDNSEvents []challtestsrvclient.DNSRequest
+			for _, event := range dnsEvents {
+				if event.Question.Qtype == dns.TypeHTTPS {
+					httpsDNSEvents = append(httpsDNSEvents, event)
+				}
+			}
+			assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(httpsDNSEvents), "HTTPS lookup")
+
+			// Check that every perspective made one https:// request, and that the
+			// primary VA used ECH or not based on the test case.
+			events, err := testSrvClient.HTTPRequestHistory(domain)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var httpsEvents []challtestsrvclient.HTTPRequest
+			for _, event := range events {
+				if event.HTTPS {
+					httpsEvents = append(httpsEvents, event)
+				}
+			}
+			if len(httpsEvents) != len(expectedUserAgents) {
+				t.Errorf("got %d HTTPS requests for %s, want %d", len(httpsEvents), domain, len(expectedUserAgents))
+			}
+			assertStoredECHStatus(t, domain, tc.wantECH)
+		})
+	}
+}
