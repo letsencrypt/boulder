@@ -112,10 +112,10 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 }
 
 type fakeDB struct {
-	mtcLogID           string
-	latestCheckpoint   int64
-	checkpoints        []treedb.CheckpointModel
-	checkpointSubtrees []treedb.CheckpointSubtreeModel
+	mtcLogID         string
+	latestCheckpoint int64
+	checkpoints      []treedb.CheckpointModel
+	subtrees         []treedb.CheckpointSubtreeModel
 }
 
 func newFakeDB(mtcLogID string) *fakeDB {
@@ -150,12 +150,12 @@ func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.Checkpoi
 	if s.MTCLogID != f.mtcLogID {
 		return 0, fmt.Errorf("wrong log")
 	}
-	if len(f.checkpointSubtrees) == 0 {
+	if len(f.subtrees) == 0 {
 		s.ID = 19000 // arbitrary start point for fake autoincrement
 	} else {
-		s.ID = f.checkpointSubtrees[len(f.checkpointSubtrees)-1].ID + 1
+		s.ID = f.subtrees[len(f.subtrees)-1].ID + 1
 	}
-	f.checkpointSubtrees = append(f.checkpointSubtrees, *s)
+	f.subtrees = append(f.subtrees, *s)
 	return s.ID, nil
 }
 
@@ -164,9 +164,9 @@ func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEn
 		return nil, fmt.Errorf("wrong log")
 	}
 	var subtrees []*treedb.CheckpointSubtreeModel
-	for i := len(f.checkpointSubtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
-		if f.checkpointSubtrees[i].MirrorID == nil && f.checkpointSubtrees[i].SubtreeEnd <= maxEnd {
-			subtrees = append(subtrees, &f.checkpointSubtrees[i])
+	for i := len(f.subtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
+		if f.subtrees[i].MirrorID == nil && f.subtrees[i].SubtreeEnd <= maxEnd {
+			subtrees = append(subtrees, &f.subtrees[i])
 		}
 	}
 	return subtrees, nil
@@ -176,13 +176,13 @@ func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirror
 	if mtcLogID != f.mtcLogID {
 		return fmt.Errorf("wrong log")
 	}
-	for i, s := range f.checkpointSubtrees {
+	for i, s := range f.subtrees {
 		if s.ID == id {
 			if s.MirrorID != nil {
 				return fmt.Errorf("subtree %d %w", id, treedb.ErrAlreadyCosigned)
 			}
-			f.checkpointSubtrees[i].MirrorID = &mirrorID
-			f.checkpointSubtrees[i].MirrorSignature = mirrorSignature
+			f.subtrees[i].MirrorID = &mirrorID
+			f.subtrees[i].MirrorSignature = mirrorSignature
 			return nil
 		}
 	}
@@ -193,7 +193,7 @@ func (f *fakeDB) getCheckpointSubtree(mtcLogID string, id int64) (*treedb.Checkp
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
-	for _, s := range f.checkpointSubtrees {
+	for _, s := range f.subtrees {
 		if s.ID == id {
 			return &s, nil
 		}
@@ -216,7 +216,7 @@ func (f *fakeDB) InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *tre
 	if firstCheckpoint.MTCLogID != f.mtcLogID {
 		return fmt.Errorf("wrong log")
 	}
-	if len(f.checkpoints) > 0 || len(f.checkpointSubtrees) > 0 || f.latestCheckpoint != 0 {
+	if len(f.checkpoints) > 0 || len(f.subtrees) > 0 || f.latestCheckpoint != 0 {
 		return fmt.Errorf("already initialized")
 	}
 	firstCheckpoint.ID = 17000 // arbitrary start point for fake autoincrement
