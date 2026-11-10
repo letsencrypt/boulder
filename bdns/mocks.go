@@ -29,3 +29,8 @@ func (mock *MockClient) LookupAAAA(_ context.Context, hostname string) (*Result[
 func (mock *MockClient) LookupCAA(_ context.Context, domain string) (*Result[*dns.CAA], string, error) {
 	return nil, "MockClient", errors.New("unexpected LookupCAA call on test fake")
 }
+
+// LookupHTTPS is a fake
+func (mock *MockClient) LookupHTTPS(_ context.Context, hostname string) (*Result[*dns.HTTPS], string, error) {
+	return nil, "MockClient", errors.New("unexpected LookupHTTPS call on test fake")
+}
