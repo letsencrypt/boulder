@@ -113,7 +113,7 @@ func logListFile(p, mtcaPublicKeyFile string) error {
 }
 
 // cosignerFiles writes cosigners.json and cosigners.pem under dir, listing
-// each mirror as a Usable mirror in the UNTRUSTED_VALIDATION_ONLY realm with
+// each mirror as a Usable mirror in the PUBLICLY_TRUSTED realm with
 // the key it derives from seed.
 func cosignerFiles(dir string, seed []byte) error {
 	type stateChange struct {
@@ -166,7 +166,7 @@ func cosignerFiles(dir string, seed []byte) error {
 			BaseURL:          m.monitoringPrefix,
 			SubmissionPrefix: m.submissionPrefix,
 			Type:             "MIRROR",
-			Realm:            "UNTRUSTED_VALIDATION_ONLY",
+			Realm:            "PUBLICLY_TRUSTED",
 			KeySHA256:        keySHA256,
 		})
 		cosignersPEM = append(cosignersPEM, []byte("# "+keySHA256+"\n")...)

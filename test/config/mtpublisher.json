@@ -13,7 +13,7 @@
 		"cosigners": {
 			"jsonFile": "test/certs/sunlight/cosigners.json",
 			"pemFile": "test/certs/sunlight/cosigners.pem",
-			"realm": "UNTRUSTED_VALIDATION_ONLY"
+			"realm": "PUBLICLY_TRUSTED"
 		},
 		"mirrorTimeout": "15s",
 		"s3": {
