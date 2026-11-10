@@ -5,7 +5,6 @@ import (
 	"crypto/mldsa"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 
 	"github.com/letsencrypt/boulder/blog"
@@ -118,29 +117,32 @@ func main() {
 	cmd.FailOnError(err, "Reading cosigners.pem")
 	cosignerList, err := cosigners.Parse(cosignersJSON, cosignersPEM)
 	cmd.FailOnError(err, "Parsing the cosigner list")
-	submissionMirrors, err := cosignerList.ForPurpose(cosigners.Submission, c.MTPublisher.Cosigners.Realm)
-	cmd.FailOnError(err, "Selecting the mirrors to submit to")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go cmd.CatchSignals(cancel)
+	realmMirrors, err := cosignerList.ForRealm(c.MTPublisher.Cosigners.Realm)
+	cmd.FailOnError(err, "Selecting the mirrors for this realm")
 
 	src := mtpublisher.NewSource(s3c, logID.TilePrefix())
+	cosigningMirrors := realmMirrors.ForPurpose(cosigners.Cosigning, logID.CAID())
+	if len(cosigningMirrors) == 0 {
+		cmd.Fail(fmt.Sprintf("No mirror in realm %s is Usable and unaffiliated with CA %s", c.MTPublisher.Cosigners.Realm, logID.CAID()))
+	}
 	var cosigning []mtpublisher.Mirror
-	var submitOnly []mtpublisher.Mirror
-	for _, mirror := range submissionMirrors {
+	for _, mirror := range cosigningMirrors {
 		client, err := mtpublisher.NewMirrorClient(mirror.SubmissionPrefix, mirror.MonitoringPrefix, src, mirror.BaseID.String(), mirror.PublicKey, c.MTPublisher.MirrorTimeout.Duration)
 		cmd.FailOnError(err, fmt.Sprintf("Creating client for mirror %s (%s)", mirror.BaseID, mirror.FriendlyName))
-		if mirror.State().AcceptedFor(cosigners.Cosigning) && !cosignerList.Affiliated(mirror, logID.CAID()) {
-			cosigning = append(cosigning, client)
-			slogger.Info(ctx, "Storing cosignatures from mirror", slog.String("mirrorid", mirror.BaseID.String()), slog.String("friendlyname", mirror.FriendlyName))
-		} else {
-			submitOnly = append(submitOnly, client)
-			slogger.Info(ctx, "Submitting to mirror without storing its cosignatures", slog.String("mirrorid", mirror.BaseID.String()), slog.String("friendlyname", mirror.FriendlyName))
-		}
+		cosigning = append(cosigning, client)
+	}
+	var submitOnly []mtpublisher.Mirror
+	for _, mirror := range realmMirrors.ForPurpose(cosigners.SubmissionOnly, logID.CAID()) {
+		client, err := mtpublisher.NewMirrorClient(mirror.SubmissionPrefix, mirror.MonitoringPrefix, src, mirror.BaseID.String(), mirror.PublicKey, c.MTPublisher.MirrorTimeout.Duration)
+		cmd.FailOnError(err, fmt.Sprintf("Creating client for mirror %s (%s)", mirror.BaseID, mirror.FriendlyName))
+		submitOnly = append(submitOnly, client)
 	}
 
 	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, logID, caVerifier, cosigning, submitOnly, slogger)
 	cmd.FailOnError(err, "Failed to create MTPublisher")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go cmd.CatchSignals(cancel)
 	publisher.Start(ctx)
 }
 

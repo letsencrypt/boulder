@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"time"
+	"slices"
 
 	"github.com/letsencrypt/boulder/core/reloid"
 )
@@ -22,8 +22,8 @@ import (
 // State is a Mirroring Cosigner's inclusion state per CQRP section 3.3.
 type State string
 
-// The states, in the order a Mirroring Cosigner enters them. Unset is the
-// schema's default.
+// The states, in the order a Mirroring Cosigner enters them. Unset is in the
+// schema but not in the CQRP.
 const (
 	Unset     State = "UNSET"
 	Candidate State = "CANDIDATE"
@@ -42,42 +42,6 @@ const (
 	PubliclyTrusted         Realm = "PUBLICLY_TRUSTED"
 )
 
-// purpose is a use of a List's mirrors, which accepts some of their states.
-type purpose string
-
-// Cosigning accepts only Usable mirrors, the only ones still making the subtree
-// signatures CQRP section 2.4.5 lets a standalone certificate carry.
-const Cosigning purpose = "cosigning"
-
-// Submission accepts Candidate, Qualified, and Usable mirrors, which CQRP
-// section 2.5.1.2 requires a CA to attempt to submit every issuance log update
-// to.
-const Submission purpose = "submission"
-
-// AcceptedFor reports whether a mirror in state s is accepted for the given
-// purpose.
-func (s State) AcceptedFor(p purpose) bool {
-	switch p {
-	case Cosigning:
-		return s == Usable
-	case Submission:
-		return s == Candidate || s == Qualified || s == Usable
-	}
-	return false
-}
-
-// StateChange is an entry of a cosigner's state_history.
-type StateChange struct {
-	State      State     `json:"state"`
-	StateStart time.Time `json:"state_start"`
-}
-
-// OperatorChange is an entry of a cosigner's operator_history.
-type OperatorChange struct {
-	Name          string    `json:"name"`
-	OperatorStart time.Time `json:"operator_start"`
-}
-
 // List is the cosigner list parsed from cosigners.json.
 type List struct {
 	Issuers []*Issuer
@@ -89,14 +53,9 @@ type Issuer struct {
 	FriendlyName string
 	// BaseID is the issuer's base_id, its CA ID relative to 1.3.6.1.4.1.
 	BaseID *reloid.RelativeOID
-	// OperatorHistory is the issuer's operator_history, in reverse
-	// chronological order with the current operator first.
-	OperatorHistory []OperatorChange
-}
-
-// Operator returns the name of the issuer's current operator.
-func (i *Issuer) Operator() string {
-	return i.OperatorHistory[0].Name
+	// Operator is the name of the issuer's current operator, the first entry
+	// of its operator_history.
+	Operator string
 }
 
 // Mirror is a Mirroring Cosigner from cosigners.json with its public key from
@@ -105,12 +64,12 @@ type Mirror struct {
 	FriendlyName string
 	// BaseID is the mirror's base_id, its cosigner ID relative to 1.3.6.1.4.1.
 	BaseID *reloid.RelativeOID
-	// StateHistory is the mirror's state_history, in reverse chronological
-	// order with the current state first.
-	StateHistory []StateChange
-	// OperatorHistory is the mirror's operator_history, in reverse
-	// chronological order with the current operator first.
-	OperatorHistory  []OperatorChange
+	// State is the mirror's current state, the first entry of its
+	// state_history.
+	State State
+	// Operator is the name of the mirror's current operator, the first entry
+	// of its operator_history.
+	Operator         string
 	SubmissionPrefix string
 	// MonitoringPrefix is the mirror's base_url, its tlog-mirror monitoring
 	// prefix. The schema calls it the "Monitoring URL of the cosigner".
@@ -119,36 +78,41 @@ type Mirror struct {
 	PublicKey        *mldsa.PublicKey
 }
 
-// State returns the mirror's current state.
-func (m *Mirror) State() State {
-	return m.StateHistory[0].State
+// The types below follow the cosigners.json schema. Parse unmarshals into them
+// and nothing else uses them, so that List, Issuer, and Mirror hold only what
+// their callers read.
+type jsonList struct {
+	Issuers []jsonSigner `json:"issuers"`
+	Mirrors []jsonSigner `json:"mirrors"`
 }
 
-// Operator returns the name of the mirror's current operator.
-func (m *Mirror) Operator() string {
-	return m.OperatorHistory[0].Name
+type jsonSigner struct {
+	FriendlyName     string               `json:"friendly_name"`
+	BaseID           string               `json:"base_id"`
+	StateHistory     []jsonStateChange    `json:"state_history"`
+	OperatorHistory  []jsonOperatorChange `json:"operator_history"`
+	BaseURL          string               `json:"base_url"`
+	SubmissionPrefix string               `json:"submission_prefix"`
+	Realm            Realm                `json:"realm"`
+	KeySHA256        string               `json:"key_sha256"`
 }
 
-type list struct {
-	Issuers []signer `json:"issuers"`
-	Mirrors []signer `json:"mirrors"`
+// jsonStateChange is an entry of a signer's state_history, which is in reverse
+// chronological order with the current state first.
+type jsonStateChange struct {
+	State State `json:"state"`
 }
 
-type signer struct {
-	FriendlyName     string           `json:"friendly_name"`
-	BaseID           string           `json:"base_id"`
-	StateHistory     []StateChange    `json:"state_history"`
-	OperatorHistory  []OperatorChange `json:"operator_history"`
-	BaseURL          string           `json:"base_url"`
-	SubmissionPrefix string           `json:"submission_prefix"`
-	Realm            Realm            `json:"realm"`
-	KeySHA256        string           `json:"key_sha256"`
+// jsonOperatorChange is an entry of a signer's operator_history, which is in
+// reverse chronological order with the current operator first.
+type jsonOperatorChange struct {
+	Name string `json:"name"`
 }
 
 // Parse returns the List in cosigners.json, with each mirror's ML-DSA-44 public
 // key from cosigners.pem, matched by key_sha256. Unknown fields are ignored. A
-// submission_prefix is required only of mirrors in a state accepted for
-// Submission.
+// submission_prefix is required only of mirrors in a state that CQRP section
+// 2.5.1.2 requires a CA to submit to.
 func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 	keys := make(map[string][]byte)
 	rest := cosignersPEM
@@ -165,7 +129,7 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 		keys[hex.EncodeToString(digest[:])] = block.Bytes
 	}
 
-	var parsed list
+	var parsed jsonList
 	err := json.Unmarshal(cosignersJSON, &parsed)
 	if err != nil {
 		return nil, fmt.Errorf("parsing cosigners.json: %s", err)
@@ -181,9 +145,9 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 			return nil, fmt.Errorf("issuer %s has no operator_history", s.BaseID)
 		}
 		issuers = append(issuers, &Issuer{
-			FriendlyName:    s.FriendlyName,
-			BaseID:          baseID,
-			OperatorHistory: s.OperatorHistory,
+			FriendlyName: s.FriendlyName,
+			BaseID:       baseID,
+			Operator:     s.OperatorHistory[0].Name,
 		})
 	}
 
@@ -210,7 +174,7 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 		default:
 			return nil, fmt.Errorf("mirror %s has unknown state %q", s.BaseID, state)
 		}
-		if s.SubmissionPrefix == "" && state.AcceptedFor(Submission) {
+		if s.SubmissionPrefix == "" && state.acceptsSubmissions() {
 			return nil, fmt.Errorf("mirror %s has no submission_prefix", s.BaseID)
 		}
 		if s.BaseURL == "" {
@@ -234,8 +198,8 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 		mirrors = append(mirrors, &Mirror{
 			FriendlyName:     s.FriendlyName,
 			BaseID:           baseID,
-			StateHistory:     s.StateHistory,
-			OperatorHistory:  s.OperatorHistory,
+			State:            state,
+			Operator:         s.OperatorHistory[0].Name,
 			SubmissionPrefix: s.SubmissionPrefix,
 			MonitoringPrefix: s.BaseURL,
 			Realm:            s.Realm,
@@ -245,35 +209,64 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 	return &List{Issuers: issuers, Mirrors: mirrors}, nil
 }
 
-// ForPurpose returns the mirrors in realm whose state is accepted for the given
-// purpose. It errors if no mirror remains.
-func (l *List) ForPurpose(p purpose, realm Realm) ([]*Mirror, error) {
-	var res []*Mirror
+// ForRealm returns the list with only its mirrors in realm. It errors if there
+// are none.
+func (l *List) ForRealm(realm Realm) (*List, error) {
+	var mirrors []*Mirror
 	for _, m := range l.Mirrors {
-		if m.Realm != realm || !m.State().AcceptedFor(p) {
-			continue
+		if m.Realm == realm {
+			mirrors = append(mirrors, m)
 		}
-		res = append(res, m)
 	}
-	if len(res) == 0 {
-		return nil, fmt.Errorf("no mirror in realm %s is in a state accepted for %s", realm, p)
+	if len(mirrors) == 0 {
+		return nil, fmt.Errorf("no mirror is in realm %s", realm)
 	}
-	return res, nil
+	return &List{Issuers: l.Issuers, Mirrors: mirrors}, nil
 }
 
-// Affiliated reports whether mirror shares the IANA Private Enterprise Number
-// of the CA caID, or has the operator of that CA's entry in the list's issuers.
-// CQRP section 2.4.5 requires the mirror subtree signature in a standalone
-// certificate to be from a Mirroring Cosigner "not operated by or affiliated
-// with the MTC CA Operator".
-func (l *List) Affiliated(mirror *Mirror, caID *reloid.RelativeOID) bool {
-	if mirror.BaseID.PEN() == caID.PEN() {
-		return true
-	}
-	for _, issuer := range l.Issuers {
-		if issuer.BaseID.String() == caID.String() && issuer.Operator() == mirror.Operator() {
-			return true
+// purpose is what a CA uses a mirror for. The purposes are not part of
+// cosigners.json. They are this package's reading of what the CQRP lets a CA
+// do with a mirror, given the mirror's state and operator.
+type purpose string
+
+const (
+	// Cosigning mirrors are submitted to, and their cosignatures are stored
+	// for use in standalone certificates. CQRP section 2.4.5 requires those
+	// to be from a Usable mirror "not operated by or affiliated with the MTC
+	// CA Operator". It also allows a Frozen mirror's cosignature "generated
+	// prior to the freeze point", but a Frozen mirror makes no new ones.
+	Cosigning purpose = "cosigning"
+
+	// SubmissionOnly mirrors are submitted to, but their cosignatures are not
+	// stored. They are the Candidate, Qualified, and Usable mirrors that are
+	// not Cosigning mirrors. CQRP section 2.5.1.2 requires a CA to attempt to
+	// submit every issuance log update to all mirrors in those states.
+	SubmissionOnly purpose = "submission only"
+)
+
+// acceptsSubmissions reports whether a mirror in state s is one CQRP section
+// 2.5.1.2 requires a CA to submit to.
+func (s State) acceptsSubmissions() bool {
+	return s == Candidate || s == Qualified || s == Usable
+}
+
+// ForPurpose returns the mirrors that the CA caID uses for the given purpose.
+// No mirror is returned for both purposes. A mirror is affiliated with the CA
+// if it shares the CA's IANA Private Enterprise Number, or has the operator of
+// the CA's entry in the list's issuers.
+func (l *List) ForPurpose(p purpose, caID *reloid.RelativeOID) []*Mirror {
+	var mirrors []*Mirror
+	for _, m := range l.Mirrors {
+		affiliated := m.BaseID.PEN() == caID.PEN() || slices.ContainsFunc(l.Issuers, func(issuer *Issuer) bool {
+			return issuer.BaseID.String() == caID.String() && issuer.Operator == m.Operator
+		})
+		cosigning := m.State == Usable && !affiliated
+		switch {
+		case p == Cosigning && cosigning:
+			mirrors = append(mirrors, m)
+		case p == SubmissionOnly && !cosigning && m.State.acceptsSubmissions():
+			mirrors = append(mirrors, m)
 		}
 	}
-	return false
+	return mirrors
 }

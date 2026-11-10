@@ -11,9 +11,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/letsencrypt/boulder/core/reloid"
 )
@@ -126,7 +126,7 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %s", err)
 	}
-	if len(parsed.Issuers) != 1 || parsed.Issuers[0].BaseID.String() != "32473.1" || parsed.Issuers[0].Operator() != "Example Operator" {
+	if len(parsed.Issuers) != 1 || parsed.Issuers[0].BaseID.String() != "32473.1" || parsed.Issuers[0].Operator != "Example Operator" {
 		t.Errorf("Parse returned issuers %v, want Example CA 32473.1 operated by Example Operator", parsed.Issuers)
 	}
 	mirrors := parsed.Mirrors
@@ -156,11 +156,11 @@ func TestParse(t *testing.T) {
 		if m.BaseID.String() != expect[i].baseID {
 			t.Errorf("mirror %d BaseID = %s, want %s", i, m.BaseID, expect[i].baseID)
 		}
-		if m.Operator() != expect[i].operator {
-			t.Errorf("mirror %d Operator() = %q, want %q", i, m.Operator(), expect[i].operator)
+		if m.Operator != expect[i].operator {
+			t.Errorf("mirror %d Operator = %q, want %q", i, m.Operator, expect[i].operator)
 		}
-		if m.State() != expect[i].state {
-			t.Errorf("mirror %d State() = %s, want %s", i, m.State(), expect[i].state)
+		if m.State != expect[i].state {
+			t.Errorf("mirror %d State = %s, want %s", i, m.State, expect[i].state)
 		}
 		if m.Realm != expect[i].realm {
 			t.Errorf("mirror %d Realm = %q, want %q", i, m.Realm, expect[i].realm)
@@ -175,15 +175,6 @@ func TestParse(t *testing.T) {
 			t.Errorf("mirror %d PublicKey does not match cosigners.pem", i)
 		}
 	}
-
-	// The histories carry their timestamps, oldest last.
-	first := mirrors[0]
-	if len(first.StateHistory) != 3 || !first.StateHistory[2].StateStart.Equal(time.Date(2026, 6, 23, 0, 0, 0, 0, time.UTC)) {
-		t.Errorf("mirror 0 StateHistory = %v, want three entries ending 2026-06-23", first.StateHistory)
-	}
-	if len(mirrors[2].OperatorHistory) != 2 || !mirrors[2].OperatorHistory[0].OperatorStart.Equal(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)) {
-		t.Errorf("mirror 2 OperatorHistory = %v, want two entries starting 2026-10-01", mirrors[2].OperatorHistory)
-	}
 }
 
 func TestParseErrors(t *testing.T) {
@@ -195,12 +186,12 @@ func TestParseErrors(t *testing.T) {
 	notMLDSA := pemKey(t, &ecdsaKey.PublicKey)
 	cosignersPEM := []byte(key.pem + notMLDSA.pem)
 
-	valid := func() signer {
-		return signer{
+	valid := func() jsonSigner {
+		return jsonSigner{
 			FriendlyName:     "Example Mirror",
 			BaseID:           "32473.9",
-			StateHistory:     []StateChange{{State: Usable}},
-			OperatorHistory:  []OperatorChange{{Name: "Example Operator"}},
+			StateHistory:     []jsonStateChange{{State: Usable}},
+			OperatorHistory:  []jsonOperatorChange{{Name: "Example Operator"}},
 			BaseURL:          "https://mirror.example.com/mirror",
 			SubmissionPrefix: "https://mirror.example.com",
 			Realm:            UntrustedValidationOnly,
@@ -210,102 +201,102 @@ func TestParseErrors(t *testing.T) {
 
 	for _, tc := range []struct {
 		name              string
-		issuers           []signer
-		mirrors           func() []signer
+		issuers           []jsonSigner
+		mirrors           func() []jsonSigner
 		expectErrContains string
 	}{
 		{
 			name:              "issuer with bad base_id",
-			issuers:           []signer{{FriendlyName: "Example CA", BaseID: "not.an.oid", OperatorHistory: []OperatorChange{{Name: "Example Operator"}}}},
-			mirrors:           func() []signer { return []signer{valid()} },
+			issuers:           []jsonSigner{{FriendlyName: "Example CA", BaseID: "not.an.oid", OperatorHistory: []jsonOperatorChange{{Name: "Example Operator"}}}},
+			mirrors:           func() []jsonSigner { return []jsonSigner{valid()} },
 			expectErrContains: "parsing base_id of issuer \"Example CA\"",
 		},
 		{
 			name:              "issuer with no operator_history",
-			issuers:           []signer{{FriendlyName: "Example CA", BaseID: "32473.1"}},
-			mirrors:           func() []signer { return []signer{valid()} },
+			issuers:           []jsonSigner{{FriendlyName: "Example CA", BaseID: "32473.1"}},
+			mirrors:           func() []jsonSigner { return []jsonSigner{valid()} },
 			expectErrContains: "issuer 32473.1 has no operator_history",
 		},
 		{
 			name: "bad base_id",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
 				s.BaseID = "not.an.oid"
-				return []signer{s}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "parsing base_id of mirror \"Example Mirror\"",
 		},
 		{
 			name:              "duplicate base_id",
-			mirrors:           func() []signer { return []signer{valid(), valid()} },
+			mirrors:           func() []jsonSigner { return []jsonSigner{valid(), valid()} },
 			expectErrContains: "duplicate base_id 32473.9",
 		},
 		{
 			name: "no operator_history",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
 				s.OperatorHistory = nil
-				return []signer{s}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "mirror 32473.9 has no operator_history",
 		},
 		{
 			name: "no state_history",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
 				s.StateHistory = nil
-				return []signer{s}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "mirror 32473.9 has no state_history",
 		},
 		{
 			name: "unknown state",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
-				s.StateHistory = []StateChange{{State: "TRUSTED"}}
-				return []signer{s}
+				s.StateHistory = []jsonStateChange{{State: "TRUSTED"}}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "mirror 32473.9 has unknown state \"TRUSTED\"",
 		},
 		{
 			name: "no submission_prefix",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
 				s.SubmissionPrefix = ""
-				return []signer{s}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "mirror 32473.9 has no submission_prefix",
 		},
 		{
 			name: "no base_url",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
 				s.BaseURL = ""
-				return []signer{s}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "mirror 32473.9 has no base_url",
 		},
 		{
 			name: "key not in cosigners.pem",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
 				s.KeySHA256 = strings.Repeat("00", 32)
-				return []signer{s}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "is not in cosigners.pem",
 		},
 		{
 			name: "key is not ML-DSA-44",
-			mirrors: func() []signer {
+			mirrors: func() []jsonSigner {
 				s := valid()
 				s.KeySHA256 = notMLDSA.sha256
-				return []signer{s}
+				return []jsonSigner{s}
 			},
 			expectErrContains: "key of mirror 32473.9 is *ecdsa.PublicKey, must be ML-DSA-44",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cosignersJSON, err := json.Marshal(list{Issuers: tc.issuers, Mirrors: tc.mirrors()})
+			cosignersJSON, err := json.Marshal(jsonList{Issuers: tc.issuers, Mirrors: tc.mirrors()})
 			if err != nil {
 				t.Fatalf("json.Marshal: %s", err)
 			}
@@ -325,39 +316,34 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
-func TestForPurpose(t *testing.T) {
-	input := &List{Mirrors: []*Mirror{
-		{FriendlyName: "Usable", StateHistory: []StateChange{{State: Usable}}, Realm: UntrustedValidationOnly},
-		{FriendlyName: "Candidate", StateHistory: []StateChange{{State: Candidate}}, Realm: UntrustedValidationOnly},
-		{FriendlyName: "Qualified", StateHistory: []StateChange{{State: Qualified}}, Realm: UntrustedValidationOnly},
-		{FriendlyName: "Frozen", StateHistory: []StateChange{{State: Frozen}}, Realm: UntrustedValidationOnly},
-		{FriendlyName: "Removed", StateHistory: []StateChange{{State: Removed}}, Realm: UntrustedValidationOnly},
-		{FriendlyName: "Trusted", StateHistory: []StateChange{{State: Usable}}, Realm: PubliclyTrusted},
-	}}
+func TestForRealm(t *testing.T) {
+	issuers := []*Issuer{{FriendlyName: "Example CA"}}
+	input := &List{
+		Issuers: issuers,
+		Mirrors: []*Mirror{
+			{FriendlyName: "Untrusted", Realm: UntrustedValidationOnly},
+			{FriendlyName: "Trusted", Realm: PubliclyTrusted},
+		},
+	}
 
-	cosigning, err := input.ForPurpose(Cosigning, UntrustedValidationOnly)
+	trusted, err := input.ForRealm(PubliclyTrusted)
 	if err != nil {
-		t.Fatalf("ForPurpose: %s", err)
+		t.Fatalf("ForRealm: %s", err)
 	}
-	if len(cosigning) != 1 || cosigning[0].FriendlyName != "Usable" {
-		t.Errorf("ForPurpose(Cosigning) = %v, want only the Usable mirror in the realm", cosigning)
+	if len(trusted.Mirrors) != 1 || trusted.Mirrors[0].FriendlyName != "Trusted" {
+		t.Errorf("ForRealm(PubliclyTrusted) mirrors = %v, want only the Trusted mirror", trusted.Mirrors)
 	}
-
-	submission, err := input.ForPurpose(Submission, UntrustedValidationOnly)
-	if err != nil {
-		t.Fatalf("ForPurpose: %s", err)
-	}
-	if len(submission) != 3 || submission[0].FriendlyName != "Usable" || submission[1].FriendlyName != "Candidate" || submission[2].FriendlyName != "Qualified" {
-		t.Errorf("ForPurpose(Submission) = %v, want the Usable, Candidate, and Qualified mirrors in the realm", submission)
+	if len(trusted.Issuers) != 1 || trusted.Issuers[0] != issuers[0] {
+		t.Errorf("ForRealm(PubliclyTrusted) issuers = %v, want the list's issuers", trusted.Issuers)
 	}
 
-	_, err = input.ForPurpose(Cosigning, "NO_SUCH_REALM")
+	_, err = input.ForRealm("NO_SUCH_REALM")
 	if err == nil {
-		t.Error("ForPurpose with no mirror in the realm: got nil error, want error")
+		t.Error("ForRealm with no mirror in the realm: got nil error, want error")
 	}
 }
 
-func TestAffiliated(t *testing.T) {
+func TestForPurpose(t *testing.T) {
 	oid := func(s string) *reloid.RelativeOID {
 		t.Helper()
 		id, err := reloid.FromString(s)
@@ -366,33 +352,60 @@ func TestAffiliated(t *testing.T) {
 		}
 		return id
 	}
-	caID := oid("32473.1")
 	input := &List{
-		Issuers: []*Issuer{{BaseID: caID, OperatorHistory: []OperatorChange{{Name: "Example Operator"}}}},
+		Issuers: []*Issuer{{BaseID: oid("32473.1"), Operator: "Example Operator"}},
+		Mirrors: []*Mirror{
+			{FriendlyName: "Usable, unaffiliated", BaseID: oid("44947.1"), State: Usable, Operator: "Other Operator"},
+			{FriendlyName: "Usable with the CA's PEN", BaseID: oid("32473.9"), State: Usable, Operator: "Other Operator"},
+			{FriendlyName: "Usable with the CA's operator", BaseID: oid("44947.2"), State: Usable, Operator: "Example Operator"},
+			{FriendlyName: "Candidate", BaseID: oid("44947.3"), State: Candidate, Operator: "Other Operator"},
+			{FriendlyName: "Qualified", BaseID: oid("44947.4"), State: Qualified, Operator: "Other Operator"},
+			{FriendlyName: "Candidate with the CA's PEN", BaseID: oid("32473.10"), State: Candidate, Operator: "Other Operator"},
+			{FriendlyName: "Frozen", BaseID: oid("44947.5"), State: Frozen, Operator: "Other Operator"},
+			{FriendlyName: "Removed", BaseID: oid("44947.6"), State: Removed, Operator: "Other Operator"},
+			{FriendlyName: "Unset", BaseID: oid("44947.7"), State: Unset, Operator: "Other Operator"},
+		},
 	}
 
 	for _, tc := range []struct {
-		name             string
-		mirror           *Mirror
-		expectAffiliated bool
+		name    string
+		purpose purpose
+		caID    string
+		expect  []string
 	}{
-		{"same PEN, other operator name", &Mirror{BaseID: oid("32473.9"), OperatorHistory: []OperatorChange{{Name: "Example Mirror Operator"}}}, true},
-		{"other PEN, same operator", &Mirror{BaseID: oid("44947.9"), OperatorHistory: []OperatorChange{{Name: "Example Operator"}}}, true},
-		{"other PEN, other operator", &Mirror{BaseID: oid("44947.9"), OperatorHistory: []OperatorChange{{Name: "Other Operator"}}}, false},
+		{
+			name:    "Cosigning",
+			purpose: Cosigning,
+			caID:    "32473.1",
+			expect:  []string{"Usable, unaffiliated"},
+		},
+		{
+			name:    "SubmissionOnly",
+			purpose: SubmissionOnly,
+			caID:    "32473.1",
+			expect:  []string{"Usable with the CA's PEN", "Usable with the CA's operator", "Candidate", "Qualified", "Candidate with the CA's PEN"},
+		},
+		{
+			name:    "Cosigning for a CA not in the issuers, which has no operator to match",
+			purpose: Cosigning,
+			caID:    "32473.2",
+			expect:  []string{"Usable, unaffiliated", "Usable with the CA's operator"},
+		},
+		{
+			name:    "SubmissionOnly for a CA not in the issuers, which has no operator to match",
+			purpose: SubmissionOnly,
+			caID:    "32473.2",
+			expect:  []string{"Usable with the CA's PEN", "Candidate", "Qualified", "Candidate with the CA's PEN"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if input.Affiliated(tc.mirror, caID) != tc.expectAffiliated {
-				t.Errorf("Affiliated = %t, want %t", !tc.expectAffiliated, tc.expectAffiliated)
+			var names []string
+			for _, m := range input.ForPurpose(tc.purpose, oid(tc.caID)) {
+				names = append(names, m.FriendlyName)
+			}
+			if !slices.Equal(names, tc.expect) {
+				t.Errorf("ForPurpose(%s, %s) returned mirrors %q, want %q", tc.purpose, tc.caID, names, tc.expect)
 			}
 		})
-	}
-
-	// A CA not in the issuers is matched by PEN alone.
-	other := &Mirror{BaseID: oid("44947.9"), OperatorHistory: []OperatorChange{{Name: "Example Operator"}}}
-	if input.Affiliated(other, oid("44947.4.1")) != true {
-		t.Error("Affiliated by PEN with the CA not in the issuers = false, want true")
-	}
-	if input.Affiliated(other, oid("55555.1")) != false {
-		t.Error("Affiliated with the CA not in the issuers and another PEN = true, want false")
 	}
 }
