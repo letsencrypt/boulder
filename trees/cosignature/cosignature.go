@@ -181,7 +181,14 @@ func (c *Cosigner) CosignSubtree(start, end int64, subtreeHash tlog.Hash) ([]byt
 // its TimestampedSignature. Callers are responsible for ensuring the signature
 // line is valid for any note text they append it to.
 func (c *Cosigner) SignatureLine(timestamp uint64, rawSignature []byte) ([]byte, error) {
-	return SignatureLine(c.name, c.keyID, timestamp, rawSignature)
+	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
+		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
+	}
+	idSignature := make([]byte, keyIDSize+timestampedSignatureSize)
+	binary.BigEndian.PutUint32(idSignature[:keyIDSize], c.keyID)
+	binary.BigEndian.PutUint64(idSignature[keyIDSize:keyIDSize+timestampSize], timestamp)
+	copy(idSignature[keyIDSize+timestampSize:], rawSignature)
+	return []byte(noteSignatureLinePrefix + c.name + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"), nil
 }
 
 // Verifier is a note.Verifier that verifies an MTC cosigner's ML-DSA-44
@@ -300,22 +307,4 @@ func (v *Verifier) CheckpointCosignature(n *note.Note) (*CheckpointCosignature, 
 		}, nil
 	}
 	return nil, fmt.Errorf("note has no signature by %s", v.keyName)
-}
-
-// SignatureLine assembles the note signature line of the cosigner with the
-// given keyName, keyID, timestamp and rawSignature as its TimestampedSignature.
-// Callers are responsible for ensuring the signature line is valid for any note
-// text they append it to.
-//
-// See also `Cosigner.SignatureLine` for a more convenient method when the caller
-// is assembling a signature line based on its own cosigner ID.
-func SignatureLine(keyName string, keyID uint32, timestamp uint64, rawSignature []byte) ([]byte, error) {
-	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
-		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
-	}
-	idSignature := make([]byte, keyIDSize+timestampedSignatureSize)
-	binary.BigEndian.PutUint32(idSignature[:keyIDSize], keyID)
-	binary.BigEndian.PutUint64(idSignature[keyIDSize:keyIDSize+timestampSize], timestamp)
-	copy(idSignature[keyIDSize+timestampSize:], rawSignature)
-	return []byte(noteSignatureLinePrefix + keyName + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"), nil
 }

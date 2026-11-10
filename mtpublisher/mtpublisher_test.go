@@ -539,10 +539,17 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("Sign: %s", err)
 	}
-	checkpointCosignatureLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 1_700_000_000, checkpointSignature)
+
+	// Create a duplicate mirror cosigner just for the purposes of calling SignatureLine().
+	mirrorCosigner, err := cosignature.NewCosigner(mirrorOID, cp.Origin, mirrorKey)
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	checkpointCosignatureLine, err := mirrorCosigner.SignatureLine(1_700_000_000, checkpointSignature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
+
 	_, err = mirror.SubmitCheckpoint(t.Context(), cp, signedNote)
 	if err != nil {
 		t.Fatalf("SubmitCheckpoint: %s", err)
@@ -551,10 +558,11 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
-	subtreeCosignatureLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, subtreeSignature)
+	subtreeCosignatureLine, err := mirrorCosigner.SignatureLine(0, subtreeSignature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
+
 	return &sourceLog{
 		fs3: fs3, older: older, newer: newer, cp: cp, signedNote: signedNote, ca: ca,
 		mirrorKey: mirrorKey, mirror: mirror, checkpointCosignatureLine: checkpointCosignatureLine, subtreeCosignatureLine: subtreeCosignatureLine, subtreeSignature: subtreeSignature,

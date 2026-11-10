@@ -560,7 +560,7 @@ func TestCheckpointCosignatureTimestamped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign: %s", err)
 	}
-	line, err := SignatureLine(ca.name, ca.keyID, 1_700_000_000, signature)
+	line, err := ca.SignatureLine(1_700_000_000, signature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -586,7 +586,11 @@ func TestCheckpointCosignatureTimestamped(t *testing.T) {
 }
 
 func TestSignatureLineSignatureLen(t *testing.T) {
-	_, err := SignatureLine("foo", 1234, 123456789, []byte("abced"))
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	_, err = ca.SignatureLine(123456789, []byte("abced"))
 	if err == nil || !strings.Contains(err.Error(), "signature is 5 bytes") {
 		t.Errorf("SignatureLine with short signature: got %v, want error containing 'signature is 5 bytes'", err)
 	}
