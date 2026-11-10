@@ -260,10 +260,10 @@ func (p *mtpublisher) Start(ctx context.Context) {
 	wg.Wait()
 }
 
-// run calls operationFunc on mirror at each interval until ctx is cancelled,
-// logging its errors under operation and the mirror.
+// run calls operationFunc on mirror at each interval until ctx is cancelled.
+// It logs each error with the operation and the mirror's ID.
 func (p *mtpublisher) run(ctx context.Context, mirror *publisherMirror, operation string, operationFunc func(context.Context, *publisherMirror) error) {
-	ctx = blog.ContextWith(ctx, slog.String("mirrorid", mirror.ID()))
+	ctx = blog.ContextWith(ctx, slog.String("mirrorID", mirror.ID()))
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
