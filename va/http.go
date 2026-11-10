@@ -158,99 +158,83 @@ func (d *preresolvedDialer) DialTLSContext(
 	return conn, nil
 }
 
-// a dialerFunc meets the function signature requirements of
-// a http.Transport.DialContext handler.
-type dialerFunc func(ctx context.Context, network, addr string) (net.Conn, error)
-
 // a tlsDialerFunc connects and performs a TLS handshake using the given config,
 // like preresolvedDialer.DialTLSContext.
 type tlsDialerFunc func(ctx context.Context, network, addr string, config *tls.Config) (*tls.Conn, error)
-
-// httpTransport constructs a HTTP Transport with settings appropriate for
-// HTTP-01 validation. The provided dialerFunc is used as the Transport's
-// DialContext handler.
-func httpTransport(df dialerFunc) *http.Transport {
-	return &http.Transport{
-		DialContext: df,
-		// We are talking to a client that does not yet have a certificate,
-		// so we accept a temporary, invalid one.
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		// We don't expect to make multiple requests to a client, so close
-		// connection immediately.
-		DisableKeepAlives: true,
-		// We don't want idle connections, but 0 means "unlimited," so we pick 1.
-		MaxIdleConns:        1,
-		IdleConnTimeout:     time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
-	}
-}
 
 // newValidationRecord creates a ValidationRecord for a validation request
 // against the given URL, including port. This may involve querying DNS for the
 // host's IP address, if the URL isn't an IP already. The resulting record's
 // AddressUsed is the host's first IPv6 address, or its first IPv4 address if it
-// has no IPv6 addresses.
+// has no IPv6 addresses. For an HTTPS URL with a DNS name, it also returns the
+// host's ECHConfigList, if any.
 //
 // This function also enforces our policies around hosts we're unwilling to
 // connect to during validation, such as private names and addresses, reserved
 // names and addresses, non-HTTP(s) schemes, disallowed ports, and more.
-func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, url url.URL) (core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, url url.URL) (core.ValidationRecord, []byte, error) {
 	// The scheme must be HTTP or HTTPS.
 	if url.Scheme != "http" && url.Scheme != "https" {
-		return core.ValidationRecord{}, berrors.ConnectionFailureError(
+		return core.ValidationRecord{}, nil, berrors.ConnectionFailureError(
 			`invalid protocol scheme: only "http" and "https" are supported, not %q`, url.Scheme)
 	}
 
 	// The port must be one of the allowed ports, or empty. If it is empty, set
 	// it to be the default port associated with the URL's scheme.
-	port := url.Port()
-	if port != "" {
-		parsedPort, err := strconv.Atoi(port)
+	var port int
+	if url.Port() != "" {
+		parsedPort, err := strconv.Atoi(url.Port())
 		if err != nil {
-			return core.ValidationRecord{}, berrors.ConnectionFailureError(
-				"invalid port %q: must be an integer", port)
+			return core.ValidationRecord{}, nil, berrors.ConnectionFailureError(
+				"invalid port %q: must be an integer", url.Port())
 		}
 
 		if parsedPort != va.httpPort && parsedPort != va.httpsPort {
-			return core.ValidationRecord{}, berrors.ConnectionFailureError(
+			return core.ValidationRecord{}, nil, berrors.ConnectionFailureError(
 				"invalid port %d: must be %d or %d", parsedPort, va.httpPort, va.httpsPort)
 		}
+		port = parsedPort
+	} else if url.Scheme == "https" {
+		port = va.httpsPort
 	} else {
-		if url.Scheme == "https" {
-			port = strconv.Itoa(va.httpsPort)
-		} else {
-			port = strconv.Itoa(va.httpPort)
-		}
+		port = va.httpPort
+	}
+
+	// Only HTTPS connections can use ECH.
+	var echPort int
+	if url.Scheme == "https" {
+		echPort = port
 	}
 
 	// The path must be reasonably short.
 	if len(url.Path) > maxPathSize {
-		return core.ValidationRecord{}, berrors.ConnectionFailureError(
+		return core.ValidationRecord{}, nil, berrors.ConnectionFailureError(
 			"invalid url: path component too long")
 	}
 
 	// The host must be non-empty and comply with our validation policies.
 	host := url.Hostname()
 	if len(host) == 0 {
-		return core.ValidationRecord{}, berrors.ConnectionFailureError(
+		return core.ValidationRecord{}, nil, berrors.ConnectionFailureError(
 			"invalid host: host must be non-empty")
 	}
 
 	var addrs []netip.Addr
 	var resolvers []string
+	var echConfigList []byte
 
 	parsedIP, err := netip.ParseAddr(host)
 	isIP := err == nil
 	if isIP {
 		// Reject IPv6 addresses with a scope zone (RFCs 4007 & 6874)
 		if parsedIP.Zone() != "" {
-			return core.ValidationRecord{}, berrors.ConnectionFailureError("invalid host: contains IPv6 scope zone")
+			return core.ValidationRecord{}, nil, berrors.ConnectionFailureError("invalid host: contains IPv6 scope zone")
 		}
 
 		// Reject reserved IP addresses.
 		err := va.isReservedIPFunc(parsedIP)
 		if err != nil {
-			return core.ValidationRecord{}, berrors.ConnectionFailureError("invalid host: %s", err)
+			return core.ValidationRecord{}, nil, berrors.ConnectionFailureError("invalid host: %s", err)
 		}
 
 		// No need to resolve anything.
@@ -259,13 +243,13 @@ func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, url 
 		// Reject non-public domain names.
 		_, err = iana.ExtractSuffix(host)
 		if err != nil {
-			return core.ValidationRecord{}, berrors.ConnectionFailureError("invalid host: must end in IANA registered TLD")
+			return core.ValidationRecord{}, nil, berrors.ConnectionFailureError("invalid host: must end in IANA registered TLD")
 		}
 
 		// Resolve IP addresses for the identifier
-		addrs, _, resolvers, err = va.getAddrs(ctx, host, 0)
+		addrs, echConfigList, resolvers, err = va.getAddrs(ctx, host, echPort)
 		if err != nil {
-			return core.ValidationRecord{}, err
+			return core.ValidationRecord{}, nil, err
 		}
 	}
 
@@ -277,19 +261,19 @@ func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, url 
 	} else if len(v4Addrs) > 0 {
 		addressUsed = v4Addrs[0]
 	} else {
-		return core.ValidationRecord{}, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
+		return core.ValidationRecord{}, nil, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
 	}
 
 	record := core.ValidationRecord{
 		URL:               url.String(),
 		Hostname:          host,
-		Port:              port,
+		Port:              strconv.Itoa(port),
 		AddressesResolved: addrs,
 		AddressUsed:       addressUsed,
 		ResolverAddrs:     resolvers,
 	}
 
-	return record, nil
+	return record, echConfigList, nil
 }
 
 // newValidationRecordFromFallback returns true and a copy of the given record
@@ -315,13 +299,13 @@ func newValidationRecordFromFallback(record core.ValidationRecord) (core.Validat
 
 // newValidationRecordFromRedirect constructs (including DNS resolution, if
 // necessary) and returns a ValidationRecord representing the target of the
-// redirect. It enforces our redirect policies (only specific HTTP status codes,
-// no loops, etc.), and returns an empty record and an error if any policies are
-// violated or DNS lookups fail.
-func (va *ValidationAuthorityImpl) newValidationRecordFromRedirect(ctx context.Context, resp *http.Response, records []core.ValidationRecord) (core.ValidationRecord, error) {
+// redirect, and the target's ECHConfigList if any. It enforces our redirect
+// policies (only specific HTTP status codes, no loops, etc.), and returns an
+// empty record and an error if any policies are violated or DNS lookups fail.
+func (va *ValidationAuthorityImpl) newValidationRecordFromRedirect(ctx context.Context, resp *http.Response, records []core.ValidationRecord) (core.ValidationRecord, []byte, error) {
 	redirURL, err := resp.Location()
 	if err != nil {
-		return core.ValidationRecord{}, &url.Error{
+		return core.ValidationRecord{}, nil, &url.Error{
 			Op:  "Get",
 			URL: resp.Request.URL.String(),
 			Err: berrors.ConnectionFailureError("Invalid Location header in %d redirect", resp.StatusCode),
@@ -350,7 +334,7 @@ func (va *ValidationAuthorityImpl) newValidationRecordFromRedirect(ctx context.C
 	// This happens frequently enough we want to return a distinct error message
 	// for this case by detecting the redirHost ending in ".well-known".
 	if strings.HasSuffix(redirURL.Hostname(), ".well-known") {
-		return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError(
+		return core.ValidationRecord{}, nil, badRedirect(berrors.ConnectionFailureError(
 			"invalid host in redirect target %q: check webserver config for missing '/' in redirect target",
 			redirURL.Hostname(),
 		))
@@ -360,35 +344,36 @@ func (va *ValidationAuthorityImpl) newValidationRecordFromRedirect(ctx context.C
 	// request limit, return error.
 	for _, record := range records {
 		if redirURL.String() == record.URL {
-			return core.ValidationRecord{}, badRedirect(berrors.ConnectionFailureError("redirect loop detected"))
+			return core.ValidationRecord{}, nil, badRedirect(berrors.ConnectionFailureError("redirect loop detected"))
 		}
 	}
 
 	// Create a validation record for a request to the redirect target. This
 	// will resolve IP addresses for the host explicitly.
-	redirRecord, err := va.newValidationRecord(ctx, *redirURL)
+	redirRecord, echConfigList, err := va.newValidationRecord(ctx, *redirURL)
 	if err != nil {
-		return core.ValidationRecord{}, badRedirect(err)
+		return core.ValidationRecord{}, nil, badRedirect(err)
 	}
 
-	return redirRecord, nil
+	return redirRecord, echConfigList, nil
 }
 
 // doValidationRequest makes a single HTTP-01 validation request: a GET for
 // the given validation record's URL, connecting to the record's AddressUsed
 // and Port no matter what hostname the URL contains. If referer is non-empty
-// it is sent as the Referer header.
-func (va *ValidationAuthorityImpl) doValidationRequest(ctx context.Context, record core.ValidationRecord, referer string) (*http.Response, error) {
+// it is sent as the Referer header. If echConfigList is non-empty, it is used
+// for Encrypted Client Hello, and the returned status says how.
+func (va *ValidationAuthorityImpl) doValidationRequest(ctx context.Context, record core.ValidationRecord, echConfigList []byte, referer string) (*http.Response, core.ECHStatus, error) {
 	// This is a backstop check to avoid connecting to reserved IP addresses.
 	// They should have been caught and excluded by `bdns.LookupHost`.
 	err := va.isReservedIPFunc(record.AddressUsed)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", record.URL, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if va.userAgent != "" {
@@ -415,14 +400,47 @@ func (va *ValidationAuthorityImpl) doValidationRequest(ctx context.Context, reco
 		hostname: record.Hostname,
 		timeout:  va.singleDialTimeout,
 	}
+	addr := net.JoinHostPort(record.Hostname, record.Port)
+
+	// Dial ourselves so that we can do TLS handshakes with ECH.
+	var conn net.Conn
+	var ech core.ECHStatus
+	if req.URL.Scheme == "https" {
+		var tlsConn *tls.Conn
+		tlsConn, ech, err = va.dialTLSWithECH(ctx, dialer.DialTLSContext, addr, &tls.Config{
+			ServerName: record.Hostname,
+			// We are talking to a client that does not yet have a certificate,
+			// so we accept a temporary, invalid one.
+			InsecureSkipVerify: true,
+		}, echConfigList)
+		conn = tlsConn
+	} else {
+		conn, err = dialer.DialContext(ctx, "tcp", addr)
+	}
+	if err != nil {
+		// Wrap the error as http.Client would have.
+		return nil, ech, &url.Error{Op: "Get", URL: record.URL, Err: err}
+	}
+	defer conn.Close()
+
+	// Give net/http the connection we already have.
+	handOff := func(context.Context, string, string) (net.Conn, error) {
+		return conn, nil
+	}
 	client := &http.Client{
-		Transport: httpTransport(dialer.DialContext),
+		Transport: &http.Transport{
+			DialContext:    handOff,
+			DialTLSContext: handOff,
+			// We make only one request, so close the connection after it.
+			DisableKeepAlives: true,
+		},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			// Return redirect responses to us, rather than following them.
 			return http.ErrUseLastResponse
 		},
 	}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	return resp, ech, err
 }
 
 // fallbackErr returns true only for errors that occurred during net.Dial.
@@ -466,7 +484,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 	// Create a record for the initial request: an http URL for the given path
 	// under the identifier itself, with no query parameters.
-	record, err := va.newValidationRecord(ctx, url.URL{
+	record, echConfigList, err := va.newValidationRecord(ctx, url.URL{
 		Scheme: "http",
 		Host:   host,
 		Path:   path,
@@ -500,7 +518,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	for range maxRequests {
 		records = append(records, record)
 
-		resp, err := va.doValidationRequest(ctx, record, referer)
+		resp, ech, err := va.doValidationRequest(ctx, record, echConfigList, referer)
+		records[len(records)-1].ECH = ech
 		if err != nil {
 			if fallbackErr(err) && ctx.Err() == nil {
 				fallbackRecord, ok := newValidationRecordFromFallback(record)
@@ -521,7 +540,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		if allowedRedirect {
 			_ = resp.Body.Close()
 
-			redirRecord, redirErr := va.newValidationRecordFromRedirect(ctx, resp, records)
+			redirRecord, redirECH, redirErr := va.newValidationRecordFromRedirect(ctx, resp, records)
 			if redirErr != nil {
 				// redirErr is already wrapped in a url.Error naming the
 				// rejected redirect target.
@@ -540,7 +559,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 				referer = refererURL.String()
 			}
 
-			record = redirRecord
+			record, echConfigList = redirRecord, redirECH
 			continue
 		}
 
