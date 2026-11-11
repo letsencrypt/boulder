@@ -152,6 +152,22 @@ func caSignature(t *testing.T, treeSize int64) []byte {
 	return raw
 }
 
+// caSignatureLine returns the MTCA's note signature line for a checkpoint of
+// the test log at treeSize with a zero root hash, as stored in
+// CheckpointModel.MTCASignature.
+func caSignatureLine(t *testing.T, treeSize int64) []byte {
+	t.Helper()
+	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	line, err := ca.SignatureLine(0, caSignature(t, treeSize))
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	return line
+}
+
 // testCheckpoint returns a checkpoint of 512 entries with a zero root hash,
 // signed by the MTCA and awaiting the mirror cosignature, and the subtree
 // [0, 512) it covers.
@@ -174,7 +190,7 @@ func testCheckpointAt(t *testing.T, id, treeSize int64) *treedb.CheckpointModel 
 	return &treedb.CheckpointModel{
 		ID:            id,
 		MTCLogID:      mtcLogID,
-		MTCASignature: caSignature(t, treeSize),
+		MTCASignature: caSignatureLine(t, treeSize),
 		TreeSize:      treeSize,
 		RootHash:      make([]byte, 32),
 	}
@@ -272,7 +288,7 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	// The next checkpoint carries a well-formed MTCA signature over the wrong
 	// tree size.
 	next := testCheckpointAt(t, 2, 1024)
-	next.MTCASignature = caSignature(t, 999)
+	next.MTCASignature = caSignatureLine(t, 999)
 	checkpoints.latest = next
 	err = p.PublishCheckpoint(t.Context())
 	if err == nil {

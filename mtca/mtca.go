@@ -675,8 +675,11 @@ func (m *mtca) sequence(ctx context.Context) error {
 	return m.serveCheckpoint(ctx, tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, signedNote)
 }
 
-// signCheckpoint signs c and returns the raw MTCA signature to store and the
-// verified checkpoint carrying it.
+// signCheckpoint signs c and returns:
+//   - The CA's signature line
+//   - The full checkpoint signed note
+//
+// The signed note is guaranteed to verify with the CA's pubkey.
 func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error) {
 	err := c.Valid()
 	if err != nil {
@@ -699,23 +702,27 @@ func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	signedNote, err := m.checkpointNote(tree, mtcaSignature)
+
+	// TODO(#8991): use a real timestamp.
+	mtcaCosignatureLine, err := m.cosigner.SignatureLine(0, mtcaSignature)
+	if err != nil {
+		return nil, nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
+	}
+
+	signedNote, err := m.checkpointNote(tree, mtcaCosignatureLine)
 	if err != nil {
 		return nil, nil, err
 	}
-	return mtcaSignature, signedNote, nil
+	return mtcaCosignatureLine, signedNote, nil
 }
 
-// checkpointNote assembles the checkpoint of tree from its note text and the
-// MTCA's cosignature line carrying mtcaSignature, and verifies it.
-func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, error) {
-	caCosignatureLine, err := m.cosigner.SignatureLine(0, mtcaSignature)
-	if err != nil {
-		return nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
-	}
-
+// checkpointNote builds a checkpoint signed note for a checkpoint of the given tree,
+// using the signed note line in `mtcaCosignatureLine`.
+//
+// Performs a self-verification before returning.
+func (m *mtca) checkpointNote(tree tlog.Tree, mtcaCosignatureLine []byte) ([]byte, error) {
 	// Assemble the signed checkpoint note.
-	signedNote, err := (&checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}).SignedNote(caCosignatureLine)
+	signedNote, err := (&checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}).SignedNote(mtcaCosignatureLine)
 	if err != nil {
 		return nil, err
 	}
