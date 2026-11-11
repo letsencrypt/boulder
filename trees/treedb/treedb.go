@@ -206,9 +206,9 @@ func (i *Impl) InsertSubtree(ctx context.Context, model *SubtreeModel) (int64, e
 	return model.ID, nil
 }
 
-// GetUnsignedSubtrees returns up to limit of the log's newest subtrees that end
-// at or before maxEnd and lack a mirror signature.
-func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*SubtreeModel, error) {
+// GetUnsignedSubtrees returns up to limit of the log's newest subtrees that
+// lack a mirror signature.
+func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, limit int) ([]*SubtreeModel, error) {
 	var subtrees []*SubtreeModel
 	_, err := i.db.Select(ctx, &subtrees,
 		`SELECT id, mtcLogID, mtcaSignature,
@@ -216,12 +216,10 @@ func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd 
 				subtreeStart, subtreeEnd, subtreeHash
 		 FROM subtrees
 		 WHERE mtcLogID = ? AND
-		 	mirrorID IS NULL AND
-		 	subtreeEnd <= ?
+		 	mirrorID IS NULL
 		 ORDER BY id DESC
 		 LIMIT ?`,
 		mtcLogID,
-		maxEnd,
 		limit)
 	if err != nil {
 		return nil, err

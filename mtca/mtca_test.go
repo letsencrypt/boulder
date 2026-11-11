@@ -159,13 +159,13 @@ func (f *fakeDB) InsertSubtree(ctx context.Context, s *treedb.SubtreeModel) (_ i
 	return s.ID, nil
 }
 
-func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error) {
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, limit int) ([]*treedb.SubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
 	var subtrees []*treedb.SubtreeModel
 	for i := len(f.subtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
-		if f.subtrees[i].MirrorID == nil && f.subtrees[i].SubtreeEnd <= maxEnd {
+		if f.subtrees[i].MirrorID == nil {
 			subtrees = append(subtrees, &f.subtrees[i])
 		}
 	}
