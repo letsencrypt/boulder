@@ -56,7 +56,7 @@ type mtcaConfig struct {
 		// in the format `2006-01-02 15:04:05`. This date must not be more than ten
 		// years (the maximum allowed by the combination of Chrome's four year
 		// pre-inclusion limit and six year post-inclusion limit) after the
-		// NotBefore date Dates must be UTC.
+		// NotBefore date. Dates must be UTC.
 		NotAfter string `yaml:"not-after"`
 
 		// TlogPrefix should be the base URL under which this MTCA's tlog API
