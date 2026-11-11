@@ -42,14 +42,21 @@ type mtcaConfig struct {
 		// markdown source of our CPS.
 		PolicyURL string `yaml:"policy-url"`
 
-		// MTCAID should contain the Relative OID which identifies this MTCA.
+		// MTCAID should contain the Relative OID which identifies this MTCA. Check
+		// https://www.gstatic.com/mtcs/cosigners/v1/cosigners.json and
+		// https://letsencrypt.org/docs/oids/ to ensure this OID is unique. This
+		// should not be a Log ID, i.e. it should not end with `0.<log number>`. For
+		// Let's Encrypt, this should start with `44947`.`
 		MTCAID string `yaml:"mtcaid"`
 
 		// NotBefore should contain the requested NotBefore date for the certificate
 		// in the format `2006-01-02 15:04:05`. Dates must be UTC.
 		NotBefore string `yaml:"not-before"`
 		// NotAfter should contain the requested NotAfter date for the certificate
-		// in the format `2006-01-02 15:04:05`. Dates must be UTC.
+		// in the format `2006-01-02 15:04:05`. This date must not be more than ten
+		// years (the maximum allowed by the combination of Chrome's four year
+		// pre-inclusion limit and six year post-inclusion limit) after the
+		// NotBefore date Dates must be UTC.
 		NotAfter string `yaml:"not-after"`
 
 		// TlogPrefix should be the base URL under which this MTCA's tlog API
@@ -192,8 +199,13 @@ func (mc mtcaConfig) template() (*x509.Certificate, error) {
 	if notBefore.After(notAfter) {
 		return nil, fmt.Errorf("not-before is after not-after")
 	}
-	if notAfter.Add(time.Second).Sub(notBefore) > 3660*24*time.Hour {
-		return nil, fmt.Errorf("validity period is more than 3660 days (approximately 10 years)")
+	if notAfter.Add(time.Second).Sub(notBefore) > 3830*24*time.Hour {
+		// Per the CQRP, Sections 2.6.2 and 2.6.3, there must be less than 4 years
+		// between a key's generation and inclusion request, and the key will be
+		// trusted for at most 6 years once included. Per those same sections, we
+		// take 1550 to be approximately 4 years, 2280 to be approximately 6 years,
+		// and limit ourselves to 1550 + 2280 = 3830 days.
+		return nil, fmt.Errorf("validity period is more than 3830 days (approximately 10 years)")
 	}
 
 	prefixUrl, err := url.Parse(mc.CertProfile.TlogPrefix)
