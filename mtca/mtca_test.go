@@ -115,7 +115,7 @@ type fakeDB struct {
 	mtcLogID         string
 	latestCheckpoint int64
 	checkpoints      []treedb.CheckpointModel
-	subtrees         []treedb.CheckpointSubtreeModel
+	subtrees         []treedb.SubtreeModel
 }
 
 func newFakeDB(mtcLogID string) *fakeDB {
@@ -146,7 +146,7 @@ func (f *fakeDB) InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel
 	return nil
 }
 
-func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.CheckpointSubtreeModel) (_ int64, _ error) {
+func (f *fakeDB) InsertSubtree(ctx context.Context, s *treedb.SubtreeModel) (_ int64, _ error) {
 	if s.MTCLogID != f.mtcLogID {
 		return 0, fmt.Errorf("wrong log")
 	}
@@ -159,11 +159,11 @@ func (f *fakeDB) InsertCheckpointSubtree(ctx context.Context, s *treedb.Checkpoi
 	return s.ID, nil
 }
 
-func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
-	var subtrees []*treedb.CheckpointSubtreeModel
+	var subtrees []*treedb.SubtreeModel
 	for i := len(f.subtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
 		if f.subtrees[i].MirrorID == nil && f.subtrees[i].SubtreeEnd <= maxEnd {
 			subtrees = append(subtrees, &f.subtrees[i])
@@ -189,7 +189,7 @@ func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirror
 	return fmt.Errorf("subtree %d not found", id)
 }
 
-func (f *fakeDB) getCheckpointSubtree(mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error) {
+func (f *fakeDB) getSubtree(mtcLogID string, id int64) (*treedb.SubtreeModel, error) {
 	if mtcLogID != f.mtcLogID {
 		return nil, fmt.Errorf("wrong log")
 	}
@@ -198,7 +198,7 @@ func (f *fakeDB) getCheckpointSubtree(mtcLogID string, id int64) (*treedb.Checkp
 			return &s, nil
 		}
 	}
-	return nil, fmt.Errorf("checkpointSubtree ID %d not found", id)
+	return nil, fmt.Errorf("subtree ID %d not found", id)
 }
 
 func (f *fakeDB) WithTransaction(ctx context.Context, txFunc treedb.TxFunc) (_ any, _ error) {
@@ -555,7 +555,11 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RawSignature: %s", err)
 	}
-	largerNote, err := m.checkpointNote(larger, largerRaw)
+	largerLine, err := m.cosigner.SignatureLine(0, largerRaw)
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	largerNote, err := m.checkpointNote(larger, largerLine)
 	if err != nil {
 		t.Fatalf("checkpointNote: %s", err)
 	}
@@ -838,7 +842,7 @@ func TestSequence(t *testing.T) {
 
 	for entryIndex, issuanceResult := range got {
 		fake := mtca.treedb.(*fakeDB)
-		subtree, err := fake.getCheckpointSubtree(mtca.logID.String(), issuanceResult.MtcSubtreeID)
+		subtree, err := fake.getSubtree(mtca.logID.String(), issuanceResult.MtcSubtreeID)
 		if err != nil {
 			t.Fatalf("getting subtree: %s", err)
 		}
@@ -979,7 +983,24 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointMod
 		t.Fatalf("issuer pubkey: got %T, want %T", mtca.issuer.Signer.Public(), &mldsa.PublicKey{})
 	}
 
-	err = mldsa.Verify(pubkey, marshaled, checkpoint.MTCASignature, nil)
+	// MTCASignature is a note signature line: "— <name> <base64(keyID || timestamp || signature)>\n".
+	line, ok := strings.CutPrefix(string(checkpoint.MTCASignature), "— "+message.CosignerName+" ")
+	if !ok {
+		t.Fatalf("MTCASignature %q: want prefix %q", checkpoint.MTCASignature, "— "+message.CosignerName+" ")
+	}
+	line, ok = strings.CutSuffix(line, "\n")
+	if !ok {
+		t.Fatalf("MTCASignature %q: want trailing newline", checkpoint.MTCASignature)
+	}
+	idSignature, err := base64.StdEncoding.DecodeString(line)
+	if err != nil {
+		t.Fatalf("decoding MTCASignature: %s", err)
+	}
+	if len(idSignature) != 4+8+mldsa.MLDSA44SignatureSize {
+		t.Fatalf("MTCASignature: got %d decoded bytes, want %d", len(idSignature), 4+8+mldsa.MLDSA44SignatureSize)
+	}
+
+	err = mldsa.Verify(pubkey, marshaled, idSignature[4+8:], nil)
 	if err != nil {
 		t.Errorf("verifying MTCASignature: %s", err)
 	}

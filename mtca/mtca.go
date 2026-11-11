@@ -31,6 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/pubkey"
+	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -135,7 +136,7 @@ type mtca struct {
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
-	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
+	InsertSubtree(ctx context.Context, model *treedb.SubtreeModel) (int64, error)
 	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
 }
 
@@ -152,7 +153,7 @@ type simpleS3 interface {
 func (m *mtca) InitLog(ctx context.Context) error {
 	candidate := &tiles.Frontier{}
 
-	err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+	_, err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 	if err != nil {
 		return err
 	}
@@ -473,30 +474,42 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	serial, err := core.EncodeMTCSerial(m.logID.LogNumber(), latest.TreeSize)
-	if err != nil {
-		return err
-	}
-
 	candidate := m.frontier.Clone()
 
-	// Add leaves to the candidate.
+	// appendedEntry embeds a `pendingEntry` that has been appended to the tree,
+	// and associates with it both the `entryIndex` returned by `AppendEntry()`,
+	// and the MTCSerial calculated from the `entryIndex`.
+	type appendedEntry struct {
+		pendingEntry
+		index  int64
+		serial uint64
+	}
+
+	var appendedEntries []appendedEntry
+
+	// Add leaves to the candidate, then store the returned entry index and the
+	// serial calculated from that index in an appendedEntry
 	for _, e := range entries {
-		err = candidate.AppendEntry(e.mtcle, e.mtcpk)
+		entryIndex, err := candidate.AppendEntry(e.mtcle, e.mtcpk)
 		if err != nil {
 			return err
 		}
+		serial, err := core.EncodeMTCSerial(m.logID.LogNumber(), entryIndex)
+		if err != nil {
+			return err
+		}
+		appendedEntries = append(appendedEntries, appendedEntry{pendingEntry: e, index: entryIndex, serial: serial})
 	}
 
 	newRootHash := candidate.RootHash()
 
 	// Log each leaf along with the root hash it will be included in.
-	for i, e := range entries {
+	for _, ae := range appendedEntries {
 		m.log.AuditInfo(ctx, "Issuing",
-			slog.String("eventID", e.eventID),
+			slog.String("eventID", ae.eventID),
 			blog.MTCLogID(m.logID.String()),
-			slog.Int64("entryIndex", latest.TreeSize+int64(i)),
-			slog.String("TBSCertificateLogEntry", hex.EncodeToString(e.mtcle.TBS())),
+			blog.MTCSerial(ae.serial),
+			slog.String("TBSCertificateLogEntry", hex.EncodeToString(ae.mtcle.TBS())),
 			slog.String("newRootHash", newRootHash.String()),
 		)
 	}
@@ -587,44 +600,86 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
 
-	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
-	// always using 0 for subtreeStart
-	subtreeSignature, err := m.cosigner.CosignSubtree(0, m.frontier.TreeSize(), newRootHash)
+	coveringSubtrees, err := subtree.FindCoveringSubtrees(latest.TreeSize, m.frontier.TreeSize())
 	if err != nil {
-		return fmt.Errorf("signing subtree: %s", err)
+		return fmt.Errorf("finding subtrees: %s", err)
+	}
+	if len(coveringSubtrees) != 2 {
+		return fmt.Errorf("got unexpected number of covering subtrees: %d", len(coveringSubtrees))
 	}
 
-	subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
-		MTCLogID:        m.logID.String(),
-		MTCASignature:   subtreeSignature,
-		MirrorID:        nil,
-		MirrorSignature: nil,
-		SubtreeStart:    0,
-		SubtreeEnd:      m.frontier.TreeSize(),
-		SubtreeHash:     newRootHash[:],
-	})
-	if err != nil {
-		return fmt.Errorf("calling treedb.InsertCheckpointSubtree: %s", err)
+	tr := tiles.NewTileReader(ctx, m.s3c, m.logID.TilePrefix())
+	hr := tlog.TileHashReader(tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, tr)
+
+	// dbStoredSubtree embeds a covering `subtree.Subtree`, and associates with
+	// it the database Row ID returned by the database write operation.
+	type dbStoredSubtree struct {
+		subtree.Subtree
+		rowID int64
+	}
+
+	var dbStoredSubtrees []dbStoredSubtree
+
+	// Here we range over the covering subtrees and re-read necessary
+	// information from S3 in order to get a subtree hash. As a possible future
+	// optimization, we may be able to get the hash from the Frontier, which
+	// should typically have all the information required. This would avoid the
+	// potential for the S3 read to impact sequence().
+	for _, s := range coveringSubtrees {
+		// thank you for the subtree, we don't need to sign this one
+		if s.Start == s.End {
+			continue
+		}
+		subtreeHash, err := subtree.HashSubtree(s.Start, s.End, hr)
+		if err != nil {
+			return fmt.Errorf("hashing subtree: %s", err)
+		}
+		subtreeSig, err := m.cosigner.CosignSubtree(s.Start, s.End, subtreeHash)
+		if err != nil {
+			return fmt.Errorf("signing subtree: %s", err)
+		}
+		subtreeID, err := m.treedb.InsertSubtree(ctx, &treedb.SubtreeModel{
+			MTCLogID:        m.logID.String(),
+			MTCASignature:   subtreeSig,
+			MirrorID:        nil,
+			MirrorSignature: nil,
+			SubtreeStart:    s.Start,
+			SubtreeEnd:      s.End,
+			SubtreeHash:     subtreeHash[:],
+		})
+		if err != nil {
+			return fmt.Errorf("inserting subtree: %w", err)
+		}
+		dbStoredSubtrees = append(dbStoredSubtrees, dbStoredSubtree{Subtree: s, rowID: subtreeID})
 	}
 
 	// Notify waiting RPCs.
-	for _, e := range entries {
-		e.ch <- issuanceNotification{
-			serialNumber: serial,
-			subtreeID:    subtreeID,
-			eventID:      e.eventID,
+	for _, ae := range appendedEntries {
+		var subtreeID int64
+		if ae.index < dbStoredSubtrees[0].End {
+			subtreeID = dbStoredSubtrees[0].rowID
+		} else {
+			subtreeID = dbStoredSubtrees[1].rowID
 		}
-		serial++
+		ae.ch <- issuanceNotification{
+			serialNumber: ae.serial,
+			subtreeID:    subtreeID,
+			eventID:      ae.eventID,
+		}
 	}
+
 	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil
 
 	// Serve the new checkpoint.
-	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: newRootHash}, signedNote)
+	return m.serveCheckpoint(ctx, tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, signedNote)
 }
 
-// signCheckpoint signs c and returns the raw MTCA signature to store and the
-// verified checkpoint carrying it.
+// signCheckpoint signs c and returns:
+//   - The CA's signature line
+//   - The full checkpoint signed note
+//
+// The signed note is guaranteed to verify with the CA's pubkey.
 func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error) {
 	err := c.Valid()
 	if err != nil {
@@ -647,23 +702,27 @@ func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	signedNote, err := m.checkpointNote(tree, mtcaSignature)
+
+	// TODO(#8991): use a real timestamp.
+	mtcaCosignatureLine, err := m.cosigner.SignatureLine(0, mtcaSignature)
+	if err != nil {
+		return nil, nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
+	}
+
+	signedNote, err := m.checkpointNote(tree, mtcaCosignatureLine)
 	if err != nil {
 		return nil, nil, err
 	}
-	return mtcaSignature, signedNote, nil
+	return mtcaCosignatureLine, signedNote, nil
 }
 
-// checkpointNote assembles the checkpoint of tree from its note text and the
-// MTCA's cosignature line carrying mtcaSignature, and verifies it.
-func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, error) {
-	caCosignatureLine, err := m.cosigner.SignatureLine(0, mtcaSignature)
-	if err != nil {
-		return nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
-	}
-
+// checkpointNote builds a checkpoint signed note for a checkpoint of the given tree,
+// using the signed note line in `mtcaCosignatureLine`.
+//
+// Performs a self-verification before returning.
+func (m *mtca) checkpointNote(tree tlog.Tree, mtcaCosignatureLine []byte) ([]byte, error) {
 	// Assemble the signed checkpoint note.
-	signedNote, err := (&checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}).SignedNote(caCosignatureLine)
+	signedNote, err := (&checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}).SignedNote(mtcaCosignatureLine)
 	if err != nil {
 		return nil, err
 	}

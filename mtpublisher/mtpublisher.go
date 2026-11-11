@@ -98,13 +98,16 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.I
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
-	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error)
+	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error)
 	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
 // publishCheckpoint submits the latest checkpoint to mirror and, if it is a
 // cosigning mirror, stores the returned signature line. Start calls it at each
 // interval.
+//
+// Builds a checkpoint signed note to send the mirror based on the contents of
+// the latest checkpoint in the DB.
 func (p *mtpublisher) publishCheckpoint(ctx context.Context, mirror *publisherMirror) error {
 	latest, err := p.treedb.LatestCheckpoint(ctx, p.logID.String())
 	if errors.Is(err, treedb.ErrIssuanceLogNotInitialized) {
@@ -126,19 +129,13 @@ func (p *mtpublisher) publishCheckpoint(ctx context.Context, mirror *publisherMi
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
 	cp := &checkpoint.Checkpoint{Origin: p.logID.Origin(), Tree: tree}
 
-	// Reconstruct the MTCA's cosignature line from the stored MTCA signature.
 	if len(latest.MTCASignature) == 0 {
 		return fmt.Errorf("checkpoint %d (%s size %d) has no MTCA signature", latest.ID, latest.MTCLogID, latest.TreeSize)
 	}
 
-	caCosignatureLine, err := cosignature.SignatureLine(p.caVerifier.Name(), p.caVerifier.KeyHash(), 0, latest.MTCASignature)
-	if err != nil {
-		return fmt.Errorf("checkpoint %d MTCA signature: %w", latest.ID, err)
-	}
-
 	// Reconstruct the signed note for submission to the mirror, and verify
 	// the MTCA signature before submitting it.
-	signedNoteForMirror, err := cp.SignedNote(caCosignatureLine)
+	signedNoteForMirror, err := cp.SignedNote(latest.MTCASignature)
 	if err != nil {
 		return fmt.Errorf("assembling checkpoint %d signed note: %w", latest.ID, err)
 	}

@@ -26,9 +26,8 @@ CREATE TABLE `checkpoints` (
     -- This is redundant with the database/keyspace name and will be used for extra checks to ensure
     -- configuration errors can't result in using the wrong database/keyspace.
     `mtcLogID` varchar(255) NOT NULL,
-    -- An ML-DSA-44 signature over a CosignedMessage with `timestamp` and `start` both zero.
-    -- TODO(#8991): Change this to store a signed note signature line instead, since that format can
-    -- carry a nonzero `timestamp`.
+    -- The CA's checkpoint cosignature (https://c2sp.org/tlog-cosignature), with its `timestamp`,
+    -- as a signed note signature line: https://c2sp.org/signed-note#signatures
     `mtcaSignature` mediumblob,
 
     -- For simplicity we start out with a hardcoded assumption of one mirror signature,

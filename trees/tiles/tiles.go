@@ -395,13 +395,14 @@ func (f *Frontier) RootHash() tlog.Hash {
 }
 
 // AppendEntry appends a single MTCLogEntry to the entries tile and a
-// corresponding hash to the level-0 hashes tile, updating any higher
-// levels as needed.
+// corresponding hash to the level-0 hashes tile, updating any higher levels as
+// needed. It returns an index in the Frontier tree where the entry will go, or
+// an error.
 //
 // On error, the Frontier is unchanged.
-func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublicKey) error {
+func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublicKey) (int64, error) {
 	if f.treeSize >= trees.MaxSize {
-		return fmt.Errorf("tree is full")
+		return 0, fmt.Errorf("tree is full")
 	}
 	// First time appending to a zero Frontier, initialize it.
 	if f.entryTile == nil {
@@ -420,7 +421,7 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 
 	mtcleBytes, err := mtcle.Marshal()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	mtcleBuilder := cryptobyte.NewBuilder(nil)
@@ -429,14 +430,14 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 	})
 	entryBytes, err := mtcleBuilder.Bytes()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	f.entryTile.append(entryBytes)
 
 	mtcpkBytes, err := mtcpk.Marshal()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	mtcpkBuilder := cryptobyte.NewBuilder(nil)
@@ -445,7 +446,7 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 	})
 	pubkeyBytes, err := mtcpkBuilder.Bytes()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	f.pubkeyTile.append(pubkeyBytes)
@@ -478,9 +479,13 @@ func (f *Frontier) AppendEntry(mtcle *entry.MTCLogEntry, mtcpk *pubkey.MTCPublic
 	// Add the corresponding hash to level 0 (leaf hashes).
 	f.appendHash(tlog.RecordHash(mtcleBytes), 0)
 
+	// with all append operations successful, the entry's index is the
+	// frontier's tree size *before* increment
+	entryIndex := f.treeSize
+
 	f.treeSize++
 
-	return nil
+	return entryIndex, nil
 }
 
 // appendHash appends a single hash to the given level, updating any levels
