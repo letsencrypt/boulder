@@ -64,7 +64,6 @@ func (l *sctsFromSameOperator) Execute(c *x509.Certificate) *lint.LintResult {
 		}
 	}
 
-	rfc6962Compliant := false
 	operatorNames := make(map[string]struct{})
 	for logID := range logIDs {
 		log, err := l.logList.GetByID(logID.Base64String())
@@ -73,17 +72,7 @@ func (l *sctsFromSameOperator) Execute(c *x509.Certificate) *lint.LintResult {
 			// a problem.
 			continue
 		}
-		if !log.Tiled {
-			rfc6962Compliant = true
-		}
 		operatorNames[log.Operator] = struct{}{}
-	}
-
-	if !rfc6962Compliant {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "At least one certificate SCT must be from an RFC6962-compliant log.",
-		}
 	}
 
 	if len(operatorNames) < 2 {

@@ -296,13 +296,15 @@ This config generates an ECDSA P-384 key in the HSM with the object label `inter
 
 ### Staging Keyfile (No HSM) Ceremony
 
+This is DANGEROUS. Do not use it unless you know exactly what you're doing. It is not acceptable for use in production environments. It exists solely for use in integration test and staging environments, where software HSMs do not yet have support for ML-DSA key generation and signing operations.
+
 - `ceremony-type`: string describing the ceremony type, `staging-mldsa-keyfile-no-hsm`.
 - `key`: object containing key generation related fields.
 
     | Field | Description |
     | --- | --- |
     | `type` | Specifies the type of key to be generated. Must be 'mldsa'. |
-    | `mldsa-parameter-set` | Specifies the ML-DSA parameter set to use when generating key, either `ML-DSA-44` or `ML-DSA-87`. |
+    | `mldsa-parameter-set` | Specifies the ML-DSA parameter set to use when generating key. Must be `ML-DSA-44`. |
 
 - `outputs`: object containing paths to write outputs.
 
@@ -317,13 +319,13 @@ Example:
 ceremony-type: staging-mldsa-keyfile-no-hsm
 key:
     type: mldsa
-    ecdsa-curve: ML-DSA-44
+    mldsa-parameter-set: ML-DSA-44
 outputs:
     public-key-path: /home/user/mtca.pub.pem
     private-key-path: /home/user/mtca.key.pem
 ```
 
-This config generates an ML-DSA-44 key and write the private key to `/home/user/mtca.key.pem`.
+This config generates an ML-DSA-44 key and writes the private key to `/home/user/mtca.key.pem`.
 
 ### CRL ceremony
 

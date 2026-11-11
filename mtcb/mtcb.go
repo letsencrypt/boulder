@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
@@ -17,11 +18,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/reloid"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -38,7 +39,7 @@ import (
 // checkpointDB is the subset of treedb.Impl the mtcb uses, so tests can supply
 // checkpoints without a database.
 type checkpointDB interface {
-	GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error)
+	GetSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.SubtreeModel, error)
 }
 
 type mtcb struct {
@@ -140,7 +141,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
-	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
+	subtree, err := m.checkpoints.GetSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +179,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	}
 
 	// Fetch the relevant subtree from the database.
-	dbSubtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
+	dbSubtree, err := m.checkpoints.GetSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
@@ -283,13 +284,19 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("during self-verify of standalone certificate: %s", err)
 	}
 
+	m.log.Info(ctx, "Built standalone",
+		blog.MTCLogID(req.MtcLogID),
+		blog.MTCSerial(req.MtcSerialNumber),
+		slog.Int("prooflen", len(inclusionProof)),
+	)
+
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }
 
-func ready(dbSubtree *treedb.CheckpointSubtreeModel, entryIndex int64) (bool, error) {
+func ready(dbSubtree *treedb.SubtreeModel, entryIndex int64) (bool, error) {
 	err := dbSubtree.Valid()
 	if err != nil {
-		return false, fmt.Errorf("validating checkpoint subtree %d: %w", dbSubtree.ID, err)
+		return false, fmt.Errorf("validating subtree %d: %w", dbSubtree.ID, err)
 	}
 
 	if entryIndex < dbSubtree.SubtreeStart || entryIndex >= dbSubtree.SubtreeEnd {

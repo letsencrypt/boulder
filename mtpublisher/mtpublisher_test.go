@@ -20,9 +20,9 @@ import (
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/core/reloid"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
@@ -54,7 +54,7 @@ var (
 // with these, so they cannot share it.
 type fakeCheckpointDB struct {
 	latest   *treedb.CheckpointModel
-	subtrees []*treedb.CheckpointSubtreeModel
+	subtrees []*treedb.SubtreeModel
 }
 
 func (f *fakeCheckpointDB) LatestCheckpoint(_ context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
@@ -73,8 +73,8 @@ func (f *fakeCheckpointDB) AddMirrorSignature(_ context.Context, id int64, mirro
 	return nil
 }
 
-func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
-	var unsigned []*treedb.CheckpointSubtreeModel
+func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error) {
+	var unsigned []*treedb.SubtreeModel
 	for _, subtree := range slices.Backward(f.subtrees) {
 		if len(unsigned) == limit {
 			break
@@ -152,12 +152,28 @@ func caSignature(t *testing.T, treeSize int64) []byte {
 	return raw
 }
 
+// caSignatureLine returns the MTCA's note signature line for a checkpoint of
+// the test log at treeSize with a zero root hash, as stored in
+// CheckpointModel.MTCASignature.
+func caSignatureLine(t *testing.T, treeSize int64) []byte {
+	t.Helper()
+	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	line, err := ca.SignatureLine(0, caSignature(t, treeSize))
+	if err != nil {
+		t.Fatalf("SignatureLine: %s", err)
+	}
+	return line
+}
+
 // testCheckpoint returns a checkpoint of 512 entries with a zero root hash,
 // signed by the MTCA and awaiting the mirror cosignature, and the subtree
 // [0, 512) it covers.
-func testCheckpoint(t *testing.T) (*treedb.CheckpointModel, *treedb.CheckpointSubtreeModel) {
+func testCheckpoint(t *testing.T) (*treedb.CheckpointModel, *treedb.SubtreeModel) {
 	t.Helper()
-	return testCheckpointAt(t, 1, 512), &treedb.CheckpointSubtreeModel{
+	return testCheckpointAt(t, 1, 512), &treedb.SubtreeModel{
 		ID:            7,
 		MTCLogID:      mtcLogID,
 		MTCASignature: caSignature(t, 512),
@@ -174,7 +190,7 @@ func testCheckpointAt(t *testing.T, id, treeSize int64) *treedb.CheckpointModel 
 	return &treedb.CheckpointModel{
 		ID:            id,
 		MTCLogID:      mtcLogID,
-		MTCASignature: caSignature(t, treeSize),
+		MTCASignature: caSignatureLine(t, treeSize),
 		TreeSize:      treeSize,
 		RootHash:      make([]byte, 32),
 	}
@@ -219,7 +235,7 @@ func TestPublish(t *testing.T) {
 	// The latest checkpoint, which we expect to be cosigned by p.Publish().
 	latest, subtree := testCheckpoint(t)
 	checkpoints.latest = latest
-	checkpoints.subtrees = []*treedb.CheckpointSubtreeModel{subtree}
+	checkpoints.subtrees = []*treedb.SubtreeModel{subtree}
 
 	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
@@ -262,7 +278,7 @@ func TestPublish(t *testing.T) {
 // stored MTCA signature does not verify is neither submitted nor cosigned.
 func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	latest, subtree := testCheckpoint(t)
-	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.CheckpointSubtreeModel{subtree}}
+	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}}
 	p := testPublisher(t, testKey(t), checkpoints)
 	err := p.PublishCheckpoint(t.Context())
 	if err != nil {
@@ -272,7 +288,7 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	// The next checkpoint carries a well-formed MTCA signature over the wrong
 	// tree size.
 	next := testCheckpointAt(t, 2, 1024)
-	next.MTCASignature = caSignature(t, 999)
+	next.MTCASignature = caSignatureLine(t, 999)
 	checkpoints.latest = next
 	err = p.PublishCheckpoint(t.Context())
 	if err == nil {
@@ -294,7 +310,7 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 
 	latest, subtree = testCheckpoint(t)
 	subtree.MTCASignature = caSignature(t, 999)
-	p = testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.CheckpointSubtreeModel{subtree}})
+	p = testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}})
 	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("p.PublishCheckpoint(): %s", err)
@@ -313,9 +329,9 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 // later pass.
 func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 	_, subtree := testCheckpoint(t)
-	subtrees := []*treedb.CheckpointSubtreeModel{subtree}
+	subtrees := []*treedb.SubtreeModel{subtree}
 	for i, end := range []int64{256, 1024, 2048} {
-		subtrees = append(subtrees, &treedb.CheckpointSubtreeModel{
+		subtrees = append(subtrees, &treedb.SubtreeModel{
 			ID:            subtree.ID + int64(i) + 1,
 			MTCLogID:      mtcLogID,
 			MTCASignature: caSignature(t, end),
@@ -363,7 +379,7 @@ func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 // TestPublishMirrorError checks that a failed cosigning stores nothing.
 func TestPublishMirrorError(t *testing.T) {
 	latest, subtree := testCheckpoint(t)
-	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.CheckpointSubtreeModel{subtree}})
+	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}})
 	otherLogMirror, err := mtpublishertest.NewTestMirror(mirrorID, "oid/1.3.6.1.4.1.44947.4.2.0.99", privatekey.NewDeterministicSigner(testKey(t)))
 	if err != nil {
 		t.Fatalf("NewTestMirror: %s", err)
@@ -453,7 +469,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	grow := func(n int64) tlog.Tree {
 		t.Helper()
 		for range n {
-			err := f.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+			_, err := f.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 			if err != nil {
 				t.Fatalf("AppendEntry: %s", err)
 			}

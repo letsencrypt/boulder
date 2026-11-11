@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"golang.org/x/mod/sumdb/tlog"
 
-	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
@@ -48,10 +49,7 @@ type mtpublisher struct {
 	log        blog.Logger
 }
 
-// New returns a publisher for the issuance log logID. It reconstructs each
-// checkpoint's signed note from the stored MTCA signature, verified with
-// caVerifier, and obtains each cosignature from mirror, which verifies it
-// before returning it.
+// New returns a publisher for the issuance log logID.
 func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.ID, caVerifier *cosignature.Verifier, mirror Mirror, log blog.Logger) (*mtpublisher, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("interval must be positive, got %s", interval)
@@ -75,17 +73,20 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.I
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
-	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error)
+	GetUnsignedSubtrees(ctx context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error)
 	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
 // PublishCheckpoint submits the latest checkpoint to the mirror if it lacks a
 // mirror cosignature and stores the returned signature line. Start calls it at
 // each interval.
+//
+// Builds a checkpoint signed note to send the mirror based on the contents of
+// the latest checkpoint in the DB.
 func (p *mtpublisher) PublishCheckpoint(ctx context.Context) error {
 	latest, err := p.treedb.LatestCheckpoint(ctx, p.logID.String())
 	if errors.Is(err, treedb.ErrIssuanceLogNotInitialized) {
-		p.log.Infof("Issuance log %s has no checkpoint yet, waiting", p.logID)
+		p.log.Info(ctx, "Waiting for new checkpoint", blog.MTCLogID(p.logID.String()))
 		return nil
 	}
 	if err != nil {
@@ -103,19 +104,13 @@ func (p *mtpublisher) PublishCheckpoint(ctx context.Context) error {
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
 	cp := &checkpoint.Checkpoint{Origin: p.logID.Origin(), Tree: tree}
 
-	// Reconstruct the MTCA's cosignature line from the stored MTCA signature.
 	if len(latest.MTCASignature) == 0 {
 		return fmt.Errorf("checkpoint %d (%s size %d) has no MTCA signature", latest.ID, latest.MTCLogID, latest.TreeSize)
 	}
 
-	caCosignatureLine, err := cosignature.SignatureLine(p.caVerifier.Name(), p.caVerifier.KeyHash(), 0, latest.MTCASignature)
-	if err != nil {
-		return fmt.Errorf("checkpoint %d MTCA signature: %w", latest.ID, err)
-	}
-
 	// Reconstruct the signed note for submission to the mirror, and verify
 	// the MTCA signature before submitting it.
-	signedNoteForMirror, err := cp.SignedNote(caCosignatureLine)
+	signedNoteForMirror, err := cp.SignedNote(latest.MTCASignature)
 	if err != nil {
 		return fmt.Errorf("assembling checkpoint %d signed note: %w", latest.ID, err)
 	}
@@ -129,14 +124,24 @@ func (p *mtpublisher) PublishCheckpoint(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("publishing checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
-	p.log.Infof("Published checkpoint %d (%s size %d)", latest.ID, latest.MTCLogID, latest.TreeSize)
+	p.log.Info(ctx, "Published checkpoint to mirror",
+		blog.MTCLogID(latest.MTCLogID),
+		slog.String("mirrorid", p.mirror.ID()),
+		slog.Int64("id", latest.ID),
+		slog.Int64("treesize", latest.TreeSize),
+	)
 
 	// Store the mirror's cosignature in the database.
 	err = p.treedb.AddMirrorSignature(ctx, latest.ID, p.mirror.ID(), checkpointCosignatureLine, p.logID.String())
 	if err != nil {
 		return fmt.Errorf("storing checkpoint %d cosignature (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
-	p.log.Infof("Stored mirror cosignature for checkpoint %d (%s size %d)", latest.ID, latest.MTCLogID, latest.TreeSize)
+	p.log.Info(ctx, "Stored checkpoint cosignature from mirror",
+		blog.MTCLogID(latest.MTCLogID),
+		slog.String("mirrorid", p.mirror.ID()),
+		slog.Int64("id", latest.ID),
+		slog.Int64("treesize", latest.TreeSize),
+	)
 	return nil
 }
 
@@ -180,7 +185,14 @@ func (p *mtpublisher) CosignSubtrees(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("storing subtree %d cosignature (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
 		}
-		p.log.Infof("Stored mirror signature for subtree %d (%s [%d, %d))", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+		p.log.Info(ctx, "Stored mirror signature for subtree",
+			blog.MTCLogID(subtree.MTCLogID),
+			slog.String("mirrorid", p.mirror.ID()),
+			slog.Group("subtree",
+				slog.Int64("id", subtree.ID),
+				slog.Int64("start", subtree.SubtreeStart),
+				slog.Int64("end", subtree.SubtreeEnd)),
+		)
 	}
 	return nil
 }
@@ -208,7 +220,7 @@ func (p *mtpublisher) run(ctx context.Context, operation string, operationFunc f
 		}
 		err := operationFunc(ctx)
 		if err != nil {
-			p.log.Errf("%s failed: %s", operation, err)
+			p.log.Error(ctx, "Publish failed", err, slog.String("operation", operation))
 		}
 		select {
 		case <-ctx.Done():

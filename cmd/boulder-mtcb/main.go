@@ -7,6 +7,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -29,7 +30,7 @@ type Config struct {
 		IssuerCerts []string `validate:"min=1,dive,required"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -55,9 +56,13 @@ func main() {
 		c.MTCB.DebugAddr = *debugAddr
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.MTCB.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(
+		cmd.SyslogConfig{StdoutLevel: c.Syslog.StdoutLevel, SyslogLevel: c.Syslog.SyslogLevel},
+		c.OpenTelemetry, c.MTCB.DebugAddr)
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
+
+	slogger := cmd.NewSlogger(c.Syslog)
 
 	tlsConfig, err := c.MTCB.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading TLS config")
@@ -77,7 +82,7 @@ func main() {
 	s3c, err := bs3.FromConfig(c.MTCB.S3, logger)
 	cmd.FailOnError(err, "Loading S3 config")
 
-	mtcbImpl, err := mtcb.New(issuers, treedb.New(dbMap), s3c, logger, clk)
+	mtcbImpl, err := mtcb.New(issuers, treedb.New(dbMap), s3c, slogger, clk)
 	cmd.FailOnError(err, "Building MTCB")
 
 	srv := bgrpc.NewServer(c.MTCB.GRPCMTCB, logger).Add(

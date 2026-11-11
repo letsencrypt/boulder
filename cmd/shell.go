@@ -31,6 +31,7 @@ import (
 
 	"github.com/letsencrypt/validator/v10"
 
+	sblog "github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -212,6 +213,18 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 			logger.Info(fmt.Sprintf("time=%s", time.Now().Format(time.RFC3339Nano)))
 		}
 	}()
+	return logger
+}
+
+// NewSlogger creates a structured logger object with the provided settings and
+// returns it. It does *not* (yet) do any of the other things that NewLogger
+// does, like set it as the backup logger for cmd.AuditPanic, plumb it into
+// third-party libraries like mysql and grpc, or use it for the heartbeat. It
+// is expected that it will grow those capabilities as we switch those features
+// to use the structured logger as well.
+func NewSlogger(logConf sblog.Config) sblog.Logger {
+	logger, err := sblog.New(logConf)
+	FailOnError(err, "While constructing logger")
 	return logger
 }
 
