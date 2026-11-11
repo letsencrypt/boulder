@@ -1001,6 +1001,6 @@ func main() {
 			log.Fatalf("mldsa key file ceremony failed: %s", err)
 		}
 	default:
-		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, crl")
+		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, key, crl, staging-mldsa-keyfile-no-hsm")
 	}
 }
