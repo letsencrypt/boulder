@@ -45,7 +45,9 @@ var _ Mirror = (*MirrorClient)(nil)
 
 // MirrorClient is a Mirror that uses the c2sp.org/tlog-mirror submission
 // protocol, submitting the checkpoint to add-checkpoint and uploading the log's
-// entries to add-entries until the mirror cosigns.
+// entries to add-entries until the mirror cosigns. Not safe for concurrent
+// calls to SubmitCheckpoint, which tracks the mirror's upload state.
+// LatestCheckpoint and CosignSubtree are safe to call concurrently.
 type MirrorClient struct {
 	submissionPrefix string
 	monitoringPrefix string
@@ -65,11 +67,11 @@ type MirrorClient struct {
 }
 
 // NewMirrorClient returns a MirrorClient that submits to the mirror's endpoints
-// under baseURL and reads its checkpoint under monitoringPrefix, giving each
-// request timeout to complete.
-func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, timeout time.Duration) (*MirrorClient, error) {
-	if baseURL == "" {
-		return nil, errors.New("empty mirror base URL")
+// under submissionPrefix and reads its checkpoint under monitoringPrefix,
+// giving each request timeout to complete.
+func NewMirrorClient(submissionPrefix, monitoringPrefix string, src *Source, mirrorID string, mirrorPublicKey *mldsa.PublicKey, timeout time.Duration) (*MirrorClient, error) {
+	if submissionPrefix == "" {
+		return nil, errors.New("empty mirror submission prefix")
 	}
 	if monitoringPrefix == "" {
 		return nil, errors.New("empty mirror monitoring prefix")
@@ -86,7 +88,7 @@ func NewMirrorClient(baseURL, monitoringPrefix string, src *Source, mirrorID str
 		return nil, fmt.Errorf("creating mirror verifier: %s", err)
 	}
 	return &MirrorClient{
-		submissionPrefix: baseURL,
+		submissionPrefix: submissionPrefix,
 		monitoringPrefix: monitoringPrefix,
 		client:           &http.Client{Timeout: timeout},
 		src:              src,

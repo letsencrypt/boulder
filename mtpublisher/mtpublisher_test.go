@@ -8,12 +8,15 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,11 +56,15 @@ var (
 // on them. The mtca tests truncate the mtcmeta database and run in parallel
 // with these, so they cannot share it.
 type fakeCheckpointDB struct {
+	sync.Mutex
 	latest   *treedb.CheckpointModel
 	subtrees []*treedb.SubtreeModel
+	storeErr error
 }
 
 func (f *fakeCheckpointDB) LatestCheckpoint(_ context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
+	f.Lock()
+	defer f.Unlock()
 	if f.latest == nil || f.latest.MTCLogID != mtcLogID {
 		return nil, treedb.ErrIssuanceLogNotInitialized
 	}
@@ -65,21 +72,33 @@ func (f *fakeCheckpointDB) LatestCheckpoint(_ context.Context, mtcLogID string) 
 }
 
 func (f *fakeCheckpointDB) AddMirrorSignature(_ context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	f.Lock()
+	defer f.Unlock()
+	if f.storeErr != nil {
+		err := f.storeErr
+		f.storeErr = nil
+		return err
+	}
 	if f.latest == nil || id != f.latest.ID || mtcLogID != f.latest.MTCLogID {
 		return fmt.Errorf("adding mirror signature: checkpoint %d for %s not found", id, mtcLogID)
+	}
+	if f.latest.MirrorID != nil {
+		return fmt.Errorf("checkpoint %d %w", id, treedb.ErrAlreadyCosigned)
 	}
 	f.latest.MirrorID = &mirrorID
 	f.latest.MirrorSignature = mirrorSignature
 	return nil
 }
 
-func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error) {
+func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, limit int) ([]*treedb.SubtreeModel, error) {
+	f.Lock()
+	defer f.Unlock()
 	var unsigned []*treedb.SubtreeModel
 	for _, subtree := range slices.Backward(f.subtrees) {
 		if len(unsigned) == limit {
 			break
 		}
-		if subtree.MTCLogID == mtcLogID && subtree.MirrorID == nil && subtree.SubtreeEnd <= maxEnd {
+		if subtree.MTCLogID == mtcLogID && subtree.MirrorID == nil {
 			unsigned = append(unsigned, subtree)
 		}
 	}
@@ -87,8 +106,13 @@ func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID strin
 }
 
 func (f *fakeCheckpointDB) AddSubtreeMirrorSignature(_ context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	f.Lock()
+	defer f.Unlock()
 	for _, subtree := range f.subtrees {
 		if subtree.ID == id && subtree.MTCLogID == mtcLogID {
+			if subtree.MirrorID != nil {
+				return fmt.Errorf("subtree %d %w", id, treedb.ErrAlreadyCosigned)
+			}
 			subtree.MirrorID = &mirrorID
 			subtree.MirrorSignature = mirrorSignature
 			return nil
@@ -101,11 +125,66 @@ func (f *fakeCheckpointDB) AddSubtreeMirrorSignature(_ context.Context, id int64
 // key.
 func testPublisher(t *testing.T, key *mldsa.PrivateKey, checkpoints *fakeCheckpointDB) *mtpublisher {
 	t.Helper()
-	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), testMirror(t, key), blog.NewMock())
+	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), []Mirror{testMirror(t, key)}, nil, blog.NewMock())
 	if err != nil {
 		t.Fatalf("New: %s", err)
 	}
 	return p
+}
+
+// publishTo runs a checkpoint pass with every mirror but mirror busy.
+func publishTo(t *testing.T, p *mtpublisher, mirror *publisherMirror) error {
+	t.Helper()
+	for _, other := range p.mirrors {
+		if other != mirror {
+			other.submitting.Store(true)
+		}
+	}
+	err := runPass(t, p, p.publishCheckpoint)
+	for _, other := range p.mirrors {
+		if other != mirror {
+			other.submitting.Store(false)
+		}
+	}
+	return err
+}
+
+// cosignWith runs a subtree pass with every mirror but mirror busy.
+func cosignWith(t *testing.T, p *mtpublisher, mirror *publisherMirror) error {
+	t.Helper()
+	for _, other := range p.mirrors {
+		if other != mirror {
+			other.signing.Store(true)
+		}
+	}
+	err := runPass(t, p, p.cosignSubtrees)
+	for _, other := range p.mirrors {
+		if other != mirror {
+			other.signing.Store(false)
+		}
+	}
+	return err
+}
+
+// runPass runs pass, waits for its goroutines, and returns the error it
+// returned or the first one logged.
+func runPass(t *testing.T, p *mtpublisher, pass func(context.Context) error) error {
+	t.Helper()
+	log, ok := p.log.(*blog.Mock)
+	if !ok {
+		t.Fatalf("publisher logger is %T, want *blog.Mock", p.log)
+	}
+	log.Clear()
+	err := pass(t.Context())
+	p.wg.Wait()
+	if err != nil {
+		return err
+	}
+	failed := log.GetAllMatching("Publish failed")
+	if len(failed) > 0 {
+		return errors.New(failed[0])
+	}
+	return nil
 }
 
 // testCAKey returns a deterministic ML-DSA-44 key standing in for the mtca's
@@ -214,11 +293,299 @@ func testKey(t *testing.T) *mldsa.PrivateKey {
 // testMirror returns a TestMirror that cosigns with key.
 func testMirror(t *testing.T, key *mldsa.PrivateKey) *mtpublishertest.TestMirror {
 	t.Helper()
-	mirror, err := mtpublishertest.NewTestMirror(mirrorID, testLogID.Origin(), privatekey.NewDeterministicSigner(key))
+	return testMirrorWithID(t, mirrorID, key)
+}
+
+func testMirrorWithID(t *testing.T, id string, key *mldsa.PrivateKey) *mtpublishertest.TestMirror {
+	t.Helper()
+	mirror, err := mtpublishertest.NewTestMirror(id, testLogID.Origin(), privatekey.NewDeterministicSigner(key))
 	if err != nil {
 		t.Fatalf("NewTestMirror: %s", err)
 	}
 	return mirror
+}
+
+// refusingMirror returns a TestMirror that mirrors another log, so it refuses
+// every checkpoint and subtree of the test log.
+func refusingMirror(t *testing.T, key *mldsa.PrivateKey) *mtpublishertest.TestMirror {
+	t.Helper()
+	mirror, err := mtpublishertest.NewTestMirror(mirrorID, "oid/1.3.6.1.4.1.44947.4.2.0.99", privatekey.NewDeterministicSigner(key))
+	if err != nil {
+		t.Fatalf("NewTestMirror: %s", err)
+	}
+	return mirror
+}
+
+// TestPublishMultipleMirrors checks that every mirror receives each checkpoint,
+// that the first cosignature returned is the one stored, and that one mirror
+// refusing the checkpoint does not hold back the others.
+func TestPublishMultipleMirrors(t *testing.T) {
+	key := testKey(t)
+	latest, subtree := testCheckpoint(t)
+	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}}
+	second := testMirrorWithID(t, "32473.10", key)
+	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), []Mirror{testMirror(t, key), second}, nil, blog.NewMock())
+	if err != nil {
+		t.Fatalf("New: %s", err)
+	}
+
+	first := p.mirrors[0]
+	for _, m := range p.mirrors {
+		err = publishTo(t, p, m)
+		if err != nil {
+			t.Fatalf("publishTo() to mirror %s: %s", m.ID(), err)
+		}
+	}
+	if latest.MirrorID == nil || *latest.MirrorID != mirrorID {
+		t.Errorf("stored mirrorID = %v, want the first mirror %q", latest.MirrorID, mirrorID)
+	}
+	mirrored, _, err := second.LatestCheckpoint(t.Context(), testLogID.Origin())
+	if err != nil {
+		t.Fatalf("second mirror did not receive the checkpoint: %s", err)
+	}
+	if mirrored.Tree.N != 512 {
+		t.Errorf("second mirror is at size %d, want 512", mirrored.Tree.N)
+	}
+
+	for _, m := range p.mirrors {
+		err = cosignWith(t, p, m)
+		if err != nil {
+			t.Fatalf("cosignWith() with mirror %s: %s", m.ID(), err)
+		}
+	}
+	if subtree.MirrorID == nil || *subtree.MirrorID != mirrorID {
+		t.Errorf("subtree mirrorID = %v, want the first mirror %q", subtree.MirrorID, mirrorID)
+	}
+
+	// Both mirrors now refuse the checkpoint, so another pass succeeds only
+	// if it skips the checkpoint it already completed.
+	for _, m := range p.mirrors {
+		m.Mirror = refusingMirror(t, key)
+	}
+	for i, m := range p.mirrors {
+		err = publishTo(t, p, m)
+		if err != nil {
+			t.Fatalf("publishTo() to mirror %d again: %s", i, err)
+		}
+	}
+	p.mirrors[1].Mirror = second
+
+	// The first mirror still refuses the next checkpoint, and the second
+	// cosigns it.
+	next := testCheckpointAt(t, 2, 1024)
+	checkpoints.latest = next
+	err = publishTo(t, p, first)
+	if err == nil {
+		t.Error("publish to a mirror refusing the checkpoint = nil error, want error")
+	}
+	err = publishTo(t, p, p.mirrors[1])
+	if err != nil {
+		t.Fatalf("publishTo() to the second mirror: %s", err)
+	}
+	if next.MirrorID == nil || *next.MirrorID != "32473.10" {
+		t.Errorf("stored mirrorID = %v, want the second mirror %q", next.MirrorID, "32473.10")
+	}
+}
+
+// TestPassesStartEveryMirror checks that one pass submits the latest
+// checkpoint to every mirror and has a cosigner mirror sign the subtree.
+func TestPassesStartEveryMirror(t *testing.T) {
+	key := testKey(t)
+	latest, subtree := testCheckpoint(t)
+	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}}
+	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), []Mirror{testMirror(t, key), testMirrorWithID(t, "32473.10", key)}, []Mirror{testMirrorWithID(t, "32473.11", key)}, blog.NewMock())
+	if err != nil {
+		t.Fatalf("New: %s", err)
+	}
+
+	err = p.publishCheckpoint(t.Context())
+	if err != nil {
+		t.Fatalf("p.publishCheckpoint(): %s", err)
+	}
+	p.wg.Wait()
+	if !latest.Mirrored() {
+		t.Error("latest checkpoint was not cosigned")
+	}
+	for _, m := range p.mirrors {
+		mirrored, _, err := m.LatestCheckpoint(t.Context(), testLogID.Origin())
+		if err != nil {
+			t.Fatalf("mirror %s did not receive the checkpoint: %s", m.ID(), err)
+		}
+		if mirrored.Tree.N != 512 {
+			t.Errorf("mirror %s is at size %d, want 512", m.ID(), mirrored.Tree.N)
+		}
+	}
+
+	err = p.cosignSubtrees(t.Context())
+	if err != nil {
+		t.Fatalf("p.cosignSubtrees(): %s", err)
+	}
+	p.wg.Wait()
+	if !subtree.Mirrored() {
+		t.Fatal("subtree was not cosigned")
+	}
+	if *subtree.MirrorID == "32473.11" {
+		t.Error("submit-only mirror's subtree signature was stored")
+	}
+}
+
+// blockingMirror counts the checkpoints submitted to a TestMirror and holds
+// each one until release is closed.
+type blockingMirror struct {
+	*mtpublishertest.TestMirror
+	submitted atomic.Int64
+	release   chan struct{}
+}
+
+func (m *blockingMirror) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error) {
+	m.submitted.Add(1)
+	<-m.release
+	return m.TestMirror.SubmitCheckpoint(ctx, cp, signedNote)
+}
+
+// TestPublishSkipsBusyMirror checks that a pass does not submit to a mirror
+// that an earlier pass is still submitting to, and does once it is done.
+func TestPublishSkipsBusyMirror(t *testing.T) {
+	latest, _ := testCheckpoint(t)
+	checkpoints := &fakeCheckpointDB{latest: latest}
+	mirror := &blockingMirror{TestMirror: testMirror(t, testKey(t)), release: make(chan struct{})}
+	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), []Mirror{mirror}, nil, blog.NewMock())
+	if err != nil {
+		t.Fatalf("New: %s", err)
+	}
+
+	for range 2 {
+		err = p.publishCheckpoint(t.Context())
+		if err != nil {
+			t.Fatalf("p.publishCheckpoint(): %s", err)
+		}
+	}
+	close(mirror.release)
+	p.wg.Wait()
+	if mirror.submitted.Load() != 1 {
+		t.Errorf("mirror was submitted to %d times, want once", mirror.submitted.Load())
+	}
+	if !latest.Mirrored() {
+		t.Error("latest checkpoint was not cosigned")
+	}
+
+	checkpoints.latest = testCheckpointAt(t, 2, 1024)
+	err = p.publishCheckpoint(t.Context())
+	if err != nil {
+		t.Fatalf("p.publishCheckpoint() once the mirror is idle: %s", err)
+	}
+	p.wg.Wait()
+	if mirror.submitted.Load() != 2 {
+		t.Errorf("mirror was submitted to %d times, want 2", mirror.submitted.Load())
+	}
+}
+
+// racingMirror cosigns like TestMirror, but another mirror's cosignature lands
+// in checkpoints while it does, as when two mirrors' goroutines cosign at
+// once.
+type racingMirror struct {
+	*mtpublishertest.TestMirror
+	checkpoints *fakeCheckpointDB
+}
+
+func (m *racingMirror) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Checkpoint, signedNote []byte) ([]byte, error) {
+	other := "32473.10"
+	m.checkpoints.latest.MirrorID = &other
+	m.checkpoints.latest.MirrorSignature = []byte("other mirror's cosignature")
+	return m.TestMirror.SubmitCheckpoint(ctx, cp, signedNote)
+}
+
+func (m *racingMirror) CosignSubtree(ctx context.Context, mirrored *checkpoint.Checkpoint, line []byte, start, end int64, subtreeHash tlog.Hash) ([]byte, error) {
+	other := "32473.10"
+	for _, subtree := range m.checkpoints.subtrees {
+		subtree.MirrorID = &other
+		subtree.MirrorSignature = []byte("other mirror's signature")
+	}
+	return m.TestMirror.CosignSubtree(ctx, mirrored, line, start, end, subtreeHash)
+}
+
+// TestPublishAlreadyCosigned checks that a cosignature stored by another
+// mirror while this one was cosigning is kept, and that losing the race is not
+// an error.
+func TestPublishAlreadyCosigned(t *testing.T) {
+	key := testKey(t)
+	latest, subtree := testCheckpoint(t)
+	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}}
+	mirror := &racingMirror{testMirror(t, key), checkpoints}
+	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), []Mirror{mirror}, nil, blog.NewMock())
+	if err != nil {
+		t.Fatalf("New: %s", err)
+	}
+
+	err = publishTo(t, p, p.mirrors[0])
+	if err != nil {
+		t.Fatalf("publishTo(): %s", err)
+	}
+	if *latest.MirrorID != "32473.10" || string(latest.MirrorSignature) != "other mirror's cosignature" {
+		t.Errorf("stored cosignature is by %s, want the other mirror's kept", *latest.MirrorID)
+	}
+	_, _, err = mirror.LatestCheckpoint(t.Context(), testLogID.Origin())
+	if err != nil {
+		t.Errorf("mirror did not receive the checkpoint: %s", err)
+	}
+
+	err = cosignWith(t, p, p.mirrors[0])
+	if err != nil {
+		t.Fatalf("cosignWith(): %s", err)
+	}
+	if *subtree.MirrorID != "32473.10" || string(subtree.MirrorSignature) != "other mirror's signature" {
+		t.Errorf("stored subtree signature is by %s, want the other mirror's kept", *subtree.MirrorID)
+	}
+}
+
+// TestPublishSubmitOnly checks that a submit-only mirror receives each
+// checkpoint but that its cosignature is never stored.
+func TestPublishSubmitOnly(t *testing.T) {
+	key := testKey(t)
+	latest, subtree := testCheckpoint(t)
+	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}}
+	submitOnly := testMirrorWithID(t, "32473.10", key)
+	p, err := New(checkpoints, time.Second, testLogID, testCAVerifier(t), []Mirror{refusingMirror(t, key)}, []Mirror{submitOnly}, blog.NewMock())
+	if err != nil {
+		t.Fatalf("New: %s", err)
+	}
+
+	// The cosigning mirror refuses the checkpoint, so only the submit-only
+	// mirror cosigns it, and that cosignature is not stored.
+	err = publishTo(t, p, p.mirrors[0])
+	if err == nil {
+		t.Error("publish to the cosigning mirror refusing the checkpoint = nil error, want error")
+	}
+	err = publishTo(t, p, p.mirrors[1])
+	if err != nil {
+		t.Fatalf("publishTo() to the submit-only mirror: %s", err)
+	}
+	mirrored, _, err := submitOnly.LatestCheckpoint(t.Context(), testLogID.Origin())
+	if err != nil {
+		t.Fatalf("submit-only mirror did not receive the checkpoint: %s", err)
+	}
+	if mirrored.Tree.N != 512 {
+		t.Errorf("submit-only mirror is at size %d, want 512", mirrored.Tree.N)
+	}
+	if latest.MirrorID != nil || latest.MirrorSignature != nil {
+		t.Errorf("submit-only mirror's cosignature %q was stored", latest.MirrorSignature)
+	}
+	err = p.cosignSubtrees(t.Context())
+	if err != nil {
+		t.Fatalf("p.cosignSubtrees(): %s", err)
+	}
+	p.wg.Wait()
+	if subtree.Mirrored() {
+		t.Error("submit-only mirror's subtree signature was stored")
+	}
+
+	// The submit-only mirror now refuses the checkpoint, so another pass
+	// succeeds only if it skips the checkpoint it already completed.
+	p.mirrors[1].Mirror = refusingMirror(t, key)
+	err = publishTo(t, p, p.mirrors[1])
+	if err != nil {
+		t.Fatalf("publishTo() to the submit-only mirror again: %s", err)
+	}
 }
 
 func TestPublish(t *testing.T) {
@@ -227,9 +594,9 @@ func TestPublish(t *testing.T) {
 	p := testPublisher(t, key, checkpoints)
 
 	// A pass over a log that is not initialized is a no-op.
-	err := p.PublishCheckpoint(t.Context())
+	err := p.publishCheckpoint(t.Context())
 	if err != nil {
-		t.Fatalf("p.PublishCheckpoint() on a log that is not initialized: %s", err)
+		t.Fatalf("p.publishCheckpoint() on a log that is not initialized: %s", err)
 	}
 
 	// The latest checkpoint, which we expect to be cosigned by p.Publish().
@@ -237,13 +604,13 @@ func TestPublish(t *testing.T) {
 	checkpoints.latest = latest
 	checkpoints.subtrees = []*treedb.SubtreeModel{subtree}
 
-	err = p.PublishCheckpoint(t.Context())
+	err = publishTo(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.PublishCheckpoint(): %s", err)
+		t.Fatalf("publishTo(): %s", err)
 	}
-	err = p.CosignSubtrees(t.Context())
+	err = cosignWith(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.CosignSubtrees(): %s", err)
+		t.Fatalf("cosignWith(): %s", err)
 	}
 
 	if latest.MirrorID == nil {
@@ -280,9 +647,9 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	latest, subtree := testCheckpoint(t)
 	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}}
 	p := testPublisher(t, testKey(t), checkpoints)
-	err := p.PublishCheckpoint(t.Context())
+	err := publishTo(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.PublishCheckpoint(): %s", err)
+		t.Fatalf("publishTo(): %s", err)
 	}
 
 	// The next checkpoint carries a well-formed MTCA signature over the wrong
@@ -290,7 +657,7 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	next := testCheckpointAt(t, 2, 1024)
 	next.MTCASignature = caSignatureLine(t, 999)
 	checkpoints.latest = next
-	err = p.PublishCheckpoint(t.Context())
+	err = publishTo(t, p, p.mirrors[0])
 	if err == nil {
 		t.Error("publish with a bad MTCA signature = nil error, want error")
 	}
@@ -300,9 +667,9 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 
 	// The rejected checkpoint does not hold back the subtrees the mirror's
 	// checkpoint includes.
-	err = p.CosignSubtrees(t.Context())
+	err = cosignWith(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.CosignSubtrees(): %s", err)
+		t.Fatalf("cosignWith(): %s", err)
 	}
 	if !subtree.Mirrored() {
 		t.Error("subtree was not cosigned after the checkpoint was rejected")
@@ -311,11 +678,11 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	latest, subtree = testCheckpoint(t)
 	subtree.MTCASignature = caSignature(t, 999)
 	p = testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}})
-	err = p.PublishCheckpoint(t.Context())
+	err = publishTo(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.PublishCheckpoint(): %s", err)
+		t.Fatalf("publishTo(): %s", err)
 	}
-	err = p.CosignSubtrees(t.Context())
+	err = cosignWith(t, p, p.mirrors[0])
 	if err == nil {
 		t.Error("cosigning a subtree with a bad MTCA signature = nil error, want error")
 	}
@@ -341,16 +708,16 @@ func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 	}
 	checkpoints := &fakeCheckpointDB{latest: testCheckpointAt(t, 2, 1024), subtrees: subtrees}
 	p := testPublisher(t, testKey(t), checkpoints)
-	err := p.PublishCheckpoint(t.Context())
+	err := publishTo(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.PublishCheckpoint(): %s", err)
+		t.Fatalf("publishTo(): %s", err)
 	}
 
 	// The mirror is at 1024, so the pass signs [0, 1024), [0, 512), and
 	// [0, 256), and leaves [0, 2048).
-	err = p.CosignSubtrees(t.Context())
+	err = cosignWith(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.CosignSubtrees(): %s", err)
+		t.Fatalf("cosignWith(): %s", err)
 	}
 	for _, s := range subtrees[:3] {
 		if !s.Mirrored() {
@@ -363,13 +730,13 @@ func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 
 	// Once the mirror is at 2048, the next pass signs [0, 2048).
 	checkpoints.latest = testCheckpointAt(t, 3, 2048)
-	err = p.PublishCheckpoint(t.Context())
+	err = publishTo(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.PublishCheckpoint(): %s", err)
+		t.Fatalf("publishTo(): %s", err)
 	}
-	err = p.CosignSubtrees(t.Context())
+	err = cosignWith(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.CosignSubtrees(): %s", err)
+		t.Fatalf("cosignWith(): %s", err)
 	}
 	if !subtrees[3].Mirrored() {
 		t.Error("subtree within the mirror's new checkpoint was not cosigned")
@@ -380,13 +747,9 @@ func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 func TestPublishMirrorError(t *testing.T) {
 	latest, subtree := testCheckpoint(t)
 	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}})
-	otherLogMirror, err := mtpublishertest.NewTestMirror(mirrorID, "oid/1.3.6.1.4.1.44947.4.2.0.99", privatekey.NewDeterministicSigner(testKey(t)))
-	if err != nil {
-		t.Fatalf("NewTestMirror: %s", err)
-	}
-	p.mirror = otherLogMirror
+	p.mirrors[0].Mirror = refusingMirror(t, testKey(t))
 
-	err = p.PublishCheckpoint(t.Context())
+	err := publishTo(t, p, p.mirrors[0])
 	if err == nil {
 		t.Error("publish with a mirror refusing the checkpoint = nil error, want error")
 	}
@@ -394,7 +757,7 @@ func TestPublishMirrorError(t *testing.T) {
 		t.Error("cosignature was stored despite the mirror refusing the checkpoint")
 	}
 
-	err = p.CosignSubtrees(t.Context())
+	err = cosignWith(t, p, p.mirrors[0])
 	if err == nil {
 		t.Error("cosigning subtrees with a mirror refusing them = nil error, want error")
 	}
@@ -403,21 +766,61 @@ func TestPublishMirrorError(t *testing.T) {
 	}
 }
 
-func TestPublishWhenLatestAlreadySigned(t *testing.T) {
-	// The latest checkpoint is already cosigned, which must be left untouched.
+// TestPublishRetriesStore checks that a checkpoint whose cosignature could not
+// be stored is submitted again on the next pass.
+func TestPublishRetriesStore(t *testing.T) {
+	latest, _ := testCheckpoint(t)
+	checkpoints := &fakeCheckpointDB{latest: latest, storeErr: errors.New("database is away")}
+	p := testPublisher(t, testKey(t), checkpoints)
+
+	err := publishTo(t, p, p.mirrors[0])
+	if err == nil {
+		t.Fatal("publish with the store failing = nil error, want error")
+	}
+	if latest.Mirrored() {
+		t.Fatal("cosignature was stored despite the store failing")
+	}
+
+	err = publishTo(t, p, p.mirrors[0])
+	if err != nil {
+		t.Fatalf("publishTo() after the store failed once: %s", err)
+	}
+	if !latest.Mirrored() {
+		t.Error("cosignature was not stored on the pass after the store failed")
+	}
+}
+
+// TestPublishAfterRestart checks that a new publisher, which does not know what
+// it submitted before, submits the latest checkpoint to the mirror even though
+// it is already cosigned, and leaves the stored cosignature alone.
+func TestPublishAfterRestart(t *testing.T) {
 	existingMirrorID := "existing.cosigner"
 	latest, _ := testCheckpoint(t)
 	latest.MirrorID = &existingMirrorID
 	latest.MirrorSignature = []byte("already-signed-bruh")
 	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest})
 
-	err := p.PublishCheckpoint(t.Context())
+	err := publishTo(t, p, p.mirrors[0])
 	if err != nil {
-		t.Fatalf("p.PublishCheckpoint(): %s", err)
+		t.Fatalf("publishTo(): %s", err)
 	}
-
+	mirrored, _, err := p.mirrors[0].LatestCheckpoint(t.Context(), testLogID.Origin())
+	if err != nil {
+		t.Fatalf("mirror did not receive the checkpoint: %s", err)
+	}
+	if mirrored.Tree.N != 512 {
+		t.Errorf("mirror is at size %d, want 512", mirrored.Tree.N)
+	}
 	if string(latest.MirrorSignature) != "already-signed-bruh" {
 		t.Errorf("existing cosignature was replaced: %q", latest.MirrorSignature)
+	}
+
+	// The mirror now refuses the checkpoint, so another pass succeeds only if
+	// it skips the checkpoint it already completed.
+	p.mirrors[0].Mirror = refusingMirror(t, testKey(t))
+	err = publishTo(t, p, p.mirrors[0])
+	if err != nil {
+		t.Fatalf("publishTo() again: %s", err)
 	}
 }
 

@@ -3,8 +3,6 @@ package notmain
 import (
 	"context"
 	"crypto/mldsa"
-	"crypto/x509"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"os"
@@ -17,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/trees/cosignature"
+	"github.com/letsencrypt/boulder/trees/cosigners"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -40,30 +39,25 @@ type Config struct {
 		// note from the database.
 		MTCACertFile string `validate:"required"`
 
-		// Mirror identifies the mirror this publisher submits to. Note: this is
-		// temporary until we start loading support multiple mirrors sourced from
-		// https://www.gstatic.com/mtcs/cosigners/v1/cosigners.json (schema:
-		// https://www.gstatic.com/mtcs/cosigners/v1/cosigners_schema.json).
-		Mirror struct {
-			// ID is the mirror's ID (e.g. "32473.9").
-			ID string `validate:"required"`
+		// Cosigners is Chrome's cosigner list, which provides the mirrors to
+		// submit to.
+		Cosigners struct {
+			// JSONFile holds https://www.gstatic.com/mtcs/cosigners/v1/cosigners.json
+			// (schema: https://www.gstatic.com/mtcs/cosigners/v1/cosigners_schema.json).
+			JSONFile string `validate:"required"`
 
-			// PublicKeyFile holds the mirror's PEM-encoded ML-DSA-44 public
-			// key.
-			PublicKeyFile string `validate:"required"`
+			// PEMFile holds https://www.gstatic.com/mtcs/cosigners/v1/cosigners.pem,
+			// the cosigners' public keys.
+			PEMFile string `validate:"required"`
 
-			// BaseURL is the base URL of the mirror's tlog-mirror submission
-			// endpoints (e.g. "http://localhost:4700").
-			BaseURL string `validate:"required,url"`
-
-			// MonitoringPrefix is the mirror's tlog-mirror monitoring prefix,
-			// under which it serves its copy of the log and its cosigned
-			// checkpoint (e.g. "http://localhost:8333/mirror").
-			MonitoringPrefix string `validate:"required,url"`
-
-			// Timeout bounds each request to the mirror.
-			Timeout config.Duration `validate:"required"`
+			// Realm is the realm of the mirrors to submit to, that of the
+			// Chrome root store the CA is in: UNTRUSTED_VALIDATION_ONLY for
+			// the test root store, PUBLICLY_TRUSTED for the production one.
+			Realm cosigners.Realm `validate:"required"`
 		}
+
+		// MirrorTimeout bounds each request to a mirror.
+		MirrorTimeout config.Duration `validate:"required"`
 
 		// S3 locates the source log's tile storage, which the publisher reads
 		// entries and proof hashes from when submitting to the mirror.
@@ -71,27 +65,6 @@ type Config struct {
 	}
 	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
-}
-
-// loadMLDSAPublicKey reads a PEM-encoded PKIX ML-DSA-44 public key.
-func loadMLDSAPublicKey(filename string) (*mldsa.PublicKey, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	block, _ := pem.Decode(data)
-	if block == nil || block.Type != "PUBLIC KEY" {
-		return nil, fmt.Errorf("no PUBLIC KEY PEM block in %s", filename)
-	}
-	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	pubKey, ok := parsed.(*mldsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("key in %s is %T, must be ML-DSA-44", filename, parsed)
-	}
-	return pubKey, nil
 }
 
 func main() {
@@ -135,16 +108,37 @@ func main() {
 	logID, err := c.MTPublisher.LogID.Load()
 	cmd.FailOnError(err, "Parsing Log ID")
 
-	mirrorPubKey, err := loadMLDSAPublicKey(c.MTPublisher.Mirror.PublicKeyFile)
-	cmd.FailOnError(err, "Loading mirror public key")
-
 	caVerifier, err := cosignature.NewVerifier(logID.CAID(), caPubKey)
 	cmd.FailOnError(err, "Creating MTCA verifier")
 
-	mirror, err := mtpublisher.NewMirrorClient(c.MTPublisher.Mirror.BaseURL, c.MTPublisher.Mirror.MonitoringPrefix, mtpublisher.NewSource(s3c, logID.TilePrefix()), c.MTPublisher.Mirror.ID, mirrorPubKey, c.MTPublisher.Mirror.Timeout.Duration)
-	cmd.FailOnError(err, "Creating mirror client")
+	cosignersJSON, err := os.ReadFile(c.MTPublisher.Cosigners.JSONFile)
+	cmd.FailOnError(err, "Reading cosigners.json")
+	cosignersPEM, err := os.ReadFile(c.MTPublisher.Cosigners.PEMFile)
+	cmd.FailOnError(err, "Reading cosigners.pem")
+	cosignerList, err := cosigners.Parse(cosignersJSON, cosignersPEM)
+	cmd.FailOnError(err, "Parsing the cosigner list")
+	realmMirrors, err := cosignerList.ForRealm(c.MTPublisher.Cosigners.Realm)
+	cmd.FailOnError(err, "Selecting the mirrors for this realm")
 
-	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, logID, caVerifier, mirror, slogger)
+	src := mtpublisher.NewSource(s3c, logID.TilePrefix())
+	cosigningMirrors := realmMirrors.ForPurpose(cosigners.Cosigning, logID.CAID())
+	if len(cosigningMirrors) == 0 {
+		cmd.Fail(fmt.Sprintf("No mirror in realm %s is Usable and unaffiliated with CA %s", c.MTPublisher.Cosigners.Realm, logID.CAID()))
+	}
+	var cosigning []mtpublisher.Mirror
+	for _, mirror := range cosigningMirrors {
+		client, err := mtpublisher.NewMirrorClient(mirror.SubmissionPrefix, mirror.MonitoringPrefix, src, mirror.BaseID.String(), mirror.PublicKey, c.MTPublisher.MirrorTimeout.Duration)
+		cmd.FailOnError(err, fmt.Sprintf("Creating client for mirror %s (%s)", mirror.BaseID, mirror.FriendlyName))
+		cosigning = append(cosigning, client)
+	}
+	var submitOnly []mtpublisher.Mirror
+	for _, mirror := range realmMirrors.ForPurpose(cosigners.SubmissionOnly, logID.CAID()) {
+		client, err := mtpublisher.NewMirrorClient(mirror.SubmissionPrefix, mirror.MonitoringPrefix, src, mirror.BaseID.String(), mirror.PublicKey, c.MTPublisher.MirrorTimeout.Duration)
+		cmd.FailOnError(err, fmt.Sprintf("Creating client for mirror %s (%s)", mirror.BaseID, mirror.FriendlyName))
+		submitOnly = append(submitOnly, client)
+	}
+
+	publisher, err := mtpublisher.New(treedb.New(dbMap), c.MTPublisher.PollInterval.Duration, logID, caVerifier, cosigning, submitOnly, slogger)
 	cmd.FailOnError(err, "Failed to create MTPublisher")
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,0 +1,21 @@
+# A second sunlight witness operating as a c2sp.org/tlog-mirror for the test MTC
+# issuance log, alongside sunlight.yaml. Config reference:
+# https://github.com/FiloSottile/sunlight/blob/v0.10.2/cmd/sunlight/sunlight.go
+listen:
+  - ":4700"
+# The checkpoint lock database, stored in the same volume as the S3-compatible tile storage
+# (but not part of tile storage itself). This is for developer ergonomics: it makes it
+# harder to clear the tile storage without also clearing Sunlight's checkpoints.db, or
+# vice versa.
+checkpoints: /sunlight-data/checkpoints2.db
+witness:
+  name: convex
+  secret: /boulder/test/certs/sunlight/seed.bin
+  submissionprefix: https://boulder-sunlight2/
+  monitoringprefix: http://boulder-seaweedfs:8333/boulder-sunlight2
+  s3region: us-east-1
+  s3bucket: boulder-sunlight2
+  s3endpoint: http://boulder-seaweedfs:8333
+  mirrorname: oid/1.3.6.1.4.1.32473.10
+  mirrorloglists:
+    - /boulder/test/certs/sunlight/mtc-logs.txt

@@ -132,3 +132,38 @@ func TestFromBytesInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestPEN(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		oid       string
+		expectPEN uint32
+	}{
+		{oid: "0", expectPEN: 0},
+		{oid: "2147483647", expectPEN: 2147483647},
+		{oid: "32473.9", expectPEN: 32473},
+		{oid: "44947.4.1", expectPEN: 44947},
+		{oid: "128.16384.2147483647", expectPEN: 128},
+	} {
+		t.Run(tc.oid, func(t *testing.T) {
+			t.Parallel()
+
+			fromString, err := FromString(tc.oid)
+			if err != nil {
+				t.Fatalf("FromString(%q) = %s, want success", tc.oid, err)
+			}
+			if fromString.PEN() != tc.expectPEN {
+				t.Errorf("FromString(%q).PEN() = %d, want %d", tc.oid, fromString.PEN(), tc.expectPEN)
+			}
+
+			fromBytes, err := FromBytes(fromString.Bytes())
+			if err != nil {
+				t.Fatalf("FromBytes(%x) = %s, want success", fromString.Bytes(), err)
+			}
+			if fromBytes.PEN() != tc.expectPEN {
+				t.Errorf("FromBytes(%x).PEN() = %d, want %d", fromString.Bytes(), fromBytes.PEN(), tc.expectPEN)
+			}
+		})
+	}
+}
