@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
-	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	noncebalancerv1 "github.com/letsencrypt/boulder/grpc/noncebalancerv1"
@@ -128,9 +127,6 @@ type Config struct {
 		// TODO(#8724): Once this field has been set in Production we can make
 		// it required.
 		AccountURIPrefix string `validate:"omitempty,url,endswith=/"`
-
-		// Deprecated: This field no longer has any effect.
-		GoodKey goodkey.Config
 
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
 		StaleTimeout config.Duration `validate:"-"`
