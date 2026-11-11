@@ -2205,7 +2205,7 @@ func TestGetCertificate(t *testing.T) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
 	}
 
-	makePost := func(keyID int64, key any, path, body string) *http.Request {
+	makePost := func(keyID int64, key crypto.Signer, path, body string) *http.Request {
 		_, _, jwsBody := signer.byKeyID(keyID, key, fmt.Sprintf("http://localhost%s", path), body)
 		return makePostRequestWithPath(path, jwsBody)
 	}
@@ -2456,7 +2456,7 @@ func TestGetCertificateNew(t *testing.T) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"}
 	}
 
-	makePost := func(keyID int64, key any, path, body string) *http.Request {
+	makePost := func(keyID int64, key crypto.Signer, path, body string) *http.Request {
 		_, _, jwsBody := signer.byKeyID(keyID, key, fmt.Sprintf("http://localhost%s", path), body)
 		return makePostRequestWithPath(path, jwsBody)
 	}

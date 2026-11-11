@@ -54,7 +54,7 @@ var (
 // with these, so they cannot share it.
 type fakeCheckpointDB struct {
 	latest   *treedb.CheckpointModel
-	subtrees []*treedb.CheckpointSubtreeModel
+	subtrees []*treedb.SubtreeModel
 }
 
 func (f *fakeCheckpointDB) LatestCheckpoint(_ context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
@@ -73,8 +73,8 @@ func (f *fakeCheckpointDB) AddMirrorSignature(_ context.Context, id int64, mirro
 	return nil
 }
 
-func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.CheckpointSubtreeModel, error) {
-	var unsigned []*treedb.CheckpointSubtreeModel
+func (f *fakeCheckpointDB) GetUnsignedSubtrees(_ context.Context, mtcLogID string, maxEnd int64, limit int) ([]*treedb.SubtreeModel, error) {
+	var unsigned []*treedb.SubtreeModel
 	for _, subtree := range slices.Backward(f.subtrees) {
 		if len(unsigned) == limit {
 			break
@@ -169,10 +169,10 @@ func caSignatureLine(t *testing.T, treeSize int64, timestamp time.Time) []byte {
 // testCheckpoint returns a checkpoint of 512 entries with a zero root hash,
 // signed by the MTCA and awaiting the mirror cosignature, and the subtree
 // [0, 512) it covers.
-func testCheckpoint(t *testing.T) (*treedb.CheckpointModel, *treedb.CheckpointSubtreeModel) {
+func testCheckpoint(t *testing.T) (*treedb.CheckpointModel, *treedb.SubtreeModel) {
 	t.Helper()
 	timestamp := time.Unix(5555555, 0)
-	return testCheckpointAt(t, 1, 512, timestamp), &treedb.CheckpointSubtreeModel{
+	return testCheckpointAt(t, 1, 512, timestamp), &treedb.SubtreeModel{
 		ID:            7,
 		MTCLogID:      mtcLogID,
 		MTCASignature: caSubtreeSignature(t, 512),
@@ -234,7 +234,7 @@ func TestPublish(t *testing.T) {
 	// The latest checkpoint, which we expect to be cosigned by p.Publish().
 	latest, subtree := testCheckpoint(t)
 	checkpoints.latest = latest
-	checkpoints.subtrees = []*treedb.CheckpointSubtreeModel{subtree}
+	checkpoints.subtrees = []*treedb.SubtreeModel{subtree}
 
 	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
@@ -277,7 +277,7 @@ func TestPublish(t *testing.T) {
 // stored MTCA signature does not verify is neither submitted nor cosigned.
 func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	latest, subtree := testCheckpoint(t)
-	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.CheckpointSubtreeModel{subtree}}
+	checkpoints := &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}}
 	p := testPublisher(t, testKey(t), checkpoints)
 	err := p.PublishCheckpoint(t.Context())
 	if err != nil {
@@ -310,7 +310,7 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 
 	latest, subtree = testCheckpoint(t)
 	subtree.MTCASignature = caSubtreeSignature(t, 999)
-	p = testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.CheckpointSubtreeModel{subtree}})
+	p = testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}})
 	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("p.PublishCheckpoint(): %s", err)
@@ -329,9 +329,9 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 // later pass.
 func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 	_, subtree := testCheckpoint(t)
-	subtrees := []*treedb.CheckpointSubtreeModel{subtree}
+	subtrees := []*treedb.SubtreeModel{subtree}
 	for i, end := range []int64{256, 1024, 2048} {
-		subtrees = append(subtrees, &treedb.CheckpointSubtreeModel{
+		subtrees = append(subtrees, &treedb.SubtreeModel{
 			ID:            subtree.ID + int64(i) + 1,
 			MTCLogID:      mtcLogID,
 			MTCASignature: caSubtreeSignature(t, end),
@@ -380,7 +380,7 @@ func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 // TestPublishMirrorError checks that a failed cosigning stores nothing.
 func TestPublishMirrorError(t *testing.T) {
 	latest, subtree := testCheckpoint(t)
-	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.CheckpointSubtreeModel{subtree}})
+	p := testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}})
 	otherLogMirror, err := mtpublishertest.NewTestMirror(mirrorID, "oid/1.3.6.1.4.1.44947.4.2.0.99", privatekey.NewDeterministicSigner(testKey(t)))
 	if err != nil {
 		t.Fatalf("NewTestMirror: %s", err)
@@ -470,7 +470,7 @@ func newSourceLog(t *testing.T) *sourceLog {
 	grow := func(n int64) tlog.Tree {
 		t.Helper()
 		for range n {
-			err := f.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+			_, err := f.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 			if err != nil {
 				t.Fatalf("AppendEntry: %s", err)
 			}

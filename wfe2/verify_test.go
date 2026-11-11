@@ -33,21 +33,10 @@ import (
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
 // testing object if the sig alg is unknown.
 func sigAlgForKey(t *testing.T, key any) jose.SignatureAlgorithm {
-	var sigAlg jose.SignatureAlgorithm
-	var err error
-	// Gracefully handle the case where a non-pointer public key is given where
-	// sigAlgorithmForKey always wants a pointer. It may be tempting to try and do
-	// `sigAlgorithmForKey(&jose.JSONWebKey{Key: &key})` without a type switch but this produces
-	// `*interface {}` and not the desired `*rsa.PublicKey` or `*ecdsa.PublicKey`.
-	switch k := key.(type) {
-	case rsa.PublicKey:
-		sigAlg, err = sigAlgorithmForKey(&jose.JSONWebKey{Key: &k})
-	case ecdsa.PublicKey:
-		sigAlg, err = sigAlgorithmForKey(&jose.JSONWebKey{Key: &k})
-	default:
-		sigAlg, err = sigAlgorithmForKey(&jose.JSONWebKey{Key: k})
+	sigAlg, err := sigAlgorithmForKey(&jose.JSONWebKey{Key: key})
+	if err != nil {
+		t.Fatalf("Error getting signature algorithm for key %#v: %s", key, err)
 	}
-	test.Assert(t, err == nil, fmt.Sprintf("Error getting signature algorithm for key %#v", key))
 	return sigAlg
 }
 
@@ -55,26 +44,13 @@ func sigAlgForKey(t *testing.T, key any) jose.SignatureAlgorithm {
 // Only ECDSA and RSA private keys are supported.
 func keyAlgForKey(t *testing.T, key any) string {
 	switch key.(type) {
-	case *rsa.PrivateKey, rsa.PrivateKey:
+	case *rsa.PrivateKey:
 		return "RSA"
-	case *ecdsa.PrivateKey, ecdsa.PrivateKey:
+	case *ecdsa.PrivateKey:
 		return "ECDSA"
 	}
 	t.Fatalf("Can't figure out keyAlgForKey: %#v", key)
 	return ""
-}
-
-// pubKeyForKey returns the public key of an RSA/ECDSA private key provided as
-// argument.
-func pubKeyForKey(t *testing.T, privKey any) any {
-	switch k := privKey.(type) {
-	case *rsa.PrivateKey:
-		return k.PublicKey
-	case *ecdsa.PrivateKey:
-		return k.PublicKey
-	}
-	t.Fatalf("Unable to get public key for private key %#v", privKey)
-	return nil
 }
 
 // requestSigner offers methods to sign requests that will be accepted by a
@@ -90,18 +66,14 @@ type requestSigner struct {
 // are set based on the additional arguments. A computed JWS, the corresponding
 // embedded JWK and the JWS in serialized string form are returned.
 func (rs requestSigner) embeddedJWK(
-	privateKey any,
+	privateKey crypto.Signer,
 	url string,
 	req string) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
-	var publicKey any
 	if privateKey == nil {
-		signer := loadKey(rs.t, []byte(test1KeyPrivatePEM))
-		privateKey = signer
-		publicKey = signer.Public()
-	} else {
-		publicKey = pubKeyForKey(rs.t, privateKey)
+		privateKey = loadKey(rs.t, []byte(test1KeyPrivatePEM))
 	}
+	publicKey := privateKey.Public()
 
 	signerKey := jose.SigningKey{
 		Key:       privateKey,
@@ -137,7 +109,7 @@ func (rs requestSigner) embeddedJWK(
 // embedded JWK and the JWS in serialized string form are returned.
 func (rs requestSigner) byKeyID(
 	keyID int64,
-	privateKey any,
+	privateKey crypto.Signer,
 	url string,
 	req string) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
