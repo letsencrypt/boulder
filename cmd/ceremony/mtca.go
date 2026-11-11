@@ -199,13 +199,14 @@ func (mc mtcaConfig) template() (*x509.Certificate, error) {
 	if notBefore.After(notAfter) {
 		return nil, fmt.Errorf("not-before is after not-after")
 	}
-	if notAfter.Add(time.Second).Sub(notBefore) > 3830*24*time.Hour {
+	if notAfter.Add(time.Second).Sub(notBefore) > 3660*24*time.Hour {
 		// Per the CQRP, Sections 2.6.2 and 2.6.3, there must be less than 4 years
 		// between a key's generation and inclusion request, and the key will be
-		// trusted for at most 6 years once included. Per those same sections, we
-		// take 1550 to be approximately 4 years, 2280 to be approximately 6 years,
-		// and limit ourselves to 1550 + 2280 = 3830 days.
-		return nil, fmt.Errorf("validity period is more than 3830 days (approximately 10 years)")
+		// trusted for at most 6 years once included. That gives us about 10 years.
+		// For consistency with our classical CP/CPS, which sets a maximum Root
+		// Certificate Validity Period of "3660 days (approx. 10 years)", we do the
+		// same here.
+		return nil, fmt.Errorf("validity period is more than 3660 days (approximately 10 years)")
 	}
 
 	prefixUrl, err := url.Parse(mc.CertProfile.TlogPrefix)
