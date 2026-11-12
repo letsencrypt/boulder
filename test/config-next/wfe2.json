@@ -12,7 +12,6 @@
 		"directoryWebsite": "https://github.com/letsencrypt/boulder",
 		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
 		"accountURIPrefix": "http://boulder.service.consul:4001/acme/acct/",
-		"goodkey": {},
 		"maxContactsPerRegistration": 3,
 		"maxCumulativeIdentifierLength": 10000,
 		"tls": {

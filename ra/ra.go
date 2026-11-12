@@ -510,7 +510,10 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	}
 	err = ra.keyPolicies.Account.GoodKey(ctx, key.Key)
 	if err != nil {
-		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
+		if errors.Is(err, goodkey.ErrBadKey) {
+			return nil, berrors.BadPublicKeyError("invalid account key: %s", err.Error())
+		}
+		return nil, err
 	}
 
 	// Don't populate ID or CreatedAt because those will be set by the SA.
@@ -1403,7 +1406,10 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, 
 	}
 	err = ra.keyPolicies.Account.GoodKey(ctx, key.Key)
 	if err != nil {
-		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
+		if errors.Is(err, goodkey.ErrBadKey) {
+			return nil, berrors.BadPublicKeyError("invalid new public key: %s", err.Error())
+		}
+		return nil, err
 	}
 
 	update, err := ra.SA.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
