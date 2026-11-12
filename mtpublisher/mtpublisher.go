@@ -125,51 +125,6 @@ func (p *mtpublisher) startIfIdle(ctx context.Context, mirror *publisherMirror, 
 	})
 }
 
-// submitCheckpoint submits the latest checkpoint to mirror and, if it is a
-// cosigner mirror, stores the returned signature line.
-func (p *mtpublisher) submitCheckpoint(ctx context.Context, mirror *publisherMirror, latest *treedb.CheckpointModel, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) error {
-	if mirror.completed == latest.ID {
-		return nil
-	}
-
-	// Submit the signed checkpoint to the mirror for cosigning.
-	checkpointCosignatureLine, err := mirror.SubmitCheckpoint(ctx, cp, signedNoteForMirror)
-	if err != nil {
-		return fmt.Errorf("publishing checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
-	}
-	p.log.Info(ctx, "Published checkpoint to mirror",
-		blog.MTCLogID(latest.MTCLogID),
-		slog.Int64("id", latest.ID),
-		slog.Int64("treesize", latest.TreeSize),
-	)
-	if !mirror.cosigner {
-		mirror.completed = latest.ID
-		return nil
-	}
-
-	// Store the mirror's cosignature in the database.
-	err = p.treedb.AddMirrorSignature(ctx, latest.ID, mirror.ID(), checkpointCosignatureLine, p.logID.String())
-	if errors.Is(err, treedb.ErrAlreadyCosigned) {
-		p.log.Info(ctx, "Checkpoint already has a cosignature from another mirror",
-			blog.MTCLogID(latest.MTCLogID),
-			slog.Int64("id", latest.ID),
-			slog.Int64("treesize", latest.TreeSize),
-		)
-		mirror.completed = latest.ID
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("storing checkpoint %d cosignature (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
-	}
-	p.log.Info(ctx, "Stored checkpoint cosignature from mirror",
-		blog.MTCLogID(latest.MTCLogID),
-		slog.Int64("id", latest.ID),
-		slog.Int64("treesize", latest.TreeSize),
-	)
-	mirror.completed = latest.ID
-	return nil
-}
-
 // publishCheckpoint reads the latest checkpoint and starts submitCheckpoint
 // for each idle mirror. Start calls it at each interval.
 //
@@ -216,10 +171,90 @@ func (p *mtpublisher) publishCheckpoint(ctx context.Context) error {
 	return nil
 }
 
+// submitCheckpoint submits the latest checkpoint to mirror and, if it is a
+// cosigner mirror, stores the returned signature line.
+func (p *mtpublisher) submitCheckpoint(ctx context.Context, mirror *publisherMirror, latest *treedb.CheckpointModel, cp *checkpoint.Checkpoint, signedNoteForMirror []byte) error {
+	if mirror.completed == latest.ID {
+		return nil
+	}
+
+	// Submit the signed checkpoint to the mirror for cosigning.
+	checkpointCosignatureLine, err := mirror.SubmitCheckpoint(ctx, cp, signedNoteForMirror)
+	if err != nil {
+		return fmt.Errorf("publishing checkpoint %d (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
+	}
+	p.log.Info(ctx, "Published checkpoint to mirror",
+		blog.MTCLogID(latest.MTCLogID),
+		slog.Int64("id", latest.ID),
+		slog.Int64("treesize", latest.TreeSize),
+	)
+	if !mirror.cosigner {
+		mirror.completed = latest.ID
+		return nil
+	}
+
+	// Store the mirror's cosignature in the database.
+	err = p.treedb.AddMirrorSignature(ctx, latest.ID, mirror.ID(), checkpointCosignatureLine, p.logID.String())
+	if errors.Is(err, treedb.ErrAlreadyCosigned) {
+		p.log.Info(ctx, "Checkpoint already has a cosignature from another mirror",
+			blog.MTCLogID(latest.MTCLogID),
+			slog.Int64("id", latest.ID),
+			slog.Int64("treesize", latest.TreeSize),
+		)
+		mirror.completed = latest.ID
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("storing checkpoint %d cosignature (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
+	}
+	p.log.Info(ctx, "Stored checkpoint cosignature from mirror",
+		blog.MTCLogID(latest.MTCLogID),
+		slog.Int64("id", latest.ID),
+		slog.Int64("treesize", latest.TreeSize),
+	)
+	mirror.completed = latest.ID
+	return nil
+}
+
 // subtreeBatch is the number of unsigned subtrees cosignSubtrees takes per
 // pass. Each mirror signs the ones its checkpoint includes, and the batch only
 // bounds the work of one pass.
 const subtreeBatch = 100
+
+// cosignSubtrees reads the unsigned subtrees, newest first, up to subtreeBatch
+// per pass, and starts signSubtrees for each idle cosigner mirror. Start calls
+// it at each interval.
+func (p *mtpublisher) cosignSubtrees(ctx context.Context) error {
+	subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String(), subtreeBatch)
+	if err != nil {
+		return fmt.Errorf("selecting the unsigned subtrees of %s: %w", p.logID, err)
+	}
+	if len(subtrees) == 0 {
+		return nil
+	}
+	for _, subtree := range subtrees {
+		if len(subtree.MTCASignature) == 0 {
+			return fmt.Errorf("subtree %d (%s [%d, %d)) has no MTCA signature", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+		}
+		err = subtree.Valid()
+		if err != nil {
+			return fmt.Errorf("compliance problem: the MTCA signed an invalid subtree %d (%s [%d, %d)): %s", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
+		}
+		if !p.caVerifier.VerifySubtreeSignature(p.logID.Origin(), subtree.SubtreeStart, subtree.SubtreeEnd, tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) {
+			return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
+		}
+	}
+
+	for _, mirror := range p.mirrors {
+		if !mirror.cosigner {
+			continue
+		}
+		p.startIfIdle(ctx, mirror, &mirror.signing, "Cosigning subtrees", func(ctx context.Context) error {
+			return p.signSubtrees(ctx, mirror, subtrees)
+		})
+	}
+	return nil
+}
 
 // signSubtrees stores mirror's signature on each of subtrees that its
 // checkpoint includes.
@@ -262,39 +297,12 @@ func (p *mtpublisher) signSubtrees(ctx context.Context, mirror *publisherMirror,
 	return nil
 }
 
-// cosignSubtrees reads the unsigned subtrees, newest first, up to subtreeBatch
-// per pass, and starts signSubtrees for each idle cosigner mirror. Start calls
-// it at each interval.
-func (p *mtpublisher) cosignSubtrees(ctx context.Context) error {
-	subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String(), subtreeBatch)
-	if err != nil {
-		return fmt.Errorf("selecting the unsigned subtrees of %s: %w", p.logID, err)
-	}
-	if len(subtrees) == 0 {
-		return nil
-	}
-	for _, subtree := range subtrees {
-		if len(subtree.MTCASignature) == 0 {
-			return fmt.Errorf("subtree %d (%s [%d, %d)) has no MTCA signature", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
-		}
-		err = subtree.Valid()
-		if err != nil {
-			return fmt.Errorf("compliance problem: the MTCA signed an invalid subtree %d (%s [%d, %d)): %s", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
-		}
-		if !p.caVerifier.VerifySubtreeSignature(p.logID.Origin(), subtree.SubtreeStart, subtree.SubtreeEnd, tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) {
-			return fmt.Errorf("subtree %d (%s [%d, %d)) MTCA signature does not verify", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd)
-		}
-	}
-
-	for _, mirror := range p.mirrors {
-		if !mirror.cosigner {
-			continue
-		}
-		p.startIfIdle(ctx, mirror, &mirror.signing, "Cosigning subtrees", func(ctx context.Context) error {
-			return p.signSubtrees(ctx, mirror, subtrees)
-		})
-	}
-	return nil
+// Start runs publishCheckpoint and cosignSubtrees at each interval, each
+// concurrently, until ctx is cancelled.
+func (p *mtpublisher) Start(ctx context.Context) {
+	p.wg.Go(func() { p.run(ctx, "Publishing checkpoint", p.publishCheckpoint) })
+	p.wg.Go(func() { p.run(ctx, "Cosigning subtrees", p.cosignSubtrees) })
+	p.wg.Wait()
 }
 
 // run calls operationFunc at each interval until ctx is cancelled. It logs
@@ -318,12 +326,4 @@ func (p *mtpublisher) run(ctx context.Context, operation string, operationFunc f
 		case <-ticker.C:
 		}
 	}
-}
-
-// Start runs publishCheckpoint and cosignSubtrees at each interval, each
-// concurrently, until ctx is cancelled.
-func (p *mtpublisher) Start(ctx context.Context) {
-	p.wg.Go(func() { p.run(ctx, "Publishing checkpoint", p.publishCheckpoint) })
-	p.wg.Go(func() { p.run(ctx, "Cosigning subtrees", p.cosignSubtrees) })
-	p.wg.Wait()
 }
