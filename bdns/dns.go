@@ -51,14 +51,15 @@ func resultFromMsg[R dns.RR](m *dns.Msg) *Result[R] {
 	}
 }
 
-// Client can make A, AAAA, CAA, and TXT queries. The second return value of
-// each method is the address of the resolver used to conduct the query, and
+// Client can make A, AAAA, CAA, TXT, and HTTPS queries. The second return value
+// of each method is the address of the resolver used to conduct the query, and
 // should be populated even when returning an error.
 type Client interface {
 	LookupA(context.Context, string) (*Result[*dns.A], string, error)
 	LookupAAAA(context.Context, string) (*Result[*dns.AAAA], string, error)
 	LookupCAA(context.Context, string) (*Result[*dns.CAA], string, error)
 	LookupTXT(context.Context, string) (*Result[*dns.TXT], string, error)
+	LookupHTTPS(context.Context, string) (*Result[*dns.HTTPS], string, error)
 }
 
 // impl implements the Client interface via an underlying DNS exchanger. It
@@ -351,6 +352,18 @@ func (c *impl) LookupTXT(ctx context.Context, hostname string) (*Result[*dns.TXT
 	}
 
 	return resultFromMsg[*dns.TXT](resp), resolver, nil
+}
+
+// LookupHTTPS sends a DNS query to find all HTTPS records (RFC 9460) associated
+// with the provided hostname.
+func (c *impl) LookupHTTPS(ctx context.Context, hostname string) (*Result[*dns.HTTPS], string, error) {
+	resp, resolver, err := c.exchangeOne(ctx, hostname, dns.TypeHTTPS)
+	err = wrapErr(dns.TypeHTTPS, hostname, resp, err)
+	if err != nil {
+		return nil, resolver, err
+	}
+
+	return resultFromMsg[*dns.HTTPS](resp), resolver, nil
 }
 
 // exchanger represents an underlying DNS client. This interface exists solely
