@@ -334,19 +334,10 @@ func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.Checkpo
 		Hash: tlog.Hash(dbCheckpoint.RootHash),
 	}
 
-	caSig, err := s.cosigner.CosignCheckpoint(tree)
+	timestamp := time.Unix(123456789, 0)
+	caCosignatureLine, err := s.cosigner.CosignCheckpoint(tree, timestamp)
 	if err != nil {
 		t.Fatalf("cosigning checkpoint: %s", err)
-	}
-
-	rawSig, err := cosignature.RawSignature(caSig)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-
-	caCosignatureLine, err := s.cosigner.SignatureLine(0, rawSig)
-	if err != nil {
-		t.Fatalf("building CA signature line: %s", err)
 	}
 
 	noteText, err := (&checkpoint.Checkpoint{Origin: s.logID.Origin(), Tree: tree}).Marshal()

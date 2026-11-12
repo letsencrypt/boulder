@@ -38,7 +38,6 @@ import (
 	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
-	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
@@ -47,9 +46,15 @@ import (
 
 const logNumber = 3
 
+const testTimeUnix = 888888888
+
 // setup returns a working mtca, its fake tile storage, and a cleanup
 // function, or an error.
 func setup() (*mtca, *bs3test.FakeS3, error) {
+	clk := clock.NewFake()
+
+	clk.Set(time.Unix(testTimeUnix, 0))
+
 	issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
 		Profiles:   []string{"some profile"},
 		IssuerURL:  "http://ignored.letsencrypt.org",
@@ -59,13 +64,12 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 			File:     "../test/certs/webpki/mtca-1.privkey.pem",
 			CertFile: "../test/certs/webpki/mtca-1.cert.pem",
 		},
-	}, clock.NewFake())
+	}, clk)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	logger := blog.NewMock()
-	clk := clock.NewFake()
 
 	profile, err := issuance.NewProfile(issuance.ProfileConfig{
 		OmitCommonName:      true,
@@ -542,17 +546,10 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	m.servedCheckpointETag = ""
 
 	larger := tlog.Tree{N: latest.TreeSize + 1, Hash: tlog.Hash(latest.RootHash)}
-	largerSignature, err := m.cosigner.CosignCheckpoint(larger)
+	timestamp := time.Now()
+	largerLine, err := m.cosigner.CosignCheckpoint(larger, timestamp)
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
-	}
-	largerRaw, err := cosignature.RawSignature(largerSignature)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-	largerLine, err := m.cosigner.SignatureLine(0, largerRaw)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
 	}
 	largerNote, err := m.checkpointNote(larger, largerLine)
 	if err != nil {
@@ -571,17 +568,10 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
-	otherSignature, err := otherCosigner.CosignCheckpoint(tree)
+	timestamp = time.Now()
+	otherLine, err := otherCosigner.CosignCheckpoint(tree, timestamp)
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
-	}
-	otherRaw, err := cosignature.RawSignature(otherSignature)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-	otherLine, err := otherCosigner.SignatureLine(0, otherRaw)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
 	}
 	otherNote, err := (&checkpoint.Checkpoint{Origin: otherLog.Origin(), Tree: tree}).SignedNote(otherLine)
 	if err != nil {
@@ -952,46 +942,37 @@ func TestInitLog(t *testing.T) {
 	verifyCheckpoint(t, mtca, latest)
 }
 
-func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointModel) {
+func verifyCheckpoint(t *testing.T, mtca *mtca, dbCheckpoint *treedb.CheckpointModel) {
 	t.Helper()
-	message := cosigned.Subtree{
-		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID().String(),
-		Timestamp:    0,
-		LogOrigin:    mtca.logID.Origin(),
-		Start:        0,
-		End:          checkpoint.TreeSize,
-		SubtreeHash:  [32]byte(checkpoint.RootHash),
+	if len(dbCheckpoint.MTCASignature) == 0 {
+		t.Fatalf("no MTCASignature")
 	}
-
-	marshaled, err := message.Marshal()
-	if err != nil {
-		t.Fatalf("marshaling cosigned.Subtree: %s", err)
-	}
-
 	pubkey, ok := mtca.issuer.Signer.Public().(*mldsa.PublicKey)
 	if !ok {
 		t.Fatalf("issuer pubkey: got %T, want %T", mtca.issuer.Signer.Public(), &mldsa.PublicKey{})
 	}
 
-	// MTCASignature is a note signature line: "— <name> <base64(keyID || timestamp || signature)>\n".
-	line, ok := strings.CutPrefix(string(checkpoint.MTCASignature), "— "+message.CosignerName+" ")
-	if !ok {
-		t.Fatalf("MTCASignature %q: want prefix %q", checkpoint.MTCASignature, "— "+message.CosignerName+" ")
-	}
-	line, ok = strings.CutSuffix(line, "\n")
-	if !ok {
-		t.Fatalf("MTCASignature %q: want trailing newline", checkpoint.MTCASignature)
-	}
-	idSignature, err := base64.StdEncoding.DecodeString(line)
+	v, err := cosignature.NewVerifier(mtca.logID.CAID(), pubkey)
 	if err != nil {
-		t.Fatalf("decoding MTCASignature: %s", err)
-	}
-	if len(idSignature) != 4+8+mldsa.MLDSA44SignatureSize {
-		t.Fatalf("MTCASignature: got %d decoded bytes, want %d", len(idSignature), 4+8+mldsa.MLDSA44SignatureSize)
+		t.Fatalf("NewVerifier: %s", err)
 	}
 
-	err = mldsa.Verify(pubkey, marshaled, idSignature[4+8:], nil)
+	signedNote := fmt.Appendf(nil, "%s\n%d\n%s\n\n%s",
+		mtca.logID.Origin(),
+		dbCheckpoint.TreeSize,
+		base64.StdEncoding.EncodeToString(dbCheckpoint.RootHash),
+		dbCheckpoint.MTCASignature)
+
+	_, n, err := checkpoint.Open(signedNote, v)
 	if err != nil {
-		t.Errorf("verifying MTCASignature: %s", err)
+		t.Fatalf("checkpoint.Open(): %s", err)
+	}
+
+	checkpointCosignature, err := v.CheckpointCosignature(n)
+	if err != nil {
+		t.Fatalf("CheckpointCosignature(): %s", err)
+	}
+	if checkpointCosignature.Timestamp != testTimeUnix {
+		t.Errorf("invalid timestamp: %d", checkpointCosignature.Timestamp)
 	}
 }

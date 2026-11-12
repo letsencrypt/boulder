@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
@@ -83,9 +84,9 @@ func marshalCheckpointMessage(name string, timestamp uint64, origin string, end 
 }
 
 // Cosigner produces cosignatures over checkpoints and subtrees as an MTC
-// cosigner for a single log: the timestamp is zero, as required for
-// cosignatures used in certificates, and the key is a crypto.Signer so it may
-// be stored in an HSM. Both the CA cosigner and the mirror cosigner use this.
+// cosigner for a single log.
+//
+// Both the CA cosigner and the mirror cosigner use this.
 //
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.3.1
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-6.2
@@ -142,9 +143,13 @@ func (c *Cosigner) sign(message []byte) ([]byte, error) {
 }
 
 // CosignCheckpoint cosigns the checkpoint described by tree and returns the
-// cosignature as a TimestampedSignature.
-func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
-	message, err := marshalCheckpointMessage(c.name, 0, c.origin, tree.N, tree.Hash)
+// cosignature as a signed note line.
+func (c *Cosigner) CosignCheckpoint(tree tlog.Tree, timestamp time.Time) ([]byte, error) {
+	ts := timestamp.Unix()
+	if ts < 0 {
+		return nil, fmt.Errorf("invalid timestamp %d", ts)
+	}
+	message, err := marshalCheckpointMessage(c.name, uint64(ts), c.origin, tree.N, tree.Hash)
 	if err != nil {
 		return nil, err
 	}
@@ -152,9 +157,13 @@ func (c *Cosigner) CosignCheckpoint(tree tlog.Tree) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]byte, timestampedSignatureSize)
-	copy(out[timestampSize:], signature)
-	return out, nil
+
+	cosignatureLine, err := c.SignatureLine(uint64(ts), signature)
+	if err != nil {
+		return nil, err
+	}
+
+	return cosignatureLine, nil
 }
 
 // CosignSubtree cosigns the subtree [start, end) with hash subtreeHash and
@@ -172,7 +181,14 @@ func (c *Cosigner) CosignSubtree(start, end int64, subtreeHash tlog.Hash) ([]byt
 // its TimestampedSignature. Callers are responsible for ensuring the signature
 // line is valid for any note text they append it to.
 func (c *Cosigner) SignatureLine(timestamp uint64, rawSignature []byte) ([]byte, error) {
-	return SignatureLine(c.name, c.keyID, timestamp, rawSignature)
+	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
+		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
+	}
+	idSignature := make([]byte, keyIDSize+timestampedSignatureSize)
+	binary.BigEndian.PutUint32(idSignature[:keyIDSize], c.keyID)
+	binary.BigEndian.PutUint64(idSignature[keyIDSize:keyIDSize+timestampSize], timestamp)
+	copy(idSignature[keyIDSize+timestampSize:], rawSignature)
+	return []byte(noteSignatureLinePrefix + c.name + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"), nil
 }
 
 // Verifier is a note.Verifier that verifies an MTC cosigner's ML-DSA-44
@@ -291,38 +307,4 @@ func (v *Verifier) CheckpointCosignature(n *note.Note) (*CheckpointCosignature, 
 		}, nil
 	}
 	return nil, fmt.Errorf("note has no signature by %s", v.keyName)
-}
-
-// RawSignature returns the ML-DSA-44 signature from a TimestampedSignature,
-// the form certificates embed. It errors if the input has the wrong length or a
-// non-zero timestamp, which certificates cannot carry.
-//
-// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-6.2
-func RawSignature(timestampedSignature []byte) ([]byte, error) {
-	if len(timestampedSignature) != timestampedSignatureSize {
-		return nil, fmt.Errorf("timestamped signature is %d bytes, want %d", len(timestampedSignature), timestampedSignatureSize)
-	}
-	timestamp := binary.BigEndian.Uint64(timestampedSignature[:timestampSize])
-	if timestamp != 0 {
-		return nil, fmt.Errorf("timestamp is %d, want 0 for a cosignature used in certificates", timestamp)
-	}
-	return timestampedSignature[timestampSize:], nil
-}
-
-// SignatureLine assembles the note signature line of the cosigner with the
-// given keyName, keyID, timestamp and rawSignature as its TimestampedSignature.
-// Callers are responsible for ensuring the signature line is valid for any note
-// text they append it to.
-//
-// See also `Cosigner.SignatureLine` for a more convenient method when the caller
-// is assembling a signature line based on its own cosigner ID.
-func SignatureLine(keyName string, keyID uint32, timestamp uint64, rawSignature []byte) ([]byte, error) {
-	if len(rawSignature) != mldsa.MLDSA44SignatureSize {
-		return nil, fmt.Errorf("raw signature is %d bytes, want %d", len(rawSignature), mldsa.MLDSA44SignatureSize)
-	}
-	idSignature := make([]byte, keyIDSize+timestampedSignatureSize)
-	binary.BigEndian.PutUint32(idSignature[:keyIDSize], keyID)
-	binary.BigEndian.PutUint64(idSignature[keyIDSize:keyIDSize+timestampSize], timestamp)
-	copy(idSignature[keyIDSize+timestampSize:], rawSignature)
-	return []byte(noteSignatureLinePrefix + keyName + " " + base64.StdEncoding.EncodeToString(idSignature) + "\n"), nil
 }

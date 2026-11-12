@@ -5,8 +5,8 @@ package mtpublishertest
 import (
 	"context"
 	"crypto"
-	"crypto/mldsa"
 	"fmt"
+	"time"
 
 	"golang.org/x/mod/sumdb/tlog"
 
@@ -20,7 +20,6 @@ import (
 type TestMirror struct {
 	cosignerID string
 	cosigner   *cosignature.Cosigner
-	verifier   *cosignature.Verifier
 	// latest is the last checkpoint the mirror cosigned and latestLine its
 	// cosignature line, which it serves.
 	latest     *checkpoint.Checkpoint
@@ -38,15 +37,7 @@ func NewTestMirror(mirrorID, origin string, signer crypto.Signer) (*TestMirror, 
 	if err != nil {
 		return nil, fmt.Errorf("creating mirror cosigner: %s", err)
 	}
-	publicKey, ok := signer.Public().(*mldsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("mirror public key is %T, must be ML-DSA-44", signer.Public())
-	}
-	verifier, err := cosignature.NewVerifier(mirrorOID, publicKey)
-	if err != nil {
-		return nil, fmt.Errorf("creating mirror verifier: %s", err)
-	}
-	return &TestMirror{cosignerID: mirrorID, cosigner: cosigner, verifier: verifier}, nil
+	return &TestMirror{cosignerID: mirrorID, cosigner: cosigner}, nil
 }
 
 // ID returns the mirror's cosigner ID.
@@ -61,21 +52,13 @@ func (m *TestMirror) SubmitCheckpoint(_ context.Context, cp *checkpoint.Checkpoi
 	if cp.Origin != m.cosigner.Origin() {
 		return nil, fmt.Errorf("checkpoint origin %q is not this mirror's log %q", cp.Origin, m.cosigner.Origin())
 	}
-	timestampedCosignature, err := m.cosigner.CosignCheckpoint(cp.Tree)
-	if err != nil {
-		return nil, err
-	}
-	rawCosignature, err := cosignature.RawSignature(timestampedCosignature)
-	if err != nil {
-		return nil, err
-	}
-	line, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), 0, rawCosignature)
+	cosignatureLine, err := m.cosigner.CosignCheckpoint(cp.Tree, time.Now())
 	if err != nil {
 		return nil, err
 	}
 	m.latest = cp
-	m.latestLine = line
-	return line, nil
+	m.latestLine = cosignatureLine
+	return cosignatureLine, nil
 }
 
 // LatestCheckpoint returns the last checkpoint the mirror cosigned and its

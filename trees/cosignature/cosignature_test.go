@@ -13,6 +13,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
@@ -200,11 +201,21 @@ func TestVerifyRejects(t *testing.T) {
 	}
 }
 
+func TestCosignerNegativeTime(t *testing.T) {
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	_, err = ca.CosignCheckpoint(tlog.Tree{}, time.Unix(-1, 0))
+	if err == nil {
+		t.Errorf("CosignCheckpoint with negative timestamp: got %v, want error", err)
+	}
+}
+
 // TestCosignerRoundTrip covers the cosigner round trip: an MTC cosigner derives
-// its name and origin from the CA and log IDs (mtc-tlog's own examples), and
-// its timestamped_signature carries a zero timestamp, verifies through the note
-// verifier against the matching checkpoint text, and reassembles into a
-// signature line that opens.
+// its name and origin from the CA and log IDs (mtc-tlog's own examples),
+// verifies through the note verifier against the matching checkpoint text, and
+// reassembles into a signature line that opens.
 func TestCosignerRoundTrip(t *testing.T) {
 	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
@@ -220,64 +231,56 @@ func TestCosignerRoundTrip(t *testing.T) {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
 
-	signature, err := ca.CosignCheckpoint(parsed.Tree)
+	signatureLine, err := ca.CosignCheckpoint(parsed.Tree, time.Now())
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	if len(signature) != timestampedSignatureSize {
-		t.Fatalf("CosignCheckpoint returned %d bytes, want %d", len(signature), timestampedSignatureSize)
-	}
-	if binary.BigEndian.Uint64(signature[:8]) != 0 {
-		t.Errorf("timestamp = %d, want 0", binary.BigEndian.Uint64(signature[:8]))
+
+	if !strings.HasPrefix(string(signatureLine), noteSignatureLinePrefix+ca.name+" ") {
+		t.Errorf("line %q has unexpected prefix", signatureLine)
 	}
 
 	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	if !v.Verify([]byte(text), signature) {
-		t.Error("Verify rejected an MTC checkpoint cosignature")
-	}
 
 	// The cosignature binds the origin and tree: a change to any of them must
 	// fail verification.
-	if v.Verify([]byte(ca.origin+"\n20852164\n"+exampleHashB64+"\n"), signature) {
-		t.Error("Verify accepted a cosignature over a different tree size")
+	_, _, err = checkpoint.Open(signedNote(ca.origin+"\n20852164\n"+exampleHashB64+"\n", signatureLine), v)
+	if err == nil {
+		t.Error("Verifier accepted a cosignature over a different tree size")
 	}
 	tamperedHash := parsed.Tree.Hash
 	tamperedHash[0] ^= 1
-	if v.Verify([]byte(ca.origin+"\n20852163\n"+base64.StdEncoding.EncodeToString(tamperedHash[:])+"\n"), signature) {
-		t.Error("Verify accepted a cosignature over a different root hash")
-	}
-	if v.Verify([]byte("oid/1.3.6.1.4.1.32473.2.0.43\n20852163\n"+exampleHashB64+"\n"), signature) {
-		t.Error("Verify accepted a cosignature over a different origin")
-	}
-
-	line, err := ca.SignatureLine(0, signature[timestampSize:])
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-	if !strings.HasPrefix(string(line), noteSignatureLinePrefix+ca.name+" ") {
-		t.Errorf("line %q has unexpected prefix", line)
+	_, _, err = checkpoint.Open(signedNote(
+		ca.origin+"\n20852163\n"+base64.StdEncoding.EncodeToString(tamperedHash[:])+"\n",
+		signatureLine), v)
+	if err == nil {
+		t.Error("Verifier accepted a cosignature over a different root hash")
 	}
 
-	_, n, err := checkpoint.Open(signedNote(text, line), v)
+	_, _, err = checkpoint.Open(signedNote(
+		"oid/1.3.6.1.4.1.32473.2.0.43\n20852163\n"+exampleHashB64+"\n",
+		signatureLine), v)
+	if err == nil {
+		t.Error("Verifier accepted a cosignature over a different origin")
+	}
+
+	_, n, err := checkpoint.Open(signedNote(text, signatureLine), v)
 	if err != nil {
-		t.Fatalf("checkpoint.Open on a reassembled note: %s", err)
+		t.Fatalf("checkpoint.Open on a valid note: %s", err)
 	}
 	extracted, err := v.CheckpointCosignature(n)
 	if err != nil {
 		t.Fatalf("CheckpointCosignature: %s", err)
 	}
-	if extracted.Timestamp != 0 {
-		t.Errorf("extracted cosignature timestamp = %d, want 0", extracted.Timestamp)
-	}
-	rebuilt, err := ca.SignatureLine(0, extracted.Signature)
+	rebuilt, err := ca.SignatureLine(extracted.Timestamp, extracted.Signature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
-	if !bytes.Equal(rebuilt, line) {
-		t.Errorf("SignatureLine = %q, want %q", rebuilt, line)
+	if !bytes.Equal(rebuilt, signatureLine) {
+		t.Errorf("SignatureLine = %q, want %q", rebuilt, signatureLine)
 	}
 }
 
@@ -321,7 +324,7 @@ func TestCosignerRejects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
-	_, err = ca.CosignCheckpoint(tlog.Tree{N: -1})
+	_, err = ca.CosignCheckpoint(tlog.Tree{N: -1}, time.Now())
 	if err == nil {
 		t.Error("CosignCheckpoint with a negative tree size = nil error, want error")
 	}
@@ -337,7 +340,7 @@ func TestCosignerRejects(t *testing.T) {
 }
 
 // TestCosignSubtree checks that a subtree verifies over its own message, and
-// that an empty subtree and an empty tree can be signed.
+// that an empty subtree and an empty subtree can be signed.
 func TestCosignSubtree(t *testing.T) {
 	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
@@ -370,12 +373,34 @@ func TestCosignSubtree(t *testing.T) {
 		t.Error("VerifySubtreeSignature rejected the empty subtree signature")
 	}
 
-	cosigned, err := ca.CosignCheckpoint(tlog.Tree{N: 0, Hash: emptyHash})
+	signature, err = ca.CosignSubtree(0, 0, emptyHash)
+	if err != nil {
+		t.Fatalf("CosignSubtree over an empty subtree: %s", err)
+	}
+	if !v.VerifySubtreeSignature(ca.origin, 0, 0, emptyHash, signature) {
+		t.Error("VerifySubtreeSignature rejected the empty subtree signature")
+	}
+}
+
+func TestCosignCheckpoint(t *testing.T) {
+	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	v, err := NewVerifier(caID, testPubKey(t))
+	if err != nil {
+		t.Fatalf("NewVerifier: %s", err)
+	}
+
+	timestamp := time.Unix(123456789, 0)
+	emptyHash := subtree.MTH(nil)
+	signatureLine, err := ca.CosignCheckpoint(tlog.Tree{N: 0, Hash: emptyHash}, timestamp)
 	if err != nil {
 		t.Fatalf("CosignCheckpoint over an empty tree: %s", err)
 	}
-	if !v.Verify([]byte(ca.origin+"\n0\n"+emptyHash.String()+"\n"), cosigned) {
-		t.Error("Verify rejected the empty tree cosignature")
+	_, _, err = checkpoint.Open(signedNote(ca.origin+"\n0\n"+emptyHash.String()+"\n", signatureLine), v)
+	if err != nil {
+		t.Errorf("checkpoint.Open(): got %v, want nil err", err)
 	}
 }
 
@@ -435,7 +460,7 @@ func TestCosignerRejectsShortSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
-	_, err = ca.CosignCheckpoint(tlog.Tree{N: 1})
+	_, err = ca.CosignCheckpoint(tlog.Tree{N: 1}, time.Now())
 	if err == nil {
 		t.Error("CosignCheckpoint with a truncated signature = nil error, want error")
 	}
@@ -460,37 +485,9 @@ func TestCosignerPropagatesSignerError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
-	_, err = ca.CosignCheckpoint(tlog.Tree{N: 1})
+	_, err = ca.CosignCheckpoint(tlog.Tree{N: 1}, time.Now())
 	if err == nil {
 		t.Error("CosignCheckpoint with a failing signer = nil error, want error")
-	}
-}
-
-// TestRawSignature checks that RawSignature returns the trailing signature
-// bytes and refuses lengths and timestamps that certificates cannot carry.
-func TestRawSignature(t *testing.T) {
-	timestampedSignature := make([]byte, timestampedSignatureSize)
-	for i := range timestampedSignature[8:] {
-		timestampedSignature[8+i] = byte(i) //nolint:gosec // G602 false positive on slice index
-	}
-	signature, err := RawSignature(timestampedSignature)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-	if !bytes.Equal(signature, timestampedSignature[8:]) {
-		t.Error("RawSignature did not return the trailing signature bytes")
-	}
-
-	_, err = RawSignature(timestampedSignature[:10])
-	if err == nil {
-		t.Error("RawSignature with a short input = nil error, want error")
-	}
-
-	nonzero := bytes.Clone(timestampedSignature)
-	nonzero[7] = 1
-	_, err = RawSignature(nonzero)
-	if err == nil {
-		t.Error("RawSignature with a non-zero timestamp = nil error, want error")
 	}
 }
 
@@ -506,20 +503,18 @@ func TestCheckpointCosignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("checkpoint.Unmarshal: %s", err)
 	}
-	cosigned, err := ca.CosignCheckpoint(parsed.Tree)
+
+	timestamp := time.Unix(123456789, 0)
+	signatureLine, err := ca.CosignCheckpoint(parsed.Tree, timestamp)
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
-	}
-	line, err := ca.SignatureLine(0, cosigned[timestampSize:])
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
 	}
 
 	v, err := NewVerifier(caID, testPubKey(t))
 	if err != nil {
 		t.Fatalf("NewVerifier: %s", err)
 	}
-	_, n, err := checkpoint.Open(signedNote(text, line), v)
+	_, n, err := checkpoint.Open(signedNote(text, signatureLine), v)
 	if err != nil {
 		t.Fatalf("checkpoint.Open for the cosigner that signed the note: %s", err)
 	}
@@ -527,8 +522,11 @@ func TestCheckpointCosignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckpointCosignature: %s", err)
 	}
-	if !bytes.Equal(extracted.Signature, cosigned[timestampSize:]) {
-		t.Errorf("CheckpointCosignature signature = %x, want %x", extracted.Signature, cosigned[timestampSize:])
+	if extracted.Timestamp != 123456789 {
+		t.Errorf("CheckpointCosignature timestamp = %d, want 123456789", extracted.Timestamp)
+	}
+	if !bytes.Equal(extracted.Line, signatureLine) {
+		t.Errorf("CheckpointCosignature signature = %q, want %q", extracted.Line, signatureLine)
 	}
 
 	// "TWF=" has a padding bit set, so it decodes but is not canonical base64.
@@ -562,7 +560,7 @@ func TestCheckpointCosignatureTimestamped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign: %s", err)
 	}
-	line, err := SignatureLine(ca.name, ca.keyID, 1_700_000_000, signature)
+	line, err := ca.SignatureLine(1_700_000_000, signature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
@@ -587,57 +585,13 @@ func TestCheckpointCosignatureTimestamped(t *testing.T) {
 	}
 }
 
-// TestSignatureLineRoundTrip checks that a raw signature extracted with
-// RawSignature reassembles into a signature line that verifies against the
-// checkpoint it covers and not against another, and that reassembly rejects
-// short signatures.
-func TestSignatureLineRoundTrip(t *testing.T) {
+func TestSignatureLineSignatureLen(t *testing.T) {
 	ca, err := NewCosigner(caID, "oid/1.3.6.1.4.1.32473.2.0.42", testSigner(t))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
-	text := ca.origin + "\n20852163\n" + exampleHashB64 + "\n"
-	parsed, err := checkpoint.Unmarshal([]byte(text))
-	if err != nil {
-		t.Fatalf("checkpoint.Unmarshal: %s", err)
-	}
-	timestamped, err := ca.CosignCheckpoint(parsed.Tree)
-	if err != nil {
-		t.Fatalf("CosignCheckpoint: %s", err)
-	}
-	raw, err := RawSignature(timestamped)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-
-	v, err := NewVerifier(caID, testPubKey(t))
-	if err != nil {
-		t.Fatalf("NewVerifier: %s", err)
-	}
-	line, err := ca.SignatureLine(0, raw)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-	_, n, err := checkpoint.Open(signedNote(text, line), v)
-	if err != nil {
-		t.Fatalf("checkpoint.Open rejected the reassembled line: %s", err)
-	}
-	roundTripped, err := v.CheckpointCosignature(n)
-	if err != nil {
-		t.Fatalf("CheckpointCosignature: %s", err)
-	}
-	if roundTripped.Timestamp != 0 || !bytes.Equal(roundTripped.Signature, raw) {
-		t.Errorf("round-tripped signature = %d %x, want 0 %x", roundTripped.Timestamp, roundTripped.Signature, raw)
-	}
-
-	_, err = ca.SignatureLine(0, raw[1:])
-	if err == nil {
-		t.Error("SignatureLine with a short signature = nil error, want error")
-	}
-
-	tampered := ca.origin + "\n20852164\n" + exampleHashB64 + "\n"
-	_, _, err = checkpoint.Open(signedNote(tampered, line), v)
-	if err == nil {
-		t.Error("checkpoint.Open accepted the reassembled line over a different tree")
+	_, err = ca.SignatureLine(123456789, []byte("abced"))
+	if err == nil || !strings.Contains(err.Error(), "signature is 5 bytes") {
+		t.Errorf("SignatureLine with short signature: got %v, want error containing 'signature is 5 bytes'", err)
 	}
 }

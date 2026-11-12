@@ -133,39 +133,37 @@ func testCAVerifier(t *testing.T) *cosignature.Verifier {
 	return v
 }
 
-// caSignature returns the raw MTCA signature for a checkpoint of treeSize with
-// a zero root hash, as testCheckpoint holds.
-func caSignature(t *testing.T, treeSize int64) []byte {
+// caSubtreeSignature returns the raw MTCA signature for a subtree [0, treeSize)
+// with a zero root hash, as testCheckpoint() returns for its subtree portion.
+func caSubtreeSignature(t *testing.T, treeSize int64) []byte {
 	t.Helper()
 	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
-	timestamped, err := ca.CosignCheckpoint(tlog.Tree{N: treeSize})
+	zeroHash := make([]byte, 32)
+	rawSig, err := ca.CosignSubtree(0, treeSize, tlog.Hash(zeroHash))
+	if err != nil {
+		t.Fatalf("CosignSubtree: %s", err)
+	}
+	return rawSig
+}
+
+// caSignatureLine returns the MTCA's signed note signature line for a
+// checkpoint of the test log at treeSize with a zero root hash, as stored in
+// CheckpointModel.MTCASignature.
+func caSignatureLine(t *testing.T, treeSize int64, timestamp time.Time) []byte {
+	t.Helper()
+	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+
+	mtcaCosignatureLine, err := ca.CosignCheckpoint(tlog.Tree{N: treeSize, Hash: tlog.Hash(make([]byte, 32))}, timestamp)
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	raw, err := cosignature.RawSignature(timestamped)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-	return raw
-}
-
-// caSignatureLine returns the MTCA's note signature line for a checkpoint of
-// the test log at treeSize with a zero root hash, as stored in
-// CheckpointModel.MTCASignature.
-func caSignatureLine(t *testing.T, treeSize int64) []byte {
-	t.Helper()
-	ca, err := cosignature.NewCosigner(testLogID.CAID(), testLogID.Origin(), privatekey.NewDeterministicSigner(testCAKey(t)))
-	if err != nil {
-		t.Fatalf("NewCosigner: %s", err)
-	}
-	line, err := ca.SignatureLine(0, caSignature(t, treeSize))
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
-	}
-	return line
+	return mtcaCosignatureLine
 }
 
 // testCheckpoint returns a checkpoint of 512 entries with a zero root hash,
@@ -173,10 +171,11 @@ func caSignatureLine(t *testing.T, treeSize int64) []byte {
 // [0, 512) it covers.
 func testCheckpoint(t *testing.T) (*treedb.CheckpointModel, *treedb.SubtreeModel) {
 	t.Helper()
-	return testCheckpointAt(t, 1, 512), &treedb.SubtreeModel{
+	timestamp := time.Unix(5555555, 0)
+	return testCheckpointAt(t, 1, 512, timestamp), &treedb.SubtreeModel{
 		ID:            7,
 		MTCLogID:      mtcLogID,
-		MTCASignature: caSignature(t, 512),
+		MTCASignature: caSubtreeSignature(t, 512),
 		SubtreeStart:  0,
 		SubtreeEnd:    512,
 		SubtreeHash:   make([]byte, 32),
@@ -185,12 +184,12 @@ func testCheckpoint(t *testing.T) (*treedb.CheckpointModel, *treedb.SubtreeModel
 
 // testCheckpointAt returns a checkpoint of the test log at treeSize with a
 // valid MTCA signature and no mirror cosignature.
-func testCheckpointAt(t *testing.T, id, treeSize int64) *treedb.CheckpointModel {
+func testCheckpointAt(t *testing.T, id, treeSize int64, timestamp time.Time) *treedb.CheckpointModel {
 	t.Helper()
 	return &treedb.CheckpointModel{
 		ID:            id,
 		MTCLogID:      mtcLogID,
-		MTCASignature: caSignatureLine(t, treeSize),
+		MTCASignature: caSignatureLine(t, treeSize, timestamp),
 		TreeSize:      treeSize,
 		RootHash:      make([]byte, 32),
 	}
@@ -287,8 +286,9 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 
 	// The next checkpoint carries a well-formed MTCA signature over the wrong
 	// tree size.
-	next := testCheckpointAt(t, 2, 1024)
-	next.MTCASignature = caSignatureLine(t, 999)
+	timestamp := time.Unix(123456789, 0)
+	next := testCheckpointAt(t, 2, 1024, timestamp)
+	next.MTCASignature = caSignatureLine(t, 999, timestamp)
 	checkpoints.latest = next
 	err = p.PublishCheckpoint(t.Context())
 	if err == nil {
@@ -309,7 +309,7 @@ func TestPublishRejectsBadMTCASignature(t *testing.T) {
 	}
 
 	latest, subtree = testCheckpoint(t)
-	subtree.MTCASignature = caSignature(t, 999)
+	subtree.MTCASignature = caSubtreeSignature(t, 999)
 	p = testPublisher(t, testKey(t), &fakeCheckpointDB{latest: latest, subtrees: []*treedb.SubtreeModel{subtree}})
 	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
@@ -334,12 +334,13 @@ func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 		subtrees = append(subtrees, &treedb.SubtreeModel{
 			ID:            subtree.ID + int64(i) + 1,
 			MTCLogID:      mtcLogID,
-			MTCASignature: caSignature(t, end),
+			MTCASignature: caSubtreeSignature(t, end),
 			SubtreeEnd:    end,
 			SubtreeHash:   make([]byte, 32),
 		})
 	}
-	checkpoints := &fakeCheckpointDB{latest: testCheckpointAt(t, 2, 1024), subtrees: subtrees}
+	timestamp := time.Unix(123456789, 0)
+	checkpoints := &fakeCheckpointDB{latest: testCheckpointAt(t, 2, 1024, timestamp), subtrees: subtrees}
 	p := testPublisher(t, testKey(t), checkpoints)
 	err := p.PublishCheckpoint(t.Context())
 	if err != nil {
@@ -362,7 +363,7 @@ func TestCosignSubtreesWithinMirrorCheckpoint(t *testing.T) {
 	}
 
 	// Once the mirror is at 2048, the next pass signs [0, 2048).
-	checkpoints.latest = testCheckpointAt(t, 3, 2048)
+	checkpoints.latest = testCheckpointAt(t, 3, 2048, timestamp)
 	err = p.PublishCheckpoint(t.Context())
 	if err != nil {
 		t.Fatalf("p.PublishCheckpoint(): %s", err)
@@ -496,17 +497,9 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("NewCosigner: %s", err)
 	}
-	timestampedCA, err := ca.CosignCheckpoint(newer)
+	caLine, err := ca.CosignCheckpoint(newer, time.Now())
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
-	}
-	rawCA, err := cosignature.RawSignature(timestampedCA)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-	caLine, err := ca.SignatureLine(0, rawCA)
-	if err != nil {
-		t.Fatalf("SignatureLine: %s", err)
 	}
 	signedNote, err := cp.SignedNote(caLine)
 	if err != nil {
@@ -546,10 +539,17 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("Sign: %s", err)
 	}
-	checkpointCosignatureLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 1_700_000_000, checkpointSignature)
+
+	// Create a duplicate mirror cosigner just for the purposes of calling SignatureLine().
+	mirrorCosigner, err := cosignature.NewCosigner(mirrorOID, cp.Origin, mirrorKey)
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	checkpointCosignatureLine, err := mirrorCosigner.SignatureLine(1_700_000_000, checkpointSignature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
+
 	_, err = mirror.SubmitCheckpoint(t.Context(), cp, signedNote)
 	if err != nil {
 		t.Fatalf("SubmitCheckpoint: %s", err)
@@ -558,10 +558,11 @@ func newSourceLog(t *testing.T) *sourceLog {
 	if err != nil {
 		t.Fatalf("CosignSubtree: %s", err)
 	}
-	subtreeCosignatureLine, err := cosignature.SignatureLine(mirrorVerifier.Name(), mirrorVerifier.KeyHash(), 0, subtreeSignature)
+	subtreeCosignatureLine, err := mirrorCosigner.SignatureLine(0, subtreeSignature)
 	if err != nil {
 		t.Fatalf("SignatureLine: %s", err)
 	}
+
 	return &sourceLog{
 		fs3: fs3, older: older, newer: newer, cp: cp, signedNote: signedNote, ca: ca,
 		mirrorKey: mirrorKey, mirror: mirror, checkpointCosignatureLine: checkpointCosignatureLine, subtreeCosignatureLine: subtreeCosignatureLine, subtreeSignature: subtreeSignature,
