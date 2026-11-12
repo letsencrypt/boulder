@@ -136,7 +136,7 @@ type testLog struct {
 // checkpoints at tree sizes 4, 6, and 258.
 func newTestLog(t *testing.T) *testLog {
 	t.Helper()
-	issuer, err := core.LoadCert("../test/certs/mtpki/mtca1.cert.pem")
+	issuer, err := core.LoadCert("../test/certs/webpki/mtca-1.cert.pem")
 	if err != nil {
 		t.Fatalf("LoadCert: %s", err)
 	}
@@ -274,7 +274,7 @@ func (l *testLog) addSubtree(t *testing.T, start, end int64) *treedb.SubtreeMode
 // testMTCB returns an mtcb over subtrees and the checkpoint and tiles in fs3.
 func testMTCB(t *testing.T, fs3 *bs3test.FakeS3, subtrees []*treedb.SubtreeModel) *mtcb {
 	t.Helper()
-	issuer, err := issuance.LoadCertificate("../test/certs/mtpki/mtca1.cert.pem")
+	issuer, err := issuance.LoadCertificate("../test/certs/webpki/mtca-1.cert.pem")
 	if err != nil {
 		t.Fatalf("LoadCertificate: %s", err)
 	}
@@ -317,7 +317,7 @@ func newSigner(t *testing.T) *signer {
 
 // newSignerForLog returns a *signer that signs checkpoints of the given logID with the CA's key.
 func newSignerForLog(t *testing.T, logID *issuancelog.ID) *signer {
-	ca, caPrivKey := newCosigner(t, "../test/certs/mtpki/mtca1.key.pem", logID.CAID(), logID.Origin())
+	ca, caPrivKey := newCosigner(t, "../test/certs/webpki/mtca-1.privkey.pem", logID.CAID(), logID.Origin())
 	return &signer{
 		logID:     logID,
 		cosigner:  ca,
