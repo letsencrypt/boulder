@@ -614,6 +614,10 @@ func TestPerformValidationDNSPersist01Lifetime(t *testing.T) {
 		expectLifetime time.Duration
 	}{
 		{
+			name:           "No persistUntil",
+			expectLifetime: dnsPersistAuthzLifetime,
+		},
+		{
 			name:           "persistUntil before the lifetime ends",
 			persistUntil:   24 * time.Hour,
 			expectLifetime: 24 * time.Hour,
@@ -621,7 +625,7 @@ func TestPerformValidationDNSPersist01Lifetime(t *testing.T) {
 		{
 			name:           "persistUntil after the lifetime ends",
 			persistUntil:   60 * 24 * time.Hour,
-			expectLifetime: 30 * 24 * time.Hour,
+			expectLifetime: dnsPersistAuthzLifetime,
 		},
 	}
 
@@ -673,6 +677,7 @@ func TestPerformValidationDNSPersist01Lifetime(t *testing.T) {
 			}
 			va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
 
+			test.Assert(t, ra.profiles.def().validAuthzLifetime > dnsPersistAuthzLifetime, "default profile lifetime does not exceed the dns-persist-01 cap")
 			_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 				Authz:          authzPB,
 				ChallengeIndex: 0,
@@ -2154,12 +2159,12 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:     "DNS-persist-01 accepted for wildcard but never reused",
+			name:     "DNS-persist-01 accepted and reused for wildcard",
 			features: features.Config{DNSPersist01Enabled: true},
 			challenges: []core.Challenge{
 				{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusValid, Token: core.NewToken()},
 			},
-			expectReuse: false,
+			expectReuse: true,
 			expectError: false,
 		},
 		{
