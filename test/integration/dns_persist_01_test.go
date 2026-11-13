@@ -495,7 +495,7 @@ func TestDNSPersist01WrongIssuer(t *testing.T) {
 	}
 }
 
-func TestDNSPersist01NoAuthorizationReuse(t *testing.T) {
+func TestDNSPersist01AuthorizationReuse(t *testing.T) {
 	t.Parallel()
 
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
@@ -565,15 +565,15 @@ func TestDNSPersist01NoAuthorizationReuse(t *testing.T) {
 		t.Fatalf("finalizing first order: %s", err)
 	}
 
-	// Second order: Boulder should NOT reuse the existing dns-persist-01 authorization.
+	// Second order: Boulder should reuse the existing dns-persist-01 authorization.
 	order2, err := c.Client.NewOrder(c.Account, idents)
 	if err != nil {
 		t.Fatalf("creating second order: %s", err)
 	}
 
 	authzURL2 := order2.Authorizations[0]
-	if authzURL1 == authzURL2 {
-		t.Errorf("expected different authorization URLs (no reuse), got same: %s", authzURL1)
+	if authzURL1 != authzURL2 {
+		t.Errorf("expected the same authorization URL (reuse), got %s and %s", authzURL1, authzURL2)
 	}
 
 	auth2, err := c.Client.FetchAuthorization(c.Account, authzURL2)
@@ -581,8 +581,8 @@ func TestDNSPersist01NoAuthorizationReuse(t *testing.T) {
 		t.Fatalf("fetching second authorization: %s", err)
 	}
 
-	if auth2.Status != "pending" {
-		t.Errorf("expected second authorization status to be 'pending', got '%s'", auth2.Status)
+	if auth2.Status != "valid" {
+		t.Errorf("expected second authorization status to be 'valid', got '%s'", auth2.Status)
 	}
 }
 

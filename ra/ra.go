@@ -63,6 +63,12 @@ var (
 	// recheck CAA records within 8 hours of issuance. We set this to 7 hours to
 	// stay on the safe side.
 	caaRecheckDuration = -7 * time.Hour
+
+	// dnsPersistAuthzLifetime is the longest a dns-persist-01 authorization
+	// may be reused. Per Baseline Requirements section 3.2.2.4.22, the maximum
+	// validation data reuse period for this method is 10 days. We set this to
+	// 9 days to stay on the safe side.
+	dnsPersistAuthzLifetime = 9 * 24 * time.Hour
 )
 
 type KeyPolicies struct {
@@ -1637,7 +1643,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			}
 		} else {
 			status = core.StatusValid
-			expires = ra.clk.Now().Add(profile.validAuthzLifetime)
+			lifetime := profile.validAuthzLifetime
+			if ch.Type == core.ChallengeTypeDNSPersist01 {
+				lifetime = min(lifetime, dnsPersistAuthzLifetime)
+			}
+			expires = ra.clk.Now().Add(lifetime)
 			// Per draft-ietf-acme-dns-persist-02 section 4.1, an authorization
 			// must not outlive the persistUntil of the record which satisfied
 			// it.
@@ -2370,26 +2380,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 					)
 				}
 			}
-		}
-
-		// Never reuse dns-persist-01 authorizations:
-		// draft-ietf-acme-dns-persist-01 section 7.8 caps the reuse period to
-		// the TXT record's TTL and BRs section 3.2.2.4.22 caps it at 10 days.
-		// Since TTLs are typically seconds to minutes, the TTL cap is likely to
-		// be the binding constraint; re-validating every order is simpler.
-		solvedBy, err := authz.SolvedBy()
-		if err != nil {
-			// This should never happen.
-			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned a DNS wildcard authz (%d) with invalid challenge(s)",
-				authz.ID,
-			)
-		}
-		if solvedBy == core.ChallengeTypeDNSPersist01 {
-			missingAuthzIdents = append(missingAuthzIdents, ident)
-			// Delete the authz from the identToExistingAuthz map since we are not reusing it.
-			delete(identToExistingAuthz, ident)
-			continue
 		}
 
 		// If we reached this point then the existing authz was acceptable for

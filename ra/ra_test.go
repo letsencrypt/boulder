@@ -19,6 +19,7 @@ import (
 	"math/big"
 	mrand "math/rand/v2"
 	"net/netip"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -636,6 +637,75 @@ func TestPerformValidationPersistUntil(t *testing.T) {
 	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
 	test.AssertEquals(t, dbAuthzPB.Status, string(core.StatusValid))
 	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), persistUntil)
+}
+
+func TestPerformValidationDNSPersist01Lifetime(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("TestPerformValidationDNSPersist01Lifetime requires config-next")
+	}
+
+	va, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	pa, err := policy.New(
+		map[identifier.IdentifierType]bool{identifier.TypeDNS: true},
+		map[core.AcmeChallenge]bool{core.ChallengeTypeDNSPersist01: true},
+		ra.log)
+	test.AssertNotError(t, err, "creating test PA")
+	err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+	test.AssertNotError(t, err, "loading test identifier policy")
+	ra.PA = pa
+
+	ident := identifier.NewDNS("example.com")
+	res, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: registration.Id,
+			Expires:        timestamppb.New(fc.Now().Add(12 * time.Hour)),
+			Identifiers:    []*corepb.Identifier{ident.ToProto()},
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     ident.ToProto(),
+				RegistrationID: registration.Id,
+				Expires:        timestamppb.New(fc.Now().Add(12 * time.Hour)),
+				ChallengeTypes: []string{string(core.ChallengeTypeDNSPersist01)},
+				Token:          core.NewToken(),
+			},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+	authzPB := getAuthorization(t, res.V2Authorizations[0], sa)
+
+	va.doDCVResult = &vapb.ValidationResult{
+		Records: []*corepb.ValidationRecord{
+			{
+				Hostname:      "example.com",
+				ResolverAddrs: []string{"rebound"},
+			},
+		},
+	}
+	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
+
+	test.Assert(t, ra.profiles.def().validAuthzLifetime > dnsPersistAuthzLifetime, "default profile lifetime does not exceed the dns-persist-01 cap")
+	now := fc.Now()
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: 0,
+	})
+	test.AssertNotError(t, err, "PerformValidation failed")
+
+	select {
+	case <-va.doDCVRequest:
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Wait for the RA to write to the SA.
+	ra.drainWG.Wait()
+
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	test.AssertEquals(t, dbAuthzPB.Status, string(core.StatusValid))
+	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(dnsPersistAuthzLifetime))
 }
 
 func TestPerformValidationDeactivatedAccount(t *testing.T) {
@@ -2097,12 +2167,12 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:     "DNS-persist-01 accepted for wildcard but never reused",
+			name:     "DNS-persist-01 accepted and reused for wildcard",
 			features: features.Config{DNSPersist01Enabled: true},
 			challenges: []core.Challenge{
 				{Type: core.ChallengeTypeDNSPersist01, Status: core.StatusValid, Token: core.NewToken()},
 			},
-			expectReuse: false,
+			expectReuse: true,
 			expectError: false,
 		},
 		{
