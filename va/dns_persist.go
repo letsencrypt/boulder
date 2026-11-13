@@ -159,32 +159,32 @@ func checkDNSPersistRecord(params *dnsPersistIssueValueParams, accountHashPrefix
 	return nil
 }
 
-func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ident identifier.ACMEIdentifier, validAccountURIs []string, wildcardName bool) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ident identifier.ACMEIdentifier, validAccountURIs []string, wildcardName bool) ([]core.ValidationRecord, *dnsPersistIssueValueParams, error) {
 	if ident.Type != identifier.TypeDNS {
-		return nil, berrors.MalformedError("Identifier type for DNS-PERSIST-01 challenge was not DNS")
+		return nil, nil, berrors.MalformedError("Identifier type for DNS-PERSIST-01 challenge was not DNS")
 	}
 
 	if va.issuerDomain == "" {
 		// Belt and suspenders check: the VA should not have been configured to
 		// perform DNS-PERSIST-01 validation if it does not have an issuer
 		// domain name configured for comparison.
-		return nil, berrors.InternalServerError("no issuer domain name configured for DNS-PERSIST-01 challenge validation")
+		return nil, nil, berrors.InternalServerError("no issuer domain name configured for DNS-PERSIST-01 challenge validation")
 	}
 
 	if va.accountHashPrefix == "" {
 		// Belt and suspenders check: the VA should not have been configured to
 		// perform DNS-PERSIST-01 validation if it does not have an account
 		// hash prefix configured for comparison.
-		return nil, berrors.InternalServerError("no account hash prefix configured for DNS-PERSIST-01 challenge validation")
+		return nil, nil, berrors.InternalServerError("no account hash prefix configured for DNS-PERSIST-01 challenge validation")
 	}
 
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPersistPrefix, ident.Value)
 	txts, resolver, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		return nil, berrors.DNSError("Retrieving TXT records for DNS-PERSIST-01 challenge: %s", err)
+		return nil, nil, berrors.DNSError("Retrieving TXT records for DNS-PERSIST-01 challenge: %s", err)
 	}
 	if len(txts.Final) == 0 {
-		return nil, berrors.UnauthorizedError("No TXT record found for DNS-PERSIST-01 challenge")
+		return nil, nil, berrors.UnauthorizedError("No TXT record found for DNS-PERSIST-01 challenge")
 	}
 	validatedAt := va.clk.Now().UTC()
 
@@ -222,14 +222,14 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 		return []core.ValidationRecord{{
 			Hostname:      ident.Value,
 			ResolverAddrs: []string{resolver},
-		}}, nil
+		}}, params, nil
 	}
 
 	if len(syntaxErrs) > 0 {
-		return nil, berrors.MalformedError("%s", strings.Join(syntaxErrs, "; "))
+		return nil, nil, berrors.MalformedError("%s", strings.Join(syntaxErrs, "; "))
 	}
 	if len(authorizationErrs) > 0 {
-		return nil, berrors.UnauthorizedError("%s", strings.Join(authorizationErrs, "; "))
+		return nil, nil, berrors.UnauthorizedError("%s", strings.Join(authorizationErrs, "; "))
 	}
-	return nil, berrors.UnauthorizedError("No valid TXT record found for DNS-PERSIST-01 challenge")
+	return nil, nil, berrors.UnauthorizedError("No valid TXT record found for DNS-PERSIST-01 challenge")
 }

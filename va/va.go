@@ -485,14 +485,16 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	keyAuthorization string,
 	accountURI string,
 	dnsPersistAccountURIs []string,
-) ([]core.ValidationRecord, error) {
+) ([]core.ValidationRecord, *dnsPersistIssueValueParams, error) {
 	switch kind {
 	case core.ChallengeTypeHTTP01:
-		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
+		records, err := va.validateHTTP01(ctx, ident, token, keyAuthorization)
+		return records, nil, err
 	case core.ChallengeTypeDNS01:
 		// Strip a (potential) leading wildcard token from the identifier.
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
-		return va.validateDNS01(ctx, ident, keyAuthorization)
+		records, err := va.validateDNS01(ctx, ident, keyAuthorization)
+		return records, nil, err
 	case core.ChallengeTypeDNSPersist01:
 		if features.Get().DNSPersist01Enabled {
 			wildcard := strings.HasPrefix(ident.Value, "*.")
@@ -501,15 +503,17 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 			return va.validateDNSPersist01(ctx, ident, dnsPersistAccountURIs, wildcard)
 		}
 	case core.ChallengeTypeTLSALPN01:
-		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
+		records, err := va.validateTLSALPN01(ctx, ident, keyAuthorization)
+		return records, nil, err
 	case core.ChallengeTypeDNSAccount01:
 		if features.Get().DNSAccount01Enabled {
 			// Strip a (potential) leading wildcard token from the identifier.
 			ident.Value = strings.TrimPrefix(ident.Value, "*.")
-			return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+			records, err := va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+			return records, nil, err
 		}
 	}
-	return nil, berrors.MalformedError("invalid challenge type %s", kind)
+	return nil, nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
 
 // observeLatency records entries in the validationLatency histogram of the
@@ -813,19 +817,25 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 
 	var dnsPersistAccountURIs []string
 	if chall.Type == core.ChallengeTypeDNSPersist01 && features.Get().DNSPersist01Enabled {
-		// Per draft-ietf-acme-dns-persist-02 section 4.2, the accounturi is a
-		// hashed URI which we recompute over each key the account has used,
-		// current key first, both for the domain being validated and for the
-		// domain-omitted form "*".
-		domain := strings.TrimPrefix(ident.Value, "*.")
-		for _, thumbprint := range req.AccountKeyThumbprints {
-			key := base64.RawURLEncoding.EncodeToString(thumbprint)
-			for _, domainName := range []string{domain, "*"} {
-				domainNameLen := byte(len(domainName)) //nolint:gosec // G115: the PA rejects DNS names longer than 253 octets.
-				preimage := append([]byte{domainNameLen}, domainName+key+accountURI...)
-				digest := sha256.Sum256(preimage)
-				dnsPersistAccountURIs = append(dnsPersistAccountURIs,
-					va.accountHashPrefix+"sha-256/"+base64.RawURLEncoding.EncodeToString(digest[:]))
+		if req.DNSPersistAccountURI != "" {
+			// The primary perspective has already validated a record, and we
+			// must observe a record with the same accounturi.
+			dnsPersistAccountURIs = []string{req.DNSPersistAccountURI}
+		} else {
+			// Per draft-ietf-acme-dns-persist-02 section 4.2, the accounturi
+			// is a hashed URI which we recompute over each key the account
+			// has used, current key first, both for the domain being
+			// validated and for the domain-omitted form "*".
+			domain := strings.TrimPrefix(ident.Value, "*.")
+			for _, thumbprint := range req.AccountKeyThumbprints {
+				key := base64.RawURLEncoding.EncodeToString(thumbprint)
+				for _, domainName := range []string{domain, "*"} {
+					domainNameLen := byte(len(domainName)) //nolint:gosec // G115: the PA rejects DNS names longer than 253 octets.
+					preimage := append([]byte{domainNameLen}, domainName+key+accountURI...)
+					digest := sha256.Sum256(preimage)
+					dnsPersistAccountURIs = append(dnsPersistAccountURIs,
+						va.accountHashPrefix+"sha-256/"+base64.RawURLEncoding.EncodeToString(digest[:]))
+				}
 			}
 		}
 	}
@@ -834,7 +844,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
-	records, err := va.validateChallenge(
+	records, dnsPersistRecord, err := va.validateChallenge(
 		ctx,
 		ident,
 		chall.Type,
@@ -905,7 +915,16 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 			}
 			return remoteva.DoDCV(ctx, validationRequest)
 		}
-		summary, prob = va.doRemoteOperation(ctx, op, req)
+		remoteReq := req
+		if dnsPersistRecord != nil {
+			// BRs section 3.2.2.4.22 requires that each corroborating
+			// perspective observe a record with the same accounturi as the
+			// primary perspective.
+			remoteReq = proto.CloneOf(req)
+			remoteReq.AccountKeyThumbprints = nil
+			remoteReq.DNSPersistAccountURI = dnsPersistRecord.accountURI
+		}
+		summary, prob = va.doRemoteOperation(ctx, op, remoteReq)
 	}
 
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)

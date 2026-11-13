@@ -32,7 +32,7 @@ message IsCAAValidResponse {
 }
 
 message PerformValidationRequest {
-  // Next unused field number: 7
+  // Next unused field number: 8
   reserved 1; // Previously dnsName
   core.Identifier identifier = 5;
   core.Challenge challenge = 2;
@@ -41,6 +41,10 @@ message PerformValidationRequest {
   // AccountKeyThumbprints holds the current key's thumbprint first, then
   // those of prior keys from most to least recently replaced.
   repeated bytes accountKeyThumbprints = 6;
+  // DNSPersistAccountURI is the accounturi of the dns-persist-01 record
+  // validated by the primary perspective, which remote perspectives must also
+  // observe.
+  string DNSPersistAccountURI = 7;
 }
 
 message AuthzMeta {
