@@ -1477,26 +1477,26 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 // doDCVAndCAA performs DCV and CAA checks sequentially: DCV is performed first
 // and CAA is only checked if DCV is successful. Validation records from the DCV
 // check are returned even if the CAA check fails.
-func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
+func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, *timestamppb.Timestamp, error) {
 	doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if doDCVRes.Problem != nil {
-		return doDCVRes.Problem, doDCVRes.Records, nil
+		return doDCVRes.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	}
 
 	switch identifier.FromProto(dcvReq.Identifier).Type {
 	case identifier.TypeDNS:
 		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return doCAAResp.Problem, doDCVRes.Records, nil
+		return doCAAResp.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	case identifier.TypeIP:
-		return nil, doDCVRes.Records, nil
+		return nil, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	default:
-		return nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
+		return nil, nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
 	}
 }
 
@@ -1605,7 +1605,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ra.drainWG.Go(func() {
 		ctx := context.WithoutCancel(ctx)
 
-		prob, records, err := ra.checkDCVAndCAA(
+		prob, records, persistUntil, err := ra.checkDCVAndCAA(
 			ctx,
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
@@ -1638,6 +1638,12 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		} else {
 			status = core.StatusValid
 			expires = ra.clk.Now().Add(profile.validAuthzLifetime)
+			// Per draft-ietf-acme-dns-persist-02 section 4.1, an authorization
+			// must not outlive the persistUntil of the record which satisfied
+			// it.
+			if persistUntil != nil && persistUntil.AsTime().Before(expires) {
+				expires = persistUntil.AsTime()
+			}
 			if features.Get().AutomaticallyPauseZombieClients {
 				ra.resetAccountPausingLimit(ctx, authz.RegistrationID, authz.Identifier)
 			}

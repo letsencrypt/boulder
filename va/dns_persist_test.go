@@ -365,6 +365,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		txtRecords           []string
 		wildcard             bool
 		dnsErr               error
+		expectPersistUntil   time.Time
 		expectProbType       probs.ProblemType
 		expectDetailContains string
 	}{
@@ -392,6 +393,13 @@ func TestValidateDNSPersist01(t *testing.T) {
 				"letsencrypt.org;accounturi=" + otherAccountURI,
 				"letsencrypt.org;accounturi=" + accountURI,
 			},
+		},
+		{
+			name: "Valid record with persistUntil returns it",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444800",
+			},
+			expectPersistUntil: time.Unix(4102444800, 0).UTC(),
 		},
 		{
 			name: "Valid wildcard record succeeds",
@@ -468,6 +476,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 			if tc.expectProbType == "" {
 				test.AssertNotError(t, err, "expected validation to succeed")
 				test.AssertEquals(t, params.accountURI, accountURI)
+				test.AssertEquals(t, params.persistUntil, tc.expectPersistUntil)
 				return
 			}
 
@@ -600,6 +609,7 @@ func TestDoDCVDNSPersist01RemotesObserveSameAccountURI(t *testing.T) {
 		challHost          = "_validation-persist.example.com"
 		domainAccountURI   = accountHashPrefix + "sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"
 		wildcardAccountURI = accountHashPrefix + "sha-256/NpDnSwUthQK8zCgFdefYxAdAVPnygMLbs9US6oO-5ug"
+		persistUntil       = 4102444800
 	)
 	thumbprint, err := base64.RawURLEncoding.DecodeString("NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs")
 	test.AssertNotError(t, err, "decoding thumbprint")
@@ -631,7 +641,7 @@ func TestDoDCVDNSPersist01RemotesObserveSameAccountURI(t *testing.T) {
 			}
 			va, _ := setupWithRemotes(nil, "", remotes, &dnsPersistFakeDNS{
 				records: map[string][]string{
-					challHost: {"letsencrypt.org;accounturi=" + domainAccountURI},
+					challHost: {"letsencrypt.org;accounturi=" + domainAccountURI + ";persistUntil=4102444800"},
 				},
 			})
 			va.accountURIPrefixes = []string{"https://ca.example/acct/"}
@@ -646,6 +656,7 @@ func TestDoDCVDNSPersist01RemotesObserveSameAccountURI(t *testing.T) {
 			test.AssertNotError(t, err, "DoDCV failed")
 			if tc.expectProbType == "" {
 				test.Assert(t, res.Problem == nil, "expected validation to succeed")
+				test.AssertEquals(t, res.PersistUntil.AsTime(), time.Unix(persistUntil, 0).UTC())
 				return
 			}
 			test.AssertEquals(t, res.Problem.ProblemType, string(tc.expectProbType))

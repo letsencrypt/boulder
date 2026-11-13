@@ -600,6 +600,44 @@ func TestPerformValidationSuccess(t *testing.T) {
 	}
 }
 
+func TestPerformValidationPersistUntil(t *testing.T) {
+	va, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authzPB := createPendingAuthorization(t, sa, registration.Id, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
+
+	persistUntil := fc.Now().Add(ra.profiles.def().validAuthzLifetime / 2).Truncate(time.Second)
+	va.doDCVResult = &vapb.ValidationResult{
+		Records: []*corepb.ValidationRecord{
+			{
+				Hostname:      "example.com",
+				ResolverAddrs: []string{"rebound"},
+			},
+		},
+		PersistUntil: timestamppb.New(persistUntil),
+	}
+	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
+
+	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: dnsChallIdx(t, authzPB.Challenges),
+	})
+	test.AssertNotError(t, err, "PerformValidation failed")
+
+	select {
+	case <-va.doDCVRequest:
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Wait for the RA to write to the SA.
+	ra.drainWG.Wait()
+
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	test.AssertEquals(t, dbAuthzPB.Status, string(core.StatusValid))
+	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), persistUntil)
+}
+
 func TestPerformValidationDeactivatedAccount(t *testing.T) {
 	_, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
 	defer cleanUp()

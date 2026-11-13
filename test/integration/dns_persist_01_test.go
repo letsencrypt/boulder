@@ -645,6 +645,11 @@ func TestDNSPersist01PersistUntilFuture(t *testing.T) {
 	if auth.Status != "valid" {
 		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
 	}
+
+	if auth.Expires.After(time.Unix(futureTS, 0)) {
+		t.Fatalf("expected authorization to expire no later than persistUntil %s, got %s",
+			time.Unix(futureTS, 0).UTC(), auth.Expires.UTC())
+	}
 }
 
 func TestDNSPersist01PersistUntilPast(t *testing.T) {

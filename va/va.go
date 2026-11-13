@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -927,5 +928,12 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		summary, prob = va.doRemoteOperation(ctx, op, remoteReq)
 	}
 
-	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	result, err := bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	if err != nil {
+		return nil, err
+	}
+	if dnsPersistRecord != nil && !dnsPersistRecord.persistUntil.IsZero() {
+		result.PersistUntil = timestamppb.New(dnsPersistRecord.persistUntil)
+	}
+	return result, nil
 }
