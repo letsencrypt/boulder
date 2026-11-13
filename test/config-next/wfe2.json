@@ -11,7 +11,7 @@
 		"directoryCAAIdentity": "happy-hacker-ca.invalid",
 		"directoryWebsite": "https://github.com/letsencrypt/boulder",
 		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
-		"accountURIPrefix": "http://boulder.service.consul:4001/acme/acct/",
+		"accountHashPrefix": "http://boulder.service.consul:4001/acme/acct-hash/",
 		"goodkey": {},
 		"maxContactsPerRegistration": 3,
 		"maxCumulativeIdentifierLength": 10000,
