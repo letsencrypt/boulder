@@ -491,9 +491,10 @@ func TestValidateDNSPersist01(t *testing.T) {
 			fc.Set(time.Now())
 			va.clk = fc
 
-			_, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS(domain), []string{accountURI}, tc.wildcard)
+			_, params, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS(domain), []string{accountURI}, tc.wildcard)
 			if tc.expectProbType == "" {
 				test.AssertNotError(t, err, "expected validation to succeed")
+				test.AssertEquals(t, params.accountURI, accountURI)
 				return
 			}
 
@@ -530,7 +531,7 @@ func TestDNSPersist01MultiStringTXTRecord(t *testing.T) {
 		},
 	})
 
-	records, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS("example.com"), []string{accountHashPrefix + "sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"}, false)
+	records, _, err := va.validateDNSPersist01(context.Background(), identifier.NewDNS("example.com"), []string{accountHashPrefix + "sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"}, false)
 	test.AssertNotError(t, err, "expected multi-string TXT record to validate")
 	test.AssertEquals(t, len(records), 1)
 	test.AssertEquals(t, records[0].Hostname, "example.com")
@@ -540,7 +541,7 @@ func TestDNSPersist01ValidationErrorsForNonDNSIdentifier(t *testing.T) {
 	t.Parallel()
 
 	va, _ := setup(nil, "", nil, &dnsPersistFakeDNS{})
-	_, err := va.validateDNSPersist01(context.Background(), identifier.NewIP(netip.MustParseAddr("127.0.0.1")), []string{accountHashPrefix + "sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"}, false)
+	_, _, err := va.validateDNSPersist01(context.Background(), identifier.NewIP(netip.MustParseAddr("127.0.0.1")), []string{accountHashPrefix + "sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"}, false)
 	test.AssertErrorIs(t, err, berrors.Malformed)
 }
 
@@ -616,6 +617,80 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 			req := createValidationRequest(tc.ident, core.ChallengeTypeDNSPersist01)
 			req.Authz.RegID = 123
 			req.AccountKeyThumbprints = tc.thumbprints
+
+			res, err := va.DoDCV(context.Background(), req)
+			test.AssertNotError(t, err, "DoDCV failed")
+			if tc.expectProbType == "" {
+				test.Assert(t, res.Problem == nil, "expected validation to succeed")
+				return
+			}
+			test.AssertEquals(t, res.Problem.ProblemType, string(tc.expectProbType))
+		})
+	}
+}
+
+func TestDoDCVDNSPersist01MPIC(t *testing.T) {
+	const (
+		challHost               = "_validation-persist.example.com"
+		domainAccountURI        = accountHashPrefix + "sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"
+		domainOmittedAccountURI = accountHashPrefix + "sha-256/NpDnSwUthQK8zCgFdefYxAdAVPnygMLbs9US6oO-5ug"
+		otherAccountURI         = accountHashPrefix + "sha-256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	)
+	thumbprint, err := base64.RawURLEncoding.DecodeString("NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs")
+	test.AssertNotError(t, err, "decoding thumbprint")
+
+	testCases := []struct {
+		name              string
+		primaryRecord     string
+		remoteRecord      string
+		requestAccountURI string
+		expectProbType    probs.ProblemType
+	}{
+		{
+			name:          "Remotes observe the record the primary validated",
+			primaryRecord: "letsencrypt.org;accounturi=" + domainAccountURI,
+			remoteRecord:  "letsencrypt.org;accounturi=" + domainAccountURI,
+		},
+		{
+			name:           "Remotes observe a different record for the same account",
+			primaryRecord:  "letsencrypt.org;accounturi=" + domainAccountURI,
+			remoteRecord:   "letsencrypt.org;accounturi=" + domainOmittedAccountURI,
+			expectProbType: probs.UnauthorizedProblem,
+		},
+		{
+			name:              "An accounturi supplied in the request cannot widen the computed values",
+			primaryRecord:     "letsencrypt.org;accounturi=" + otherAccountURI,
+			remoteRecord:      "letsencrypt.org;accounturi=" + otherAccountURI,
+			requestAccountURI: otherAccountURI,
+			expectProbType:    probs.UnauthorizedProblem,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var remotes []remoteConf
+			for _, rir := range []string{arin, ripe, apnic, lacnic} {
+				remotes = append(remotes, remoteConf{
+					rir: rir,
+					dns: &dnsPersistFakeDNS{records: map[string][]string{challHost: {tc.remoteRecord}}},
+				})
+			}
+			va, _ := setupWithRemotes(nil, "", remotes, &dnsPersistFakeDNS{
+				records: map[string][]string{
+					challHost: {tc.primaryRecord},
+				},
+			})
+			va.accountURIPrefixes = []string{"https://ca.example/acct/"}
+			for _, remote := range va.remoteVAs {
+				remote.VAClient.(*inMemVA).rva.accountURIPrefixes = va.accountURIPrefixes
+			}
+			features.Set(features.Config{DNSPersist01Enabled: true})
+			defer features.Reset()
+
+			req := createValidationRequest(identifier.NewDNS("example.com"), core.ChallengeTypeDNSPersist01)
+			req.Authz.RegID = 123
+			req.AccountKeyThumbprints = [][]byte{thumbprint}
+			req.DNSPersistAccountURI = tc.requestAccountURI
 
 			res, err := va.DoDCV(context.Background(), req)
 			test.AssertNotError(t, err, "DoDCV failed")
