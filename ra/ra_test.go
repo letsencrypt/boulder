@@ -600,6 +600,22 @@ func TestPerformValidationSuccess(t *testing.T) {
 	}
 }
 
+func TestPerformValidationDeactivatedAccount(t *testing.T) {
+	_, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authzPB := createPendingAuthorization(t, sa, registration.Id, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
+
+	_, err := sa.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: registration.Id})
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: dnsChallIdx(t, authzPB.Challenges),
+	})
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
+}
+
 // mockSAWithSyncPause is a mock sapb.StorageAuthorityClient that forwards all
 // method calls to an inner SA, but also performs a blocking write to a channel
 // when PauseIdentifiers is called to allow the tests to synchronize.
