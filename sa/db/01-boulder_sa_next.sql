@@ -256,3 +256,12 @@ ALTER TABLE `orders`
   ADD COLUMN `mtcSubtreeID` bigint(20) DEFAULT NULL;
 
 ALTER TABLE `authz2` ADD COLUMN `beganProcessing` tinyint(1) NOT NULL DEFAULT 0;
+
+CREATE TABLE `priorRegistrationKeys` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `registrationID` bigint(20) NOT NULL,
+  `jwkThumbprint` binary(32) NOT NULL,
+  `replacedAt` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `registrationID_idx` (`registrationID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

@@ -69,7 +69,9 @@ type Config struct {
 	// DNSPersist01Enabled controls support for the dns-persist-01 challenge
 	// type. When enabled, the server can offer and validate this challenge
 	// during certificate issuance. This flag must be set to true in the
-	// RA and VA services for full functionality.
+	// SA, RA, and VA services for full functionality. The SA requires the
+	// priorRegistrationKeys table and must enable it no later than the RA and
+	// VA.
 	DNSPersist01Enabled bool
 
 	// RevokeBadKeyAccounts controls whether bad-key-revoker will attempt
