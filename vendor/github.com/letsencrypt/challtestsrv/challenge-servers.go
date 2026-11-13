@@ -3,12 +3,15 @@
 package challtestsrv
 
 import (
+	"crypto/tls"
 	"errors"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/miekg/dns"
 )
 
 const (
@@ -55,6 +58,13 @@ type ChallSrv struct {
 	// redirects is a map of paths to URLs. HTTP challenge servers respond to
 	// requests for these paths with a 301 to the corresponding URL.
 	redirects map[string]string
+
+	// echKeys are the ECH keys accepted by the TLS-ALPN-01 and HTTPS HTTP-01
+	// servers, and echConfigList is their serialized ECHConfigList. Both are
+	// empty if ECH is disabled.
+	echKeys       []tls.EncryptedClientHelloKey
+	echConfigList []byte
+	echPublicName string
 }
 
 // dnsData holds the data used to respond to all DNS queries.
@@ -77,6 +87,8 @@ type dnsData struct {
 	cnameRecords map[string]string
 	// A map of hostnames that should receive a SERVFAIL response for all queries.
 	servFailRecords map[string]bool
+	// A map of host to HTTPS records for HTTPS responses.
+	httpsRecords map[string][]dns.HTTPS
 }
 
 // Config holds challenge server configuration
@@ -97,6 +109,11 @@ type Config struct {
 	DOHCert string
 	// DOHCertKey is required if DOHAddrs is nonempty.
 	DOHCertKey string
+
+	// ECHPublicName, if set, makes the TLS-ALPN-01 and HTTPS HTTP-01 servers
+	// accept Encrypted Client Hello using a key generated at startup whose
+	// config advertises this public name.
+	ECHPublicName string
 }
 
 // validate checks that a challenge server Config is valid. To be valid it must
@@ -140,9 +157,20 @@ func New(config Config) (*ChallSrv, error) {
 			aaaaRecords:     make(map[string][]string),
 			txtRecords:      make(map[string][]string),
 			caaRecords:      make(map[string][]CAAPolicy),
+			httpsRecords:    make(map[string][]dns.HTTPS),
 			cnameRecords:    make(map[string]string),
 			servFailRecords: make(map[string]bool),
 		},
+	}
+
+	if config.ECHPublicName != "" {
+		key, list, err := newECHKey(config.ECHPublicName)
+		if err != nil {
+			return nil, err
+		}
+		challSrv.echKeys = []tls.EncryptedClientHelloKey{key}
+		challSrv.echConfigList = list
+		challSrv.echPublicName = config.ECHPublicName
 	}
 
 	// If there are HTTP-01 addresses configured, create HTTP-01 servers with

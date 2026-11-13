@@ -197,8 +197,8 @@ github.com/jmhodges/clock
 # github.com/letsencrypt/borp v0.0.0-20260428182343-7962eada420f
 ## explicit; go 1.20
 github.com/letsencrypt/borp
-# github.com/letsencrypt/challtestsrv v1.4.2
-## explicit; go 1.24
+# github.com/letsencrypt/challtestsrv v1.4.3-0.20261111025656-bdbedb6d7cf2
+## explicit; go 1.25.0
 github.com/letsencrypt/challtestsrv
 # github.com/letsencrypt/pkcs11key/v4 v4.0.1
 ## explicit; go 1.17

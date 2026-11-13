@@ -180,21 +180,23 @@ func (c challHTTPServer) Shutdown() error {
 // server's handler will return configured HTTP-01 challenge responses for
 // tokens that have been added to the challenge server. If HTTPS is true the
 // resulting challengeServer will run a HTTPS server with a self-signed
-// certificate useful for HTTP-01 -> HTTPS HTTP-01 redirect responses. If HTTPS
-// is false the resulting challengeServer will run an HTTP server.
-func httpOneServer(address string, handler http.Handler, https bool) challHTTPServer {
+// certificate useful for HTTP-01 -> HTTPS HTTP-01 redirect responses, which
+// accepts ECH with the given keys. If HTTPS is false the resulting
+// challengeServer will run an HTTP server.
+func httpOneServer(address string, challSrv *ChallSrv, https bool) challHTTPServer {
 	// If HTTPS is requested build a TLS Config that uses the self-signed
 	// certificate generated at startup.
 	var tlsConfig *tls.Config
 	if https {
 		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
+			Certificates:             []tls.Certificate{cert},
+			EncryptedClientHelloKeys: challSrv.echKeys,
 		}
 	}
 	// Create an HTTP Server for HTTP-01 challenges
 	srv := &http.Server{
 		Addr:         address,
-		Handler:      handler,
+		Handler:      challSrv,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 		TLSConfig:    tlsConfig,

@@ -72,6 +72,8 @@ func main() {
 		"Default IPv4 address for mock DNS responses to A queries")
 	defaultIPv6 := flag.String("defaultIPv6", "::1",
 		"Default IPv6 address for mock DNS responses to AAAA queries")
+	echPublicName := flag.String("ech-public-name", "",
+		"If set, TLS-ALPN-01 and HTTPS HTTP-01 challenge servers accept Encrypted Client Hello using a generated key whose config advertises this public name")
 
 	flag.Parse()
 
@@ -98,6 +100,7 @@ func main() {
 		DOHCertKey:      *dohCertKey,
 		DNSAddrs:        dnsAddresses,
 		TLSALPNOneAddrs: tlsAlpnOneAddresses,
+		ECHPublicName:   *echPublicName,
 		Log:             logger,
 	})
 	cmd.FailOnError(err, "Unable to construct challenge server")
@@ -137,6 +140,8 @@ func main() {
 		http.HandleFunc("/clear-cname", oobSrv.delDNSCNAMERecord)
 		http.HandleFunc("/set-servfail", oobSrv.addDNSServFailRecord)
 		http.HandleFunc("/clear-servfail", oobSrv.delDNSServFailRecord)
+		http.HandleFunc("/add-https", oobSrv.addDNSHTTPSRecord)
+		http.HandleFunc("/clear-https", oobSrv.delDNSHTTPSRecord)
 
 		srv.SetDefaultDNSIPv4(*defaultIPv4)
 		srv.SetDefaultDNSIPv6(*defaultIPv6)
@@ -153,6 +158,8 @@ func main() {
 		http.HandleFunc("/add-tlsalpn01", oobSrv.addTLSALPN01)
 		http.HandleFunc("/del-tlsalpn01", oobSrv.delTLSALPN01)
 	}
+
+	http.HandleFunc("/ech-config", oobSrv.getECHConfig)
 
 	http.HandleFunc("/clear-request-history", oobSrv.clearHistory)
 	http.HandleFunc("/http-request-history", oobSrv.getHTTPHistory)

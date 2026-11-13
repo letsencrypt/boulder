@@ -22,6 +22,8 @@ Usage of chall-test-srv:
     Default IPv6 address for mock DNS responses to AAAA queries (default "::1")
   -dns01 string
     Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable. (default ":8053")
+  -ech-public-name string
+    If set, TLS-ALPN-01 and HTTPS HTTP-01 challenge servers accept Encrypted Client Hello using a generated key whose config advertises this public name
   -http01 string
     Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable. (default ":5002")
   -https01 string
@@ -93,6 +95,23 @@ by `letsencrypt.org` run:
 To remove the mocked CAA policy for `test-host.letsencrypt.org` run:
 
     curl -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-caa
+
+##### Mocked HTTPS Responses
+
+To add a mocked HTTPS record (RFC 9460) for `test-host.letsencrypt.org` run:
+
+    curl -d '{"host":"test-host.letsencrypt.org", "record":"1 . alpn=h2"}' http://localhost:8055/add-https
+
+To remove all mocked HTTPS records for `test-host.letsencrypt.org` run:
+
+    curl -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-https
+
+If `chall-test-srv` was started with `-ech-public-name`, get the base64
+ECHConfigList accepted by its TLS-ALPN-01 and HTTPS HTTP-01 servers by running:
+
+    curl -d '{}' http://localhost:8055/ech-config
+
+and publish it with a record like `"1 . ech=<ECHConfigList>"`.
 
 ##### Mocked CNAME Responses
 

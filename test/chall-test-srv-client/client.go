@@ -51,6 +51,9 @@ const (
 	delALPN        = "del-tlsalpn01"
 	addServfail    = "set-servfail"
 	delServfail    = "clear-servfail"
+	addHTTPS       = "add-https"
+	delHTTPS       = "clear-https"
+	getECHConfig   = "ech-config"
 )
 
 func (c *Client) postURL(path string, body any) ([]byte, error) {
@@ -216,6 +219,49 @@ func (c *Client) RemoveCAAIssue(host string) ([]byte, error) {
 		)
 	}
 	return resp, nil
+}
+
+// AddHTTPSRecord adds a mock HTTPS record (RFC 9460) to the challenge server's
+// DNS interface for the given host. The record is in presentation format,
+// without its owner name, class, or type, e.g. "1 . ech=AEX+DQ...". Any failure
+// returns an error that includes both the relevant operation and the payload.
+func (c *Client) AddHTTPSRecord(host, record string) ([]byte, error) {
+	payload := map[string]string{"host": host, "record": record}
+	resp, err := c.postURL(addHTTPS, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while adding HTTPS record for host %q, record %q (payload: %v): %w",
+			host, record, payload, err,
+		)
+	}
+	return resp, nil
+}
+
+// RemoveHTTPSRecords removes all mock HTTPS records from the challenge server's
+// DNS interface for the given host. Any failure returns an error that includes
+// both the relevant operation and the payload.
+func (c *Client) RemoveHTTPSRecords(host string) ([]byte, error) {
+	payload := map[string]string{"host": host}
+	resp, err := c.postURL(delHTTPS, payload)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"while removing HTTPS records for host %q (payload: %v): %w",
+			host, payload, err,
+		)
+	}
+	return resp, nil
+}
+
+// ECHConfigList returns the base64-encoded ECHConfigList accepted by the
+// challenge server's TLS-ALPN-01 and HTTPS HTTP-01 interfaces, suitable for an
+// HTTPS record's "ech" parameter. It returns an error if the challenge server
+// was not started with -ech-public-name.
+func (c *Client) ECHConfigList() (string, error) {
+	resp, err := c.postURL(getECHConfig, map[string]string{})
+	if err != nil {
+		return "", fmt.Errorf("while fetching ECH config list: %w", err)
+	}
+	return string(resp), nil
 }
 
 // HTTPRequest is a single HTTP request in the request history.
