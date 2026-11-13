@@ -1561,9 +1561,31 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if err != nil {
 		return nil, berrors.InternalServerError("getting acct for authorization: %s", err.Error())
 	}
+	// draft-ietf-acme-dns-persist-02 section 4.2 requires that account status
+	// be evaluated at each validation attempt.
+	if reg.Status != core.StatusValid {
+		return nil, berrors.UnauthorizedError("account is not valid, has status %q", reg.Status)
+	}
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		return nil, berrors.InternalServerError("could not compute expected key authorization value")
+	}
+
+	// A dns-persist-01 record may have been computed over any key the account
+	// has used, so the VA needs the thumbprints of all of them, current key
+	// first.
+	var accountKeyThumbprints [][]byte
+	if ch.Type == core.ChallengeTypeDNSPersist01 {
+		currentThumbprint, err := reg.Key.Thumbprint(crypto.SHA256)
+		if err != nil {
+			return nil, berrors.InternalServerError("computing account key thumbprint: %s", err)
+		}
+		priorKeys, err := ra.SA.GetPriorRegistrationKeys(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
+		if err != nil {
+			return nil, berrors.InternalServerError("getting prior account keys: %s", err)
+		}
+		accountKeyThumbprints = append(accountKeyThumbprints, currentThumbprint)
+		accountKeyThumbprints = append(accountKeyThumbprints, priorKeys.Thumbprints...)
 	}
 
 	// Double check before sending to VA
@@ -1590,6 +1612,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
+				AccountKeyThumbprints:    accountKeyThumbprints,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),

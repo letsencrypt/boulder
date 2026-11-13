@@ -3,7 +3,9 @@ package va
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"maps"
@@ -209,6 +211,7 @@ type ValidationAuthorityImpl struct {
 	remoteVAs                []RemoteVA
 	maxRemoteFailures        int
 	accountURIPrefixes       []string
+	accountHashPrefix        string
 	singleDialTimeout        time.Duration
 	slowRemoteTimeout        time.Duration
 	perspective              string
@@ -235,6 +238,7 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
+	accountHashPrefix string,
 	perspective string,
 	rir string,
 	reservedIPChecker func(netip.Addr) error,
@@ -280,6 +284,7 @@ func NewValidationAuthorityImpl(
 		remoteVAs:          remoteVAs,
 		maxRemoteFailures:  maxAllowedFailures(len(remoteVAs)),
 		accountURIPrefixes: accountURIPrefixes,
+		accountHashPrefix:  accountHashPrefix,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
@@ -470,8 +475,8 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
-// The accountURI parameter is required for dns-account-01 and
-// dns-persist-01 challenges.
+// The accountURI parameter is required for dns-account-01 challenges and the
+// dnsPersistAccountURIs parameter for dns-persist-01 challenges.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -479,6 +484,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	token string,
 	keyAuthorization string,
 	accountURI string,
+	dnsPersistAccountURIs []string,
 ) ([]core.ValidationRecord, error) {
 	switch kind {
 	case core.ChallengeTypeHTTP01:
@@ -492,7 +498,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 			wildcard := strings.HasPrefix(ident.Value, "*.")
 			// Strip a (potential) leading wildcard token from the identifier.
 			ident.Value = strings.TrimPrefix(ident.Value, "*.")
-			return va.validateDNSPersist01(ctx, ident, accountURI, wildcard)
+			return va.validateDNSPersist01(ctx, ident, dnsPersistAccountURIs, wildcard)
 		}
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
@@ -805,6 +811,25 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		accountURI = fmt.Sprintf("%s%d", va.accountURIPrefixes[0], req.Authz.RegID)
 	}
 
+	var dnsPersistAccountURIs []string
+	if chall.Type == core.ChallengeTypeDNSPersist01 && features.Get().DNSPersist01Enabled {
+		// Per draft-ietf-acme-dns-persist-02 section 4.2, the accounturi is a
+		// hashed URI which we recompute over each key the account has used,
+		// current key first, both for the domain being validated and for the
+		// domain-omitted form "*".
+		domain := strings.TrimPrefix(ident.Value, "*.")
+		for _, thumbprint := range req.AccountKeyThumbprints {
+			key := base64.RawURLEncoding.EncodeToString(thumbprint)
+			for _, domainName := range []string{domain, "*"} {
+				domainNameLen := byte(len(domainName)) //nolint:gosec // G115: the PA rejects DNS names longer than 253 octets.
+				preimage := append([]byte{domainNameLen}, domainName+key+accountURI...)
+				digest := sha256.Sum256(preimage)
+				dnsPersistAccountURIs = append(dnsPersistAccountURIs,
+					va.accountHashPrefix+"sha-256/"+base64.RawURLEncoding.EncodeToString(digest[:]))
+			}
+		}
+	}
+
 	// Do local validation. Note that we process the result in a couple ways
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
@@ -816,6 +841,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		chall.Token,
 		req.ExpectedKeyAuthorization,
 		accountURI,
+		dnsPersistAccountURIs,
 	)
 
 	// Stop the clock for local validation latency.
