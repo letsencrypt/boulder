@@ -18,13 +18,17 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -83,7 +87,7 @@ func testACMECert(names []string) *tls.Certificate {
 
 // tlsalpn01SrvWithCert creates a test server which will present the given
 // certificate when asked to do a tls-alpn-01 handshake.
-func tlsalpn01SrvWithCert(t *testing.T, acmeCert *tls.Certificate, tlsVersion uint16, ipv6 bool) *httptest.Server {
+func tlsalpn01SrvWithCert(t *testing.T, acmeCert *tls.Certificate, tlsVersion uint16, ipv6 bool, opts ...func(*tls.Config)) *httptest.Server {
 	t.Helper()
 
 	tlsConfig := &tls.Config{
@@ -95,6 +99,9 @@ func tlsalpn01SrvWithCert(t *testing.T, acmeCert *tls.Certificate, tlsVersion ui
 		NextProtos: []string{"http/1.1", ACMETLS1Protocol},
 		MinVersion: tlsVersion,
 		MaxVersion: tlsVersion,
+	}
+	for _, opt := range opts {
+		opt(tlsConfig)
 	}
 
 	hs := httptest.NewUnstartedServer(http.DefaultServeMux)
@@ -938,6 +945,81 @@ func TestTLSALPN01ServerName(t *testing.T) {
 			_, err := va.validateTLSALPN01(ctx, tc.Ident, expectedKeyAuthorization)
 			if err != nil {
 				t.Errorf("Validation failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestTLSALPN01ECH(t *testing.T) {
+	// Not parallel, because it sets feature flags.
+	echConfigList, echKey := newTestECHKey(t)
+
+	for _, tc := range []struct {
+		name            string
+		enabled         bool
+		serverKeys      []tls.EncryptedClientHelloKey
+		wantECH         core.ECHStatus
+		wantServerNames []string
+	}{
+		{
+			name:            "disabled",
+			enabled:         false,
+			serverKeys:      []tls.EncryptedClientHelloKey{echKey},
+			wantECH:         "",
+			wantServerNames: []string{"expected"},
+		},
+		{
+			name:            "accepted",
+			enabled:         true,
+			serverKeys:      []tls.EncryptedClientHelloKey{echKey},
+			wantECH:         core.ECHAccepted,
+			wantServerNames: []string{"expected"},
+		},
+		{
+			name:            "rejected",
+			enabled:         true,
+			serverKeys:      nil,
+			wantECH:         core.ECHRejected,
+			wantServerNames: []string{"public.example", "expected"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var serverNames []string
+			hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"expected"}), 0, false, func(c *tls.Config) {
+				c.EncryptedClientHelloKeys = tc.serverKeys
+				getCert := c.GetCertificate
+				c.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+					mu.Lock()
+					serverNames = append(serverNames, hello.ServerName)
+					mu.Unlock()
+					return getCert(hello)
+				}
+			})
+			defer hs.Close()
+
+			fake := &echFakeDNS{https: map[string][]*dns.HTTPS{
+				"expected": {httpsRR(1, ".", echParam(echConfigList...))},
+			}}
+			va, _ := setup(hs, "", nil, fake)
+			features.Set(features.Config{ValidationUsesECH: tc.enabled})
+			defer features.Reset()
+
+			records, err := va.validateTLSALPN01(t.Context(), identifier.NewDNS("expected"), expectedKeyAuthorization)
+			if err != nil {
+				t.Fatalf("validateTLSALPN01: %s", err)
+			}
+			if len(records) != 1 || records[0].ECH != tc.wantECH {
+				t.Errorf("got records %+v, want one with ECH %q", records, tc.wantECH)
+			}
+			if !tc.enabled && fake.httpsLookups.Load() != 0 {
+				t.Errorf("made %d HTTPS lookups with ECH disabled, want 0", fake.httpsLookups.Load())
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			if !slices.Equal(serverNames, tc.wantServerNames) {
+				t.Errorf("server saw ServerNames %q, want %q", serverNames, tc.wantServerNames)
 			}
 		})
 	}

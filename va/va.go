@@ -299,7 +299,7 @@ func NewValidationAuthorityImpl(
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
-		// HTTP-01 challenge validation.
+		// HTTP-01 or TLS-ALPN-01 challenge validation.
 		singleDialTimeout:        10 * time.Second,
 		slowRemoteTimeout:        slowRemoteTimeout,
 		perspective:              perspective,
