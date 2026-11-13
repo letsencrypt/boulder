@@ -188,6 +188,7 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 
 	var syntaxErrs []string
 	var authorizationErrs []string
+	var latest *dnsPersistIssueValueParams
 	for _, rr := range txts.Final {
 		record := strings.Join(rr.Txt, "")
 
@@ -217,12 +218,20 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 			continue
 		}
 
+		// Rely on the record which permits the latest expiration, so that the
+		// result does not depend on the order of the records.
+		if latest == nil || params.persistUntil.IsZero() ||
+			(!latest.persistUntil.IsZero() && params.persistUntil.After(latest.persistUntil)) {
+			latest = params
+		}
+	}
+
+	if latest != nil {
 		return []core.ValidationRecord{{
 			Hostname:      ident.Value,
 			ResolverAddrs: []string{resolver},
-		}}, params, nil
+		}}, latest, nil
 	}
-
 	if len(authorizationErrs) > 0 {
 		return nil, nil, berrors.UnauthorizedError("%s", strings.Join(authorizationErrs, "; "))
 	}

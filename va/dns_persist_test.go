@@ -374,6 +374,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		txtRecords           []string
 		wildcard             bool
 		dnsErr               error
+		expectPersistUntil   time.Time
 		expectProbType       probs.ProblemType
 		expectDetailContains string
 	}{
@@ -400,6 +401,43 @@ func TestValidateDNSPersist01(t *testing.T) {
 			txtRecords: []string{
 				"letsencrypt.org;accounturi=" + otherAccountURI,
 				"letsencrypt.org;accounturi=" + accountURI,
+			},
+		},
+		{
+			name: "Valid record with persistUntil returns it",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444800",
+			},
+			expectPersistUntil: time.Unix(4102444800, 0).UTC(),
+		},
+		{
+			name: "Later persistUntil is preferred when it comes second",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444800",
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444900",
+			},
+			expectPersistUntil: time.Unix(4102444900, 0).UTC(),
+		},
+		{
+			name: "Later persistUntil is preferred when it comes first",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444900",
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444800",
+			},
+			expectPersistUntil: time.Unix(4102444900, 0).UTC(),
+		},
+		{
+			name: "Record without persistUntil is preferred when it comes second",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444800",
+				"letsencrypt.org;accounturi=" + accountURI,
+			},
+		},
+		{
+			name: "Record without persistUntil is preferred when it comes first",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI,
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=4102444800",
 			},
 		},
 		{
@@ -495,6 +533,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 			if tc.expectProbType == "" {
 				test.AssertNotError(t, err, "expected validation to succeed")
 				test.AssertEquals(t, params.accountURI, accountURI)
+				test.AssertEquals(t, params.persistUntil, tc.expectPersistUntil)
 				return
 			}
 
@@ -557,11 +596,12 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 	otherThumbprint := make([]byte, 32)
 
 	testCases := []struct {
-		name           string
-		ident          identifier.ACMEIdentifier
-		txtRecord      string
-		thumbprints    [][]byte
-		expectProbType probs.ProblemType
+		name               string
+		ident              identifier.ACMEIdentifier
+		txtRecord          string
+		thumbprints        [][]byte
+		expectPersistUntil time.Time
+		expectProbType     probs.ProblemType
 	}{
 		{
 			name:        "Hash over the domain and current key",
@@ -586,6 +626,13 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 			ident:       identifier.NewDNS("*.example.com"),
 			txtRecord:   "letsencrypt.org;accounturi=" + domainAccountURI + ";policy=wildcard",
 			thumbprints: [][]byte{thumbprint},
+		},
+		{
+			name:               "Record with persistUntil",
+			ident:              identifier.NewDNS("example.com"),
+			txtRecord:          "letsencrypt.org;accounturi=" + domainAccountURI + ";persistUntil=4102444800",
+			thumbprints:        [][]byte{thumbprint},
+			expectPersistUntil: time.Unix(4102444800, 0).UTC(),
 		},
 		{
 			name:           "Hash over a key the account has not used",
@@ -622,6 +669,11 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 			test.AssertNotError(t, err, "DoDCV failed")
 			if tc.expectProbType == "" {
 				test.Assert(t, res.Problem == nil, "expected validation to succeed")
+				if tc.expectPersistUntil.IsZero() {
+					test.Assert(t, res.PersistUntil == nil, "expected no persistUntil")
+				} else {
+					test.AssertEquals(t, res.PersistUntil.AsTime(), tc.expectPersistUntil)
+				}
 				return
 			}
 			test.AssertEquals(t, res.Problem.ProblemType, string(tc.expectProbType))

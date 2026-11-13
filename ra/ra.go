@@ -1148,13 +1148,18 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 				break
 			}
 		}
+		if solvedChall.Validated == nil {
+			// This should never happen because the SA records the validation
+			// time of every valid authorization.
+			return nil, nil, berrors.InternalServerError("authorization's challenge has no validated timestamp for: id %d", authz.ID)
+		}
 		logIdents = append(logIdents, identifierLog{
 			Ident:     ident,
 			Authz:     authz.ID,
 			Challenge: solvedChall.Type,
 			Validated: *solvedChall.Validated,
 		})
-		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		authzAge := ra.clk.Now().Sub(*solvedChall.Validated).Seconds()
 		ra.authzAges.WithLabelValues("FinalizeOrder", string(authz.Status)).Observe(authzAge)
 	}
 	logEvent.Identifiers = logIdents
@@ -1476,27 +1481,29 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 
 // doDCVAndCAA performs DCV and CAA checks sequentially: DCV is performed first
 // and CAA is only checked if DCV is successful. Validation records from the DCV
-// check are returned even if the CAA check fails.
-func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
+// check are returned even if the CAA check fails. The returned timestamp is the
+// persistUntil of the record which satisfied a dns-persist-01 challenge. It is
+// nil for other challenge types and for records which do not set persistUntil.
+func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, *timestamppb.Timestamp, error) {
 	doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if doDCVRes.Problem != nil {
-		return doDCVRes.Problem, doDCVRes.Records, nil
+		return doDCVRes.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	}
 
 	switch identifier.FromProto(dcvReq.Identifier).Type {
 	case identifier.TypeDNS:
 		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return doCAAResp.Problem, doDCVRes.Records, nil
+		return doCAAResp.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	case identifier.TypeIP:
-		return nil, doDCVRes.Records, nil
+		return nil, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	default:
-		return nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
+		return nil, nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
 	}
 }
 
@@ -1603,7 +1610,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ra.drainWG.Go(func() {
 		ctx := context.WithoutCancel(ctx)
 
-		prob, records, err := ra.checkDCVAndCAA(
+		prob, records, persistUntil, err := ra.checkDCVAndCAA(
 			ctx,
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
@@ -1636,6 +1643,12 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		} else {
 			status = core.StatusValid
 			expires = ra.clk.Now().Add(profile.validAuthzLifetime)
+			// Per draft-ietf-acme-dns-persist-03 section 4.1, an authorization
+			// must not outlive the persistUntil of the record which satisfied
+			// it.
+			if persistUntil != nil && persistUntil.AsTime().Before(expires) {
+				expires = persistUntil.AsTime()
+			}
 			if features.Get().AutomaticallyPauseZombieClients {
 				ra.resetAccountPausingLimit(ctx, authz.RegistrationID, authz.Identifier)
 			}
@@ -2346,6 +2359,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		if authz.Status == core.StatusPending {
 			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		}
+		for _, chall := range authz.Challenges {
+			if chall.Status == core.StatusValid && chall.Validated != nil {
+				// A valid authz can expire sooner than validAuthzLifetime, so
+				// its age is measured from when it was validated.
+				authzAge = ra.clk.Now().Sub(*chall.Validated).Seconds()
+				break
+			}
 		}
 
 		// If the identifier is a wildcard DNS name, all challenges must be
