@@ -21,6 +21,7 @@
     "overrides": { "column_vindexes": [ { "column": "bucketKey", "name": "xxhash" } ] },
     "paused": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
     "precertificates": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
+    "priorRegistrationKeys": { "column_vindexes": [ { "column": "registrationID", "name": "xxhash" } ] },
     "registrations": { "column_vindexes": [ { "column": "id", "name": "xxhash" } ] },
     "replacementOrders": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },
     "revokedCertificates": { "column_vindexes": [ { "column": "serial", "name": "xxhash" } ] },

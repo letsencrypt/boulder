@@ -57,6 +57,7 @@
 		},
 		"healthCheckInterval": "4s",
 		"features": {
+			"DNSPersist01Enabled": true,
 			"OrderModelHasMTCFields": true
 		}
 	},

@@ -167,6 +167,11 @@ func (sa *StorageAuthorityReadOnly) GetRegistrationByKey(_ context.Context, req 
 	}, nil
 }
 
+// GetPriorRegistrationKeys is a mock
+func (sa *StorageAuthorityReadOnly) GetPriorRegistrationKeys(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.JWKThumbprints, error) {
+	return &sapb.JWKThumbprints{}, nil
+}
+
 // GetSerialMetadata is a mock
 func (sa *StorageAuthorityReadOnly) GetSerialMetadata(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
 	now := sa.clk.Now()
