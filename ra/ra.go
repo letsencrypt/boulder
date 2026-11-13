@@ -63,6 +63,12 @@ var (
 	// recheck CAA records within 8 hours of issuance. We set this to 7 hours to
 	// stay on the safe side.
 	caaRecheckDuration = -7 * time.Hour
+
+	// dnsPersistAuthzLifetime is the longest a dns-persist-01 authorization
+	// may be reused. Per Baseline Requirements section 3.2.2.4.22, the maximum
+	// validation data reuse period for this method is 10 days. We set this to
+	// 9 days to stay on the safe side.
+	dnsPersistAuthzLifetime = 9 * 24 * time.Hour
 )
 
 type KeyPolicies struct {
@@ -1477,26 +1483,26 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 // doDCVAndCAA performs DCV and CAA checks sequentially: DCV is performed first
 // and CAA is only checked if DCV is successful. Validation records from the DCV
 // check are returned even if the CAA check fails.
-func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
+func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, *timestamppb.Timestamp, error) {
 	doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if doDCVRes.Problem != nil {
-		return doDCVRes.Problem, doDCVRes.Records, nil
+		return doDCVRes.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	}
 
 	switch identifier.FromProto(dcvReq.Identifier).Type {
 	case identifier.TypeDNS:
 		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return doCAAResp.Problem, doDCVRes.Records, nil
+		return doCAAResp.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	case identifier.TypeIP:
-		return nil, doDCVRes.Records, nil
+		return nil, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	default:
-		return nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
+		return nil, nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
 	}
 }
 
@@ -1561,9 +1567,31 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if err != nil {
 		return nil, berrors.InternalServerError("getting acct for authorization: %s", err.Error())
 	}
+	// draft-ietf-acme-dns-persist-02 section 4.2 requires that account status
+	// be evaluated at each validation attempt.
+	if reg.Status != core.StatusValid {
+		return nil, berrors.UnauthorizedError("account is not valid, has status %q", reg.Status)
+	}
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		return nil, berrors.InternalServerError("could not compute expected key authorization value")
+	}
+
+	// A dns-persist-01 record may have been computed over any key the account
+	// has used, so the VA needs the thumbprints of all of them, current key
+	// first.
+	var accountKeyThumbprints [][]byte
+	if ch.Type == core.ChallengeTypeDNSPersist01 {
+		currentThumbprint, err := reg.Key.Thumbprint(crypto.SHA256)
+		if err != nil {
+			return nil, berrors.InternalServerError("computing account key thumbprint: %s", err)
+		}
+		priorKeys, err := ra.SA.GetPriorRegistrationKeys(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
+		if err != nil {
+			return nil, berrors.InternalServerError("getting prior account keys: %s", err)
+		}
+		accountKeyThumbprints = append(accountKeyThumbprints, currentThumbprint)
+		accountKeyThumbprints = append(accountKeyThumbprints, priorKeys.Thumbprints...)
 	}
 
 	// Double check before sending to VA
@@ -1583,13 +1611,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ra.drainWG.Go(func() {
 		ctx := context.WithoutCancel(ctx)
 
-		prob, records, err := ra.checkDCVAndCAA(
+		prob, records, persistUntil, err := ra.checkDCVAndCAA(
 			ctx,
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
+				AccountKeyThumbprints:    accountKeyThumbprints,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
@@ -1614,7 +1643,17 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			}
 		} else {
 			status = core.StatusValid
-			expires = ra.clk.Now().Add(profile.validAuthzLifetime)
+			lifetime := profile.validAuthzLifetime
+			if ch.Type == core.ChallengeTypeDNSPersist01 {
+				lifetime = min(lifetime, dnsPersistAuthzLifetime)
+			}
+			expires = ra.clk.Now().Add(lifetime)
+			// Per draft-ietf-acme-dns-persist-02 section 4.1, an authorization
+			// must not outlive the persistUntil of the record which satisfied
+			// it.
+			if persistUntil != nil && persistUntil.AsTime().Before(expires) {
+				expires = persistUntil.AsTime()
+			}
 			if features.Get().AutomaticallyPauseZombieClients {
 				ra.resetAccountPausingLimit(ctx, authz.RegistrationID, authz.Identifier)
 			}
@@ -2341,26 +2380,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 					)
 				}
 			}
-		}
-
-		// Never reuse dns-persist-01 authorizations:
-		// draft-ietf-acme-dns-persist-01 section 7.8 caps the reuse period to
-		// the TXT record's TTL and BRs section 3.2.2.4.22 caps it at 10 days.
-		// Since TTLs are typically seconds to minutes, the TTL cap is likely to
-		// be the binding constraint; re-validating every order is simpler.
-		solvedBy, err := authz.SolvedBy()
-		if err != nil {
-			// This should never happen.
-			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned a DNS wildcard authz (%d) with invalid challenge(s)",
-				authz.ID,
-			)
-		}
-		if solvedBy == core.ChallengeTypeDNSPersist01 {
-			missingAuthzIdents = append(missingAuthzIdents, ident)
-			// Delete the authz from the identToExistingAuthz map since we are not reusing it.
-			delete(identToExistingAuthz, ident)
-			continue
 		}
 
 		// If we reached this point then the existing authz was acceptable for

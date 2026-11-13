@@ -449,7 +449,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
-	wfe.AccountURIPrefix = "http://localhost/acme/acct/"
+	wfe.AccountHashPrefix = "http://localhost/acme/acct-hash/"
 
 	return wfe, fc, requestSigner{t, inmemNonceService.AsSource()}
 }
@@ -852,7 +852,11 @@ func TestDirectory(t *testing.T) {
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
   "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
+    "accountHashPrefix": "http://localhost/acme/acct-hash/",
     "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "issuerDomainNames": [
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
@@ -877,7 +881,11 @@ func TestDirectory(t *testing.T) {
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
   "keyChange": "http://localhost/acme/key-change",
   "meta": {
+    "accountHashPrefix": "http://localhost/acme/acct-hash/",
     "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "issuerDomainNames": [
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
@@ -937,6 +945,8 @@ func TestRelativeDirectory(t *testing.T) {
 		fmt.Fprintf(expected, `"meta":{`)
 		fmt.Fprintf(expected, `"termsOfService":"http://example.invalid/terms",`)
 		fmt.Fprintf(expected, `"caaIdentities":["letsencrypt.org"],`)
+		fmt.Fprintf(expected, `"accountHashPrefix":"http://localhost/acme/acct-hash/",`)
+		fmt.Fprintf(expected, `"issuerDomainNames":["letsencrypt.org"],`)
 		fmt.Fprintf(expected, `"profiles":{"default":"a test profile"}`)
 		fmt.Fprintf(expected, "}")
 		fmt.Fprintf(expected, "}")
@@ -3682,11 +3692,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		if chall.Type == core.ChallengeTypeDNSPersist01 {
 			test.Assert(t, chall.Token == "", fmt.Sprintf("expected %s to have no token", chall.Type))
 			test.AssertDeepEquals(t, chall.IssuerDomainNames, []string{"letsencrypt.org"})
-			test.AssertEquals(t, chall.AccountURI, "http://localhost/acme/acct/1")
 		} else {
 			test.Assert(t, chall.Token != "", fmt.Sprintf("expected %s to have a token", chall.Type))
 			test.Assert(t, chall.IssuerDomainNames == nil, fmt.Sprintf("expected %s to have no issuer domain names", chall.Type))
-			test.AssertEquals(t, chall.AccountURI, "")
 		}
 	}
 }

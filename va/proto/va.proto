@@ -4,6 +4,7 @@ package va;
 option go_package = "github.com/letsencrypt/boulder/va/proto";
 
 import "core/proto/core.proto";
+import "google/protobuf/timestamp.proto";
 
 service VA {
   rpc DoDCV(PerformValidationRequest) returns (ValidationResult) {}
@@ -32,12 +33,19 @@ message IsCAAValidResponse {
 }
 
 message PerformValidationRequest {
-  // Next unused field number: 6
+  // Next unused field number: 8
   reserved 1; // Previously dnsName
   core.Identifier identifier = 5;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;
   string expectedKeyAuthorization = 4;
+  // AccountKeyThumbprints holds the current key's thumbprint first, then
+  // those of prior keys from most to least recently replaced.
+  repeated bytes accountKeyThumbprints = 6;
+  // DNSPersistAccountURI is the accounturi of the dns-persist-01 record
+  // validated by the primary perspective, which remote perspectives must also
+  // observe.
+  string DNSPersistAccountURI = 7;
 }
 
 message AuthzMeta {
@@ -48,8 +56,10 @@ message AuthzMeta {
 }
 
 message ValidationResult {
+  // Next unused field number: 6
   repeated core.ValidationRecord records = 1;
   core.ProblemDetails problem = 2;
   string perspective = 3;
   string rir = 4;
+  google.protobuf.Timestamp persistUntil = 5;
 }

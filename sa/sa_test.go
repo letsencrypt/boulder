@@ -3,6 +3,7 @@ package sa
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -4711,6 +4712,57 @@ func TestUpdateRegistrationKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateRegistrationKeyRecordsPriorKeys(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("skipping, the priorRegistrationKeys table must exist for this test to run")
+	}
+	sa, _ := initSA(t)
+	features.Set(features.Config{DNSPersist01Enabled: true})
+	defer features.Reset()
+
+	thumbprintOf := func(jwkJSON []byte) []byte {
+		t.Helper()
+		var jwk jose.JSONWebKey
+		err := jwk.UnmarshalJSON(jwkJSON)
+		test.AssertNotError(t, err, "parsing JWK")
+		thumbprint, err := jwk.Thumbprint(crypto.SHA256)
+		test.AssertNotError(t, err, "computing JWK thumbprint")
+		return thumbprint
+	}
+
+	firstKey := newAcctKey(t)
+	secondKey := newAcctKey(t)
+	thirdKey := newAcctKey(t)
+
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{Key: firstKey})
+	test.AssertNotError(t, err, "creating new registration")
+	otherReg, err := sa.NewRegistration(ctx, &corepb.Registration{Key: newAcctKey(t)})
+	test.AssertNotError(t, err, "creating other registration")
+
+	priorKeys, err := sa.GetPriorRegistrationKeys(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "getting prior keys of a new registration")
+	test.AssertEquals(t, len(priorKeys.Thumbprints), 0)
+
+	_, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{RegistrationID: reg.Id, Jwk: secondKey})
+	test.AssertNotError(t, err, "updating to second key")
+	_, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{RegistrationID: reg.Id, Jwk: thirdKey})
+	test.AssertNotError(t, err, "updating to third key")
+
+	priorKeys, err = sa.GetPriorRegistrationKeys(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "getting prior keys")
+	test.AssertDeepEquals(t, priorKeys.Thumbprints, [][]byte{thumbprintOf(secondKey), thumbprintOf(firstKey)})
+
+	_, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{RegistrationID: reg.Id, Jwk: otherReg.Key})
+	test.AssertError(t, err, "updating to a key in use by another registration")
+	priorKeys, err = sa.GetPriorRegistrationKeys(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "getting prior keys after failed update")
+	test.AssertEquals(t, len(priorKeys.Thumbprints), 2)
+
+	priorKeys, err = sa.GetPriorRegistrationKeys(ctx, &sapb.RegistrationID{Id: otherReg.Id})
+	test.AssertNotError(t, err, "getting prior keys of other registration")
+	test.AssertEquals(t, len(priorKeys.Thumbprints), 0)
 }
 
 type mockRLOStream struct {

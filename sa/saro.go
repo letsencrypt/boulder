@@ -147,6 +147,26 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 	return registrationModelToPb(model)
 }
 
+// GetPriorRegistrationKeys returns the SHA-256 JWK Thumbprints of the keys
+// which the given account has replaced, most recently replaced first. It does
+// not include the account's current key.
+func (ssa *SQLStorageAuthorityRO) GetPriorRegistrationKeys(ctx context.Context, req *sapb.RegistrationID) (*sapb.JWKThumbprints, error) {
+	if core.IsAnyNilOrZero(req.Id) {
+		return nil, errIncompleteRequest
+	}
+
+	var thumbprints [][]byte
+	_, err := ssa.dbReadOnlyMap.Select(ctx, &thumbprints,
+		"SELECT jwkThumbprint FROM priorRegistrationKeys WHERE registrationID = ? ORDER BY id DESC",
+		req.Id,
+	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	return &sapb.JWKThumbprints{Thumbprints: thumbprints}, nil
+}
+
 // GetSerialMetadata returns metadata stored alongside the serial number,
 // such as the RegID whose certificate request created that serial, and when
 // the certificate with that serial will expire.

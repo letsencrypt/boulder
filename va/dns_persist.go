@@ -2,8 +2,11 @@ package va
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -109,7 +112,7 @@ func parseDNSPersistRecord(record string) (string, *dnsPersistIssueValueParams, 
 			params.persistUntil = time.Unix(persistUntilVal, 0).UTC()
 
 		default:
-			// Per draft-ietf-acme-dns-persist-01, "the server MUST ignore any
+			// Per draft-ietf-acme-dns-persist-02, "the server MUST ignore any
 			// parameter within the issue-value that has an unrecognized tag."
 			continue
 		}
@@ -121,17 +124,28 @@ func parseDNSPersistRecord(record string) (string, *dnsPersistIssueValueParams, 
 }
 
 // checkDNSPersistRecord checks whether a parsed dns-persist-01 record
-// authorizes issuance for the given account URI and wildcard status at the
-// given time. It returns nil if the record authorizes issuance, or a
-// berrors.Unauthorized error for authorization failures.
-func checkDNSPersistRecord(params *dnsPersistIssueValueParams, validAccountURI string, wildcardName bool, validatedAt time.Time) error {
-	// Per draft-ietf-acme-dns-persist-01 section 4.1, accounturi values are
+// authorizes issuance for the given account URIs and wildcard status at the
+// given time. It returns nil if the record authorizes issuance, a
+// berrors.Malformed error if the accounturi is not a well-formed hashed URI,
+// or a berrors.Unauthorized error for authorization failures.
+func checkDNSPersistRecord(params *dnsPersistIssueValueParams, accountHashPrefix string, validAccountURIs []string, wildcardName bool, validatedAt time.Time) error {
+	// Per draft-ietf-acme-dns-persist-02 section 9.3.1, an accounturi which
+	// is not a well-formed hashed URI is a syntax error. We accept only
+	// the mandatory sha-256 hash algorithm.
+	hashAlgAndValue, underPrefix := strings.CutPrefix(params.accountURI, accountHashPrefix)
+	hashAlg, hashValue, hasSeparator := strings.Cut(hashAlgAndValue, "/")
+	digest, decodeErr := base64.RawURLEncoding.DecodeString(hashValue)
+	if !underPrefix || !hasSeparator || hashAlg != "sha-256" || decodeErr != nil || len(digest) != sha256.Size {
+		return berrors.MalformedError("accounturi %q is not of the form \"%ssha-256/<base64url SHA-256 digest>\"",
+			params.accountURI, accountHashPrefix)
+	}
+	// Per draft-ietf-acme-dns-persist-02 section 4.1, accounturi values are
 	// compared using Simple String Comparison per RFC 3986 section 6.2.1, with
 	// no case-folding or other normalization.
-	if params.accountURI != validAccountURI {
-		return berrors.UnauthorizedError("accounturi mismatch: expected %q, got %q", validAccountURI, params.accountURI)
+	if !slices.Contains(validAccountURIs, params.accountURI) {
+		return berrors.UnauthorizedError("accounturi mismatch: %q does not match any value expected for this account", params.accountURI)
 	}
-	// Per draft-ietf-acme-dns-persist-01 section 4.1, the policy parameter's
+	// Per draft-ietf-acme-dns-persist-02 section 4.1, the policy parameter's
 	// defined values MUST be treated as case-insensitive. If the policy
 	// parameter's value is anything other than "wildcard", the CA MUST proceed
 	// as if the policy parameter were not present.
@@ -145,25 +159,32 @@ func checkDNSPersistRecord(params *dnsPersistIssueValueParams, validAccountURI s
 	return nil
 }
 
-func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ident identifier.ACMEIdentifier, validAccountURI string, wildcardName bool) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ident identifier.ACMEIdentifier, validAccountURIs []string, wildcardName bool) ([]core.ValidationRecord, *dnsPersistIssueValueParams, error) {
 	if ident.Type != identifier.TypeDNS {
-		return nil, berrors.MalformedError("Identifier type for DNS-PERSIST-01 challenge was not DNS")
+		return nil, nil, berrors.MalformedError("Identifier type for DNS-PERSIST-01 challenge was not DNS")
 	}
 
 	if va.issuerDomain == "" {
 		// Belt and suspenders check: the VA should not have been configured to
 		// perform DNS-PERSIST-01 validation if it does not have an issuer
 		// domain name configured for comparison.
-		return nil, berrors.InternalServerError("no issuer domain name configured for DNS-PERSIST-01 challenge validation")
+		return nil, nil, berrors.InternalServerError("no issuer domain name configured for DNS-PERSIST-01 challenge validation")
+	}
+
+	if va.accountHashPrefix == "" {
+		// Belt and suspenders check: the VA should not have been configured to
+		// perform DNS-PERSIST-01 validation if it does not have an account
+		// hash prefix configured for comparison.
+		return nil, nil, berrors.InternalServerError("no account hash prefix configured for DNS-PERSIST-01 challenge validation")
 	}
 
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPersistPrefix, ident.Value)
 	txts, resolver, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		return nil, berrors.DNSError("Retrieving TXT records for DNS-PERSIST-01 challenge: %s", err)
+		return nil, nil, berrors.DNSError("Retrieving TXT records for DNS-PERSIST-01 challenge: %s", err)
 	}
 	if len(txts.Final) == 0 {
-		return nil, berrors.UnauthorizedError("No TXT record found for DNS-PERSIST-01 challenge")
+		return nil, nil, berrors.UnauthorizedError("No TXT record found for DNS-PERSIST-01 challenge")
 	}
 	validatedAt := va.clk.Now().UTC()
 
@@ -186,7 +207,12 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 			continue
 		}
 
-		err = checkDNSPersistRecord(params, validAccountURI, wildcardName, validatedAt)
+		err = checkDNSPersistRecord(params, va.accountHashPrefix, validAccountURIs, wildcardName, validatedAt)
+		if errors.Is(err, berrors.Malformed) {
+			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+				"Parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err))
+			continue
+		}
 		if err != nil {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
 				"Checking DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err))
@@ -196,14 +222,14 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 		return []core.ValidationRecord{{
 			Hostname:      ident.Value,
 			ResolverAddrs: []string{resolver},
-		}}, nil
+		}}, params, nil
 	}
 
 	if len(syntaxErrs) > 0 {
-		return nil, berrors.MalformedError("%s", strings.Join(syntaxErrs, "; "))
+		return nil, nil, berrors.MalformedError("%s", strings.Join(syntaxErrs, "; "))
 	}
 	if len(authorizationErrs) > 0 {
-		return nil, berrors.UnauthorizedError("%s", strings.Join(authorizationErrs, "; "))
+		return nil, nil, berrors.UnauthorizedError("%s", strings.Join(authorizationErrs, "; "))
 	}
-	return nil, berrors.UnauthorizedError("No valid TXT record found for DNS-PERSIST-01 challenge")
+	return nil, nil, berrors.UnauthorizedError("No valid TXT record found for DNS-PERSIST-01 challenge")
 }

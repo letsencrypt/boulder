@@ -103,7 +103,7 @@ type Config struct {
 
 		// DirectoryCAAIdentity is the CA's issuer domain name, used for:
 		//   1. /directory response: included in the "meta" caaIdentities field.
-		//   2. dns-persist-01 challenges: included in the issuer-domain-names field.
+		//   2. dns-persist-01 challenges: included in the issuerDomainNames field.
 		//
 		// Must match the VA's IssuerDomain. A mismatch will cause CAA and
 		// dns-persist-01 validation failures.
@@ -122,13 +122,11 @@ type Config struct {
 		// will differ in configuration for production and staging.
 		LegacyKeyIDPrefix string `validate:"required,url"`
 
-		// AccountURIPrefix is used to construct the "accounturi" field of
-		// dns-persist-01 challenges (e.g. "https://acme-v02.api.letsencrypt.org/acme/acct/").
-		// MUST match the first entry of the VA's AccountURIPrefixes field.
-		//
-		// TODO(#8724): Once this field has been set in Production we can make
-		// it required.
-		AccountURIPrefix string `validate:"omitempty,url,endswith=/"`
+		// AccountHashPrefix is included in the /directory response's "meta"
+		// accountHashPrefix field (e.g.
+		// "https://acme-v02.api.letsencrypt.org/acme/acct-hash/"). MUST match
+		// the VA's AccountHashPrefix and must not change once advertised.
+		AccountHashPrefix string `validate:"omitempty,url,endswith=/,excludesall=;"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -484,7 +482,7 @@ func main() {
 	wfe.AllowOrigins = c.WFE.AllowOrigins
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
-	wfe.AccountURIPrefix = c.WFE.AccountURIPrefix
+	wfe.AccountHashPrefix = c.WFE.AccountHashPrefix
 
 	if c.WFE.ListenAddress == "" {
 		cmd.Fail("HTTP listen address is not configured")

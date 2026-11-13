@@ -125,7 +125,7 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// DirectoryCAAIdentity is used for the /directory response's "meta"
-	// element's "caaIdentities" field and the "issuer-domain-names" field of
+	// element's "caaIdentities" field and the "issuerDomainNames" field of
 	// dns-persist-01 challenges. It MUST match the VA's issuerDomain field
 	// value.
 	DirectoryCAAIdentity string
@@ -139,10 +139,10 @@ type WebFrontEndImpl struct {
 	// `LegacyKeyIDPrefix` for more information.
 	LegacyKeyIDPrefix string
 
-	// AccountURIPrefix is required to set the "accounturi" field of
-	// dns-persist-01 challenges. MUST match the first entry of the VA's
-	// AccountURIPrefixes field.
-	AccountURIPrefix string
+	// AccountHashPrefix is used for the /directory response's "meta" element's
+	// "accountHashPrefix" field. It MUST match the VA's accountHashPrefix
+	// field value.
+	AccountHashPrefix string
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -577,6 +577,12 @@ func (wfe *WebFrontEndImpl) Directory(
 	}
 	if len(wfe.certProfiles) != 0 {
 		metaMap["profiles"] = wfe.certProfiles
+	}
+	// draft-ietf-acme-dns-persist-02 sections 3.2 and 4.1 require a CA which
+	// offers dns-persist-01 to advertise these.
+	if wfe.AccountHashPrefix != "" && wfe.DirectoryCAAIdentity != "" {
+		metaMap["accountHashPrefix"] = wfe.AccountHashPrefix
+		metaMap["issuerDomainNames"] = []string{wfe.DirectoryCAAIdentity}
 	}
 	// The "meta" directory entry may also include a string with a website URL
 	if wfe.DirectoryWebsite != "" {
@@ -1263,16 +1269,10 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	}
 
 	if challenge.Type == core.ChallengeTypeDNSPersist01 {
-		// draft-ietf-acme-dns-persist-01 section 3.1 states, "Servers MUST NOT
+		// draft-ietf-acme-dns-persist-02 section 3.1 states, "Servers MUST NOT
 		// send more than 10 issuer domain names." Be aware of this if we ever
 		// support configuration of multiple CAA identities.
 		challenge.IssuerDomainNames = []string{wfe.DirectoryCAAIdentity}
-
-		// TODO(#8724): Once the configuration of AccountURIPrefix is required
-		// to be non-empty, this conditional can be removed.
-		if wfe.AccountURIPrefix != "" {
-			challenge.AccountURI = fmt.Sprintf("%s%d", wfe.AccountURIPrefix, authz.RegistrationID)
-		}
 
 		// dns-persist-01 does not use a token, but authorizations store a
 		// single token which gets unconditionally assigned to all challenge
@@ -1282,7 +1282,6 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 		// Belt and suspenders: we don't expect these to ever be populated
 		// outside of this function, but just in case.
 		challenge.IssuerDomainNames = nil
-		challenge.AccountURI = ""
 	}
 }
 

@@ -2,6 +2,7 @@ package sa
 
 import (
 	"context"
+	"crypto"
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
@@ -149,6 +150,41 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 	}
 
 	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
+		if features.Get().DNSPersist01Enabled {
+			// draft-ietf-acme-dns-persist-02 section 4.2 requires that we
+			// retain the thumbprint of every key an account has used. Lock the
+			// row so that concurrent updates each record the key they replace.
+			var replacedJWKBytes []byte
+			err := tx.SelectOne(ctx, &replacedJWKBytes,
+				"SELECT jwk FROM registrations WHERE id = ? AND status = ? FOR UPDATE",
+				req.RegistrationID,
+				string(core.StatusValid),
+			)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return nil, berrors.NotFoundError("valid registration with ID '%d' not found", req.RegistrationID)
+				}
+				return nil, err
+			}
+			var replacedJWK jose.JSONWebKey
+			err = replacedJWK.UnmarshalJSON(replacedJWKBytes)
+			if err != nil {
+				return nil, fmt.Errorf("parsing replaced JWK: %w", err)
+			}
+			thumbprint, err := replacedJWK.Thumbprint(crypto.SHA256)
+			if err != nil {
+				return nil, fmt.Errorf("computing replaced JWK thumbprint: %w", err)
+			}
+			err = tx.Insert(ctx, &priorRegistrationKeyModel{
+				RegistrationID: req.RegistrationID,
+				JWKThumbprint:  thumbprint,
+				ReplacedAt:     ssa.clk.Now(),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("storing replaced JWK thumbprint: %w", err)
+			}
+		}
+
 		result, err := tx.ExecContext(ctx,
 			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? AND status = ? LIMIT 1",
 			req.Jwk,

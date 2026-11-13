@@ -83,6 +83,8 @@ func TestMain(m *testing.M) {
 
 var accountURIPrefixes = []string{"http://letsencrypt.org:4000/acme/reg/"}
 
+const accountHashPrefix = "http://letsencrypt.org:4000/acme/acct-hash/"
+
 func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
 	return &vapb.PerformValidationRequest{
 		Identifier: ident.ToProto(),
@@ -147,6 +149,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, fakeDNS
 		fc,
 		logger,
 		accountURIPrefixes,
+		accountHashPrefix,
 		perspective,
 		"",
 		isNonLoopbackReservedIP,
@@ -326,6 +329,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		clock.NewFake(),
 		blog.NewMock(),
 		accountURIPrefixes,
+		accountHashPrefix,
 		"example perspective",
 		"",
 		isNonLoopbackReservedIP,
@@ -388,7 +392,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization, testAccountURI)
+	_, _, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization, testAccountURI, nil)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
