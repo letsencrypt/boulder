@@ -17,16 +17,19 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 )
 
-// getAddr queries for all A/AAAA records associated with hostname, and returns
+// getAddrs queries for all A/AAAA records associated with hostname, and returns
 // all valid addresses resolved and the addresses of all resolvers used. If
-// there is an error resolving the hostname, or if no usable IP addresses are
-// available then a berrors.DNSError instance is returned with a nil netip.Addr
-// slice.
-func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, []string, error) {
+// tlsPort is non-zero and ValidationUsesECH is enabled, it also queries for
+// hostname's HTTPS records and returns the ECHConfigList (if any) that applies
+// to a TLS connection on tlsPort. If there is an error resolving the hostname,
+// or if no usable IP addresses are available, then a berrors.DNSError instance
+// is returned with a nil netip.Addr slice.
+func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string, tlsPort int) ([]netip.Addr, []byte, []string, error) {
 	// Kick off both the A and AAAA lookups in parallel.
 	var wg sync.WaitGroup
 
@@ -44,11 +47,20 @@ func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string
 		resAAAA, resolverAAAA, errAAAA = va.dnsClient.LookupAAAA(ctx, hostname)
 	})
 
+	var resHTTPS *bdns.Result[*dns.HTTPS]
+	var resolverHTTPS string
+	var errHTTPS error
+	if tlsPort != 0 && features.Get().ValidationUsesECH {
+		wg.Go(func() {
+			resHTTPS, resolverHTTPS, errHTTPS = va.dnsClient.LookupHTTPS(ctx, hostname)
+		})
+	}
+
 	wg.Wait()
 
 	// Collect all non-empty resolvers now, so we can return them along with
 	// either a real result or an error.
-	resolvers := []string{resolverA, resolverAAAA}
+	resolvers := []string{resolverA, resolverAAAA, resolverHTTPS}
 	resolvers = slices.DeleteFunc(resolvers, func(a string) bool {
 		return a == ""
 	})
@@ -79,13 +91,28 @@ func (va *ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string
 		}
 	}
 
+	var echConfigList []byte
+	if errHTTPS == nil && resHTTPS != nil {
+		echConfigList = echConfigListFromHTTPS(resHTTPS.Final, tlsPort)
+		if len(echConfigList) != 0 {
+			va.metrics.echConfigLookups.WithLabelValues("found").Inc()
+		} else {
+			va.metrics.echConfigLookups.WithLabelValues("absent").Inc()
+		}
+	} else if errHTTPS != nil {
+		va.metrics.echConfigLookups.WithLabelValues("error").Inc()
+		va.log.Warningf("Looking up ECH config for %s: %s", hostname, errHTTPS)
+	}
+
+	// TODO(#9009): Error out on HTTPS lookup failure, and include its error in
+	// the user-facing message if it was the cause of failure.
 	if errA != nil && errAAAA != nil {
-		return nil, nil, berrors.DNSError("%s; %s", errA, errAAAA)
+		return nil, nil, nil, berrors.DNSError("%s; %s", errA, errAAAA)
 	}
 
 	addrs := append(addrsAAAA, addrsA...)
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
-	return addrs, resolvers, nil
+	return addrs, echConfigList, resolvers, nil
 }
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved

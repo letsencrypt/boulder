@@ -145,9 +145,10 @@ type ValidationRecord struct {
 	// }
 	AddressesTried []netip.Addr `json:"addressesTried,omitempty"`
 
-	// ResolverAddrs is the host:port of the DNS resolver(s) that fulfilled the
-	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
-	// instead look like A:host:port or AAAA:host:port
+	// ResolverAddrs is the host:port of the DNS resolver(s) that fulfilled the A,
+	// AAAA, and HTTPS lookups for AddressUsed and the ECH config. During
+	// recursive A and AAAA lookups, a record may instead look like A:host:port or
+	// AAAA:host:port
 	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
 
 	// ECH records whether the TLS connection to AddressUsed used Encrypted

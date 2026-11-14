@@ -235,7 +235,7 @@ func (va *ValidationAuthorityImpl) newValidationRecord(ctx context.Context, url 
 		}
 
 		// Resolve IP addresses for the identifier
-		addrs, resolvers, err = va.getAddrs(ctx, host)
+		addrs, _, resolvers, err = va.getAddrs(ctx, host, 0)
 		if err != nil {
 			return core.ValidationRecord{}, err
 		}
