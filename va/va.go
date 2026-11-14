@@ -121,6 +121,9 @@ type vaMetrics struct {
 	// echConfigLookups counts HTTPS lookups for ECH configs, labelled by
 	// result: [found|absent|error].
 	echConfigLookups *prometheus.CounterVec
+	// echHandshakes counts TLS handshakes attempted with ECH, labelled by
+	// outcome: [accepted|accepted_retry|rejected|failed].
+	echHandshakes *prometheus.CounterVec
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
@@ -161,6 +164,10 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		Name: "ech_config_lookups",
 		Help: "Number of HTTPS DNS lookups for ECH configs, by result",
 	}, []string{"result"})
+	echHandshakes := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "ech_handshakes",
+		Help: "Number of TLS handshakes attempted with ECH, by outcome",
+	}, []string{"outcome"})
 
 	return &vaMetrics{
 		validationLatency:                 validationLatency,
@@ -172,6 +179,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		ipv4FallbackCounter:               ipv4FallbackCounter,
 		experimentConcurrence:             experimentConcurrence,
 		echConfigLookups:                  echConfigLookups,
+		echHandshakes:                     echHandshakes,
 	}
 }
 
