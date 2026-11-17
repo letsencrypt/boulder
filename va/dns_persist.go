@@ -28,6 +28,18 @@ func isWSP(r rune) bool {
 	return r == '\t' || r == ' '
 }
 
+// dnsPersistValidationDomain returns the domain at which the record for a
+// dns-persist-01 challenge is queried and over which its accounturi is hashed,
+// and whether that record must include policy=wildcard.
+func dnsPersistValidationDomain(ident identifier.ACMEIdentifier, ancestorDomain string) (string, bool) {
+	if ancestorDomain != "" {
+		// Per draft-ietf-acme-dns-persist-03 section 6.2, a record at an
+		// ancestor domain must include policy=wildcard.
+		return ancestorDomain, true
+	}
+	return strings.TrimPrefix(ident.Value, "*."), strings.HasPrefix(ident.Value, "*.")
+}
+
 // parseDNSPersistRecord parses a raw TXT record string per RFC 8659 issue-value
 // syntax. It returns the issuer-domain-name and parsed parameters on success,
 // or an error if the record is malformed.

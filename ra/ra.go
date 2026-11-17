@@ -20,6 +20,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -1565,6 +1566,27 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("authorization must be pending")
 	}
 
+	if req.AncestorDomain != "" {
+		if ch.Type != core.ChallengeTypeDNSPersist01 {
+			return nil, berrors.MalformedError("ancestorDomain is not supported for challenge type %q", ch.Type)
+		}
+		// The WFE should already have rejected an ancestorDomain which is not a
+		// proper ancestor of the identifier. This is an additional check to
+		// ensure correctness.
+		identDomain := strings.TrimPrefix(authz.Identifier.Value, "*.")
+		if !strings.HasSuffix(identDomain, "."+req.AncestorDomain) {
+			return nil, berrors.MalformedError("ancestorDomain %q is not a proper ancestor of %q", req.AncestorDomain, identDomain)
+		}
+		// Per draft-ietf-acme-dns-persist-03 section 6.2, we should not
+		// validate at or above a public suffix, because a record there could
+		// cover names held by unrelated registrants. Unlike the PA, we include
+		// the private section of the Public Suffix List.
+		registeredDomain, err := publicsuffix.Domain(identDomain)
+		if err != nil || (req.AncestorDomain != registeredDomain && !strings.HasSuffix(req.AncestorDomain, "."+registeredDomain)) {
+			return nil, berrors.UnauthorizedError("ancestorDomain %q is a public suffix", req.AncestorDomain)
+		}
+	}
+
 	// Compute the key authorization field based on the registration key
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
 	if err != nil {
@@ -1624,6 +1646,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 				AccountKeyThumbprints:    accountKeyThumbprints,
+				AncestorDomain:           req.AncestorDomain,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),

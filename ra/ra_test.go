@@ -700,6 +700,138 @@ func TestPerformValidationDNSPersist01Lifetime(t *testing.T) {
 	}
 }
 
+func TestPerformValidationAncestorDomain(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("TestPerformValidationAncestorDomain requires config-next")
+	}
+
+	testCases := []struct {
+		name           string
+		ident          identifier.ACMEIdentifier
+		challengeType  core.AcmeChallenge
+		ancestorDomain string
+		expectErr      berrors.ErrorType
+	}{
+		{
+			name:           "Registered domain",
+			ident:          identifier.NewDNS("www.example.com"),
+			challengeType:  core.ChallengeTypeDNSPersist01,
+			ancestorDomain: "example.com",
+		},
+		{
+			name:           "Below the registered domain",
+			ident:          identifier.NewDNS("a.b.example.com"),
+			challengeType:  core.ChallengeTypeDNSPersist01,
+			ancestorDomain: "b.example.com",
+		},
+		{
+			name:           "Registered domain of a wildcard identifier",
+			ident:          identifier.NewDNS("*.www.example.com"),
+			challengeType:  core.ChallengeTypeDNSPersist01,
+			ancestorDomain: "example.com",
+		},
+		{
+			name:           "ICANN public suffix",
+			ident:          identifier.NewDNS("www.example.com"),
+			challengeType:  core.ChallengeTypeDNSPersist01,
+			ancestorDomain: "com",
+			expectErr:      berrors.Unauthorized,
+		},
+		{
+			name:           "Private public suffix",
+			ident:          identifier.NewDNS("www.example.github.io"),
+			challengeType:  core.ChallengeTypeDNSPersist01,
+			ancestorDomain: "github.io",
+			expectErr:      berrors.Unauthorized,
+		},
+		{
+			name:           "Not an ancestor of the identifier",
+			ident:          identifier.NewDNS("www.example.com"),
+			challengeType:  core.ChallengeTypeDNSPersist01,
+			ancestorDomain: "other.example.com",
+			expectErr:      berrors.Malformed,
+		},
+		{
+			name:           "The identifier itself",
+			ident:          identifier.NewDNS("www.example.com"),
+			challengeType:  core.ChallengeTypeDNSPersist01,
+			ancestorDomain: "www.example.com",
+			expectErr:      berrors.Malformed,
+		},
+		{
+			name:           "Other challenge type",
+			ident:          identifier.NewDNS("www.example.com"),
+			challengeType:  core.ChallengeTypeDNS01,
+			ancestorDomain: "example.com",
+			expectErr:      berrors.Malformed,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			va, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
+			defer cleanUp()
+
+			pa, err := policy.New(
+				map[identifier.IdentifierType]bool{identifier.TypeDNS: true},
+				map[core.AcmeChallenge]bool{core.ChallengeTypeDNSPersist01: true, core.ChallengeTypeDNS01: true},
+				ra.log)
+			test.AssertNotError(t, err, "creating test PA")
+			err = pa.LoadIdentPolicyFile("../test/ident-policy.yaml")
+			test.AssertNotError(t, err, "loading test identifier policy")
+			ra.PA = pa
+
+			res, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+				NewOrder: &sapb.NewOrderRequest{
+					RegistrationID: registration.Id,
+					Expires:        timestamppb.New(fc.Now().Add(12 * time.Hour)),
+					Identifiers:    []*corepb.Identifier{tc.ident.ToProto()},
+				},
+				NewAuthzs: []*sapb.NewAuthzRequest{
+					{
+						Identifier:     tc.ident.ToProto(),
+						RegistrationID: registration.Id,
+						Expires:        timestamppb.New(fc.Now().Add(12 * time.Hour)),
+						ChallengeTypes: []string{string(tc.challengeType)},
+						Token:          core.NewToken(),
+					},
+				},
+			})
+			test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+			authzPB := getAuthorization(t, res.V2Authorizations[0], sa)
+
+			va.doDCVResult = &vapb.ValidationResult{
+				Records: []*corepb.ValidationRecord{
+					{
+						Hostname:      tc.ancestorDomain,
+						ResolverAddrs: []string{"rebound"},
+					},
+				},
+			}
+			va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
+
+			_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+				Authz:          authzPB,
+				ChallengeIndex: 0,
+				AncestorDomain: tc.ancestorDomain,
+			})
+			if tc.expectErr != 0 {
+				test.AssertErrorIs(t, err, tc.expectErr)
+				return
+			}
+			test.AssertNotError(t, err, "PerformValidation failed")
+
+			select {
+			case req := <-va.doDCVRequest:
+				test.AssertEquals(t, req.AncestorDomain, tc.ancestorDomain)
+			case <-time.After(time.Second):
+				t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+			}
+			ra.drainWG.Wait()
+		})
+	}
+}
+
 func TestPerformValidationDeactivatedAccount(t *testing.T) {
 	_, sa, ra, _, fc, registration, cleanUp := initAuthorities(t)
 	defer cleanUp()

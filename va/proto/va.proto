@@ -33,7 +33,7 @@ message IsCAAValidResponse {
 }
 
 message PerformValidationRequest {
-  // Next unused field number: 8
+  // Next unused field number: 9
   reserved 1; // Previously dnsName
   core.Identifier identifier = 5;
   core.Challenge challenge = 2;
@@ -46,6 +46,7 @@ message PerformValidationRequest {
   // validated by the primary perspective, which remote perspectives must also
   // observe.
   string DNSPersistAccountURI = 7;
+  string ancestorDomain = 8;
 }
 
 message AuthzMeta {

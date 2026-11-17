@@ -615,6 +615,7 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 	testCases := []struct {
 		name               string
 		ident              identifier.ACMEIdentifier
+		ancestorDomain     string
 		txtRecord          string
 		thumbprints        [][]byte
 		expectPersistUntil time.Time
@@ -652,6 +653,28 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 			expectPersistUntil: time.Unix(4102444800, 0).UTC(),
 		},
 		{
+			name:           "Hash over an ancestor domain",
+			ident:          identifier.NewDNS("www.example.com"),
+			ancestorDomain: "example.com",
+			txtRecord:      "letsencrypt.org;accounturi=" + domainAccountURI + ";policy=wildcard",
+			thumbprints:    [][]byte{thumbprint},
+		},
+		{
+			name:           "Hash over an ancestor domain of a wildcard identifier",
+			ident:          identifier.NewDNS("*.www.example.com"),
+			ancestorDomain: "example.com",
+			txtRecord:      "letsencrypt.org;accounturi=" + domainAccountURI + ";policy=wildcard",
+			thumbprints:    [][]byte{thumbprint},
+		},
+		{
+			name:           "Record at an ancestor domain without policy=wildcard",
+			ident:          identifier.NewDNS("www.example.com"),
+			ancestorDomain: "example.com",
+			txtRecord:      "letsencrypt.org;accounturi=" + domainAccountURI,
+			thumbprints:    [][]byte{thumbprint},
+			expectProbType: probs.UnauthorizedProblem,
+		},
+		{
 			name:           "Hash over a key the account has not used",
 			ident:          identifier.NewDNS("example.com"),
 			txtRecord:      "letsencrypt.org;accounturi=" + domainAccountURI,
@@ -669,9 +692,13 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			validationDomain := strings.TrimPrefix(tc.ident.Value, "*.")
+			if tc.ancestorDomain != "" {
+				validationDomain = tc.ancestorDomain
+			}
 			va, _ := setup(nil, "", nil, &dnsPersistFakeDNS{
 				records: map[string][]string{
-					core.DNSPersistPrefix + "." + strings.TrimPrefix(tc.ident.Value, "*."): {tc.txtRecord},
+					core.DNSPersistPrefix + "." + validationDomain: {tc.txtRecord},
 				},
 			})
 			va.accountURIPrefixes = []string{"https://ca.example/acct/"}
@@ -681,11 +708,13 @@ func TestDoDCVDNSPersist01(t *testing.T) {
 			req := createValidationRequest(tc.ident, core.ChallengeTypeDNSPersist01)
 			req.Authz.RegID = 123
 			req.AccountKeyThumbprints = tc.thumbprints
+			req.AncestorDomain = tc.ancestorDomain
 
 			res, err := va.DoDCV(context.Background(), req)
 			test.AssertNotError(t, err, "DoDCV failed")
 			if tc.expectProbType == "" {
 				test.Assert(t, res.Problem == nil, "expected validation to succeed")
+				test.AssertEquals(t, res.Records[0].Hostname, validationDomain)
 				if tc.expectPersistUntil.IsZero() {
 					test.Assert(t, res.PersistUntil == nil, "expected no persistUntil")
 				} else {

@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"slices"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/eggsampler/acme/v3"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // dnsPersist01RecordValues returns an issuer-domain-name and a hashed
@@ -55,6 +57,61 @@ func dnsPersist01RecordValues(t *testing.T, c *client, domainName string) (strin
 	digest := sha256.Sum256(preimage)
 	accountURI := directory.Meta.AccountHashPrefix + "sha-256/" + base64.RawURLEncoding.EncodeToString(digest[:])
 	return directory.Meta.IssuerDomainNames[0], accountURI
+}
+
+// staticNonce is a jose.NonceSource which returns a single nonce.
+type staticNonce string
+
+func (n staticNonce) Nonce() (string, error) {
+	return string(n), nil
+}
+
+// respondWithAncestorDomain responds to a dns-persist-01 challenge with the
+// given ancestorDomain, and returns the response's status code and body.
+//
+// TODO: Use the ACME client once eggsampler/acme supports
+// draft-ietf-acme-dns-persist-03 and can send ancestorDomain.
+func respondWithAncestorDomain(t *testing.T, c *client, challengeURL string, ancestorDomain string) (int, []byte) {
+	t.Helper()
+
+	nonceResp, err := http.Head(c.Client.Directory().NewNonce)
+	if err != nil {
+		t.Fatalf("fetching nonce: %s", err)
+	}
+	nonceResp.Body.Close()
+
+	signer, err := jose.NewSigner(
+		jose.SigningKey{
+			Algorithm: jose.ES256,
+			Key:       jose.JSONWebKey{Key: c.Account.PrivateKey, KeyID: c.Account.URL},
+		},
+		&jose.SignerOptions{
+			NonceSource:  staticNonce(nonceResp.Header.Get("Replay-Nonce")),
+			ExtraHeaders: map[jose.HeaderKey]any{"url": challengeURL},
+		},
+	)
+	if err != nil {
+		t.Fatalf("creating signer: %s", err)
+	}
+	payload, err := json.Marshal(map[string]string{"ancestorDomain": ancestorDomain})
+	if err != nil {
+		t.Fatalf("marshaling challenge response: %s", err)
+	}
+	jws, err := signer.Sign(payload)
+	if err != nil {
+		t.Fatalf("signing challenge response: %s", err)
+	}
+
+	resp, err := http.Post(challengeURL, "application/jose+json", strings.NewReader(jws.FullSerialize()))
+	if err != nil {
+		t.Fatalf("responding to challenge: %s", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading challenge response: %s", err)
+	}
+	return resp.StatusCode, body
 }
 
 func TestDNSPersist01HappyPath(t *testing.T) {
@@ -783,5 +840,79 @@ func TestDNSPersist01PriorAccountKey(t *testing.T) {
 
 	if auth.Status != "valid" {
 		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
+	}
+}
+
+func TestDNSPersist01AncestorDomain(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-persist-01 to be enabled")
+	}
+
+	ancestorDomain := random_domain()
+	domain := "www." + ancestorDomain
+	c, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating client: %s", err)
+	}
+
+	issuer, accountURI := dnsPersist01RecordValues(t, c, ancestorDomain)
+	record := fmt.Sprintf("%s;accounturi=%s;policy=wildcard", issuer, accountURI)
+	_, err = testSrvClient.AddDNSPersist01Response(ancestorDomain, record)
+	if err != nil {
+		t.Fatalf("adding DNS response: %s", err)
+	}
+	t.Cleanup(func() {
+		_, err := testSrvClient.RemoveDNSPersist01Response(ancestorDomain)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	idents := []acme.Identifier{{Type: "dns", Value: domain}}
+
+	order, err := c.Client.NewOrder(c.Account, idents)
+	if err != nil {
+		t.Fatalf("creating new order: %s", err)
+	}
+
+	authzURL := order.Authorizations[0]
+	auth, err := c.Client.FetchAuthorization(c.Account, authzURL)
+	if err != nil {
+		t.Fatalf("fetching authorization: %s", err)
+	}
+
+	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSPersist01]
+	if !ok {
+		t.Fatal("dns-persist-01 challenge not offered by server")
+	}
+
+	// A public suffix is rejected without changing the challenge's state.
+	status, body := respondWithAncestorDomain(t, c, chal.URL, "com")
+	if status != http.StatusForbidden || !strings.Contains(string(body), "urn:ietf:params:acme:error:unauthorized") {
+		t.Fatalf("responding with a public suffix: expected unauthorized error, got %d: %s", status, body)
+	}
+
+	status, body = respondWithAncestorDomain(t, c, chal.URL, ancestorDomain)
+	if status != http.StatusOK {
+		t.Fatalf("responding with ancestorDomain: got %d: %s", status, body)
+	}
+
+	for range 40 {
+		auth, err = c.Client.FetchAuthorization(c.Account, authzURL)
+		if err != nil {
+			t.Fatalf("fetching authorization after challenge response: %s", err)
+		}
+		if auth.Status != "pending" {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if auth.Status != "valid" {
+		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
+	}
+	if auth.Identifier.Value != domain {
+		t.Fatalf("expected authorization identifier to be %q, got %q", domain, auth.Identifier.Value)
 	}
 }

@@ -479,8 +479,9 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
-// The accountURI parameter is required for dns-account-01 challenges and the
-// dnsPersistAccountURIs parameter for dns-persist-01 challenges.
+// The accountURI parameter is required for dns-account-01 challenges. The
+// ancestorDomain parameter is optional, and only used for dns-persist-01
+// challenges.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -489,6 +490,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	keyAuthorization string,
 	accountURI string,
 	dnsPersistAccountURIs []string,
+	ancestorDomain string,
 ) ([]core.ValidationRecord, *dnsPersistIssueValueParams, error) {
 	switch kind {
 	case core.ChallengeTypeHTTP01:
@@ -501,9 +503,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		return records, nil, err
 	case core.ChallengeTypeDNSPersist01:
 		if features.Get().DNSPersist01Enabled {
-			wildcard := strings.HasPrefix(ident.Value, "*.")
-			// Strip a (potential) leading wildcard token from the identifier.
-			ident.Value = strings.TrimPrefix(ident.Value, "*.")
+			validationDomain, wildcard := dnsPersistValidationDomain(ident, ancestorDomain)
+			ident.Value = validationDomain
 			return va.validateDNSPersist01(ctx, ident, dnsPersistAccountURIs, wildcard)
 		}
 	case core.ChallengeTypeTLSALPN01:
@@ -825,7 +826,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		// hashed URI which we recompute over each key the account has used,
 		// current key first, both for the domain being validated and for the
 		// domain-omitted form "*".
-		domain := strings.TrimPrefix(ident.Value, "*.")
+		domain, _ := dnsPersistValidationDomain(ident, req.AncestorDomain)
 		for _, thumbprint := range req.AccountKeyThumbprints {
 			key := base64.RawURLEncoding.EncodeToString(thumbprint)
 			for _, domainName := range []string{domain, "*"} {
@@ -861,6 +862,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		req.ExpectedKeyAuthorization,
 		accountURI,
 		dnsPersistAccountURIs,
+		req.AncestorDomain,
 	)
 
 	// Stop the clock for local validation latency.

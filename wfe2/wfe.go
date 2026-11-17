@@ -1366,6 +1366,48 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
+	var ancestorDomain string
+	if authz.Challenges[challengeIndex].Type == core.ChallengeTypeDNSPersist01 {
+		// draft-ietf-acme-dns-persist-03 sections 4 and 6.2 require that we
+		// reject validation domain names longer than DNS allows, and any
+		// attempt to change the ancestorDomain of a finalized challenge.
+		var challengeResponse struct {
+			AncestorDomain json.RawMessage `json:"ancestorDomain"`
+		}
+		err = json.Unmarshal(body, &challengeResponse)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
+			return
+		}
+		identDomain := strings.TrimPrefix(authz.Identifier.Value, "*.")
+		validationDomain := identDomain
+		if len(challengeResponse.AncestorDomain) > 0 {
+			err = json.Unmarshal(challengeResponse.AncestorDomain, &ancestorDomain)
+			if err != nil || !strings.HasSuffix(identDomain, "."+ancestorDomain) {
+				wfe.sendError(response, logEvent, probs.Malformed("ancestorDomain must be a string naming a proper ancestor of the identifier"), err)
+				return
+			}
+			validationDomain = ancestorDomain
+		}
+		if len(core.DNSPersistPrefix)+1+len(validationDomain) > 253 {
+			wfe.sendError(response, logEvent, probs.Malformed("Validation domain name for %q exceeds 253 octets", validationDomain), nil)
+			return
+		}
+		if authz.Status == core.StatusValid {
+			// The validation record of a valid dns-persist-01 challenge holds
+			// the domain at which its TXT record was found.
+			validatedDomain := identDomain
+			records := authz.Challenges[challengeIndex].ValidationRecord
+			if len(records) > 0 {
+				validatedDomain = records[0].Hostname
+			}
+			if validationDomain != validatedDomain {
+				wfe.sendError(response, logEvent, probs.Malformed("ancestorDomain of a finalized challenge cannot be changed"), nil)
+				return
+			}
+		}
+	}
+
 	// We can expect some clients to try and update a challenge for an authorization
 	// that is already valid. In this case we don't need to process the challenge
 	// update. It wouldn't be helpful, the overall authorization is already good!
@@ -1395,6 +1437,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		authzPB, err = wfe.ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
+			AncestorDomain: ancestorDomain,
 		})
 		if err != nil || core.IsAnyNilOrZero(authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
