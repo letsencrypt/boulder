@@ -121,9 +121,27 @@ func TestTLSSubordinateCACertificateMatchesCPSProfile(t *testing.T) {
 			wantSubStr: "extKeyUsage does not contain exactly id-kp-serverAuth",
 		},
 		{
-			name: "missing_digital_signature",
+			// CP/CPS v6.3 made the digitalSignature bit optional for this
+			// profile, so a certificate asserting only keyCertSign and
+			// cRLSign conforms.
+			name: "no_digital_signature",
 			mod: func(t *testing.T, tmpl *x509.Certificate) {
 				tmpl.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
+			},
+			want: lint.Pass,
+		},
+		{
+			name: "missing_cert_sign",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageCRLSign
+			},
+			want:       lint.Error,
+			wantSubStr: "keyUsage does not assert exactly the bits required by the profile",
+		},
+		{
+			name: "extra_key_usage_bit",
+			mod: func(t *testing.T, tmpl *x509.Certificate) {
+				tmpl.KeyUsage |= x509.KeyUsageKeyEncipherment
 			},
 			want:       lint.Error,
 			wantSubStr: "keyUsage does not assert exactly the bits required by the profile",

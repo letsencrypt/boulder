@@ -320,8 +320,8 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 		return errResult("extKeyUsage does not contain exactly id-kp-serverAuth")
 	}
 
-	// https://github.com/letsencrypt/cp-cps/blob/v6.2/CP-CPS.md?plain=1#L1075
-	// |         `keyUsage`                   | Critical, with only the `digitalSignature` (0), `keyCertSign` (5), and `cRLSign` (6) bits set |
+	// https://github.com/letsencrypt/cp-cps/blob/v6.3/CP-CPS.md?plain=1#L1076
+	// |         `keyUsage`                   | Critical, with only the `keyCertSign` (5), `cRLSign` (6), and optionally `digitalSignature` (0) bits set |
 	kuExt := getExtension(c, util.KeyUsageOID)
 	if kuExt == nil {
 		return errResult("keyUsage extension is not present")
@@ -329,7 +329,8 @@ func (l *tlsSubordinateCACertificateMatchesCPSProfile) Execute(c *x509.Certifica
 	if !kuExt.Critical {
 		return errResult("keyUsage extension is not critical")
 	}
-	if c.KeyUsage != x509.KeyUsageDigitalSignature|x509.KeyUsageCertSign|x509.KeyUsageCRLSign {
+	if c.KeyUsage != x509.KeyUsageCertSign|x509.KeyUsageCRLSign &&
+		c.KeyUsage != x509.KeyUsageDigitalSignature|x509.KeyUsageCertSign|x509.KeyUsageCRLSign {
 		return errResult("keyUsage does not assert exactly the bits required by the profile")
 	}
 
