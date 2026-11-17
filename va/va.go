@@ -453,6 +453,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	if errors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
 	}
+	if errors.Is(err, berrors.PersistExpired) {
+		return probs.PersistExpired(err.Error())
+	}
 	if errors.Is(err, berrors.DNS) {
 		return probs.DNS(err.Error())
 	}

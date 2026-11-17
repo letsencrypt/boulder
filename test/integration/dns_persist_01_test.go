@@ -705,10 +705,10 @@ func TestDNSPersist01PersistUntilPast(t *testing.T) {
 	if !ok {
 		t.Fatalf("updating challenge: expected acme.Problem error, got %T", err)
 	}
-	if prob.Type != "urn:ietf:params:acme:error:unauthorized" {
-		t.Fatalf("updating challenge: expected unauthorized error, got %s", prob.Type)
+	if prob.Type != "urn:ietf:params:acme:error:persistExpired" {
+		t.Fatalf("updating challenge: expected persistExpired error, got %s", prob.Type)
 	}
-	if !strings.Contains(prob.Detail, "is after persistUntil") {
+	if !strings.Contains(prob.Detail, "expired: persistUntil") {
 		t.Fatalf("updating challenge: expected persistUntil error, got %s", prob.Detail)
 	}
 }

@@ -131,7 +131,8 @@ func parseDNSPersistRecord(record string) (string, *dnsPersistIssueValueParams, 
 // authorizes issuance for the given account URIs and wildcard status at the
 // given time. It returns nil if the record authorizes issuance, a
 // berrors.Malformed error if the accounturi is not a well-formed hashed URI,
-// or a berrors.Unauthorized error for authorization failures.
+// a berrors.PersistExpired error if only its persistUntil prevents that, or a
+// berrors.Unauthorized error for other authorization failures.
 func checkDNSPersistRecord(params *dnsPersistIssueValueParams, accountHashPrefix string, validAccountURIs []string, wildcardName bool, validatedAt time.Time) error {
 	// Per draft-ietf-acme-dns-persist-03 section 12.3.1, an accounturi which is
 	// not a well-formed hashed URI is a syntax error. We accept only the
@@ -157,8 +158,8 @@ func checkDNSPersistRecord(params *dnsPersistIssueValueParams, accountHashPrefix
 		return berrors.UnauthorizedError("policy mismatch: expected \"wildcard\", got %q", params.policy)
 	}
 	if !params.persistUntil.IsZero() && validatedAt.After(params.persistUntil) {
-		return berrors.UnauthorizedError("validation time %s is after persistUntil %s",
-			validatedAt.Format(time.RFC3339), params.persistUntil.Format(time.RFC3339))
+		return berrors.PersistExpiredError("persistUntil %d (%s) is before validation time %s",
+			params.persistUntil.Unix(), params.persistUntil.Format(time.RFC3339), validatedAt.Format(time.RFC3339))
 	}
 	return nil
 }
@@ -188,6 +189,7 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 
 	var syntaxErrs []string
 	var authorizationErrs []string
+	var expiredErrs []string
 	var latest *dnsPersistIssueValueParams
 	for _, rr := range txts.Final {
 		record := strings.Join(rr.Txt, "")
@@ -212,6 +214,11 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 				"Parsing TXT record at %s with issuer-domain-name %q: %s", challengeSubdomain, receivedIssuer, err))
 			continue
 		}
+		if errors.Is(err, berrors.PersistExpired) {
+			expiredErrs = append(expiredErrs, fmt.Sprintf(
+				"TXT record at %s with issuer-domain-name %q expired: %s", challengeSubdomain, receivedIssuer, err))
+			continue
+		}
 		if err != nil {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
 				"Checking TXT record at %s with issuer-domain-name %q: %s", challengeSubdomain, receivedIssuer, err))
@@ -231,6 +238,9 @@ func (va *ValidationAuthorityImpl) validateDNSPersist01(ctx context.Context, ide
 			Hostname:      ident.Value,
 			ResolverAddrs: []string{resolver},
 		}}, latest, nil
+	}
+	if len(expiredErrs) > 0 {
+		return nil, nil, berrors.PersistExpiredError("%s", strings.Join(expiredErrs, "; "))
 	}
 	if len(authorizationErrs) > 0 {
 		return nil, nil, berrors.UnauthorizedError("%s", strings.Join(authorizationErrs, "; "))

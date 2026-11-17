@@ -320,7 +320,7 @@ func TestCheckDNSPersistRecord(t *testing.T) {
 			},
 			accountURI:        accountURI,
 			validatedAt:       now,
-			exceptErr:         berrors.Unauthorized,
+			exceptErr:         berrors.PersistExpired,
 			expectErrContains: "validation time",
 		},
 	}
@@ -480,11 +480,20 @@ func TestValidateDNSPersist01(t *testing.T) {
 			expectDetailContains: "missing mandatory accounturi parameter",
 		},
 		{
-			name: "Expired persistUntil returns unauthorized",
+			name: "Expired persistUntil returns persistExpired",
 			txtRecords: []string{
 				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=0",
 			},
-			expectProbType:       probs.UnauthorizedProblem,
+			expectProbType:       probs.PersistExpiredProblem,
+			expectDetailContains: `TXT record at _validation-persist.example.com with issuer-domain-name "letsencrypt.org" expired: persistUntil 0 (1970-01-01T00:00:00Z) is before validation time`,
+		},
+		{
+			name: "Expired record and malformed record returns persistExpired",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + accountURI + ";accounturi=other",
+				"letsencrypt.org;accounturi=" + accountURI + ";persistUntil=0",
+			},
+			expectProbType:       probs.PersistExpiredProblem,
 			expectDetailContains: "validation time",
 		},
 		{
@@ -496,6 +505,14 @@ func TestValidateDNSPersist01(t *testing.T) {
 			wildcard:             true,
 			expectProbType:       probs.UnauthorizedProblem,
 			expectDetailContains: "policy mismatch",
+		},
+		{
+			name: "Expired record for another account returns unauthorized",
+			txtRecords: []string{
+				"letsencrypt.org;accounturi=" + otherAccountURI + ";persistUntil=0",
+			},
+			expectProbType:       probs.UnauthorizedProblem,
+			expectDetailContains: "accounturi mismatch",
 		},
 		{
 			name: "Issuer-domain-name differing only in case is not a match",
