@@ -30,7 +30,7 @@
 			"awsCredsFile": "test/secrets/mtca-s3-creds.ini"
 		},
 		"issuerCerts": [
-			"test/certs/mtpki/mtca1.cert.pem"
+			"test/certs/webpki/mtca-1.cert.pem"
 		]
 	},
 	"syslog": {

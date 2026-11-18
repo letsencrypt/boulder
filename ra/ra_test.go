@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -468,6 +469,141 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
+}
+
+// mockSAEchoesRegistration accepts any NewRegistration or
+// UpdateRegistrationKey call and returns a Registration with the provided key.
+type mockSAEchoesRegistration struct {
+	sapb.StorageAuthorityClient
+}
+
+func (sa *mockSAEchoesRegistration) NewRegistration(_ context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{Id: 1, Key: in.Key}, nil
+}
+
+func (sa *mockSAEchoesRegistration) UpdateRegistrationKey(_ context.Context, in *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{Id: in.RegistrationID, Key: in.Jwk}, nil
+}
+
+func TestAccountKeyPolicy(t *testing.T) {
+	_, _, ra, _, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.SA = &mockSAEchoesRegistration{}
+
+	rsaJWK, err := AccountKeyA.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshaling RSA JWK: %s", err)
+	}
+	mldsaKey, err := mldsa.GenerateKey(mldsa.MLDSA44())
+	if err != nil {
+		t.Fatalf("generating ML-DSA-44 key: %s", err)
+	}
+	mldsaJWK, err := (&jose.JSONWebKey{Key: mldsaKey.Public()}).MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshaling ML-DSA-44 JWK: %s", err)
+	}
+
+	withMLDSA := goodkey.LetsEncryptCPS()
+	withMLDSA.MLDSA44 = true
+
+	notBlocked := func(context.Context, []byte) (bool, error) { return false, nil }
+	blocked := func(context.Context, []byte) (bool, error) { return true, nil }
+	lookupFails := func(context.Context, []byte) (bool, error) {
+		return false, errors.New("blocklist lookup failed")
+	}
+
+	testCases := []struct {
+		name        string
+		allowedKeys *goodkey.AllowedKeys
+		blockedFunc goodkey.BlockedKeyCheckFunc
+		jwk         []byte
+		// wantBadKey causes the test to check for BadPublicKey.
+		wantBadKey bool
+		// wantOtherErr causes the test to check for a non-nil error that is not a BadPublicKey.
+		wantOtherErr bool
+		wantDetail   string
+	}{
+		{
+			name:        "RSA allowed",
+			blockedFunc: notBlocked,
+			jwk:         rsaJWK,
+		},
+		{
+			name:        "blocked key",
+			blockedFunc: blocked,
+			jwk:         rsaJWK,
+			wantBadKey:  true,
+			wantDetail:  "public key is forbidden",
+		},
+		{
+			name:         "blocklist lookup failure is not a bad key",
+			blockedFunc:  lookupFails,
+			jwk:          rsaJWK,
+			wantOtherErr: true,
+			wantDetail:   "blocklist lookup failed",
+		},
+		{
+			name:        "ML-DSA-44 rejected by default policy",
+			blockedFunc: notBlocked,
+			jwk:         mldsaJWK,
+			wantBadKey:  true,
+		},
+		{
+			name:        "ML-DSA-44 allowed when enabled",
+			allowedKeys: &withMLDSA,
+			blockedFunc: notBlocked,
+			jwk:         mldsaJWK,
+		},
+	}
+
+	for _, tc := range testCases {
+		policy, err := goodkey.NewPolicy(&goodkey.Config{AllowedKeys: tc.allowedKeys}, tc.blockedFunc)
+		if err != nil {
+			t.Fatalf("creating key policy: %s", err)
+		}
+		ra.keyPolicies.Account = policy
+
+		calls := map[string]func() (*corepb.Registration, error){
+			"NewRegistration": func() (*corepb.Registration, error) {
+				return ra.NewRegistration(ctx, &corepb.Registration{Key: tc.jwk})
+			},
+			"UpdateRegistrationKey": func() (*corepb.Registration, error) {
+				return ra.UpdateRegistrationKey(ctx, &rapb.UpdateRegistrationKeyRequest{
+					RegistrationID: 1,
+					Jwk:            tc.jwk,
+				})
+			},
+		}
+		for method, call := range calls {
+			t.Run(tc.name+"/"+method, func(t *testing.T) {
+				res, err := call()
+				switch {
+				case tc.wantBadKey:
+					if !errors.Is(err, berrors.BadPublicKey) {
+						t.Fatalf("got error %v, want BadPublicKey", err)
+					}
+				case tc.wantOtherErr:
+					if err == nil {
+						t.Fatal("got success, want an error")
+					}
+					if errors.Is(err, berrors.BadPublicKey) {
+						t.Fatalf("got BadPublicKey (%s), want a different error", err)
+					}
+				default:
+					if err != nil {
+						t.Fatalf("got error %s, want success", err)
+					}
+					if !bytes.Equal(res.Key, tc.jwk) {
+						t.Errorf("returned key: got %s, want %s", res.Key, tc.jwk)
+					}
+					return
+				}
+				if !strings.Contains(err.Error(), tc.wantDetail) {
+					t.Errorf("got error %q, want it to contain %q", err, tc.wantDetail)
+				}
+			})
+		}
+	}
 }
 
 func TestPerformValidationExpired(t *testing.T) {

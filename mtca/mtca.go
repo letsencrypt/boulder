@@ -694,19 +694,9 @@ func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error)
 	}
 
 	tree := tlog.Tree{N: c.TreeSize, Hash: tlog.Hash(c.RootHash)}
-	timestampedCosignature, err := m.cosigner.CosignCheckpoint(tree)
+	mtcaCosignatureLine, err := m.cosigner.CosignCheckpoint(tree, m.clk.Now())
 	if err != nil {
 		return nil, nil, fmt.Errorf("signing checkpoint: %s", err)
-	}
-	mtcaSignature, err := cosignature.RawSignature(timestampedCosignature)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// TODO(#8991): use a real timestamp.
-	mtcaCosignatureLine, err := m.cosigner.SignatureLine(0, mtcaSignature)
-	if err != nil {
-		return nil, nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
 	}
 
 	signedNote, err := m.checkpointNote(tree, mtcaCosignatureLine)

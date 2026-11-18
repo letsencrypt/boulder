@@ -302,6 +302,7 @@ func (m *MirrorClient) SubmitCheckpoint(ctx context.Context, cp *checkpoint.Chec
 	if err != nil {
 		return nil, err
 	}
+
 	if checkpointCosignature.Timestamp == 0 {
 		return nil, errors.New("checkpoint cosignature has a zero timestamp")
 	}

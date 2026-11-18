@@ -296,6 +296,8 @@ This config generates an ECDSA P-384 key in the HSM with the object label `inter
 
 ### Staging Keyfile (No HSM) Ceremony
 
+This is DANGEROUS. Do not use it unless you know exactly what you're doing. It is not acceptable for use in production environments. It exists solely for use in integration test and staging environments, where software HSMs do not yet have support for ML-DSA key generation and signing operations.
+
 - `ceremony-type`: string describing the ceremony type, `staging-mldsa-keyfile-no-hsm`.
 - `key`: object containing key generation related fields.
 

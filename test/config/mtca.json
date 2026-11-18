@@ -64,8 +64,8 @@
 					"issuerURL": "http://ignored.letsencrypt.org",
 					"crlURLBase": "http://ignored.letsencrypt.org/",
 					"location": {
-						"file": "test/certs/mtpki/mtca1.key.pem",
-						"certFile": "test/certs/mtpki/mtca1.cert.pem"
+						"file": "test/certs/webpki/mtca-1.privkey.pem",
+						"certFile": "test/certs/webpki/mtca-1.cert.pem"
 					}
 				}
 			]

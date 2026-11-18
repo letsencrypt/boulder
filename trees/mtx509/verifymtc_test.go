@@ -152,7 +152,7 @@ type testMTCA struct {
 
 func loadMTCA(t *testing.T) *testMTCA {
 	t.Helper()
-	cert, err := core.LoadCert("../../test/certs/mtpki/mtca1.cert.pem")
+	cert, err := core.LoadCert("../../test/certs/webpki/mtca-1.cert.pem")
 	if err != nil {
 		t.Fatalf("LoadCert: %s", err)
 	}
@@ -164,7 +164,7 @@ func loadMTCA(t *testing.T) *testMTCA {
 	if err != nil {
 		t.Fatalf("Load: %s", err)
 	}
-	privKey, _, err := privatekey.Load("../../test/certs/mtpki/mtca1.key.pem")
+	privKey, _, err := privatekey.Load("../../test/certs/webpki/mtca-1.privkey.pem")
 	if err != nil {
 		t.Fatalf("privatekey.Load: %s", err)
 	}
