@@ -254,6 +254,10 @@ func (f *fakeDB) AddMirrorSignature(ctx context.Context, id int64, mirrorID stri
 	return fmt.Errorf("id %d not found", id)
 }
 
+func (f *fakeDB) AddSerials(ctx context.Context, inputs []*treedb.SerialMetadataModel) error {
+	return nil
+}
+
 func (f *fakeDB) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error) {
 	if mtcLogID != f.mtcLogID {
 		return 0, fmt.Errorf("wrong log")
@@ -378,7 +382,9 @@ func makeIssueRequest(t *testing.T) *mtcapb.IssueRequest {
 		Identifiers: []*corepb.Identifier{
 			{Type: "dns", Value: dnsName},
 		},
-		Profile: "mtcExample",
+		Profile:        "mtcExample",
+		EventID:        "test-event-id",
+		RegistrationID: 1,
 	}
 }
 

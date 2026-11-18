@@ -6,8 +6,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/trees"
 )
 
@@ -87,6 +89,16 @@ func (s *SubtreeModel) Mirrored() bool {
 	return len(s.MTCASignature) > 0 && s.MirrorID != nil && len(s.MirrorSignature) > 0
 }
 
+type SerialMetadataModel struct {
+	MTCLogID        string    `db:"mtcLogID"`
+	MTCSerialNumber uint64    `db:"mtcSerialNumber"`
+	RegistrationID  int64     `db:"registrationID"`
+	Expires         time.Time `db:"expires"`
+	Created         time.Time `db:"created"`
+	EntryHash       []byte    `db:"entryHash"`
+	SPKIHash        []byte    `db:"spkiHash"`
+}
+
 type Impl struct {
 	db *db.WrappedMap
 }
@@ -96,6 +108,7 @@ type Impl struct {
 func New(dbMap *db.WrappedMap) *Impl {
 	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
 	dbMap.AddTableWithName(SubtreeModel{}, "subtrees").SetKeys(true, "ID")
+	dbMap.AddTableWithName(SerialMetadataModel{}, "serialMetadata").SetKeys(false, "mtcLogID", "mtcSerialNumber")
 	return &Impl{dbMap}
 }
 
@@ -124,6 +137,23 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 // It modifies its parameter's ID field to set the newly allocated autoincrement ID.
 func (i *Impl) InsertCheckpoint(ctx context.Context, c *CheckpointModel) error {
 	return i.db.Insert(ctx, c)
+}
+
+func (i *Impl) GetSerialMetadata(ctx context.Context, mtcLogID string, mtcSerialNumber uint64) (*SerialMetadataModel, error) {
+	res, err := i.db.Get(ctx, &SerialMetadataModel{}, mtcLogID, mtcSerialNumber)
+	if err != nil {
+		return nil, err
+	}
+
+	if res == nil {
+		return nil, berrors.NotFoundError("not found")
+	}
+
+	sm, ok := res.(*SerialMetadataModel)
+	if !ok {
+		return nil, fmt.Errorf("incorrect type %T from Get()", res)
+	}
+	return sm, nil
 }
 
 func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorCosig []byte, mtcLogID string) error {
@@ -237,6 +267,7 @@ type Tx interface {
 	AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error
 	SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error)
 	SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID, newID int64) error
+	AddSerials(ctx context.Context, inputs []*SerialMetadataModel) error
 }
 
 type txImpl struct {
@@ -341,4 +372,18 @@ func (tx txImpl) SetLatestCheckpointID(ctx context.Context, mtcLogID string, old
 	}
 
 	return nil
+}
+
+func (tx txImpl) AddSerials(ctx context.Context, inputs []*SerialMetadataModel) error {
+	mi, err := db.NewMultiInserter("serialMetadata",
+		[]string{"mtcLogID", "mtcSerialNumber", "registrationID", "created", "expires", "entryHash", "spkiHash"})
+	if err != nil {
+		return err
+	}
+	for _, row := range inputs {
+		mi.Add([]any{row.MTCLogID, row.MTCSerialNumber, row.RegistrationID, row.Created, row.Expires,
+			row.EntryHash, row.SPKIHash})
+	}
+
+	return mi.Insert(ctx, tx.tx)
 }

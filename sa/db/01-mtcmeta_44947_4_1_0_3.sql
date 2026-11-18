@@ -105,3 +105,15 @@ CREATE TABLE `landmarks` (
     KEY `mtcLogID_landmarkNumber` (`mtcLogID`, `landmarkNumber`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
+
+CREATE TABLE `serialMetadata` (
+    `mtcLogID` varchar(255) NOT NULL,
+    `mtcSerialNumber` bigint(20) unsigned NOT NULL,
+    `registrationID` bigint(20) NOT NULL,
+    `created` datetime NOT NULL,
+    `expires` datetime NOT NULL,
+    `entryHash` binary(32) NOT NULL,
+    `spkiHash` binary(32) NOT NULL,
+    PRIMARY KEY (`mtcLogID`, `mtcSerialNumber`),
+    KEY `spkiHash` (`spkiHash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
