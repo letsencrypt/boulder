@@ -239,9 +239,11 @@ services:
       volumes:
         - .:/boulder:cached
         - mtc-data:/sunlight-data
-      environment:
+    environment:
+      <<: &sunlight_environment
         AWS_ACCESS_KEY_ID: boulderseaweeduser
         AWS_SECRET_ACCESS_KEY: boulderseaweedpassword
+      SUNLIGHT_CONFIG: /boulder/test/sunlight/sunlight.yaml
     build:
       context: test/sunlight/
     networks:
@@ -251,7 +253,9 @@ services:
 
   bsunlight2:
     <<: *sunlight
-    command: ["/boulder/test/sunlight/sunlight2.yaml"]
+    environment:
+      <<: *sunlight_environment
+      SUNLIGHT_CONFIG: /boulder/test/sunlight/sunlight2.yaml
     networks:
       bouldernet:
         aliases:
