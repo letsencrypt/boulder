@@ -110,7 +110,7 @@ GRANT SELECT,UPDATE ON subtrees TO 'mtpublisher'@'%';
 GRANT SELECT,INSERT,UPDATE ON checkpoints TO 'mtca'@'%';
 GRANT SELECT,INSERT,UPDATE ON latestCheckpoint TO 'mtca'@'%';
 GRANT SELECT,INSERT ON subtrees TO 'mtca'@'%';
-GRANT SELECT,INSERT,UPDATE ON serialMetadata TO 'mtca'@'%';
+GRANT SELECT,INSERT ON serialMetadata TO 'mtca'@'%';
 
 -- MTCB
 GRANT SELECT ON checkpoints TO 'mtcb'@'%';

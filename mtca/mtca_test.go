@@ -422,7 +422,7 @@ func makeIssueRequest(t *testing.T) *mtcapb.IssueRequest {
 		},
 		Profile:        "mtcExample",
 		EventID:        "test-event-id",
-		RegistrationID: regID.Int64(),
+		RegistrationID: regID.Int64() + 1, /* make sure it's nonzero*/
 	}
 }
 

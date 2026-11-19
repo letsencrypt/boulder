@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/db"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/trees"
 )
 
@@ -137,23 +136,6 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 // It modifies its parameter's ID field to set the newly allocated autoincrement ID.
 func (i *Impl) InsertCheckpoint(ctx context.Context, c *CheckpointModel) error {
 	return i.db.Insert(ctx, c)
-}
-
-func (i *Impl) GetSerialMetadata(ctx context.Context, mtcLogID string, mtcSerialNumber uint64) (*SerialMetadataModel, error) {
-	res, err := i.db.Get(ctx, &SerialMetadataModel{}, mtcLogID, mtcSerialNumber)
-	if err != nil {
-		return nil, err
-	}
-
-	if res == nil {
-		return nil, berrors.NotFoundError("not found")
-	}
-
-	sm, ok := res.(*SerialMetadataModel)
-	if !ok {
-		return nil, fmt.Errorf("incorrect type %T from Get()", res)
-	}
-	return sm, nil
 }
 
 func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorCosig []byte, mtcLogID string) error {

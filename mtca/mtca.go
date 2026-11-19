@@ -515,9 +515,9 @@ func (m *mtca) sequence(ctx context.Context) error {
 		entryHash := tlog.RecordHash(mtcleBytes)
 		// e.mtcpk.Pubkey() is nil when the entry is `null_entry` (for instance, the zeroth entry in a tree).
 		// Since the zeroth entry doesn't go through sequence() and we don't otherwise produce `null_entry`,
-		// treat it as an error.
+		// treat it as an error just in case.
 		if e.mtcpk.Pubkey() == nil {
-			return fmt.Errorf("unexpected nil pubkey")
+			return fmt.Errorf("shouldn't happen: nil pubkey")
 		}
 		spkiHash := sha256.Sum256(e.mtcpk.Pubkey())
 		serialMetadata = append(serialMetadata, &treedb.SerialMetadataModel{
