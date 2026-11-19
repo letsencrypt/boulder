@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"golang.org/x/mod/sumdb/tlog"
@@ -39,19 +38,33 @@ type Mirror interface {
 	CosignSubtree(ctx context.Context, mirrored *checkpoint.Checkpoint, mirrorLine []byte, start, end int64, subtreeHash tlog.Hash) ([]byte, error)
 }
 
+// checkpointWork is the latest checkpoint as publishCheckpoint read it, for a
+// mirror's checkpointWorker to submit.
+type checkpointWork struct {
+	// latest is that checkpoint's row in the database.
+	latest *treedb.CheckpointModel
+	// cp is the checkpoint assembled from latest.
+	cp *checkpoint.Checkpoint
+	// signedNoteForMirror is the signed note of cp, with the MTCA's signature
+	// line.
+	signedNoteForMirror []byte
+}
+
 // publisherMirror is a mirror the publisher submits to.
 type publisherMirror struct {
 	Mirror
 	// cosigner mirrors have their cosignatures stored and their subtrees
 	// signed.
 	cosigner bool
-	// completed is the ID of the last checkpoint a pass completed for this
-	// mirror, which the next pass skips.
+	// completed is the ID of the last checkpoint completed for this mirror,
+	// which its checkpointWorker skips.
 	completed int64
-	// submitting is set while a goroutine is submitting to this mirror.
-	submitting atomic.Bool
-	// signing is set while a goroutine is having this mirror sign subtrees.
-	signing atomic.Bool
+	// nextCheckpoint holds the latest checkpoint for this mirror's
+	// checkpointWorker.
+	nextCheckpoint chan checkpointWork
+	// nextSubtrees holds the latest batch of unsigned subtrees for this
+	// mirror's subtreeWorker. Only a cosigner mirror has one.
+	nextSubtrees chan []*treedb.SubtreeModel
 }
 
 // mtpublisher obtains and stores its mirrors' cosignatures over the issuance
@@ -63,7 +76,6 @@ type mtpublisher struct {
 	mirrors    []*publisherMirror
 	caVerifier *cosignature.Verifier
 	log        blog.Logger
-	wg         sync.WaitGroup
 }
 
 // New returns a publisher for the issuance log logID. It reconstructs each
@@ -81,19 +93,27 @@ func New(checkpointDB checkpointDB, interval time.Duration, logID *issuancelog.I
 		return nil, errors.New("no cosigner mirrors")
 	}
 
-	var publisherMirrors []*publisherMirror
+	var mirrors []*publisherMirror
 	for _, mirror := range cosigners {
-		publisherMirrors = append(publisherMirrors, &publisherMirror{Mirror: mirror, cosigner: true})
+		mirrors = append(mirrors, &publisherMirror{
+			Mirror:         mirror,
+			cosigner:       true,
+			nextCheckpoint: make(chan checkpointWork, 1),
+			nextSubtrees:   make(chan []*treedb.SubtreeModel, 1),
+		})
 	}
 	for _, mirror := range submitOnly {
-		publisherMirrors = append(publisherMirrors, &publisherMirror{Mirror: mirror})
+		mirrors = append(mirrors, &publisherMirror{
+			Mirror:         mirror,
+			nextCheckpoint: make(chan checkpointWork, 1),
+		})
 	}
 
 	return &mtpublisher{
 		treedb:     checkpointDB,
 		interval:   interval,
 		logID:      logID,
-		mirrors:    publisherMirrors,
+		mirrors:    mirrors,
 		caVerifier: caVerifier,
 		log:        log,
 	}, nil
@@ -108,25 +128,19 @@ type checkpointDB interface {
 	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
-// startIfIdle runs operationFunc in its own goroutine, unless busy says the
-// one an earlier pass started is still running. It logs each error with the
-// operation and mirrorID.
-func (p *mtpublisher) startIfIdle(ctx context.Context, mirrorID string, busy *atomic.Bool, operation string, operationFunc func(context.Context) error) {
-	if !busy.CompareAndSwap(false, true) {
-		return
+// sendLatest puts work in the channel, replacing work that has not been
+// received yet. The channel must have a buffer of one and no other sender, or
+// the send can block.
+func sendLatest[T any](ch chan T, work T) {
+	select {
+	case <-ch:
+	default:
 	}
-	p.wg.Go(func() {
-		defer busy.Store(false)
-		ctx := blog.ContextWith(ctx, slog.String("mirrorID", mirrorID))
-		err := operationFunc(ctx)
-		if err != nil {
-			p.log.Error(ctx, "Publish failed", err, slog.String("operation", operation))
-		}
-	})
+	ch <- work
 }
 
-// publishCheckpoint reads the latest checkpoint and starts submitCheckpoint
-// for each idle mirror. Start calls it at each interval.
+// publishCheckpoint reads the latest checkpoint and sends it to each mirror's
+// checkpointWorker.
 //
 // Builds a checkpoint signed note to send the mirror based on the contents of
 // the latest checkpoint in the DB.
@@ -164,9 +178,7 @@ func (p *mtpublisher) publishCheckpoint(ctx context.Context) error {
 	}
 
 	for _, mirror := range p.mirrors {
-		p.startIfIdle(ctx, mirror.ID(), &mirror.submitting, "Publishing checkpoint", func(ctx context.Context) error {
-			return p.submitCheckpoint(ctx, mirror, latest, cp, signedNoteForMirror)
-		})
+		sendLatest(mirror.nextCheckpoint, checkpointWork{latest: latest, cp: cp, signedNoteForMirror: signedNoteForMirror})
 	}
 	return nil
 }
@@ -216,13 +228,29 @@ func (p *mtpublisher) submitCheckpoint(ctx context.Context, mirror *publisherMir
 	return nil
 }
 
+// checkpointWorker submits each checkpoint it receives to mirror, until ctx is
+// cancelled. It logs each error with the operation and the mirror's ID.
+func (p *mtpublisher) checkpointWorker(ctx context.Context, mirror *publisherMirror) {
+	ctx = blog.ContextWith(ctx, slog.String("mirrorID", mirror.ID()))
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case work := <-mirror.nextCheckpoint:
+			err := p.submitCheckpoint(ctx, mirror, work.latest, work.cp, work.signedNoteForMirror)
+			if err != nil {
+				p.log.Error(ctx, "Publish failed", err, slog.String("operation", "Publishing checkpoint"))
+			}
+		}
+	}
+}
+
 // subtreeBatch is the number of unsigned subtrees cosignSubtrees takes per
 // pass.
 const subtreeBatch = 100
 
 // cosignSubtrees reads the unsigned subtrees, newest first, up to subtreeBatch
-// per pass, and starts signSubtrees for each idle cosigner mirror. Start calls
-// it at each interval.
+// per tick, and sends them to each cosigner mirror's subtreeWorker.
 func (p *mtpublisher) cosignSubtrees(ctx context.Context) error {
 	subtrees, err := p.treedb.GetUnsignedSubtrees(ctx, p.logID.String(), subtreeBatch)
 	if err != nil {
@@ -248,9 +276,7 @@ func (p *mtpublisher) cosignSubtrees(ctx context.Context) error {
 		if !mirror.cosigner {
 			continue
 		}
-		p.startIfIdle(ctx, mirror.ID(), &mirror.signing, "Cosigning subtrees", func(ctx context.Context) error {
-			return p.signSubtrees(ctx, mirror, subtrees)
-		})
+		sendLatest(mirror.nextSubtrees, subtrees)
 	}
 	return nil
 }
@@ -296,12 +322,45 @@ func (p *mtpublisher) signSubtrees(ctx context.Context, mirror *publisherMirror,
 	return nil
 }
 
-// Start runs publishCheckpoint and cosignSubtrees at each interval, each
-// concurrently, until ctx is cancelled.
+// subtreeWorker receives batches of unsigned subtrees and has the mirror sign
+// each one, until ctx is cancelled. It discards a batch that arrives while the
+// mirror is signing an earlier one.
+func (p *mtpublisher) subtreeWorker(ctx context.Context, mirror *publisherMirror) {
+	ctx = blog.ContextWith(ctx, slog.String("mirrorID", mirror.ID()))
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case subtrees := <-mirror.nextSubtrees:
+			err := p.signSubtrees(ctx, mirror, subtrees)
+			if err != nil {
+				p.log.Error(ctx, "Publish failed", err, slog.String("operation", "Cosigning subtrees"))
+			}
+			// A batch that arrived during signing may still list subtrees
+			// that were just signed. Discard it and wait for the batch from
+			// the next tick.
+			select {
+			case <-mirror.nextSubtrees:
+			default:
+			}
+		}
+	}
+}
+
+// Start runs a checkpointWorker for each mirror and a subtreeWorker for each
+// cosigner mirror, and runs publishCheckpoint and cosignSubtrees at each
+// interval, all concurrently, until ctx is cancelled.
 func (p *mtpublisher) Start(ctx context.Context) {
-	p.wg.Go(func() { p.run(ctx, "Publishing checkpoint", p.publishCheckpoint) })
-	p.wg.Go(func() { p.run(ctx, "Cosigning subtrees", p.cosignSubtrees) })
-	p.wg.Wait()
+	var wg sync.WaitGroup
+	for _, mirror := range p.mirrors {
+		wg.Go(func() { p.checkpointWorker(ctx, mirror) })
+		if mirror.cosigner {
+			wg.Go(func() { p.subtreeWorker(ctx, mirror) })
+		}
+	}
+	wg.Go(func() { p.run(ctx, "Publishing checkpoint", p.publishCheckpoint) })
+	wg.Go(func() { p.run(ctx, "Cosigning subtrees", p.cosignSubtrees) })
+	wg.Wait()
 }
 
 // run calls operationFunc at each interval until ctx is cancelled. It logs
