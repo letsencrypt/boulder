@@ -230,18 +230,19 @@ func (l *List) ForRealm(realm Realm) (*List, error) {
 type purpose string
 
 const (
-	// Cosigning mirrors are submitted to, and their cosignatures are stored
-	// for use in standalone certificates. CQRP section 2.4.5 requires those
-	// to be from a Usable mirror "not operated by or affiliated with the MTC
-	// CA Operator". It also allows a Frozen mirror's cosignature "generated
+	// PurposeIssuance mirrors are submitted to, and their cosignatures are
+	// stored for use in standalone certificates. CQRP section 2.4.5 requires
+	// those to be from a Usable mirror "not operated by or affiliated with the
+	// MTC CA Operator". It also allows a Frozen mirror's cosignature "generated
 	// prior to the freeze point", but a Frozen mirror makes no new ones.
-	Cosigning purpose = "cosigning"
+	PurposeIssuance purpose = "issuance"
 
-	// SubmissionOnly mirrors are submitted to, but their cosignatures are not
-	// stored. They are the Candidate, Qualified, and Usable mirrors that are
-	// not Cosigning mirrors. CQRP section 2.5.1.2 requires a CA to attempt to
-	// submit every issuance log update to all mirrors in those states.
-	SubmissionOnly purpose = "submission only"
+	// PurposeSubmissionOnly mirrors are submitted to, but their cosignatures
+	// are not stored. They are the Candidate, Qualified, and Usable mirrors
+	// that are not PurposeIssuance mirrors. CQRP section 2.5.1.2 requires a CA
+	// to attempt to submit every issuance log update to all mirrors in those
+	// states.
+	PurposeSubmissionOnly purpose = "submission only"
 )
 
 // acceptsSubmissions reports whether a mirror in state s is one CQRP section
@@ -262,9 +263,9 @@ func (l *List) ForPurpose(p purpose, caID *reloid.RelativeOID) []*Mirror {
 		})
 		cosigning := m.State == Usable && !affiliated
 		switch {
-		case p == Cosigning && cosigning:
+		case p == PurposeIssuance && cosigning:
 			mirrors = append(mirrors, m)
-		case p == SubmissionOnly && !cosigning && m.State.acceptsSubmissions():
+		case p == PurposeSubmissionOnly && !cosigning && m.State.acceptsSubmissions():
 			mirrors = append(mirrors, m)
 		}
 	}

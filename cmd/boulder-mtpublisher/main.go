@@ -121,7 +121,7 @@ func main() {
 	cmd.FailOnError(err, "Selecting the mirrors for this realm")
 
 	src := mtpublisher.NewSource(s3c, logID.TilePrefix())
-	cosigningMirrors := realmMirrors.ForPurpose(cosigners.Cosigning, logID.CAID())
+	cosigningMirrors := realmMirrors.ForPurpose(cosigners.PurposeIssuance, logID.CAID())
 	if len(cosigningMirrors) == 0 {
 		cmd.Fail(fmt.Sprintf("No mirror in realm %s is Usable and unaffiliated with CA %s", c.MTPublisher.Cosigners.Realm, logID.CAID()))
 	}
@@ -132,7 +132,7 @@ func main() {
 		cosigning = append(cosigning, client)
 	}
 	var submitOnly []mtpublisher.Mirror
-	for _, mirror := range realmMirrors.ForPurpose(cosigners.SubmissionOnly, logID.CAID()) {
+	for _, mirror := range realmMirrors.ForPurpose(cosigners.PurposeSubmissionOnly, logID.CAID()) {
 		client, err := mtpublisher.NewMirrorClient(mirror.SubmissionPrefix, mirror.MonitoringPrefix, src, mirror.BaseID.String(), mirror.PublicKey, c.MTPublisher.MirrorTimeout.Duration)
 		cmd.FailOnError(err, fmt.Sprintf("Creating client for mirror %s (%s)", mirror.BaseID, mirror.FriendlyName))
 		submitOnly = append(submitOnly, client)

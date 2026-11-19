@@ -374,26 +374,26 @@ func TestForPurpose(t *testing.T) {
 		expect  []string
 	}{
 		{
-			name:    "Cosigning",
-			purpose: Cosigning,
+			name:    "Issuance",
+			purpose: PurposeIssuance,
 			caID:    "32473.1",
 			expect:  []string{"Usable, unaffiliated"},
 		},
 		{
 			name:    "SubmissionOnly",
-			purpose: SubmissionOnly,
+			purpose: PurposeSubmissionOnly,
 			caID:    "32473.1",
 			expect:  []string{"Usable with the CA's PEN", "Usable with the CA's operator", "Candidate", "Qualified", "Candidate with the CA's PEN"},
 		},
 		{
-			name:    "Cosigning for a CA not in the issuers, which has no operator to match",
-			purpose: Cosigning,
+			name:    "Issuance for a CA not in the issuers, which has no operator to match",
+			purpose: PurposeIssuance,
 			caID:    "32473.2",
 			expect:  []string{"Usable, unaffiliated", "Usable with the CA's operator"},
 		},
 		{
 			name:    "SubmissionOnly for a CA not in the issuers, which has no operator to match",
-			purpose: SubmissionOnly,
+			purpose: PurposeSubmissionOnly,
 			caID:    "32473.2",
 			expect:  []string{"Usable with the CA's PEN", "Candidate", "Qualified", "Candidate with the CA's PEN"},
 		},
