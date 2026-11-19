@@ -381,8 +381,11 @@ func (tx txImpl) AddSerials(ctx context.Context, inputs []*SerialMetadataModel) 
 		return err
 	}
 	for _, row := range inputs {
-		mi.Add([]any{row.MTCLogID, row.MTCSerialNumber, row.RegistrationID, row.Created, row.Expires,
+		err = mi.Add([]any{row.MTCLogID, row.MTCSerialNumber, row.RegistrationID, row.Created, row.Expires,
 			row.EntryHash, row.SPKIHash})
+		if err != nil {
+			return err
+		}
 	}
 
 	return mi.Insert(ctx, tx.tx)
