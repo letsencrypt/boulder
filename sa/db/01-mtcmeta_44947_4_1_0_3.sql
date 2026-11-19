@@ -105,3 +105,18 @@ CREATE TABLE `landmarks` (
     KEY `mtcLogID_landmarkNumber` (`mtcLogID`, `landmarkNumber`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
+
+CREATE TABLE `serialMetadata` (
+    -- ASCII-format OID relative to 1.3.6.1.4.1
+    `mtcLogID` varchar(255) NOT NULL,
+    `mtcSerialNumber` bigint(20) unsigned NOT NULL,
+    -- The account that requested this certificate.
+    `registrationID` bigint(20) NOT NULL,
+    `created` datetime NOT NULL,
+    `expires` datetime NOT NULL,
+    -- The record hash of the entry, i.e. SHA-256(0x00 || MTCLogEntry)
+    `entryHash` binary(32) NOT NULL,
+    `spkiHash` binary(32) NOT NULL,
+    PRIMARY KEY (`mtcLogID`, `mtcSerialNumber`),
+    KEY `spkiHash` (`spkiHash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;

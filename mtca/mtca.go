@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/mldsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -264,10 +265,12 @@ type pool struct {
 // pendingEntry represents a pending entry in the pool, along with a channel to
 // notify a pending RPC. Each pendingEntry carries an RA-generated eventID.
 type pendingEntry struct {
-	eventID string
-	mtcle   *entry.MTCLogEntry
-	mtcpk   *pubkey.MTCPublicKey
-	ch      chan<- issuanceNotification
+	eventID        string
+	mtcle          *entry.MTCLogEntry
+	mtcpk          *pubkey.MTCPublicKey
+	expires        time.Time
+	registrationID int64
+	ch             chan<- issuanceNotification
 }
 
 func (p *pool) take() []pendingEntry {
@@ -308,6 +311,9 @@ type issuanceNotification struct {
 //
 // Safe for concurrent calls. Implements a gRPC method.
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
+	if core.IsAnyNilOrZero(req.Pubkey, req.Identifiers, req.Profile, req.EventID, req.RegistrationID) {
+		return nil, fmt.Errorf("invalid request")
+	}
 	key, err := x509.ParsePKIXPublicKey(req.Pubkey)
 	if err != nil {
 		return nil, fmt.Errorf("parsing public key: %s", err)
@@ -354,10 +360,12 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan issuanceNotification, 1)
 	err = m.pool.append(pendingEntry{
-		eventID: req.EventID,
-		mtcle:   mtcle,
-		mtcpk:   mtcpk,
-		ch:      ch,
+		eventID:        req.EventID,
+		mtcle:          mtcle,
+		mtcpk:          mtcpk,
+		expires:        notAfter,
+		registrationID: req.RegistrationID,
+		ch:             ch,
 	})
 	if err != nil {
 		return nil, err
@@ -489,6 +497,8 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	// Add leaves to the candidate, then store the returned entry index and the
 	// serial calculated from that index in an appendedEntry
+	now := m.clk.Now()
+	var serialMetadata []*treedb.SerialMetadataModel
 	for _, e := range entries {
 		entryIndex, err := candidate.AppendEntry(e.mtcle, e.mtcpk)
 		if err != nil {
@@ -498,6 +508,27 @@ func (m *mtca) sequence(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		mtcleBytes, err := e.mtcle.Marshal()
+		if err != nil {
+			return err
+		}
+		entryHash := tlog.RecordHash(mtcleBytes)
+		// e.mtcpk.Pubkey() is nil when the entry is `null_entry` (for instance, the zeroth entry in a tree).
+		// Since the zeroth entry doesn't go through sequence() and we don't otherwise produce `null_entry`,
+		// treat it as an error just in case.
+		if e.mtcpk.Pubkey() == nil {
+			return fmt.Errorf("shouldn't happen: nil pubkey")
+		}
+		spkiHash := sha256.Sum256(e.mtcpk.Pubkey())
+		serialMetadata = append(serialMetadata, &treedb.SerialMetadataModel{
+			MTCLogID:        m.logID.String(),
+			MTCSerialNumber: serial,
+			RegistrationID:  e.registrationID,
+			Expires:         e.expires,
+			Created:         now,
+			EntryHash:       entryHash[:],
+			SPKIHash:        spkiHash[:],
+		})
 		appendedEntries = append(appendedEntries, appendedEntry{pendingEntry: e, index: entryIndex, serial: serial})
 	}
 
@@ -562,6 +593,11 @@ func (m *mtca) sequence(ctx context.Context) error {
 		if latestID != latest.ID {
 			return nil, fmt.Errorf("latestCheckpoint changed during sequencing from %d to %d. multiple writers?",
 				latest.ID, latestID)
+		}
+
+		err = tx.AddSerials(ctx, serialMetadata)
+		if err != nil {
+			return nil, err
 		}
 
 		// Note that we're doing HSM work while holding a database lock. That's intentional; the database lock

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/trees"
@@ -87,6 +88,16 @@ func (s *SubtreeModel) Mirrored() bool {
 	return len(s.MTCASignature) > 0 && s.MirrorID != nil && len(s.MirrorSignature) > 0
 }
 
+type SerialMetadataModel struct {
+	MTCLogID        string    `db:"mtcLogID"`
+	MTCSerialNumber uint64    `db:"mtcSerialNumber"`
+	RegistrationID  int64     `db:"registrationID"`
+	Expires         time.Time `db:"expires"`
+	Created         time.Time `db:"created"`
+	EntryHash       []byte    `db:"entryHash"`
+	SPKIHash        []byte    `db:"spkiHash"`
+}
+
 type Impl struct {
 	db *db.WrappedMap
 }
@@ -96,6 +107,7 @@ type Impl struct {
 func New(dbMap *db.WrappedMap) *Impl {
 	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
 	dbMap.AddTableWithName(SubtreeModel{}, "subtrees").SetKeys(true, "ID")
+	dbMap.AddTableWithName(SerialMetadataModel{}, "serialMetadata").SetKeys(false, "mtcLogID", "mtcSerialNumber")
 	return &Impl{dbMap}
 }
 
@@ -237,6 +249,7 @@ type Tx interface {
 	AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error
 	SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error)
 	SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID, newID int64) error
+	AddSerials(ctx context.Context, inputs []*SerialMetadataModel) error
 }
 
 type txImpl struct {
@@ -341,4 +354,21 @@ func (tx txImpl) SetLatestCheckpointID(ctx context.Context, mtcLogID string, old
 	}
 
 	return nil
+}
+
+func (tx txImpl) AddSerials(ctx context.Context, inputs []*SerialMetadataModel) error {
+	mi, err := db.NewMultiInserter("serialMetadata",
+		[]string{"mtcLogID", "mtcSerialNumber", "registrationID", "created", "expires", "entryHash", "spkiHash"})
+	if err != nil {
+		return err
+	}
+	for _, row := range inputs {
+		err = mi.Add([]any{row.MTCLogID, row.MTCSerialNumber, row.RegistrationID, row.Created, row.Expires,
+			row.EntryHash, row.SPKIHash})
+		if err != nil {
+			return err
+		}
+	}
+
+	return mi.Insert(ctx, tx.tx)
 }

@@ -994,10 +994,11 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 	}
 
 	resp, err := mtca.Issue(ctx, &mtcapb.IssueRequest{
-		Pubkey:      subjectPublicKeyInfo,
-		Identifiers: order.Identifiers,
-		Profile:     profileName,
-		EventID:     eventID,
+		RegistrationID: order.RegistrationID,
+		Pubkey:         subjectPublicKeyInfo,
+		Identifiers:    order.Identifiers,
+		Profile:        profileName,
+		EventID:        eventID,
 	})
 	if err != nil {
 		return fmt.Errorf("issuing MTC: %s", err)

@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"math/big"
 	"strings"
 	"sync"
 	"testing"
@@ -121,10 +123,17 @@ type fakeDB struct {
 	latestCheckpoint int64
 	checkpoints      []treedb.CheckpointModel
 	subtrees         []treedb.SubtreeModel
+	// serials is a map from mtcSerialNumber to metadata.
+	serials map[uint64]treedb.SerialMetadataModel
+	// addSerialsErr, if non-nil, is returned by AddSerials.
+	addSerialsErr error
 }
 
 func newFakeDB(mtcLogID string) *fakeDB {
-	return &fakeDB{mtcLogID: mtcLogID}
+	return &fakeDB{
+		mtcLogID: mtcLogID,
+		serials:  make(map[uint64]treedb.SerialMetadataModel),
+	}
 }
 
 func (f *fakeDB) LatestCheckpoint(ctx context.Context, mtcLogID string) (_ *treedb.CheckpointModel, _ error) {
@@ -203,8 +212,16 @@ func (f *fakeDB) getSubtree(mtcLogID string, id int64) (*treedb.SubtreeModel, er
 	return nil, fmt.Errorf("subtree ID %d not found", id)
 }
 
+// WithTransaction runs txFunc against the fake. If txFunc returns an error, the
+// serials table is restored to its state from before the call, as a rollback
+// would do. Other tables are not rolled back.
 func (f *fakeDB) WithTransaction(ctx context.Context, txFunc treedb.TxFunc) (_ any, _ error) {
-	return txFunc(f)
+	before := maps.Clone(f.serials)
+	res, err := txFunc(f)
+	if err != nil {
+		f.serials = before
+	}
+	return res, err
 }
 
 func (f *fakeDB) AlreadyInitialized(ctx context.Context, mtcLogID string) (bool, error) {
@@ -252,6 +269,25 @@ func (f *fakeDB) AddMirrorSignature(ctx context.Context, id int64, mirrorID stri
 		}
 	}
 	return fmt.Errorf("id %d not found", id)
+}
+
+// AddSerials stores the given rows. Like the real table's primary key, it
+// rejects a serial that is already present.
+func (f *fakeDB) AddSerials(ctx context.Context, inputs []*treedb.SerialMetadataModel) error {
+	if f.addSerialsErr != nil {
+		return f.addSerialsErr
+	}
+	for _, row := range inputs {
+		if row.MTCLogID != f.mtcLogID {
+			return fmt.Errorf("wrong log")
+		}
+		_, ok := f.serials[row.MTCSerialNumber]
+		if ok {
+			return fmt.Errorf("duplicate serial %016x", row.MTCSerialNumber)
+		}
+		f.serials[row.MTCSerialNumber] = *row
+	}
+	return nil
 }
 
 func (f *fakeDB) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error) {
@@ -351,6 +387,7 @@ type issueResult struct {
 	err              error
 	expectedSPKIHash [sha256.Size]byte
 	expectedDNSName  string
+	expectedRegID    int64
 }
 
 // makeIssueRequest returns an IssueRequest with a freshly generated key and
@@ -373,12 +410,19 @@ func makeIssueRequest(t *testing.T) *mtcapb.IssueRequest {
 	}
 	dnsName := fmt.Sprintf("%x.example.com", buf)
 
+	regID, err := rand.Int(rand.Reader, big.NewInt(99999))
+	if err != nil {
+		t.Fatalf("rand: %s", err)
+	}
+
 	return &mtcapb.IssueRequest{
 		Pubkey: pubkeyBytes,
 		Identifiers: []*corepb.Identifier{
 			{Type: "dns", Value: dnsName},
 		},
-		Profile: "mtcExample",
+		Profile:        "mtcExample",
+		EventID:        "test-event-id",
+		RegistrationID: regID.Int64() + 1, /* make sure it's nonzero*/
 	}
 }
 
@@ -399,6 +443,7 @@ func issueMany(t *testing.T, m *mtca, n int) <-chan issueResult {
 				err:              err,
 				expectedSPKIHash: sha256.Sum256(req.Pubkey),
 				expectedDNSName:  req.Identifiers[0].Value,
+				expectedRegID:    req.RegistrationID,
 			}
 		}()
 	}
@@ -692,9 +737,30 @@ func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *treedb.Checkpoint
 // validateStoredEntries reads and parses the rightmost entries tile from
 // storage, then verifies that the entry at each index in `got` contains the
 // SPKI hash and DNS name of the request that was assigned that index.
-//
-// Only valid for tree sizes below 256.
 func validateStoredEntries(t *testing.T, fs3 *bs3test.FakeS3, prefix string, treeSize int64, got map[int64]issueResult) {
+	if treeSize >= 256 {
+		t.Fatalf("only valid for single-tile trees")
+	}
+	t.Helper()
+	entries := readStoredEntries(t, fs3, prefix, treeSize)
+
+	for idx, res := range got {
+		tbs := entries[idx].TBS()
+		if !bytes.Contains(tbs, res.expectedSPKIHash[:]) {
+			t.Errorf("entry at index %d does not contain the SPKI hash of the request that was assigned that index", idx)
+		}
+		if !bytes.Contains(tbs, []byte(res.expectedDNSName)) {
+			t.Errorf("entry at index %d does not contain the DNS name %q of the request that was assigned that index", idx, res.expectedDNSName)
+		}
+	}
+}
+
+// readStoredEntries reads and parses the rightmost entries tile from storage.
+// It returns each entry in the tree, in order.
+func readStoredEntries(t *testing.T, fs3 *bs3test.FakeS3, prefix string, treeSize int64) []*entry.MTCLogEntry {
+	if treeSize >= 256 {
+		t.Fatalf("only valid for single-tile trees")
+	}
 	t.Helper()
 	obj, ok := fs3.Objects[fmt.Sprintf("%s/tile/entries/000.p/%d", prefix, treeSize)]
 	if !ok {
@@ -726,14 +792,55 @@ func validateStoredEntries(t *testing.T, fs3 *bs3test.FakeS3, prefix string, tre
 	if int64(len(entries)) != treeSize {
 		t.Fatalf("entries tile at tree size %d: got %d entries", treeSize, len(entries))
 	}
+	return entries
+}
+
+// validateSerialMetadata checks each issueResult against the fake serialMetadata table.
+func validateSerialMetadata(t *testing.T, m *mtca, fs3 *bs3test.FakeS3, treeSize int64, got map[int64]issueResult) {
+	if treeSize >= 256 {
+		t.Fatalf("only valid for single-tile trees")
+	}
+	t.Helper()
+	fake := m.treedb.(*fakeDB)
+	if len(fake.serials) != len(got) {
+		t.Errorf("serialMetadata: got %d rows, want %d", len(fake.serials), len(got))
+	}
+
+	entries := readStoredEntries(t, fs3, m.logID.TilePrefix(), treeSize)
+	_, wantExpires := m.profiles["mtcExample"].GenerateValidity(m.clk.Now())
 
 	for idx, res := range got {
-		tbs := entries[idx].TBS()
-		if !bytes.Contains(tbs, res.expectedSPKIHash[:]) {
-			t.Errorf("entry at index %d does not contain the SPKI hash of the request that was assigned that index", idx)
+		row, ok := fake.serials[res.MtcSerialNumber]
+		if !ok {
+			t.Errorf("serialMetadata: no row for serial %016x (index %d)", res.MtcSerialNumber, idx)
+			continue
 		}
-		if !bytes.Contains(tbs, []byte(res.expectedDNSName)) {
-			t.Errorf("entry at index %d does not contain the DNS name %q of the request that was assigned that index", idx, res.expectedDNSName)
+		if row.MTCLogID != m.logID.String() {
+			t.Errorf("serialMetadata index %d: got MTCLogID %q, want %q", idx, row.MTCLogID, m.logID.String())
+		}
+		if row.MTCSerialNumber != res.MtcSerialNumber {
+			t.Errorf("serialMetadata index %d: got MTCSerialNumber %016x, want %016x", idx, row.MTCSerialNumber, res.MtcSerialNumber)
+		}
+		if row.RegistrationID != res.expectedRegID {
+			t.Errorf("serialMetadata index %d: got RegistrationID %d, want %d", idx, row.RegistrationID, res.expectedRegID)
+		}
+		if !row.Created.Equal(m.clk.Now()) {
+			t.Errorf("serialMetadata index %d: got Created %s, want %s", idx, row.Created, m.clk.Now())
+		}
+		if !row.Expires.Equal(wantExpires) {
+			t.Errorf("serialMetadata index %d: got Expires %s, want %s", idx, row.Expires, wantExpires)
+		}
+		if !bytes.Equal(row.SPKIHash, res.expectedSPKIHash[:]) {
+			t.Errorf("serialMetadata index %d: got SPKIHash %x, want %x", idx, row.SPKIHash, res.expectedSPKIHash)
+		}
+		mtcleBytes, err := entries[idx].Marshal()
+		if err != nil {
+			t.Fatalf("marshaling entry at index %d: %s", idx, err)
+		}
+		wantEntryHash := tlog.RecordHash(mtcleBytes)
+		if !bytes.Equal(row.EntryHash, wantEntryHash[:]) {
+			t.Errorf("serialMetadata index %d: got EntryHash %s, want %s",
+				idx, base64.StdEncoding.EncodeToString(row.EntryHash), wantEntryHash)
 		}
 	}
 }
@@ -864,6 +971,9 @@ func TestSequence(t *testing.T) {
 	// Each client's returned index must point at its own entry in the
 	// published entries tile.
 	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
+
+	// Each sequenced entry must have a serialMetadata row, with no extras.
+	validateSerialMetadata(t, mtca, fs3, latest.TreeSize, got)
 }
 
 // TestSequenceStorageFailure checks that a failed sequencing pass leaves the
@@ -901,6 +1011,12 @@ func TestSequenceStorageFailure(t *testing.T) {
 	// The in-memory frontier must be unchanged, still matching the DB.
 	verifyStores(t, mtca, fs3)
 
+	// Nothing was issued, so there must be no serial metadata.
+	fake := mtca.treedb.(*fakeDB)
+	if len(fake.serials) != 0 {
+		t.Errorf("serialMetadata after failed sequencing: got %d rows, want 0", len(fake.serials))
+	}
+
 	// Storage is working again!
 	es3.err = nil
 	results = issueMany(t, mtca, 2)
@@ -916,6 +1032,68 @@ func TestSequenceStorageFailure(t *testing.T) {
 	verifyCheckpoint(t, mtca, latest)
 
 	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
+	validateSerialMetadata(t, mtca, fs3, latest.TreeSize, got)
+}
+
+// TestSequenceAddSerialsFailure checks that when the serial metadata can't be
+// written, nothing is issued: the checkpoint is not signed, the latest
+// checkpoint does not advance, and no metadata is left behind. Sequencing must
+// then recover, reusing the same indexes.
+func TestSequenceAddSerialsFailure(t *testing.T) {
+	mtca, fs3, err := setup()
+	if err != nil {
+		t.Fatalf("setting up mtca: %s", err)
+	}
+	mirrorCosign(t, mtca)
+	fake := mtca.treedb.(*fakeDB)
+
+	mtca.pool.maxSize = 2
+	results := issueMany(t, mtca, 2)
+
+	fake.addSerialsErr = errors.New("db failure")
+	err = mtca.sequence(t.Context())
+	if !errors.Is(err, fake.addSerialsErr) {
+		t.Fatalf("sequencing with failing AddSerials: got %v, want %q", err, fake.addSerialsErr)
+	}
+
+	// Check that we got errors from `Issue()`.
+	for i := 0; i < 2; i++ {
+		res := <-results
+		if res.err == nil {
+			t.Errorf("Issue with failing AddSerials: got serial %016x, want error", res.MtcSerialNumber)
+		}
+	}
+
+	// Check that no checkpoint was signed (other than the initial checkpoint).
+	for _, c := range fake.checkpoints {
+		if c.ID != fake.latestCheckpoint && len(c.MTCASignature) != 0 {
+			t.Errorf("checkpoint %d (tree size %d) was signed despite failing AddSerials", c.ID, c.TreeSize)
+		}
+	}
+
+	// Tiles storage and DB must be consistent and at size 1.
+	latest := verifyStores(t, mtca, fs3)
+	if latest.TreeSize != 1 {
+		t.Errorf("latest checkpoint after failing AddSerials: got TreeSize %d, want 1", latest.TreeSize)
+	}
+	// There should be no serial metadata since the only entry is the zeroth index null_entry.
+	if len(fake.serials) != 0 {
+		t.Errorf("serialMetadata after failing AddSerials: got %d rows, want 0", len(fake.serials))
+	}
+
+	// Stop returning errors and sequencing should recover.
+	fake.addSerialsErr = nil
+	results = issueMany(t, mtca, 2)
+	err = mtca.sequence(t.Context())
+	if err != nil {
+		t.Fatalf("sequencing after AddSerials recovered: %s", err)
+	}
+	got := collectResults(t, results, 1, 2)
+
+	latest = verifyStores(t, mtca, fs3)
+	verifyCheckpoint(t, mtca, latest)
+	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
+	validateSerialMetadata(t, mtca, fs3, latest.TreeSize, got)
 }
 
 func TestInitLog(t *testing.T) {
