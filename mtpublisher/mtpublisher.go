@@ -108,16 +108,16 @@ type checkpointDB interface {
 	AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error
 }
 
-// startIfIdle runs operationFunc for mirror in its own goroutine, unless busy
-// says the one an earlier pass started is still running. It logs each error
-// with the operation and the mirror's ID.
-func (p *mtpublisher) startIfIdle(ctx context.Context, mirror *publisherMirror, busy *atomic.Bool, operation string, operationFunc func(context.Context) error) {
+// startIfIdle runs operationFunc in its own goroutine, unless busy says the
+// one an earlier pass started is still running. It logs each error with the
+// operation and mirrorID.
+func (p *mtpublisher) startIfIdle(ctx context.Context, mirrorID string, busy *atomic.Bool, operation string, operationFunc func(context.Context) error) {
 	if !busy.CompareAndSwap(false, true) {
 		return
 	}
 	p.wg.Go(func() {
 		defer busy.Store(false)
-		ctx := blog.ContextWith(ctx, slog.String("mirrorID", mirror.ID()))
+		ctx := blog.ContextWith(ctx, slog.String("mirrorID", mirrorID))
 		err := operationFunc(ctx)
 		if err != nil {
 			p.log.Error(ctx, "Publish failed", err, slog.String("operation", operation))
@@ -164,7 +164,7 @@ func (p *mtpublisher) publishCheckpoint(ctx context.Context) error {
 	}
 
 	for _, mirror := range p.mirrors {
-		p.startIfIdle(ctx, mirror, &mirror.submitting, "Publishing checkpoint", func(ctx context.Context) error {
+		p.startIfIdle(ctx, mirror.ID(), &mirror.submitting, "Publishing checkpoint", func(ctx context.Context) error {
 			return p.submitCheckpoint(ctx, mirror, latest, cp, signedNoteForMirror)
 		})
 	}
@@ -249,7 +249,7 @@ func (p *mtpublisher) cosignSubtrees(ctx context.Context) error {
 		if !mirror.cosigner {
 			continue
 		}
-		p.startIfIdle(ctx, mirror, &mirror.signing, "Cosigning subtrees", func(ctx context.Context) error {
+		p.startIfIdle(ctx, mirror.ID(), &mirror.signing, "Cosigning subtrees", func(ctx context.Context) error {
 			return p.signSubtrees(ctx, mirror, subtrees)
 		})
 	}
