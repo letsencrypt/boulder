@@ -78,9 +78,8 @@ type Mirror struct {
 	PublicKey        *mldsa.PublicKey
 }
 
-// The types below follow the cosigners.json schema. Parse unmarshals into them
-// and nothing else uses them, so that List, Issuer, and Mirror hold only what
-// their callers read.
+// The json types below follow the cosigners.json schema. Only Parse uses them,
+// which keeps the history entries out of List, Issuer, and Mirror.
 type jsonList struct {
 	Issuers []jsonSigner `json:"issuers"`
 	Mirrors []jsonSigner `json:"mirrors"`
@@ -110,9 +109,8 @@ type jsonOperatorChange struct {
 }
 
 // Parse returns the List in cosigners.json, with each mirror's ML-DSA-44 public
-// key from cosigners.pem, matched by key_sha256. Unknown fields are ignored. A
-// submission_prefix is required only of mirrors in a state that CQRP section
-// 2.5.1.2 requires a CA to submit to.
+// key from cosigners.pem, matched by key_sha256. Unknown fields are ignored. It
+// errors if a mirror accepts submissions but does not have a submission prefix.
 func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 	keys := make(map[string][]byte)
 	rest := cosignersPEM
@@ -166,9 +164,9 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 			return nil, fmt.Errorf("mirror %s has no operator_history", s.BaseID)
 		}
 		if len(s.StateHistory) == 0 {
-		operator := s.OperatorHistory[0].Name
 			return nil, fmt.Errorf("mirror %s has no state_history", s.BaseID)
 		}
+		operator := s.OperatorHistory[0].Name
 		state := s.StateHistory[0].State
 		switch state {
 		case Unset, Candidate, Qualified, Usable, Frozen, Removed:
