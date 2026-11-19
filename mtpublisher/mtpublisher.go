@@ -196,7 +196,7 @@ func (p *mtpublisher) submitCheckpoint(ctx context.Context, mirror *publisherMir
 	// Store the mirror's cosignature in the database.
 	err = p.treedb.AddMirrorSignature(ctx, latest.ID, mirror.ID(), checkpointCosignatureLine, p.logID.String())
 	if errors.Is(err, treedb.ErrAlreadyCosigned) {
-		p.log.Info(ctx, "Checkpoint already has a cosignature from another mirror",
+		p.log.Info(ctx, "Received checkpoint cosignature from mirror",
 			blog.MTCLogID(latest.MTCLogID),
 			slog.Int64("id", latest.ID),
 			slog.Int64("treesize", latest.TreeSize),
@@ -207,7 +207,7 @@ func (p *mtpublisher) submitCheckpoint(ctx context.Context, mirror *publisherMir
 	if err != nil {
 		return fmt.Errorf("storing checkpoint %d cosignature (%s size %d): %w", latest.ID, latest.MTCLogID, latest.TreeSize, err)
 	}
-	p.log.Info(ctx, "Stored checkpoint cosignature from mirror",
+	p.log.Info(ctx, "Received and stored checkpoint cosignature from mirror",
 		blog.MTCLogID(latest.MTCLogID),
 		slog.Int64("id", latest.ID),
 		slog.Int64("treesize", latest.TreeSize),
@@ -274,7 +274,7 @@ func (p *mtpublisher) signSubtrees(ctx context.Context, mirror *publisherMirror,
 		}
 		err = p.treedb.AddSubtreeMirrorSignature(ctx, subtree.ID, mirror.ID(), subtreeSignature, p.logID.String())
 		if errors.Is(err, treedb.ErrAlreadyCosigned) {
-			p.log.Info(ctx, "Subtree already has a signature from another mirror",
+			p.log.Info(ctx, "Received mirror signature for subtree",
 				blog.MTCLogID(subtree.MTCLogID),
 				slog.Group("subtree",
 					slog.Int64("id", subtree.ID),
@@ -286,7 +286,7 @@ func (p *mtpublisher) signSubtrees(ctx context.Context, mirror *publisherMirror,
 		if err != nil {
 			return fmt.Errorf("storing subtree %d cosignature (%s [%d, %d)): %w", subtree.ID, subtree.MTCLogID, subtree.SubtreeStart, subtree.SubtreeEnd, err)
 		}
-		p.log.Info(ctx, "Stored mirror signature for subtree",
+		p.log.Info(ctx, "Received and stored mirror signature for subtree",
 			blog.MTCLogID(subtree.MTCLogID),
 			slog.Group("subtree",
 				slog.Int64("id", subtree.ID),
