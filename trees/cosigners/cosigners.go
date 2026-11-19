@@ -166,6 +166,7 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 			return nil, fmt.Errorf("mirror %s has no operator_history", s.BaseID)
 		}
 		if len(s.StateHistory) == 0 {
+		operator := s.OperatorHistory[0].Name
 			return nil, fmt.Errorf("mirror %s has no state_history", s.BaseID)
 		}
 		state := s.StateHistory[0].State
@@ -199,7 +200,7 @@ func Parse(cosignersJSON, cosignersPEM []byte) (*List, error) {
 			FriendlyName:     s.FriendlyName,
 			BaseID:           baseID,
 			State:            state,
-			Operator:         s.OperatorHistory[0].Name,
+			Operator:         operator,
 			SubmissionPrefix: s.SubmissionPrefix,
 			MonitoringPrefix: s.BaseURL,
 			Realm:            s.Realm,
