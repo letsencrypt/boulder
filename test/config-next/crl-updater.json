@@ -25,6 +25,16 @@
 			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
+		"mtcCRLGeneratorService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "mtca",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "mtca.boulder"
+		},
 		"crlStorerService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
@@ -36,6 +46,7 @@
 			"hostOverride": "crl-storer.boulder"
 		},
 		"issuerCerts": [
+			"test/certs/webpki/mtca-1.cert.pem",
 			"test/certs/webpki/int-rsa-a.cert.pem",
 			"test/certs/webpki/int-rsa-b.cert.pem",
 			"test/certs/webpki/int-rsa-c.cert.pem",

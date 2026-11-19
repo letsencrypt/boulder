@@ -306,18 +306,18 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	})
 
 	latency := cs.clk.Now().Sub(start)
-	cs.latencyHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(latency.Seconds())
+	cs.latencyHistogram.WithLabelValues(issuer.Name()).Observe(latency.Seconds())
 
 	if err != nil {
-		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
+		cs.uploadCount.WithLabelValues(issuer.Name(), "failed").Inc()
 		cs.log.AuditErr("CRL upload failed", err, map[string]any{"id": crlId})
 		return fmt.Errorf("uploading to S3: %w", err)
 	}
 
-	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
+	cs.uploadCount.WithLabelValues(issuer.Name(), "success").Inc()
 	cs.log.AuditInfo("CRL uploaded", map[string]any{
 		"id":         crlId,
-		"issuerCN":   issuer.Subject.CommonName,
+		"issuerName": issuer.Name(),
 		"thisUpdate": crl.ThisUpdate.Format(time.RFC3339),
 		"nextUpdate": crl.NextUpdate.Format(time.RFC3339),
 		"numEntries": len(crl.RevokedCertificateEntries),

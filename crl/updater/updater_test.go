@@ -240,7 +240,7 @@ func TestNewUpdaterLookbackValidation(t *testing.T) {
 			1, 18*time.Hour, lookback, lagFactor,
 			6*time.Hour, time.Minute, 1, 1,
 			"stale-if-error=60", 5*time.Minute,
-			true, fsa, &fakeCA{}, &fakeStorer{},
+			true, fsa, &fakeCA{}, &fakeCA{}, &fakeStorer{},
 			metrics.NoopRegisterer, blog.NewMock(), clk,
 		)
 		return err
@@ -287,13 +287,14 @@ func TestUpdateShard(t *testing.T) {
 		5*time.Minute,
 		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
+		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,
 	)
 	test.AssertNotError(t, err, "building test crlUpdater")
 
 	// Ensure that getting no results from the SA still works.
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertNotError(t, err, "empty CRL")
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "success",
@@ -334,7 +335,7 @@ func TestUpdateShard(t *testing.T) {
 	})
 	// We ask for shard 2 specifically because GetRevokedCertsByShard only returns our
 	// certificate for that shard.
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 2)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 2, true)
 	test.AssertNotError(t, err, "updateShard")
 
 	expectedEntries := map[string]int32{
@@ -370,7 +371,7 @@ func TestUpdateShard(t *testing.T) {
 
 	// Ensure that getting no results from the SA still works.
 	useFakeSA(cu, &fakeSAC{revokedCerts: revokedCertsStream{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)})
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertNotError(t, err, "empty CRL")
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "success",
@@ -379,7 +380,7 @@ func TestUpdateShard(t *testing.T) {
 
 	// Errors closing the Storer upload stream should bubble up.
 	cu.cs = &fakeStorer{uploaderStream: &noopUploader{recvErr: sentinelErr}}
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "closing CRLStorer upload stream")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -390,7 +391,7 @@ func TestUpdateShard(t *testing.T) {
 
 	// Errors sending to the Storer should bubble up sooner.
 	cu.cs = &fakeStorer{uploaderStream: &noopUploader{sendErr: sentinelErr}}
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "sending CRLStorer metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -400,8 +401,8 @@ func TestUpdateShard(t *testing.T) {
 	cu.updatedCounter.Reset()
 
 	// Errors reading from the CA should bubble up sooner.
-	cu.ca = &fakeCA{gcc: generateCRLStream{recvErr: sentinelErr}}
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	cu.mtca = &fakeCA{gcc: generateCRLStream{recvErr: sentinelErr}}
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "receiving CRL bytes")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -411,8 +412,8 @@ func TestUpdateShard(t *testing.T) {
 	cu.updatedCounter.Reset()
 
 	// Errors sending to the CA should bubble up sooner.
-	cu.ca = &fakeCA{gcc: generateCRLStream{sendErr: sentinelErr}}
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	cu.mtca = &fakeCA{gcc: generateCRLStream{sendErr: sentinelErr}}
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "sending CA metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -427,7 +428,7 @@ func TestUpdateShard(t *testing.T) {
 		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
 		latest:       &corepb.CRLEntry{Serial: "037d6a05a0f6a975380456ae605cee9889", RevokedAt: now},
 	})
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "lagging replica")
 	test.AssertContains(t, err.Error(), "database replica may be lagging")
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
@@ -442,7 +443,7 @@ func TestUpdateShard(t *testing.T) {
 		revokedCerts: revokedCertsStream{entries: []*corepb.CRLEntry{{Serial: "0311b5d430823cfa25b0fc85d14c54ee35", RevokedAt: timestamppb.New(clk.Now().Add(-time.Hour))}}},
 		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
 	})
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "inconsistent primary")
 	test.AssertContains(t, err.Error(), "primary database has no revocations")
 	cu.updatedCounter.Reset()
@@ -453,9 +454,9 @@ func TestUpdateShard(t *testing.T) {
 		revokedCerts: revokedCertsStream{entries: []*corepb.CRLEntry{{Serial: "0311b5d430823cfa25b0fc85d14c54ee35", RevokedAt: timestamppb.New(clk.Now().Add(-time.Minute))}}},
 		maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
 	})
-	cu.ca = &fakeCA{gcc: generateCRLStream{}}
+	cu.mtca = &fakeCA{gcc: generateCRLStream{}}
 	cu.cs = &fakeStorer{uploaderStream: &noopUploader{}}
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertNotError(t, err, "revocations newer than the check's cutoff")
 	cu.lagFactor = 0
 	cu.updatedCounter.Reset()
@@ -469,15 +470,15 @@ func TestUpdateShard(t *testing.T) {
 		latest:       &corepb.CRLEntry{Serial: "037d6a05a0f6a975380456ae605cee9889", RevokedAt: now},
 	}
 	cu.checkFreshness = false
-	cu.ca = &fakeCA{gcc: generateCRLStream{}}
+	cu.mtca = &fakeCA{gcc: generateCRLStream{}}
 	cu.cs = &fakeStorer{uploaderStream: &noopUploader{}}
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertNotError(t, err, "freshness check disabled")
 	cu.updatedCounter.Reset()
 
 	// Errors from the primary should bubble up.
 	useFakeSA(cu, &fakeSAC{revokedCerts: revokedCertsStream{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour), latestErr: sentinelErr})
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "primary database error")
 	test.AssertContains(t, err.Error(), "GetLatestRevokedCertByShard")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -485,7 +486,7 @@ func TestUpdateShard(t *testing.T) {
 
 	// Errors reading from the SA should bubble up soonest.
 	useFakeSA(cu, &fakeSAC{revokedCerts: revokedCertsStream{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)})
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "retrieving entry from SA")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -518,6 +519,7 @@ func TestUpdateShardWithRetry(t *testing.T) {
 		5*time.Minute,
 		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
+		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,
 	)
@@ -526,7 +528,7 @@ func TestUpdateShardWithRetry(t *testing.T) {
 	// Ensure that having MaxAttempts set to 1 results in the clock not moving
 	// forward at all.
 	startTime := cu.clk.Now()
-	err = cu.updateShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "database error")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertEquals(t, cu.clk.Now(), startTime)
@@ -536,7 +538,7 @@ func TestUpdateShardWithRetry(t *testing.T) {
 	// in, so we have to be approximate.
 	cu.maxAttempts = 5
 	startTime = cu.clk.Now()
-	err = cu.updateShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 1)
+	err = cu.updateShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 1, true)
 	test.AssertError(t, err, "database error")
 	test.AssertErrorIs(t, err, sentinelErr)
 	t.Logf("start: %v", startTime)

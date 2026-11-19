@@ -75,13 +75,14 @@ func TestMain(m *testing.M) {
 func TestMTCAID(t *testing.T) {
 	t.Parallel()
 	certBytes, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(`
-MIIBOjCB6KADAgECAgF7MAoGCCqGSM49BAMCMBUxEzARBggrBgEFBQcZAw0Fgt8T
-BAEwHhcNMjYwNzE0MjIyNjIwWhcNMzYwNzExMjIyNjIwWjAVMRMwEQYIKwYBBQUH
-GQMNBYLfEwQBME4wEAYHKoZIzj0CAQYFK4EEACEDOgAERbiPRTb8x/eav43juNzW
-ZLId2Wl5TzmTsG5iRf+CiB+rn+TXnuUbWDIuIi/kYs3USANmLUyLxH+jNDAyMA4G
-A1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA8GA1UdDgQIBAaC3xMBAgEw
-CgYIKoZIzj0EAwIDQQAwPgIdAMebuq7759hyFC3hjrVUEaXk2TewRlXg+ohJvFoC
-HQCTMjnYvLIvTCqF3gZm38+h1iShEgMfMT522d60
+MIIBejCCAWegAwIBAgIRAc1YHteQnORnRvS5J4H+VFIwCgYIKwYBBQUHBiQwFTET
+MBEGCCsGAQUFBxkDDQWC3xMEATAeFw0yNTA3MDEwMDAwMDBaFw0zNTA3MDEyMzU5
+NTlaMBUxEzARBggrBgEFBQcZAw0Fgt8TBAEwWTATBgcqhkjOPQIBBggqhkjOPQMB
+BwNCAAR7H9Hp7K7dF0cQbxFDRkMWTXWRzD6BuR55OQn7mCAVjyqsY6g7v6ZSQCSA
+DLe5LKUhwhQKCbSWC+1sNcApd8Buo4GXMIGUMA4GA1UdDwEB/wQEAwIBBjASBgNV
+HRMBAf8ECDAGAQH/AgEAMA4GA1UdDgQHBAWC3xMEATAvBggrBgEFBQcBJgEB/wQg
+MB4wCgYIKoZIzj0EAwICBwEAAAAAAAACBwX///////8wLQYKKwYBBAGD+j0CAgQf
+MB0WG2h0dHBzOi8vaWdub3JlZC5leGFtcGxlLmNvbTAKBggrBgEFBQcGJAMBAA==
 `, "\n", ""))
 	if err != nil {
 		t.Fatal(err)
@@ -95,10 +96,10 @@ HQCTMjnYvLIvTCqF3gZm38+h1iShEgMfMT522d60
 	if err != nil {
 		t.Fatal(err)
 	}
-	caID, err := ic.MTCAID()
-	if err != nil {
-		t.Fatal(err)
+	if !ic.IsMTC() {
+		t.Fatal("IsMTC(): got false, want true")
 	}
+	caID := ic.MTCAID()
 
 	expected := "44947.4.1"
 	if caID.String() != expected {

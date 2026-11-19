@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3"
+	"github.com/letsencrypt/boulder/ca"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -37,13 +40,17 @@ type Config struct {
 		LogID issuancelog.Config `validate:"required"`
 
 		Issuance struct {
+			CRLProfile issuance.CRLProfileConfig `validate:"required"`
+
 			CertProfiles map[string]issuance.ProfileConfig `validate:"required,dive,keys,alphanum,min=1,max=32,endkeys"`
-			// Issuers holds the configuration for a single MTCA instance with a single CA ID.
-			// We run a separate process for each issuer.
-			// TODO: the issuance package parses the CA certificate as a self-signed X.509
-			// certificate, but per MTC draft, a CA SHOULD be represented by an RFC 9925
-			// unsigned certificate: https://www.rfc-editor.org/rfc/rfc9925.html.
-			Issuers []issuance.IssuerConfig `validate:"min=1,max=1,dive"`
+			// Issuers holds the configuration for all MTC issuers.
+			//
+			// The MTCA is responsible for both issuing certificates and signing
+			// CRLs. For issuing certificates, only one MTCA per issuer may be
+			// active at a time, which is expressed by having a non-empty list
+			// of profiles. The issuers that are only present for CRL signing
+			// should have an empty list of profiles. This is checked at startup.
+			Issuers []issuance.IssuerConfig `validate:"min=1,dive"`
 		}
 
 		// SequencingPeriod controls how frequently the MTCA sequences a batch and signs a checkpoint.
@@ -92,14 +99,6 @@ func main() {
 	tlsConfig, err := c.MTCA.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading TLS config")
 
-	clk := clock.New()
-
-	if len(c.MTCA.Issuance.Issuers) > 1 {
-		cmd.Fail("multiple issuers in one MTCA process not supported")
-	}
-	issuer, err := issuance.LoadIssuer(c.MTCA.Issuance.Issuers[0], clk)
-	cmd.FailOnError(err, "Loading issuer")
-
 	logID, err := c.MTCA.LogID.Load()
 	cmd.FailOnError(err, "Parsing Log ID")
 
@@ -113,6 +112,45 @@ func main() {
 		profiles[name] = profile
 	}
 
+	clk := clock.New()
+	var crlShards int
+	issuers := make([]*issuance.Issuer, 0, len(c.MTCA.Issuance.Issuers))
+	for i, issuerConfig := range c.MTCA.Issuance.Issuers {
+		// Double check that all issuers have the same number of CRL shards, because
+		// crl-updater relies upon that invariant.
+		if issuerConfig.CRLShards != 0 && crlShards == 0 {
+			crlShards = issuerConfig.CRLShards
+		}
+		if issuerConfig.CRLShards != crlShards {
+			cmd.Fail(fmt.Sprintf("issuer %d has %d shards, want %d", i, issuerConfig.CRLShards, crlShards))
+		}
+
+		// Also check that all the profiles they list actually exist.
+		for _, profile := range issuerConfig.Profiles {
+			_, found := profiles[profile]
+			if !found {
+				cmd.Fail(fmt.Sprintf("issuer %d lists unrecognized profile %q", i, profile))
+			}
+		}
+
+		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
+		cmd.FailOnError(err, fmt.Sprintf("Loading issuer %q", issuerConfig.Location.CertFile))
+		issuers = append(issuers, issuer)
+	}
+
+	var activeIssuer *issuance.Issuer
+	for _, iss := range issuers {
+		if iss.IsActive() {
+			if activeIssuer != nil {
+				cmd.Fail("only one issuer may be active per MTCA (as specified by having a non-empty 'profiles' list)")
+			}
+			activeIssuer = iss
+		}
+	}
+	if activeIssuer == nil {
+		cmd.Fail("no issuers were marked active (as specified by having a non-empty 'profiles' list)")
+	}
+
 	dbMap, err := sa.InitDB(c.MTCA.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
@@ -120,7 +158,7 @@ func main() {
 	cmd.FailOnError(err, "Loading S3 config")
 
 	mtcaImpl, err := mtca.New(
-		issuer,
+		activeIssuer,
 		profiles,
 		logID,
 		c.MTCA.SequencingPeriod.Duration,
@@ -152,8 +190,19 @@ func main() {
 	err = mtcaImpl.Preflight(context.Background())
 	cmd.FailOnError(err, "Loading log state")
 
+	caMetrics := ca.NewCAMetrics(scope)
+	crli, err := ca.NewCRLImpl(
+		issuers,
+		c.MTCA.Issuance.CRLProfile,
+		4000,
+		logger,
+		caMetrics,
+	)
+	cmd.FailOnError(err, "Failed to create CRL impl")
+
 	srv := bgrpc.NewServer(c.MTCA.GRPCMTCA, logger).Add(
-		&mtcapb.MTCA_ServiceDesc, mtcaImpl)
+		&mtcapb.MTCA_ServiceDesc, mtcaImpl).Add(
+		&capb.CRLGenerator_ServiceDesc, crli)
 
 	start, err := srv.Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup MTCA gRPC server")

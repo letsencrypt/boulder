@@ -27,9 +27,10 @@ type Config struct {
 		// TLS client certificate, private key, and trusted root bundle.
 		TLS cmd.TLSConfig
 
-		SAService           *cmd.GRPCClientConfig
-		CRLGeneratorService *cmd.GRPCClientConfig
-		CRLStorerService    *cmd.GRPCClientConfig
+		SAService              *cmd.GRPCClientConfig
+		CRLGeneratorService    *cmd.GRPCClientConfig
+		MTCCRLGeneratorService *cmd.GRPCClientConfig
+		CRLStorerService       *cmd.GRPCClientConfig
 
 		// IssuerCerts is a list of paths to issuer certificates on disk. This
 		// controls the set of CRLs which will be published by this updater: it will
@@ -196,8 +197,15 @@ func main() {
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	caConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLGeneratorService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLGenerator")
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA's CRLGenerator")
 	cac := capb.NewCRLGeneratorClient(caConn)
+
+	var mtcac capb.CRLGeneratorClient
+	if c.CRLUpdater.MTCCRLGeneratorService != nil {
+		mtcaConn, err := bgrpc.ClientSetup(c.CRLUpdater.MTCCRLGeneratorService, tlsConfig, scope, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to MTCA's CRLGenerator")
+		mtcac = capb.NewCRLGeneratorClient(mtcaConn)
+	}
 
 	csConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLStorerService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLStorer")
@@ -218,6 +226,7 @@ func main() {
 		c.CRLUpdater.CheckFreshness,
 		sac,
 		cac,
+		mtcac,
 		csc,
 		scope,
 		logger,

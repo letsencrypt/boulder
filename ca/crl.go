@@ -120,7 +120,7 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.NameID()) + req.Number.String() + fmt.Sprintf("%d", req.Shard))
 	ci.log.AuditInfo("Signing CRL", map[string]any{
 		"logID":      logID,
-		"issuer":     issuer.Cert.Subject.CommonName,
+		"issuer":     issuer.Cert.Name(),
 		"number":     req.Number.String(),
 		"shard":      req.Shard,
 		"thisUpdate": req.ThisUpdate.Format(time.RFC3339),

@@ -7,6 +7,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 )
 
 // ----- Name ID -----
@@ -67,6 +69,7 @@ type Certificate struct {
 	*x509.Certificate
 	// nameID is stored here simply for the sake of precomputation.
 	nameID NameID
+	mtcaID *reloid.RelativeOID
 }
 
 // NameID is equivalent to SubjectNameID(ic), but faster because it is
@@ -75,10 +78,25 @@ func (ic *Certificate) NameID() NameID {
 	return ic.nameID
 }
 
-// MTCAID returns the trust anchor ID from this issuer certificate's Subject. It
-// returns an error for issuers that are not MTC CAs.
-func (ic *Certificate) MTCAID() (*reloid.RelativeOID, error) {
-	return issuancelog.MTCAID(ic.Certificate)
+// IsMTC returns true if this is an MTC issuer.
+func (ic *Certificate) IsMTC() bool {
+	return ic.mtcaID != nil
+}
+
+// MTCAID returns the trust anchor ID from this issuer certificate's Subject.
+//
+// Always non-nil when IsMTC() is true, always nil otherwise.
+func (ic *Certificate) MTCAID() *reloid.RelativeOID {
+	return ic.mtcaID
+}
+
+// Name() returns a name that is useful for logs and metrics but not guaranteed
+// unique: the CommonName for regular issuers, or the MTCAID for MTC issuers.
+func (ic *Certificate) Name() string {
+	if ic.IsMTC() {
+		return ic.MTCAID().String()
+	}
+	return ic.Certificate.Subject.CommonName
 }
 
 // NewCertificate wraps an in-memory cert in an issuance.Certificate, marking it
@@ -89,7 +107,23 @@ func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 		return nil, errors.New("certificate is not a CA certificate")
 	}
 
-	res := Certificate{ic, 0}
+	isMTC := slices.ContainsFunc(ic.Extensions, func(extn pkix.Extension) bool {
+		return extn.Id.Equal(mtx509.IDMTCSHA256())
+	})
+	var mtcaID *reloid.RelativeOID
+	var err error
+	if isMTC {
+		mtcaID, err = issuancelog.MTCAID(ic)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	res := Certificate{
+		Certificate: ic,
+		nameID:      0,
+		mtcaID:      mtcaID,
+	}
 	res.nameID = SubjectNameID(&res)
 	return &res, nil
 }
@@ -155,11 +189,14 @@ type IssuerConfig struct {
 	// The names listed here must match the names of configured profiles (see
 	// cmd/ca/main.go's Config.Issuance.CertProfiles and issuance/cert.go's
 	// ProfileConfig). If Profiles is not empty then the issuer can be used
-	// to sign precertificates and final certificates. All issuers, regardless
-	// if this field is empty or not, can be used to sign CRLs. All issuers
-	// with a profile(s) of a given key type (RSA or ECDSA) are part of a pool
-	// and each precertificate will be issued randomly from a selected pool.
-	// The selection of which pool depends on the precertificate's key algorithm.
+	// to sign precertificates, final certificates, MTC checkpoints, and MTC
+	// subtrees.
+	//
+	// All issuers, regardless if this field is empty or not, can be used to
+	// sign CRLs. All issuers with a profile(s) of a given key type (RSA or
+	// ECDSA) are part of a pool and each precertificate will be issued randomly
+	// from a selected pool.  The selection of which pool depends on the
+	// precertificate's key algorithm.
 	Profiles []string `validate:"dive,alphanum,min=1,max=32"`
 
 	IssuerURL  string `validate:"required,url"`
@@ -311,9 +348,9 @@ func (i *Issuer) IsActive() bool {
 	return len(i.profiles) > 0
 }
 
-// Name provides the Common Name specified in the issuer's certificate.
+// Name() returns the Name of the issuer's certificate.
 func (i *Issuer) Name() string {
-	return i.Cert.Subject.CommonName
+	return i.Cert.Name()
 }
 
 // NameID provides the NameID of the issuer's certificate.

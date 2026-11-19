@@ -32,6 +32,7 @@ func TestRunOnce(t *testing.T) {
 		5*time.Minute,
 		true, fsa,
 		&fakeCA{gcc: generateCRLStream{}},
+		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, mockLog, clk,
 	)
@@ -60,6 +61,7 @@ func TestRunOnceLagFactor(t *testing.T) {
 		"stale-if-error=60",
 		5*time.Minute,
 		true, fsa,
+		&fakeCA{gcc: generateCRLStream{}},
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
 		metrics.NoopRegisterer, blog.NewMock(), clk,
@@ -91,6 +93,7 @@ func TestRunOnceNewIssuer(t *testing.T) {
 		"stale-if-error=60",
 		5*time.Minute,
 		true, fsa,
+		&fakeCA{gcc: generateCRLStream{}},
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: uploader},
 		metrics.NoopRegisterer, blog.NewMock(), clk,

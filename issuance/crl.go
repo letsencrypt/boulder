@@ -119,9 +119,13 @@ func (i *Issuer) IssueCRL(prof *CRLProfile, req *CRLRequest) ([]byte, error) {
 		return nil, fmt.Errorf("building lint config: %w", err)
 	}
 
-	err = i.Linter.CheckCRL(template, prof.lints, lintConfig)
-	if err != nil {
-		return nil, err
+	// TODO: zcrypto can't parse CRLs signed by MTC CAs (doesn't like the RELATIVE-OID Issuer).
+	// Skip them for now, restore once zcrypto can parse these.
+	if !i.Cert.IsMTC() {
+		err = i.Linter.CheckCRL(template, prof.lints, lintConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	crlBytes, err := x509.CreateRevocationList(
