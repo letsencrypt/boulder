@@ -16,14 +16,16 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/eggsampler/acme/v3"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/trees/checkpoint"
+	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 )
 
@@ -211,71 +213,119 @@ func TestIssuanceMTC(t *testing.T) {
 
 	// Ensure that the SANs are correct.
 	test.AssertSliceContains(t, ir.certs[0].DNSNames, idents[0].Value)
+}
 
-	// The mtca serves each checkpoint as soon as it is sequenced, and the
-	// mtpublisher then submits it to both sunlight mirrors, so each mirror's
-	// checkpoint must converge on the served tree head. Poll until they agree.
-	logID, err := issuancelog.Config{CAID: "44947.4.1", LogNumber: 3}.Load()
-	test.AssertNotError(t, err, "loading the dev issuance log ID")
-	origin := logID.Origin()
-	originHash := sha256.Sum256([]byte(origin))
-	localURL := "http://boulder-seaweedfs:8333/boulder-mtc-tiles/" + logID.CheckpointPath()
-	mirrorURLs := []string{
-		"http://boulder-seaweedfs:8333/boulder-sunlight/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint",
-		"http://boulder-seaweedfs:8333/boulder-sunlight2/mirror/" + hex.EncodeToString(originHash[:]) + "/checkpoint",
+// TestMTCCheckpointMirrored issues a standalone certificate, then checks that
+// the mtca's served checkpoint includes the certificate's log entry and that
+// the mtpublisher publishes that checkpoint to both sunlight mirrors.
+func TestMTCCheckpointMirrored(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("MTC issuance only available in config-next (due to orders table migrations in boulder_sa_next)")
 	}
 
+	client, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	key, err := mldsa.GenerateKey(mldsa.MLDSA44())
+	if err != nil {
+		t.Fatalf("generating keypair: %s", err)
+	}
+
+	ir, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "mtcshortlived")
+	if err != nil {
+		t.Fatalf("issuing test MTC: %s", err)
+	}
+
+	// The certificate's serial number holds the log number and the index of its
+	// log entry.
+	serial := ir.certs[0].SerialNumber
+	if !serial.IsUint64() {
+		t.Fatalf("certificate serial number %s is not an unsigned 64-bit integer", serial)
+	}
+	logNumber, entryIndex, err := core.DecodeMTCSerial(serial.Uint64())
+	if err != nil {
+		t.Fatalf("decoding certificate serial number %s: %s", serial, err)
+	}
+	logID, err := issuancelog.Config{CAID: "44947.4.1", LogNumber: logNumber}.Load()
+	if err != nil {
+		t.Fatalf("loading the issuance log ID: %s", err)
+	}
+
+	caCert, err := core.LoadCert("test/certs/webpki/mtca-1.cert.pem")
+	if err != nil {
+		t.Fatalf("loading the MTCA certificate: %s", err)
+	}
+	caPubKey, ok := caCert.PublicKey.(*mldsa.PublicKey)
+	if !ok {
+		t.Fatalf("MTCA certificate public key is %T, want *mldsa.PublicKey", caCert.PublicKey)
+	}
+	caVerifier, err := cosignature.NewVerifier(logID.CAID(), caPubKey)
+	if err != nil {
+		t.Fatalf("creating the MTCA verifier: %s", err)
+	}
+
+	// The mtcb builds a standalone certificate only once the served checkpoint
+	// includes the certificate's subtree, so the served checkpoint is read once,
+	// without polling.
+	servedURL := "http://boulder-seaweedfs:8333/boulder-mtc-tiles/" + logID.CheckpointPath()
+	served, servedNote, err := checkpoint.Open(fetchCheckpoint(t, servedURL), caVerifier)
+	if err != nil {
+		t.Fatalf("opening the served checkpoint at %s: %s", servedURL, err)
+	}
+	if len(servedNote.UnverifiedSigs) != 0 {
+		t.Errorf("served checkpoint at %s has %d signature lines by other keys, want only the MTCA's", servedURL, len(servedNote.UnverifiedSigs))
+	}
+	if served.Origin != logID.Origin() {
+		t.Fatalf("served checkpoint origin = %q, want %q", served.Origin, logID.Origin())
+	}
+	if served.Tree.N <= entryIndex {
+		t.Fatalf("served checkpoint tree size = %d, want more than the certificate's entry index %d", served.Tree.N, entryIndex)
+	}
+
+	monitoringPrefixes := []string{
+		"http://boulder-seaweedfs:8333/boulder-sunlight/mirror",
+		"http://boulder-seaweedfs:8333/boulder-sunlight2/mirror",
+	}
+	originHash := sha256.Sum256([]byte(logID.Origin()))
 	deadline := time.Now().Add(5 * time.Second)
-	var localText string
-	var localSignatures string
-	mirrorSignatures := make([]string, len(mirrorURLs))
-	for {
-		localText, localSignatures = checkpointNote(t, localURL)
-		converged := localText != ""
-		for i, mirrorURL := range mirrorURLs {
-			var mirrorText string
-			mirrorText, mirrorSignatures[i] = checkpointNote(t, mirrorURL)
-			if mirrorText != localText {
-				converged = false
-				if time.Now().After(deadline) {
-					t.Fatalf("served checkpoint %q and mirror checkpoint %q at %s have not converged", localText, mirrorText, mirrorURL)
+	for _, monitoringPrefix := range monitoringPrefixes {
+		mirrorURL := monitoringPrefix + "/" + hex.EncodeToString(originHash[:]) + "/checkpoint"
+		for {
+			var mirrorTreeSize int64
+			signedNote := fetchCheckpoint(t, mirrorURL)
+			if signedNote != nil {
+				// Only the note text is read. The signature lines on the
+				// mirror checkpoint are sunlight's to get right.
+				noteText, _, found := strings.Cut(string(signedNote), "\n\n")
+				if !found {
+					t.Fatalf("mirror checkpoint at %s has no signature lines: %q", mirrorURL, signedNote)
 				}
+				var mirrored *checkpoint.Checkpoint
+				mirrored, err = checkpoint.Unmarshal([]byte(noteText + "\n"))
+				if err != nil {
+					t.Fatalf("parsing the mirror checkpoint at %s: %s", mirrorURL, err)
+				}
+				mirrorTreeSize = mirrored.Tree.N
 			}
-		}
-		if converged {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// The checkpoint names the issuance log and covers at least the genesis
-	// null entry and the entry issued above.
-	lines := strings.Split(localText, "\n")
-	if lines[0] != origin {
-		t.Errorf("checkpoint origin = %q, want %q", lines[0], origin)
-	}
-	size, err := strconv.Atoi(lines[1])
-	if err != nil || size < 2 {
-		t.Errorf("checkpoint tree size = %q, want at least 2", lines[1])
-	}
-
-	// The served checkpoint carries only the MTCA's signature. Each mirror's
-	// checkpoint carries that same line.
-	caLine := "— oid/1.3.6.1.4.1.44947.4.1 "
-	if strings.Count(localSignatures, "\n") != 1 || !strings.HasPrefix(localSignatures, caLine) {
-		t.Errorf("served checkpoint signatures %q, want one line by the MTCA", localSignatures)
-	}
-	for i, signatures := range mirrorSignatures {
-		if !strings.Contains(signatures, localSignatures) {
-			t.Errorf("mirror checkpoint signatures %q at %s do not include the served MTCA line %q", signatures, mirrorURLs[i], localSignatures)
+			// Other tests issue MTCs concurrently, so the mirror checkpoint may
+			// already be past the served checkpoint read above.
+			if mirrorTreeSize >= served.Tree.N {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("mirror checkpoint at %s has tree size %d, want at least %d", mirrorURL, mirrorTreeSize, served.Tree.N)
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
 
-// checkpointNote fetches a signed checkpoint note from url and returns its text
-// and its signature lines. It returns empty strings while the checkpoint does
-// not exist yet.
-func checkpointNote(t *testing.T, url string) (string, string) {
+// fetchCheckpoint fetches the checkpoint at url, a signed note. It returns nil
+// while the checkpoint does not exist yet.
+func fetchCheckpoint(t *testing.T, url string) []byte {
 	t.Helper()
 	resp, err := http.Get(url)
 	if err != nil {
@@ -287,16 +337,12 @@ func checkpointNote(t *testing.T, url string) (string, string) {
 		t.Fatalf("reading %s: %s", url, err)
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		return "", ""
+		return nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("fetching %s: status %d", url, resp.StatusCode)
 	}
-	text, signatureLines, ok := strings.Cut(string(body), "\n\n")
-	if !ok {
-		t.Fatalf("checkpoint at %s has no signature lines: %q", url, body)
-	}
-	return text, signatureLines
+	return body
 }
 
 // TestIPShortLived verifies that we will allow IP address identifiers only in
