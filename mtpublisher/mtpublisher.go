@@ -217,8 +217,7 @@ func (p *mtpublisher) submitCheckpoint(ctx context.Context, mirror *publisherMir
 }
 
 // subtreeBatch is the number of unsigned subtrees cosignSubtrees takes per
-// pass. Each mirror signs the ones its checkpoint includes, and the batch only
-// bounds the work of one pass.
+// pass.
 const subtreeBatch = 100
 
 // cosignSubtrees reads the unsigned subtrees, newest first, up to subtreeBatch
