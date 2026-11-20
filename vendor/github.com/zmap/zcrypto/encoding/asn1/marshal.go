@@ -160,7 +160,7 @@ func (i int64Encoder) Len() int {
 func (i int64Encoder) Encode(dst []byte) {
 	n := i.Len()
 
-	for j := 0; j < n; j++ {
+	for j := range n {
 		dst[j] = byte(i >> uint((n-1-j)*8))
 	}
 }
@@ -523,7 +523,7 @@ func makeBody(value reflect.Value, params fieldParameters) (e encoder, err error
 			return makeField(v.Field(startingField), parseFieldParameters(t.Field(startingField).Tag.Get("asn1")))
 		default:
 			m := make([]encoder, n1)
-			for i := 0; i < n1; i++ {
+			for i := range n1 {
 				m[i], err = makeField(v.Field(i+startingField), parseFieldParameters(t.Field(i+startingField).Tag.Get("asn1")))
 				if err != nil {
 					return nil, err
@@ -548,7 +548,7 @@ func makeBody(value reflect.Value, params fieldParameters) (e encoder, err error
 		default:
 			m := make([]encoder, l)
 
-			for i := 0; i < l; i++ {
+			for i := range l {
 				m[i], err = makeField(v.Index(i), fp)
 				if err != nil {
 					return nil, err
@@ -730,13 +730,13 @@ func makeField(v reflect.Value, params fieldParameters) (e encoder, err error) {
 //	utf8:        causes strings to be marshaled as ASN.1, UTF8String values
 //	utc:         causes time.Time to be marshaled as ASN.1, UTCTime values
 //	generalized: causes time.Time to be marshaled as ASN.1, GeneralizedTime values
-func Marshal(val interface{}) ([]byte, error) {
+func Marshal(val any) ([]byte, error) {
 	return MarshalWithParams(val, "")
 }
 
 // MarshalWithParams allows field parameters to be specified for the
 // top-level element. The form of the params is the same as the field tags.
-func MarshalWithParams(val interface{}, params string) ([]byte, error) {
+func MarshalWithParams(val any, params string) ([]byte, error) {
 	e, err := makeField(reflect.ValueOf(val), parseFieldParameters(params))
 	if err != nil {
 		return nil, err

@@ -24,7 +24,7 @@ const (
 
 func writeUint(w io.Writer, value uint64, numBytes int) error {
 	buf := make([]uint8, numBytes)
-	for i := 0; i < numBytes; i++ {
+	for i := range numBytes {
 		buf[numBytes-i-1] = uint8(value & 0xff)
 		value >>= 8
 	}
@@ -49,7 +49,7 @@ func writeVarBytes(w io.Writer, value []byte, numLenBytes int) error {
 
 func readUint(r io.Reader, numBytes int) (uint64, error) {
 	var l uint64
-	for i := 0; i < numBytes; i++ {
+	for range numBytes {
 		l <<= 8
 		var t uint8
 		if err := binary.Read(r, binary.BigEndian, &t); err != nil {

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/zmap/zcrypto/encoding/asn1"
@@ -34,7 +35,7 @@ type RelativeDistinguishedNameSET []AttributeTypeAndValue
 // RFC 5280, Section 4.1.2.4.
 type AttributeTypeAndValue struct {
 	Type  asn1.ObjectIdentifier `json:"type"`
-	Value interface{}           `json:"value"`
+	Value any                   `json:"value"`
 }
 
 // AttributeTypeAndValueSET represents a set of ASN.1 sequences of
@@ -192,19 +193,19 @@ func (n Name) appendRDNs(in RDNSequence, values []string, oid asn1.ObjectIdentif
 // String returns a string representation of the sequence r,
 // roughly following the RFC 2253 Distinguished Names syntax.
 func (r RDNSequence) String() string {
-	s := ""
-	for i := 0; i < len(r); i++ {
+	var s strings.Builder
+	for i := range r {
 		idx := len(r) - 1 - i
 		if LegacyNameString {
 			idx = i
 		}
 		rdn := r[idx]
 		if i > 0 {
-			s += ", "
+			s.WriteString(", ")
 		}
 		for j, tv := range rdn {
 			if j > 0 {
-				s += ", "
+				s.WriteString(", ")
 			}
 
 			oidString := tv.Type.String()
@@ -215,7 +216,7 @@ func (r RDNSequence) String() string {
 			if typeName == "" {
 				derBytes, err := asn1.Marshal(tv.Value)
 				if err == nil {
-					s += oidString + "=#" + hex.EncodeToString(derBytes)
+					s.WriteString(oidString + "=#" + hex.EncodeToString(derBytes))
 					continue // No value escaping necessary.
 				}
 
@@ -246,11 +247,11 @@ func (r RDNSequence) String() string {
 				}
 			}
 
-			s += typeName + "=" + string(escaped)
+			s.WriteString(typeName + "=" + string(escaped))
 		}
 	}
 
-	return s
+	return s.String()
 }
 
 // ToRDNSequence converts n into a single RDNSequence. The following
