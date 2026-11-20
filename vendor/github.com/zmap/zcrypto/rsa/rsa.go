@@ -398,7 +398,7 @@ NextSetOfPrimes:
 		if nprimes >= 7 {
 			todo += (nprimes - 2) / 5
 		}
-		for i := 0; i < nprimes; i++ {
+		for i := range nprimes {
 			var err error
 			// ZCrypto - swapped rand. for cryptorand
 			primes[i], err = cryptorand.Prime(random, todo/(nprimes-i))
@@ -410,7 +410,7 @@ NextSetOfPrimes:
 
 		// Make sure that primes is pairwise unequal.
 		for i, prime := range primes {
-			for j := 0; j < i; j++ {
+			for j := range i {
 				if prime.Cmp(primes[j]) == 0 {
 					continue NextSetOfPrimes
 				}
@@ -773,7 +773,7 @@ func decryptOAEP(hash, mgfHash hash.Hash, random io.Reader, priv *PrivateKey, ci
 	lookingForIndex = 1
 	rest := db[hash.Size():]
 
-	for i := 0; i < len(rest); i++ {
+	for i := range rest {
 		equals0 := subtle.ConstantTimeByteEq(rest[i], 0)
 		equals1 := subtle.ConstantTimeByteEq(rest[i], 1)
 		index = subtle.ConstantTimeSelect(lookingForIndex&equals1, i, index)

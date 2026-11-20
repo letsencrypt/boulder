@@ -87,7 +87,7 @@ func (s *String) readUnsigned(out *uint32, length int) bool {
 		return false
 	}
 	var result uint32
-	for i := 0; i < length; i++ {
+	for i := range length {
 		result <<= 8
 		result |= uint32(v[i])
 	}

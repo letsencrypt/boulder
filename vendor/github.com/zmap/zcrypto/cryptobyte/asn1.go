@@ -195,7 +195,7 @@ func (b *Builder) AddASN1NULL() {
 
 // MarshalASN1 calls encoding_asn1.Marshal on its input and appends the result if
 // successful or records an error if one occurred.
-func (b *Builder) MarshalASN1(v interface{}) {
+func (b *Builder) MarshalASN1(v any) {
 	// NOTE(martinkr): This is somewhat of a hack to allow propagation of
 	// encoding_asn1.Marshal errors into Builder.err. N.B. if you call MarshalASN1 with a
 	// value embedded into a struct, its tag information is lost.
@@ -251,13 +251,13 @@ func (s *String) ReadASN1Boolean(out *bool) bool {
 	return true
 }
 
-var bigIntType = reflect.TypeOf((*big.Int)(nil)).Elem()
+var bigIntType = reflect.TypeFor[big.Int]()
 
 // ReadASN1Integer decodes an ASN.1 INTEGER into out and advances. If out does
 // not point to an integer or to a big.Int, it panics. It reports whether the
 // read was successful.
-func (s *String) ReadASN1Integer(out interface{}) bool {
-	if reflect.TypeOf(out).Kind() != reflect.Ptr {
+func (s *String) ReadASN1Integer(out any) bool {
+	if reflect.TypeOf(out).Kind() != reflect.Pointer {
 		panic("out is not a pointer")
 	}
 	switch reflect.ValueOf(out).Elem().Kind() {
@@ -333,7 +333,7 @@ func asn1Signed(out *int64, n []byte) bool {
 	if length > 8 {
 		return false
 	}
-	for i := 0; i < length; i++ {
+	for i := range length {
 		*out <<= 8
 		*out |= int64(n[i])
 	}
@@ -361,7 +361,7 @@ func asn1Unsigned(out *uint64, n []byte) bool {
 		// Negative number.
 		return false
 	}
-	for i := 0; i < length; i++ {
+	for i := range length {
 		*out <<= 8
 		*out |= uint64(n[i])
 	}
@@ -602,8 +602,8 @@ func (s *String) SkipOptionalASN1(tag asn1.Tag) bool {
 // matching tag is present, it writes defaultValue into out instead. If out
 // does not point to an integer or to a big.Int, it panics. It reports
 // whether the read was successful.
-func (s *String) ReadOptionalASN1Integer(out interface{}, tag asn1.Tag, defaultValue interface{}) bool {
-	if reflect.TypeOf(out).Kind() != reflect.Ptr {
+func (s *String) ReadOptionalASN1Integer(out any, tag asn1.Tag, defaultValue any) bool {
+	if reflect.TypeOf(out).Kind() != reflect.Pointer {
 		panic("out is not a pointer")
 	}
 	var present bool
@@ -620,7 +620,7 @@ func (s *String) ReadOptionalASN1Integer(out interface{}, tag asn1.Tag, defaultV
 			if reflect.TypeOf(out).Elem() != bigIntType {
 				panic("invalid integer type")
 			}
-			if reflect.TypeOf(defaultValue).Kind() != reflect.Ptr ||
+			if reflect.TypeOf(defaultValue).Kind() != reflect.Pointer ||
 				reflect.TypeOf(defaultValue).Elem() != bigIntType {
 				panic("out points to big.Int, but defaultValue does not")
 			}

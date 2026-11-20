@@ -237,7 +237,7 @@ func nonZeroRandomBytes(s []byte, random io.Reader) (err error) {
 		return
 	}
 
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		for s[i] == 0 {
 			_, err = io.ReadFull(random, s[i:i+1])
 			if err != nil {
