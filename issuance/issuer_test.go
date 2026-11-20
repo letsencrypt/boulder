@@ -105,6 +105,28 @@ MB0WG2h0dHBzOi8vaWdub3JlZC5leGFtcGxlLmNvbTAKBggrBgEFBQcGJAMBAA==
 	if caID.String() != expected {
 		t.Errorf("MTCAID(): got %s, want %s", caID, expected)
 	}
+	// MTC issuers have no CommonName, so Name() falls back to the CA ID.
+	if ic.Name() != expected {
+		t.Errorf("Name(): got %q, want %q", ic.Name(), expected)
+	}
+}
+
+func TestNonMTCCertificate(t *testing.T) {
+	t.Parallel()
+	ic, err := LoadCertificate("../test/hierarchy/int-e1.cert.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ic.IsMTC() {
+		t.Error("IsMTC(): got true, want false")
+	}
+	if ic.MTCAID() != nil {
+		t.Errorf("MTCAID(): got %s, want nil", ic.MTCAID())
+	}
+	expected := "(TEST) Elegant Elephant E1"
+	if ic.Name() != expected {
+		t.Errorf("Name(): got %q, want %q", ic.Name(), expected)
+	}
 }
 
 func TestLoadCertificate(t *testing.T) {
