@@ -19,6 +19,8 @@ import (
 	"github.com/zmap/zcrypto/rsa"
 	"github.com/zmap/zcrypto/util"
 	"github.com/zmap/zcrypto/x509/pkix"
+
+	"crypto/mldsa"
 )
 
 var kMinTime, kMaxTime time.Time
@@ -175,9 +177,12 @@ type auxPublicKeyAlgorithm struct {
 }
 
 var publicKeyNameToAlgorithm = map[string]PublicKeyAlgorithm{
-	"RSA":   RSA,
-	"DSA":   DSA,
-	"ECDSA": ECDSA,
+	"RSA":     RSA,
+	"DSA":     DSA,
+	"ECDSA":   ECDSA,
+	"MLDSA44": MLDSA44,
+	"MLDSA65": MLDSA65,
+	"MLDSA87": MLDSA87,
 }
 
 // MarshalJSON implements the json.Marshaler interface
@@ -264,6 +269,10 @@ type DSAPublicKeyJSON struct {
 	Y []byte `json:"y"`
 }
 
+type MLDSAPublicKeyJSON struct {
+	PublicKey []byte `json:"public_key"`
+}
+
 // GetDSAPublicKeyJSON - get the DSAPublicKeyJSON for the given standard DSA PublicKey.
 func GetDSAPublicKeyJSON(key *dsa.PublicKey) *DSAPublicKeyJSON {
 	return &DSAPublicKeyJSON{
@@ -315,6 +324,24 @@ func GetAugmentedECDSAPublicKeyJSON(key *AugmentedECDSA) *ECDSAPublicKeyJSON {
 	}
 }
 
+func GetMLDSA44PublicKeyJSON(key *mldsa.PublicKey) *MLDSAPublicKeyJSON {
+	return &MLDSAPublicKeyJSON{
+		PublicKey: key.Bytes(),
+	}
+}
+
+func GetMLDSA65PublicKeyJSON(key *mldsa.PublicKey) *MLDSAPublicKeyJSON {
+	return &MLDSAPublicKeyJSON{
+		PublicKey: key.Bytes(),
+	}
+}
+
+func GetMLDSA87PublicKeyJSON(key *mldsa.PublicKey) *MLDSAPublicKeyJSON {
+	return &MLDSAPublicKeyJSON{
+		PublicKey: key.Bytes(),
+	}
+}
+
 // jsonifySubjectKey - Convert public key data in a Certificate
 // into json output format for JSONCertificate
 func (c *Certificate) jsonifySubjectKey() JSONSubjectKeyInfo {
@@ -362,6 +389,21 @@ func (c *Certificate) jsonifySubjectKey() JSONSubjectKeyInfo {
 			Length: key.Pub.Curve.Params().BitSize,
 			Pub:    key.Raw.Bytes,
 		}
+	case *mldsa.PublicKey:
+		switch key.Parameters() {
+		case mldsa.MLDSA44():
+			j.MLDSA44PublicKey = &MLDSAPublicKeyJSON{
+				PublicKey: key.Bytes(),
+			}
+		case mldsa.MLDSA65():
+			j.MLDSA65PublicKey = &MLDSAPublicKeyJSON{
+				PublicKey: key.Bytes(),
+			}
+		case mldsa.MLDSA87():
+			j.MLDSA87PublicKey = &MLDSAPublicKeyJSON{
+				PublicKey: key.Bytes(),
+			}
+		}
 	}
 	return j
 }
@@ -371,11 +413,14 @@ func (c *Certificate) jsonifySubjectKey() JSONSubjectKeyInfo {
 // Unfortunately, this struct cannot have its own Marshal method since it
 // needs information from multiple fields in x509.Certificate
 type JSONSubjectKeyInfo struct {
-	KeyAlgorithm    PublicKeyAlgorithm     `json:"key_algorithm"`
-	RSAPublicKey    *jsonKeys.RSAPublicKey `json:"rsa_public_key,omitempty"`
-	DSAPublicKey    *DSAPublicKeyJSON      `json:"dsa_public_key,omitempty"`
-	ECDSAPublicKey  *ECDSAPublicKeyJSON    `json:"ecdsa_public_key,omitempty"`
-	SPKIFingerprint CertificateFingerprint `json:"fingerprint_sha256"`
+	KeyAlgorithm     PublicKeyAlgorithm     `json:"key_algorithm"`
+	RSAPublicKey     *jsonKeys.RSAPublicKey `json:"rsa_public_key,omitempty"`
+	DSAPublicKey     *DSAPublicKeyJSON      `json:"dsa_public_key,omitempty"`
+	ECDSAPublicKey   *ECDSAPublicKeyJSON    `json:"ecdsa_public_key,omitempty"`
+	MLDSA44PublicKey *MLDSAPublicKeyJSON    `json:"mldsa44_public_key,omitempty"`
+	MLDSA65PublicKey *MLDSAPublicKeyJSON    `json:"mldsa65_public_key,omitempty"`
+	MLDSA87PublicKey *MLDSAPublicKeyJSON    `json:"mldsa87_public_key,omitempty"`
+	SPKIFingerprint  CertificateFingerprint `json:"fingerprint_sha256"`
 }
 
 // JSONSignature - used to condense several fields from x509.Certificate
