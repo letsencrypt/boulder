@@ -3,18 +3,152 @@ package va
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"crypto/tls"
 	"errors"
+	"net"
+	"net/netip"
 	"slices"
 	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
+	"golang.org/x/crypto/cryptobyte"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 )
+
+// testECHPublicName is the public name in configs from newTestECHKey.
+const testECHPublicName = "public.example"
+
+// newTestECHKey returns a serialized ECHConfigList advertising
+// testECHPublicName, and the server key for its single config.
+func newTestECHKey(t *testing.T) ([]byte, tls.EncryptedClientHelloKey) {
+	t.Helper()
+	priv, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generating ECH key: %s", err)
+	}
+
+	var b cryptobyte.Builder
+	b.AddUint16(0xfe0d) // ECHConfig version
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+		b.AddUint8(0)     // config_id
+		b.AddUint16(0x20) // DHKEM(X25519, HKDF-SHA256)
+		b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+			b.AddBytes(priv.PublicKey().Bytes())
+		})
+		b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+			b.AddUint16(1) // HKDF-SHA256
+			b.AddUint16(1) // AES-128-GCM
+		})
+		b.AddUint8(0) // maximum_name_length
+		b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) {
+			b.AddBytes([]byte(testECHPublicName))
+		})
+		b.AddUint16(0) // extensions
+	})
+	config, err := b.Bytes()
+	if err != nil {
+		t.Fatalf("marshaling ECHConfig: %s", err)
+	}
+
+	var lb cryptobyte.Builder
+	lb.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+		b.AddBytes(config)
+	})
+	list, err := lb.Bytes()
+	if err != nil {
+		t.Fatalf("marshaling ECHConfigList: %s", err)
+	}
+
+	return list, tls.EncryptedClientHelloKey{
+		Config:      config,
+		PrivateKey:  priv.Bytes(),
+		SendAsRetry: true,
+	}
+}
+
+// echTestServer is a TLS server that reports the state of each handshake it
+// completes.
+type echTestServer struct {
+	addr   string
+	states chan tls.ConnectionState
+}
+
+func newECHTestServer(t *testing.T, config *tls.Config) *echTestServer {
+	t.Helper()
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", config)
+	if err != nil {
+		t.Fatalf("listening: %s", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	srv := &echTestServer{addr: ln.Addr().String(), states: make(chan tls.ConnectionState, 10)}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+				tlsConn, ok := conn.(*tls.Conn)
+				if !ok {
+					return
+				}
+				err := tlsConn.Handshake()
+				if err != nil {
+					return
+				}
+				srv.states <- tlsConn.ConnectionState()
+			}()
+		}
+	}()
+	return srv
+}
+
+// nextState returns the state of the server's next completed handshake.
+func (s *echTestServer) nextState(t *testing.T) tls.ConnectionState {
+	t.Helper()
+	select {
+	case state := <-s.states:
+		return state
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the server to complete a handshake")
+	}
+	return tls.ConnectionState{}
+}
+
+// countingDialer counts calls to its DialTLSContext, which dials with dial.
+type countingDialer struct {
+	calls atomic.Int64
+	dial  tlsDialerFunc
+}
+
+func (d *countingDialer) DialTLSContext(ctx context.Context, network, addr string, config *tls.Config) (*tls.Conn, error) {
+	d.calls.Add(1)
+	return d.dial(ctx, network, addr, config)
+}
+
+// testDialer returns a preresolvedDialer for addr, an IP:port, with the given
+// timeout.
+func testDialer(t *testing.T, addr string, timeout time.Duration) *preresolvedDialer {
+	t.Helper()
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("splitting %q: %s", addr, err)
+	}
+	return &preresolvedDialer{ip: netip.MustParseAddr(host), port: port, hostname: host, timeout: timeout}
+}
 
 // echFakeDNS is an ipFakeDNS that also serves HTTPS records, or httpsErr if it
 // is set.
@@ -215,4 +349,215 @@ func TestGetAddrsECH(t *testing.T) {
 			t.Errorf("ech_config_lookups{result=%q} = %v, want %v", result, got, want)
 		}
 	}
+}
+
+func TestDialTLSWithECH(t *testing.T) {
+	t.Parallel()
+
+	const name = "example.com"
+	cert := testTLSCert([]string{name}, nil, nil)
+	echConfigList, echKey := newTestECHKey(t)
+	_, otherKey := newTestECHKey(t)
+
+	for _, tc := range []struct {
+		name          string
+		server        *tls.Config
+		echConfigList []byte
+		// outerHandshakes is how many handshakes the server completes using
+		// the outer ClientHello before the final one.
+		outerHandshakes int
+		wantStatus      core.ECHStatus
+		wantOutcome     string
+	}{
+		{
+			name:          "no ECH config",
+			server:        &tls.Config{Certificates: []tls.Certificate{*cert}, EncryptedClientHelloKeys: []tls.EncryptedClientHelloKey{echKey}},
+			echConfigList: nil,
+			wantStatus:    "",
+		},
+		{
+			name:          "accepted",
+			server:        &tls.Config{Certificates: []tls.Certificate{*cert}, EncryptedClientHelloKeys: []tls.EncryptedClientHelloKey{echKey}},
+			echConfigList: echConfigList,
+			wantStatus:    core.ECHAccepted,
+			wantOutcome:   "accepted",
+		},
+		{
+			name:            "accepted with retry configs",
+			server:          &tls.Config{Certificates: []tls.Certificate{*cert}, EncryptedClientHelloKeys: []tls.EncryptedClientHelloKey{otherKey}},
+			echConfigList:   echConfigList,
+			outerHandshakes: 1,
+			wantStatus:      core.ECHAccepted,
+			wantOutcome:     "accepted_retry",
+		},
+		{
+			name:            "rejected by a server without ECH",
+			server:          &tls.Config{Certificates: []tls.Certificate{*cert}},
+			echConfigList:   echConfigList,
+			outerHandshakes: 1,
+			wantStatus:      core.ECHRejected,
+			wantOutcome:     "rejected",
+		},
+		{
+			name:          "TLS 1.2 server",
+			server:        &tls.Config{Certificates: []tls.Certificate{*cert}, MaxVersion: tls.VersionTLS12},
+			echConfigList: echConfigList,
+			wantStatus:    core.ECHFailed,
+			wantOutcome:   "failed",
+		},
+		{
+			name:          "malformed ECH config",
+			server:        &tls.Config{Certificates: []tls.Certificate{*cert}},
+			echConfigList: []byte{0x00, 0x01, 0x02},
+			wantStatus:    core.ECHFailed,
+			wantOutcome:   "failed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			va, _ := setup(nil, "", nil, nil)
+			srv := newECHTestServer(t, tc.server)
+
+			base := &tls.Config{ServerName: name, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}
+			dialer := testDialer(t, srv.addr, 10*time.Second)
+			conn, status, err := va.dialTLSWithECH(t.Context(), dialer.DialTLSContext, srv.addr, base, tc.echConfigList)
+			if err != nil {
+				t.Fatalf("dialTLSWithECH: %s", err)
+			}
+			defer conn.Close()
+
+			if status != tc.wantStatus {
+				t.Errorf("got status %q, want %q", status, tc.wantStatus)
+			}
+			wantAccepted := tc.wantStatus == core.ECHAccepted
+			if conn.ConnectionState().ECHAccepted != wantAccepted {
+				t.Errorf("got client ECHAccepted %t, want %t", conn.ConnectionState().ECHAccepted, wantAccepted)
+			}
+
+			for range tc.outerHandshakes {
+				state := srv.nextState(t)
+				if state.ServerName != testECHPublicName || state.ECHAccepted {
+					t.Errorf("got outer handshake with ServerName %q and ECHAccepted %t, want %s and false",
+						state.ServerName, state.ECHAccepted, testECHPublicName)
+				}
+			}
+			state := srv.nextState(t)
+			if state.ServerName != name {
+				t.Errorf("server saw ServerName %q, want %q", state.ServerName, name)
+			}
+			if state.ECHAccepted != wantAccepted {
+				t.Errorf("got server ECHAccepted %t, want %t", state.ECHAccepted, wantAccepted)
+			}
+
+			for _, outcome := range []string{"accepted", "accepted_retry", "rejected", "failed"} {
+				want := 0.0
+				if outcome == tc.wantOutcome {
+					want = 1
+				}
+				got := counterValue(t, va.metrics.echHandshakes.WithLabelValues(outcome))
+				if got != want {
+					t.Errorf("ech_handshakes{outcome=%q} = %v, want %v", outcome, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestDialTLSWithECHErrors(t *testing.T) {
+	t.Parallel()
+
+	echConfigList, _ := newTestECHKey(t)
+	base := &tls.Config{ServerName: "example.com", InsecureSkipVerify: true}
+	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+
+	t.Run("dial error", func(t *testing.T) {
+		t.Parallel()
+		va, _ := setup(nil, "", nil, nil)
+		dialer := &countingDialer{dial: func(context.Context, string, string, *tls.Config) (*tls.Conn, error) {
+			return nil, dialErr
+		}}
+
+		_, status, err := va.dialTLSWithECH(t.Context(), dialer.DialTLSContext, "192.0.2.1:443", base, echConfigList)
+		opErr, ok := errors.AsType[*net.OpError](err)
+		if !ok || opErr.Op != "dial" {
+			t.Errorf("got error %v, want the dial error", err)
+		}
+		if status != "" {
+			t.Errorf("got status %q, want none", status)
+		}
+		if dialer.calls.Load() != 1 {
+			t.Errorf("dialed %d times, want 1", dialer.calls.Load())
+		}
+	})
+
+	t.Run("dial error on retry", func(t *testing.T) {
+		t.Parallel()
+		va, _ := setup(nil, "", nil, nil)
+		_, otherKey := newTestECHKey(t)
+		srv := newECHTestServer(t, &tls.Config{
+			Certificates:             []tls.Certificate{*testTLSCert([]string{"example.com"}, nil, nil)},
+			EncryptedClientHelloKeys: []tls.EncryptedClientHelloKey{otherKey},
+		})
+		srvDialer := testDialer(t, srv.addr, 10*time.Second)
+		dialer := &countingDialer{}
+		dialer.dial = func(ctx context.Context, network, addr string, config *tls.Config) (*tls.Conn, error) {
+			// Let the first attempt get rejected with retry configs, then fail.
+			if dialer.calls.Load() > 1 {
+				return nil, dialErr
+			}
+			return srvDialer.DialTLSContext(ctx, network, addr, config)
+		}
+
+		_, status, err := va.dialTLSWithECH(t.Context(), dialer.DialTLSContext, srv.addr, base, echConfigList)
+		opErr, ok := errors.AsType[*net.OpError](err)
+		if !ok || opErr.Op != "dial" {
+			t.Errorf("got error %v, want the dial error", err)
+		}
+		if status != core.ECHRejected {
+			t.Errorf("got status %q, want %q", status, core.ECHRejected)
+		}
+		if dialer.calls.Load() != 2 {
+			t.Errorf("dialed %d times, want 2", dialer.calls.Load())
+		}
+		got := counterValue(t, va.metrics.echHandshakes.WithLabelValues("rejected"))
+		if got != 1 {
+			t.Errorf(`ech_handshakes{outcome="rejected"} = %v, want 1`, got)
+		}
+	})
+
+	t.Run("handshake timeout", func(t *testing.T) {
+		t.Parallel()
+		va, _ := setup(nil, "", nil, nil)
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listening: %s", err)
+		}
+		defer ln.Close()
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				// Never respond, so the handshakes time out.
+				defer conn.Close()
+			}
+		}()
+
+		dialer := &countingDialer{dial: testDialer(t, ln.Addr().String(), 100*time.Millisecond).DialTLSContext}
+		_, status, err := va.dialTLSWithECH(t.Context(), dialer.DialTLSContext, ln.Addr().String(), base, echConfigList)
+		if err == nil {
+			t.Fatal("dialTLSWithECH succeeded against a silent server")
+		}
+		if status != core.ECHFailed {
+			t.Errorf("got status %q, want %q", status, core.ECHFailed)
+		}
+		if dialer.calls.Load() != 2 {
+			t.Errorf("dialed %d times, want 2: with ECH, then without", dialer.calls.Load())
+		}
+		got := counterValue(t, va.metrics.echHandshakes.WithLabelValues("failed"))
+		if got != 1 {
+			t.Errorf(`ech_handshakes{outcome="failed"} = %v, want 1`, got)
+		}
+	})
 }

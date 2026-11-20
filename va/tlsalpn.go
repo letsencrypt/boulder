@@ -68,14 +68,15 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	}
 
 	var addrs []netip.Addr
+	var echConfigList []byte
 	switch ident.Type {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier
-		dnsAddrs, _, dnsResolvers, err := va.getAddrs(ctx, ident.Value, 0)
+		dnsAddrs, dnsECH, dnsResolvers, err := va.getAddrs(ctx, ident.Value, va.tlsPort)
 		if err != nil {
 			return nil, nil, validationRecord, err
 		}
-		addrs, validationRecord.ResolverAddrs = dnsAddrs, dnsResolvers
+		addrs, validationRecord.ResolverAddrs, echConfigList = dnsAddrs, dnsResolvers, dnsECH
 		validationRecord.AddressesResolved = addrs
 	case identifier.TypeIP:
 		netIP, err := netip.ParseAddr(ident.Value)
@@ -107,7 +108,8 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 		address := net.JoinHostPort(v6[0].String(), validationRecord.Port)
 		validationRecord.AddressUsed = v6[0]
 
-		cert, cs, err := va.getChallengeCert(ctx, address, ident)
+		cert, cs, ech, err := va.getChallengeCert(ctx, address, ident, echConfigList)
+		validationRecord.ECH = ech
 
 		// If there is no problem, return immediately
 		if err == nil {
@@ -134,7 +136,8 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	// talking to the first IPv6 address, try the first IPv4 address
 	validationRecord.AddressUsed = v4[0]
 	address := net.JoinHostPort(v4[0].String(), validationRecord.Port)
-	cert, cs, err := va.getChallengeCert(ctx, address, ident)
+	cert, cs, ech, err := va.getChallengeCert(ctx, address, ident, echConfigList)
+	validationRecord.ECH = ech
 	return cert, cs, validationRecord, err
 }
 
@@ -142,7 +145,8 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	ctx context.Context,
 	hostPort string,
 	ident identifier.ACMEIdentifier,
-) (*x509.Certificate, *tls.ConnectionState, error) {
+	echConfigList []byte,
+) (*x509.Certificate, *tls.ConnectionState, core.ECHStatus, error) {
 	var serverName string
 	switch ident.Type {
 	case identifier.TypeDNS:
@@ -151,68 +155,70 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		reverseIP, err := dns.ReverseAddr(ident.Value)
 		if err != nil {
 			va.log.Infof("%s Failed to parse IP address %s.", core.ChallengeTypeTLSALPN01, ident.Value)
-			return nil, nil, fmt.Errorf("failed to parse IP address")
+			return nil, nil, "", fmt.Errorf("failed to parse IP address")
 		}
 		serverName = reverseIP
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
 		va.log.Infof("%s Unknown identifier type '%s' for %s.", core.ChallengeTypeTLSALPN01, ident.Type, ident.Value)
-		return nil, nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
+		return nil, nil, "", fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
 	va.log.Infof("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, serverName)
 
-	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
-	defer cancel()
-
-	dialer := &tls.Dialer{Config: &tls.Config{
+	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{ACMETLS1Protocol},
 		ServerName: serverName,
 		// We expect a self-signed challenge certificate, do not verify it here.
 		InsecureSkipVerify: true,
-	}}
+	}
 
 	// This is a backstop check to avoid connecting to reserved IP addresses.
 	// They should have been caught and excluded by `bdns.LookupHost`.
-	host, _, err := net.SplitHostPort(hostPort)
+	host, port, err := net.SplitHostPort(hostPort)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	hostIP, _ := netip.ParseAddr(host)
 	if (hostIP != netip.Addr{}) {
 		err = va.isReservedIPFunc(hostIP)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 	}
 
-	conn, err := dialer.DialContext(dialCtx, "tcp", hostPort)
+	dialer := &preresolvedDialer{
+		ip:       hostIP,
+		port:     port,
+		hostname: host,
+		timeout:  va.singleDialTimeout,
+	}
+	conn, ech, err := va.dialTLSWithECH(ctx, dialer.DialTLSContext, hostPort, tlsConfig, echConfigList)
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", core.ChallengeTypeTLSALPN01, ident, err, err)
 		if (hostIP != netip.Addr{}) {
 			// Wrap the validation error and the IP of the remote host in an
 			// IPError so we can display the IP in the problem details returned
 			// to the client.
-			return nil, nil, ipError{hostIP, err}
+			return nil, nil, ech, ipError{hostIP, err}
 		}
-		return nil, nil, err
+		return nil, nil, ech, err
 	}
 	defer conn.Close()
 
-	// tls.Dialer.DialContext guarantees that the *net.Conn it returns is a *tls.Conn.
-	cs := conn.(*tls.Conn).ConnectionState()
+	cs := conn.ConnectionState()
 	certs := cs.PeerCertificates
 	if len(certs) == 0 {
 		va.log.Infof("%s challenge for %s resulted in no certificates", core.ChallengeTypeTLSALPN01, ident.Value)
-		return nil, nil, berrors.UnauthorizedError("No certs presented for %s challenge", core.ChallengeTypeTLSALPN01)
+		return nil, nil, ech, berrors.UnauthorizedError("No certs presented for %s challenge", core.ChallengeTypeTLSALPN01)
 	}
 	for i, cert := range certs {
 		va.log.Infof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
 			core.ChallengeTypeTLSALPN01, ident.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
-	return certs[0], &cs, nil
+	return certs[0], &cs, ech, nil
 }
 
 func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) error {

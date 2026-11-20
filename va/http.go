@@ -134,9 +134,37 @@ func (d *preresolvedDialer) DialContext(
 	return throwAwayDialer.DialContext(ctx, network, targetAddr)
 }
 
+// DialTLSContext connects like DialContext, then performs a TLS handshake using
+// config. The connection and the handshake together must finish within the
+// dialer's timeout.
+func (d *preresolvedDialer) DialTLSContext(
+	ctx context.Context,
+	network,
+	addr string,
+	config *tls.Config) (*tls.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+
+	rawConn, err := d.DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	conn := tls.Client(rawConn, config)
+	err = conn.HandshakeContext(ctx)
+	if err != nil {
+		_ = rawConn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
 // a dialerFunc meets the function signature requirements of
 // a http.Transport.DialContext handler.
 type dialerFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// a tlsDialerFunc connects and performs a TLS handshake using the given config,
+// like preresolvedDialer.DialTLSContext.
+type tlsDialerFunc func(ctx context.Context, network, addr string, config *tls.Config) (*tls.Conn, error)
 
 // httpTransport constructs a HTTP Transport with settings appropriate for
 // HTTP-01 validation. The provided dialerFunc is used as the Transport's
