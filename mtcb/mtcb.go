@@ -70,7 +70,7 @@ func New(
 	issuersMap := make(map[string]mtcIssuer)
 	for _, issuer := range issuers {
 		if !issuer.IsMTC() {
-			return nil, fmt.Errorf("issuer is not an MTC issuer")
+			return nil, fmt.Errorf("not an MTC issuer: %s", issuer.Name())
 		}
 		caID := issuer.MTCAID()
 

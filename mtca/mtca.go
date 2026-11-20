@@ -55,7 +55,7 @@ func New(
 	clk clock.Clock,
 ) (*mtca, error) {
 	if !issuer.Cert.IsMTC() {
-		return nil, fmt.Errorf("issuer is not an MTC issuer")
+		return nil, fmt.Errorf("not an MTC issuer: %s", issuer.Name())
 	}
 	if issuer.Cert.MTCAID().String() != logID.CAID().String() {
 		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID(), issuer.Cert.MTCAID())
