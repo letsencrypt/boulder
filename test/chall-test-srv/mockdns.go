@@ -2,10 +2,13 @@
 package main
 
 import (
+	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/letsencrypt/challtestsrv"
+	"github.com/miekg/dns"
 )
 
 // setDefaultDNSIPv4 handles an HTTP POST request to set the default IPv4
@@ -348,4 +351,85 @@ func (srv *managementServer) delDNSServFailRecord(w http.ResponseWriter, r *http
 	srv.challSrv.DeleteDNSServFailRecord(request.Host)
 	srv.log.Printf("Removed SERVFAIL response for DNS queries to %q", request.Host)
 	w.WriteHeader(http.StatusOK)
+}
+
+// addDNSHTTPSRecord handles an HTTP POST request to add a mock HTTPS record
+// (RFC 9460) for a host.
+//
+// The POST body is expected to have two non-empty parameters:
+// "host" - the hostname that should have the mock HTTPS record
+// "record" - the record in presentation format, without its owner name, class,
+// or type, e.g. "1 . ech=AEX+DQ..."
+//
+// A successful POST will write http.StatusOK to the client.
+func (srv *managementServer) addDNSHTTPSRecord(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Host   string
+		Record string
+	}
+	if err := mustParsePOST(&request, r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// If the request has no host or no record it's a bad request
+	if request.Host == "" || request.Record == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	rr, err := dns.NewRR(fmt.Sprintf("%s IN HTTPS %s", dns.Fqdn(request.Host), request.Record))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	httpsRR, ok := rr.(*dns.HTTPS)
+	if !ok {
+		http.Error(w, "record is not an HTTPS record", http.StatusBadRequest)
+		return
+	}
+
+	srv.challSrv.AddDNSHTTPSRecord(request.Host, *httpsRR)
+	srv.log.Printf("Added response for DNS HTTPS queries to %q", request.Host)
+	w.WriteHeader(http.StatusOK)
+}
+
+// delDNSHTTPSRecord handles an HTTP POST request to delete all mock HTTPS
+// records for a host.
+//
+// The POST body is expected to have one non-empty parameter:
+// "host" - the hostname to remove the mock HTTPS records for.
+//
+// A successful POST will write http.StatusOK to the client.
+func (srv *managementServer) delDNSHTTPSRecord(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Host string
+	}
+	if err := mustParsePOST(&request, r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// If the request has an empty host it's a bad request
+	if request.Host == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	srv.challSrv.DeleteDNSHTTPSRecord(request.Host)
+	srv.log.Printf("Removed response for DNS HTTPS queries to %q", request.Host)
+	w.WriteHeader(http.StatusOK)
+}
+
+// getECHConfig handles an HTTP request for the ECHConfigList accepted by the
+// TLS-ALPN-01 and HTTPS HTTP-01 challenge servers. It writes the list in
+// base64, as used in an HTTPS record's "ech" parameter, or writes
+// http.StatusNotFound if ECH is disabled.
+func (srv *managementServer) getECHConfig(w http.ResponseWriter, r *http.Request) {
+	list := srv.challSrv.ECHConfigList()
+	if list == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	_, _ = w.Write([]byte(base64.StdEncoding.EncodeToString(list)))
 }

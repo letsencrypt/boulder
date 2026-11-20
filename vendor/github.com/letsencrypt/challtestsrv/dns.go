@@ -183,6 +183,33 @@ func (s *ChallSrv) GetDNSCAARecord(host string) []CAAPolicy {
 	return s.dnsData.caaRecords[host]
 }
 
+// AddDNSHTTPSRecord adds an HTTPS record (RFC 9460) that will be returned when
+// querying HTTPS for the given host. The record's header is ignored.
+func (s *ChallSrv) AddDNSHTTPSRecord(host string, record dns.HTTPS) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	s.dnsData.httpsRecords[host] = append(s.dnsData.httpsRecords[host], record)
+}
+
+// DeleteDNSHTTPSRecord deletes any HTTPS records that will be returned when
+// querying HTTPS for the given host.
+func (s *ChallSrv) DeleteDNSHTTPSRecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	delete(s.dnsData.httpsRecords, host)
+}
+
+// GetDNSHTTPSRecords returns the HTTPS records that will be returned when
+// querying HTTPS for the given host.
+func (s *ChallSrv) GetDNSHTTPSRecords(host string) []dns.HTTPS {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	host = dns.Fqdn(host)
+	return s.dnsData.httpsRecords[host]
+}
+
 // AddDNSServFailRecord configures the chall srv to return SERVFAIL responses
 // for all queries for the given host.
 func (s *ChallSrv) AddDNSServFailRecord(host string) {
@@ -360,6 +387,22 @@ func (s *ChallSrv) caaAnswers(q dns.Question) []dns.RR {
 	return records
 }
 
+// httpsAnswers is a dnsAnswerFunc that creates HTTPS RR's for the given
+// question using the ChallSrv's DNS records. If there is no HTTPS record added
+// for the given hostname in the question no RRs will be returned.
+func (s *ChallSrv) httpsAnswers(q dns.Question) []dns.RR {
+	var records []dns.RR
+	for _, rec := range s.GetDNSHTTPSRecords(q.Name) {
+		rec.Hdr = dns.RR_Header{
+			Name:   q.Name,
+			Rrtype: dns.TypeHTTPS,
+			Class:  dns.ClassINET,
+		}
+		records = append(records, &rec)
+	}
+	return records
+}
+
 type writeMsg interface {
 	WriteMsg(m *dns.Msg) error
 }
@@ -403,8 +446,8 @@ func (s *ChallSrv) dohHandler(w http.ResponseWriter, r *http.Request) {
 
 // dnsHandler is a miekg/dns handler that can process a dns.Msg request and
 // write a response to the provided dns.ResponseWriter. TXT, A, AAAA, CNAME,
-// and CAA queries types are supported and answered using the ChallSrv's DNS
-// records. A host that is aliased by a CNAME record will follow that alias
+// CAA, and HTTPS queries types are supported and answered using the ChallSrv's
+// DNS records. A host that is aliased by a CNAME record will follow that alias
 // one level and return the requested record types for that alias' target
 func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	s.dnsHandlerInner(w, r, "")
@@ -468,6 +511,8 @@ func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg, userAgent string) {
 			answerFunc = s.aaaaAnswers
 		case dns.TypeCAA:
 			answerFunc = s.caaAnswers
+		case dns.TypeHTTPS:
+			answerFunc = s.httpsAnswers
 		default:
 			m.SetRcode(r, dns.RcodeNotImplemented)
 		}

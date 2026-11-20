@@ -112,14 +112,18 @@ func tlsALPNOneServer(address string, challSrv *ChallSrv) challTLSServer {
 	if err != nil {
 		panic(err)
 	}
+	tlsConfig := &tls.Config{
+		NextProtos:     []string{ACMETLS1Protocol},
+		GetCertificate: challSrv.ServeChallengeCertFunc(key),
+	}
+	if len(challSrv.echKeys) > 0 {
+		tlsConfig.GetEncryptedClientHelloKeys = challSrv.echKeysForHello
+	}
 	srv := &http.Server{
 		Addr:         address,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
-		TLSConfig: &tls.Config{
-			NextProtos:     []string{ACMETLS1Protocol},
-			GetCertificate: challSrv.ServeChallengeCertFunc(key),
-		},
+		TLSConfig:    tlsConfig,
 	}
 	srv.SetKeepAlivesEnabled(false)
 	return challTLSServer{srv}

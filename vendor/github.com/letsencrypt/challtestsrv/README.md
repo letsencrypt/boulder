@@ -8,9 +8,12 @@
 The `challtestsrv` package offers a library that can be used by test
 code to respond to HTTP-01, DNS-01, and TLS-ALPN-01 ACME challenges. The
 `challtestsrv` package can also be used as a DNS server letting
-developers configure `A`, `AAAA`, `CNAME`, and `CAA` DNS data for specific hostnames.
+developers configure `A`, `AAAA`, `CNAME`, `CAA`, and `HTTPS` DNS data for specific hostnames.
 The DNS server will resolve up to one level of `CNAME` aliasing for accepted
 DNS request types.
+
+If `Config.ECHPublicName` is set, the TLS-ALPN-01 and HTTPS HTTP-01 servers
+also accept Encrypted Client Hello (ECH) using a key generated at startup.
 
 **Important note: The `challtestsrv` library is for TEST USAGE
 ONLY. It is trivially insecure, offering no authentication. Only use
