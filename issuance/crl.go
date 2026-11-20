@@ -119,7 +119,7 @@ func (i *Issuer) IssueCRL(prof *CRLProfile, req *CRLRequest) ([]byte, error) {
 		return nil, fmt.Errorf("building lint config: %w", err)
 	}
 
-	// TODO: zcrypto can't parse CRLs signed by MTC CAs (doesn't like the RELATIVE-OID Issuer).
+	// TODO(#9189): zcrypto can't parse CRLs signed by MTC CAs (doesn't like the RELATIVE-OID Issuer).
 	// Skip them for now, restore once pkimetal is updated to include a zcrypto version that
 	// parses these.
 	if !i.Cert.IsMTC() {
