@@ -55,6 +55,21 @@ func (c AcmeChallenge) IsValid() bool {
 	}
 }
 
+// ECHStatus describes how Encrypted Client Hello was used for a validation
+// connection. The empty ECHStatus means ECH was not attempted.
+type ECHStatus string
+
+const (
+	// ECHAccepted means the connection used ECH.
+	ECHAccepted = ECHStatus("accepted")
+	// ECHRejected means the server rejected ECH, so the connection was retried
+	// without it.
+	ECHRejected = ECHStatus("rejected")
+	// ECHFailed means the ECH handshake failed for another reason, so the
+	// connection was retried without it.
+	ECHFailed = ECHStatus("failed")
+)
+
 // OCSPStatus defines the state of OCSP for a certificate
 type OCSPStatus string
 
@@ -134,6 +149,10 @@ type ValidationRecord struct {
 	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
 	// instead look like A:host:port or AAAA:host:port
 	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
+
+	// ECH records whether the TLS connection to AddressUsed used Encrypted
+	// Client Hello.
+	ECH ECHStatus `json:"ech,omitempty"`
 }
 
 // Challenge is an aggregate of all data needed for any challenges.
