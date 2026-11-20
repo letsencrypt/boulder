@@ -194,6 +194,12 @@ func main() {
 		issuers = append(issuers, issuer)
 	}
 
+	for _, iss := range issuers {
+		if iss.Cert.IsMTC() {
+			cmd.Fail(fmt.Sprintf("Issuer %q is an MTC issuer and can't be used by direct-signing CA", iss.Name()))
+		}
+	}
+
 	if len(c.CA.Issuance.CertProfiles) == 0 {
 		cmd.Fail("At least one profile must be configured")
 	}
