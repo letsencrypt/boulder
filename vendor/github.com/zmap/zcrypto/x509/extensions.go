@@ -36,6 +36,8 @@ var (
 
 	oidExtCABFOrganizationID = asn1.ObjectIdentifier{2, 23, 140, 3, 1}
 	oidExtQCStatements       = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 3}
+
+	oidExtStepProvisioner = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 37476, 9000, 64, 1}
 )
 
 type CertificateExtensions struct {
@@ -55,6 +57,7 @@ type CertificateExtensions struct {
 	TorServiceDescriptors          []*TorServiceDescriptorHash      `json:"tor_service_descriptors,omitempty"`
 	CABFOrganizationIdentifier     *CABFOrganizationIdentifier      `json:"cabf_organization_id,omitempty"`
 	QCStatements                   *QCStatements                    `json:"qc_statements,omitempty"`
+	StepProvisioner                *StepProvisioner                 `json:"step_provisioner,omitempty"`
 }
 
 type UnknownCertificateExtensions []pkix.Extension
@@ -435,7 +438,7 @@ func (c *CertValidationLevel) MarshalJSON() ([]byte, error) {
 // and Firefox
 // (http://hg.mozilla.org/mozilla-central/file/tip/security/certverifier/ExtendedValidation.cpp)
 // EV OID lists
-var ExtendedValidationOIDs = map[string]interface{}{
+var ExtendedValidationOIDs = map[string]any{
 	// CA/Browser Forum EV OID standard
 	// https://cabforum.org/object-registry/
 	"2.23.140.1.1": nil,
@@ -589,7 +592,7 @@ var ExtendedValidationOIDs = map[string]interface{}{
 
 // OrganizationValidationOIDs contains CA specific OV OIDs from
 // https://cabforum.org/object-registry/
-var OrganizationValidationOIDs = map[string]interface{}{
+var OrganizationValidationOIDs = map[string]any{
 	// CA/Browser Forum OV OID standard
 	// https://cabforum.org/object-registry/
 	"2.23.140.1.2.2": nil,
@@ -612,7 +615,7 @@ var OrganizationValidationOIDs = map[string]interface{}{
 }
 
 // DomainValidationOIDs contain OIDs that identify DV certs.
-var DomainValidationOIDs = map[string]interface{}{
+var DomainValidationOIDs = map[string]any{
 	// Globalsign
 	"1.3.6.1.4.1.4146.1.10.10": nil,
 	// Let's Encrypt
@@ -815,6 +818,8 @@ func (c *Certificate) JsonifyExtensions() (*CertificateExtensions, UnknownCertif
 			exts.CABFOrganizationIdentifier = c.CABFOrganizationIdentifier
 		} else if e.Id.Equal(oidExtQCStatements) {
 			exts.QCStatements = c.QCStatements
+		} else if e.Id.Equal(oidExtStepProvisioner) {
+			exts.StepProvisioner = c.StepProvisioner
 		} else {
 			// Unknown extension
 			unk = append(unk, e)

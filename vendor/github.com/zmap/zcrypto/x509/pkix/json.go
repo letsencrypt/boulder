@@ -36,8 +36,8 @@ func (a *AttributeTypeAndValue) UnmarshalJSON(b []byte) error {
 	}
 	a.Type = nil
 	if len(aux.Type) > 0 {
-		parts := strings.Split(aux.Type, ".")
-		for _, part := range parts {
+		parts := strings.SplitSeq(aux.Type, ".")
+		for part := range parts {
 			i, err := strconv.Atoi(part)
 			if err != nil {
 				return err
@@ -118,8 +118,8 @@ func (ext *Extension) UnmarshalJSON(b []byte) (err error) {
 		return
 	}
 
-	parts := strings.Split(aux.ID, ".")
-	for _, part := range parts {
+	parts := strings.SplitSeq(aux.ID, ".")
+	for part := range parts {
 		i, err := strconv.Atoi(part)
 		if err != nil {
 			return err

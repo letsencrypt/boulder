@@ -16,6 +16,7 @@ import (
 type RelativeOID struct {
 	der []byte
 	str string
+	pen uint32
 }
 
 // FromString parses a Relative OID from its dotted-decimal string representation.
@@ -128,7 +129,14 @@ func fromInts(components []uint32) (*RelativeOID, error) {
 	return &RelativeOID{
 		der: der,
 		str: strings.Join(strs, "."),
+		pen: components[0],
 	}, nil
+}
+
+// PEN returns the relative OID's first component, the IANA Private Enterprise
+// Number of a trust anchor ID per draft-ietf-tls-trust-anchor-ids section 4.
+func (r *RelativeOID) PEN() uint32 {
+	return r.pen
 }
 
 // String returns the dotted-decimal string representation of the relative OID.

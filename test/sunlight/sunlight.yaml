@@ -9,7 +9,7 @@ listen:
 # vice versa.
 checkpoints: /sunlight-data/checkpoints.db
 witness:
-  name: acoolmirror
+  name: concave
   secret: /boulder/test/certs/sunlight/seed.bin
   submissionprefix: https://boulder-sunlight/
   monitoringprefix: http://boulder-seaweedfs:8333/boulder-sunlight

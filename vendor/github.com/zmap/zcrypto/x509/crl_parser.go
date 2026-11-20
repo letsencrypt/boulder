@@ -124,11 +124,13 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 		return nil, errors.New("x509: malformed issuer")
 	}
 	rl.RawIssuer = issuerSeq
-	issuerRDNs, err := parseName(issuerSeq)
-	if err != nil {
+
+	var issuer pkix.RDNSequence
+	if _, err := asn1.Unmarshal(issuerSeq, &issuer); err != nil {
 		return nil, err
 	}
-	rl.Issuer.FillFromRDNSequence(issuerRDNs)
+
+	rl.Issuer.FillFromRDNSequence(&issuer)
 
 	rl.ThisUpdate, err = parseTime(&tbs)
 	if err != nil {
