@@ -108,7 +108,7 @@ func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 	}
 
 	isMTC := slices.ContainsFunc(ic.Extensions, func(extn pkix.Extension) bool {
-		return extn.Id.Equal(mtx509.IDMTCSHA256())
+		return extn.Id.Equal(mtx509.IDMTCCASHA256())
 	})
 	var mtcaID *reloid.RelativeOID
 	var err error

@@ -20,10 +20,10 @@ import (
 	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
-// IDMTCSHA256 returns the extension OID for id-pe-mtcCertificationAuthority-SHA256.
+// IDMTCCASHA256 returns the extension OID for id-pe-mtcCertificationAuthority-SHA256.
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-5.5
-func IDMTCSHA256() asn1.ObjectIdentifier {
+func IDMTCCASHA256() asn1.ObjectIdentifier {
 	return asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 38}
 }
 
