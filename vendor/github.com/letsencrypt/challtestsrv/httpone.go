@@ -189,8 +189,10 @@ func httpOneServer(address string, challSrv *ChallSrv, https bool) challHTTPServ
 	var tlsConfig *tls.Config
 	if https {
 		tlsConfig = &tls.Config{
-			Certificates:             []tls.Certificate{cert},
-			EncryptedClientHelloKeys: challSrv.echKeys,
+			Certificates: []tls.Certificate{cert},
+		}
+		if len(challSrv.echKeys) > 0 {
+			tlsConfig.GetEncryptedClientHelloKeys = challSrv.echKeysForHello
 		}
 	}
 	// Create an HTTP Server for HTTP-01 challenges

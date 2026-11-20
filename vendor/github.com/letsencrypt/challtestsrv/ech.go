@@ -72,3 +72,8 @@ func newECHKey(publicName string) (tls.EncryptedClientHelloKey, []byte, error) {
 func (s *ChallSrv) ECHConfigList() []byte {
 	return s.echConfigList
 }
+
+// echKeysForHello implements the function signature for tls.Config.GetEncryptedClientHelloKeys.
+func (s *ChallSrv) echKeysForHello(_ *tls.ClientHelloInfo) ([]tls.EncryptedClientHelloKey, error) {
+	return s.echKeys, nil
+}

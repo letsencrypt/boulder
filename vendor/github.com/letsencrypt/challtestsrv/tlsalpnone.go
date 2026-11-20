@@ -93,11 +93,6 @@ func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientH
 	}
 }
 
-// echKeysForHello implements the function signature for tls.Config.GetEncryptedClientHelloKeys.
-func (s *ChallSrv) echKeysForHello(_ *tls.ClientHelloInfo) ([]tls.EncryptedClientHelloKey, error) {
-	return s.echKeys, nil
-}
-
 type challTLSServer struct {
 	*http.Server
 }

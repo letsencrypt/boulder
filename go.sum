@@ -142,8 +142,8 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/letsencrypt/borp v0.0.0-20260428182343-7962eada420f h1:ka12vhO0JLDmdER25Wrzdp3fHNi2SpCoIEGOELIR2I0=
 github.com/letsencrypt/borp v0.0.0-20260428182343-7962eada420f/go.mod h1:gMSMCNKhxox/ccR923EJsIvHeVVYfCABGbirqa0EwuM=
-github.com/letsencrypt/challtestsrv v1.4.3-0.20261111025656-bdbedb6d7cf2 h1:6/crpaAWz9qssOfkTUNMUtSGn5apl9kjQYndhOGWJYQ=
-github.com/letsencrypt/challtestsrv v1.4.3-0.20261111025656-bdbedb6d7cf2/go.mod h1:rzdCMOi7Vd4iNPQ8kjcQitB6gBbTptZ8Rltwg34+Y8U=
+github.com/letsencrypt/challtestsrv v1.5.0 h1:eQDF0d8MTQabvCzE5YOjOvVqCeEXO0Fqq2xbFJLjA40=
+github.com/letsencrypt/challtestsrv v1.5.0/go.mod h1:rzdCMOi7Vd4iNPQ8kjcQitB6gBbTptZ8Rltwg34+Y8U=
 github.com/letsencrypt/pkcs11key/v4 v4.0.1 h1:XIXFxOnQJS5QYBlMnHhnlOBVcfylh7m3fjOJmVcEV88=
 github.com/letsencrypt/pkcs11key/v4 v4.0.1/go.mod h1:6KfGBMkPEL6OAIRFSZ0VTj3e9G0Yv9G17W5oQ2x1/UQ=
 github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158 h1:HGFsIltYMUiB5eoFSowFzSoXkocM2k9ctmJ57QMGjys=
