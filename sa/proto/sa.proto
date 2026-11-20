@@ -19,6 +19,7 @@ service StorageAuthorityReadOnly {
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
+  rpc GetPriorRegistrationKeys(RegistrationID) returns (JWKThumbprints) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
@@ -51,6 +52,7 @@ service StorageAuthority {
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
+  rpc GetPriorRegistrationKeys(RegistrationID) returns (JWKThumbprints) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
@@ -456,6 +458,11 @@ message PauseIdentifiersResponse {
 message UpdateRegistrationKeyRequest {
   int64 registrationID = 1;
   bytes jwk = 2;
+}
+
+message JWKThumbprints {
+  // Thumbprints is ordered with the most recently replaced key first.
+  repeated bytes thumbprints = 1;
 }
 
 message RateLimitOverride {

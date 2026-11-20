@@ -478,8 +478,8 @@ func Command() string {
 	return path.Base(os.Args[0])
 }
 
-// NormalizeIssuerDomainName normalizes an RFC 8659 issuer-domain-name per the
-// recommended algorithm in draft-ietf-acme-dns-persist-01, Section 9.2:
+// NormalizeIssuerDomainName normalizes an RFC 8659 issuer-domain-name to the
+// form required by draft-ietf-acme-dns-persist-03, Section 3.1:
 // case-fold to lowercase, apply Unicode NFC normalization, convert to A-label
 // (Punycode), remove any trailing dot, and ensure the result is no more than
 // 253 octets in length. If normalization fails, an error is returned.

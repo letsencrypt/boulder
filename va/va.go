@@ -3,7 +3,9 @@ package va
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"maps"
@@ -22,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -209,6 +212,7 @@ type ValidationAuthorityImpl struct {
 	remoteVAs                []RemoteVA
 	maxRemoteFailures        int
 	accountURIPrefixes       []string
+	accountHashPrefix        string
 	singleDialTimeout        time.Duration
 	slowRemoteTimeout        time.Duration
 	perspective              string
@@ -235,6 +239,7 @@ func NewValidationAuthorityImpl(
 	clk clock.Clock,
 	logger blog.Logger,
 	accountURIPrefixes []string,
+	accountHashPrefix string,
 	perspective string,
 	rir string,
 	reservedIPChecker func(netip.Addr) error,
@@ -280,6 +285,7 @@ func NewValidationAuthorityImpl(
 		remoteVAs:          remoteVAs,
 		maxRemoteFailures:  maxAllowedFailures(len(remoteVAs)),
 		accountURIPrefixes: accountURIPrefixes,
+		accountHashPrefix:  accountHashPrefix,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
 		// used for the DialContext operations that take place during an
@@ -447,6 +453,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	if errors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
 	}
+	if errors.Is(err, berrors.PersistExpired) {
+		return probs.PersistExpired(err.Error())
+	}
 	if errors.Is(err, berrors.DNS) {
 		return probs.DNS(err.Error())
 	}
@@ -470,8 +479,9 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
-// The accountURI parameter is required for dns-account-01 and
-// dns-persist-01 challenges.
+// The accountURI parameter is required for dns-account-01 challenges. The
+// ancestorDomain parameter is optional, and only used for dns-persist-01
+// challenges.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -479,31 +489,36 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	token string,
 	keyAuthorization string,
 	accountURI string,
-) ([]core.ValidationRecord, error) {
+	dnsPersistAccountURIs []string,
+	ancestorDomain string,
+) ([]core.ValidationRecord, *dnsPersistIssueValueParams, error) {
 	switch kind {
 	case core.ChallengeTypeHTTP01:
-		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
+		records, err := va.validateHTTP01(ctx, ident, token, keyAuthorization)
+		return records, nil, err
 	case core.ChallengeTypeDNS01:
 		// Strip a (potential) leading wildcard token from the identifier.
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
-		return va.validateDNS01(ctx, ident, keyAuthorization)
+		records, err := va.validateDNS01(ctx, ident, keyAuthorization)
+		return records, nil, err
 	case core.ChallengeTypeDNSPersist01:
 		if features.Get().DNSPersist01Enabled {
-			wildcard := strings.HasPrefix(ident.Value, "*.")
-			// Strip a (potential) leading wildcard token from the identifier.
-			ident.Value = strings.TrimPrefix(ident.Value, "*.")
-			return va.validateDNSPersist01(ctx, ident, accountURI, wildcard)
+			validationDomain, wildcard := dnsPersistValidationDomain(ident, ancestorDomain)
+			ident.Value = validationDomain
+			return va.validateDNSPersist01(ctx, ident, dnsPersistAccountURIs, wildcard)
 		}
 	case core.ChallengeTypeTLSALPN01:
-		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
+		records, err := va.validateTLSALPN01(ctx, ident, keyAuthorization)
+		return records, nil, err
 	case core.ChallengeTypeDNSAccount01:
 		if features.Get().DNSAccount01Enabled {
 			// Strip a (potential) leading wildcard token from the identifier.
 			ident.Value = strings.TrimPrefix(ident.Value, "*.")
-			return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+			records, err := va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+			return records, nil, err
 		}
 	}
-	return nil, berrors.MalformedError("invalid challenge type %s", kind)
+	return nil, nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
 
 // observeLatency records entries in the validationLatency histogram of the
@@ -805,17 +820,49 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		accountURI = fmt.Sprintf("%s%d", va.accountURIPrefixes[0], req.Authz.RegID)
 	}
 
+	var dnsPersistAccountURIs []string
+	if chall.Type == core.ChallengeTypeDNSPersist01 && features.Get().DNSPersist01Enabled {
+		// Per draft-ietf-acme-dns-persist-03 section 4.2, the accounturi is a
+		// hashed URI which we recompute over each key the account has used,
+		// current key first, both for the domain being validated and for the
+		// domain-omitted form "*".
+		domain, _ := dnsPersistValidationDomain(ident, req.AncestorDomain)
+		for _, thumbprint := range req.AccountKeyThumbprints {
+			key := base64.RawURLEncoding.EncodeToString(thumbprint)
+			for _, domainName := range []string{domain, "*"} {
+				domainNameLen := byte(len(domainName)) //nolint:gosec // G115: the PA rejects DNS names longer than 253 octets.
+				preimage := append([]byte{domainNameLen}, domainName+key+accountURI...)
+				digest := sha256.Sum256(preimage)
+				dnsPersistAccountURIs = append(dnsPersistAccountURIs,
+					va.accountHashPrefix+"sha-256/"+base64.RawURLEncoding.EncodeToString(digest[:]))
+			}
+		}
+		if req.DNSPersistAccountURI != "" {
+			// The primary perspective has already validated a record, and we
+			// must observe a record with the same accounturi. That value can
+			// only narrow the ones we computed, so a request cannot make us
+			// accept an accounturi which does not belong to the account.
+			if slices.Contains(dnsPersistAccountURIs, req.DNSPersistAccountURI) {
+				dnsPersistAccountURIs = []string{req.DNSPersistAccountURI}
+			} else {
+				dnsPersistAccountURIs = nil
+			}
+		}
+	}
+
 	// Do local validation. Note that we process the result in a couple ways
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
-	records, err := va.validateChallenge(
+	records, dnsPersistRecord, err := va.validateChallenge(
 		ctx,
 		ident,
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
 		accountURI,
+		dnsPersistAccountURIs,
+		req.AncestorDomain,
 	)
 
 	// Stop the clock for local validation latency.
@@ -879,8 +926,23 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 			}
 			return remoteva.DoDCV(ctx, validationRequest)
 		}
-		summary, prob = va.doRemoteOperation(ctx, op, req)
+		remoteReq := req
+		if dnsPersistRecord != nil {
+			// BRs section 3.2.2.4.22 requires that each corroborating
+			// perspective observe a record with the same accounturi as the
+			// primary perspective.
+			remoteReq = proto.CloneOf(req)
+			remoteReq.DNSPersistAccountURI = dnsPersistRecord.accountURI
+		}
+		summary, prob = va.doRemoteOperation(ctx, op, remoteReq)
 	}
 
-	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	result, err := bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+	if err != nil {
+		return nil, err
+	}
+	if dnsPersistRecord != nil && !dnsPersistRecord.persistUntil.IsZero() {
+		result.PersistUntil = timestamppb.New(dnsPersistRecord.persistUntil)
+	}
+	return result, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -63,6 +64,12 @@ var (
 	// recheck CAA records within 8 hours of issuance. We set this to 7 hours to
 	// stay on the safe side.
 	caaRecheckDuration = -7 * time.Hour
+
+	// dnsPersistAuthzLifetime is the longest a dns-persist-01 authorization may
+	// be reused. Per Baseline Requirements section 3.2.2.4.22, the maximum
+	// validation data reuse period for this method is 10 days. We set this to 9
+	// days to stay on the safe side.
+	dnsPersistAuthzLifetime = 9 * 24 * time.Hour
 )
 
 type KeyPolicies struct {
@@ -1152,13 +1159,18 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 				break
 			}
 		}
+		if solvedChall.Validated == nil {
+			// This should never happen because the SA records the validation
+			// time of every valid authorization.
+			return nil, nil, berrors.InternalServerError("authorization's challenge has no validated timestamp for: id %d", authz.ID)
+		}
 		logIdents = append(logIdents, identifierLog{
 			Ident:     ident,
 			Authz:     authz.ID,
 			Challenge: solvedChall.Type,
 			Validated: *solvedChall.Validated,
 		})
-		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		authzAge := ra.clk.Now().Sub(*solvedChall.Validated).Seconds()
 		ra.authzAges.WithLabelValues("FinalizeOrder", string(authz.Status)).Observe(authzAge)
 	}
 	logEvent.Identifiers = logIdents
@@ -1483,27 +1495,29 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 
 // doDCVAndCAA performs DCV and CAA checks sequentially: DCV is performed first
 // and CAA is only checked if DCV is successful. Validation records from the DCV
-// check are returned even if the CAA check fails.
-func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
+// check are returned even if the CAA check fails. The returned timestamp is the
+// persistUntil of the record which satisfied a dns-persist-01 challenge. It is
+// nil for other challenge types and for records which do not set persistUntil.
+func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, *timestamppb.Timestamp, error) {
 	doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if doDCVRes.Problem != nil {
-		return doDCVRes.Problem, doDCVRes.Records, nil
+		return doDCVRes.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	}
 
 	switch identifier.FromProto(dcvReq.Identifier).Type {
 	case identifier.TypeDNS:
 		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return doCAAResp.Problem, doDCVRes.Records, nil
+		return doCAAResp.Problem, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	case identifier.TypeIP:
-		return nil, doDCVRes.Records, nil
+		return nil, doDCVRes.Records, doDCVRes.PersistUntil, nil
 	default:
-		return nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
+		return nil, nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
 	}
 }
 
@@ -1559,6 +1573,27 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("authorization must be pending")
 	}
 
+	if req.AncestorDomain != "" {
+		if ch.Type != core.ChallengeTypeDNSPersist01 {
+			return nil, berrors.MalformedError("ancestorDomain is not supported for challenge type %q", ch.Type)
+		}
+		// The WFE should already have rejected an ancestorDomain which is not a
+		// proper ancestor of the identifier. This is an additional check to
+		// ensure correctness.
+		identDomain := strings.TrimPrefix(authz.Identifier.Value, "*.")
+		if !strings.HasSuffix(identDomain, "."+req.AncestorDomain) {
+			return nil, berrors.MalformedError("ancestorDomain %q is not a proper ancestor of %q", req.AncestorDomain, identDomain)
+		}
+		// Per draft-ietf-acme-dns-persist-03 section 6.2, we should not
+		// validate at or above a public suffix, because a record there could
+		// cover names held by unrelated registrants. Unlike the PA, we include
+		// the private section of the Public Suffix List.
+		registeredDomain, err := publicsuffix.Domain(identDomain)
+		if err != nil || (req.AncestorDomain != registeredDomain && !strings.HasSuffix(req.AncestorDomain, "."+registeredDomain)) {
+			return nil, berrors.UnauthorizedError("ancestorDomain %q is a public suffix", req.AncestorDomain)
+		}
+	}
+
 	// Compute the key authorization field based on the registration key
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
 	if err != nil {
@@ -1568,9 +1603,29 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	if err != nil {
 		return nil, berrors.InternalServerError("getting acct for authorization: %s", err.Error())
 	}
+	// draft-ietf-acme-dns-persist-03 section 4.2 requires that account status
+	// be evaluated at each validation attempt.
+	if reg.Status != core.StatusValid {
+		return nil, berrors.UnauthorizedError("account is not valid, has status %q", reg.Status)
+	}
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
 		return nil, berrors.InternalServerError("could not compute expected key authorization value")
+	}
+
+	var accountKeyThumbprints [][]byte
+	if ch.Type == core.ChallengeTypeDNSPersist01 {
+		currentThumbprint, err := reg.Key.Thumbprint(crypto.SHA256)
+		if err != nil {
+			return nil, berrors.InternalServerError("computing account key thumbprint: %s", err)
+		}
+		accountKeyThumbprints = append(accountKeyThumbprints, currentThumbprint)
+
+		priorKeys, err := ra.SA.GetPriorRegistrationKeys(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
+		if err != nil {
+			return nil, berrors.InternalServerError("getting prior account keys: %s", err)
+		}
+		accountKeyThumbprints = append(accountKeyThumbprints, priorKeys.Thumbprints...)
 	}
 
 	// Double check before sending to VA
@@ -1590,13 +1645,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ra.drainWG.Go(func() {
 		ctx := context.WithoutCancel(ctx)
 
-		prob, records, err := ra.checkDCVAndCAA(
+		prob, records, persistUntil, err := ra.checkDCVAndCAA(
 			ctx,
 			&vapb.PerformValidationRequest{
 				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                &corepb.Challenge{Type: string(ch.Type), Status: string(ch.Status), Token: ch.Token},
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
+				AccountKeyThumbprints:    accountKeyThumbprints,
+				AncestorDomain:           req.AncestorDomain,
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
@@ -1621,7 +1678,17 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			}
 		} else {
 			status = core.StatusValid
-			expires = ra.clk.Now().Add(profile.validAuthzLifetime)
+			lifetime := profile.validAuthzLifetime
+			if ch.Type == core.ChallengeTypeDNSPersist01 {
+				lifetime = min(lifetime, dnsPersistAuthzLifetime)
+			}
+			expires = ra.clk.Now().Add(lifetime)
+			// Per draft-ietf-acme-dns-persist-03 section 4.1, an authorization
+			// must not outlive the persistUntil of the record which satisfied
+			// it.
+			if persistUntil != nil && persistUntil.AsTime().Before(expires) {
+				expires = persistUntil.AsTime()
+			}
 			if features.Get().AutomaticallyPauseZombieClients {
 				ra.resetAccountPausingLimit(ctx, authz.RegistrationID, authz.Identifier)
 			}
@@ -2333,6 +2400,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if authz.Status == core.StatusPending {
 			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		}
+		for _, chall := range authz.Challenges {
+			if chall.Status == core.StatusValid && chall.Validated != nil {
+				// A valid authz can expire sooner than validAuthzLifetime, so
+				// its age is measured from when it was validated.
+				authzAge = ra.clk.Now().Sub(*chall.Validated).Seconds()
+				break
+			}
+		}
 
 		// If the identifier is a wildcard DNS name, all challenges must be
 		// DNS-based. The PA guarantees this at order creation time, but we
@@ -2348,26 +2423,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 					)
 				}
 			}
-		}
-
-		// Never reuse dns-persist-01 authorizations:
-		// draft-ietf-acme-dns-persist-01 section 7.8 caps the reuse period to
-		// the TXT record's TTL and BRs section 3.2.2.4.22 caps it at 10 days.
-		// Since TTLs are typically seconds to minutes, the TTL cap is likely to
-		// be the binding constraint; re-validating every order is simpler.
-		solvedBy, err := authz.SolvedBy()
-		if err != nil {
-			// This should never happen.
-			return nil, berrors.InternalServerError(
-				"SA.GetAuthorizations returned a DNS wildcard authz (%d) with invalid challenge(s)",
-				authz.ID,
-			)
-		}
-		if solvedBy == core.ChallengeTypeDNSPersist01 {
-			missingAuthzIdents = append(missingAuthzIdents, ident)
-			// Delete the authz from the identToExistingAuthz map since we are not reusing it.
-			delete(identToExistingAuthz, ident)
-			continue
 		}
 
 		// If we reached this point then the existing authz was acceptable for

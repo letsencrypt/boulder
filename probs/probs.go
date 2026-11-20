@@ -45,6 +45,10 @@ const (
 	// Defined in https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/
 	InvalidProfileProblem = ProblemType("invalidProfile")
 
+	// PersistExpiredProblem is defined in
+	// https://www.ietf.org/archive/id/draft-ietf-acme-dns-persist-03.html#name-acme-error-types-registry
+	PersistExpiredProblem = ProblemType("persistExpired")
+
 	ErrorNS = "urn:ietf:params:acme:error:"
 )
 
@@ -276,6 +280,16 @@ func TLS(detail string) *ProblemDetails {
 		Type:       TLSProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// PersistExpired returns a ProblemDetails with a PersistExpiredProblem and a
+// 403 Forbidden status code.
+func PersistExpired(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       PersistExpiredProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
 	}
 }
 

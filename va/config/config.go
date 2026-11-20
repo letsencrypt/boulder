@@ -43,6 +43,11 @@ type Common struct {
 	// dns-persist-01 challenges.
 	// All of the prefixes are used for CAA accounturi validation.
 	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
+
+	// AccountHashPrefix is the prefix of the hashed "accounturi" values in
+	// dns-persist-01 records. It must be set if dns-persist-01 is enabled, and
+	// must match the WFE's AccountHashPrefix.
+	AccountHashPrefix string `validate:"omitempty,url,endswith=/,excludesall=;"`
 }
 
 // SetDefaultsAndValidate performs some basic sanity checks on fields stored in

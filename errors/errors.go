@@ -71,6 +71,9 @@ const (
 	BadSignatureAlgorithm
 	AccountDoesNotExist
 	BadNonce
+	// PersistExpired is defined in
+	// https://www.ietf.org/archive/id/draft-ietf-acme-dns-persist-03.html#name-acme-error-types-registry
+	PersistExpired
 )
 
 func (ErrorType) Error() string {
@@ -346,4 +349,8 @@ func AccountDoesNotExistError(msg string, args ...any) error {
 
 func BadNonceError(msg string, args ...any) error {
 	return newf(BadNonce, msg, args...)
+}
+
+func PersistExpiredError(msg string, args ...any) error {
+	return newf(PersistExpired, msg, args...)
 }

@@ -36,6 +36,7 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		{RejectedIdentifier("rejected identifier detail"), RejectedIdentifierProblem, http.StatusBadRequest, "rejected identifier detail"},
 		{AccountDoesNotExist("no account detail"), AccountDoesNotExistProblem, http.StatusBadRequest, "no account detail"},
 		{BadRevocationReason("only reason xxx is supported"), BadRevocationReasonProblem, http.StatusBadRequest, "only reason xxx is supported"},
+		{PersistExpired("persist expired detail"), PersistExpiredProblem, http.StatusForbidden, "persist expired detail"},
 	}
 
 	for _, c := range testCases {

@@ -449,7 +449,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
-	wfe.AccountURIPrefix = "http://localhost/acme/acct/"
+	wfe.AccountHashPrefix = "http://localhost/acme/acct-hash/"
 
 	return wfe, fc, requestSigner{t, inmemNonceService.AsSource()}
 }
@@ -802,6 +802,8 @@ func (fr fakeRand) Read(p []byte) (int, error) {
 
 func TestDirectory(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
+	features.Set(features.Config{DNSPersist01Enabled: true})
+	defer features.Reset()
 	mux := wfe.Handler(metrics.NoopRegisterer)
 	core.RandReader = fakeRand{}
 	defer func() { core.RandReader = rand.Reader }()
@@ -852,7 +854,11 @@ func TestDirectory(t *testing.T) {
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
   "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
+    "accountHashPrefix": "http://localhost/acme/acct-hash/",
     "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "issuerDomainNames": [
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
@@ -877,7 +883,11 @@ func TestDirectory(t *testing.T) {
   "AAAAAAAAAAA": "https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",
   "keyChange": "http://localhost/acme/key-change",
   "meta": {
+    "accountHashPrefix": "http://localhost/acme/acct-hash/",
     "caaIdentities": [
+      "Radiant Lock"
+    ],
+    "issuerDomainNames": [
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
@@ -1355,6 +1365,213 @@ func TestUpdateChallengeHandlerRAError(t *testing.T) {
 	  "detail": "Unable to update challenge",
 		"status": 500
 	}`)
+}
+
+// mockRADNSPersist01 returns an authorization with a single dns-persist-01
+// challenge, and records the validation request it receives.
+type mockRADNSPersist01 struct {
+	MockRegistrationAuthority
+	ident           identifier.ACMEIdentifier
+	status          core.AcmeStatus
+	validatedDomain string
+	request         *rapb.PerformValidationRequest
+}
+
+func (ra *mockRADNSPersist01) GetAuthorization(_ context.Context, in *rapb.GetAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	challenge := &corepb.Challenge{Id: 1, Type: string(core.ChallengeTypeDNSPersist01), Status: string(ra.status), Token: "token"}
+	if ra.validatedDomain != "" {
+		challenge.Validated = timestamppb.New(ra.clk.Now())
+		challenge.Validationrecords = []*corepb.ValidationRecord{{Hostname: ra.validatedDomain, ResolverAddrs: []string{"rebound"}}}
+	}
+	return &corepb.Authorization{
+		Id:             in.Id,
+		RegistrationID: 1,
+		Identifier:     ra.ident.ToProto(),
+		Status:         string(ra.status),
+		Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
+		Challenges:     []*corepb.Challenge{challenge},
+	}, nil
+}
+
+func (ra *mockRADNSPersist01) PerformValidation(_ context.Context, in *rapb.PerformValidationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	ra.request = in
+	return in.Authz, nil
+}
+
+func TestUpdateChallengeHandlerDNSPersist01(t *testing.T) {
+	// With the 20 octets of "_validation-persist.", this 234 octet name exceeds
+	// the 253 octet limit.
+	overlongName := strings.Repeat(strings.Repeat("a", 60)+".", 3) + strings.Repeat("a", 47) + ".com"
+
+	testCases := []struct {
+		name            string
+		ident           identifier.ACMEIdentifier
+		status          core.AcmeStatus
+		validatedDomain string
+		body            string
+		expectStatus    int
+		expectProbType  string
+		expectValidated bool
+		expectAncestor  string
+	}{
+		{
+			name:            "Empty response",
+			ident:           identifier.NewDNS("www.example.com"),
+			status:          core.StatusPending,
+			body:            `{}`,
+			expectStatus:    http.StatusOK,
+			expectValidated: true,
+		},
+		{
+			name:            "Proper ancestor",
+			ident:           identifier.NewDNS("www.example.com"),
+			status:          core.StatusPending,
+			body:            `{"ancestorDomain": "example.com"}`,
+			expectStatus:    http.StatusOK,
+			expectValidated: true,
+			expectAncestor:  "example.com",
+		},
+		{
+			name:            "Proper ancestor of a wildcard identifier",
+			ident:           identifier.NewDNS("*.www.example.com"),
+			status:          core.StatusPending,
+			body:            `{"ancestorDomain": "example.com"}`,
+			expectStatus:    http.StatusOK,
+			expectValidated: true,
+			expectAncestor:  "example.com",
+		},
+		{
+			name:           "Ancestor equal to the identifier",
+			ident:          identifier.NewDNS("www.example.com"),
+			status:         core.StatusPending,
+			body:           `{"ancestorDomain": "www.example.com"}`,
+			expectStatus:   http.StatusBadRequest,
+			expectProbType: "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:           "Ancestor equal to the base of a wildcard identifier",
+			ident:          identifier.NewDNS("*.example.com"),
+			status:         core.StatusPending,
+			body:           `{"ancestorDomain": "example.com"}`,
+			expectStatus:   http.StatusBadRequest,
+			expectProbType: "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:           "Ancestor is not a whole-label suffix",
+			ident:          identifier.NewDNS("www.example.com"),
+			status:         core.StatusPending,
+			body:           `{"ancestorDomain": "ample.com"}`,
+			expectStatus:   http.StatusBadRequest,
+			expectProbType: "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:           "Ancestor is not a string",
+			ident:          identifier.NewDNS("www.example.com"),
+			status:         core.StatusPending,
+			body:           `{"ancestorDomain": 7}`,
+			expectStatus:   http.StatusBadRequest,
+			expectProbType: "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:           "Ancestor is null",
+			ident:          identifier.NewDNS("www.example.com"),
+			status:         core.StatusPending,
+			body:           `{"ancestorDomain": null}`,
+			expectStatus:   http.StatusBadRequest,
+			expectProbType: "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:           "Validation domain name is too long",
+			ident:          identifier.NewDNS(overlongName),
+			status:         core.StatusPending,
+			body:           `{}`,
+			expectStatus:   http.StatusBadRequest,
+			expectProbType: "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:            "Overlong identifier with an ancestor which fits",
+			ident:           identifier.NewDNS(overlongName),
+			status:          core.StatusPending,
+			body:            `{"ancestorDomain": "com"}`,
+			expectStatus:    http.StatusOK,
+			expectValidated: true,
+			expectAncestor:  "com",
+		},
+		{
+			name:            "Same ancestor on a valid authorization",
+			ident:           identifier.NewDNS("www.example.com"),
+			status:          core.StatusValid,
+			validatedDomain: "example.com",
+			body:            `{"ancestorDomain": "example.com"}`,
+			expectStatus:    http.StatusOK,
+		},
+		{
+			name:            "Different ancestor on a valid authorization",
+			ident:           identifier.NewDNS("a.www.example.com"),
+			status:          core.StatusValid,
+			validatedDomain: "example.com",
+			body:            `{"ancestorDomain": "www.example.com"}`,
+			expectStatus:    http.StatusBadRequest,
+			expectProbType:  "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:            "Ancestor removed on a valid authorization",
+			ident:           identifier.NewDNS("www.example.com"),
+			status:          core.StatusValid,
+			validatedDomain: "example.com",
+			body:            `{}`,
+			expectStatus:    http.StatusBadRequest,
+			expectProbType:  "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:            "Ancestor added on a valid authorization",
+			ident:           identifier.NewDNS("www.example.com"),
+			status:          core.StatusValid,
+			validatedDomain: "www.example.com",
+			body:            `{"ancestorDomain": "example.com"}`,
+			expectStatus:    http.StatusBadRequest,
+			expectProbType:  "urn:ietf:params:acme:error:malformed",
+		},
+		{
+			name:           "Ancestor on an authorization validated by another challenge",
+			ident:          identifier.NewDNS("www.example.com"),
+			status:         core.StatusValid,
+			body:           `{"ancestorDomain": "example.com"}`,
+			expectStatus:   http.StatusBadRequest,
+			expectProbType: "urn:ietf:params:acme:error:malformed",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			wfe, fc, signer := setupWFE(t)
+			ra := &mockRADNSPersist01{
+				MockRegistrationAuthority: MockRegistrationAuthority{clk: fc},
+				ident:                     tc.ident,
+				status:                    tc.status,
+				validatedDomain:           tc.validatedDomain,
+			}
+			wfe.ra = ra
+
+			challenge := core.Challenge{Type: core.ChallengeTypeDNSPersist01, Token: "token"}
+			path := "1/1/" + challenge.StringID()
+			_, _, jwsBody := signer.byKeyID(1, nil, "http://localhost/"+path, tc.body)
+			responseWriter := httptest.NewRecorder()
+			wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath(path, jwsBody))
+
+			test.AssertEquals(t, responseWriter.Code, tc.expectStatus)
+			test.AssertEquals(t, ra.request != nil, tc.expectValidated)
+			if tc.expectValidated {
+				test.AssertEquals(t, ra.request.AncestorDomain, tc.expectAncestor)
+			}
+			if tc.expectProbType != "" {
+				var prob probs.ProblemDetails
+				err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
+				test.AssertNotError(t, err, "parsing problem document")
+				test.AssertEquals(t, string(prob.Type), tc.expectProbType)
+			}
+		})
+	}
 }
 
 func TestBadNonce(t *testing.T) {
@@ -3682,11 +3899,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		if chall.Type == core.ChallengeTypeDNSPersist01 {
 			test.Assert(t, chall.Token == "", fmt.Sprintf("expected %s to have no token", chall.Type))
 			test.AssertDeepEquals(t, chall.IssuerDomainNames, []string{"letsencrypt.org"})
-			test.AssertEquals(t, chall.AccountURI, "http://localhost/acme/acct/1")
 		} else {
 			test.Assert(t, chall.Token != "", fmt.Sprintf("expected %s to have a token", chall.Type))
 			test.Assert(t, chall.IssuerDomainNames == nil, fmt.Sprintf("expected %s to have no issuer domain names", chall.Type))
-			test.AssertEquals(t, chall.AccountURI, "")
 		}
 	}
 }
