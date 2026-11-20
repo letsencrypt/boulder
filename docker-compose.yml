@@ -149,7 +149,7 @@ services:
       - bouldernet
 
   bpkimetal:
-    image: ghcr.io/pkimetal/pkimetal:v1.41.0
+    image: ghcr.io/pkimetal/pkimetal-dev:20261120180849@sha256:8989c45f61973da6127389dbd0d01c629fcff210880d1800e2f60cbdd3260e2e
     volumes:
       - pkimetal-socket:/var/run/pkimetal
       - ./test/pkimetal-config.yaml:/config/config.yaml:ro
