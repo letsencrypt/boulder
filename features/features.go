@@ -100,6 +100,12 @@ type Config struct {
 	// GetOrder, so we can calculate the "status" field correctly for MTCs (based
 	// on whether sufficient signatures are available).
 	WFECallsRAForGetOrder bool
+
+	// ValidationUsesECH causes the VA to fetch HTTPS DNS records during http-01
+	// and tls-alpn-01 validation, and then to use Encrypted Client Hello if the
+	// records indicate that the validation target supports ECH. It should be set
+	// in both the local and remote VAs.
+	ValidationUsesECH bool
 }
 
 var fMu = new(sync.RWMutex)
