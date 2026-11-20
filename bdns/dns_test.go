@@ -1,6 +1,7 @@
 package bdns
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -192,6 +193,18 @@ func mockDNSQuery(w http.ResponseWriter, httpReq *http.Request) {
 				auth.Expire = 1
 				auth.Minttl = 1
 				m.Ns = append(m.Ns, auth)
+			}
+			if q.Name == "nxdomain.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNameError)
+			}
+		case dns.TypeHTTPS:
+			if q.Name == "ech.letsencrypt.org." {
+				record := new(dns.HTTPS)
+				record.Hdr = dns.RR_Header{Name: "ech.letsencrypt.org.", Rrtype: dns.TypeHTTPS, Class: dns.ClassINET, Ttl: 0}
+				record.Priority = 1
+				record.Target = "."
+				record.Value = []dns.SVCBKeyValue{&dns.SVCBECHConfig{ECH: []byte{0x00, 0x04, 0xfe, 0x0d, 0x00, 0x00}}}
+				appendAnswer(record)
 			}
 			if q.Name == "nxdomain.letsencrypt.org." {
 				m.SetRcode(r, dns.RcodeNameError)
@@ -524,6 +537,79 @@ func TestDNSLookupAAAA(t *testing.T) {
 					if !res.Final[i].AAAA.Equal(tc.wantIPs[i]) {
 						t.Errorf("LookupA(%s) = %s, but want %s", tc.hostname, res.Final[i].AAAA, tc.wantIPs[i])
 					}
+				}
+			}
+		})
+	}
+}
+
+func TestDNSLookupHTTPS(t *testing.T) {
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	if err != nil {
+		t.Fatalf("creating StaticProvider: %s", err)
+	}
+
+	obj := New(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), tlsConfig)
+
+	for _, tc := range []struct {
+		name      string
+		hostname  string
+		wantECH   [][]byte
+		wantError string
+	}{
+		{
+			name:     "ECH",
+			hostname: "ech.letsencrypt.org",
+			wantECH:  [][]byte{{0x00, 0x04, 0xfe, 0x0d, 0x00, 0x00}}, // arbitrary bytes
+		},
+		{
+			name:     "No Records",
+			hostname: "nonexistent.letsencrypt.org",
+		},
+		{
+			name:      "SERVFAIL",
+			hostname:  "servfail.com",
+			wantError: "SERVFAIL looking up HTTPS for servfail.com",
+		},
+		{
+			name:      "NXDOMAIN",
+			hostname:  "nxdomain.letsencrypt.org",
+			wantError: "NXDOMAIN looking up HTTPS for nxdomain.letsencrypt.org",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, resolver, err := obj.LookupHTTPS(t.Context(), tc.hostname)
+
+			if resolver != dnsLoopbackAddr {
+				t.Errorf("LookupHTTPS(%s) used resolver %q, but want %q", tc.hostname, resolver, dnsLoopbackAddr)
+			}
+
+			if tc.wantError != "" {
+				if err == nil {
+					t.Fatalf("LookupHTTPS(%s) = success, but want error %q", tc.hostname, tc.wantError)
+				}
+				if !strings.Contains(err.Error(), tc.wantError) {
+					t.Errorf("LookupHTTPS(%s) = %q, but want error %q", tc.hostname, err, tc.wantError)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("LookupHTTPS(%s) = %q, but want success", tc.hostname, err)
+			}
+			if len(res.Final) != len(tc.wantECH) {
+				t.Fatalf("LookupHTTPS(%s) returned %d records, but want %d", tc.hostname, len(res.Final), len(tc.wantECH))
+			}
+			for i, rr := range res.Final {
+				if len(rr.Value) != 1 {
+					t.Fatalf("LookupHTTPS(%s) record %d has %d params, but want 1", tc.hostname, i, len(rr.Value))
+				}
+				ech, ok := rr.Value[0].(*dns.SVCBECHConfig)
+				if !ok {
+					t.Fatalf("LookupHTTPS(%s) record %d has param %T, but want ech", tc.hostname, i, rr.Value[0])
+				}
+				if !bytes.Equal(ech.ECH, tc.wantECH[i]) {
+					t.Errorf("LookupHTTPS(%s) record %d has ech %x, but want %x", tc.hostname, i, ech.ECH, tc.wantECH[i])
 				}
 			}
 		})
