@@ -15,7 +15,6 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -145,7 +144,7 @@ func (sfe *SelfServiceFrontEndImpl) handlePost(mux *http.ServeMux, path string, 
 // Handler returns an http.Handler that uses various functions for various
 // non-ACME-specified paths. Each endpoint should have a corresponding HTML
 // page that shares the same name as the endpoint.
-func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions ...otelhttp.Option) http.Handler {
+func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	mux := http.NewServeMux()
 
 	sfs, _ := fs.Sub(staticFS, "static")
@@ -183,7 +182,7 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 		sfe.handlePost(mux, overridesSubmitRequest, http.HandlerFunc(sfe.submitOverrideRequestHandler))
 	}
 
-	return measured_http.New(mux, sfe.clk, stats, oTelHTTPOptions...)
+	return measured_http.New(mux, sfe.clk, stats)
 }
 
 // renderTemplate takes the name of an HTML template and optional dynamicData

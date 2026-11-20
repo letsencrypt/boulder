@@ -1,5 +1,5 @@
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -32,11 +32,13 @@ import (
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_ev_orgid_inconsistent_subj_and_ext",
-			Description:   "Checks that the organizationIdentifier Subject attribute and the CABFOrganizationIdentifier extension are consistent",
-			Citation:      "EVGs 9.2.8 and 9.8.2",
-			Source:        lint.CABFEVGuidelines,
-			EffectiveDate: util.CABFEV_Sec9_2_8_Date,
+			Name:        "e_ev_orgid_inconsistent_subj_and_ext",
+			Description: "Checks that the organizationIdentifier Subject attribute and the CABFOrganizationIdentifier extension are consistent",
+			Citation:    "EVGs 9.2.8 and 9.8.2",
+			Source:      lint.CABFEVGuidelines,
+			// Superseded by e_ev_subject_orgid_ext_mismatch
+			EffectiveDate:   util.CABFEV_Sec9_2_8_Date,
+			IneffectiveDate: util.CABFEV_2_0_2_Date,
 		},
 		Lint: NewOrgIdInconsistentSubjAndExt,
 	})

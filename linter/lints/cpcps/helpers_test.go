@@ -1,9 +1,9 @@
 package cpcps
 
-// Helpers for building test certificates for the CP/CPS profile lints. The
-// certificates are constructed with crypto/x509 and then re-parsed with
-// zcrypto, mirroring how the linter package produces the certificates that
-// these lints run against in production.
+// Helpers for building test certificates and CRLs for the CP/CPS profile
+// lints. The certificates and CRLs are constructed with crypto/x509 and then
+// re-parsed with zcrypto, mirroring how the linter package produces the
+// certificates and CRLs that these lints run against in production.
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -19,15 +20,20 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	zasn1 "github.com/zmap/zcrypto/encoding/asn1"
 	zx509 "github.com/zmap/zcrypto/x509"
 	zpkix "github.com/zmap/zcrypto/x509/pkix"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
 	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/crl/idp"
 )
 
 // testKey generates an ECDSA key on the given curve.
@@ -265,6 +271,135 @@ func testPEM(t *testing.T, der []byte) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
 
+// testCACRLTemplate returns a template matching the CA CRL Profile from CP/CPS
+// Section 7.2, containing a single revoked entry.
+func testCACRLTemplate(t *testing.T) *x509.RevocationList {
+	t.Helper()
+	idpExt, err := idp.MakeCACertsExt()
+	if err != nil {
+		t.Fatalf("creating issuingDistributionPoint extension: %s", err)
+	}
+	thisUpdate := time.Date(2026, time.November, 4, 18, 0, 0, 0, time.UTC)
+	return &x509.RevocationList{
+		Number:     big.NewInt(108),
+		ThisUpdate: thisUpdate,
+		// 365 days, the maximum.
+		NextUpdate: thisUpdate.Add(365 * 24 * time.Hour),
+		RevokedCertificateEntries: []x509.RevocationListEntry{
+			{
+				SerialNumber:   testSerial(t, 16),
+				RevocationTime: thisUpdate.Add(-2 * time.Hour),
+				ReasonCode:     4, // superseded
+			},
+		},
+		ExtraExtensions: []pkix.Extension{*idpExt},
+	}
+}
+
+// testSubscriberCRLTemplate returns a template matching the Subscriber CRL
+// Profile from CP/CPS Section 7.2, containing one revoked entry with a
+// reasonCode and one without.
+func testSubscriberCRLTemplate(t *testing.T) *x509.RevocationList {
+	t.Helper()
+	idpExt, err := idp.MakeUserCertsExt([]string{"http://e99.c.lencr.org/1.crl"})
+	if err != nil {
+		t.Fatalf("creating issuingDistributionPoint extension: %s", err)
+	}
+	thisUpdate := time.Date(2026, time.November, 4, 18, 0, 0, 0, time.UTC)
+	return &x509.RevocationList{
+		Number:     big.NewInt(thisUpdate.UnixNano()),
+		ThisUpdate: thisUpdate,
+		// 10 days, the maximum.
+		NextUpdate: thisUpdate.Add(10 * 24 * time.Hour),
+		RevokedCertificateEntries: []x509.RevocationListEntry{
+			{
+				SerialNumber:   testSerial(t, 18),
+				RevocationTime: thisUpdate.Add(-24 * time.Hour),
+				ReasonCode:     1, // keyCompromise
+			},
+			{
+				SerialNumber:   testSerial(t, 18),
+				RevocationTime: thisUpdate.Add(-48 * time.Hour),
+				ReasonCode:     0, // unspecified, so no reasonCode extension
+			},
+		},
+		ExtraExtensions: []pkix.Extension{idpExt},
+	}
+}
+
+// testParseZCRL parses DER into a zcrypto CRL.
+func testParseZCRL(t *testing.T, der []byte) *zx509.RevocationList {
+	t.Helper()
+	crl, err := zx509.ParseRevocationList(der)
+	if err != nil {
+		t.Fatalf("parsing CRL with zcrypto: %s", err)
+	}
+	return crl
+}
+
+// testIDPExt returns an issuingDistributionPoint extension whose SEQUENCE
+// contains whatever fields the given function adds to it.
+func testIDPExt(critical bool, fields cryptobyte.BuilderContinuation) pkix.Extension {
+	var b cryptobyte.Builder
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, fields)
+	return pkix.Extension{
+		Id:       asn1.ObjectIdentifier{2, 5, 29, 28},
+		Critical: critical,
+		Value:    b.BytesOrPanic(),
+	}
+}
+
+// addIDPDistributionPoint adds a distributionPoint field whose fullName
+// contains a uniformResourceIdentifier for each of the given URIs.
+func addIDPDistributionPoint(b *cryptobyte.Builder, uris ...string) {
+	b.AddASN1(cryptobyte_asn1.Tag(0).ContextSpecific().Constructed(), func(b *cryptobyte.Builder) {
+		b.AddASN1(cryptobyte_asn1.Tag(0).ContextSpecific().Constructed(), func(b *cryptobyte.Builder) {
+			for _, uri := range uris {
+				b.AddASN1(cryptobyte_asn1.Tag(6).ContextSpecific(), func(b *cryptobyte.Builder) {
+					b.AddBytes([]byte(uri))
+				})
+			}
+		})
+	})
+}
+
+// addIDPBoolean adds a BOOLEAN field with the given tag number and value.
+// Adding a FALSE field produces an invalid DER encoding, since DER omits
+// fields whose value is their DEFAULT.
+func addIDPBoolean(b *cryptobyte.Builder, tag uint8, value bool) {
+	b.AddASN1(cryptobyte_asn1.Tag(tag).ContextSpecific(), func(b *cryptobyte.Builder) {
+		if value {
+			b.AddUint8(0xFF)
+		} else {
+			b.AddUint8(0x00)
+		}
+	})
+}
+
+// addIDPOnlySomeReasons adds an onlySomeReasons field asserting keyCompromise.
+func addIDPOnlySomeReasons(b *cryptobyte.Builder) {
+	b.AddASN1(cryptobyte_asn1.Tag(3).ContextSpecific(), func(b *cryptobyte.Builder) {
+		// A BIT STRING with 6 unused bits, setting bit 1 (keyCompromise).
+		b.AddBytes([]byte{0x06, 0x40})
+	})
+}
+
+// removeZExt returns the given extensions without any having the given OID.
+func removeZExt(exts []zpkix.Extension, oid zasn1.ObjectIdentifier) []zpkix.Extension {
+	return slices.DeleteFunc(slices.Clone(exts), func(ext zpkix.Extension) bool {
+		return ext.Id.Equal(oid)
+	})
+}
+
+// criticalizeZExt marks the extension with the given OID as critical.
+func criticalizeZExt(exts []zpkix.Extension, oid zasn1.ObjectIdentifier) {
+	for i := range exts {
+		if exts[i].Id.Equal(oid) {
+			exts[i].Critical = true
+		}
+	}
+}
+
 func TestSubscriberProfileIssuerCorrespondence(t *testing.T) {
 	t.Parallel()
 
@@ -470,6 +605,208 @@ func TestCrossCertifiedProfileExistingCertCorrespondence(t *testing.T) {
 	}
 }
 
+func TestCRLProfileIssuerCorrespondence(t *testing.T) {
+	t.Parallel()
+
+	rootKey := testKey(t, elliptic.P384())
+	rootTmpl := testRootTemplate(t, rootKey.Public())
+	rootDER, err := x509.CreateCertificate(rand.Reader, rootTmpl, rootTmpl, rootKey.Public(), rootKey)
+	if err != nil {
+		t.Fatalf("creating test issuer: %s", err)
+	}
+	root, err := x509.ParseCertificate(rootDER)
+	if err != nil {
+		t.Fatalf("parsing test issuer: %s", err)
+	}
+
+	// A different root with a different subject.
+	otherKey := testKey(t, elliptic.P384())
+	otherTmpl := testRootTemplate(t, otherKey.Public())
+	otherTmpl.Subject.CommonName = "ISRG Root X98"
+	otherDER, err := x509.CreateCertificate(rand.Reader, otherTmpl, otherTmpl, otherKey.Public(), otherKey)
+	if err != nil {
+		t.Fatalf("creating test issuer: %s", err)
+	}
+
+	// A root with the same subject as the real one, but a different key, and
+	// so a different subjectKeyIdentifier.
+	rekeyedTmpl := testRootTemplate(t, otherKey.Public())
+	rekeyedDER, err := x509.CreateCertificate(rand.Reader, rekeyedTmpl, rekeyedTmpl, otherKey.Public(), otherKey)
+	if err != nil {
+		t.Fatalf("creating test issuer: %s", err)
+	}
+
+	// Both CRLs are signed by the same root, which is fine for these lints:
+	// they check the issuer correspondence rows, not the CRL's scope.
+	caCRLDER, err := x509.CreateRevocationList(rand.Reader, testCACRLTemplate(t), root, rootKey)
+	if err != nil {
+		t.Fatalf("creating test CRL: %s", err)
+	}
+	subscriberCRLDER, err := x509.CreateRevocationList(rand.Reader, testSubscriberCRLTemplate(t), root, rootKey)
+	if err != nil {
+		t.Fatalf("creating test CRL: %s", err)
+	}
+
+	testCases := []struct {
+		name       string
+		issuerPEM  string
+		want       lint.LintStatus
+		wantSubStr string
+	}{
+		{
+			name:       "unconfigured",
+			issuerPEM:  "",
+			want:       lint.Fatal,
+			wantSubStr: "lint has not been configured with the Issuing CA's certificate",
+		},
+		{
+			name:      "matching_issuer",
+			issuerPEM: testPEM(t, rootDER),
+			want:      lint.Pass,
+		},
+		{
+			name:       "mismatched_issuer",
+			issuerPEM:  testPEM(t, otherDER),
+			want:       lint.Error,
+			wantSubStr: "issuer is not byte-for-byte identical to the subject of the configured Issuing CA",
+		},
+		{
+			name:       "mismatched_key_identifier",
+			issuerPEM:  testPEM(t, rekeyedDER),
+			want:       lint.Error,
+			wantSubStr: "authorityKeyIdentifier keyIdentifier is not byte-for-byte identical to the subjectKeyIdentifier of the configured Issuing CA",
+		},
+		{
+			name:       "garbage_config",
+			issuerPEM:  "not a pem block",
+			want:       lint.Fatal,
+			wantSubStr: "failed to decode configured PEM certificate",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			config := &SharedConfig{IssuerCertificatePEM: tc.issuerPEM}
+			for _, l := range []struct {
+				lint lint.RevocationListLintInterface
+				der  []byte
+			}{
+				{&caCRLMatchesCPSProfile{Config: config}, caCRLDER},
+				{&subscriberCRLMatchesCPSProfile{Config: config}, subscriberCRLDER},
+			} {
+				res := l.lint.Execute(testParseZCRL(t, l.der))
+				if res.Status != tc.want {
+					t.Errorf("%T: got status %s (%q), want %s", l.lint, res.Status, res.Details, tc.want)
+				}
+				if !strings.Contains(res.Details, tc.wantSubStr) {
+					t.Errorf("%T: got details %q, want substring %q", l.lint, res.Details, tc.wantSubStr)
+				}
+			}
+		})
+	}
+}
+
+func TestCRLProfileConfigurationViaTOML(t *testing.T) {
+	t.Parallel()
+
+	rootKey := testKey(t, elliptic.P384())
+	rootTmpl := testRootTemplate(t, rootKey.Public())
+	rootDER, err := x509.CreateCertificate(rand.Reader, rootTmpl, rootTmpl, rootKey.Public(), rootKey)
+	if err != nil {
+		t.Fatalf("creating test issuer: %s", err)
+	}
+	root, err := x509.ParseCertificate(rootDER)
+	if err != nil {
+		t.Fatalf("parsing test issuer: %s", err)
+	}
+
+	toml := fmt.Sprintf("[Global]\nissuer_certificate = '''\n%s'''\n", testPEM(t, rootDER))
+	cfg, err := lint.NewConfigFromString(toml)
+	if err != nil {
+		t.Fatalf("parsing TOML config: %s", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		lint lint.RevocationListLintInterface
+		tmpl *x509.RevocationList
+	}{
+		{"e_ca_crl_matches_cps_profile", NewCACRLMatchesCPSProfile(), testCACRLTemplate(t)},
+		{"e_subscriber_crl_matches_cps_profile", NewSubscriberCRLMatchesCPSProfile(), testSubscriberCRLTemplate(t)},
+	} {
+		err = cfg.MaybeConfigure(tc.lint, tc.name)
+		if err != nil {
+			t.Fatalf("configuring %s: %s", tc.name, err)
+		}
+
+		var config *SharedConfig
+		switch l := tc.lint.(type) {
+		case *caCRLMatchesCPSProfile:
+			config = l.Config
+		case *subscriberCRLMatchesCPSProfile:
+			config = l.Config
+		}
+		if config.issuerPEM() == "" {
+			t.Fatalf("TOML configuration did not populate the shared config of %s", tc.name)
+		}
+
+		crlDER, err := x509.CreateRevocationList(rand.Reader, tc.tmpl, root, rootKey)
+		if err != nil {
+			t.Fatalf("creating test CRL: %s", err)
+		}
+		res := tc.lint.Execute(testParseZCRL(t, crlDER))
+		if res.Status != lint.Pass {
+			t.Errorf("%s: got status %s (%q), want pass", tc.name, res.Status, res.Details)
+		}
+	}
+}
+
+func TestCRLProfilesRejectRSAPSS(t *testing.T) {
+	t.Parallel()
+
+	// RSASSA-PSS is permitted by Section 7.1.3.2 of the Baseline
+	// Requirements, but not by our brSignatureAlgorithmIdentifiers.
+	rootKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generating test key: %s", err)
+	}
+	rootTmpl := testRootTemplate(t, rootKey.Public())
+	rootDER, err := x509.CreateCertificate(rand.Reader, rootTmpl, rootTmpl, rootKey.Public(), rootKey)
+	if err != nil {
+		t.Fatalf("creating test issuer: %s", err)
+	}
+	root, err := x509.ParseCertificate(rootDER)
+	if err != nil {
+		t.Fatalf("parsing test issuer: %s", err)
+	}
+	config := &SharedConfig{IssuerCertificatePEM: testPEM(t, rootDER)}
+
+	for _, tc := range []struct {
+		lint lint.RevocationListLintInterface
+		tmpl *x509.RevocationList
+	}{
+		{&caCRLMatchesCPSProfile{Config: config}, testCACRLTemplate(t)},
+		{&subscriberCRLMatchesCPSProfile{Config: config}, testSubscriberCRLTemplate(t)},
+	} {
+		tc.tmpl.SignatureAlgorithm = x509.SHA256WithRSAPSS
+		der, err := x509.CreateRevocationList(rand.Reader, tc.tmpl, root, rootKey)
+		if err != nil {
+			t.Fatalf("creating test CRL: %s", err)
+		}
+
+		res := tc.lint.Execute(testParseZCRL(t, der))
+		if res.Status != lint.Error {
+			t.Errorf("%T: got status %s (%q), want %s", tc.lint, res.Status, res.Details, lint.Error)
+		}
+		want := "signature is not byte-for-byte identical to a BRs Section 7.1.3.2 encoding"
+		if !strings.Contains(res.Details, want) {
+			t.Errorf("%T: got details %q, want substring %q", tc.lint, res.Details, want)
+		}
+	}
+}
+
 // testSelfSignedZCert builds a self-signed certificate from the root template
 // using the given key and signature algorithm (zero for the default choice),
 // and parses it with zcrypto.
@@ -523,14 +860,14 @@ func TestGetOuterSignatureAlgorithm(t *testing.T) {
 	}
 
 	_, err = getOuterSignatureAlgorithm([]byte{})
-	if err == nil || !strings.Contains(err.Error(), "failed to parse certificate") {
-		t.Errorf("got %v, want failure to parse certificate", err)
+	if err == nil || !strings.Contains(err.Error(), "failed to parse outer sequence") {
+		t.Errorf("got %v, want failure to parse outer sequence", err)
 	}
 
 	// A SEQUENCE whose first element is an INTEGER, not a tbsCertificate.
 	_, err = getOuterSignatureAlgorithm([]byte{0x30, 0x03, 0x02, 0x01, 0x01})
-	if err == nil || !strings.Contains(err.Error(), "failed to parse tbsCertificate") {
-		t.Errorf("got %v, want failure to parse tbsCertificate", err)
+	if err == nil || !strings.Contains(err.Error(), "failed to skip inner tbs sequence") {
+		t.Errorf("got %v, want failure to skip inner tbs sequence", err)
 	}
 
 	// A SEQUENCE containing only a tbsCertificate, with no signatureAlgorithm.
@@ -560,6 +897,109 @@ func TestGetExtension(t *testing.T) {
 
 	if getExtension(cert, util.SubjectAlternateNameOID) != nil {
 		t.Error("got an extension for an absent OID, want nil")
+	}
+}
+
+func TestGetCRLScope(t *testing.T) {
+	t.Parallel()
+
+	userCertsExt, err := idp.MakeUserCertsExt([]string{"http://e99.c.lencr.org/1.crl"})
+	if err != nil {
+		t.Fatalf("creating issuingDistributionPoint extension: %s", err)
+	}
+	caCertsExt, err := idp.MakeCACertsExt()
+	if err != nil {
+		t.Fatalf("creating issuingDistributionPoint extension: %s", err)
+	}
+
+	testCases := []struct {
+		name          string
+		value         []byte
+		wantUserCerts bool
+		wantCACerts   bool
+	}{
+		{
+			name:          "user_certs",
+			value:         userCertsExt.Value,
+			wantUserCerts: true,
+		},
+		{
+			name:        "ca_certs",
+			value:       caCertsExt.Value,
+			wantCACerts: true,
+		},
+		{
+			name: "both",
+			value: testIDPExt(true, func(b *cryptobyte.Builder) {
+				addIDPDistributionPoint(b, "http://e99.c.lencr.org/1.crl")
+				addIDPBoolean(b, 1, true)
+				addIDPBoolean(b, 2, true)
+				addIDPOnlySomeReasons(b)
+			}).Value,
+			wantUserCerts: true,
+			wantCACerts:   true,
+		},
+		{
+			name: "neither",
+			value: testIDPExt(true, func(b *cryptobyte.Builder) {
+				addIDPDistributionPoint(b, "http://e99.c.lencr.org/1.crl")
+			}).Value,
+		},
+		{
+			name: "ber_boolean",
+			value: testIDPExt(true, func(b *cryptobyte.Builder) {
+				b.AddASN1(cryptobyte_asn1.Tag(2).ContextSpecific(), func(b *cryptobyte.Builder) {
+					b.AddUint8(0x01)
+				})
+			}).Value,
+		},
+		{
+			name: "explicit_false",
+			value: testIDPExt(true, func(b *cryptobyte.Builder) {
+				addIDPBoolean(b, 1, false)
+				addIDPBoolean(b, 2, true)
+			}).Value,
+			wantCACerts: true,
+		},
+		{
+			name:  "not_a_sequence",
+			value: []byte{0x04, 0x00},
+		},
+		{
+			// A distributionPoint whose length runs past the end of the SEQUENCE.
+			name:  "malformed_distribution_point",
+			value: []byte{0x30, 0x02, 0xa0, 0x05},
+		},
+		{
+			name: "malformed_user_certs",
+			value: testIDPExt(true, func(b *cryptobyte.Builder) {
+				addIDPDistributionPoint(b, "http://e99.c.lencr.org/1.crl")
+				b.AddBytes([]byte{0x81, 0x05})
+			}).Value,
+		},
+		{
+			name: "malformed_ca_certs",
+			value: testIDPExt(true, func(b *cryptobyte.Builder) {
+				b.AddBytes([]byte{0x82, 0x05})
+			}).Value,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			crl := &zx509.RevocationList{Extensions: []zpkix.Extension{{Id: issuingDistributionPointOID, Critical: true, Value: tc.value}}}
+			gotUserCerts, gotCACerts := getCRLScope(crl)
+			if gotUserCerts != tc.wantUserCerts || gotCACerts != tc.wantCACerts {
+				t.Errorf("got (%t, %t), want (%t, %t)", gotUserCerts, gotCACerts, tc.wantUserCerts, tc.wantCACerts)
+			}
+		})
+	}
+
+	userCerts, caCerts := getCRLScope(&zx509.RevocationList{})
+	if userCerts || caCerts {
+		t.Errorf("got (%t, %t) for a CRL with no issuingDistributionPoint, want (false, false)", userCerts, caCerts)
 	}
 }
 

@@ -107,15 +107,17 @@ func tag(args []string) error {
 		return err
 	}
 
-	var tag string
+	var baseVersion string
 	switch branch {
 	case "main":
-		tag = fmt.Sprintf("v0.%s.0", time.Now().Format("20060102"))
+		baseVersion = fmt.Sprintf("v0.%s", time.Now().Format("20060102"))
 	default:
-		tag, err = nextTagOnBranch(branch)
-		if err != nil {
-			return fmt.Errorf("failed to compute next hotfix tag: %w", err)
-		}
+		baseVersion = strings.TrimPrefix(branch, "release-branch-")
+	}
+
+	tag, err := nextTagUnderVersion(baseVersion)
+	if err != nil {
+		return fmt.Errorf("failed to compute next tag: %w", err)
 	}
 
 	// Produce the tag, using -s to PGP sign it. This will fail if a tag with
@@ -147,15 +149,18 @@ func tag(args []string) error {
 	return nil
 }
 
-func nextTagOnBranch(branch string) (string, error) {
-	baseVersion := strings.TrimPrefix(branch, "release-branch-")
+func nextTagUnderVersion(baseVersion string) (string, error) {
 	out, err := git("tag", "--list", "--no-column", baseVersion+".*")
 	if err != nil {
-		return "", fmt.Errorf("failed to list extant tags on branch %q: %w", branch, err)
+		return "", fmt.Errorf("failed to list extant tags under version %q: %w", baseVersion, err)
 	}
 
-	maxPatch := 0
+	maxPatch := -1
 	for tag := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if tag == "" {
+			continue
+		}
+
 		parts := strings.SplitN(tag, ".", 3)
 		if len(parts) != 3 {
 			return "", fmt.Errorf("failed to parse release tag %q as semver", tag)

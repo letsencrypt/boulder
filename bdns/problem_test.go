@@ -1,10 +1,8 @@
 package bdns
 
 import (
-	"context"
 	"errors"
 	"net"
-	"net/url"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -19,15 +17,15 @@ func TestError(t *testing.T) {
 	}{
 		{
 			&Error{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1, nil, false},
-			"DNS problem: networking error looking up MX for hostname",
+			"DNS problem: server failure at resolver looking up MX for hostname",
 		}, {
 			&Error{dns.TypeTXT, "hostname", nil, dns.RcodeNameError, nil, false},
 			"DNS problem: NXDOMAIN looking up TXT for hostname - check that a DNS record exists for this domain",
 		}, {
-			&Error{dns.TypeTXT, "hostname", context.DeadlineExceeded, -1, nil, false},
+			&Error{dns.TypeTXT, "hostname", errDohQueryTimeout, -1, nil, false},
 			"DNS problem: query timed out looking up TXT for hostname",
 		}, {
-			&Error{dns.TypeTXT, "hostname", context.Canceled, -1, nil, false},
+			&Error{dns.TypeTXT, "hostname", errDohQueryCanceled, -1, nil, false},
 			"DNS problem: query timed out (and was canceled) looking up TXT for hostname",
 		}, {
 			&Error{dns.TypeCAA, "hostname", nil, dns.RcodeServerFailure, nil, false},
@@ -51,9 +49,6 @@ func TestError(t *testing.T) {
 			&Error{dns.TypeA, "hostname", nil, dns.RcodeFormatError, nil, false},
 			"DNS problem: FORMERR looking up A for hostname",
 		}, {
-			&Error{dns.TypeA, "hostname", &url.Error{Op: "GET", URL: "https://example.com/", Err: dohTimeoutError{}}, -1, nil, false},
-			"DNS problem: query timed out looking up A for hostname",
-		}, {
 			&Error{dns.TypeCAA, "hostname", nil, dns.RcodeSuccess, nil, true},
 			"DNS problem: response was truncated looking up CAA for hostname",
 		},
@@ -63,16 +58,6 @@ func TestError(t *testing.T) {
 			t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
 		}
 	}
-}
-
-type dohTimeoutError struct{}
-
-func (dohTimeoutError) Error() string {
-	return "doh no"
-}
-
-func (dohTimeoutError) Timeout() bool {
-	return true
 }
 
 func TestWrapErr(t *testing.T) {

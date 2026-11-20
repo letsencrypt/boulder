@@ -3,9 +3,7 @@ package core
 import (
 	"context"
 	"crypto"
-	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -37,6 +35,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/trees"
 )
 
 const Unspecified = "Unspecified"
@@ -170,14 +169,16 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 
 // PublicKeysEqual determines whether two public keys are identical.
 func PublicKeysEqual(a, b crypto.PublicKey) (bool, error) {
-	switch ak := a.(type) {
-	case *rsa.PublicKey:
-		return ak.Equal(b), nil
-	case *ecdsa.PublicKey:
-		return ak.Equal(b), nil
-	default:
-		return false, fmt.Errorf("unsupported public key type %T", ak)
+	// https://pkg.go.dev/crypto#PublicKey
+	type pkEqual interface {
+		Equal(x crypto.PublicKey) bool
 	}
+	aa, ok := a.(pkEqual)
+	if !ok {
+		return false, fmt.Errorf("unsupported public key type %T", a)
+	}
+
+	return aa.Equal(b), nil
 }
 
 // GenerateSKID computes the Subject Key Identifier using one of the methods in
@@ -228,8 +229,8 @@ func EncodeMTCSerial(logNumber uint16, index int64) (uint64, error) {
 	if logNumber == 0 {
 		return 0, errors.New("encoding MTC serial: log number is zero")
 	}
-	if index < 0 || index > 1<<48-1 {
-		return 0, fmt.Errorf("encoding MTC serial: index %d is not between 0 and 2^48-1", index)
+	if index < 0 || index > trees.MaxSize-1 {
+		return 0, fmt.Errorf("encoding MTC serial: index %d is not between 0 and 2^48-2", index)
 	}
 	return uint64(logNumber)<<48 | uint64(index), nil
 }

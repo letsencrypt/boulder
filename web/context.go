@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
@@ -182,6 +183,15 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Host = strings.TrimSuffix(r.Host, ":443")
 	r.Host = strings.TrimSuffix(r.Host, ":80")
 
+	// X-Forwarded-Host takes precedence over r.Host when building URLs, so it
+	// gets the same default-port stripping.
+	forwardedHost := r.Header.Get("X-Forwarded-Host")
+	if forwardedHost != "" {
+		forwardedHost = strings.TrimSuffix(forwardedHost, ":443")
+		forwardedHost = strings.TrimSuffix(forwardedHost, ":80")
+		r.Header.Set("X-Forwarded-Host", forwardedHost)
+	}
+
 	begin := time.Now()
 	rwws := &responseWriterWithStatus{w, 0}
 	defer func() {
@@ -220,6 +230,8 @@ func KeyTypeToString(pub crypto.PublicKey) string {
 		return fmt.Sprintf("RSA %d", pk.N.BitLen())
 	case *ecdsa.PublicKey:
 		return fmt.Sprintf("ECDSA %s", pk.Params().Name)
+	case *mldsa.PublicKey:
+		return pk.Parameters().String()
 	}
 	return "unknown"
 }

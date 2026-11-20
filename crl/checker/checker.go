@@ -15,16 +15,25 @@ import (
 )
 
 // Validate runs the given CRL through our set of lints, ensures its signature
-// validates (if supplied with a non-nil issuer), and checks that the CRL is
-// less than ageLimit old. It returns an error if any of these conditions are
-// not met.
+// validates, and checks that the CRL is less than ageLimit old. It returns an
+// error if any of these conditions are not met.
 func Validate(crl *x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration) error {
 	zcrl, err := zlint_x509.ParseRevocationList(crl.Raw)
 	if err != nil {
 		return fmt.Errorf("parsing CRL: %w", err)
 	}
 
-	err = linter.ProcessResultSet(zlint.LintRevocationList(zcrl))
+	lintConfig, err := linter.Config{}.WithIssuer(issuer)
+	if err != nil {
+		return fmt.Errorf("configuring lints: %w", err)
+	}
+
+	registry, err := linter.ConfigureRegistry(nil, lintConfig)
+	if err != nil {
+		return fmt.Errorf("configuring lints: %w", err)
+	}
+
+	err = linter.ProcessResultSet(zlint.LintRevocationListEx(zcrl, registry))
 	if err != nil {
 		return fmt.Errorf("linting CRL: %w", err)
 	}

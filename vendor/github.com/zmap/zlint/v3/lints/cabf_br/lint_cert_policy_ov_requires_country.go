@@ -1,7 +1,7 @@
 package cabf_br
 
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -23,13 +23,35 @@ import (
 type CertPolicyOVRequiresCountry struct{}
 
 /************************************************
-BRs: 7.1.6.4
-Certificate Policy Identifier: 2.23.140.1.2.2
-If the Certificate complies with these Requirements and includes Subject Identity Information
-that is verified in accordance with Section 3.2.2.1.
-Such Certificates MUST also include organizationName, localityName (to the extent such
-field is required under Section 7.1.4.2.2), stateOrProvinceName (to the extent such field is
-required under Section 7.1.4.2.2), and countryName in the Subject field.
+--- Citation History of this Requirement ---
+§9.3.1     v1.0   to v1.2.5
+§7.1.6.1   v1.3.0 to v1.7.2
+§7.1.6.4   v1.7.3 to v1.8.7
+§7.1.2.7.4 v2.0.0 to v2.2.7
+
+--- Version Notes ---
+Prior to v1.3.1 this profile was known as "Subject Identity Validated" and was renamed to "Organization Validated"
+with no requirement changes when the "Individual Validated" profile was split out in that version.
+
+This requirement was baselined at v2.2.7 and is current.
+
+--- Requirements Language ---
+TLS BRs: 7.1.2.7.4 Organization Validated
+
+The following table details the acceptable AttributeTypes that may appear within the
+type field of an AttributeTypeAndValue, as well as the contents permitted within the
+value field.
+
++----------------+----------+--------------------------------------------------------+-----------------+
+| Attribute Name | Presence | Value                                                  | Verification    |
++----------------+----------+--------------------------------------------------------+-----------------+
+| countryName    | MUST     | The two‐letter ISO 3166‐1 country code for the country | Section 3.2.2.1 |
+|                |          | associated with the Subject. If a Country is not       |                 |
+|                |          | represented by an official ISO 3166‐1 country code,    |                 |
+|                |          | the CA MUST specify the ISO 3166‐1 user‐assigned code  |                 |
+|                |          | of XX, indicating that an official ISO 3166‐1 alpha‐2  |                 |
+|                |          | code has not been assigned.                            |                 |
++----------------+----------+--------------------------------------------------------+-----------------+
 ************************************************/
 
 func init() {
@@ -37,7 +59,7 @@ func init() {
 		LintMetadata: lint.LintMetadata{
 			Name:          "e_cert_policy_ov_requires_country",
 			Description:   "If certificate policy 2.23.140.1.2.2 is included, countryName MUST be included in subject",
-			Citation:      "BRs: 7.1.6.4",
+			Citation:      "BRs: 7.1.2.7.4",
 			Source:        lint.CABFBaselineRequirements,
 			EffectiveDate: util.CABEffectiveDate,
 		},
@@ -50,7 +72,7 @@ func NewCertPolicyOVRequiresCountry() lint.LintInterface {
 }
 
 func (l *CertPolicyOVRequiresCountry) CheckApplies(cert *x509.Certificate) bool {
-	return util.SliceContainsOID(cert.PolicyIdentifiers, util.BROrganizationValidatedOID)
+	return util.SliceContainsOID(cert.PolicyIdentifiers, util.BROrganizationValidatedOID) && !util.IsCACert(cert)
 }
 
 func (l *CertPolicyOVRequiresCountry) Execute(cert *x509.Certificate) *lint.LintResult {

@@ -332,7 +332,7 @@ func TestMTCSerial(t *testing.T) {
 		{name: "first entry of the first log", logNumber: 1, index: 0, expectSerial: 1 << 48},
 		{name: "log one", logNumber: 1, index: 5, expectSerial: 1<<48 | 5},
 		{name: "high bit set", logNumber: 0x8000, index: 1, expectSerial: 0x8000<<48 | 1},
-		{name: "max values", logNumber: 0xffff, index: 1<<48 - 1, expectSerial: 0xffffffffffffffff},
+		{name: "max values", logNumber: 0xffff, index: 1<<48 - 2, expectSerial: 0xfffffffffffffffe},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -354,8 +354,8 @@ func TestMTCSerial(t *testing.T) {
 		expectErrContains string
 	}{
 		{name: "log number zero", logNumber: 0, index: 5, expectErrContains: "log number is zero"},
-		{name: "negative index", logNumber: 1, index: -1, expectErrContains: "is not between 0 and 2^48-1"},
-		{name: "index too large", logNumber: 1, index: 1 << 48, expectErrContains: "is not between 0 and 2^48-1"},
+		{name: "negative index", logNumber: 1, index: -1, expectErrContains: "is not between 0 and 2^48-2"},
+		{name: "index too large", logNumber: 1, index: 1<<48 - 1, expectErrContains: "is not between 0 and 2^48-2"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

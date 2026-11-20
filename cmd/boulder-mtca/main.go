@@ -10,6 +10,7 @@ import (
 
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -19,6 +20,7 @@ import (
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
 type Config struct {
@@ -32,7 +34,7 @@ type Config struct {
 
 		// LogID identifies the issuance log this MTCA sequences. Its CA ID must
 		// match the issuer certificate's.
-		LogID issuancelog.ID `validate:"required"`
+		LogID issuancelog.Config `validate:"required"`
 
 		Issuance struct {
 			CertProfiles map[string]issuance.ProfileConfig `validate:"required,dive,keys,alphanum,min=1,max=32,endkeys"`
@@ -48,7 +50,7 @@ type Config struct {
 		SequencingPeriod config.Duration `validate:"required"`
 	}
 
-	Syslog        cmd.SyslogConfig
+	Syslog        blog.Config
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
@@ -79,9 +81,13 @@ func main() {
 		c.MTCA.DebugAddr = *debugAddr
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.MTCA.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(
+		cmd.SyslogConfig{StdoutLevel: c.Syslog.StdoutLevel, SyslogLevel: c.Syslog.SyslogLevel},
+		c.OpenTelemetry, c.MTCA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
+
+	slogger := cmd.NewSlogger(c.Syslog)
 
 	tlsConfig, err := c.MTCA.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading TLS config")
@@ -93,6 +99,9 @@ func main() {
 	}
 	issuer, err := issuance.LoadIssuer(c.MTCA.Issuance.Issuers[0], clk)
 	cmd.FailOnError(err, "Loading issuer")
+
+	logID, err := c.MTCA.LogID.Load()
+	cmd.FailOnError(err, "Parsing Log ID")
 
 	profiles := make(map[string]*issuance.Profile)
 	for name, profileConfig := range c.MTCA.Issuance.CertProfiles {
@@ -113,11 +122,11 @@ func main() {
 	mtcaImpl, err := mtca.New(
 		issuer,
 		profiles,
-		c.MTCA.LogID,
+		logID,
 		c.MTCA.SequencingPeriod.Duration,
-		dbMap,
+		treedb.New(dbMap),
 		s3c,
-		logger,
+		slogger,
 		clk)
 	cmd.FailOnError(err, "Building MTCA")
 

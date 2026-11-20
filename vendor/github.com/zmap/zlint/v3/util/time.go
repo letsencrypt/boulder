@@ -67,7 +67,11 @@ var (
 	EtsiEn319_412_5_V2_2_1_Date                      = time.Date(2017, time.November, 1, 0, 0, 0, 0, time.UTC)
 	EtsiEn319_412_5_V2_4_1_Date                      = time.Date(2023, time.September, 1, 0, 0, 0, 0, time.UTC)
 	EtsiEn319_412_5_V2_6_0_Date                      = time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC)
+	EtsiEn319_412_5_V2_6_1_Date                      = time.Date(2026, time.May, 1, 0, 0, 0, 0, time.UTC)
 	EtsiEn319_411_2_V2_5_0_Date                      = time.Date(2023, time.July, 1, 0, 0, 0, 0, time.UTC)
+	EtsiTs119495_V1_1_2_Date                         = time.Date(2018, time.July, 1, 0, 0, 0, 0, time.UTC)
+	EtsiTs119495_V1_2_1_Date                         = time.Date(2018, time.November, 1, 0, 0, 0, 0, time.UTC)
+	EtsiTs119495_V1_5_1_Date                         = time.Date(2021, time.April, 1, 0, 0, 0, 0, time.UTC)
 	OnionOnlyEVDate                                  = time.Date(2015, time.May, 1, 0, 0, 0, 0, time.UTC)
 	CABV201Date                                      = time.Date(2017, time.July, 28, 0, 0, 0, 0, time.UTC)
 	AppleCTPolicyDate                                = time.Date(2018, time.October, 15, 0, 0, 0, 0, time.UTC)
@@ -84,6 +88,7 @@ var (
 	CABFBRs_1_6_9_Date                               = time.Date(2020, time.March, 27, 0, 0, 0, 0, time.UTC)
 	CABFBRs_1_7_1_Date                               = time.Date(2020, time.August, 20, 0, 0, 0, 0, time.UTC)
 	AppleReducedLifetimeDate                         = time.Date(2020, time.September, 1, 0, 0, 0, 0, time.UTC)
+	CABFBRs_1_7_4_Date                               = time.Date(2021, time.April, 5, 0, 0, 0, 0, time.UTC)
 	CABFBRs_1_7_9_Date                               = time.Date(2021, time.August, 16, 0, 0, 0, 0, time.UTC)
 	CABFBRs_1_8_0_Date                               = time.Date(2021, time.August, 25, 0, 0, 0, 0, time.UTC)
 	CABFBRs_2_0_0_Date                               = time.Date(2023, time.September, 15, 0, 0, 0, 0, time.UTC)
@@ -118,6 +123,7 @@ var (
 	CABF_SC081_SECOND_MILESTONE = time.Date(2027, time.March, 15, 0, 0, 0, 0, time.UTC)
 	CABF_SC081_THIRD_MILESTONE  = time.Date(2029, time.March, 15, 0, 0, 0, 0, time.UTC)
 	CABF_SC086_EffectiveDate    = time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC)
+	CABFEV_2_0_2_Date           = time.Date(2026, time.May, 4, 0, 0, 0, 0, time.UTC)
 )
 
 var (

@@ -1346,8 +1346,10 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 		}
 
 		return &rsa.PublicKey{
-			E: p.E,
-			N: p.N,
+			// Defensively copy E so callers cannot mutate it through the
+			// parsed wire structure.
+			E: new(big.Int).Set(p.E),
+			N: new(big.Int).Set(p.N),
 		}, nil
 	case DSA:
 		var p *big.Int

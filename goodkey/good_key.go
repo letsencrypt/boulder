@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"errors"
 	"fmt"
@@ -34,8 +35,15 @@ var smallPrimeInts = []int64{
 
 // singleton defines the object of a Singleton pattern
 var (
+	// These are lazily initialized on first use to a value that can be used to
+	// quickly compute whether an RSA key has a small prime as one of its factors.
 	smallPrimesSingleton sync.Once
 	smallPrimesProduct   *big.Int
+
+	// These are lazily initialized on first use to a map that can be used to
+	// quickly check whether an ECDSA key has a small private scalar.
+	smallScalarsSingleton sync.Once
+	smallScalarXs         map[*elliptic.CurveParams]map[string]struct{}
 )
 
 type Config struct {
@@ -66,6 +74,12 @@ type AllowedKeys struct {
 	ECDSAP256 bool
 	ECDSAP384 bool
 	ECDSAP521 bool
+	// MLDSA end-entity keys are not allowed under the Baseline Requirements. They
+	// will be allowed in the Chrome Quantum-resistant Root Program.
+	//
+	// This field MUST NOT be enabled in boulder-ca's config. It SHOULD be enabled
+	// in the RA's config for MTCs.
+	MLDSA44 bool
 }
 
 // LetsEncryptCPS encodes the five key algorithms and sizes allowed by the Let's
@@ -112,6 +126,8 @@ type KeyPolicy struct {
 // defaults. If the config's AllowedKeys is nil, the LetsEncryptCPS AllowedKeys
 // is used. If the configured FermatRounds is 0, Fermat Factorization defaults to
 // attempting 110 rounds.
+//
+// If the BlockedKeyCheckFunc is nil, nothing is called to check blocked keys.
 func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	if config == nil {
 		config = &Config{}
@@ -143,7 +159,7 @@ func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) error {
 	// Early rejection of unacceptable key types to guard subsequent checks.
 	switch t := key.(type) {
-	case *rsa.PublicKey, *ecdsa.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey, *mldsa.PublicKey:
 		break
 	default:
 		return badKey("unsupported key type %T", t)
@@ -165,12 +181,14 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		return policy.goodKeyRSA(t)
 	case *ecdsa.PublicKey:
 		return policy.goodKeyECDSA(t)
+	case *mldsa.PublicKey:
+		return policy.goodKeyMLDSA(t)
 	default:
 		return badKey("unsupported key type %T", key)
 	}
 }
 
-// GoodKeyECDSA determines if an ECDSA pubkey meets our requirements
+// goodKeyECDSA determines if an ECDSA pubkey meets our requirements
 func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 	// Check the curve.
 	//
@@ -180,9 +198,53 @@ func (policy *KeyPolicy) goodKeyECDSA(key *ecdsa.PublicKey) (err error) {
 		return err
 	}
 
-	// Key validation routine adapted from NIST SP800-56A § 5.6.2.3.2.
-	// <http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Ar2.pdf>
-	//
+	// Check compliance with NIST SP800-56A Section 5.6.2.3.2
+	err = policy.nistSP800(key)
+	if err != nil {
+		return err
+	}
+
+	// Check for small private scalars.
+	err = checkSmallPrivateScalar(key)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (policy *KeyPolicy) goodKeyMLDSA(key *mldsa.PublicKey) (err error) {
+	if !policy.allowedKeys.MLDSA44 {
+		return badKey("ML-DSA keys not supported")
+	}
+	// The key quality check for ML-DSA is "pubkey has correct length," and
+	// stdlib already does that for us at parse time, so we don't do additional
+	// key quality checks.
+	if key.Parameters() == mldsa.MLDSA44() {
+		return nil
+	}
+	return badKey("parameters not allowed: %s", key.Parameters())
+}
+
+// GoodCurve determines if an elliptic curve meets our requirements.
+func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
+	// Simply use a whitelist for now.
+	params := c.Params()
+	switch {
+	case policy.allowedKeys.ECDSAP256 && params == elliptic.P256().Params():
+		return nil
+	case policy.allowedKeys.ECDSAP384 && params == elliptic.P384().Params():
+		return nil
+	case policy.allowedKeys.ECDSAP521 && params == elliptic.P521().Params():
+		return nil
+	default:
+		return badKey("ECDSA curve %v not allowed", params.Name)
+	}
+}
+
+// nistSP800 implements the key validation routine adapted from NIST SP800-56A § 5.6.2.3.2.
+// <http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Ar2.pdf>
+func (policy *KeyPolicy) nistSP800(key *ecdsa.PublicKey) error {
 	// Assuming a prime field since a) we are only allowing such curves and b)
 	// crypto/elliptic only supports prime curves. Where this assumption
 	// simplifies the code below, it is explicitly stated and explained. If ever
@@ -267,23 +329,44 @@ func isPointAtInfinityNISTP(x, y *big.Int) bool {
 	return x.Sign() == 0 && y.Sign() == 0
 }
 
-// GoodCurve determines if an elliptic curve meets our requirements.
-func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
-	// Simply use a whitelist for now.
-	params := c.Params()
-	switch {
-	case policy.allowedKeys.ECDSAP256 && params == elliptic.P256().Params():
-		return nil
-	case policy.allowedKeys.ECDSAP384 && params == elliptic.P384().Params():
-		return nil
-	case policy.allowedKeys.ECDSAP521 && params == elliptic.P521().Params():
-		return nil
-	default:
-		return badKey("ECDSA curve %v not allowed", params.Name)
+// checkSmallPrivateScalar checks to see if the ECDSA private key can be
+// trivially recovered by brute-forcing small values of the private scalar.
+//
+// On first run we precompute the x-coordinates of k*G for all small k on each
+// supported curve. On each subsequent run, we simply do a lookup of the key's
+// x-coordinate in that set.
+//
+// This function must only be called on keys which have already passed goodCurve
+// and nistSP800, as it won't catch small private scalars on other curves or
+// with bad encodings. Note that this function does use deprecated operations
+// (curve.Add and key.X). These are deprecated because they are unsafe; using
+// them to catch keys which were generated unsafely is an appropriate use.
+func checkSmallPrivateScalar(key *ecdsa.PublicKey) error {
+	maxSmallScalar := 255
+
+	smallScalarsSingleton.Do(func() {
+		smallScalarXs = make(map[*elliptic.CurveParams]map[string]struct{})
+		for _, curve := range []elliptic.Curve{elliptic.P256(), elliptic.P384(), elliptic.P521()} {
+			params := curve.Params()
+			xs := make(map[string]struct{}, maxSmallScalar)
+			x, y := params.Gx, params.Gy
+			for k := 1; k <= maxSmallScalar; k++ {
+				xs[string(x.Bytes())] = struct{}{}
+				x, y = curve.Add(x, y, params.Gx, params.Gy)
+			}
+			smallScalarXs[params] = xs
+		}
+	})
+
+	_, found := smallScalarXs[key.Params()][string(key.X.Bytes())]
+	if found {
+		return badKey("key has a small private scalar and is trivially recoverable")
 	}
+
+	return nil
 }
 
-// GoodKeyRSA determines if a RSA pubkey meets our requirements
+// goodKeyRSA determines if a RSA pubkey meets our requirements
 func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) error {
 	modulus := key.N
 
@@ -379,6 +462,12 @@ func checkSmallPrimes(i *big.Int) bool {
 // independently from a uniform random distribution. Basically, if we can factor
 // the key this easily, so can anyone else.
 func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
+	// Trivial case: n = p^2
+	sqrt := new(big.Int).Sqrt(n)
+	if new(big.Int).Mul(sqrt, sqrt).Cmp(n) == 0 {
+		return fmt.Errorf("public modulus n = pq factored in 1 rounds into p: %s and q: %s", sqrt, sqrt)
+	}
+
 	// Pre-allocate some big numbers that we'll use a lot down below.
 	one := big.NewInt(1)
 	bb := new(big.Int)
@@ -396,8 +485,7 @@ func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
 	// first integer greater than the square root of n. Unfortunately, big.Int's
 	// built-in square root function takes the floor, so we have to add one to get
 	// the ceil.
-	a := new(big.Int)
-	a.Sqrt(n).Add(a, one)
+	a := new(big.Int).Add(sqrt, one)
 
 	// We calculate b2 to see if it is a perfect square (i.e. b^2), and therefore
 	// b is an integer. Specifically, b2 = a^2 - n.

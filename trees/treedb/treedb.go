@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/trees"
@@ -13,19 +14,23 @@ import (
 
 var ErrIssuanceLogNotInitialized = errors.New("issuance log DB not initialized")
 
+// ErrAlreadyCosigned is returned when a checkpoint or subtree already has a
+// mirror signature, so the given one was not stored.
+var ErrAlreadyCosigned = errors.New("already has a mirror signature")
+
 // CheckpointModel represents the database storage of a checkpoint and associated signatures.
 //
-// For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Message`.
+// For signing, the TreeSize and RootHash fields are incorporated into a `cosigned.Subtree`.
 type CheckpointModel struct {
-	ID              int64   `db:"id"`
-	MTCLogID        string  `db:"mtcLogID"`
-	MTCASignature   []byte  `db:"mtcaSignature"`
-	MirrorID        *string `db:"mirrorID"`
-	MirrorSignature []byte  `db:"mirrorSignature"`
-	TreeSize        int64   `db:"treeSize"`
-	RootHash        []byte  `db:"rootHash"`
-	SubtreeID1      *int64  `db:"subtreeID1"`
-	SubtreeID2      *int64  `db:"subtreeID2"`
+	ID       int64  `db:"id"`
+	MTCLogID string `db:"mtcLogID"`
+	// MTCASignature is a signed note signature line for a checkpoint.
+	MTCASignature []byte  `db:"mtcaSignature"`
+	MirrorID      *string `db:"mirrorID"`
+	// MirrorSignature is a signed note signature line for a checkpoint.
+	MirrorSignature []byte `db:"mirrorSignature"`
+	TreeSize        int64  `db:"treeSize"`
+	RootHash        []byte `db:"rootHash"`
 }
 
 func (c *CheckpointModel) Valid() error {
@@ -49,22 +54,27 @@ func (c *CheckpointModel) Mirrored() bool {
 	return len(c.MTCASignature) > 0 && c.MirrorID != nil && len(c.MirrorSignature) > 0
 }
 
-type CheckpointSubtreeModel struct {
-	ID              int64   `db:"id"`
-	MTCLogID        string  `db:"mtcLogID"`
-	MTCASignature   []byte  `db:"mtcaSignature"`
-	MirrorID        *string `db:"mirrorID"`
-	MirrorSignature []byte  `db:"mirrorSignature"`
-	SubtreeStart    uint64  `db:"subtreeStart"`
-	SubtreeEnd      uint64  `db:"subtreeEnd"`
-	SubtreeHash     []byte  `db:"subtreeHash"`
+type SubtreeModel struct {
+	ID       int64  `db:"id"`
+	MTCLogID string `db:"mtcLogID"`
+	// MTCASignature is an ML-DSA-44 signature over a CosignedMessage with
+	// zero timestamp.
+	MTCASignature []byte  `db:"mtcaSignature"`
+	MirrorID      *string `db:"mirrorID"`
+	// MirrorSignature is an ML-DSA-44 signature over a CosignedMessage with
+	// zero timestamp.
+	MirrorSignature []byte `db:"mirrorSignature"`
+	SubtreeStart    int64  `db:"subtreeStart"`
+	SubtreeEnd      int64  `db:"subtreeEnd"`
+	SubtreeHash     []byte `db:"subtreeHash"`
 }
 
-func (s *CheckpointSubtreeModel) Valid() error {
+func (s *SubtreeModel) Valid() error {
 	if len(s.MTCLogID) == 0 {
 		return errors.New("MTCLogID is empty")
 	}
-	if s.SubtreeEnd <= s.SubtreeStart ||
+	if s.SubtreeStart < 0 ||
+		s.SubtreeEnd <= s.SubtreeStart ||
 		s.SubtreeEnd >= 1<<48 {
 		return fmt.Errorf("Subtree [%d, %d) is invalid", s.SubtreeStart, s.SubtreeEnd)
 	}
@@ -78,8 +88,18 @@ func (s *CheckpointSubtreeModel) Valid() error {
 	return nil
 }
 
-func (s *CheckpointSubtreeModel) Mirrored() bool {
+func (s *SubtreeModel) Mirrored() bool {
 	return len(s.MTCASignature) > 0 && s.MirrorID != nil && len(s.MirrorSignature) > 0
+}
+
+type SerialMetadataModel struct {
+	MTCLogID        string    `db:"mtcLogID"`
+	MTCSerialNumber uint64    `db:"mtcSerialNumber"`
+	RegistrationID  int64     `db:"registrationID"`
+	Expires         time.Time `db:"expires"`
+	Created         time.Time `db:"created"`
+	EntryHash       []byte    `db:"entryHash"`
+	SPKIHash        []byte    `db:"spkiHash"`
 }
 
 type Impl struct {
@@ -90,7 +110,8 @@ type Impl struct {
 // table mappings with borp.
 func New(dbMap *db.WrappedMap) *Impl {
 	dbMap.AddTableWithName(CheckpointModel{}, "checkpoints").SetKeys(true, "ID")
-	dbMap.AddTableWithName(CheckpointSubtreeModel{}, "checkpointSubtrees").SetKeys(true, "ID")
+	dbMap.AddTableWithName(SubtreeModel{}, "subtrees").SetKeys(true, "ID")
+	dbMap.AddTableWithName(SerialMetadataModel{}, "serialMetadata").SetKeys(false, "mtcLogID", "mtcSerialNumber")
 	return &Impl{dbMap}
 }
 
@@ -98,8 +119,7 @@ func (i *Impl) LatestCheckpoint(ctx context.Context, mtcLogID string) (*Checkpoi
 	var latest CheckpointModel
 	err := i.db.SelectOne(ctx, &latest,
 		`SELECT id, checkpoints.mtcLogID, mtcaSignature, mirrorID,
-		        mirrorSignature, treeSize, rootHash,
-		        subtreeID1, subtreeID2
+		        mirrorSignature, treeSize, rootHash
 		 FROM latestCheckpoint JOIN checkpoints
 		 USING(id)
 		 WHERE latestCheckpoint.mtcLogID = ? AND
@@ -122,9 +142,12 @@ func (i *Impl) InsertCheckpoint(ctx context.Context, c *CheckpointModel) error {
 	return i.db.Insert(ctx, c)
 }
 
+// AddMirrorSignature stores mirrorCosig as the mirror signature of the
+// checkpoint with the given id, which must exist. It returns ErrAlreadyCosigned
+// if the checkpoint already has one.
 func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorCosig []byte, mtcLogID string) error {
 	r, err := i.db.ExecContext(ctx,
-		"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ?",
+		"UPDATE checkpoints SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ? AND mirrorID IS NULL",
 		mirrorID, mirrorCosig, id, mtcLogID)
 	if err != nil {
 		return err
@@ -133,48 +156,233 @@ func (i *Impl) AddMirrorSignature(ctx context.Context, id int64, mirrorID string
 	if err != nil {
 		return fmt.Errorf("getting RowsAffected: %s", err)
 	}
+	if n == 0 {
+		return fmt.Errorf("checkpoint %d %w", id, ErrAlreadyCosigned)
+	}
 	if n != 1 {
 		return fmt.Errorf("adding mirror signature: %d rows affected (want 1 row affected)", n)
 	}
 	return nil
 }
 
-func (i *Impl) GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*CheckpointSubtreeModel, error) {
-	var checkpointSubtree CheckpointSubtreeModel
-	err := i.db.SelectOne(ctx, &checkpointSubtree,
+// AddSubtreeMirrorSignature stores mirrorSignature as the mirror signature of
+// the subtree with the given id, which must exist. It returns
+// ErrAlreadyCosigned if the subtree already has one.
+func (i *Impl) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	r, err := i.db.ExecContext(ctx,
+		"UPDATE subtrees SET mirrorID = ?, mirrorSignature = ? WHERE id = ? AND mtcLogID = ? AND mirrorID IS NULL",
+		mirrorID, mirrorSignature, id, mtcLogID)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("getting RowsAffected: %s", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("subtree %d %w", id, ErrAlreadyCosigned)
+	}
+	if n != 1 {
+		return fmt.Errorf("adding mirror signature to subtree %d: %d rows affected (want 1 row affected)", id, n)
+	}
+	return nil
+}
+
+func (i *Impl) GetSubtree(ctx context.Context, mtcLogID string, id int64) (*SubtreeModel, error) {
+	var subtree SubtreeModel
+	err := i.db.SelectOne(ctx, &subtree,
 		`SELECT id, mtcLogID, mtcaSignature,
 				mirrorID, mirrorSignature,
 				subtreeStart, subtreeEnd, subtreeHash
-		 FROM checkpointSubtrees
+		 FROM subtrees
 		 WHERE mtcLogID = ? AND
 		 	id = ?`,
 		mtcLogID,
 		id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting subtree %d of %q: %w", id, mtcLogID, err)
 	}
-	return &checkpointSubtree, nil
+	return &subtree, nil
 }
 
-// InsertCheckpointSubtree inserts a row into db, and returns the inserted row
+// InsertSubtree inserts a row into db, and returns the inserted row
 // ID, or an error. Because borp's `Insert` modifies its argument to set the ID
 // when a field is marked as autoincrement (`.SetKeys(true, "ID")`), this method
 // also modifies its argument (in this case, `model`).
-func (i *Impl) InsertCheckpointSubtree(ctx context.Context, model *CheckpointSubtreeModel) (int64, error) {
+func (i *Impl) InsertSubtree(ctx context.Context, model *SubtreeModel) (int64, error) {
 	err := i.db.Insert(ctx, model)
 	if err != nil {
-		return 0, fmt.Errorf("inserting into checkpointSubtrees table: %s", err)
+		return 0, fmt.Errorf("inserting into subtrees table: %s", err)
 	}
 
 	return model.ID, nil
 }
 
+// GetUnsignedSubtrees returns up to limit of the log's newest subtrees that
+// lack a mirror signature.
+func (i *Impl) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, limit int) ([]*SubtreeModel, error) {
+	var subtrees []*SubtreeModel
+	_, err := i.db.Select(ctx, &subtrees,
+		`SELECT id, mtcLogID, mtcaSignature,
+				mirrorID, mirrorSignature,
+				subtreeStart, subtreeEnd, subtreeHash
+		 FROM subtrees
+		 WHERE mtcLogID = ? AND
+		 	mirrorID IS NULL
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		mtcLogID,
+		limit)
+	if err != nil {
+		return nil, err
+	}
+	return subtrees, nil
+}
+
 // WithTransaction calls `github.com/letsencrypt/boulder/db.WithTransaction` for the given
-// transaction function, with the built-in DB. In the database-backed implementation this
-// is simply a pass-through.
+// transaction function, with the built-in DB.
+func (i *Impl) WithTransaction(ctx context.Context, f TxFunc) (any, error) {
+	return db.WithTransaction(ctx, i.db, func(tx db.Executor) (any, error) {
+		return f(txImpl{tx})
+	})
+}
+
+// TxFunc is a function that gets run in a transaction by `Impl.WithTransaction` (or mocks).
+type TxFunc func(tx Tx) (any, error)
+
+// Tx represents a transaction.
 //
-// TODO(#8998): Replace TxFunc's `db.Executor` parameter with an interface that defines
-// the operations we want to perform inside a transaction, so we can mock those.
-func (i *Impl) WithTransaction(ctx context.Context, f db.TxFunc) (any, error) {
-	return db.WithTransaction(ctx, i.db, f)
+// The methods on this are those that are currently called within a transaction by the MTCA.
+// We don't include these methods on `*Impl` because we don't want them to be called outside
+// a transaction. We don't include all the methods of `*Impl` here because any test that wants
+// to mock `Impl.WithTransaction` needs to implement a `Tx`, which means such a test needs to
+// implement each method in this interface. That means keeping it small is useful.
+type Tx interface {
+	AlreadyInitialized(ctx context.Context, mtcLogID string) (bool, error)
+	InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *CheckpointModel) error
+	AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error
+	SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error)
+	SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID, newID int64) error
+	AddSerials(ctx context.Context, inputs []*SerialMetadataModel) error
+}
+
+type txImpl struct {
+	tx db.Executor
+}
+
+// AlreadyInitialized returns true if the given mtcLogID is initialized already.
+func (tx txImpl) AlreadyInitialized(ctx context.Context, mtcLogID string) (bool, error) {
+	var numLatestCheckpoints int64
+	err := tx.tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
+		mtcLogID)
+	if err != nil {
+		return false, fmt.Errorf("getting latestCheckpoint: %s", err)
+	}
+
+	var numCheckpoints int64
+	err = tx.tx.SelectOne(ctx, &numCheckpoints, "SELECT COUNT(*) FROM checkpoints WHERE mtcLogID = ?",
+		mtcLogID)
+	if err != nil {
+		return false, fmt.Errorf("getting checkpoints: %s", err)
+	}
+
+	if numCheckpoints > 0 || numLatestCheckpoints > 0 {
+		if numLatestCheckpoints == 1 {
+			return true, nil
+		}
+
+		return false, fmt.Errorf("checkpoints and latestCheckpoint disagree for log %s: %d checkpoints, %d latestCheckpoint rows",
+			mtcLogID, numCheckpoints, numLatestCheckpoints)
+	}
+
+	return false, nil
+}
+
+// InsertFirstCheckpoint inserts a `CheckpointModel` and also inserts its ID into `latestCheckpoint` table.
+func (tx txImpl) InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *CheckpointModel) error {
+	err := firstCheckpoint.Valid()
+	if err != nil {
+		return fmt.Errorf("first checkpoint invalid: %s", err)
+	}
+	if len(firstCheckpoint.MTCASignature) == 0 {
+		return fmt.Errorf("first checkpoint needs MTCASignature")
+	}
+
+	err = tx.tx.Insert(ctx, firstCheckpoint)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.tx.ExecContext(ctx, "INSERT INTO latestCheckpoint (id, mtcLogID) VALUES (?, ?)", firstCheckpoint.ID, firstCheckpoint.MTCLogID)
+	return err
+}
+
+// AddMTCASignature updates an already-existing checkpoint to fill the MTCASignature field.
+func (tx txImpl) AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error {
+	result, err := tx.tx.ExecContext(ctx, "UPDATE checkpoints SET mtcaSignature = ? WHERE mtcLogID = ? AND id = ?",
+		caSig, mtcLogID, id)
+	if err != nil {
+		return fmt.Errorf("updating checkpoint with MTCA signature: %s", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("updating checkpoint with MTCA signature, getting rows affected: %s", err)
+	}
+	if rowsAffected != 1 {
+		return fmt.Errorf("updating checkpoint with MTCA signature: %d rows updated, want 1", rowsAffected)
+	}
+	return nil
+}
+
+// SelectLatestForUpdate does a `SELECT ... FOR UPDATE` of the `latestCheckpoint` row for
+// the given mtcLogID, returning the row's ID.
+func (tx txImpl) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error) {
+	// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
+	// The FOR UPDATE does the heavy lifting here.
+	// https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/selecting-data/for-update
+	var latestID int64
+	err := tx.tx.SelectOne(ctx, &latestID,
+		`SELECT id from latestCheckpoint WHERE mtcLogID = ? FOR UPDATE`,
+		mtcLogID)
+	if err != nil {
+		return 0, err
+	}
+	return latestID, nil
+}
+
+// SetLatestCheckpointID updates the `latestCheckpoint` row for the given mtcLogID
+// to point to the checkpoint with id `newID`. Errors if the existing value in
+// `latestCheckpoint` was not equal to `oldID`.
+func (tx txImpl) SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID, newID int64) error {
+	result, err := tx.tx.ExecContext(ctx, "UPDATE latestCheckpoint SET id = ? WHERE mtcLogID = ? AND id = ?",
+		newID, mtcLogID, oldID)
+	if err != nil {
+		return fmt.Errorf("updating latestCheckpoint: %s", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("updating latestCheckpoint, getting rows affected: %s", err)
+	}
+	if rowsAffected != 1 {
+		return fmt.Errorf("updating latestCheckpoint: %d rows updated, want 1", rowsAffected)
+	}
+
+	return nil
+}
+
+func (tx txImpl) AddSerials(ctx context.Context, inputs []*SerialMetadataModel) error {
+	mi, err := db.NewMultiInserter("serialMetadata",
+		[]string{"mtcLogID", "mtcSerialNumber", "registrationID", "created", "expires", "entryHash", "spkiHash"})
+	if err != nil {
+		return err
+	}
+	for _, row := range inputs {
+		err = mi.Add([]any{row.MTCLogID, row.MTCSerialNumber, row.RegistrationID, row.Created, row.Expires,
+			row.EntryHash, row.SPKIHash})
+		if err != nil {
+			return err
+		}
+	}
+
+	return mi.Insert(ctx, tx.tx)
 }

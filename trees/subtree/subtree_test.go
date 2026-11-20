@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"golang.org/x/mod/sumdb/tlog"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 // seqLeaves returns n distinct entries for round-trip tests.
@@ -73,17 +75,26 @@ func TestValidSubtree(t *testing.T) {
 		{"Aligned size-4 block", 4, 8, true},
 		{"Aligned size-4 block, start a higher multiple of size", 8, 12, true},
 		{"Non-power-of-two size, start aligned to BIT_CEIL", 8, 13, true},
+		{"Empty", 4, 4, true},
+		{"Empty at zero", 0, 0, true},
 		{"Start 0 aligns to the 2^63 ceiling", 0, math.MaxInt64, true},
 		// Invalid
 		{"Misaligned start", 1, 3, false},
 		{"Misaligned start, higher offset", 7, 9, false},
-		{"Empty", 4, 4, false},
 		{"Inverted", 5, 4, false},
 		{"Nonzero start can't align to the 2^63 ceiling", 1, math.MaxInt64, false},
+		// Appendix C.2.1 Subtree Validity, up to the int64 limit
+		{"Start 0, end 2^47+1", 0, 1<<47 + 1, true},
+		{"Start 0, end 2^48-1", 0, 1<<48 - 1, true},
+		{"Start 0, end 2^62+1", 0, 1<<62 + 1, true},
+		{"Start 2^46, end 2^47+1", 1 << 46, 1<<47 + 1, false},
+		{"Start 2^46, end 2^48-1", 1 << 46, 1<<48 - 1, false},
+		{"Start 2^61, end 2^62+1", 1 << 61, 1<<62 + 1, false},
+		{"Start 2^61, end 2^63-1", 1 << 61, math.MaxInt64, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := valid(tc.start, tc.end)
+			got := Valid(tc.start, tc.end)
 			if got != tc.expect {
 				t.Errorf("Valid(%d, %d) = %v, want %v", tc.start, tc.end, got, tc.expect)
 			}
@@ -92,10 +103,10 @@ func TestValidSubtree(t *testing.T) {
 }
 
 // TestMTHAppendixVector pins mth to the accumulated digest in the MTC draft
-// appendix C.1 Subtree Hashes for every valid subtree up to size 130, which the
+// appendix C.1.1 Subtree Hashes for every valid subtree up to size 130, which the
 // draft's reference implementation also reproduces.
 func TestMTHAppendixVector(t *testing.T) {
-	want := "94a95384a8c69acea9b50d035a58285b3a777cb7a724005faa5e1f1e1190007f"
+	want := "b82806ad4265bb151c1119c0f4db437bb4d1a1f887b3a7fba1cd4ebf552e3e81"
 	entries := make([][]byte, 130)
 	for i := range entries {
 		entries[i] = []byte{byte(i)}
@@ -103,9 +114,9 @@ func TestMTHAppendixVector(t *testing.T) {
 	leaves := leafHashes(entries)
 
 	h := sha256.New()
-	for end := int64(1); end <= 130; end++ {
-		for start := int64(0); start < end; start++ {
-			if !valid(start, end) {
+	for end := int64(0); end <= 130; end++ {
+		for start := int64(0); start <= end; start++ {
+			if !Valid(start, end) {
 				continue
 			}
 			subtree := MTH(leaves[start:end])
@@ -171,13 +182,13 @@ func TestSubtreeProofExamples(t *testing.T) {
 }
 
 // TestSubtreeConsistencyProofAppendixVector pins ConsistencyProof to the
-// accumulated digest in MTC draft appendix C.3 Subtree Consistency Proofs,
+// accumulated digest in MTC draft appendix C.1.3 Subtree Consistency Proofs,
 // covering every valid subtree of every tree up to size 130. It also runs each
 // generated proof through VerifyConsistency, pinning the verifier's accept path
 // across the full range, including the start > 0 proofs that x/mod/sumdb/tlog's
 // CheckTree (prefix-only) cannot oracle.
 func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
-	want := "c586ebbb73a5621baf2140095d87dde934e3b6503a562a1a5215b8209edd083d"
+	want := "10fa99b37bf9bf9ffa26b412fbd98bd75363256d0b75d61bc4538b9c9c5a0a74"
 	entries := make([][]byte, 130)
 	for i := range entries {
 		entries[i] = []byte{byte(i)}
@@ -188,9 +199,9 @@ func TestSubtreeConsistencyProofAppendixVector(t *testing.T) {
 	h := sha256.New()
 	for n := int64(0); n <= 130; n++ {
 		root := MTH(leaves[:n])
-		for end := int64(1); end <= n; end++ {
-			for start := int64(0); start < end; start++ {
-				if !valid(start, end) {
+		for end := int64(0); end <= n; end++ {
+			for start := int64(0); start <= end; start++ {
+				if !Valid(start, end) {
 					continue
 				}
 				proof, err := ConsistencyProof(start, end, n, reader)
@@ -225,7 +236,6 @@ func TestSubtreeConsistencyProofRejectsBadInput(t *testing.T) {
 	}{
 		{"Misaligned subtree", 1, 3, 14},
 		{"End past tree size", 0, 5, 4},
-		{"Empty interval", 4, 4, 14},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -326,6 +336,8 @@ func TestVerifySubtreeConsistencyRejectsBadInput(t *testing.T) {
 		{"Empty proof where one is required", 8, 13, 14, nil},
 		{"Over-long proof", 8, 13, 14, append(slices.Clone(proof), proof...)},
 		{"Too short proof", 8, 13, 14, proof[:len(proof)-1]},
+		{"Empty subtree with a non-empty proof", 4, 4, 14, proof},
+		{"Empty subtree with a node hash other than HASH()", 4, 4, 14, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -437,7 +449,7 @@ func TestConsistencyProofRoundTrip(t *testing.T) {
 
 		for start := int64(0); start < n; start++ {
 			for end := start + 1; end <= n; end++ {
-				if !valid(start, end) {
+				if !Valid(start, end) {
 					continue
 				}
 				node := MTH(leaves[start:end])
@@ -495,19 +507,17 @@ func TestInclusionProofRoundTrip(t *testing.T) {
 	treeSize := 48
 	entries := seqLeaves(treeSize)
 	leaves := leafHashes(entries)
+	reader := buildHashReader(t, entries)
 
 	for start := int64(0); start <= int64(treeSize); start++ {
 		for end := start + 1; end <= int64(treeSize); end++ {
-			if !valid(start, end) {
+			if !Valid(start, end) {
 				continue
 			}
 			for i := start; i < end; i++ {
 				t.Run(fmt.Sprintf("index=%d,subtree=[%d,%d)", i, start, end), func(t *testing.T) {
 					rootHash := MTH(leaves[start:end])
-					inclusionProof, err := tlog.ProveRecord(
-						end-start,
-						i-start,
-						buildHashReader(t, entries[start:end]))
+					inclusionProof, err := InclusionProof(i, start, end, reader)
 					if err != nil {
 						t.Fatalf("computing inclusion proof: %s", err)
 					}
@@ -563,5 +573,67 @@ func TestInclusionProofRoundTrip(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestSubtreeInclusionProofRejectsBadInput(t *testing.T) {
+	reader := buildHashReader(t, seqLeaves(14))
+	cases := []struct {
+		name       string
+		entryIndex int64
+		start      int64
+		end        int64
+	}{
+		{"Misaligned subtree", 1, 1, 3},
+		{"Empty interval", 4, 4, 4},
+		{"Negative start", -1, -1, 0},
+		{"Index before subtree", 3, 4, 8},
+		{"Index at subtree end", 8, 4, 8},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := InclusionProof(tc.entryIndex, tc.start, tc.end, reader)
+			if err == nil {
+				t.Errorf("InclusionProof(%d, %d, %d) = nil error, want error", tc.entryIndex, tc.start, tc.end)
+			}
+		})
+	}
+}
+
+func TestSubtreeInclusionProofPropagatesReadError(t *testing.T) {
+	_, err := InclusionProof(5, 4, 8, failingHashReader{})
+	if err == nil {
+		t.Error("InclusionProof with a failing reader = nil error, want error")
+	}
+}
+
+func TestFindSubtrees(t *testing.T) {
+	cases := []struct {
+		name      string
+		start     int64
+		end       int64
+		expect    []Subtree
+		expectErr bool
+	}{
+		{"Left can contain extra elements", 11, 24, []Subtree{{Start: 8, End: 16}, {Start: 16, End: 24}}, false},
+		{"Right may be partial", 8, 25, []Subtree{{Start: 8, End: 16}, {Start: 16, End: 25}}, false},
+		{"Very small", 3, 4, []Subtree{{Start: 3, End: 4}, {Start: 4, End: 4}}, false},
+		{"Start same as End", 3, 3, []Subtree{{Start: 3, End: 3}, {Start: 3, End: 3}}, false},
+		{"Start is negative", -1, 7, []Subtree{}, true},
+		{"End is negative", 7, -1, []Subtree{}, true},
+		{"Start greater than End", 9, 2, []Subtree{}, true},
+		{"Start and End are zero", 0, 0, []Subtree{{Start: 0, End: 0}, {Start: 0, End: 0}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			subtrees, err := FindCoveringSubtrees(tc.start, tc.end)
+			if err != nil && !tc.expectErr {
+				t.Errorf("got error, wanted no error: %q", err)
+			}
+			if tc.expectErr {
+				test.AssertError(t, err, "FindSubtrees")
+			}
+			test.AssertDeepEquals(t, subtrees, tc.expect)
+		})
 	}
 }

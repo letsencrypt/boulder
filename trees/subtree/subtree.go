@@ -8,33 +8,47 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 )
 
-// valid reports whether [start, end) is a valid subtree per the MTC draft
-// section 4.1 Definition of a Subtree: 0 <= start < end and start is a multiple
+type Subtree struct {
+	Start int64
+	End   int64
+}
+
+// Valid reports whether [start, end) is a valid subtree per the MTC draft
+// section 4.1 Definition of a Subtree: 0 <= start <= end and start is a multiple
 // of BIT_CEIL(end - start).
-func valid(start, end int64) bool {
-	if start < 0 || start >= end {
-		// A subtree must have 0 <= start < end.
+func Valid(start, end int64) bool {
+	if start < 0 || start > end {
+		// A subtree must have 0 <= start <= end.
 		return false
+	}
+	if start == end {
+		// BIT_CEIL(0) is 1, so any start aligns.
+		return true
 	}
 	// start must be a multiple of BIT_CEIL(end-start). bits.Len64(x) is the bit
 	// width of x, so 1<<bits.Len64(x) is the smallest power of two strictly
 	// above x, an exclusive ceiling. BIT_CEIL(x) is inclusive, the smallest
 	// power of two at least x, so we apply it to end-start-1.
-	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: the start >= end check above leaves end-start positive, so end-start-1 is non-negative.
+	bitCeil := uint64(1) << bits.Len64(uint64(end-start-1)) //nolint:gosec // G115: the checks above mean that end-start is positive, so end-start-1 is non-negative.
 
 	// bitCeil-1 masks the bits below bitCeil, so start & (bitCeil-1) is zero
 	// exactly when start is a multiple of bitCeil.
 	return uint64(start)&(bitCeil-1) == 0
 }
 
+// contains returns true if and only if start ≤ entryIndex < end.
+func contains(entryIndex, start, end int64) bool {
+	return start <= entryIndex && entryIndex < end
+}
+
 // completeSubtree reports whether [start, end) is a complete subtree (a valid
 // subtree with a power-of-two size), and if so its level.
 func completeSubtree(start, end int64) (level int, ok bool) {
 	size := end - start
-	if !valid(start, end) || bits.OnesCount64(uint64(size)) != 1 { //nolint:gosec // G115: valid ensures start < end, so size is positive.
+	if !Valid(start, end) || bits.OnesCount64(uint64(size)) != 1 { //nolint:gosec // G115: Valid ensures start <= end, so size is non-negative.
 		return 0, false
 	}
-	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: valid ensures start < end, so size is positive.
+	return bits.TrailingZeros64(uint64(size)), true //nolint:gosec // G115: Valid ensures start <= end, so size is non-negative.
 }
 
 // splitPoint returns where to split the subtree [start, end) into a complete
@@ -56,7 +70,7 @@ func combineSubtreeRoots(start, end int64, hashes []tlog.Hash) (tlog.Hash, []tlo
 		return hashes[0], hashes[1:]
 	}
 	// completeSubtree accepts single leaves, and the input is always a valid
-	// subtree (end > start), so end-start >= 2 here.
+	// non-empty subtree, so end-start >= 2 here.
 	mid := splitPoint(start, end)
 	left, rest := combineSubtreeRoots(start, mid, hashes)
 	right, rest := combineSubtreeRoots(mid, end, rest)
@@ -72,17 +86,25 @@ func completeSubtreeIndexes(start, end int64) []int64 {
 		return []int64{tlog.StoredHashIndex(level, start>>level)}
 	}
 	// completeSubtree accepts single leaves, and the input is always a valid
-	// subtree (end > start), so end-start >= 2 here.
+	// non-empty subtree, so end-start >= 2 here.
 	mid := splitPoint(start, end)
 	return append(completeSubtreeIndexes(start, mid), completeSubtreeIndexes(mid, end)...)
 }
 
-// hashSubtree returns the hash of the subtree [start, end), MTH(D[start:end])
+// HashSubtree returns the hash of the subtree [start, end), MTH(D[start:end])
 // from RFC 9162 section 2.1.1. It splits [start, end) into the largest
 // power-of-two subtrees the tree already keeps a single stored hash for, reads
 // those hashes through the provided reader in a single ReadHashes call, and
-// combines them.
-func hashSubtree(start, end int64, reader tlog.HashReader) (tlog.Hash, error) {
+// combines them. It errors if [start, end) is not a valid subtree. The hash of
+// an empty subtree is the hash of an empty string, MTH({}) from the same
+// section.
+func HashSubtree(start, end int64, reader tlog.HashReader) (tlog.Hash, error) {
+	if !Valid(start, end) {
+		return tlog.Hash{}, fmt.Errorf("[%d, %d) is not a valid subtree", start, end)
+	}
+	if start == end {
+		return tlog.Hash(sha256.Sum256(nil)), nil
+	}
 	indexes := completeSubtreeIndexes(start, end)
 	hashes, err := reader.ReadHashes(indexes)
 	if err != nil {
@@ -113,7 +135,7 @@ func subtreeSubProof(start, end, windowStart, windowEnd int64, known bool, reade
 		}
 
 		// The verifier doesn't have it, so emit the node's hash.
-		h, err := hashSubtree(windowStart, windowEnd, reader)
+		h, err := HashSubtree(windowStart, windowEnd, reader)
 		if err != nil {
 			return nil, err
 		}
@@ -156,7 +178,7 @@ func subtreeSubProof(start, end, windowStart, windowEnd int64, known bool, reade
 	if err != nil {
 		return nil, err
 	}
-	h, err := hashSubtree(siblingStart, siblingEnd, reader)
+	h, err := HashSubtree(siblingStart, siblingEnd, reader)
 	if err != nil {
 		return nil, err
 	}
@@ -172,10 +194,46 @@ func subtreeSubProof(start, end, windowStart, windowEnd int64, known bool, reade
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-4.4.1
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#appendix-B.4
 func ConsistencyProof(start, end, treeSize int64, reader tlog.HashReader) ([]tlog.Hash, error) {
-	if !valid(start, end) || end > treeSize {
+	if !Valid(start, end) || end > treeSize {
 		return nil, fmt.Errorf("[%d, %d) is not a valid subtree of a tree of size %d", start, end, treeSize)
 	}
+	if start == end {
+		// SUBTREE_PROOF(start, start, D_n) = {}
+		return nil, nil
+	}
 	return subtreeSubProof(start, end, 0, treeSize, true, reader, nil)
+}
+
+// InclusionProof returns a Subtree Inclusion Proof.
+//
+// The range [start, end) must be a valid subtree with end <= treeSize.
+//
+// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-subtree-inclusion-proofs
+func InclusionProof(entryIndex, start, end int64, reader tlog.HashReader) ([]tlog.Hash, error) {
+	if !Valid(start, end) {
+		return nil, fmt.Errorf("subtree [%d, %d) not valid", start, end)
+	}
+	if !contains(entryIndex, start, end) {
+		return nil, fmt.Errorf("entryIndex %d not in subtree [%d, %d)", entryIndex, start, end)
+	}
+	offset := start
+	// `tlog.ProveRecord` operates over a Merkle Tree, so we give it a HashReader
+	// that acts as if the subtree is a Merkle Tree unto itself.
+	offsetHashReader := func(hashIndexes []int64) ([]tlog.Hash, error) {
+		var newHashIndexes []int64
+		for _, i := range hashIndexes {
+			level, n := tlog.SplitStoredHashIndex(i)
+			// Node `n` in the subtree will be found at a larger (or equal)
+			// index in the whole Merkle Tree.
+			n += offset >> level
+			newHashIndexes = append(newHashIndexes, tlog.StoredHashIndex(level, n))
+		}
+		return reader.ReadHashes(newHashIndexes)
+	}
+	return tlog.ProveRecord(
+		end-start,
+		entryIndex-start,
+		tlog.HashReaderFunc(offsetHashReader))
 }
 
 // VerifyConsistency reports whether proof shows that the subtree [start, end),
@@ -186,8 +244,11 @@ func ConsistencyProof(start, end, treeSize int64, reader tlog.HashReader) ([]tlo
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#section-4.4.3
 //   - https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#appendix-B.5
 func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHash tlog.Hash) bool {
-	if !valid(start, end) || end > n {
+	if !Valid(start, end) || end > n {
 		return false
+	}
+	if start == end {
+		return len(proof) == 0 && nodeHash == MTH(nil)
 	}
 
 	// fn, sn, tn track the subtree's first leaf, its last leaf, and the tree's
@@ -271,10 +332,10 @@ func VerifyConsistency(start, end, n int64, proof []tlog.Hash, nodeHash, rootHas
 //
 // https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-evaluating-a-subtree-inclus
 func HashFromProof(entryHash tlog.Hash, proof []tlog.Hash, entryIndex, start, end int64) (tlog.Hash, error) {
-	if !valid(start, end) {
+	if !Valid(start, end) {
 		return tlog.Hash{}, fmt.Errorf("invalid subtree: [%d, %d)", start, end)
 	}
-	if !(start <= entryIndex && entryIndex < end) {
+	if !contains(entryIndex, start, end) {
 		return tlog.Hash{}, fmt.Errorf("entryIndex %d not in [%d, %d)", entryIndex, start, end)
 	}
 
@@ -336,4 +397,42 @@ func MTH(leaves []tlog.Hash) tlog.Hash {
 		k := 1 << (bits.Len(uint(len(leaves)-1)) - 1)
 		return tlog.NodeHash(MTH(leaves[:k]), MTH(leaves[k:]))
 	}
+}
+
+// FindCoveringSubtrees calculates two subtrees to efficiently cover an
+// arbitrary interval from `start` to `end`. It will always return at least one
+// non-zero subtree (i.e. covering a single entry) or an error.
+//
+// https://www.ietf.org/archive/id/draft-ietf-plants-merkle-tree-certs-08.html#section-4.5.1-4
+func FindCoveringSubtrees(start, end int64) (subtrees []Subtree, err error) {
+	if start < 0 || end < 0 {
+		return []Subtree{}, fmt.Errorf("start and end must be positive")
+	}
+
+	if start > end {
+		return []Subtree{}, fmt.Errorf("start must be less than end")
+	}
+
+	if (end - start) <= 1 {
+		return []Subtree{{Start: start, End: end}, {Start: end, End: end}}, nil
+	}
+
+	lastIndex := (end - 1)
+	splitIndex := bits.Len64(uint64(start^lastIndex)) - 1 //nolint:gosec // G115: the three checks above ensure these values are positive
+	mask := int64(1<<splitIndex) - 1
+	midIndex := lastIndex &^ mask
+
+	leftHeight := bits.Len64(uint64(^start & mask)) //nolint:gosec // G115: the same three checks at start of function
+	leftStart := start & ^((1 << leftHeight) - 1)
+
+	_, ok := completeSubtree(leftStart, midIndex)
+	if !ok {
+		return []Subtree{}, fmt.Errorf("failed to find complete left subtree")
+	}
+
+	// the subtree on the right of `mid` may not be complete, but should be valid.
+	if !Valid(midIndex, end) {
+		return []Subtree{}, fmt.Errorf("failed to find valid right subtree")
+	}
+	return []Subtree{{Start: leftStart, End: midIndex}, {Start: midIndex, End: end}}, nil
 }

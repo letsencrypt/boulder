@@ -525,6 +525,14 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	test.Assert(t, bytes.Equal(keyHashes[0].KeyHash, spkiHash[:]), "spki hash mismatch")
 }
 
+func TestGetCertificateInvalidSerial(t *testing.T) {
+	sa, _ := initSA(t)
+	_, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: "123"})
+	if err == nil || !errors.Is(err, berrors.NotFound) {
+		t.Errorf("GetCertificate(123): got %v, want NotFound error", err)
+	}
+}
+
 func TestAddCertificate(t *testing.T) {
 	sa, clk := initSA(t)
 
@@ -1499,7 +1507,7 @@ func TestFinalizeMTCOrder(t *testing.T) {
 	// Finalize the order with MTC data.
 	_, err = sa.FinalizeMTCOrder(context.Background(), &sapb.FinalizeMTCOrderRequest{
 		Id:              order.Id,
-		MtcLogID:        "44947.4.1.0.44",
+		MtcLogID:        "44947.4.1.0.3",
 		MtcSerialNumber: 23,
 		MtcSubtreeID:    99,
 	})
@@ -1510,7 +1518,7 @@ func TestFinalizeMTCOrder(t *testing.T) {
 		context.Background(),
 		&sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "GetOrder failed")
-	test.AssertEquals(t, updatedOrder.MtcLogID, "44947.4.1.0.44")
+	test.AssertEquals(t, updatedOrder.MtcLogID, "44947.4.1.0.3")
 	test.AssertEquals(t, updatedOrder.MtcSerialNumber, uint64(23))
 	test.AssertEquals(t, updatedOrder.MtcSubtreeID, int64(99))
 
@@ -1518,7 +1526,7 @@ func TestFinalizeMTCOrder(t *testing.T) {
 
 	_, err = sa.FinalizeMTCOrder(context.Background(), &sapb.FinalizeMTCOrderRequest{
 		Id:              order.Id,
-		MtcLogID:        "44947.4.1.0.44",
+		MtcLogID:        "44947.4.1.0.3",
 		MtcSerialNumber: 71,
 		MtcSubtreeID:    101,
 	})
@@ -3081,8 +3089,8 @@ func TestIncidentsForSerial(t *testing.T) {
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertA.Serial,
-			affectedCertA.RegistrationID,
-			affectedCertA.OrderID,
+			*affectedCertA.RegistrationID,
+			*affectedCertA.OrderID,
 			affectedCertA.LastNoticeSent.Format(time.DateTime),
 		),
 	)
@@ -3105,8 +3113,8 @@ func TestIncidentsForSerial(t *testing.T) {
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertB.Serial,
-			affectedCertB.RegistrationID,
-			affectedCertB.OrderID,
+			*affectedCertB.RegistrationID,
+			*affectedCertB.OrderID,
 			affectedCertB.LastNoticeSent.Format(time.DateTime),
 		),
 	)

@@ -10,12 +10,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"math/big"
 	"strings"
 	"sync"
 	"testing"
@@ -23,28 +24,21 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
-
 	"golang.org/x/mod/sumdb/tlog"
 
-	"github.com/letsencrypt/borp"
-
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
-	"github.com/letsencrypt/boulder/mtpublisher"
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
-	"github.com/letsencrypt/boulder/sa"
-	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
-	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/tiles"
@@ -53,34 +47,30 @@ import (
 
 const logNumber = 3
 
+const testTimeUnix = 888888888
+
 // setup returns a working mtca, its fake tile storage, and a cleanup
 // function, or an error.
-func setup() (*mtca, *bs3test.FakeS3, func(), error) {
+func setup() (*mtca, *bs3test.FakeS3, error) {
+	clk := clock.NewFake()
+
+	clk.Set(time.Unix(testTimeUnix, 0))
+
 	issuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
 		Profiles:   []string{"some profile"},
 		IssuerURL:  "http://ignored.letsencrypt.org",
 		CRLURLBase: "http://ignored.letsencrypt.org/",
 		CRLShards:  1,
 		Location: issuance.IssuerLoc{
-			File:     "../test/certs/mtpki/mtca1.key.pem",
-			CertFile: "../test/certs/mtpki/mtca1.cert.pem",
+			File:     "../test/certs/webpki/mtca-1.privkey.pem",
+			CertFile: "../test/certs/webpki/mtca-1.cert.pem",
 		},
-	}, clock.NewFake())
+	}, clk)
 	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	sqlDB, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	err = truncateTables(sqlDB)
-	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	logger := blog.NewMock()
-	clk := clock.NewFake()
 
 	profile, err := issuance.NewProfile(issuance.ProfileConfig{
 		OmitCommonName:      true,
@@ -92,39 +82,235 @@ func setup() (*mtca, *bs3test.FakeS3, func(), error) {
 		LintConfig:          "",
 		IgnoredLints: []string{
 			"w_ext_subject_key_identifier_missing_sub_cert",
-			"w_ct_sct_policy_count_unsatisfied",
+			"n_ct_sct_policy_count_unsatisfied",
 			"e_signature_algorithm_not_supported",
 		},
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	dbMap := db.NewWrappedMap(&borp.DbMap{Db: sqlDB, Dialect: borp.MySQLDialect{}})
+	logID, err := issuancelog.Config{CAID: "44947.4.1", LogNumber: logNumber}.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	fs3 := bs3test.New()
 	mtca, err := New(
 		issuer,
 		map[string]*issuance.Profile{"mtcExample": profile},
-		issuancelog.ID{CAID: "44947.4.1", LogNumber: logNumber},
+		logID,
 		100*time.Millisecond,
-		dbMap,
+		newFakeDB(logID.String()),
 		fs3,
 		logger,
 		clk)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	err = mtca.InitLog(context.Background())
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("initializing log: %w", err)
+		return nil, nil, fmt.Errorf("initializing log: %w", err)
 	}
 
-	cleanup := func() {
-		_ = truncateTables(sqlDB)
-	}
+	return mtca, fs3, nil
+}
 
-	return mtca, fs3, cleanup, nil
+type fakeDB struct {
+	mtcLogID         string
+	latestCheckpoint int64
+	checkpoints      []treedb.CheckpointModel
+	subtrees         []treedb.SubtreeModel
+	// serials is a map from mtcSerialNumber to metadata.
+	serials map[uint64]treedb.SerialMetadataModel
+	// addSerialsErr, if non-nil, is returned by AddSerials.
+	addSerialsErr error
+}
+
+func newFakeDB(mtcLogID string) *fakeDB {
+	return &fakeDB{
+		mtcLogID: mtcLogID,
+		serials:  make(map[uint64]treedb.SerialMetadataModel),
+	}
+}
+
+func (f *fakeDB) LatestCheckpoint(ctx context.Context, mtcLogID string) (_ *treedb.CheckpointModel, _ error) {
+	if mtcLogID != f.mtcLogID {
+		return nil, fmt.Errorf("wrong log")
+	}
+	for _, c := range f.checkpoints {
+		if c.ID == f.latestCheckpoint {
+			return &c, nil
+		}
+	}
+	return nil, fmt.Errorf("latestCheckpoint %d not found", f.latestCheckpoint)
+}
+
+func (f *fakeDB) InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) (_ error) {
+	if c.MTCLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	if len(f.checkpoints) == 0 {
+		return fmt.Errorf("InsertCheckpoint called on an uninitialized log")
+	}
+	c.ID = f.checkpoints[len(f.checkpoints)-1].ID + 1
+	f.checkpoints = append(f.checkpoints, *c)
+	return nil
+}
+
+func (f *fakeDB) InsertSubtree(ctx context.Context, s *treedb.SubtreeModel) (_ int64, _ error) {
+	if s.MTCLogID != f.mtcLogID {
+		return 0, fmt.Errorf("wrong log")
+	}
+	if len(f.subtrees) == 0 {
+		s.ID = 19000 // arbitrary start point for fake autoincrement
+	} else {
+		s.ID = f.subtrees[len(f.subtrees)-1].ID + 1
+	}
+	f.subtrees = append(f.subtrees, *s)
+	return s.ID, nil
+}
+
+func (f *fakeDB) GetUnsignedSubtrees(ctx context.Context, mtcLogID string, limit int) ([]*treedb.SubtreeModel, error) {
+	if mtcLogID != f.mtcLogID {
+		return nil, fmt.Errorf("wrong log")
+	}
+	var subtrees []*treedb.SubtreeModel
+	for i := len(f.subtrees) - 1; i >= 0 && len(subtrees) < limit; i-- {
+		if f.subtrees[i].MirrorID == nil {
+			subtrees = append(subtrees, &f.subtrees[i])
+		}
+	}
+	return subtrees, nil
+}
+
+func (f *fakeDB) AddSubtreeMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorSignature []byte, mtcLogID string) error {
+	if mtcLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	for i, s := range f.subtrees {
+		if s.ID == id {
+			if s.MirrorID != nil {
+				return fmt.Errorf("subtree %d %w", id, treedb.ErrAlreadyCosigned)
+			}
+			f.subtrees[i].MirrorID = &mirrorID
+			f.subtrees[i].MirrorSignature = mirrorSignature
+			return nil
+		}
+	}
+	return fmt.Errorf("subtree %d not found", id)
+}
+
+func (f *fakeDB) getSubtree(mtcLogID string, id int64) (*treedb.SubtreeModel, error) {
+	if mtcLogID != f.mtcLogID {
+		return nil, fmt.Errorf("wrong log")
+	}
+	for _, s := range f.subtrees {
+		if s.ID == id {
+			return &s, nil
+		}
+	}
+	return nil, fmt.Errorf("subtree ID %d not found", id)
+}
+
+// WithTransaction runs txFunc against the fake. If txFunc returns an error, the
+// serials table is restored to its state from before the call, as a rollback
+// would do. Other tables are not rolled back.
+func (f *fakeDB) WithTransaction(ctx context.Context, txFunc treedb.TxFunc) (_ any, _ error) {
+	before := maps.Clone(f.serials)
+	res, err := txFunc(f)
+	if err != nil {
+		f.serials = before
+	}
+	return res, err
+}
+
+func (f *fakeDB) AlreadyInitialized(ctx context.Context, mtcLogID string) (bool, error) {
+	if mtcLogID != f.mtcLogID {
+		return false, fmt.Errorf("wrong log")
+	}
+	return len(f.checkpoints) > 0 && f.latestCheckpoint != 0, nil
+}
+
+func (f *fakeDB) InsertFirstCheckpoint(ctx context.Context, firstCheckpoint *treedb.CheckpointModel) error {
+	if firstCheckpoint.MTCLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	if len(f.checkpoints) > 0 || len(f.subtrees) > 0 || f.latestCheckpoint != 0 {
+		return fmt.Errorf("already initialized")
+	}
+	firstCheckpoint.ID = 17000 // arbitrary start point for fake autoincrement
+	f.checkpoints = append(f.checkpoints, *firstCheckpoint)
+	f.latestCheckpoint = firstCheckpoint.ID
+	return nil
+}
+
+func (f *fakeDB) AddMTCASignature(ctx context.Context, id int64, caSig []byte, mtcLogID string) error {
+	if mtcLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	for i, c := range f.checkpoints {
+		if c.ID == id {
+			f.checkpoints[i].MTCASignature = caSig
+			return nil
+		}
+	}
+	return fmt.Errorf("id %d not found", id)
+}
+
+func (f *fakeDB) AddMirrorSignature(ctx context.Context, id int64, mirrorID string, mirrorCosig []byte, mtcLogID string) error {
+	if mtcLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	for i, c := range f.checkpoints {
+		if c.ID == id {
+			if c.MirrorID != nil {
+				return fmt.Errorf("checkpoint %d %w", id, treedb.ErrAlreadyCosigned)
+			}
+			f.checkpoints[i].MirrorID = &mirrorID
+			f.checkpoints[i].MirrorSignature = mirrorCosig
+			return nil
+		}
+	}
+	return fmt.Errorf("id %d not found", id)
+}
+
+// AddSerials stores the given rows. Like the real table's primary key, it
+// rejects a serial that is already present.
+func (f *fakeDB) AddSerials(ctx context.Context, inputs []*treedb.SerialMetadataModel) error {
+	if f.addSerialsErr != nil {
+		return f.addSerialsErr
+	}
+	for _, row := range inputs {
+		if row.MTCLogID != f.mtcLogID {
+			return fmt.Errorf("wrong log")
+		}
+		_, ok := f.serials[row.MTCSerialNumber]
+		if ok {
+			return fmt.Errorf("duplicate serial %016x", row.MTCSerialNumber)
+		}
+		f.serials[row.MTCSerialNumber] = *row
+	}
+	return nil
+}
+
+func (f *fakeDB) SelectLatestForUpdate(ctx context.Context, mtcLogID string) (int64, error) {
+	if mtcLogID != f.mtcLogID {
+		return 0, fmt.Errorf("wrong log")
+	}
+	return f.latestCheckpoint, nil
+}
+
+func (f *fakeDB) SetLatestCheckpointID(ctx context.Context, mtcLogID string, oldID int64, newID int64) error {
+	if mtcLogID != f.mtcLogID {
+		return fmt.Errorf("wrong log")
+	}
+	if f.latestCheckpoint != oldID {
+		return fmt.Errorf("latestCheckpoint = %d, want %d", f.latestCheckpoint, oldID)
+	}
+	f.latestCheckpoint = newID
+	return nil
 }
 
 func TestPool(t *testing.T) {
@@ -199,22 +385,6 @@ func TestCheckpointValid(t *testing.T) {
 	}
 }
 
-func truncateTables(db *sql.DB) error {
-	_, err := db.Exec("TRUNCATE TABLE checkpoints")
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec("TRUNCATE TABLE checkpointSubtrees")
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec("TRUNCATE TABLE latestCheckpoint")
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // issueResult is the outcome of one async Issue call, along with the values
 // we expect to find in the entry sequenced for it.
 type issueResult struct {
@@ -222,6 +392,7 @@ type issueResult struct {
 	err              error
 	expectedSPKIHash [sha256.Size]byte
 	expectedDNSName  string
+	expectedRegID    int64
 }
 
 // makeIssueRequest returns an IssueRequest with a freshly generated key and
@@ -244,12 +415,19 @@ func makeIssueRequest(t *testing.T) *mtcapb.IssueRequest {
 	}
 	dnsName := fmt.Sprintf("%x.example.com", buf)
 
+	regID, err := rand.Int(rand.Reader, big.NewInt(99999))
+	if err != nil {
+		t.Fatalf("rand: %s", err)
+	}
+
 	return &mtcapb.IssueRequest{
 		Pubkey: pubkeyBytes,
 		Identifiers: []*corepb.Identifier{
 			{Type: "dns", Value: dnsName},
 		},
-		Profile: "mtcExample",
+		Profile:        "mtcExample",
+		EventID:        "test-event-id",
+		RegistrationID: regID.Int64() + 1, /* make sure it's nonzero*/
 	}
 }
 
@@ -270,6 +448,7 @@ func issueMany(t *testing.T, m *mtca, n int) <-chan issueResult {
 				err:              err,
 				expectedSPKIHash: sha256.Sum256(req.Pubkey),
 				expectedDNSName:  req.Identifiers[0].Value,
+				expectedRegID:    req.RegistrationID,
 			}
 		}()
 	}
@@ -285,12 +464,11 @@ func issueMany(t *testing.T, m *mtca, n int) <-chan issueResult {
 // when given no ETag, replaces only the checkpoint whose ETag is prevETag, and
 // otherwise returns ErrCheckpointChanged without writing.
 func TestWriteCheckpoint(t *testing.T) {
-	m, fs3, cleanup, err := setup()
+	m, fs3, err := setup()
 	if err != nil {
 		t.Fatalf("setup: %s", err)
 	}
-	defer cleanup()
-	key := m.checkpointKey
+	key := m.logID.CheckpointPath()
 	delete(fs3.Objects, key)
 
 	first, err := m.writeCheckpoint(t.Context(), []byte("first note\n"), "")
@@ -340,30 +518,21 @@ func TestWriteCheckpoint(t *testing.T) {
 // TestInitLogRefusesServedCheckpoint checks that InitLog fails when a
 // checkpoint is already served, leaving it in place.
 func TestInitLogRefusesServedCheckpoint(t *testing.T) {
-	m, _, cleanup, err := setup()
+	m, _, err := setup()
 	if err != nil {
 		t.Fatalf("setup: %s", err)
 	}
-	defer cleanup()
 
-	db, err := sql.Open("mysql", vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
-	if err != nil {
-		t.Fatalf("opening db: %s", err)
-	}
-	defer db.Close()
-	err = truncateTables(db)
-	if err != nil {
-		t.Fatalf("truncating tables: %s", err)
-	}
 	fs3 := bs3test.New()
 	m.s3c = fs3
+	m.treedb = newFakeDB(m.logID.String())
 	m.servedCheckpointETag = ""
-	key := m.checkpointKey
+	key := m.logID.CheckpointPath()
 	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
 
 	err = m.InitLog(t.Context())
 	if !errors.Is(err, ErrCheckpointChanged) || !strings.Contains(err.Error(), "already served") {
-		t.Errorf("InitLog with a checkpoint already served = %s, want ErrCheckpointChanged naming it", err)
+		t.Errorf("InitLog with a checkpoint already served = %q, want ErrCheckpointChanged naming it", err)
 	}
 	if string(fs3.Objects[key].Data) != "foreign note\n" {
 		t.Errorf("stored checkpoint = %q, want the existing %q", fs3.Objects[key].Data, "foreign note\n")
@@ -374,11 +543,10 @@ func TestInitLogRefusesServedCheckpoint(t *testing.T) {
 // checkpoint, covering a process that stopped between publishing tiles and
 // serving.
 func TestPreflightServesCheckpoint(t *testing.T) {
-	m, fs3, cleanup, err := setup()
+	m, fs3, err := setup()
 	if err != nil {
 		t.Fatalf("setup: %s", err)
 	}
-	defer cleanup()
 
 	m.servedCheckpointETag = ""
 	err = m.Preflight(t.Context())
@@ -387,7 +555,7 @@ func TestPreflightServesCheckpoint(t *testing.T) {
 	}
 	verifyStores(t, m, fs3)
 
-	delete(fs3.Objects, m.checkpointKey)
+	delete(fs3.Objects, m.logID.CheckpointPath())
 	m.servedCheckpointETag = ""
 	err = m.Preflight(t.Context())
 	if err != nil {
@@ -401,14 +569,13 @@ func TestPreflightServesCheckpoint(t *testing.T) {
 // writer's checkpoint, or a larger one of ours fails with ErrCheckpointChanged
 // and keeps failing.
 func TestServeCheckpointMismatch(t *testing.T) {
-	m, fs3, cleanup, err := setup()
+	m, fs3, err := setup()
 	if err != nil {
 		t.Fatalf("setup: %s", err)
 	}
-	defer cleanup()
 	latest := verifyStores(t, m, fs3)
 	tree := tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}
-	key := m.checkpointKey
+	key := m.logID.CheckpointPath()
 	signedNote := fs3.Objects[key].Data
 
 	fs3.Objects[key] = bs3test.StoredObject{Data: signedNote, ETag: "\"lost response\""}
@@ -429,15 +596,12 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	m.servedCheckpointETag = ""
 
 	larger := tlog.Tree{N: latest.TreeSize + 1, Hash: tlog.Hash(latest.RootHash)}
-	largerSignature, err := m.cosigner.CosignCheckpoint(larger)
+	timestamp := time.Now()
+	largerLine, err := m.cosigner.CosignCheckpoint(larger, timestamp)
 	if err != nil {
 		t.Fatalf("CosignCheckpoint: %s", err)
 	}
-	largerRaw, err := cosignature.RawSignature(largerSignature)
-	if err != nil {
-		t.Fatalf("RawSignature: %s", err)
-	}
-	largerNote, err := m.checkpointNote(larger, largerRaw)
+	largerNote, err := m.checkpointNote(larger, largerLine)
 	if err != nil {
 		t.Fatalf("checkpointNote: %s", err)
 	}
@@ -446,6 +610,35 @@ func TestServeCheckpointMismatch(t *testing.T) {
 	err = m.serveCheckpoint(t.Context(), tree, signedNote)
 	if !errors.Is(err, ErrCheckpointChanged) {
 		t.Errorf("serving over a larger checkpoint of ours = %s, want ErrCheckpointChanged", err)
+	}
+
+	// Build a checkpoint signed by the same key, but for a different log origin. It should error.
+	otherLog := must.Do(issuancelog.Config{CAID: m.logID.CAID().String(), LogNumber: logNumber + 1}.Load())
+	otherCosigner, err := cosignature.NewCosigner(otherLog.CAID(), otherLog.Origin(), m.issuer.Signer)
+	if err != nil {
+		t.Fatalf("NewCosigner: %s", err)
+	}
+	timestamp = time.Now()
+	otherLine, err := otherCosigner.CosignCheckpoint(tree, timestamp)
+	if err != nil {
+		t.Fatalf("CosignCheckpoint: %s", err)
+	}
+	otherNote, err := (&checkpoint.Checkpoint{Origin: otherLog.Origin(), Tree: tree}).SignedNote(otherLine)
+	if err != nil {
+		t.Fatalf("SignedNote: %s", err)
+	}
+	_, _, err = checkpoint.Open(otherNote, m.verifier)
+	if err != nil {
+		t.Fatalf("opening checkpoint of another log: %s", err)
+	}
+	fs3.Objects[key] = bs3test.StoredObject{Data: otherNote, ETag: "\"other log\""}
+	m.servedCheckpointETag = ""
+	err = m.serveCheckpoint(t.Context(), tree, signedNote)
+	if !errors.Is(err, ErrCheckpointChanged) {
+		t.Errorf("serving over a checkpoint of another log = %s, want ErrCheckpointChanged", err)
+	}
+	if !bytes.Equal(fs3.Objects[key].Data, otherNote) {
+		t.Error("checkpoint of another log was replaced")
 	}
 
 	fs3.Objects[key] = bs3test.StoredObject{Data: []byte("foreign note\n"), ETag: "\"foreign\""}
@@ -474,14 +667,10 @@ func (e *errorS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optF
 	return e.FakeS3.PutObject(ctx, params, optFns...)
 }
 
-// mirrorCosign cosigns the latest checkpoint with a real mtpublisher, standing
-// in for the daemon, so sequencing can proceed.
+// mirrorCosign stores a test mirror's cosignature on the latest checkpoint,
+// standing in for the mtpublisher, so sequencing can proceed.
 func mirrorCosign(t *testing.T, m *mtca) {
 	t.Helper()
-	caPub, ok := m.issuer.Signer.Public().(*mldsa.PublicKey)
-	if !ok {
-		t.Fatalf("issuer public key is %T, must be ML-DSA-44", m.issuer.Signer.Public())
-	}
 	key, err := mldsa.NewPrivateKey(mldsa.MLDSA44(), make([]byte, 32))
 	if err != nil {
 		t.Fatalf("NewPrivateKey: %s", err)
@@ -490,18 +679,20 @@ func mirrorCosign(t *testing.T, m *mtca) {
 	if err != nil {
 		t.Fatalf("mtpublishertest.NewTestMirror: %s", err)
 	}
-	dbMap, err := sa.DBMapForTest(vars.DBConnMTCMeta_44947_4_1_0_44FullPerms)
-	if err != nil {
-		t.Fatalf("opening mtcmeta db: %s", err)
-	}
 
-	p, err := mtpublisher.New(treedb.New(dbMap), time.Second, m.logID, caPub, mirror, blog.NewMock())
+	fake := m.treedb.(*fakeDB)
+	latest, err := fake.LatestCheckpoint(t.Context(), m.logID.String())
 	if err != nil {
-		t.Fatalf("mtpublisher.New: %s", err)
+		t.Fatalf("LatestCheckpoint: %s", err)
 	}
-	err = p.Publish(t.Context())
+	cp := &checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tlog.Tree{N: latest.TreeSize, Hash: tlog.Hash(latest.RootHash)}}
+	line, err := mirror.SubmitCheckpoint(t.Context(), cp, nil)
 	if err != nil {
-		t.Fatalf("mtpublisher.Publish: %s", err)
+		t.Fatalf("SubmitCheckpoint: %s", err)
+	}
+	err = fake.AddMirrorSignature(t.Context(), latest.ID, mirror.ID(), line, m.logID.String())
+	if err != nil {
+		t.Fatalf("AddMirrorSignature: %s", err)
 	}
 }
 
@@ -556,9 +747,30 @@ func verifyStores(t *testing.T, m *mtca, fs3 *bs3test.FakeS3) *treedb.Checkpoint
 // validateStoredEntries reads and parses the rightmost entries tile from
 // storage, then verifies that the entry at each index in `got` contains the
 // SPKI hash and DNS name of the request that was assigned that index.
-//
-// Only valid for tree sizes below 256.
 func validateStoredEntries(t *testing.T, fs3 *bs3test.FakeS3, prefix string, treeSize int64, got map[int64]issueResult) {
+	if treeSize >= 256 {
+		t.Fatalf("only valid for single-tile trees")
+	}
+	t.Helper()
+	entries := readStoredEntries(t, fs3, prefix, treeSize)
+
+	for idx, res := range got {
+		tbs := entries[idx].TBS()
+		if !bytes.Contains(tbs, res.expectedSPKIHash[:]) {
+			t.Errorf("entry at index %d does not contain the SPKI hash of the request that was assigned that index", idx)
+		}
+		if !bytes.Contains(tbs, []byte(res.expectedDNSName)) {
+			t.Errorf("entry at index %d does not contain the DNS name %q of the request that was assigned that index", idx, res.expectedDNSName)
+		}
+	}
+}
+
+// readStoredEntries reads and parses the rightmost entries tile from storage.
+// It returns each entry in the tree, in order.
+func readStoredEntries(t *testing.T, fs3 *bs3test.FakeS3, prefix string, treeSize int64) []*entry.MTCLogEntry {
+	if treeSize >= 256 {
+		t.Fatalf("only valid for single-tile trees")
+	}
 	t.Helper()
 	obj, ok := fs3.Objects[fmt.Sprintf("%s/tile/entries/000.p/%d", prefix, treeSize)]
 	if !ok {
@@ -590,14 +802,55 @@ func validateStoredEntries(t *testing.T, fs3 *bs3test.FakeS3, prefix string, tre
 	if int64(len(entries)) != treeSize {
 		t.Fatalf("entries tile at tree size %d: got %d entries", treeSize, len(entries))
 	}
+	return entries
+}
+
+// validateSerialMetadata checks each issueResult against the fake serialMetadata table.
+func validateSerialMetadata(t *testing.T, m *mtca, fs3 *bs3test.FakeS3, treeSize int64, got map[int64]issueResult) {
+	if treeSize >= 256 {
+		t.Fatalf("only valid for single-tile trees")
+	}
+	t.Helper()
+	fake := m.treedb.(*fakeDB)
+	if len(fake.serials) != len(got) {
+		t.Errorf("serialMetadata: got %d rows, want %d", len(fake.serials), len(got))
+	}
+
+	entries := readStoredEntries(t, fs3, m.logID.TilePrefix(), treeSize)
+	_, wantExpires := m.profiles["mtcExample"].GenerateValidity(m.clk.Now())
 
 	for idx, res := range got {
-		tbs := entries[idx].TBS()
-		if !bytes.Contains(tbs, res.expectedSPKIHash[:]) {
-			t.Errorf("entry at index %d does not contain the SPKI hash of the request that was assigned that index", idx)
+		row, ok := fake.serials[res.MtcSerialNumber]
+		if !ok {
+			t.Errorf("serialMetadata: no row for serial %016x (index %d)", res.MtcSerialNumber, idx)
+			continue
 		}
-		if !bytes.Contains(tbs, []byte(res.expectedDNSName)) {
-			t.Errorf("entry at index %d does not contain the DNS name %q of the request that was assigned that index", idx, res.expectedDNSName)
+		if row.MTCLogID != m.logID.String() {
+			t.Errorf("serialMetadata index %d: got MTCLogID %q, want %q", idx, row.MTCLogID, m.logID.String())
+		}
+		if row.MTCSerialNumber != res.MtcSerialNumber {
+			t.Errorf("serialMetadata index %d: got MTCSerialNumber %016x, want %016x", idx, row.MTCSerialNumber, res.MtcSerialNumber)
+		}
+		if row.RegistrationID != res.expectedRegID {
+			t.Errorf("serialMetadata index %d: got RegistrationID %d, want %d", idx, row.RegistrationID, res.expectedRegID)
+		}
+		if !row.Created.Equal(m.clk.Now()) {
+			t.Errorf("serialMetadata index %d: got Created %s, want %s", idx, row.Created, m.clk.Now())
+		}
+		if !row.Expires.Equal(wantExpires) {
+			t.Errorf("serialMetadata index %d: got Expires %s, want %s", idx, row.Expires, wantExpires)
+		}
+		if !bytes.Equal(row.SPKIHash, res.expectedSPKIHash[:]) {
+			t.Errorf("serialMetadata index %d: got SPKIHash %x, want %x", idx, row.SPKIHash, res.expectedSPKIHash)
+		}
+		mtcleBytes, err := entries[idx].Marshal()
+		if err != nil {
+			t.Fatalf("marshaling entry at index %d: %s", idx, err)
+		}
+		wantEntryHash := tlog.RecordHash(mtcleBytes)
+		if !bytes.Equal(row.EntryHash, wantEntryHash[:]) {
+			t.Errorf("serialMetadata index %d: got EntryHash %s, want %s",
+				idx, base64.StdEncoding.EncodeToString(row.EntryHash), wantEntryHash)
 		}
 	}
 }
@@ -638,42 +891,11 @@ func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, 
 	return got
 }
 
-// treedbWithInsertCheckpointSubtree is a mock treedb that implements the
-// InsertCheckpointSubtree method of treedb.Impl with an in-memory store, while
-// passing other calls along to the underlying DB.
-type treedbWithInsertCheckpointSubtree struct {
-	*treedb.Impl
-	storedCheckpointSubtrees []*treedb.CheckpointSubtreeModel
-}
-
-// When storing and retrieving subtrees in this mock, the ID is offset by an
-// arbitrary 666 to avoid the ramifications of encountering a zero-value ID
-func (db *treedbWithInsertCheckpointSubtree) InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error) {
-	model.ID = int64(len(db.storedCheckpointSubtrees) + 666)
-	db.storedCheckpointSubtrees = append(db.storedCheckpointSubtrees, model)
-	return model.ID, nil
-}
-
-func (db *treedbWithInsertCheckpointSubtree) get(id int64) *treedb.CheckpointSubtreeModel {
-	offset := id - 666
-	if offset < 0 || offset > int64(len(db.storedCheckpointSubtrees)) {
-		return nil
-	}
-	return db.storedCheckpointSubtrees[offset]
-}
-
 func TestSequence(t *testing.T) {
-	mtca, fs3, cleanup, err := setup()
+	mtca, fs3, err := setup()
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
-	t.Cleanup(cleanup)
-
-	realDb := mtca.treedb.(*treedb.Impl)
-
-	// use our treedb mock
-	mockTreedb := treedbWithInsertCheckpointSubtree{realDb, nil}
-	mtca.treedb = &mockTreedb
 
 	// An empty pool is a no-op regardless of checkpoint state.
 	err = mtca.sequence(t.Context())
@@ -716,9 +938,10 @@ func TestSequence(t *testing.T) {
 	got := collectResults(t, results, 1, 5)
 
 	for entryIndex, issuanceResult := range got {
-		subtree := mockTreedb.get(issuanceResult.MtcSubtreeID)
-		if subtree == nil {
-			t.Fatalf("getting subtreeID %d: not found", issuanceResult.MtcSubtreeID)
+		fake := mtca.treedb.(*fakeDB)
+		subtree, err := fake.getSubtree(mtca.logID.String(), issuanceResult.MtcSubtreeID)
+		if err != nil {
+			t.Fatalf("getting subtree: %s", err)
 		}
 
 		if subtree.MTCLogID != mtca.logID.String() {
@@ -727,6 +950,9 @@ func TestSequence(t *testing.T) {
 
 		if len(subtree.MTCASignature) == 0 {
 			t.Error("subtree.MTCASignature: got empty slice, want non-empty slice")
+		}
+		if !mtca.verifier.VerifySubtreeSignature(mtca.logID.Origin(), subtree.SubtreeStart, subtree.SubtreeEnd, tlog.Hash(subtree.SubtreeHash), subtree.MTCASignature) {
+			t.Error("subtree.MTCASignature: does not verify")
 		}
 
 		if subtree.MirrorID != nil {
@@ -737,8 +963,7 @@ func TestSequence(t *testing.T) {
 			t.Error("subtree.MirrorSignature: got non-empty slice, want empty slice")
 		}
 
-		index := uint64(entryIndex) //nolint:gosec // G115: collectResults keys by entry index, which is never negative.
-		if !(subtree.SubtreeStart <= index && index < subtree.SubtreeEnd) {
+		if !(subtree.SubtreeStart <= entryIndex && entryIndex < subtree.SubtreeEnd) {
 			t.Errorf("subtree.MTCSerialNumber: got entryIndex %d, want entryIndex in interval [%d,%d)",
 				entryIndex, subtree.SubtreeStart, subtree.SubtreeEnd)
 		}
@@ -756,17 +981,19 @@ func TestSequence(t *testing.T) {
 	// Each client's returned index must point at its own entry in the
 	// published entries tile.
 	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
+
+	// Each sequenced entry must have a serialMetadata row, with no extras.
+	validateSerialMetadata(t, mtca, fs3, latest.TreeSize, got)
 }
 
 // TestSequenceStorageFailure checks that a failed sequencing pass leaves the
 // in-memory frontier consistent with the database, and that sequencing
 // recovers cleanly once storage is healthy again.
 func TestSequenceStorageFailure(t *testing.T) {
-	mtca, fs3, cleanup, err := setup()
+	mtca, fs3, err := setup()
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
-	t.Cleanup(cleanup)
 	mirrorCosign(t, mtca)
 
 	mtca.pool.maxSize = 2
@@ -794,6 +1021,12 @@ func TestSequenceStorageFailure(t *testing.T) {
 	// The in-memory frontier must be unchanged, still matching the DB.
 	verifyStores(t, mtca, fs3)
 
+	// Nothing was issued, so there must be no serial metadata.
+	fake := mtca.treedb.(*fakeDB)
+	if len(fake.serials) != 0 {
+		t.Errorf("serialMetadata after failed sequencing: got %d rows, want 0", len(fake.serials))
+	}
+
 	// Storage is working again!
 	es3.err = nil
 	results = issueMany(t, mtca, 2)
@@ -809,14 +1042,75 @@ func TestSequenceStorageFailure(t *testing.T) {
 	verifyCheckpoint(t, mtca, latest)
 
 	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
+	validateSerialMetadata(t, mtca, fs3, latest.TreeSize, got)
 }
 
-func TestInitLog(t *testing.T) {
-	mtca, fs3, cleanup, err := setup()
+// TestSequenceAddSerialsFailure checks that when the serial metadata can't be
+// written, nothing is issued: the checkpoint is not signed, the latest
+// checkpoint does not advance, and no metadata is left behind. Sequencing must
+// then recover, reusing the same indexes.
+func TestSequenceAddSerialsFailure(t *testing.T) {
+	mtca, fs3, err := setup()
 	if err != nil {
 		t.Fatalf("setting up mtca: %s", err)
 	}
-	defer cleanup()
+	mirrorCosign(t, mtca)
+	fake := mtca.treedb.(*fakeDB)
+
+	mtca.pool.maxSize = 2
+	results := issueMany(t, mtca, 2)
+
+	fake.addSerialsErr = errors.New("db failure")
+	err = mtca.sequence(t.Context())
+	if !errors.Is(err, fake.addSerialsErr) {
+		t.Fatalf("sequencing with failing AddSerials: got %v, want %q", err, fake.addSerialsErr)
+	}
+
+	// Check that we got errors from `Issue()`.
+	for i := 0; i < 2; i++ {
+		res := <-results
+		if res.err == nil {
+			t.Errorf("Issue with failing AddSerials: got serial %016x, want error", res.MtcSerialNumber)
+		}
+	}
+
+	// Check that no checkpoint was signed (other than the initial checkpoint).
+	for _, c := range fake.checkpoints {
+		if c.ID != fake.latestCheckpoint && len(c.MTCASignature) != 0 {
+			t.Errorf("checkpoint %d (tree size %d) was signed despite failing AddSerials", c.ID, c.TreeSize)
+		}
+	}
+
+	// Tiles storage and DB must be consistent and at size 1.
+	latest := verifyStores(t, mtca, fs3)
+	if latest.TreeSize != 1 {
+		t.Errorf("latest checkpoint after failing AddSerials: got TreeSize %d, want 1", latest.TreeSize)
+	}
+	// There should be no serial metadata since the only entry is the zeroth index null_entry.
+	if len(fake.serials) != 0 {
+		t.Errorf("serialMetadata after failing AddSerials: got %d rows, want 0", len(fake.serials))
+	}
+
+	// Stop returning errors and sequencing should recover.
+	fake.addSerialsErr = nil
+	results = issueMany(t, mtca, 2)
+	err = mtca.sequence(t.Context())
+	if err != nil {
+		t.Fatalf("sequencing after AddSerials recovered: %s", err)
+	}
+	got := collectResults(t, results, 1, 2)
+
+	latest = verifyStores(t, mtca, fs3)
+	verifyCheckpoint(t, mtca, latest)
+	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
+	validateSerialMetadata(t, mtca, fs3, latest.TreeSize, got)
+}
+
+func TestInitLog(t *testing.T) {
+	mtca, fs3, err := setup()
+	if err != nil {
+		t.Fatalf("setting up mtca: %s", err)
+	}
 
 	// InitLog is called once by setup. A second time should fail.
 	err = mtca.InitLog(t.Context())
@@ -836,29 +1130,37 @@ func TestInitLog(t *testing.T) {
 	verifyCheckpoint(t, mtca, latest)
 }
 
-func verifyCheckpoint(t *testing.T, mtca *mtca, checkpoint *treedb.CheckpointModel) {
+func verifyCheckpoint(t *testing.T, mtca *mtca, dbCheckpoint *treedb.CheckpointModel) {
 	t.Helper()
-	message := cosigned.Message{
-		CosignerName: "oid/1.3.6.1.4.1." + mtca.logID.CAID,
-		Timestamp:    0,
-		LogOrigin:    mtca.logID.Origin(),
-		Start:        0,
-		End:          uint64(checkpoint.TreeSize), //nolint:gosec // G115: we know that tree sizes are positive in these tests
-		SubtreeHash:  [32]byte(checkpoint.RootHash),
+	if len(dbCheckpoint.MTCASignature) == 0 {
+		t.Fatalf("no MTCASignature")
 	}
-
-	marshaled, err := message.Marshal()
-	if err != nil {
-		t.Fatalf("marshaling cosigned.Message: %s", err)
-	}
-
 	pubkey, ok := mtca.issuer.Signer.Public().(*mldsa.PublicKey)
 	if !ok {
 		t.Fatalf("issuer pubkey: got %T, want %T", mtca.issuer.Signer.Public(), &mldsa.PublicKey{})
 	}
 
-	err = mldsa.Verify(pubkey, marshaled, checkpoint.MTCASignature, nil)
+	v, err := cosignature.NewVerifier(mtca.logID.CAID(), pubkey)
 	if err != nil {
-		t.Errorf("verifying MTCASignature: %s", err)
+		t.Fatalf("NewVerifier: %s", err)
+	}
+
+	signedNote := fmt.Appendf(nil, "%s\n%d\n%s\n\n%s",
+		mtca.logID.Origin(),
+		dbCheckpoint.TreeSize,
+		base64.StdEncoding.EncodeToString(dbCheckpoint.RootHash),
+		dbCheckpoint.MTCASignature)
+
+	_, n, err := checkpoint.Open(signedNote, v)
+	if err != nil {
+		t.Fatalf("checkpoint.Open(): %s", err)
+	}
+
+	checkpointCosignature, err := v.CheckpointCosignature(n)
+	if err != nil {
+		t.Fatalf("CheckpointCosignature(): %s", err)
+	}
+	if checkpointCosignature.Timestamp != testTimeUnix {
+		t.Errorf("invalid timestamp: %d", checkpointCosignature.Timestamp)
 	}
 }

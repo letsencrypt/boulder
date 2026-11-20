@@ -22,6 +22,7 @@ service RegistrationAuthority {
   rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Order) {}
   rpc UnpauseAccount(UnpauseAccountRequest) returns (UnpauseAccountResponse) {}
   rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
+  rpc GetStandalone(StandaloneRequest) returns (StandaloneResponse) {}
 }
 
 service SCTProvider {
@@ -153,4 +154,16 @@ message AddRateLimitOverrideResponse {
   bool inserted = 1;
   bool enabled = 2;
   RateLimitOverride existing = 3;
+}
+
+message StandaloneRequest {
+  // Next unused field number: 4
+  string mtcLogID = 1;
+  uint64 mtcSerialNumber = 2;
+  int64 mtcSubtreeID = 3;
+}
+
+message StandaloneResponse {
+  // Next unused field number: 2
+  bytes certDER = 1;
 }

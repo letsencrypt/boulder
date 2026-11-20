@@ -31,7 +31,10 @@ type Common struct {
 	// DNSStaticResolvers is a list of DNS resolvers. Each entry must
 	// be a host or IP and port separated by a colon. IPv6 addresses
 	// must be enclosed in square brackets.
-	DNSStaticResolvers        []string        `validate:"required_without=DNSProvider,dive,hostname_port"`
+	DNSStaticResolvers []string `validate:"required_without=DNSProvider,dive,hostname_port"`
+	// DNSTimeout controls how long to wait for a reply from a DOH server.
+	// Dial time and TLS handshake time are not included in this. They are hardcoded
+	// separately.
 	DNSTimeout                config.Duration `validate:"required"`
 	DNSAllowLoopbackAddresses bool
 

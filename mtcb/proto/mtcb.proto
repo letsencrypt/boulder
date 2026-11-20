@@ -6,7 +6,7 @@ option go_package = "github.com/letsencrypt/boulder/mtcb/proto";
 // MTCB constructs already-issued MTCs from database and log data.
 service MTCB {
   // StandaloneReady returns whether a given TBSCertificateLogEntry has sufficient signatures
-  // for a standalone certificate to be built.
+  // on its corresponding subtree for a standalone certificate to be built.
   rpc StandaloneReady(StandaloneReadyRequest) returns (StandaloneReadyResponse) {}
   // GetStandalone returns a standalone certificate.
   rpc GetStandalone(StandaloneRequest) returns (StandaloneResponse) {}

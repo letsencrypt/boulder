@@ -7,7 +7,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // responseWriterWithStatus satisfies http.ResponseWriter, but keeps track of the
@@ -32,11 +31,12 @@ func (r *responseWriterWithStatus) Write(body []byte) (int, error) {
 	return r.ResponseWriter.Write(body)
 }
 
-// serveMux is a partial interface wrapper for the one method http.ServeMux
+// serveMux is a partial interface wrapper for the methods http.ServeMux
 // exposes that we use. This prevents us from accidentally developing an
 // overly-specific reliance on that concrete type.
 type serveMux interface {
 	Handler(*http.Request) (http.Handler, string)
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
 // MeasuredHandler wraps an http.Handler and records prometheus stats
@@ -50,7 +50,7 @@ type MeasuredHandler struct {
 	inFlightRequestsGauge *prometheus.GaugeVec
 }
 
-func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelhttp.Option) http.Handler {
+func New(m serveMux, clk clock.Clock, stats prometheus.Registerer) http.Handler {
 	responseTime := promauto.With(stats).NewHistogramVec(prometheus.HistogramOpts{
 		Name: "response_time",
 		Help: "Time taken to respond to a request",
@@ -61,19 +61,19 @@ func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelh
 		Help: "Tracks the number of WFE requests currently in flight, labeled by endpoint.",
 	}, []string{"endpoint"})
 
-	return otelhttp.NewHandler(&MeasuredHandler{
+	return &MeasuredHandler{
 		serveMux:              m,
 		clk:                   clk,
 		stat:                  responseTime,
 		inFlightRequestsGauge: inFlightRequestsGauge,
-	}, "server", opts...)
+	}
 }
 
 func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	begin := h.clk.Now()
 	rwws := &responseWriterWithStatus{w, 0}
 
-	subHandler, pattern := h.Handler(r)
+	_, pattern := h.serveMux.Handler(r)
 	h.inFlightRequestsGauge.WithLabelValues(pattern).Inc()
 	defer h.inFlightRequestsGauge.WithLabelValues(pattern).Dec()
 
@@ -97,5 +97,5 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}).Observe(h.clk.Since(begin).Seconds())
 	}()
 
-	subHandler.ServeHTTP(rwws, r)
+	h.serveMux.ServeHTTP(rwws, r)
 }

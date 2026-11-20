@@ -70,6 +70,43 @@ func TestAddCheckpointRequestRejects(t *testing.T) {
 	}
 }
 
+func TestParseSubtreeCosignature(t *testing.T) {
+	cases := []struct {
+		name              string
+		body              string
+		expectSignature   []byte
+		expectErrContains string
+	}{
+		{"Valid", "c3VidHJlZQ==\n", []byte("subtree"), ""},
+		{"Empty body", "", nil, "malformed"},
+		{"Empty cosignature", "\n", nil, "malformed"},
+		{"No trailing newline", "c3VidHJlZQ==", nil, "malformed"},
+		{"Two trailing newlines", "c3VidHJlZQ==\n\n", nil, "malformed"},
+		{"CRLF line ending", "c3VidHJlZQ==\r\n", nil, "malformed"},
+		{"Embedded newline", "c3Vi\ndHJlZQ==\n", nil, "malformed"},
+		{"Non-canonical padding bits", "c3VidHJlZR==\n", nil, "not canonical"},
+		{"Extra padding", "c3VidHJlZQ===\n", nil, "illegal base64"},
+		{"Not base64", "!!!\n", nil, "illegal base64"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			signature, err := ParseSubtreeCosignature([]byte(tc.body))
+			if tc.expectErrContains != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.expectErrContains) {
+					t.Errorf("ParseSubtreeCosignature = %v, want error containing %q", err, tc.expectErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseSubtreeCosignature: %s", err)
+			}
+			if !bytes.Equal(signature, tc.expectSignature) {
+				t.Errorf("ParseSubtreeCosignature = %x, want %x", signature, tc.expectSignature)
+			}
+		})
+	}
+}
+
 func TestParseSizeResponse(t *testing.T) {
 	size, err := ParseSizeResponse([]byte("20852014\n"))
 	if err != nil {
@@ -114,7 +151,7 @@ func TestParseMirrorInfo(t *testing.T) {
 		t.Errorf("Ticket = %q, want empty", info.Ticket)
 	}
 
-	for _, malformed := range []string{"", "512\n300\n", "512\n300\ndGlja2V0", "512\n300\n!!!\n", "512\n-1\n\n", "512\n300\n\n\n"} {
+	for _, malformed := range []string{"", "512\n300\n", "512\n300\ndGlja2V0", "512\n300\n!!!\n", "512\n300\nAQJ=\n", "512\n-1\n\n", "512\n300\n\n\n"} {
 		_, err := ParseMirrorInfo([]byte(malformed))
 		if err == nil {
 			t.Errorf("ParseMirrorInfo(%q) = nil error, want error", malformed)
@@ -218,9 +255,9 @@ func TestSignSubtreeRequest(t *testing.T) {
 	if err == nil {
 		t.Error("SignSubtreeRequest with end before start = nil error, want error")
 	}
-	_, err = SignSubtreeRequest(512, 512, hash, nil, note)
+	_, err = SignSubtreeRequest(1, 3, hash, nil, note)
 	if err == nil {
-		t.Error("SignSubtreeRequest with an empty subtree = nil error, want error")
+		t.Error("SignSubtreeRequest with a misaligned subtree = nil error, want error")
 	}
 	_, err = SignSubtreeRequest(0, 512, hash, make([]tlog.Hash, 64), note)
 	if err == nil {
@@ -233,7 +270,7 @@ func TestSignSubtreeRequest(t *testing.T) {
 }
 
 func TestAddEntriesRequest(t *testing.T) {
-	origin := "oid/1.3.6.1.4.1.44947.4.1.0.44"
+	origin := "oid/1.3.6.1.4.1.44947.4.1.0.3"
 	pkg := []byte{0, 1, 'x', 0}
 	body, err := AddEntriesRequest(origin, 300, 700, []byte("ticket"), [][]byte{pkg})
 	if err != nil {
@@ -241,7 +278,7 @@ func TestAddEntriesRequest(t *testing.T) {
 	}
 
 	var expect cryptobyte.Builder
-	expect.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+	expect.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes([]byte(origin))
 	})
 	expect.AddUint64(300)
@@ -262,7 +299,7 @@ func TestAddEntriesRequest(t *testing.T) {
 	if err == nil {
 		t.Error("AddEntriesRequest with an inverted interval = nil error, want error")
 	}
-	_, err = AddEntriesRequest(strings.Repeat("a", 0x10000), 0, 1, nil, nil)
+	_, err = AddEntriesRequest(strings.Repeat("a", 256), 0, 1, nil, nil)
 	if err == nil {
 		t.Error("AddEntriesRequest with an oversize origin = nil error, want error")
 	}

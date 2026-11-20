@@ -369,7 +369,7 @@ func TestIssue(t *testing.T) {
 				SubjectKeyId:    skid,
 				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
 				DNSNames:        []string{"example.com"},
-				IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
+				IPAddresses:     []net.IP{net.ParseIP("21.43.65.87"), net.ParseIP("2602:80a:6000:c0ff:ee:a:bad:deed")},
 				NotBefore:       fc.Now(),
 				NotAfter:        fc.Now().Add(time.Hour - time.Second),
 				IncludeCTPoison: true,
@@ -391,7 +391,7 @@ func TestIssue(t *testing.T) {
 			// The issuance pipeline calls x509.marshalSANs, which reduces IPv4
 			// addresses back to 4 bytes. Adding .To4() both allows this test to
 			// succeed, and covers this requirement.
-			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")})
+			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("21.43.65.87").To4(), net.ParseIP("2602:80a:6000:c0ff:ee:a:bad:deed")})
 			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
@@ -512,7 +512,7 @@ func TestIssueIPAddressesOnly(t *testing.T) {
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    skid,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
-		IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
+		IPAddresses:     []net.IP{net.ParseIP("21.43.65.87"), net.ParseIP("2602:80a:6000:c0ff:ee:a:bad:deed")},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
 		IncludeCTPoison: true,
@@ -532,8 +532,8 @@ func TestIssueIPAddressesOnly(t *testing.T) {
 	if cert.DNSNames != nil {
 		t.Errorf("got DNSNames %s, wanted nil", cert.DNSNames)
 	}
-	if !reflect.DeepEqual(cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")}) {
-		t.Errorf("got IPAddresses %s, wanted 128.101.101.101 (4-byte) & 3fff:aaa:a:c0ff:ee:a:bad:deed (16-byte)", cert.IPAddresses)
+	if !reflect.DeepEqual(cert.IPAddresses, []net.IP{net.ParseIP("21.43.65.87").To4(), net.ParseIP("2602:80a:6000:c0ff:ee:a:bad:deed")}) {
+		t.Errorf("got IPAddresses %s, wanted 21.43.65.87 (4-byte) & 2602:80a:6000:c0ff:ee:a:bad:deed (16-byte)", cert.IPAddresses)
 	}
 }
 
@@ -647,7 +647,7 @@ func TestPrepareMTC(t *testing.T) {
 	pc.MTC = true
 	pc.IgnoredLints = []string{
 		// Reduce the lint ignores to just the minimal (SCT-related) set.
-		"w_ct_sct_policy_count_unsatisfied",
+		"n_ct_sct_policy_count_unsatisfied",
 		// Ignore the warning about *not* including the SubjectKeyIdentifier extension:
 		// zlint has both lints (one enforcing RFC5280, the other the BRs).
 		"w_ext_subject_key_identifier_missing_sub_cert",
@@ -722,7 +722,7 @@ func TestIssueOmissions(t *testing.T) {
 	pc.OmitSKID = true
 	pc.IgnoredLints = []string{
 		// Reduce the lint ignores to just the minimal (SCT-related) set.
-		"w_ct_sct_policy_count_unsatisfied",
+		"n_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 		// Ignore the warning about *not* including the SubjectKeyIdentifier extension:
 		// zlint has both lints (one enforcing RFC5280, the other the BRs).

@@ -117,8 +117,10 @@ func ParsePKCS1PublicKey(der []byte) (*rsa.PublicKey, error) {
 	//}
 
 	return &rsa.PublicKey{
-		E: pub.E,
-		N: pub.N,
+		// Defensively copy E so callers cannot mutate it through the
+		// parsed wire structure.
+		E: new(big.Int).Set(pub.E),
+		N: new(big.Int).Set(pub.N),
 	}, nil
 }
 

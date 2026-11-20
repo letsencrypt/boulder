@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/letsencrypt/boulder/config"
@@ -463,8 +462,7 @@ type GRPCServiceConfig struct {
 	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
 }
 
-// OpenTelemetryConfig configures tracing via OpenTelemetry.
-// To enable tracing, set a nonzero SampleRatio and configure an Endpoint
+// OpenTelemetryConfig is temporarily a no-op until we re-implement OpenTelemetry traces.
 type OpenTelemetryConfig struct {
 	// Endpoint to connect to with the OTLP protocol over gRPC.
 	// It should be of the form "localhost:4317"
@@ -485,23 +483,13 @@ type OpenTelemetryConfig struct {
 	SampleRatio float64
 }
 
-// OpenTelemetryHTTPConfig configures the otelhttp server tracing.
+// OpenTelemetryHTTPConfig is temporarily a no-op until we re-enable OpenTelemetry tracing.
 type OpenTelemetryHTTPConfig struct {
 	// TrustIncomingSpans should only be set true if there's a trusted service
 	// connecting to Boulder, such as a load balancer that's tracing-aware.
 	// If false, the default, incoming traces won't be set as the parent.
 	// See otelhttp.WithPublicEndpoint
 	TrustIncomingSpans bool
-}
-
-// Options returns the otelhttp options for this configuration. They can be
-// passed to otelhttp.NewHandler or Boulder's wrapper, measured_http.New.
-func (c *OpenTelemetryHTTPConfig) Options() []otelhttp.Option {
-	var options []otelhttp.Option
-	if !c.TrustIncomingSpans {
-		options = append(options, otelhttp.WithPublicEndpoint())
-	}
-	return options
 }
 
 // DNSProvider contains the configuration for a DNS provider in the bdns package

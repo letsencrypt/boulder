@@ -31,7 +31,15 @@
 			"reasonNameOne": "test/reasonName-ident-policy.yaml",
 			"reasonNameTwo": "test/reasonName-ident-policy.yaml"
 		},
-		"goodkey": {},
+		"goodkeys": {
+			"Account": {},
+			"CA": {},
+			"MTCA": {
+				"AllowedKeys": {
+					"MLDSA44": true
+				}
+			}
+		},
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",

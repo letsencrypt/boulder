@@ -1,0 +1,172 @@
+package cosigned
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+
+	"golang.org/x/crypto/cryptobyte"
+
+	"github.com/letsencrypt/boulder/trees"
+)
+
+func TestSubtreeRoundtrip(t *testing.T) {
+	m := Subtree{
+		CosignerName: "alpha",
+		Timestamp:    1234,
+		LogOrigin:    "beta",
+		Start:        0,
+		End:          1000,
+		SubtreeHash:  [32]byte{},
+	}
+
+	copy(m.SubtreeHash[:], []byte("0123456789abcdef0123456789abcdef"))
+
+	out, err := m.Marshal()
+	if err != nil {
+		t.Fatalf("marshaling: %s", err)
+	}
+
+	m2, err := unmarshal(out)
+	if err != nil {
+		t.Fatalf("unmarshaling encoded message: %s", err)
+	}
+
+	if !reflect.DeepEqual(m, *m2) {
+		t.Errorf("round-tripping message: got %#v, want %#v", m, *m2)
+	}
+}
+
+func TestMarshalErrors(t *testing.T) {
+	m := Subtree{
+		CosignerName: "Michigan",
+		LogOrigin:    "Illinois",
+		Start:        8,
+		End:          16,
+		SubtreeHash:  [32]byte{},
+	}
+
+	type testCase struct {
+		name, expected string
+		distorter      func(target *Subtree)
+	}
+
+	testCases := []testCase{
+		{"short CosignerName", "invalid cosigner_name: empty", func(target *Subtree) {
+			target.CosignerName = ""
+		}},
+		{"long CosignerName", "invalid cosigner_name: 256 bytes, want at most 255", func(target *Subtree) {
+			target.CosignerName = strings.Repeat("a", 256)
+		}},
+		{"plus in CosignerName", "invalid cosigner_name: contains '+'", func(target *Subtree) {
+			target.CosignerName = "example.com/cosigner+1"
+		}},
+		{"short LogOrigin", "invalid log_origin: empty", func(target *Subtree) {
+			target.LogOrigin = ""
+		}},
+		{"long LogOrigin", "invalid log_origin: 256 bytes, want at most 255", func(target *Subtree) {
+			target.LogOrigin = strings.Repeat("a", 256)
+		}},
+		{"space in LogOrigin", "invalid log_origin: contains ' '", func(target *Subtree) {
+			target.LogOrigin = "example.com/log 1"
+		}},
+		{"negative Start", "invalid subtree [-1, 16)", func(target *Subtree) {
+			target.Start = -1
+		}},
+		{"Start past End", "invalid subtree [17, 16)", func(target *Subtree) {
+			target.Start = 17
+		}},
+		{"misaligned subtree", "invalid subtree [8, 24)", func(target *Subtree) {
+			target.End = 24
+		}},
+		{"too-large End", "end is out of range: 281474976710656", func(target *Subtree) {
+			target.Start = 0
+			target.End = trees.MaxSize + 1
+		}},
+		{"nonzero Timestamp with nonzero Start", "timestamp 1337000 requires start 0, got 8", func(target *Subtree) {
+			target.Timestamp = 1337000
+		}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m2 := m
+			tc.distorter(&m2)
+			_, err := m2.Marshal()
+			if err == nil {
+				t.Fatalf("got no error, want %q", tc.expected)
+			}
+			if err.Error() != tc.expected {
+				t.Errorf("Marshal: got %q, want %q", err, tc.expected)
+			}
+		})
+	}
+}
+
+// unmarshal unmarshals the input bytes and returns a *Subtree.
+func unmarshal(input []byte) (*Subtree, error) {
+	var out Subtree
+
+	s := cryptobyte.String(input)
+	var label []byte
+	if !s.ReadBytes(&label, len(subtreeLabel)) {
+		return nil, errors.New("invalid label")
+	}
+	if !bytes.Equal(label, []byte(subtreeLabel)) {
+		return nil, errors.New("label was not subtree/v1")
+	}
+
+	var cosignerName cryptobyte.String
+	if !s.ReadUint8LengthPrefixed(&cosignerName) {
+		return nil, errors.New("invalid cosigner_name")
+	}
+	if len(cosignerName) < 1 {
+		return nil, errors.New("empty cosigner_name")
+	}
+	out.CosignerName = string(cosignerName)
+
+	if !s.ReadUint64(&out.Timestamp) {
+		return nil, errors.New("invalid timestamp")
+	}
+
+	var logOrigin cryptobyte.String
+	if !s.ReadUint8LengthPrefixed(&logOrigin) {
+		return nil, errors.New("invalid log_origin")
+	}
+	if len(logOrigin) < 1 {
+		return nil, errors.New("empty log_origin")
+	}
+	out.LogOrigin = string(logOrigin)
+
+	var start, end uint64
+	if !s.ReadUint64(&start) {
+		return nil, errors.New("invalid start")
+	}
+	if start > trees.MaxSize {
+		return nil, fmt.Errorf("start %d out of range", start)
+	}
+	out.Start = int64(start)
+
+	if !s.ReadUint64(&end) {
+		return nil, errors.New("invalid end")
+	}
+	if end > trees.MaxSize {
+		return nil, fmt.Errorf("end %d out of range", end)
+	}
+	out.End = int64(end)
+
+	var subtreeHash []byte
+	if !s.ReadBytes(&subtreeHash, len(out.SubtreeHash)) {
+		return nil, errors.New("invalid subtree hash")
+	}
+	copy(out.SubtreeHash[:], subtreeHash)
+
+	if !s.Empty() {
+		return nil, errors.New("trailing bytes")
+	}
+
+	return &out, nil
+}

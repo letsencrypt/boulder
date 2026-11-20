@@ -10,6 +10,8 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/mod/sumdb/tlog"
+
+	"github.com/letsencrypt/boulder/trees/subtree"
 )
 
 // maxProofLines is the most consistency proof lines a client may send in an
@@ -59,11 +61,8 @@ func AddCheckpointRequest(oldSize int64, proof []tlog.Hash, signedCheckpoint []b
 // c2sp.org/tlog-witness. The proof must be a Subtree Consistency Proof from the
 // subtree to the checkpoint, empty when the subtree is the whole tree.
 func SignSubtreeRequest(start, end int64, subtreeHash tlog.Hash, proof []tlog.Hash, signedCheckpoint []byte) ([]byte, error) {
-	if start < 0 {
-		return nil, fmt.Errorf("negative subtree start %d", start)
-	}
-	if end <= start {
-		return nil, fmt.Errorf("subtree end %d not after start %d", end, start)
+	if !subtree.Valid(start, end) {
+		return nil, fmt.Errorf("invalid subtree [%d, %d)", start, end)
 	}
 	if len(proof) > maxProofLines {
 		return nil, fmt.Errorf("consistency proof has %d lines, want at most %d", len(proof), maxProofLines)
@@ -106,6 +105,23 @@ func ParseSizeResponse(body []byte) (int64, error) {
 	return parseDecimal(line)
 }
 
+// ParseSubtreeCosignature parses the body of a "200 Success" sign-subtree
+// response, a base64-encoded subtree cosignature followed by a newline.
+func ParseSubtreeCosignature(body []byte) ([]byte, error) {
+	line, ok := strings.CutSuffix(string(body), "\n")
+	if !ok || line == "" || strings.ContainsAny(line, "\r\n") {
+		return nil, fmt.Errorf("malformed subtree cosignature response %q", body)
+	}
+	signature, err := base64.StdEncoding.DecodeString(line)
+	if err != nil {
+		return nil, fmt.Errorf("subtree cosignature: %s", err)
+	}
+	if base64.StdEncoding.EncodeToString(signature) != line {
+		return nil, errors.New("subtree cosignature is not canonical base64")
+	}
+	return signature, nil
+}
+
 // MirrorInfo is a parsed text/x.tlog.mirror-info body from a "409 Conflict" or
 // "202 Accepted" add-entries response.
 type MirrorInfo struct {
@@ -141,6 +157,9 @@ func ParseMirrorInfo(body []byte) (MirrorInfo, error) {
 	ticket, err := base64.StdEncoding.DecodeString(lines[2])
 	if err != nil {
 		return MirrorInfo{}, fmt.Errorf("mirror-info ticket: %s", err)
+	}
+	if base64.StdEncoding.EncodeToString(ticket) != lines[2] {
+		return MirrorInfo{}, errors.New("mirror-info ticket is not canonical base64")
 	}
 	return MirrorInfo{TreeSize: treeSize, NextEntry: nextEntry, Ticket: ticket}, nil
 }
@@ -209,7 +228,7 @@ func EntryPackage(entries []byte, proof []tlog.Hash) ([]byte, error) {
 // prefix of the canonical sequence for [uploadStart, uploadEnd), marshaled by
 // EntryPackage.
 func AddEntriesRequest(logOrigin string, uploadStart, uploadEnd int64, ticket []byte, packages [][]byte) ([]byte, error) {
-	if logOrigin == "" || len(logOrigin) > 0xFFFF {
+	if logOrigin == "" || len(logOrigin) > 0xFF {
 		return nil, fmt.Errorf("invalid log origin length %d", len(logOrigin))
 	}
 	if uploadStart < 0 || uploadStart > uploadEnd {
@@ -219,7 +238,7 @@ func AddEntriesRequest(logOrigin string, uploadStart, uploadEnd int64, ticket []
 		return nil, fmt.Errorf("ticket is %d bytes, want at most %d", len(ticket), 0xFFFF)
 	}
 	var b cryptobyte.Builder
-	b.AddUint16LengthPrefixed(func(child *cryptobyte.Builder) {
+	b.AddUint8LengthPrefixed(func(child *cryptobyte.Builder) {
 		child.AddBytes([]byte(logOrigin))
 	})
 	b.AddUint64(uint64(uploadStart))

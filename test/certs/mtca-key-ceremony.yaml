@@ -1,0 +1,7 @@
+ceremony-type: staging-mldsa-keyfile-no-hsm
+key:
+    type: mldsa
+    mldsa-parameter-set: ML-DSA-44 
+outputs:
+    public-key-path: test/certs/webpki/mtca-1.pubkey.pem
+    private-key-path: test/certs/webpki/mtca-1.privkey.pem

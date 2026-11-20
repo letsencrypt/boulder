@@ -204,7 +204,7 @@ func TestCheckWildcardCert(t *testing.T) {
 	// ignore things we don't care about for this test
 	ignoredLints, err := linter.NewRegistry([]string{
 		"w_ext_subject_key_identifier_missing_sub_cert",
-		"w_ct_sct_policy_count_unsatisfied",
+		"n_ct_sct_policy_count_unsatisfied",
 		"w_subject_common_name_included",
 	})
 	test.AssertNotError(t, err, "creating test lint registry")
@@ -286,7 +286,7 @@ func TestCheckCertExtKeyUsage(t *testing.T) {
 	// ignore things we don't care about for this test
 	ignoredLints, err := linter.NewRegistry([]string{
 		"w_ext_subject_key_identifier_missing_sub_cert",
-		"w_ct_sct_policy_count_unsatisfied",
+		"n_ct_sct_policy_count_unsatisfied",
 		"w_subject_common_name_included",
 	})
 	test.AssertNotError(t, err, "creating test lint registry")
@@ -538,7 +538,7 @@ func TestCheckCert(t *testing.T) {
 				"Policy Authority isn't willing to issue for 'example.net': Cannot issue for \"example.net\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy":             1,
 				"zlint error: e_cert_matches_exactly_one_cps_profile cert does not match any CPS profile":                                                                                                                         1,
 				"zlint error: e_subject_common_name_max_length": 1,
-				"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.": 1,
+				"zlint info: n_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.": 1,
 				"zlint warn: w_ext_subject_key_identifier_missing_sub_cert":                                                                         1,
 			}
 			for _, p := range problems {
@@ -890,7 +890,7 @@ func TestIgnoredLint(t *testing.T) {
 	expectedProblems := []string{
 		"zlint warn: w_subject_common_name_included",
 		"zlint warn: w_ext_subject_key_identifier_not_recommended_subscriber",
-		"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
+		"zlint info: n_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 		"zlint error: e_scts_from_same_operator Certificate had too few embedded SCTs; browser policy requires 2.",
 		"zlint error: e_subscriber_server_certificate_matches_cps_profile signedCertificateTimestampList extension is not present",
 	}
@@ -907,7 +907,7 @@ func TestIgnoredLint(t *testing.T) {
 	lints, err := linter.NewRegistry([]string{
 		"w_subject_common_name_included",
 		"w_ext_subject_key_identifier_not_recommended_subscriber",
-		"w_ct_sct_policy_count_unsatisfied",
+		"n_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 		"e_subscriber_server_certificate_matches_cps_profile",
 	})

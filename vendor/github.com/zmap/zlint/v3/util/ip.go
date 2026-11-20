@@ -1,5 +1,5 @@
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -91,7 +91,7 @@ func init() {
 		privateUse:                           {"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
 		sharedAddressSpace:                   {"100.64.0.0/10"},
 		benchmarking:                         {"198.18.0.0/15", "2001:2::/48"},
-		documentation:                        {"192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32"},
+		documentation:                        {"192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32", "3fff::/20"},
 		reserved:                             {"240.0.0.0/4", "0400::/6", "0800::/5", "1000::/4", "4000::/3", "6000::/3", "8000::/3", "a000::/3", "c000::/3", "e000::/4", "f000::/5", "f800::/6", "fe00::/9"}, // https://www.iana.org/assignments/ipv6-address-space/ipv6-address-space.xhtml
 		protocolAssignment:                   {"192.0.0.0/24", "2001::/23"},                                                                                                                                   // 192.0.0.0/24 contains 192.0.0.0/29 - IPv4 Service Continuity Prefix
 		as112:                                {"192.31.196.0/24", "192.175.48.0/24", "2001:4:112::/48", "2620:4f:8000::/48"},

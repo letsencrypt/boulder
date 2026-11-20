@@ -5,14 +5,15 @@ import (
 	"context"
 	"crypto"
 	"crypto/mldsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
-	"path"
 	"sync"
 	"time"
 
@@ -21,18 +22,17 @@ import (
 	"github.com/jmhodges/clock"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcapb "github.com/letsencrypt/boulder/mtca/proto"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
-	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
 	"github.com/letsencrypt/boulder/trees/pubkey"
+	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -47,9 +47,9 @@ var _ mtcapb.MTCAServer = &mtca{}
 func New(
 	issuer *issuance.Issuer,
 	profiles map[string]*issuance.Profile,
-	logID issuancelog.ID,
+	logID *issuancelog.ID,
 	sequencingPeriod time.Duration,
-	dbMap *db.WrappedMap,
+	treeDB checkpointDB,
 	s3c simpleS3,
 	logger blog.Logger,
 	clk clock.Clock,
@@ -58,8 +58,8 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	if certCAID != logID.CAID {
-		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID, certCAID)
+	if certCAID.String() != logID.CAID().String() {
+		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID(), certCAID)
 	}
 
 	if sequencingPeriod == 0 {
@@ -67,21 +67,20 @@ func New(
 	}
 
 	m := &mtca{
-		issuer:        issuer,
-		profiles:      profiles,
-		logID:         logID,
-		pool:          &pool{maxSize: 100},
-		checkpointKey: path.Join(logID.TilePrefix(), "checkpoint"),
+		issuer:   issuer,
+		profiles: profiles,
+		logID:    logID,
+		pool:     &pool{maxSize: 100},
 
 		sequencingPeriod: sequencingPeriod,
 
-		treedb: treedb.New(dbMap),
+		treedb: treeDB,
 		s3c:    s3c,
 		log:    logger,
 		clk:    clk,
 	}
 
-	cosigner, err := cosignature.NewCosigner(logID.CAID, logID.Origin(), issuer.Signer)
+	cosigner, err := cosignature.NewCosigner(logID.CAID(), logID.Origin(), issuer.Signer)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA cosigner: %s", err)
 	}
@@ -91,7 +90,7 @@ func New(
 	if !ok {
 		return nil, fmt.Errorf("issuer public key is %T, must be ML-DSA-44", issuer.Signer.Public())
 	}
-	verifier, err := cosignature.NewVerifier(logID.CAID, pubKey)
+	verifier, err := cosignature.NewVerifier(logID.CAID(), pubKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating CA verifier: %s", err)
 	}
@@ -105,12 +104,9 @@ type mtca struct {
 
 	issuer   *issuance.Issuer
 	profiles map[string]*issuance.Profile
-	logID    issuancelog.ID
-	// checkpointKey is the key of the log's <prefix>/checkpoint in tile
-	// storage, per c2sp.org/tlog-tiles.
-	checkpointKey string
-	cosigner      *cosignature.Cosigner
-	verifier      *cosignature.Verifier
+	logID    *issuancelog.ID
+	cosigner *cosignature.Cosigner
+	verifier *cosignature.Verifier
 
 	// servedCheckpointETag guards writes of the checkpoint served from tile
 	// storage. It holds the ETag from the last read or write. It is used to
@@ -141,8 +137,8 @@ type mtca struct {
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
-	InsertCheckpointSubtree(ctx context.Context, model *treedb.CheckpointSubtreeModel) (int64, error)
-	WithTransaction(ctx context.Context, f db.TxFunc) (any, error)
+	InsertSubtree(ctx context.Context, model *treedb.SubtreeModel) (int64, error)
+	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
 }
 
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
@@ -158,7 +154,7 @@ type simpleS3 interface {
 func (m *mtca) InitLog(ctx context.Context) error {
 	candidate := &tiles.Frontier{}
 
-	err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+	_, err := candidate.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 	if err != nil {
 		return err
 	}
@@ -167,28 +163,13 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 	var caSig []byte
 	var signedNote []byte
-	_, err = m.treedb.WithTransaction(ctx, func(tx db.Executor) (any, error) {
-		var numLatestCheckpoints int64
-		err := tx.SelectOne(ctx, &numLatestCheckpoints, "SELECT COUNT(*) FROM latestCheckpoint WHERE mtcLogID = ?",
-			m.logID.String())
+	_, err = m.treedb.WithTransaction(ctx, func(tx treedb.Tx) (any, error) {
+		initialized, err := tx.AlreadyInitialized(ctx, m.logID.String())
 		if err != nil {
-			return nil, fmt.Errorf("getting latestCheckpoint: %s", err)
+			return nil, fmt.Errorf("checking log initialization state: %s", err)
 		}
-
-		var numCheckpoints int64
-		err = tx.SelectOne(ctx, &numCheckpoints, "SELECT COUNT(*) FROM checkpoints WHERE mtcLogID = ?",
-			m.logID.String())
-		if err != nil {
-			return nil, fmt.Errorf("getting checkpoints: %s", err)
-		}
-
-		if numCheckpoints > 0 || numLatestCheckpoints > 0 {
-			if numLatestCheckpoints == 1 {
-				return nil, ErrIssuanceLogAlreadyInitialized
-			}
-
-			return nil, fmt.Errorf("initializing issuance log for %s: already has %d checkpoints and %d latestCheckpoint rows",
-				m.logID.String(), numCheckpoints, numLatestCheckpoints)
+		if initialized {
+			return nil, ErrIssuanceLogAlreadyInitialized
 		}
 
 		firstCheckpoint := &treedb.CheckpointModel{
@@ -204,15 +185,9 @@ func (m *mtca) InitLog(ctx context.Context) error {
 
 		firstCheckpoint.MTCASignature = caSig
 
-		err = tx.Insert(ctx, firstCheckpoint)
+		err = tx.InsertFirstCheckpoint(ctx, firstCheckpoint)
 		if err != nil {
 			return nil, err
-		}
-
-		_, err = tx.ExecContext(ctx, "INSERT INTO latestCheckpoint (id, mtcLogID) VALUES (?, ?)",
-			firstCheckpoint.ID, m.logID.String())
-		if err != nil {
-			return nil, fmt.Errorf("inserting latestCheckpoint: %s", err)
 		}
 
 		return nil, nil
@@ -244,7 +219,7 @@ func (m *mtca) InitLog(ctx context.Context) error {
 	err = m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: rootHash}, signedNote)
 	if errors.Is(err, ErrCheckpointChanged) {
 		return fmt.Errorf("initializing issuance log for %s: a checkpoint is already served at s3://%s/%s, refusing to replace it: %w",
-			m.logID.String(), m.s3c.Bucket(), m.checkpointKey, err)
+			m.logID.String(), m.s3c.Bucket(), m.logID.CheckpointPath(), err)
 	}
 	return err
 }
@@ -287,11 +262,15 @@ type pool struct {
 	maxSize int
 }
 
-// pendingEntry represents a pending entry in the pool, along with a channel to notify a pending RPC.
+// pendingEntry represents a pending entry in the pool, along with a channel to
+// notify a pending RPC. Each pendingEntry carries an RA-generated eventID.
 type pendingEntry struct {
-	mtcle *entry.MTCLogEntry
-	mtcpk *pubkey.MTCPublicKey
-	ch    chan<- issuanceNotification
+	eventID        string
+	mtcle          *entry.MTCLogEntry
+	mtcpk          *pubkey.MTCPublicKey
+	expires        time.Time
+	registrationID int64
+	ch             chan<- issuanceNotification
 }
 
 func (p *pool) take() []pendingEntry {
@@ -322,7 +301,9 @@ type issuanceNotification struct {
 	serialNumber uint64
 	// A reference to a row in the mtcmeta subtrees table.
 	subtreeID int64
-	errored   bool
+	// An issuance event identifier token originating in the RA
+	eventID string
+	errored bool
 }
 
 // Issue requests a TBSCertificateLogEntry be issued and returns after it's been sequenced into the log
@@ -330,6 +311,9 @@ type issuanceNotification struct {
 //
 // Safe for concurrent calls. Implements a gRPC method.
 func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.IssueResponse, error) {
+	if core.IsAnyNilOrZero(req.Pubkey, req.Identifiers, req.Profile, req.EventID, req.RegistrationID) {
+		return nil, fmt.Errorf("invalid request")
+	}
 	key, err := x509.ParsePKIXPublicKey(req.Pubkey)
 	if err != nil {
 		return nil, fmt.Errorf("parsing public key: %s", err)
@@ -376,9 +360,12 @@ func (m *mtca) Issue(ctx context.Context, req *mtcapb.IssueRequest) (*mtcapb.Iss
 	// block if this method has already returned (e.g. due to timeout).
 	ch := make(chan issuanceNotification, 1)
 	err = m.pool.append(pendingEntry{
-		mtcle: mtcle,
-		mtcpk: mtcpk,
-		ch:    ch,
+		eventID:        req.EventID,
+		mtcle:          mtcle,
+		mtcpk:          mtcpk,
+		expires:        notAfter,
+		registrationID: req.RegistrationID,
+		ch:             ch,
 	})
 	if err != nil {
 		return nil, err
@@ -415,10 +402,13 @@ func (m *mtca) Loop(ctx context.Context) {
 		case <-ticker.C:
 			err := m.sequence(ctx)
 			if err != nil {
-				if !errors.Is(err, ErrCheckpointNotReady) {
-					m.log.Errf("sequencing: %s", err)
-				} else if time.Since(since) > 10*m.sequencingPeriod {
-					m.log.Errf("after %s: %s", time.Since(since).Round(time.Millisecond), err)
+				if errors.Is(err, ErrCheckpointNotReady) {
+					if time.Since(since) > 10*m.sequencingPeriod {
+						m.log.Error(ctx, "can't sequence, latest checkpoint lacks mirror cosignature", err,
+							slog.Duration("wait", time.Since(since).Round(time.Millisecond)))
+					}
+				} else {
+					m.log.Error(ctx, "Sequence failed", err)
 				}
 				continue
 			}
@@ -430,7 +420,9 @@ func (m *mtca) Loop(ctx context.Context) {
 			// they timed out, in which case emitting this error is appropriate).
 			poolSize := m.pool.len()
 			if poolSize != 0 {
-				m.log.Errf("shouldn't happen: pool has %d entries left after Loop() context canceled. ungraceful stop?", poolSize)
+				m.log.Error(ctx, "Unclean shutdown",
+					fmt.Errorf("Sequence pool not empty after context canceled"),
+					slog.Int("poolsize", poolSize))
 			}
 			return
 		}
@@ -490,31 +482,67 @@ func (m *mtca) sequence(ctx context.Context) error {
 		}
 	}()
 
-	serial, err := core.EncodeMTCSerial(m.logID.LogNumber, latest.TreeSize)
-	if err != nil {
-		return err
-	}
-
 	candidate := m.frontier.Clone()
 
-	// Add leaves to the candidate.
+	// appendedEntry embeds a `pendingEntry` that has been appended to the tree,
+	// and associates with it both the `entryIndex` returned by `AppendEntry()`,
+	// and the MTCSerial calculated from the `entryIndex`.
+	type appendedEntry struct {
+		pendingEntry
+		index  int64
+		serial uint64
+	}
+
+	var appendedEntries []appendedEntry
+
+	// Add leaves to the candidate, then store the returned entry index and the
+	// serial calculated from that index in an appendedEntry
+	now := m.clk.Now()
+	var serialMetadata []*treedb.SerialMetadataModel
 	for _, e := range entries {
-		err = candidate.AppendEntry(e.mtcle, e.mtcpk)
+		entryIndex, err := candidate.AppendEntry(e.mtcle, e.mtcpk)
 		if err != nil {
 			return err
 		}
+		serial, err := core.EncodeMTCSerial(m.logID.LogNumber(), entryIndex)
+		if err != nil {
+			return err
+		}
+		mtcleBytes, err := e.mtcle.Marshal()
+		if err != nil {
+			return err
+		}
+		entryHash := tlog.RecordHash(mtcleBytes)
+		// e.mtcpk.Pubkey() is nil when the entry is `null_entry` (for instance, the zeroth entry in a tree).
+		// Since the zeroth entry doesn't go through sequence() and we don't otherwise produce `null_entry`,
+		// treat it as an error just in case.
+		if e.mtcpk.Pubkey() == nil {
+			return fmt.Errorf("shouldn't happen: nil pubkey")
+		}
+		spkiHash := sha256.Sum256(e.mtcpk.Pubkey())
+		serialMetadata = append(serialMetadata, &treedb.SerialMetadataModel{
+			MTCLogID:        m.logID.String(),
+			MTCSerialNumber: serial,
+			RegistrationID:  e.registrationID,
+			Expires:         e.expires,
+			Created:         now,
+			EntryHash:       entryHash[:],
+			SPKIHash:        spkiHash[:],
+		})
+		appendedEntries = append(appendedEntries, appendedEntry{pendingEntry: e, index: entryIndex, serial: serial})
 	}
 
 	newRootHash := candidate.RootHash()
 
 	// Log each leaf along with the root hash it will be included in.
-	for i, e := range entries {
-		m.log.AuditInfo("issuing", map[string]any{
-			"TBSCertificateLogEntry": hex.EncodeToString(e.mtcle.TBS()),
-			"entryIndex":             latest.TreeSize + int64(i),
-			"mtcLogID":               m.logID.String(),
-			"newRootHash":            newRootHash.String(),
-		})
+	for _, ae := range appendedEntries {
+		m.log.AuditInfo(ctx, "Issuing",
+			slog.String("eventID", ae.eventID),
+			blog.MTCLogID(m.logID.String()),
+			blog.MTCSerial(ae.serial),
+			slog.String("TBSCertificateLogEntry", hex.EncodeToString(ae.mtcle.TBS())),
+			slog.String("newRootHash", newRootHash.String()),
+		)
 	}
 
 	// First stage to a pending area. After signing and storing to the DB
@@ -556,20 +584,20 @@ func (m *mtca) sequence(ctx context.Context) error {
 
 	var caSig []byte
 	var signedNote []byte
-	_, err = m.treedb.WithTransaction(ctx, func(tx db.Executor) (any, error) {
-		var latestID int64
-		// Lock the latestCheckpoint to make sure there is no concurrent signer/writer, avoiding signing a split view.
-		// The FOR UPDATE does the heavy lifting here.
-		// https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/selecting-data/for-update
-		err := tx.SelectOne(ctx, &latestID,
-			`SELECT id from latestCheckpoint WHERE mtcLogID = ? FOR UPDATE`,
-			m.logID.String())
+	_, err = m.treedb.WithTransaction(ctx, func(tx treedb.Tx) (any, error) {
+		// Lock the latestCheckpoint row for this mtcLogID.
+		latestID, err := tx.SelectLatestForUpdate(ctx, m.logID.String())
 		if err != nil {
 			return nil, err
 		}
 		if latestID != latest.ID {
 			return nil, fmt.Errorf("latestCheckpoint changed during sequencing from %d to %d. multiple writers?",
 				latest.ID, latestID)
+		}
+
+		err = tx.AddSerials(ctx, serialMetadata)
+		if err != nil {
+			return nil, err
 		}
 
 		// Note that we're doing HSM work while holding a database lock. That's intentional; the database lock
@@ -579,30 +607,14 @@ func (m *mtca) sequence(ctx context.Context) error {
 			return nil, err
 		}
 
-		result, err := tx.ExecContext(ctx, "UPDATE checkpoints SET mtcaSignature = ? WHERE mtcLogID = ? AND id = ?",
-			caSig, m.logID.String(), newCheckpoint.ID)
+		err = tx.AddMTCASignature(ctx, newCheckpoint.ID, caSig, m.logID.String())
 		if err != nil {
-			return nil, fmt.Errorf("updating checkpoint: %s", err)
-		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("updating checkpoint, getting rows affected: %s", err)
-		}
-		if rowsAffected != 1 {
-			return nil, fmt.Errorf("updating checkpoint: %d rows updated, rolling back", rowsAffected)
+			return nil, err
 		}
 
-		result, err = tx.ExecContext(ctx, "UPDATE latestCheckpoint SET id = ? WHERE mtcLogID = ? AND id = ?",
-			newCheckpoint.ID, m.logID.String(), latestID)
+		err = tx.SetLatestCheckpointID(ctx, m.logID.String(), latestID, newCheckpoint.ID)
 		if err != nil {
-			return nil, fmt.Errorf("updating latestCheckpoint: %s", err)
-		}
-		rowsAffected, err = result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("updating latestCheckpoint, getting rows affected: %s", err)
-		}
-		if rowsAffected != 1 {
-			return nil, fmt.Errorf("updating latestCheckpoint: %d rows updated, rolling back", rowsAffected)
+			return nil, err
 		}
 
 		return nil, nil
@@ -624,67 +636,86 @@ func (m *mtca) sequence(ctx context.Context) error {
 		return fmt.Errorf("publishing tiles: %s", err)
 	}
 
-	// `cosigner_name` and `log_origin` are computed from the cosigner ID and
-	// the issuance log's ID (Section 5.1), respectively. They contain the
-	// concatenation of:
-	//   * The 16-byte ASCII string `oid/1.3.6.1.4.1.`
-	//   * The trust anchor ID's ASCII representation (Section 4 of [I-D.ietf-tls-trust-anchor-ids])
-	// This is equivalent to the concatenation of:
-	//   * The four-byte ASCII string `oid/`
-	//   * The trust anchor ID as a full OID, in dotted decimal notation
-	//
-	// https://ietf-plants-wg.github.io/merkle-tree-certs/draft-ietf-plants-merkle-tree-certs.html#name-signature-format
-	cosignedMessage, err := (&cosigned.Message{
-		CosignerName: "oid/1.3.6.1.4.1." + m.logID.CAID,
-		// Timestamp should always be zero when signing over a subtree (as
-		// opposed to a checkpoint)
-		Timestamp:   0,
-		LogOrigin:   "oid/1.3.6.1.4.1." + m.logID.String(),
-		Start:       0,
-		End:         uint64(m.frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
-		SubtreeHash: newRootHash,
-	}).Marshal()
+	coveringSubtrees, err := subtree.FindCoveringSubtrees(latest.TreeSize, m.frontier.TreeSize())
 	if err != nil {
-		return fmt.Errorf("marshaling cosigned message: %s", err)
+		return fmt.Errorf("finding subtrees: %s", err)
+	}
+	if len(coveringSubtrees) != 2 {
+		return fmt.Errorf("got unexpected number of covering subtrees: %d", len(coveringSubtrees))
 	}
 
-	subtreeSignature, err := m.issuer.Signer.Sign(nil, cosignedMessage, nil)
-	if err != nil {
-		return err
+	tr := tiles.NewTileReader(ctx, m.s3c, m.logID.TilePrefix())
+	hr := tlog.TileHashReader(tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, tr)
+
+	// dbStoredSubtree embeds a covering `subtree.Subtree`, and associates with
+	// it the database Row ID returned by the database write operation.
+	type dbStoredSubtree struct {
+		subtree.Subtree
+		rowID int64
 	}
 
-	// TODO(#9020)(#9038): calculate specific subtree coverage rather than
-	// always using 0 for subtreeStart
-	subtreeID, err := m.treedb.InsertCheckpointSubtree(ctx, &treedb.CheckpointSubtreeModel{
-		MTCLogID:        m.logID.String(),
-		MTCASignature:   subtreeSignature,
-		MirrorID:        nil,
-		MirrorSignature: nil,
-		SubtreeStart:    0,
-		SubtreeEnd:      uint64(m.frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier
-		SubtreeHash:     newRootHash[:],
-	})
-	if err != nil {
-		return fmt.Errorf("calling treedb.InsertCheckpointSubtree: %s", err)
+	var dbStoredSubtrees []dbStoredSubtree
+
+	// Here we range over the covering subtrees and re-read necessary
+	// information from S3 in order to get a subtree hash. As a possible future
+	// optimization, we may be able to get the hash from the Frontier, which
+	// should typically have all the information required. This would avoid the
+	// potential for the S3 read to impact sequence().
+	for _, s := range coveringSubtrees {
+		// thank you for the subtree, we don't need to sign this one
+		if s.Start == s.End {
+			continue
+		}
+		subtreeHash, err := subtree.HashSubtree(s.Start, s.End, hr)
+		if err != nil {
+			return fmt.Errorf("hashing subtree: %s", err)
+		}
+		subtreeSig, err := m.cosigner.CosignSubtree(s.Start, s.End, subtreeHash)
+		if err != nil {
+			return fmt.Errorf("signing subtree: %s", err)
+		}
+		subtreeID, err := m.treedb.InsertSubtree(ctx, &treedb.SubtreeModel{
+			MTCLogID:        m.logID.String(),
+			MTCASignature:   subtreeSig,
+			MirrorID:        nil,
+			MirrorSignature: nil,
+			SubtreeStart:    s.Start,
+			SubtreeEnd:      s.End,
+			SubtreeHash:     subtreeHash[:],
+		})
+		if err != nil {
+			return fmt.Errorf("inserting subtree: %w", err)
+		}
+		dbStoredSubtrees = append(dbStoredSubtrees, dbStoredSubtree{Subtree: s, rowID: subtreeID})
 	}
 
 	// Notify waiting RPCs.
-	for _, e := range entries {
-		e.ch <- issuanceNotification{
-			serialNumber: serial,
-			subtreeID:    subtreeID,
+	for _, ae := range appendedEntries {
+		var subtreeID int64
+		if ae.index < dbStoredSubtrees[0].End {
+			subtreeID = dbStoredSubtrees[0].rowID
+		} else {
+			subtreeID = dbStoredSubtrees[1].rowID
 		}
-		serial++
+		ae.ch <- issuanceNotification{
+			serialNumber: ae.serial,
+			subtreeID:    subtreeID,
+			eventID:      ae.eventID,
+		}
 	}
+
 	// Empty out the entries list so the deferred error path doesn't try to notify them.
 	entries = nil
 
 	// Serve the new checkpoint.
-	return m.serveCheckpoint(ctx, tlog.Tree{N: candidate.TreeSize(), Hash: newRootHash}, signedNote)
+	return m.serveCheckpoint(ctx, tlog.Tree{N: m.frontier.TreeSize(), Hash: newRootHash}, signedNote)
 }
 
-// signCheckpoint signs c and returns the raw MTCA signature to store and the
-// verified checkpoint carrying it.
+// signCheckpoint signs c and returns:
+//   - The CA's signature line
+//   - The full checkpoint signed note
+//
+// The signed note is guaranteed to verify with the CA's pubkey.
 func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error) {
 	err := c.Valid()
 	if err != nil {
@@ -699,31 +730,25 @@ func (m *mtca) signCheckpoint(c *treedb.CheckpointModel) ([]byte, []byte, error)
 	}
 
 	tree := tlog.Tree{N: c.TreeSize, Hash: tlog.Hash(c.RootHash)}
-	timestampedCosignature, err := m.cosigner.CosignCheckpoint(tree)
+	mtcaCosignatureLine, err := m.cosigner.CosignCheckpoint(tree, m.clk.Now())
 	if err != nil {
 		return nil, nil, fmt.Errorf("signing checkpoint: %s", err)
 	}
-	mtcaSignature, err := cosignature.RawSignature(timestampedCosignature)
+
+	signedNote, err := m.checkpointNote(tree, mtcaCosignatureLine)
 	if err != nil {
 		return nil, nil, err
 	}
-	signedNote, err := m.checkpointNote(tree, mtcaSignature)
-	if err != nil {
-		return nil, nil, err
-	}
-	return mtcaSignature, signedNote, nil
+	return mtcaCosignatureLine, signedNote, nil
 }
 
-// checkpointNote assembles the checkpoint of tree from its note text and the
-// MTCA's cosignature line carrying mtcaSignature, and verifies it.
-func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, error) {
-	caCosignatureLine, err := cosignature.SignatureLine(m.verifier.Name(), m.verifier.KeyHash(), 0, mtcaSignature)
-	if err != nil {
-		return nil, fmt.Errorf("checkpoint of tree size %d MTCA signature: %s", tree.N, err)
-	}
-
+// checkpointNote builds a checkpoint signed note for a checkpoint of the given tree,
+// using the signed note line in `mtcaCosignatureLine`.
+//
+// Performs a self-verification before returning.
+func (m *mtca) checkpointNote(tree tlog.Tree, mtcaCosignatureLine []byte) ([]byte, error) {
 	// Assemble the signed checkpoint note.
-	signedNote, err := (&checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}).SignedNote(caCosignatureLine)
+	signedNote, err := (&checkpoint.Checkpoint{Origin: m.logID.Origin(), Tree: tree}).SignedNote(mtcaCosignatureLine)
 	if err != nil {
 		return nil, err
 	}
@@ -742,7 +767,7 @@ func (m *mtca) checkpointNote(tree tlog.Tree, mtcaSignature []byte) ([]byte, err
 func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote []byte) error {
 	etag, err := m.writeCheckpoint(ctx, signedNote, m.servedCheckpointETag)
 	if errors.Is(err, ErrCheckpointChanged) {
-		// The served checkpoint may be an earlier one of ours, from before a
+		// The served checkpoint may be a valid earlier one of ours, from before a
 		// restart or from a failed pass whose write succeeded but never
 		// responded.
 		served, servedETag, readErr := m.readCheckpoint(ctx)
@@ -750,11 +775,12 @@ func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote [
 			return fmt.Errorf("serving checkpoint of tree size %d: %w", tree.N, readErr)
 		}
 		cp, _, openErr := checkpoint.Open(served, m.verifier)
-		if openErr != nil || cp.Tree.N > tree.N {
+		if openErr != nil || cp.Tree.N > tree.N || cp.Origin != m.logID.Origin() {
 			// It is not, so another process is writing checkpoints for this
 			// log, or the checkpoint was deleted.
 			return fmt.Errorf("serving checkpoint of tree size %d: %w", tree.N, err)
 		}
+
 		etag, err = m.writeCheckpoint(ctx, signedNote, servedETag)
 	}
 	if err != nil {
@@ -768,7 +794,8 @@ func (m *mtca) serveCheckpoint(ctx context.Context, tree tlog.Tree, signedNote [
 // empty string when none is served yet.
 func (m *mtca) readCheckpoint(ctx context.Context) ([]byte, string, error) {
 	bucket := m.s3c.Bucket()
-	out, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &m.checkpointKey})
+	path := m.logID.CheckpointPath()
+	out, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &path})
 	if err != nil {
 		respErr, ok := errors.AsType[*awshttp.ResponseError](err)
 		if ok && respErr.HTTPStatusCode() == http.StatusNotFound {
@@ -776,17 +803,17 @@ func (m *mtca) readCheckpoint(ctx context.Context) ([]byte, string, error) {
 			// writes one.
 			return nil, "", nil
 		}
-		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, m.checkpointKey, err)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
 	}
 	defer out.Body.Close()
 
 	served, err := io.ReadAll(out.Body)
 	if err != nil {
-		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, m.checkpointKey, err)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
 	}
 	if out.ETag == nil {
 		// This should never happen. Every read returns the ETag.
-		return nil, "", fmt.Errorf("reading s3://%s/%s: no ETag", bucket, m.checkpointKey)
+		return nil, "", fmt.Errorf("reading s3://%s/%s: no ETag", bucket, path)
 	}
 	return served, *out.ETag, nil
 }
@@ -801,9 +828,10 @@ func (m *mtca) writeCheckpoint(ctx context.Context, signedNote []byte, prevETag 
 	bucket := m.s3c.Bucket()
 	contentType := "text/plain; charset=utf-8"
 	cacheControl := "no-store"
+	path := m.logID.CheckpointPath()
 	input := &s3.PutObjectInput{
 		Bucket:       &bucket,
-		Key:          &m.checkpointKey,
+		Key:          &path,
 		ContentType:  &contentType,
 		CacheControl: &cacheControl,
 		Body:         bytes.NewReader(signedNote),
@@ -821,14 +849,14 @@ func (m *mtca) writeCheckpoint(ctx context.Context, signedNote []byte, prevETag 
 		if ok && (respErr.HTTPStatusCode() == http.StatusPreconditionFailed || respErr.HTTPStatusCode() == http.StatusNotFound) {
 			// The served checkpoint is not the one prevETag describes, or none
 			// is served.
-			return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, m.checkpointKey, ErrCheckpointChanged)
+			return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, path, ErrCheckpointChanged)
 		}
-		return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, m.checkpointKey, err)
+		return "", fmt.Errorf("writing s3://%s/%s: %w", bucket, path, err)
 	}
 
 	if out.ETag == nil {
 		// This should never happen. Every write returns the new ETag.
-		return "", fmt.Errorf("writing s3://%s/%s: no ETag in response", bucket, m.checkpointKey)
+		return "", fmt.Errorf("writing s3://%s/%s: no ETag in response", bucket, path)
 	}
 	return *out.ETag, nil
 }

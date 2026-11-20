@@ -1,7 +1,7 @@
 package rfc
 
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -41,7 +41,7 @@ func init() {
 		LintMetadata: lint.LintMetadata{
 			Name:          "e_ext_ian_uri_host_not_fqdn_or_ip",
 			Description:   "URIs that include an authority ([RFC3986], Section 3.2) MUST include a fully qualified domain name or IP address as the host",
-			Citation:      "RFC 5280: 4.2.1.6",
+			Citation:      "RFC 5280: 4.2.1.7",
 			Source:        lint.RFC5280,
 			EffectiveDate: util.RFC5280Date,
 		},
@@ -57,18 +57,25 @@ func (l *IANURIFQDNOrIP) CheckApplies(c *x509.Certificate) bool {
 	return util.IsExtInCert(c, util.IssuerAlternateNameOID)
 }
 
+//nolint:nestif
 func (l *IANURIFQDNOrIP) Execute(c *x509.Certificate) *lint.LintResult {
 	for _, uri := range c.IANURIs {
 		if uri != "" {
-			parsedUrl, err := url.Parse(uri)
+			parsed, err := url.Parse(uri)
 			if err != nil {
 				return &lint.LintResult{Status: lint.Error}
 			}
-			host := parsedUrl.Host
-			if !util.AuthIsFQDNOrIP(host) {
-				return &lint.LintResult{Status: lint.Error}
+			if parsed.Opaque == "" {
+				// if Opaque is not empty, that means there is no authority, which means that the URI is vacuously OK
+				if parsed.Host == "" {
+					return &lint.LintResult{Status: lint.Error}
+				}
+				if !util.IsFQDNOrIP(parsed.Host) {
+					return &lint.LintResult{Status: lint.Error}
+				}
 			}
 		}
 	}
+
 	return &lint.LintResult{Status: lint.Pass}
 }

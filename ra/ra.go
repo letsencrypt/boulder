@@ -65,6 +65,12 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
+type KeyPolicies struct {
+	Account goodkey.KeyPolicy
+	CA      goodkey.KeyPolicy
+	MTCA    goodkey.KeyPolicy
+}
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -82,7 +88,7 @@ type RegistrationAuthorityImpl struct {
 
 	clk               clock.Clock
 	log               blog.Logger
-	keyPolicy         goodkey.KeyPolicy
+	keyPolicies       KeyPolicies
 	profiles          *validationProfiles
 	maxContactsPerReg int
 	limiter           *ratelimits.Limiter
@@ -122,7 +128,7 @@ func NewRegistrationAuthorityImpl(
 	logger blog.Logger,
 	stats prometheus.Registerer,
 	maxContactsPerReg int,
-	keyPolicy goodkey.KeyPolicy,
+	keyPolicies KeyPolicies,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	profiles *validationProfiles,
@@ -217,7 +223,7 @@ func NewRegistrationAuthorityImpl(
 		log:                     logger,
 		profiles:                profiles,
 		maxContactsPerReg:       maxContactsPerReg,
-		keyPolicy:               keyPolicy,
+		keyPolicies:             keyPolicies,
 		limiter:                 limiter,
 		txnBuilder:              txnBuilder,
 		publisher:               pubc,
@@ -502,9 +508,12 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
-	err = ra.keyPolicy.GoodKey(ctx, key.Key)
+	err = ra.keyPolicies.Account.GoodKey(ctx, key.Key)
 	if err != nil {
-		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
+		if errors.Is(err, goodkey.ErrBadKey) {
+			return nil, berrors.BadPublicKeyError("invalid account key: %s", err.Error())
+		}
+		return nil, err
 	}
 
 	// Don't populate ID or CreatedAt because those will be set by the SA.
@@ -976,6 +985,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 	ctx context.Context,
 	order *corepb.Order,
 	subjectPublicKeyInfo []byte,
+	eventID string,
 ) error {
 	profileName := ra.profileName(order)
 	mtca := ra.profileToMTCA[profileName]
@@ -984,9 +994,11 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 	}
 
 	resp, err := mtca.Issue(ctx, &mtcapb.IssueRequest{
-		Pubkey:      subjectPublicKeyInfo,
-		Identifiers: order.Identifiers,
-		Profile:     profileName,
+		RegistrationID: order.RegistrationID,
+		Pubkey:         subjectPublicKeyInfo,
+		Identifiers:    order.Identifiers,
+		Profile:        profileName,
+		EventID:        eventID,
 	})
 	if err != nil {
 		return fmt.Errorf("issuing MTC: %s", err)
@@ -1002,7 +1014,7 @@ func (ra *RegistrationAuthorityImpl) issueMTC(
 		return fmt.Errorf("finalizing MTC order: %s", err)
 	}
 
-	ra.log.Infof("issued MTC from %s: %d", resp.MtcLogID, resp.MtcSerialNumber)
+	ra.log.Infof("issued MTC from %s: %d, eventID: %s", resp.MtcLogID, resp.MtcSerialNumber, eventID)
 	return nil
 }
 
@@ -1075,7 +1087,14 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		)
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, &ra.keyPolicy, ra.PA)
+	var kp goodkey.KeyPolicy
+	if ra.isMTC(req.Order) {
+		kp = ra.keyPolicies.MTCA
+	} else {
+		kp = ra.keyPolicies.CA
+	}
+
+	err = csrlib.VerifyCSR(ctx, csr, &kp, ra.PA)
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
@@ -1181,7 +1200,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	}
 
 	if ra.isMTC(order) {
-		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo)
+		err := ra.issueMTC(ctx, order, csr.RawSubjectPublicKeyInfo, logEvent.ID)
 		if err != nil {
 			ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error issuing MTC"))
 			return nil, err
@@ -1194,7 +1213,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	// Step 3: Issue the Certificate
 	profileName := ra.profileName(order)
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, authzs, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id), logEvent.ID)
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1286,7 +1305,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	isRenewal bool,
 	profileName string,
 	acctID accountID,
-	oID orderID) (*x509.Certificate, error) {
+	oID orderID,
+	eventID string) (*x509.Certificate, error) {
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
@@ -1312,6 +1332,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		RegistrationID:  int64(acctID),
 		OrderID:         int64(oID),
 		CertProfileName: profileName,
+		EventID:         eventID,
 	}
 
 	resp, err := ra.CA.IssueCertificate(ctx, issueReq)
@@ -1377,6 +1398,19 @@ func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *ra
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, req *rapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
 		return nil, errIncompleteGRPCRequest
+	}
+
+	var key jose.JSONWebKey
+	err := key.UnmarshalJSON(req.Jwk)
+	if err != nil {
+		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
+	}
+	err = ra.keyPolicies.Account.GoodKey(ctx, key.Key)
+	if err != nil {
+		if errors.Is(err, goodkey.ErrBadKey) {
+			return nil, berrors.BadPublicKeyError("invalid new public key: %s", err.Error())
+		}
+		return nil, err
 	}
 
 	update, err := ra.SA.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
@@ -2464,7 +2498,7 @@ func (ra *RegistrationAuthorityImpl) GetOrder(ctx context.Context, req *rapb.Get
 			MtcSubtreeID:    order.MtcSubtreeID,
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checking whether order %d is ready: %w", order.Id, err)
 		}
 		if resp.Ready {
 			order.Status = string(core.StatusValid)
@@ -2574,6 +2608,32 @@ func (ra *RegistrationAuthorityImpl) AddRateLimitOverride(ctx context.Context, r
 		Inserted: resp.Inserted,
 		Enabled:  resp.Enabled,
 		Existing: existing,
+	}, nil
+}
+
+func (ra *RegistrationAuthorityImpl) GetStandalone(ctx context.Context, req *rapb.StandaloneRequest) (*rapb.StandaloneResponse, error) {
+	if core.IsAnyNilOrZero(req.MtcLogID, req.MtcSerialNumber, req.MtcSubtreeID) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	if ra.mtcb == nil {
+		return nil, fmt.Errorf("handling GetStandalone for an MTC order: no MTCB backend")
+	}
+
+	mtcbResp, err := ra.mtcb.GetStandalone(ctx, &mtcbpb.StandaloneRequest{
+		MtcLogID:        req.MtcLogID,
+		MtcSerialNumber: req.MtcSerialNumber,
+		MtcSubtreeID:    req.MtcSubtreeID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if core.IsAnyNilOrZero(mtcbResp.CertDER) {
+		return nil, errIncompleteGRPCResponse
+	}
+	return &rapb.StandaloneResponse{
+		CertDER: mtcbResp.CertDER,
 	}, nil
 }
 

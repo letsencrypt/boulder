@@ -79,13 +79,17 @@ func TestGenerateCRLLints(t *testing.T) {
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse test cert")
 
+	// The CP/CPS CRL profiles require revoked serials to be more than 100 bits
+	// long, like those of the Certificates they revoke.
+	serial := new(big.Int).Lsh(big.NewInt(12345), 128)
+
 	// This CRL should fail the "e_crl_next_update_invalid" lint because the
 	// validity interval is more than 10 days, and this lint can't tell the
 	// difference between end-entity and CA CRLs.
 	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
-			SerialNumber:   big.NewInt(12345),
-			RevocationTime: time.Now().Add(time.Hour),
+			SerialNumber:   serial,
+			RevocationTime: time.Now().Add(time.Minute),
 			ReasonCode:     4,
 		},
 	}, []string{})
@@ -95,8 +99,8 @@ func TestGenerateCRLLints(t *testing.T) {
 	// But we can tell it to ignore that lint, too.
 	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
-			SerialNumber:   big.NewInt(12345),
-			RevocationTime: time.Now().Add(time.Hour),
+			SerialNumber:   serial,
+			RevocationTime: time.Now().Add(time.Minute),
 			ReasonCode:     4,
 		},
 	}, []string{"e_crl_next_update_invalid"})
@@ -169,4 +173,63 @@ type asn1CRL struct {
 	}
 	SigAlg pkix.AlgorithmIdentifier
 	Sig    asn1.BitString
+}
+
+func TestGenerateCRLRevokedEntries(t *testing.T) {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
+
+	template := &x509.Certificate{
+		Subject:               pkix.Name{CommonName: "asd"},
+		SerialNumber:          big.NewInt(7),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCRLSign,
+		SubjectKeyId:          []byte{1, 2, 3},
+	}
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, k.Public(), k)
+	test.AssertNotError(t, err, "failed to generate test cert")
+	issuer, err := x509.ParseCertificate(certBytes)
+	test.AssertNotError(t, err, "failed to parse test cert")
+
+	thisUpdate := time.Now().Add(time.Hour)
+
+	// The CP/CPS CRL profiles require revoked serials to be more than 100 bits
+	// long, like those of the Certificates they revoke.
+	serial := new(big.Int).Lsh(big.NewInt(12345), 128)
+
+	testCases := []struct {
+		name        string
+		revokedAt   time.Time
+		reasonCode  int
+		errContains string
+	}{
+		{name: "Revoked before thisUpdate", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 4},
+		{name: "Revoked at thisUpdate", revokedAt: thisUpdate, reasonCode: 4},
+		{name: "Revoked after thisUpdate", revokedAt: thisUpdate.Add(time.Second), reasonCode: 4, errContains: "has revocation date after CRL thisUpdate"},
+		{name: "KeyCompromise", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 1},
+		{name: "CessationOfOperation", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 5},
+		{name: "PrivilegeWithdrawn", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 9},
+		{name: "Unspecified", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 0, errContains: "has unacceptable reason code 0"},
+		{name: "CACompromise", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 2, errContains: "has unacceptable reason code 2"},
+		{name: "AffiliationChanged", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 3, errContains: "has unacceptable reason code 3"},
+		{name: "CertificateHold", revokedAt: thisUpdate.Add(-time.Hour), reasonCode: 6, errContains: "has unacceptable reason code 6"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []x509.RevocationListEntry{
+				{SerialNumber: serial, RevocationTime: tc.revokedAt, ReasonCode: tc.reasonCode},
+			}
+			_, err := generateCRL(&wrappedSigner{k}, issuer, thisUpdate, thisUpdate.Add(time.Hour), 1, entries, []string{})
+			if tc.errContains == "" {
+				test.AssertNotError(t, err, "generateCRL failed")
+				return
+			}
+			test.AssertError(t, err, "generateCRL did not fail")
+			test.AssertContains(t, err.Error(), tc.errContains)
+		})
+	}
 }

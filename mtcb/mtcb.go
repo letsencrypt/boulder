@@ -3,8 +3,12 @@ package mtcb
 import (
 	"context"
 	"crypto"
+	"crypto/mldsa"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
@@ -14,14 +18,20 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
+	"github.com/letsencrypt/boulder/trees/checkpoint"
+	"github.com/letsencrypt/boulder/trees/cosignature"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
+	"github.com/letsencrypt/boulder/trees/subtree"
 	"github.com/letsencrypt/boulder/trees/tiles"
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
@@ -29,14 +39,13 @@ import (
 // checkpointDB is the subset of treedb.Impl the mtcb uses, so tests can supply
 // checkpoints without a database.
 type checkpointDB interface {
-	GetCheckpointSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error)
-	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
+	GetSubtree(ctx context.Context, mtcLogID string, id int64) (*treedb.SubtreeModel, error)
 }
 
 type mtcb struct {
 	mtcbpb.UnimplementedMTCBServer
 
-	issuers map[string]struct{}
+	issuers map[string]mtcIssuer
 
 	checkpoints checkpointDB
 	s3c         simpleS3
@@ -55,17 +64,30 @@ func New(
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtcb, error) {
-	// TODO: Make this a map of MTCA IDs to checkpointDBs, so that a single MTCB
+	// TODO: Make this a map of MTCA IDs to (mtcIssuer, checkpointDB), so that a single MTCB
 	// can talk to multiple different databases to build certs for multiple
 	// different CAs.
-	issuersMap := make(map[string]struct{})
+	issuersMap := make(map[string]mtcIssuer)
 	for _, issuer := range issuers {
 		caID, err := issuer.MTCAID()
 		if err != nil {
 			return nil, fmt.Errorf("computing MTCA ID: %w", err)
 		}
 
-		issuersMap[caID] = struct{}{}
+		pubKey, ok := issuer.PublicKey.(*mldsa.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("issuer %q not an ML-DSA pubkey (%T)", caID, issuer.PublicKey)
+		}
+
+		checkpointVerifier, err := cosignature.NewVerifier(caID, pubKey)
+		if err != nil {
+			return nil, fmt.Errorf("creating CA verifier: %s", err)
+		}
+
+		issuersMap[caID.String()] = mtcIssuer{
+			certificate:        issuer.Certificate,
+			checkpointVerifier: checkpointVerifier,
+		}
 	}
 
 	m := &mtcb{
@@ -79,6 +101,11 @@ func New(
 	return m, nil
 }
 
+type mtcIssuer struct {
+	certificate        *x509.Certificate
+	checkpointVerifier *cosignature.Verifier
+}
+
 // simpleS3 matches the subset of the s3.Client interface which we use, to allow
 // simpler mocking in tests.
 type simpleS3 interface {
@@ -86,7 +113,10 @@ type simpleS3 interface {
 	Bucket() string
 }
 
-// StandaloneReady checks if the requested TBSCertificateLogEntry is ready to be built into a stanadlone certificate.
+// StandaloneReady checks if the requested TBSCertificateLogEntry is ready to be built into a standalone certificate.
+//
+// Note that this only checks the contents of the `subtrees` table and not the latest checkpoint signed note
+// from tile storage.
 func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyRequest) (*mtcbpb.StandaloneReadyResponse, error) {
 	if core.IsAnyNilOrZero(req.MtcLogID, req.MtcSerialNumber, req.MtcSubtreeID) {
 		return nil, errors.New("incomplete gRPC request")
@@ -97,7 +127,7 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 		return nil, fmt.Errorf("parsing MTCLogID: %s", err)
 	}
 
-	_, ok := m.issuers[requestedLogID.CAID]
+	_, ok := m.issuers[requestedLogID.CAID().String()]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
 	}
@@ -107,16 +137,16 @@ func (m *mtcb) StandaloneReady(ctx context.Context, req *mtcbpb.StandaloneReadyR
 		return nil, err
 	}
 
-	if requestedLogNumber != requestedLogID.LogNumber {
+	if requestedLogNumber != requestedLogID.LogNumber() {
 		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
-	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
+	subtree, err := m.checkpoints.GetSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
 
-	isReady, err := ready(subtree, uint64(entryIndex)) //nolint:gosec // G115: entryIndex is positive from DecodeMTCSerial
+	isReady, err := ready(subtree, entryIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +164,8 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 
-	_, ok := m.issuers[requestedLogID.CAID]
+	requestedMTCAID := requestedLogID.CAID()
+	issuer, ok := m.issuers[requestedMTCAID.String()]
 	if !ok {
 		return nil, fmt.Errorf("no issuer configured for requested MTC log ID %q", requestedLogID.String())
 	}
@@ -143,40 +174,33 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 	if err != nil {
 		return nil, err
 	}
-	if requestedLogNumber != requestedLogID.LogNumber {
+	if requestedLogNumber != requestedLogID.LogNumber() {
 		return nil, fmt.Errorf("serial %016x encodes log number %d, but requested MTC log ID is %q", req.MtcSerialNumber, requestedLogNumber, req.MtcLogID)
 	}
 
-	// Fetch the latest checkpoint. We'll need the latest treesize to fetch tiles.
-	// TODO: The latestCheckpoint table gets updated upon signing, and tile publication hasn't happened yet.
-	// So we can wind up trying to read tiles that don't exist yet.  Read the checkpoint file from tile storage
-	// instead of the latest checkpoint row from the DB.
-	latestCheckpoint, err := m.checkpoints.LatestCheckpoint(ctx, requestedLogID.String())
-	if err != nil {
-		return nil, fmt.Errorf("getting latest checkpoint: %s", err)
-	}
-	err = latestCheckpoint.Valid()
-	if err != nil {
-		return nil, fmt.Errorf("validating checkpoint %d: %w", latestCheckpoint.ID, err)
-	}
-
 	// Fetch the relevant subtree from the database.
-	subtree, err := m.checkpoints.GetCheckpointSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
+	dbSubtree, err := m.checkpoints.GetSubtree(ctx, requestedLogID.String(), req.MtcSubtreeID)
 	if err != nil {
 		return nil, err
 	}
 
-	isReady, err := ready(subtree, uint64(entryIndex)) //nolint:gosec // G115: entryIndex is positive from DecodeMTCSerial
+	isReady, err := ready(dbSubtree, entryIndex)
 	if err != nil {
 		return nil, err
 	}
 	if !isReady {
-		return nil, fmt.Errorf("not ready to build standalone for %q %016x", requestedLogID, req.MtcSerialNumber)
+		return nil, berrors.OrderNotReadyError("Certificate with serial %016x is not yet available because its log entry has not been cosigned by a mirror", req.MtcSerialNumber)
 	}
 
-	if subtree.SubtreeEnd > uint64(latestCheckpoint.TreeSize) { //nolint:gosec // G115: guaranteed non-negative by Valid()
+	// Fetch the latest checkpoint. We'll need the latest treesize to fetch tiles.
+	latestCheckpoint, err := m.readCheckpoint(ctx, requestedLogID)
+	if err != nil {
+		return nil, fmt.Errorf("getting latest checkpoint: %s", err)
+	}
+
+	if dbSubtree.SubtreeEnd > latestCheckpoint.Tree.N {
 		return nil, fmt.Errorf("subtreeEnd is greater than treeSize (%d > %d)",
-			subtree.SubtreeEnd, latestCheckpoint.TreeSize)
+			dbSubtree.SubtreeEnd, latestCheckpoint.Tree.N)
 	}
 
 	// Fetch the tbsCertificateLogEntry and pubkey from the log.
@@ -184,7 +208,7 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		ctx,
 		m.s3c,
 		entryIndex,
-		latestCheckpoint.TreeSize,
+		latestCheckpoint.Tree.N,
 		requestedLogID.TilePrefix())
 	if err != nil {
 		return nil, fmt.Errorf("reading bundles: %w", err)
@@ -219,16 +243,12 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 
 	// Build the inclusion proof from the log.
 	tr := tiles.NewTileReader(ctx, m.s3c, requestedLogID.TilePrefix())
-	// The tile reader has to know the latest tree size, while the proof
-	// should go to the size of the subtree.
-	hr := tlog.TileHashReader(tlog.Tree{
-		N:    latestCheckpoint.TreeSize,
-		Hash: tlog.Hash(latestCheckpoint.RootHash),
-	}, tr)
-
-	inclusionProof, err := tlog.ProveRecord(
-		int64(subtree.SubtreeEnd), //nolint:gosec // G115: SubtreeEnd is less than 1<<48.
+	// The tile reader has to know the latest tree size (for partial tiles).
+	hr := tlog.TileHashReader(latestCheckpoint.Tree, tr)
+	inclusionProof, err := subtree.InclusionProof(
 		entryIndex,
+		dbSubtree.SubtreeStart,
+		dbSubtree.SubtreeEnd,
 		hr)
 	if err != nil {
 		return nil, fmt.Errorf("computing inclusion proof: %w", err)
@@ -240,13 +260,18 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, fmt.Errorf("building tbsCertificate: %w", err)
 	}
 
+	mirrorID, err := reloid.FromString(*dbSubtree.MirrorID)
+	if err != nil {
+		return nil, fmt.Errorf("parsing Mirror ID: %w", err)
+	}
+
 	sig := proof.MTCProof{
-		Start:          0,
-		End:            subtree.SubtreeEnd,
+		Start:          dbSubtree.SubtreeStart,
+		End:            dbSubtree.SubtreeEnd,
 		InclusionProof: inclusionProof,
-		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: []byte(requestedLogID.CAID), Signature: subtree.MTCASignature},
-			{CosignerID: []byte(*subtree.MirrorID), Signature: subtree.MirrorSignature},
+		Signatures: []*proof.Cosignature{
+			{CosignerID: requestedMTCAID.Bytes(), Signature: dbSubtree.MTCASignature},
+			{CosignerID: mirrorID.Bytes(), Signature: dbSubtree.MirrorSignature},
 		},
 	}
 	certBytes, err := buildCertificate(tbs, &sig)
@@ -254,25 +279,32 @@ func (m *mtcb) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest)
 		return nil, err
 	}
 
+	err = mtx509.VerifyStandalone(certBytes, issuer.certificate)
+	if err != nil {
+		return nil, fmt.Errorf("during self-verify of standalone certificate: %s", err)
+	}
+
+	m.log.Info(ctx, "Built standalone",
+		blog.MTCLogID(req.MtcLogID),
+		blog.MTCSerial(req.MtcSerialNumber),
+		slog.Int("prooflen", len(inclusionProof)),
+	)
+
 	return &mtcbpb.StandaloneResponse{CertDER: certBytes}, nil
 }
 
-func ready(subtree *treedb.CheckpointSubtreeModel, entryIndex uint64) (bool, error) {
-	err := subtree.Valid()
+func ready(dbSubtree *treedb.SubtreeModel, entryIndex int64) (bool, error) {
+	err := dbSubtree.Valid()
 	if err != nil {
-		return false, fmt.Errorf("validating checkpoint subtree %d: %w", subtree.ID, err)
+		return false, fmt.Errorf("validating subtree %d: %w", dbSubtree.ID, err)
 	}
 
-	if entryIndex < subtree.SubtreeStart || entryIndex >= subtree.SubtreeEnd {
+	if entryIndex < dbSubtree.SubtreeStart || entryIndex >= dbSubtree.SubtreeEnd {
 		return false, fmt.Errorf("entryIndex is not in subtree ID %d [%d, %d)",
-			subtree.ID, subtree.SubtreeStart, subtree.SubtreeEnd)
+			dbSubtree.ID, dbSubtree.SubtreeStart, dbSubtree.SubtreeEnd)
 	}
 
-	if subtree.SubtreeStart != 0 {
-		return false, fmt.Errorf("inclusion proofs from start > 0 not yet supported")
-	}
-
-	return subtree.Mirrored(), nil
+	return dbSubtree.Mirrored(), nil
 }
 
 // buildCertificate wraps a DER-encoded tbsCertificate and an MTCProof into a
@@ -300,6 +332,39 @@ func buildCertificate(tbs []byte, sig *proof.MTCProof) ([]byte, error) {
 	}
 
 	return certBytes, nil
+}
+
+// readCheckpoint returns the current checkpoint for a given logID.
+func (m *mtcb) readCheckpoint(ctx context.Context, logID *issuancelog.ID) (*checkpoint.Checkpoint, error) {
+	bucket := m.s3c.Bucket()
+	path := logID.CheckpointPath()
+	out, err := m.s3c.GetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &path})
+	if err != nil {
+		return nil, fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
+	}
+	defer out.Body.Close()
+
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading s3://%s/%s: %w", bucket, path, err)
+	}
+
+	issuer, ok := m.issuers[logID.CAID().String()]
+	if !ok {
+		return nil, fmt.Errorf("no issuer configured for MTCAID %q", logID.CAID())
+	}
+
+	cp, _, err := checkpoint.Open(body, issuer.checkpointVerifier)
+	if err != nil {
+		return nil, fmt.Errorf("checkpoint at s3://%s/%s: %s", bucket, path, err)
+	}
+
+	if cp.Origin != logID.Origin() {
+		return nil, fmt.Errorf("checkpoint at s3://%s/%s: origin %q doesn't match expected %q",
+			bucket, path, cp.Origin, logID.Origin())
+	}
+
+	return cp, nil
 }
 
 func (m *mtcb) GetLandmarkRelative(ctx context.Context, req *mtcbpb.LandmarkRelativeRequest) (*mtcbpb.LandmarkRelativeResponse, error) {

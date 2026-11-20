@@ -89,14 +89,14 @@ func TestKeyGenConfigValidate(t *testing.T) {
 		{
 			name:          "no key.type",
 			config:        keyGenConfig{},
-			expectedError: "key.type is required",
+			expectedError: "key.type is required and must be one of 'rsa', 'ecdsa', or 'mldsa'",
 		},
 		{
 			name: "bad key.type",
 			config: keyGenConfig{
 				Type: "doop",
 			},
-			expectedError: "key.type can only be 'rsa' or 'ecdsa'",
+			expectedError: "key.type is required and must be one of 'rsa', 'ecdsa', or 'mldsa'",
 		},
 		{
 			name: "bad key.rsa-mod-length",
@@ -113,7 +113,7 @@ func TestKeyGenConfigValidate(t *testing.T) {
 				RSAModLength: 2048,
 				ECDSACurve:   "bad",
 			},
-			expectedError: "if key.type = 'rsa' then key.ecdsa-curve is not used",
+			expectedError: "key.type = rsa must only have key.rsa-mod-length set",
 		},
 		{
 			name: "bad key.ecdsa-curve",
@@ -130,7 +130,80 @@ func TestKeyGenConfigValidate(t *testing.T) {
 				RSAModLength: 2048,
 				ECDSACurve:   "P-256",
 			},
-			expectedError: "if key.type = 'ecdsa' then key.rsa-mod-length is not used",
+			expectedError: "key.type = ecdsa must only have key.ecdsa-curve set",
+		},
+		{
+			name: "key.type is ecdsa but key.mldsa-parameter-set is present",
+			config: keyGenConfig{
+				Type:              "ecdsa",
+				ECDSACurve:        "P-256",
+				MLDSAParameterSet: "ML-DSA-44",
+			},
+			expectedError: "key.type = ecdsa must only have key.ecdsa-curve set",
+		},
+		{
+			name: "key.type is rsa but key.mldsa-parameter-set is present",
+			config: keyGenConfig{
+				Type:              "rsa",
+				RSAModLength:      2048,
+				MLDSAParameterSet: "ML-DSA-44",
+			},
+			expectedError: "key.type = rsa must only have key.rsa-mod-length set",
+		},
+		{
+			name: "bad key.mldsa-parameter-set",
+			config: keyGenConfig{
+				Type:              "mldsa",
+				MLDSAParameterSet: "ML-DSA-1337",
+			},
+			expectedError: "key.mldsa-parameter-set can only be 'ML-DSA-44' or 'ML-DSA-87'",
+		},
+		{
+			name: "missing key.mldsa-parameter-set",
+			config: keyGenConfig{
+				Type: "mldsa",
+			},
+			expectedError: "key.mldsa-parameter-set can only be 'ML-DSA-44' or 'ML-DSA-87'",
+		},
+		{
+			name: "disallowed key.mldsa-parameter-set",
+			config: keyGenConfig{
+				Type:              "mldsa",
+				MLDSAParameterSet: "ML-DSA-65",
+			},
+			expectedError: "key.mldsa-parameter-set can only be 'ML-DSA-44' or 'ML-DSA-87'",
+		},
+		{
+			name: "key.type is mldsa but key.rsa-mod-length is present",
+			config: keyGenConfig{
+				Type:              "mldsa",
+				MLDSAParameterSet: "ML-DSA-44",
+				RSAModLength:      2048,
+			},
+			expectedError: "key.type = mldsa must only have key.mldsa-parameter-set set",
+		},
+		{
+			name: "key.type is mldsa but key.ecdsa-curve is present",
+			config: keyGenConfig{
+				Type:              "mldsa",
+				MLDSAParameterSet: "ML-DSA-44",
+				ECDSACurve:        "P-256",
+			},
+			expectedError: "key.type = mldsa must only have key.mldsa-parameter-set set",
+		},
+		{
+			name: "good ML-DSA-44 config",
+			config: keyGenConfig{
+				Type:              "mldsa",
+				MLDSAParameterSet: "ML-DSA-44",
+			},
+		},
+		{
+			name: "good ML-DSA-87 config",
+			config: keyGenConfig{
+				Type:              "mldsa",
+				MLDSAParameterSet: "ML-DSA-87",
+			},
 		},
 		{
 			name: "good rsa config",
@@ -187,7 +260,21 @@ func TestRootConfigValidate(t *testing.T) {
 					StoreLabel: "label",
 				},
 			},
-			expectedError: "key.type is required",
+			expectedError: "key.type is required and must be one of 'rsa', 'ecdsa', or 'mldsa'",
+		},
+		{
+			name: "mldsa key",
+			config: rootConfig{
+				PKCS11: PKCS11KeyGenConfig{
+					Module:     "module",
+					StoreLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:              "mldsa",
+					MLDSAParameterSet: "ML-DSA-44",
+				},
+			},
+			expectedError: "key.type 'mldsa' is not yet supported for root ceremonies",
 		},
 		{
 			name: "no outputs.public-key-path",
@@ -932,7 +1019,7 @@ func TestKeyConfigValidate(t *testing.T) {
 					StoreLabel: "label",
 				},
 			},
-			expectedError: "key.type is required",
+			expectedError: "key.type is required and must be one of 'rsa', 'ecdsa', or 'mldsa'",
 		},
 		{
 			name: "no outputs.public-key-path",
@@ -967,6 +1054,26 @@ func TestKeyConfigValidate(t *testing.T) {
 					PKCS11ConfigPath: "path.json",
 				},
 			},
+		},
+		{
+			name: "mldsa key",
+			config: keyConfig{
+				PKCS11: PKCS11KeyGenConfig{
+					Module:     "module",
+					StoreLabel: "label",
+				},
+				Key: keyGenConfig{
+					Type:              "mldsa",
+					MLDSAParameterSet: "ML-DSA-44",
+				},
+				Outputs: struct {
+					PublicKeyPath    string `yaml:"public-key-path"`
+					PKCS11ConfigPath string `yaml:"pkcs11-config-path"`
+				}{
+					PublicKeyPath: "path",
+				},
+			},
+			expectedError: "key.type 'mldsa' is not yet supported for standalone key ceremonies",
 		},
 	}
 	for _, tc := range cases {

@@ -35,6 +35,7 @@ const (
 	RegistrationAuthority_FinalizeOrder_FullMethodName                     = "/ra.RegistrationAuthority/FinalizeOrder"
 	RegistrationAuthority_UnpauseAccount_FullMethodName                    = "/ra.RegistrationAuthority/UnpauseAccount"
 	RegistrationAuthority_AddRateLimitOverride_FullMethodName              = "/ra.RegistrationAuthority/AddRateLimitOverride"
+	RegistrationAuthority_GetStandalone_FullMethodName                     = "/ra.RegistrationAuthority/GetStandalone"
 )
 
 // RegistrationAuthorityClient is the client API for RegistrationAuthority service.
@@ -55,6 +56,7 @@ type RegistrationAuthorityClient interface {
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*UnpauseAccountResponse, error)
 	AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error)
+	GetStandalone(ctx context.Context, in *StandaloneRequest, opts ...grpc.CallOption) (*StandaloneResponse, error)
 }
 
 type registrationAuthorityClient struct {
@@ -205,6 +207,16 @@ func (c *registrationAuthorityClient) AddRateLimitOverride(ctx context.Context, 
 	return out, nil
 }
 
+func (c *registrationAuthorityClient) GetStandalone(ctx context.Context, in *StandaloneRequest, opts ...grpc.CallOption) (*StandaloneResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StandaloneResponse)
+	err := c.cc.Invoke(ctx, RegistrationAuthority_GetStandalone_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RegistrationAuthorityServer is the server API for RegistrationAuthority service.
 // All implementations must embed UnimplementedRegistrationAuthorityServer
 // for forward compatibility.
@@ -223,6 +235,7 @@ type RegistrationAuthorityServer interface {
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
 	UnpauseAccount(context.Context, *UnpauseAccountRequest) (*UnpauseAccountResponse, error)
 	AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error)
+	GetStandalone(context.Context, *StandaloneRequest) (*StandaloneResponse, error)
 	mustEmbedUnimplementedRegistrationAuthorityServer()
 }
 
@@ -274,6 +287,9 @@ func (UnimplementedRegistrationAuthorityServer) UnpauseAccount(context.Context, 
 }
 func (UnimplementedRegistrationAuthorityServer) AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddRateLimitOverride not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) GetStandalone(context.Context, *StandaloneRequest) (*StandaloneResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetStandalone not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) mustEmbedUnimplementedRegistrationAuthorityServer() {}
 func (UnimplementedRegistrationAuthorityServer) testEmbeddedByValue()                               {}
@@ -548,6 +564,24 @@ func _RegistrationAuthority_AddRateLimitOverride_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistrationAuthority_GetStandalone_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StandaloneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).GetStandalone(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistrationAuthority_GetStandalone_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).GetStandalone(ctx, req.(*StandaloneRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RegistrationAuthority_ServiceDesc is the grpc.ServiceDesc for RegistrationAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -610,6 +644,10 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddRateLimitOverride",
 			Handler:    _RegistrationAuthority_AddRateLimitOverride_Handler,
+		},
+		{
+			MethodName: "GetStandalone",
+			Handler:    _RegistrationAuthority_GetStandalone_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

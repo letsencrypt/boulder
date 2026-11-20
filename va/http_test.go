@@ -370,7 +370,7 @@ func TestNewValidationRecordFromRedirect(t *testing.T) {
 			Name:     "bare IPv4, reserved IP address",
 			Location: "http://10.10.10.10",
 			ExpectedError: "invalid host: " +
-				"IP address is in a reserved address block: [RFC1918]: Private-Use",
+				"IP address is in a reserved address block: [RFC 1918]: Private-Use",
 		},
 		{
 			Name:         "bare IPv6, implicit port",
@@ -399,7 +399,7 @@ func TestNewValidationRecordFromRedirect(t *testing.T) {
 			Name:     "bare IPv6, reserved IP address",
 			Location: "http://[3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee]",
 			ExpectedError: "invalid host: " +
-				"IP address is in a reserved address block: [RFC9637]: Documentation",
+				"IP address is in a reserved address block: [RFC 9637]: Documentation",
 		},
 		{
 			Name:          "bare IPv6, scope zone",

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -367,6 +368,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "making keypolicy")
 
+	testKeyPolicies := KeyPolicies{
+		Account: testKeyPolicy,
+		CA:      testKeyPolicy,
+		MTCA:    testKeyPolicy,
+	}
+
 	profiles, err := NewValidationProfiles("test", map[string]*ValidationProfileConfig{
 		"test": {
 			PendingAuthzLifetime: config.Duration{Duration: 7 * 24 * time.Hour},
@@ -382,7 +389,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
-		1, testKeyPolicy, limiter, txnBuilder,
+		1, testKeyPolicies, limiter, txnBuilder,
 		profiles, nil, 5*time.Minute, ctp, nil, profileToMTCA, nil)
 	ra.SA = sa
 	ra.VA = va
@@ -463,6 +470,141 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
+}
+
+// mockSAEchoesRegistration accepts any NewRegistration or
+// UpdateRegistrationKey call and returns a Registration with the provided key.
+type mockSAEchoesRegistration struct {
+	sapb.StorageAuthorityClient
+}
+
+func (sa *mockSAEchoesRegistration) NewRegistration(_ context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{Id: 1, Key: in.Key}, nil
+}
+
+func (sa *mockSAEchoesRegistration) UpdateRegistrationKey(_ context.Context, in *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{Id: in.RegistrationID, Key: in.Jwk}, nil
+}
+
+func TestAccountKeyPolicy(t *testing.T) {
+	_, _, ra, _, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.SA = &mockSAEchoesRegistration{}
+
+	rsaJWK, err := AccountKeyA.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshaling RSA JWK: %s", err)
+	}
+	mldsaKey, err := mldsa.GenerateKey(mldsa.MLDSA44())
+	if err != nil {
+		t.Fatalf("generating ML-DSA-44 key: %s", err)
+	}
+	mldsaJWK, err := (&jose.JSONWebKey{Key: mldsaKey.Public()}).MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshaling ML-DSA-44 JWK: %s", err)
+	}
+
+	withMLDSA := goodkey.LetsEncryptCPS()
+	withMLDSA.MLDSA44 = true
+
+	notBlocked := func(context.Context, []byte) (bool, error) { return false, nil }
+	blocked := func(context.Context, []byte) (bool, error) { return true, nil }
+	lookupFails := func(context.Context, []byte) (bool, error) {
+		return false, errors.New("blocklist lookup failed")
+	}
+
+	testCases := []struct {
+		name        string
+		allowedKeys *goodkey.AllowedKeys
+		blockedFunc goodkey.BlockedKeyCheckFunc
+		jwk         []byte
+		// wantBadKey causes the test to check for BadPublicKey.
+		wantBadKey bool
+		// wantOtherErr causes the test to check for a non-nil error that is not a BadPublicKey.
+		wantOtherErr bool
+		wantDetail   string
+	}{
+		{
+			name:        "RSA allowed",
+			blockedFunc: notBlocked,
+			jwk:         rsaJWK,
+		},
+		{
+			name:        "blocked key",
+			blockedFunc: blocked,
+			jwk:         rsaJWK,
+			wantBadKey:  true,
+			wantDetail:  "public key is forbidden",
+		},
+		{
+			name:         "blocklist lookup failure is not a bad key",
+			blockedFunc:  lookupFails,
+			jwk:          rsaJWK,
+			wantOtherErr: true,
+			wantDetail:   "blocklist lookup failed",
+		},
+		{
+			name:        "ML-DSA-44 rejected by default policy",
+			blockedFunc: notBlocked,
+			jwk:         mldsaJWK,
+			wantBadKey:  true,
+		},
+		{
+			name:        "ML-DSA-44 allowed when enabled",
+			allowedKeys: &withMLDSA,
+			blockedFunc: notBlocked,
+			jwk:         mldsaJWK,
+		},
+	}
+
+	for _, tc := range testCases {
+		policy, err := goodkey.NewPolicy(&goodkey.Config{AllowedKeys: tc.allowedKeys}, tc.blockedFunc)
+		if err != nil {
+			t.Fatalf("creating key policy: %s", err)
+		}
+		ra.keyPolicies.Account = policy
+
+		calls := map[string]func() (*corepb.Registration, error){
+			"NewRegistration": func() (*corepb.Registration, error) {
+				return ra.NewRegistration(ctx, &corepb.Registration{Key: tc.jwk})
+			},
+			"UpdateRegistrationKey": func() (*corepb.Registration, error) {
+				return ra.UpdateRegistrationKey(ctx, &rapb.UpdateRegistrationKeyRequest{
+					RegistrationID: 1,
+					Jwk:            tc.jwk,
+				})
+			},
+		}
+		for method, call := range calls {
+			t.Run(tc.name+"/"+method, func(t *testing.T) {
+				res, err := call()
+				switch {
+				case tc.wantBadKey:
+					if !errors.Is(err, berrors.BadPublicKey) {
+						t.Fatalf("got error %v, want BadPublicKey", err)
+					}
+				case tc.wantOtherErr:
+					if err == nil {
+						t.Fatal("got success, want an error")
+					}
+					if errors.Is(err, berrors.BadPublicKey) {
+						t.Fatalf("got BadPublicKey (%s), want a different error", err)
+					}
+				default:
+					if err != nil {
+						t.Fatalf("got error %s, want success", err)
+					}
+					if !bytes.Equal(res.Key, tc.jwk) {
+						t.Errorf("returned key: got %s, want %s", res.Key, tc.jwk)
+					}
+					return
+				}
+				if !strings.Contains(err.Error(), tc.wantDetail) {
+					t.Errorf("got error %q, want it to contain %q", err, tc.wantDetail)
+				}
+			})
+		}
+	}
 }
 
 func TestPerformValidationExpired(t *testing.T) {
@@ -571,8 +713,8 @@ func TestPerformValidationSuccess(t *testing.T) {
 		test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 		test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
-		// Sleep so the RA has a chance to write to the SA
-		time.Sleep(100 * time.Millisecond)
+		// Wait for the RA to write to the SA.
+		ra.drainWG.Wait()
 
 		dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
 		t.Log("dbAuthz:", dbAuthzPB)
@@ -897,8 +1039,8 @@ func TestPerformValidationVAError(t *testing.T) {
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
-	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the RA to write to the SA.
+	ra.drainWG.Wait()
 
 	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
@@ -3486,7 +3628,7 @@ type mockMTCA struct{}
 
 func (mtca mockMTCA) Issue(_ context.Context, req *mtcapb.IssueRequest, _ ...grpc.CallOption) (*mtcapb.IssueResponse, error) {
 	return &mtcapb.IssueResponse{
-		MtcLogID:        "44947.4.1.0.44",
+		MtcLogID:        "44947.4.1.0.3",
 		MtcSerialNumber: 56,
 		MtcSubtreeID:    34,
 	}, nil
@@ -3513,7 +3655,7 @@ func TestIssueMTC(t *testing.T) {
 		CertificateProfileName: "mtcshortlived",
 	}
 
-	err = ra.issueMTC(t.Context(), order, testKeyBytes)
+	err = ra.issueMTC(t.Context(), order, testKeyBytes, core.NewToken())
 	if err != nil {
 		t.Fatalf("issuing MTC: %s", err)
 	}
@@ -3521,8 +3663,8 @@ func TestIssueMTC(t *testing.T) {
 	if mockSA.storage.orderID != 1234 {
 		t.Errorf("orderID: got %d, want %d", mockSA.storage.orderID, 1234)
 	}
-	if mockSA.storage.mtcLogID != "44947.4.1.0.44" {
-		t.Errorf("mtcLogID: got %q, want %q", mockSA.storage.mtcLogID, "44947.4.1.0.44")
+	if mockSA.storage.mtcLogID != "44947.4.1.0.3" {
+		t.Errorf("mtcLogID: got %q, want %q", mockSA.storage.mtcLogID, "44947.4.1.0.3")
 	}
 	if mockSA.storage.mtcSerialNumber != 56 {
 		t.Errorf("mtcSerialNumber: got %d, want %d", mockSA.storage.mtcSerialNumber, 56)
@@ -3545,7 +3687,7 @@ func (sa *mockSAWithGetOrder) GetOrder(_ context.Context, _ *sapb.OrderRequest, 
 // mockMTCBStandaloneReady returns a fixed value in response to StandaloneReady()
 // and records whether it was called.
 type mockMTCBStandaloneReady struct {
-	mtcapb.MTCAClient
+	mtcbpb.MTCBClient
 	ready  bool
 	called bool
 }
@@ -3553,14 +3695,6 @@ type mockMTCBStandaloneReady struct {
 func (mtcb *mockMTCBStandaloneReady) StandaloneReady(_ context.Context, _ *mtcbpb.StandaloneReadyRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneReadyResponse, error) {
 	mtcb.called = true
 	return &mtcbpb.StandaloneReadyResponse{Ready: mtcb.ready}, nil
-}
-
-func (mtcb *mockMTCBStandaloneReady) GetStandalone(ctx context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
-	return nil, fmt.Errorf("unimplemented")
-}
-
-func (mtcb *mockMTCBStandaloneReady) GetLandmarkRelative(ctx context.Context, req *mtcbpb.LandmarkRelativeRequest, _ ...grpc.CallOption) (*mtcbpb.LandmarkRelativeResponse, error) {
-	return nil, fmt.Errorf("unimplemented")
 }
 
 func TestGetOrder(t *testing.T) {
@@ -3618,7 +3752,7 @@ func TestGetOrder(t *testing.T) {
 			order: &corepb.Order{
 				Status:                 string(core.StatusProcessing),
 				CertificateProfileName: "mtcshortlived",
-				MtcLogID:               "44947.4.1.0.44",
+				MtcLogID:               "44947.4.1.0.3",
 				MtcSerialNumber:        56,
 				MtcSubtreeID:           34,
 			},
@@ -3630,7 +3764,7 @@ func TestGetOrder(t *testing.T) {
 			order: &corepb.Order{
 				Status:                 string(core.StatusProcessing),
 				CertificateProfileName: "mtcshortlived",
-				MtcLogID:               "44947.4.1.0.44",
+				MtcLogID:               "44947.4.1.0.3",
 				MtcSerialNumber:        56,
 				MtcSubtreeID:           34,
 			},
@@ -4565,4 +4699,75 @@ func TestAddRateLimitOverride(t *testing.T) {
 	test.AssertEquals(t, mockSA.inserted.Override.Period.AsDuration(), ov.Override.Period.AsDuration())
 	test.AssertEquals(t, mockSA.inserted.Override.Count, ov.Override.Count)
 	test.AssertEquals(t, mockSA.inserted.Override.Burst, ov.Override.Burst)
+}
+
+// mockMTCBGetStandalone returns some fixed values in response to
+// GetStandalone()
+type mockMTCBGetStandalone struct {
+	mtcbpb.MTCBClient
+}
+
+var errMockMTCBError error = errors.New("mock error")
+
+// GetStandalone in this mock always returns the same palindromic nonsense bytes
+// of primes, unless the request is for MtcSerialNumber 666, in which case an
+// empty StandaloneResponse and a mock error are returned; or Serial 667, in
+// which case an empty StandaloneResponse and a nil error are returned (which
+// would be abnormal MTCB behavior).
+func (mtcb *mockMTCBGetStandalone) GetStandalone(_ context.Context, req *mtcbpb.StandaloneRequest, _ ...grpc.CallOption) (*mtcbpb.StandaloneResponse, error) {
+	if req.MtcSerialNumber == 666 {
+		return &mtcbpb.StandaloneResponse{}, errMockMTCBError
+	}
+	if req.MtcSerialNumber == 667 {
+		// return an empty response and nil error, which would be a weird thing
+		return &mtcbpb.StandaloneResponse{}, nil
+	}
+	return &mtcbpb.StandaloneResponse{CertDER: []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2}}, nil
+}
+
+func TestGetStandalone(t *testing.T) {
+	_, _, ra, _, _, _, cleanup := initAuthorities(t)
+	defer cleanup()
+
+	// test error when the RA has no MTCB backend
+	_, err := ra.GetStandalone(ctx, &rapb.StandaloneRequest{MtcLogID: "3", MtcSerialNumber: 3, MtcSubtreeID: 3})
+	test.AssertError(t, err, "expected failure")
+	test.AssertContains(t, err.Error(), "no MTCB backend")
+
+	mockMTCB := &mockMTCBGetStandalone{}
+	ra.mtcb = mockMTCB
+
+	testCases := []struct {
+		Name        string
+		Request     *rapb.StandaloneRequest
+		ExpectError error
+	}{
+		{
+			Name:        "Send Incomplete gRPC",
+			Request:     &rapb.StandaloneRequest{MtcLogID: "3", MtcSerialNumber: 3},
+			ExpectError: errIncompleteGRPCRequest,
+		},
+		{
+			Name:        "Expect Mock Error",
+			Request:     &rapb.StandaloneRequest{MtcLogID: "6", MtcSerialNumber: 666, MtcSubtreeID: 3},
+			ExpectError: errMockMTCBError,
+		},
+		{
+			Name:        "Expect Incomplete gRPC",
+			Request:     &rapb.StandaloneRequest{MtcLogID: "9", MtcSerialNumber: 667, MtcSubtreeID: 3},
+			ExpectError: errIncompleteGRPCResponse,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			_, err := ra.GetStandalone(ctx, tc.Request)
+			test.AssertDeepEquals(t, err, tc.ExpectError)
+		})
+	}
+
+	// finally test a non-error case
+	resp, err := ra.GetStandalone(ctx, &rapb.StandaloneRequest{MtcLogID: "3", MtcSerialNumber: 3, MtcSubtreeID: 3})
+	test.AssertNotError(t, err, "expected success")
+	test.AssertDeepEquals(t, resp.CertDER, []byte{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 29, 23, 19, 17, 13, 11, 7, 5, 3, 2})
 }

@@ -1,5 +1,5 @@
 /*
- * ZLint Copyright 2024 Regents of the University of Michigan
+ * ZLint Copyright 2026 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -59,7 +59,7 @@ func (l *authKeyIDOnlyContainsKeyID) Execute(r *x509.RevocationList) *lint.LintR
 		if authKey.KeyIdentifier == nil {
 			return &lint.LintResult{Status: lint.Error, Details: "keyIdentifier field is missing in authorityKeyIdentifier extension"}
 		}
-		if authKey.AuthorityCertIssuer != nil || authKey.AuthorityCertSerialNumber != nil {
+		if authKey.AuthorityCertIssuer.FullBytes != nil || authKey.AuthorityCertSerialNumber != nil {
 			return &lint.LintResult{Status: lint.Error, Details: "Forbidden authorityCertIssuer or authorityCertSerialNumber in authorityKeyIdentifier extension"}
 		}
 	}
@@ -69,6 +69,6 @@ func (l *authKeyIDOnlyContainsKeyID) Execute(r *x509.RevocationList) *lint.LintR
 
 type authKey struct {
 	KeyIdentifier             []byte   `asn1:"optional,tag:0"`
-	AuthorityCertIssuer       []byte   `asn1:"optional,tag:1"`
+	AuthorityCertIssuer       asn1.RawValue   `asn1:"optional,tag:1"`
 	AuthorityCertSerialNumber *big.Int `asn1:"optional,tag:2"`
 }

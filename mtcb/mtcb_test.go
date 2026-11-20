@@ -6,8 +6,10 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -18,14 +20,21 @@ import (
 	"github.com/jmhodges/clock"
 	"golang.org/x/mod/sumdb/tlog"
 
+	"github.com/letsencrypt/boulder/blog"
 	"github.com/letsencrypt/boulder/bs3/bs3test"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/core/reloid"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	mtcbpb "github.com/letsencrypt/boulder/mtcb/proto"
+	"github.com/letsencrypt/boulder/must"
+	"github.com/letsencrypt/boulder/privatekey"
+	"github.com/letsencrypt/boulder/trees/checkpoint"
+	"github.com/letsencrypt/boulder/trees/cosignature"
+	"github.com/letsencrypt/boulder/trees/cosigned"
 	"github.com/letsencrypt/boulder/trees/entry"
 	"github.com/letsencrypt/boulder/trees/issuancelog"
+	"github.com/letsencrypt/boulder/trees/mtx509"
 	"github.com/letsencrypt/boulder/trees/proof"
 	"github.com/letsencrypt/boulder/trees/pubkey"
 	"github.com/letsencrypt/boulder/trees/subtree"
@@ -33,9 +42,11 @@ import (
 	"github.com/letsencrypt/boulder/trees/treedb"
 )
 
-var mirrorID = "32473.9"
-
-var testLogID = issuancelog.ID{CAID: "44947.4.1", LogNumber: 5}
+var (
+	mirrorID  = "32473.9"
+	mirrorOID = must.Do(reloid.FromString(mirrorID))
+	testLogID = must.Do(issuancelog.Config{CAID: "44947.4.1", LogNumber: 5}.Load())
+)
 
 // TestBuildCertificate checks that buildCertificate's output parses as a
 // Certificate.
@@ -58,9 +69,9 @@ func TestBuildCertificate(t *testing.T) {
 		Start:          0,
 		End:            8,
 		InclusionProof: []tlog.Hash{{1}, {2}, {3}},
-		Signatures: []*proof.SubtreeSignature{
-			{CosignerID: []byte(testLogID.CAID), Signature: []byte("mtca sig")},
-			{CosignerID: []byte(mirrorID), Signature: []byte("mirror sig")},
+		Signatures: []*proof.Cosignature{
+			{CosignerID: testLogID.CAID().Bytes(), Signature: []byte("mtca sig")},
+			{CosignerID: mirrorOID.Bytes(), Signature: []byte("mirror sig")},
 		},
 	}
 	expectSig, err := sig.Marshal()
@@ -85,53 +96,54 @@ func TestBuildCertificate(t *testing.T) {
 	}
 }
 
-// fakeCheckpointDB serves the first checkpoint whose tree size covers the
-// entry.
+// fakeCheckpointDB serves checkpoint subtrees by log ID and subtree ID.
 type fakeCheckpointDB struct {
-	checkpoints        []*treedb.CheckpointModel
-	checkpointSubtrees []*treedb.CheckpointSubtreeModel
+	subtrees []*treedb.SubtreeModel
 }
 
-func (f *fakeCheckpointDB) GetCheckpointSubtree(_ context.Context, mtcLogID string, id int64) (*treedb.CheckpointSubtreeModel, error) {
-	for _, subtree := range f.checkpointSubtrees {
+func (f *fakeCheckpointDB) GetSubtree(_ context.Context, mtcLogID string, id int64) (*treedb.SubtreeModel, error) {
+	for _, subtree := range f.subtrees {
 		if subtree.MTCLogID == mtcLogID && subtree.ID == id {
 			return subtree, nil
 		}
 	}
-	return nil, berrors.NotFoundError("not found")
-}
-
-func (f *fakeCheckpointDB) LatestCheckpoint(_ context.Context, mtcLogID string) (*treedb.CheckpointModel, error) {
-	if len(f.checkpoints) == 0 {
-		return nil, fmt.Errorf("no checkpoints")
-	}
-	return f.checkpoints[len(f.checkpoints)-1], nil
+	return nil, errors.New("not found")
 }
 
 // issued is one entry in the test log, along with the values we expect to find
 // in the standalone certificate the mtcb builds for it.
 type issued struct {
-	index   int64
-	serial  uint64
-	spki    []byte
-	dnsName string
+	index    int64
+	serial   uint64
+	spki     []byte
+	dnsName  string
+	leafHash tlog.Hash
 }
 
 // testLog is an issuance log and the checkpoints that cover it.
 type testLog struct {
-	fs3                *bs3test.FakeS3
-	entries            []issued
-	checkpoints        []*treedb.CheckpointModel
-	checkpointSubtrees []*treedb.CheckpointSubtreeModel
+	fs3     *bs3test.FakeS3
+	entries []issued
+	issuer  *x509.Certificate
+	signer  *signer
+	// signedNotes are the CA-signed checkpoints at each published tree size, in
+	// order. The last one is also stored at the checkpoint path in fs3.
+	signedNotes [][]byte
+	subtrees    []*treedb.SubtreeModel
 }
 
 // newTestLog returns a log containing 257 certificates, published with mirrored
 // checkpoints at tree sizes 4, 6, and 258.
 func newTestLog(t *testing.T) *testLog {
 	t.Helper()
-	log := &testLog{fs3: bs3test.New()}
+	issuer, err := core.LoadCert("../test/certs/webpki/mtca-1.cert.pem")
+	if err != nil {
+		t.Fatalf("LoadCert: %s", err)
+	}
+	s := newSigner(t)
+	log := &testLog{fs3: bs3test.New(), issuer: issuer, signer: s}
 	frontier := &tiles.Frontier{}
-	err := frontier.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
+	_, err = frontier.AppendEntry(&entry.MTCLogEntry{}, &pubkey.MTCPublicKey{})
 	if err != nil {
 		t.Fatalf("AppendEntry: %s", err)
 	}
@@ -147,23 +159,23 @@ func newTestLog(t *testing.T) *testLog {
 			t.Fatalf("Publish: %s", err)
 		}
 		root := frontier.RootHash()
-		log.checkpoints = append(log.checkpoints, &treedb.CheckpointModel{
-			ID:              int64(len(log.checkpoints) + 1),
-			MTCLogID:        testLogID.String(),
-			MTCASignature:   fmt.Appendf(nil, "placeholder mtca signature over size %d", frontier.TreeSize()),
-			MirrorID:        &mirrorID,
-			MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over size %d", frontier.TreeSize()),
-			TreeSize:        frontier.TreeSize(),
-			RootHash:        root[:],
+		signedNote := s.checkpointSignedNote(t, &treedb.CheckpointModel{
+			TreeSize: frontier.TreeSize(),
+			RootHash: root[:],
 		})
-		log.checkpointSubtrees = append(log.checkpointSubtrees, &treedb.CheckpointSubtreeModel{
-			ID:              int64(len(log.checkpoints) + 1),
+		log.fs3.Objects[testLogID.CheckpointPath()] = bs3test.StoredObject{
+			Data: signedNote,
+		}
+		log.signedNotes = append(log.signedNotes, signedNote)
+
+		log.subtrees = append(log.subtrees, &treedb.SubtreeModel{
+			ID:              int64(len(log.subtrees) + 1),
 			MTCLogID:        testLogID.String(),
-			MTCASignature:   fmt.Appendf(nil, "placeholder mtca signature over size %d", frontier.TreeSize()),
+			MTCASignature:   s.signSubtree(t, 0, frontier.TreeSize(), root),
 			MirrorID:        &mirrorID,
 			MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over size %d", frontier.TreeSize()),
 			SubtreeStart:    0,
-			SubtreeEnd:      uint64(frontier.TreeSize()), //nolint:gosec // G115: guaranteed non-negative by Frontier.
+			SubtreeEnd:      frontier.TreeSize(),
 			SubtreeHash:     root[:],
 		})
 	}
@@ -173,7 +185,7 @@ func newTestLog(t *testing.T) *testLog {
 // testSerial returns the serial of the entry at index in testLogID.
 func testSerial(t *testing.T, index int64) uint64 {
 	t.Helper()
-	serial, err := core.EncodeMTCSerial(testLogID.LogNumber, index)
+	serial, err := core.EncodeMTCSerial(testLogID.LogNumber(), index)
 	if err != nil {
 		t.Fatalf("EncodeMTCSerial: %s", err)
 	}
@@ -181,7 +193,7 @@ func testSerial(t *testing.T, index int64) uint64 {
 }
 
 // appendCertificate appends the log entry and public key of a new certificate
-// for a random DNS name under example.com.
+// for a random DNS name under example.com, issued by the MTCA.
 func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64) issued {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -202,7 +214,8 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
-	certDER, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	parent := &x509.Certificate{RawSubject: l.issuer.RawSubject}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, parent, key.Public(), key)
 	if err != nil {
 		t.Fatalf("CreateCertificate: %s", err)
 	}
@@ -210,11 +223,15 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 	if err != nil {
 		t.Fatalf("FromX509: %s", err)
 	}
+	mtcleBytes, err := mtcle.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %s", err)
+	}
 	mtcpk, err := pubkey.FromCryptoPubkey(key.Public())
 	if err != nil {
 		t.Fatalf("FromCryptoPubkey: %s", err)
 	}
-	err = f.AppendEntry(mtcle, mtcpk)
+	_, err = f.AppendEntry(mtcle, mtcpk)
 	if err != nil {
 		t.Fatalf("AppendEntry: %s", err)
 	}
@@ -223,23 +240,46 @@ func (l *testLog) appendCertificate(t *testing.T, f *tiles.Frontier, index int64
 		t.Fatalf("MarshalPKIXPublicKey: %s", err)
 	}
 	return issued{
-		index:   index,
-		serial:  testSerial(t, index),
-		spki:    spki,
-		dnsName: dnsName,
+		index:    index,
+		serial:   testSerial(t, index),
+		spki:     spki,
+		dnsName:  dnsName,
+		leafHash: tlog.RecordHash(mtcleBytes),
 	}
 }
 
-// testMTCB returns an mtcb over checkpoints and the tiles in fs3.
-func testMTCB(t *testing.T, fs3 *bs3test.FakeS3, checkpoints []*treedb.CheckpointModel, subtrees []*treedb.CheckpointSubtreeModel) *mtcb {
+// addSubtree adds a mirrored checkpoint subtree over [start, end) to the log,
+// with its hash computed from the entries' leaf hashes, and returns it.
+func (l *testLog) addSubtree(t *testing.T, start, end int64) *treedb.SubtreeModel {
 	t.Helper()
-	issuer, err := issuance.LoadCertificate("../test/certs/mtpki/mtca1.cert.pem")
+	var leaves []tlog.Hash
+	for _, e := range l.entries[start:end] {
+		leaves = append(leaves, e.leafHash)
+	}
+	hash := subtree.MTH(leaves)
+	st := &treedb.SubtreeModel{
+		ID:              int64(len(l.subtrees) + 1),
+		MTCLogID:        testLogID.String(),
+		MTCASignature:   l.signer.signSubtree(t, start, end, hash),
+		MirrorID:        &mirrorID,
+		MirrorSignature: fmt.Appendf(nil, "placeholder mirror signature over [%d, %d)", start, end),
+		SubtreeStart:    start,
+		SubtreeEnd:      end,
+		SubtreeHash:     hash[:],
+	}
+	l.subtrees = append(l.subtrees, st)
+	return st
+}
+
+// testMTCB returns an mtcb over subtrees and the checkpoint and tiles in fs3.
+func testMTCB(t *testing.T, fs3 *bs3test.FakeS3, subtrees []*treedb.SubtreeModel) *mtcb {
+	t.Helper()
+	issuer, err := issuance.LoadCertificate("../test/certs/webpki/mtca-1.cert.pem")
 	if err != nil {
 		t.Fatalf("LoadCertificate: %s", err)
 	}
 	fakeDB := &fakeCheckpointDB{
-		checkpoints:        checkpoints,
-		checkpointSubtrees: subtrees,
+		subtrees: subtrees,
 	}
 	m, err := New([]*issuance.Certificate{issuer}, fakeDB, fs3, blog.NewMock(), clock.NewFake())
 	if err != nil {
@@ -248,10 +288,111 @@ func testMTCB(t *testing.T, fs3 *bs3test.FakeS3, checkpoints []*treedb.Checkpoin
 	return m
 }
 
-// verifyStandalone checks that certDER is a standalone certificate for expected
-// that proves inclusion to dbSubtree's rootHash and carries its cosignatures.
-func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *treedb.CheckpointSubtreeModel) {
+type signer struct {
+	logID     *issuancelog.ID
+	cosigner  *cosignature.Cosigner
+	caPrivKey crypto.Signer
+}
+
+// newCosigner returns a *cosignature.Cosigner that signs with the given privKey over the log
+// with the given origin, and uses `cosignerID` as its name.
+func newCosigner(t *testing.T, privKeyPath string, cosignerID *reloid.RelativeOID, origin string) (*cosignature.Cosigner, crypto.Signer) {
+	privKey, _, err := privatekey.Load(privKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	co, err := cosignature.NewCosigner(cosignerID, origin, privKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return co, privKey
+}
+
+// newSigner returns a *signer that signs checkpoints of testLogID as the CA.
+func newSigner(t *testing.T) *signer {
+	return newSignerForLog(t, testLogID)
+}
+
+// newSignerForLog returns a *signer that signs checkpoints of the given logID with the CA's key.
+func newSignerForLog(t *testing.T, logID *issuancelog.ID) *signer {
+	ca, caPrivKey := newCosigner(t, "../test/certs/webpki/mtca-1.privkey.pem", logID.CAID(), logID.Origin())
+	return &signer{
+		logID:     logID,
+		cosigner:  ca,
+		caPrivKey: caPrivKey,
+	}
+}
+
+// checkpointSignedNote signs the checkpoint with the CA key and returns a signed note.
+//
+// It disregards the MTCASignature and MirrorSignature fields of the dbCheckpoint.
+func (s *signer) checkpointSignedNote(t *testing.T, dbCheckpoint *treedb.CheckpointModel) []byte {
+	tree := tlog.Tree{
+		N:    dbCheckpoint.TreeSize,
+		Hash: tlog.Hash(dbCheckpoint.RootHash),
+	}
+
+	timestamp := time.Unix(123456789, 0)
+	caCosignatureLine, err := s.cosigner.CosignCheckpoint(tree, timestamp)
+	if err != nil {
+		t.Fatalf("cosigning checkpoint: %s", err)
+	}
+
+	noteText, err := (&checkpoint.Checkpoint{Origin: s.logID.Origin(), Tree: tree}).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signedNote := append(noteText, '\n')
+	signedNote = append(signedNote, caCosignatureLine...)
+
+	verifier, err := cosignature.NewVerifier(s.logID.CAID(), s.caPrivKey.Public().(*mldsa.PublicKey))
+	if err != nil {
+		t.Fatalf("creating CA verifier: %s", err)
+	}
+
+	_, _, err = checkpoint.Open(signedNote, verifier)
+	if err != nil {
+		t.Fatalf("self-verifying checkpoint: %s", err)
+	}
+
+	return signedNote
+}
+
+// signSubtree returns the CA's cosignature over the subtree [start, end) with
+// the given hash.
+func (s *signer) signSubtree(t *testing.T, start, end int64, hash tlog.Hash) []byte {
 	t.Helper()
+	msg, err := (&cosigned.Subtree{
+		CosignerName: s.logID.CACosignerName(),
+		Timestamp:    0,
+		LogOrigin:    s.logID.Origin(),
+		Start:        start,
+		End:          end,
+		SubtreeHash:  hash,
+	}).Marshal()
+	if err != nil {
+		t.Fatalf("marshaling cosigned subtree: %s", err)
+	}
+
+	sig, err := s.caPrivKey.Sign(nil, msg, nil)
+	if err != nil {
+		t.Fatalf("signing subtree: %s", err)
+	}
+	return sig
+}
+
+// verifyStandalone checks that certDER is a valid standalone certificate from
+// issuer, for expected, and that it carries dbSubtree's cosignatures.
+func verifyStandalone(t *testing.T, certDER []byte, issuer *x509.Certificate, expected issued, dbSubtree *treedb.SubtreeModel) {
+	t.Helper()
+	err := mtx509.VerifyStandalone(certDER, issuer)
+	if err != nil {
+		t.Fatalf("verifymtc.Standalone: %s", err)
+	}
+
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		t.Fatalf("x509.ParseCertificate: %s", err)
@@ -273,55 +414,22 @@ func verifyStandalone(t *testing.T, certDER []byte, expected issued, dbSubtree *
 	if err != nil {
 		t.Fatalf("UnmarshalMTCProof: %s", err)
 	}
-	if mtcProof.Start != dbSubtree.SubtreeStart {
-		t.Errorf("start = %d, want %d", mtcProof.Start, dbSubtree.SubtreeStart)
-	}
-	if mtcProof.End != dbSubtree.SubtreeEnd {
-		t.Errorf("end = %d, want %d", mtcProof.End, dbSubtree.SubtreeEnd)
-	}
-
-	_, entryIndex, err := core.DecodeMTCSerial(cert.SerialNumber.Uint64())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	mtcle, err := entry.FromX509(certDER, crypto.SHA256)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	mtcleMarshaled, err := mtcle.Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectedSubtreeHash, err := subtree.HashFromProof(
-		tlog.RecordHash(mtcleMarshaled),
-		mtcProof.InclusionProof,
-		entryIndex,
-		int64(mtcProof.Start), //nolint:gosec // G115: we know these are < 1<<48 in tests
-		int64(mtcProof.End),   //nolint:gosec // G115: we know these are < 1<<48 in tests
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(dbSubtree.SubtreeHash, expectedSubtreeHash[:]) {
-		t.Errorf("subtree hash from database (%s) != HashFromProof(%s)", tlog.Hash(dbSubtree.SubtreeHash), expectedSubtreeHash)
-	}
-
-	// TODO: sign real signatures in the test and validate them here.
 	if len(mtcProof.Signatures) != 2 {
 		t.Fatalf("got %d cosignatures, want 2", len(mtcProof.Signatures))
 	}
 	sigsByID := map[string][]byte{}
 	for _, sig := range mtcProof.Signatures {
+		// sig.CosignerID is a DER-encoded relative OID, so stringifying it doesn't
+		// result in anything recognizable, but it still works for use as a map key.
 		sigsByID[string(sig.CosignerID)] = sig.Signature
 	}
-	if !bytes.Equal(sigsByID[testLogID.CAID], dbSubtree.MTCASignature) {
-		t.Errorf("MTCA cosignature = %x, want %x", sigsByID[testLogID.CAID], dbSubtree.MTCASignature)
+	testLogSig := sigsByID[string(testLogID.CAID().Bytes())]
+	if !bytes.Equal(testLogSig, dbSubtree.MTCASignature) {
+		t.Errorf("MTCA cosignature = %x, want %x", testLogSig, dbSubtree.MTCASignature)
 	}
-	if !bytes.Equal(sigsByID[mirrorID], dbSubtree.MirrorSignature) {
-		t.Errorf("mirror cosignature = %x, want %x", sigsByID[mirrorID], dbSubtree.MirrorSignature)
+	mirrorSig := sigsByID[string(mirrorOID.Bytes())]
+	if !bytes.Equal(mirrorSig, dbSubtree.MirrorSignature) {
+		t.Errorf("mirror cosignature = %x, want %x", mirrorSig, dbSubtree.MirrorSignature)
 	}
 }
 
@@ -331,25 +439,41 @@ func TestGetStandalone(t *testing.T) {
 	t.Parallel()
 	l := newTestLog(t)
 
+	// Subtrees that don't start at the beginning of the log. Each start is a
+	// multiple of BIT_CEIL(end - start), as the MTC draft requires.
+	subtree4to6 := l.addSubtree(t, 4, 6)
+	subtree8to14 := l.addSubtree(t, 8, 14)
+	subtree128to256 := l.addSubtree(t, 128, 256)
+	subtree256to258 := l.addSubtree(t, 256, 258)
+
 	// Call GetStandalone for a variety of subtrees. For each one, use a `latest` checkpoint that
 	// has a TreeSize equal to SubtreeEnd, to exercise the partial-tile fetch path, and where the
 	// log has grown past it, a later one.
 	for _, tc := range []struct {
 		name    string
 		entries []issued
-		latest  *treedb.CheckpointModel
-		subtree *treedb.CheckpointSubtreeModel
+		// latest is the signed note served at the checkpoint path for this case.
+		latest  []byte
+		subtree *treedb.SubtreeModel
 	}{
-		{name: "Partial first bundle at size 4", entries: l.entries[1:4], latest: l.checkpoints[0], subtree: l.checkpointSubtrees[0]},
-		{name: "Partial first bundle at size 6", entries: l.entries[4:6], latest: l.checkpoints[1], subtree: l.checkpointSubtrees[1]},
-		{name: "Full first bundle", entries: l.entries[6:8], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[2]},
-		{name: "Across the bundle boundary", entries: l.entries[254:], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[2]},
-		{name: "Size 4 subtree under the size 258 checkpoint", entries: l.entries[1:4], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[0]},
-		{name: "Size 6 subtree under the size 258 checkpoint", entries: l.entries[4:6], latest: l.checkpoints[2], subtree: l.checkpointSubtrees[1]},
+		{name: "Partial first bundle at size 4", entries: l.entries[1:4], latest: l.signedNotes[0], subtree: l.subtrees[0]},
+		{name: "Partial first bundle at size 6", entries: l.entries[4:6], latest: l.signedNotes[1], subtree: l.subtrees[1]},
+		{name: "Full first bundle", entries: l.entries[6:8], latest: l.signedNotes[2], subtree: l.subtrees[2]},
+		{name: "Across the bundle boundary", entries: l.entries[254:], latest: l.signedNotes[2], subtree: l.subtrees[2]},
+		{name: "Size 4 subtree under the size 258 checkpoint", entries: l.entries[1:4], latest: l.signedNotes[2], subtree: l.subtrees[0]},
+		{name: "Size 6 subtree under the size 258 checkpoint", entries: l.entries[4:6], latest: l.signedNotes[2], subtree: l.subtrees[1]},
+		{name: "Subtree [4, 6) at size 6", entries: l.entries[4:6], latest: l.signedNotes[1], subtree: subtree4to6},
+		{name: "Subtree [4, 6) under the size 258 checkpoint", entries: l.entries[4:6], latest: l.signedNotes[2], subtree: subtree4to6},
+		{name: "Incomplete subtree [8, 14)", entries: l.entries[8:14], latest: l.signedNotes[2], subtree: subtree8to14},
+		{name: "Subtree [128, 256)", entries: l.entries[128:256], latest: l.signedNotes[2], subtree: subtree128to256},
+		{name: "Subtree [256, 258) in a partial bundle", entries: l.entries[256:], latest: l.signedNotes[2], subtree: subtree256to258},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			m := testMTCB(t, l.fs3, []*treedb.CheckpointModel{tc.latest}, l.checkpointSubtrees)
-			for _, expected := range tc.entries {
+		// Serve this case's checkpoint. The cases share one fs3, so the subtests
+		// below must not run in parallel.
+		l.fs3.Objects[testLogID.CheckpointPath()] = bs3test.StoredObject{Data: tc.latest}
+		for _, expected := range tc.entries {
+			m := testMTCB(t, l.fs3, l.subtrees)
+			t.Run(fmt.Sprintf("%s/%016x", tc.name, expected.serial), func(t *testing.T) {
 				resp, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{
 					MtcLogID:        testLogID.String(),
 					MtcSerialNumber: expected.serial,
@@ -358,49 +482,41 @@ func TestGetStandalone(t *testing.T) {
 				if err != nil {
 					t.Fatalf("GetStandalone for serial %016x: %s", expected.serial, err)
 				}
-				verifyStandalone(t, resp.CertDER, expected, tc.subtree)
-			}
-		})
+				verifyStandalone(t, resp.CertDER, l.issuer, expected, tc.subtree)
+			})
+		}
 	}
 }
 
-func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
+func TestGetStandaloneInvalidSubtree(t *testing.T) {
 	t.Parallel()
+	s := newSigner(t)
 	for _, tc := range []struct {
 		name              string
-		mutateLatest      func(*treedb.CheckpointModel)
-		mutateSubtree     func(*treedb.CheckpointSubtreeModel)
+		mutateSubtree     func(*treedb.SubtreeModel)
 		expectErrContains string
+		expectNotReady    bool
 	}{
 		{
-			name:              "Latest checkpoint with a short root hash",
-			mutateLatest:      func(cp *treedb.CheckpointModel) { cp.RootHash = make([]byte, 5) },
-			expectErrContains: "validating checkpoint 1:",
-		},
-		{
 			name:              "Subtree with a short hash",
-			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeHash = make([]byte, 5) },
-			expectErrContains: "validating checkpoint subtree",
+			mutateSubtree:     func(st *treedb.SubtreeModel) { st.SubtreeHash = make([]byte, 5) },
+			expectErrContains: "validating subtree",
 		},
 		{
 			name:              "Subtree with no mirror ID",
-			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.MirrorID = nil },
-			expectErrContains: "not ready",
+			mutateSubtree:     func(st *treedb.SubtreeModel) { st.MirrorID = nil },
+			expectErrContains: "not yet available",
+			expectNotReady:    true,
 		},
 		{
 			name:              "Subtree past the latest checkpoint",
-			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeEnd = 6 },
+			mutateSubtree:     func(st *treedb.SubtreeModel) { st.SubtreeEnd = 6 },
 			expectErrContains: "subtreeEnd is greater than treeSize",
 		},
 		{
 			name:              "Subtree that does not include the entry",
-			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeEnd = 1 },
+			mutateSubtree:     func(st *treedb.SubtreeModel) { st.SubtreeEnd = 1 },
 			expectErrContains: "not in subtree",
-		},
-		{
-			name:              "Subtree starting past the first entry",
-			mutateSubtree:     func(st *treedb.CheckpointSubtreeModel) { st.SubtreeStart = 1 },
-			expectErrContains: "not yet supported",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -411,7 +527,14 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 				TreeSize: 4,
 				RootHash: make([]byte, 32),
 			}
-			subtree := &treedb.CheckpointSubtreeModel{
+
+			signedNote := s.checkpointSignedNote(t, latest)
+			fs3 := bs3test.New()
+			fs3.Objects[testLogID.CheckpointPath()] = bs3test.StoredObject{
+				Data: signedNote,
+			}
+
+			subtree := &treedb.SubtreeModel{
 				ID:              1,
 				MTCLogID:        testLogID.String(),
 				MTCASignature:   []byte("mtca"),
@@ -421,13 +544,87 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 				SubtreeEnd:      4,
 				SubtreeHash:     make([]byte, 32),
 			}
-			if tc.mutateLatest != nil {
-				tc.mutateLatest(latest)
-			}
 			if tc.mutateSubtree != nil {
 				tc.mutateSubtree(subtree)
 			}
-			m := testMTCB(t, bs3test.New(), []*treedb.CheckpointModel{latest}, []*treedb.CheckpointSubtreeModel{subtree})
+			m := testMTCB(t, fs3, []*treedb.SubtreeModel{subtree})
+			_, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{
+				MtcLogID:        testLogID.String(),
+				MtcSerialNumber: testSerial(t, 1),
+				MtcSubtreeID:    subtree.ID,
+			})
+			if err == nil {
+				t.Fatal("GetStandalone: got nil error, want error")
+			}
+			if !strings.Contains(err.Error(), tc.expectErrContains) {
+				t.Errorf("GetStandalone: got %q, want it to contain %q", err, tc.expectErrContains)
+			}
+			if errors.Is(err, berrors.OrderNotReady) != tc.expectNotReady {
+				t.Errorf("GetStandalone: got %q, want errors.Is(err, berrors.OrderNotReady) = %t", err, tc.expectNotReady)
+			}
+		})
+	}
+}
+
+// TestGetStandaloneInvalidCheckpoint tests that a missing or corrupted checkpoint
+// file leads to an error.
+func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
+	t.Parallel()
+	validNote := newSigner(t).checkpointSignedNote(t, &treedb.CheckpointModel{
+		TreeSize: 4,
+		RootHash: make([]byte, 32),
+	})
+
+	// The same checkpoint, validly signed by the same CA, but for a different log.
+	otherLog := must.Do(issuancelog.Config{CAID: testLogID.CAID().String(), LogNumber: testLogID.LogNumber() + 1}.Load())
+	otherLogNote := newSignerForLog(t, otherLog).checkpointSignedNote(t, &treedb.CheckpointModel{
+		TreeSize: 4,
+		RootHash: make([]byte, 32),
+	})
+
+	for _, tc := range []struct {
+		name string
+		// signedNote is the object stored at the checkpoint path. If nil, no
+		// object is stored.
+		signedNote        []byte
+		expectErrContains string
+	}{
+		{
+			name:              "No checkpoint in tile storage",
+			signedNote:        nil,
+			expectErrContains: "getting latest checkpoint: reading s3://fakebucket/" + testLogID.CheckpointPath(),
+		},
+		{
+			name:              "Checkpoint altered after signing",
+			signedNote:        bytes.Replace(validNote, []byte("\n4\n"), []byte("\n5\n"), 1),
+			expectErrContains: "invalid signature",
+		},
+		{
+			name:              "Checkpoint for a different log",
+			signedNote:        otherLogNote,
+			expectErrContains: fmt.Sprintf("origin %q doesn't match expected %q", otherLog.Origin(), testLogID.Origin()),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fs3 := bs3test.New()
+			if tc.signedNote != nil {
+				fs3.Objects[testLogID.CheckpointPath()] = bs3test.StoredObject{
+					Data: tc.signedNote,
+				}
+			}
+
+			subtree := &treedb.SubtreeModel{
+				ID:              1,
+				MTCLogID:        testLogID.String(),
+				MTCASignature:   []byte("mtca"),
+				MirrorID:        &mirrorID,
+				MirrorSignature: []byte("mirror"),
+				SubtreeStart:    0,
+				SubtreeEnd:      4,
+				SubtreeHash:     make([]byte, 32),
+			}
+			m := testMTCB(t, fs3, []*treedb.SubtreeModel{subtree})
 			_, err := m.GetStandalone(t.Context(), &mtcbpb.StandaloneRequest{
 				MtcLogID:        testLogID.String(),
 				MtcSerialNumber: testSerial(t, 1),
@@ -446,7 +643,7 @@ func TestGetStandaloneInvalidCheckpoint(t *testing.T) {
 func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 	t.Parallel()
 	serial := testSerial(t, 1)
-	otherLog := issuancelog.ID{CAID: testLogID.CAID, LogNumber: testLogID.LogNumber + 1}
+	otherLog := must.Do(issuancelog.Config{CAID: testLogID.CAID().String(), LogNumber: testLogID.LogNumber() + 1}.Load())
 
 	for _, tc := range []struct {
 		name              string
@@ -456,13 +653,13 @@ func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 		{"Empty log ID", &mtcbpb.StandaloneRequest{MtcSerialNumber: serial, MtcSubtreeID: 123}, "incomplete"},
 		{"Zero serial", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), MtcSubtreeID: 123}, "incomplete"},
 		{"Zero subtreeID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.String(), MtcSerialNumber: serial}, "incomplete"},
-		{"Malformed log ID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.CAID, MtcSerialNumber: serial, MtcSubtreeID: 123}, "before its log number"},
+		{"Malformed log ID", &mtcbpb.StandaloneRequest{MtcLogID: testLogID.CAID().String(), MtcSerialNumber: serial, MtcSubtreeID: 123}, "before its log number"},
 		{"Unknown CA", &mtcbpb.StandaloneRequest{MtcLogID: "32473.9.0.5", MtcSerialNumber: serial, MtcSubtreeID: 123}, "no issuer configured"},
 		{"Log number mismatch", &mtcbpb.StandaloneRequest{MtcLogID: otherLog.String(), MtcSerialNumber: serial, MtcSubtreeID: 123}, "encodes log number"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			m := testMTCB(t, bs3test.New(), nil, nil)
+			m := testMTCB(t, bs3test.New(), nil)
 			_, err := m.GetStandalone(t.Context(), tc.req)
 			if err == nil {
 				t.Fatal("GetStandalone: got nil error, want error")
@@ -476,7 +673,7 @@ func TestGetStandaloneRejectsBadRequests(t *testing.T) {
 
 func TestStandaloneReady(t *testing.T) {
 	t.Parallel()
-	mirrored := &treedb.CheckpointSubtreeModel{
+	mirrored := &treedb.SubtreeModel{
 		ID:              456,
 		MTCLogID:        testLogID.String(),
 		MTCASignature:   []byte("mtca"),
@@ -486,7 +683,7 @@ func TestStandaloneReady(t *testing.T) {
 		SubtreeEnd:      3,
 		SubtreeHash:     make([]byte, 32),
 	}
-	unmirrored := &treedb.CheckpointSubtreeModel{
+	unmirrored := &treedb.SubtreeModel{
 		ID:            457,
 		MTCLogID:      testLogID.String(),
 		MTCASignature: []byte("mtca"),
@@ -494,8 +691,8 @@ func TestStandaloneReady(t *testing.T) {
 		SubtreeEnd:    3,
 		SubtreeHash:   make([]byte, 32),
 	}
-	m := testMTCB(t, bs3test.New(), nil, []*treedb.CheckpointSubtreeModel{mirrored, unmirrored})
-	otherLog := issuancelog.ID{CAID: testLogID.CAID, LogNumber: testLogID.LogNumber + 1}
+	m := testMTCB(t, bs3test.New(), []*treedb.SubtreeModel{mirrored, unmirrored})
+	otherLog := must.Do(issuancelog.Config{CAID: testLogID.CAID().String(), LogNumber: testLogID.LogNumber() + 1}.Load())
 
 	for _, tc := range []struct {
 		name              string
