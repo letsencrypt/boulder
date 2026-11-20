@@ -90,7 +90,7 @@ func (ic *Certificate) MTCAID() *reloid.RelativeOID {
 	return ic.mtcaID
 }
 
-// Name() returns a name that is useful for logs and metrics but not guaranteed
+// Name returns a name that is useful for logs and metrics but not guaranteed
 // unique: the CommonName for regular issuers, or the MTCAID for MTC issuers.
 func (ic *Certificate) Name() string {
 	if ic.IsMTC() {
@@ -348,7 +348,7 @@ func (i *Issuer) IsActive() bool {
 	return len(i.profiles) > 0
 }
 
-// Name() returns the Name of the issuer's certificate.
+// Name returns the Name of the issuer's certificate.
 func (i *Issuer) Name() string {
 	return i.Cert.Name()
 }
