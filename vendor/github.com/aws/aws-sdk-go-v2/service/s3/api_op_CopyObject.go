@@ -594,6 +594,24 @@ type CopyObjectInput struct {
 	// [Amazon S3 condition key examples]: https://docs.aws.amazon.com/AmazonS3/latest/dev/amazon-s3-policy-keys.html
 	MetadataDirective types.MetadataDirective
 
+	// The event hold status to apply to the object copy. Set to ON to enable or OFF
+	// to disable.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHold types.ObjectLockEventHold
+
+	// The event hold duration in days to apply to the object copy. You cannot specify
+	// a duration in both days and years.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationDays *int32
+
+	// The event hold duration in years to apply to the object copy. You cannot
+	// specify a duration in both days and years.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationYears *int32
+
 	// Specifies whether you want to apply a legal hold to the object copy.
 	//
 	// This functionality is not supported for directory buckets.
@@ -983,9 +1001,6 @@ func (c *Client) addOperationCopyObjectMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
