@@ -184,13 +184,6 @@ func cosignerFiles(dir string, seed []byte) error {
 }
 
 func rootsFile(p string) error {
-	_, err := os.Stat(p)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
@@ -217,18 +210,8 @@ func rootsFile(p string) error {
 }
 
 func seedFile(p string) ([]byte, error) {
-	seed, err := os.ReadFile(p)
-	if err == nil {
-		if len(seed) != 32 {
-			return nil, fmt.Errorf("%s is %d bytes, must be exactly 32", p, len(seed))
-		}
-		return seed, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	seed = make([]byte, 32)
-	_, err = rand.Read(seed)
+	seed := make([]byte, 32)
+	_, err := rand.Read(seed)
 	if err != nil {
 		return nil, err
 	}
@@ -262,9 +245,6 @@ func main2() error {
 		return err
 	}
 
-	// generate.sh reruns this program whenever mtc-logs.txt is missing or
-	// older than the MTCA public key, so it must be written last. Written
-	// any earlier, a partial run would look complete and never be rerun.
 	return logListFile(path.Join(*outputDir, "mtc-logs.txt"), *mtcaPublicKeyFile)
 }
 
