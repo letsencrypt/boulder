@@ -46,9 +46,10 @@ type crlUpdater struct {
 	// TODO(#8983): Remove this once the freshness check is unconditional.
 	checkFreshness bool
 
-	sa sapb.StorageAuthorityClient
-	ca capb.CRLGeneratorClient
-	cs cspb.CRLStorerClient
+	sa   sapb.StorageAuthorityClient
+	ca   capb.CRLGeneratorClient
+	mtca capb.CRLGeneratorClient
+	cs   cspb.CRLStorerClient
 
 	tickHistogram    *prometheus.HistogramVec
 	updatedCounter   *prometheus.CounterVec
@@ -74,6 +75,7 @@ func NewUpdater(
 	checkFreshness bool,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
+	mtca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
 	stats prometheus.Registerer,
 	log blog.Logger,
@@ -151,6 +153,7 @@ func NewUpdater(
 		checkFreshness,
 		sa,
 		ca,
+		mtca,
 		cs,
 		tickHistogram,
 		updatedCounter,
@@ -163,7 +166,7 @@ func NewUpdater(
 
 // updateShardWithRetry calls updateShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
-func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int) error {
+func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, isMTC bool) error {
 	deadline := cu.clk.Now().Add(cu.updateTimeout)
 	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
@@ -191,7 +194,7 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 		}
 		cu.clk.Sleep(sleepTime)
 
-		err = cu.updateShard(ctx, atTime, issuerNameID, shardIdx)
+		err = cu.updateShard(ctx, atTime, issuerNameID, shardIdx, isMTC)
 		if err == nil {
 			break
 		}
@@ -217,7 +220,7 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 // the list of revoked certs in that shard from the SA, gets the CA to sign the
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
-func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int) (err error) {
+func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, isMTC bool) (err error) {
 	if shardIdx <= 0 {
 		return fmt.Errorf("invalid shard %d", shardIdx)
 	}
@@ -233,8 +236,9 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		if err != nil {
 			result = "failed"
 		}
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
-		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
+		issuer := cu.issuers[issuerNameID]
+		cu.tickHistogram.WithLabelValues(issuer.Name(), result).Observe(cu.clk.Since(start).Seconds())
+		cu.updatedCounter.WithLabelValues(issuer.Name(), result).Inc()
 	}()
 
 	cu.log.Infof("Generating CRL shard: id=[%s]", crlID)
@@ -301,8 +305,16 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		}
 	}
 
-	// Send the full list of CRL Entries to the CA.
-	caStream, err := cu.ca.GenerateCRL(ctx)
+	service := cu.ca
+	if isMTC {
+		service = cu.mtca
+		if service == nil {
+			return fmt.Errorf("tried to update CRL for MTC but no MTCA available")
+		}
+	}
+
+	// Send the full list of CRL Entries to the CA or MTCA.
+	caStream, err := service.GenerateCRL(ctx)
 	if err != nil {
 		return fmt.Errorf("connecting to CA: %w", err)
 	}
@@ -394,8 +406,9 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
 		crlID, crlLen, crlHash.Sum(nil))
-	cu.sizeBytesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(crlLen))
-	cu.sizeEntriesGauge.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, strconv.Itoa(shardIdx)).Set(float64(len(crlEntries)))
+	issuer := cu.issuers[issuerNameID]
+	cu.sizeBytesGauge.WithLabelValues(issuer.Name(), strconv.Itoa(shardIdx)).Set(float64(crlLen))
+	cu.sizeEntriesGauge.WithLabelValues(issuer.Name(), strconv.Itoa(shardIdx)).Set(float64(len(crlEntries)))
 
 	return nil
 }

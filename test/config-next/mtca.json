@@ -27,6 +27,11 @@
 						"ra.boulder"
 					]
 				},
+				"ca.CRLGenerator": {
+					"clientNames": [
+						"crl-updater.boulder"
+					]
+				},
 				"grpc.health.v1.Health": {
 					"clientNames": [
 						"health-checker.boulder"
@@ -35,6 +40,15 @@
 			}
 		},
 		"issuance": {
+			"crlProfile": {
+				"validityInterval": "216h",
+				"maxBackdate": "1h5m",
+				"lintConfig": "test/config-next/zlint.toml",
+				"ignoredLints": [
+					"e_subscriber_crl_matches_cps_profile",
+					"e_pkimetal_lint_cabf_serverauth_crl"
+				]
+			},
 			"certProfiles": {
 				"mtcshortlived": {
 					"mtc": true,

@@ -54,12 +54,11 @@ func New(
 	logger blog.Logger,
 	clk clock.Clock,
 ) (*mtca, error) {
-	certCAID, err := issuer.Cert.MTCAID()
-	if err != nil {
-		return nil, err
+	if !issuer.Cert.IsMTC() {
+		return nil, fmt.Errorf("not an MTC issuer: %s", issuer.Name())
 	}
-	if certCAID.String() != logID.CAID().String() {
-		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID(), certCAID)
+	if issuer.Cert.MTCAID().String() != logID.CAID().String() {
+		return nil, fmt.Errorf("configured CA ID %q does not match issuer certificate CA ID %q", logID.CAID(), issuer.Cert.MTCAID())
 	}
 
 	if sequencingPeriod == 0 {

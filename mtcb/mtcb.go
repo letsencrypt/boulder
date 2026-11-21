@@ -69,10 +69,10 @@ func New(
 	// different CAs.
 	issuersMap := make(map[string]mtcIssuer)
 	for _, issuer := range issuers {
-		caID, err := issuer.MTCAID()
-		if err != nil {
-			return nil, fmt.Errorf("computing MTCA ID: %w", err)
+		if !issuer.IsMTC() {
+			return nil, fmt.Errorf("not an MTC issuer: %s", issuer.Name())
 		}
+		caID := issuer.MTCAID()
 
 		pubKey, ok := issuer.PublicKey.(*mldsa.PublicKey)
 		if !ok {

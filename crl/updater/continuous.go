@@ -16,7 +16,7 @@ import (
 func (cu *crlUpdater) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 
-	shardWorker := func(issuerNameID issuance.NameID, shardIdx int) {
+	shardWorker := func(issuerNameID issuance.NameID, shardIdx int, isMTC bool) {
 		defer wg.Done()
 
 		// Wait for a random number of nanoseconds less than the updatePeriod, so
@@ -41,7 +41,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 			}
 
 			atTime := cu.clk.Now()
-			err := cu.updateShardWithRetry(ctx, atTime, issuerNameID, shardIdx)
+			err := cu.updateShardWithRetry(ctx, atTime, issuerNameID, shardIdx, isMTC)
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
@@ -63,7 +63,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 	for _, issuer := range cu.issuers {
 		for i := 1; i <= cu.numShards; i++ {
 			wg.Add(1)
-			go shardWorker(issuer.NameID(), i)
+			go shardWorker(issuer.NameID(), i, issuer.IsMTC())
 		}
 	}
 

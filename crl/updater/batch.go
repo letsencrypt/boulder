@@ -18,6 +18,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 	type workItem struct {
 		issuerNameID issuance.NameID
 		shardIdx     int
+		isMTC        bool
 	}
 
 	var anyErr bool
@@ -34,7 +35,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				err := cu.updateShardWithRetry(ctx, atTime, work.issuerNameID, work.shardIdx)
+				err := cu.updateShardWithRetry(ctx, atTime, work.issuerNameID, work.shardIdx, work.isMTC)
 				if err != nil {
 					cu.log.AuditErr("Generating CRL failed", err, map[string]any{
 						"id": crl.Id(work.issuerNameID, work.shardIdx, crl.Number(atTime)),
@@ -59,7 +60,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 				close(inputs)
 				wg.Wait()
 				return ctx.Err()
-			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i + 1}:
+			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i + 1, isMTC: issuer.IsMTC()}:
 			}
 		}
 	}
