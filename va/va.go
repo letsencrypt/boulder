@@ -118,6 +118,9 @@ type vaMetrics struct {
 	//   - operation: [dcv|caa]
 	//   - concurrence: [true|false]
 	experimentConcurrence *prometheus.CounterVec
+	// echConfigLookups counts HTTPS lookups for ECH configs, labelled by
+	// result: [found|absent|error].
+	echConfigLookups *prometheus.CounterVec
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
@@ -154,6 +157,10 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		Name: "experiment_concurrence",
 		Help: "Count of validations where the experimental VA did or did not concur with the primary VA",
 	}, []string{"operation", "concurrence"})
+	echConfigLookups := promauto.With(stats).NewCounterVec(prometheus.CounterOpts{
+		Name: "ech_config_lookups",
+		Help: "Number of HTTPS DNS lookups for ECH configs, by result",
+	}, []string{"result"})
 
 	return &vaMetrics{
 		validationLatency:                 validationLatency,
@@ -164,6 +171,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		caaCounter:                        caaCounter,
 		ipv4FallbackCounter:               ipv4FallbackCounter,
 		experimentConcurrence:             experimentConcurrence,
+		echConfigLookups:                  echConfigLookups,
 	}
 }
 

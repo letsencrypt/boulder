@@ -71,7 +71,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	switch ident.Type {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier
-		dnsAddrs, dnsResolvers, err := va.getAddrs(ctx, ident.Value)
+		dnsAddrs, _, dnsResolvers, err := va.getAddrs(ctx, ident.Value, 0)
 		if err != nil {
 			return nil, nil, validationRecord, err
 		}
