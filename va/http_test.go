@@ -3,8 +3,10 @@ package va
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	mrand "math/rand/v2"
 	"net"
 	"net/http"
@@ -24,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/probs"
@@ -187,19 +190,49 @@ func TestDialerTimeout(t *testing.T) {
 	test.AssertContains(t, prob.Detail, "Timeout during connect (likely firewall problem)")
 }
 
-func TestHTTPTransport(t *testing.T) {
-	dummyDialerFunc := func(_ context.Context, _, _ string) (net.Conn, error) {
-		return nil, nil
+// TestHTTPSDialStopsWithRequest checks that an HTTPS request's TLS dial stops
+// when the request's context ends.
+func TestHTTPSDialStopsWithRequest(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listening: %s", err)
 	}
-	transport := httpTransport(dummyDialerFunc)
-	// The HTTP Transport should have a TLS config that skips verifying
-	// certificates.
-	test.AssertEquals(t, transport.TLSClientConfig.InsecureSkipVerify, true)
-	// Keep alives should be disabled
-	test.AssertEquals(t, transport.DisableKeepAlives, true)
-	test.AssertEquals(t, transport.MaxIdleConns, 1)
-	test.AssertEquals(t, transport.IdleConnTimeout.String(), "1s")
-	test.AssertEquals(t, transport.TLSHandshakeTimeout.String(), "10s")
+	defer ln.Close()
+	hungUp := make(chan struct{})
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		// Never respond, and wait for the client to hang up.
+		_, _ = io.Copy(io.Discard, conn)
+		close(hungUp)
+	}()
+
+	va, _ := setup(nil, "", nil, nil)
+	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+	record := core.ValidationRecord{
+		URL:         "https://example.com:" + port + "/",
+		Hostname:    "example.com",
+		Port:        port,
+		AddressUsed: netip.MustParseAddr("127.0.0.1"),
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	_, _, err = va.doValidationRequest(ctx, record, nil, "")
+	if err == nil {
+		t.Fatal("doValidationRequest succeeded against a silent server")
+	}
+
+	// Without the request's context, the handshake would last singleDialTimeout.
+	select {
+	case <-hungUp:
+	case <-time.After(5 * time.Second):
+		t.Error("TLS dial outlived its request's context")
+	}
 }
 
 func TestNewValidationRecord(t *testing.T) {
@@ -272,7 +305,7 @@ func TestNewValidationRecord(t *testing.T) {
 				Host:   host,
 				Path:   "/.well-known/acme-challenge/token",
 			}
-			record, err := va.newValidationRecord(t.Context(), exampleURL)
+			record, _, err := va.newValidationRecord(t.Context(), exampleURL)
 			if tc.ExpectedError != "" {
 				if err == nil {
 					t.Fatalf("newValidationRecord(%v) succeeded, want error %q", tc.Ident, tc.ExpectedError)
@@ -442,7 +475,7 @@ func TestNewValidationRecordFromRedirect(t *testing.T) {
 			Name:         "bare IPv4, explicit valid port with leading zero",
 			Location:     "http://127.0.0.1:080",
 			ExpectedHost: "127.0.0.1",
-			ExpectedPort: "080",
+			ExpectedPort: "80",
 		},
 		{
 			Name:         "valid redirect with path and query params",
@@ -464,7 +497,7 @@ func TestNewValidationRecordFromRedirect(t *testing.T) {
 				resp.Header.Set("Location", tc.Location)
 			}
 
-			record, err := va.newValidationRecordFromRedirect(t.Context(), resp, nil)
+			record, _, err := va.newValidationRecordFromRedirect(t.Context(), resp, nil)
 			if tc.ExpectedError != "" {
 				// Errors come wrapped in a url.Error naming the rejected
 				// redirect target, or the requesting URL when no redirect
@@ -1839,6 +1872,134 @@ func TestHTTPHostHeader(t *testing.T) {
 			got = handler.host
 			if got != tc.want {
 				t.Errorf("Got host %#v, but want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewValidationRecordECH(t *testing.T) {
+	// Not parallel, because it sets feature flags.
+	ech := []byte{1, 2, 3}
+	fake := &echFakeDNS{https: map[string][]*dns.HTTPS{
+		"example.com": {httpsRR(1, ".", echParam(ech...))},
+	}}
+	va, _ := setup(nil, "", nil, fake)
+	features.Set(features.Config{ValidationUsesECH: true})
+	defer features.Reset()
+
+	for _, tc := range []struct {
+		url         string
+		want        []byte
+		wantLookups int64
+	}{
+		{url: "http://example.com/", want: nil, wantLookups: 0},
+		{url: "https://example.com/", want: ech, wantLookups: 1},
+	} {
+		fake.httpsLookups.Store(0)
+		u, err := url.Parse(tc.url)
+		if err != nil {
+			t.Fatalf("parsing %q: %s", tc.url, err)
+		}
+		_, got, err := va.newValidationRecord(t.Context(), *u)
+		if err != nil {
+			t.Fatalf("newValidationRecord(%q): %s", tc.url, err)
+		}
+		if !bytes.Equal(got, tc.want) {
+			t.Errorf("newValidationRecord(%q) returned ECH %x, want %x", tc.url, got, tc.want)
+		}
+		if fake.httpsLookups.Load() != tc.wantLookups {
+			t.Errorf("newValidationRecord(%q) made %d HTTPS lookups, want %d", tc.url, fake.httpsLookups.Load(), tc.wantLookups)
+		}
+	}
+}
+
+func TestHTTP01ECH(t *testing.T) {
+	// Not parallel, because it sets feature flags.
+	echConfigList, echKey := newTestECHKey(t)
+	keys := []tls.EncryptedClientHelloKey{echKey}
+
+	for _, tc := range []struct {
+		name       string
+		enabled    bool
+		host       string
+		serverKeys []tls.EncryptedClientHelloKey
+		wantECH    []core.ECHStatus
+	}{
+		{
+			name:       "disabled",
+			enabled:    false,
+			host:       "example.com",
+			serverKeys: keys,
+			wantECH:    []core.ECHStatus{"", ""},
+		},
+		{
+			name:       "accepted",
+			enabled:    true,
+			host:       "example.com",
+			serverKeys: keys,
+			wantECH:    []core.ECHStatus{"", core.ECHAccepted},
+		},
+		{
+			name:       "rejected",
+			enabled:    true,
+			host:       "example.com",
+			serverKeys: nil,
+			wantECH:    []core.ECHStatus{"", core.ECHRejected},
+		},
+		{
+			// Both servers listen on IPv4 only while ipFakeDNS prefers IPv6.
+			name:       "IPv4 fallback",
+			enabled:    true,
+			host:       "ipv4.and.ipv6.example.com",
+			serverKeys: keys,
+			wantECH:    []core.ECHStatus{"", "", "", core.ECHAccepted},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			httpsMux := http.NewServeMux()
+			httpsMux.HandleFunc("/ok", func(resp http.ResponseWriter, req *http.Request) {
+				fmt.Fprint(resp, "ok")
+			})
+			httpsSrv := httptest.NewUnstartedServer(httpsMux)
+			httpsSrv.TLS = &tls.Config{EncryptedClientHelloKeys: tc.serverKeys}
+			httpsSrv.StartTLS()
+			defer httpsSrv.Close()
+			httpsURL := fmt.Sprintf("https://%s:%d/ok", tc.host, getPort(httpsSrv))
+
+			httpMux := http.NewServeMux()
+			httpMux.HandleFunc("/redir-to-https", func(resp http.ResponseWriter, req *http.Request) {
+				http.Redirect(resp, req, httpsURL, http.StatusMovedPermanently)
+			})
+			httpSrv := httptest.NewServer(httpMux)
+			defer httpSrv.Close()
+
+			fake := &echFakeDNS{https: map[string][]*dns.HTTPS{
+				tc.host: {httpsRR(1, ".", echParam(echConfigList...))},
+			}}
+			va, _ := setup(httpSrv, "", nil, fake)
+			va.httpsPort = getPort(httpsSrv)
+			features.Set(features.Config{ValidationUsesECH: tc.enabled})
+			defer features.Reset()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			body, records, err := va.processHTTPValidation(ctx, identifier.NewDNS(tc.host), "/redir-to-https")
+			if err != nil {
+				t.Fatalf("processHTTPValidation: %s", err)
+			}
+			if string(body) != "ok" {
+				t.Errorf("got body %q, want %q", body, "ok")
+			}
+
+			var gotECH []core.ECHStatus
+			for _, record := range records {
+				gotECH = append(gotECH, record.ECH)
+			}
+			if !slices.Equal(gotECH, tc.wantECH) {
+				t.Errorf("got records with ECH %q, want %q", gotECH, tc.wantECH)
+			}
+			if !tc.enabled && fake.httpsLookups.Load() != 0 {
+				t.Errorf("made %d HTTPS lookups with ECH disabled, want 0", fake.httpsLookups.Load())
 			}
 		})
 	}

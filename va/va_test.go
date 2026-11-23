@@ -552,7 +552,7 @@ func TestInternalErrorLogged(t *testing.T) {
 	_, err := va.DoDCV(ctx, req)
 	test.AssertNotError(t, err, "failed validation should not be an error")
 	matchingLogs := mockLog.GetAllMatching(
-		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
+		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: dial tcp 127\.0\.0\.1:80: i/o timeout`)
 	test.AssertEquals(t, len(matchingLogs), 1)
 }
 
