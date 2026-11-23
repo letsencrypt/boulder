@@ -226,7 +226,9 @@ CREATE TABLE `revokedCertificates` (
   `revokedDate` datetime NOT NULL,
   `revokedReason` int(11) NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `issuerID_shardIdx_notAfterHour_idx` (`issuerID`,`shardIdx`,`notAfterHour`)
+  UNIQUE KEY `serial` (`serial`),
+  KEY `issuerID_shardIdx_notAfterHour_idx` (`issuerID`,`shardIdx`,`notAfterHour`),
+  KEY `issuerID_shardIdx_revokedDate_idx` (`issuerID`,`shardIdx`,`revokedDate`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `serials` (
