@@ -866,8 +866,9 @@ func validateSerialMetadata(t *testing.T, m *mtca, fs3 *bs3test.FakeS3, treeSize
 // collectResults reads n results. The entryIndexes must exactly cover [firstIndex, firstIndex+n).
 //
 // Returns a map from entry index to the result of the request that received that index.
-func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, n int) map[int64]issueResult {
+func collectResults(t *testing.T, results <-chan issueResult, n int) map[int64]issueResult {
 	t.Helper()
+	var firstIndex int64 = 1
 	got := map[int64]issueResult{}
 	for i := 0; i < n; i++ {
 		res := <-results
@@ -943,7 +944,7 @@ func TestSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sequencing with waiting entries: %s", err)
 	}
-	got := collectResults(t, results, 1, 5)
+	got := collectResults(t, results, 5)
 
 	for entryIndex, issuanceResult := range got {
 		fake := mtca.treedb.(*fakeDB)
@@ -1044,7 +1045,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 	}
 	// After storage recovered, we should pick up where we left off
 	// and sequence 2 entries starting at entryIndex 1.
-	got := collectResults(t, results, 1, 2)
+	got := collectResults(t, results, 2)
 
 	latest := verifyStores(t, mtca, fs3)
 	verifyCheckpoint(t, mtca, latest)
@@ -1106,7 +1107,7 @@ func TestSequenceAddSerialsFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sequencing after AddSerials recovered: %s", err)
 	}
-	got := collectResults(t, results, 1, 2)
+	got := collectResults(t, results, 2)
 
 	latest = verifyStores(t, mtca, fs3)
 	verifyCheckpoint(t, mtca, latest)
@@ -1248,7 +1249,7 @@ func TestSequenceWithMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sequencing with waiting entries: %s", err)
 	}
-	got := collectResults(t, results, 1, 9)
+	got := collectResults(t, results, 9)
 
 	// and everything should be sequenced, increasing the tree size, with no increase in errors
 	// so assert success metric increases, while errors not increase
