@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
 	"reflect"
@@ -3688,6 +3689,46 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 			test.Assert(t, chall.IssuerDomainNames == nil, fmt.Sprintf("expected %s to have no issuer domain names", chall.Type))
 			test.AssertEquals(t, chall.AccountURI, "")
 		}
+	}
+}
+
+func TestPrepAuthzForDisplayStripsInternalRecordFields(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
+	addr := netip.MustParseAddr("10.0.0.1")
+	authz := &core.Authorization{
+		ID:             12345,
+		Status:         core.StatusValid,
+		RegistrationID: 1,
+		Identifier:     identifier.NewDNS("example.com"),
+		Challenges: []core.Challenge{{
+			Type:   core.ChallengeTypeTLSALPN01,
+			Status: core.StatusValid,
+			Token:  "token",
+			ValidationRecord: []core.ValidationRecord{{
+				Hostname:      "example.com",
+				Port:          "443",
+				AddressUsed:   addr,
+				ResolverAddrs: []string{"resolver:53"},
+				ECH:           core.ECHAccepted,
+			}},
+		}},
+	}
+
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+
+	authzJSON, err := json.Marshal(authz)
+	if err != nil {
+		t.Fatalf("marshaling authz: %s", err)
+	}
+	for _, field := range []string{`"resolverAddrs"`, `"ech"`} {
+		if strings.Contains(string(authzJSON), field) {
+			t.Errorf("displayed authz contains %s: %s", field, authzJSON)
+		}
+	}
+	if !strings.Contains(string(authzJSON), `"hostname":"example.com"`) {
+		t.Errorf("displayed authz lost its validation record hostname: %s", authzJSON)
 	}
 }
 

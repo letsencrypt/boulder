@@ -1257,9 +1257,10 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 		challenge.Status = authz.Status
 	}
 
-	// This field is not useful for the client, only internal debugging,
+	// These fields are not useful for the client, only internal debugging.
 	for idx := range challenge.ValidationRecord {
 		challenge.ValidationRecord[idx].ResolverAddrs = nil
+		challenge.ValidationRecord[idx].ECH = ""
 	}
 
 	if challenge.Type == core.ChallengeTypeDNSPersist01 {

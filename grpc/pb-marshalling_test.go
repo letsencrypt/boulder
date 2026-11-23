@@ -118,6 +118,7 @@ func TestValidationRecord(t *testing.T) {
 		URL:               "http://exampleA.com",
 		AddressesTried:    []netip.Addr{ip},
 		ResolverAddrs:     []string{"resolver:5353"},
+		ECH:               core.ECHAccepted,
 	}
 
 	pb, err := ValidationRecordToPB(vr)

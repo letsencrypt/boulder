@@ -27,7 +27,7 @@ message Challenge {
 }
 
 message ValidationRecord {
-  // Next unused field number: 9
+  // Next unused field number: 10
   string hostname = 1;
   string port = 2;
   repeated bytes addressesResolved = 3; // netip.Addr.MarshalText()
@@ -40,6 +40,7 @@ message ValidationRecord {
   // definition for more information.
   repeated bytes addressesTried = 7; // netip.Addr.MarshalText()
   repeated string resolverAddrs = 8;
+  string ech = 9;
 }
 
 message ProblemDetails {
