@@ -12,15 +12,15 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
-func TestECPub(t *testing.T) {
+func TestECPublicKey(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 
 	// test we fail when pkcs11helpers.GetECDSAPublicKey fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, errors.New("bad!")
 	}
-	_, err := ecPub(s, 0, elliptic.P256())
-	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
+	_, err := ecKeyGen{curve: elliptic.P256()}.publicKey(s, 0)
+	test.AssertError(t, err, "publicKey didn't fail with non-matching curve")
 	test.AssertEquals(t, err.Error(), "Failed to retrieve key attributes: bad!")
 
 	// test we fail to construct key with non-matching curve
@@ -30,8 +30,8 @@ func TestECPub(t *testing.T) {
 			pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, []byte{4, 217, 225, 246, 210, 153, 134, 246, 104, 95, 79, 122, 206, 135, 241, 37, 114, 199, 87, 56, 167, 83, 56, 136, 174, 6, 145, 97, 239, 221, 49, 67, 148, 13, 126, 65, 90, 208, 195, 193, 171, 105, 40, 98, 132, 124, 30, 189, 215, 197, 178, 226, 166, 238, 240, 57, 215}),
 		}, nil
 	}
-	_, err = ecPub(s, 0, elliptic.P256())
-	test.AssertError(t, err, "ecPub didn't fail with non-matching curve")
+	_, err = ecKeyGen{curve: elliptic.P256()}.publicKey(s, 0)
+	test.AssertError(t, err, "publicKey didn't fail with non-matching curve")
 }
 
 func TestECGenerate(t *testing.T) {
@@ -43,28 +43,31 @@ func TestECGenerate(t *testing.T) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Failed to generate a ECDSA test key")
 
-	// Test ecGenerate fails with unknown curve
-	_, _, err = ecGenerate(s, "", "bad-curve")
-	test.AssertError(t, err, "ecGenerate accepted unknown curve")
+	// Test newECKeyGen fails with unknown curve
+	_, err = newECKeyGen("bad-curve")
+	test.AssertError(t, err, "newECKeyGen accepted unknown curve")
 
-	// Test ecGenerate fails when GenerateKeyPair fails
+	gen, err := newECKeyGen("P-256")
+	test.AssertNotError(t, err, "newECKeyGen failed with valid curve")
+
+	// Test generateKeyPair fails when GenerateKeyPair fails
 	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
 		return 0, 0, errors.New("bad")
 	}
-	_, _, err = ecGenerate(s, "", "P-256")
-	test.AssertError(t, err, "ecGenerate didn't fail on GenerateKeyPair error")
+	_, _, err = generateKeyPair(s, "", gen)
+	test.AssertError(t, err, "generateKeyPair didn't fail on GenerateKeyPair error")
 
-	// Test ecGenerate fails when ecPub fails
+	// Test generateKeyPair fails when publicKey fails
 	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
 		return 0, 0, nil
 	}
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, errors.New("bad")
 	}
-	_, _, err = ecGenerate(s, "", "P-256")
-	test.AssertError(t, err, "ecGenerate didn't fail on ecPub error")
+	_, _, err = generateKeyPair(s, "", gen)
+	test.AssertError(t, err, "generateKeyPair didn't fail on publicKey error")
 
-	// Test ecGenerate fails when ecVerify fails
+	// Test generateKeyPair fails when ecVerify fails
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, []byte{6, 8, 42, 134, 72, 206, 61, 3, 1, 7}),
@@ -74,10 +77,10 @@ func TestECGenerate(t *testing.T) {
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("yup")
 	}
-	_, _, err = ecGenerate(s, "", "P-256")
-	test.AssertError(t, err, "ecGenerate didn't fail on ecVerify error")
+	_, _, err = generateKeyPair(s, "", gen)
+	test.AssertError(t, err, "generateKeyPair didn't fail on ecVerify error")
 
-	// Test ecGenerate doesn't fail when everything works
+	// Test generateKeyPair doesn't fail when everything works
 	ctx.SignInitFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, pkcs11.ObjectHandle) error {
 		return nil
 	}
@@ -87,8 +90,8 @@ func TestECGenerate(t *testing.T) {
 	ctx.SignFunc = func(_ pkcs11.SessionHandle, msg []byte) ([]byte, error) {
 		return ecPKCS11Sign(priv, msg)
 	}
-	_, _, err = ecGenerate(s, "", "P-256")
-	test.AssertNotError(t, err, "ecGenerate didn't succeed when everything worked as expected")
+	_, _, err = generateKeyPair(s, "", gen)
+	test.AssertNotError(t, err, "generateKeyPair didn't succeed when everything worked as expected")
 }
 
 func ecPKCS11Sign(priv *ecdsa.PrivateKey, msg []byte) ([]byte, error) {
