@@ -89,19 +89,22 @@ function run_unit_tests() {
   # Speeds up running lots of small unittests.
   # https://go.dev/doc/articles/race_detector#Options
   export GORACE="atexit_sleep_ms=50"
-  # If unit test packages are not specified: set flags to run unit tests
-  # for all boulder packages
-  if [ -z "${UNIT_PACKAGES[@]+x}" ]
-  then
-    # The ra and sa unittests conflict because they both mutate the database.
-    # Exclude the ra from our first test run, then run on its own.
-    # https://github.com/letsencrypt/boulder/issues/1499
-    go_test $(go list ./... | grep -v 'boulder\/ra$')
-    go_test ./ra
-  else
-    go_test "${UNIT_PACKAGES[@]}"
+  # If unit test packages are not specified, run all of them.
+  local all_pkgs db_pkgs parallel_pkgs serial_pkgs
+  all_pkgs=$("${GO}" list "${UNIT_PACKAGES[@]:-./...}")
+  # These packages' tests delete every row in the shared test databases, so
+  # they conflict when run concurrently. Run all other packages in parallel,
+  # then these one at a time.
+  # https://github.com/letsencrypt/boulder/issues/1499
+  db_pkgs=$("${GO}" list ./cmd/bad-key-revoker ./cmd/cert-checker ./ra ./sa)
+  parallel_pkgs=$(grep -vxF "${db_pkgs}" <<<"${all_pkgs}" || true)
+  serial_pkgs=$(grep -xF "${db_pkgs}" <<<"${all_pkgs}" || true)
+  if [ -n "${parallel_pkgs}" ]; then
+    go_test ${parallel_pkgs}
   fi
-
+  if [ -n "${serial_pkgs}" ]; then
+    go_test -p 1 ${serial_pkgs}
+  fi
 }
 
 #

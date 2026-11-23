@@ -59,6 +59,10 @@ ipki() (
 )
 
 webpki() (
+  # The webpki keys live in SoftHSM tokens, and webpki.go always creates new
+  # ones. Empty the directory rather than removing it, because it's a bind
+  # mount source.
+  rm -rf test/certs/.softhsm-tokens/*
   # Because it invokes the ceremony tool, webpki.go expects to be invoked with
   # the root of the boulder repo as the current working directory.
   GOBIN=$PWD/bin/ go install ./cmd/ceremony
@@ -66,18 +70,36 @@ webpki() (
   go run ./test/certs/webpki.go
 )
 
-if ! [ -d test/certs/ipki ]; then
-  echo "Generating ipki/..."
-  ipki
-fi
-
-if ! [ -d test/certs/webpki ]; then
-  echo "Generating webpki/..."
-  webpki
-fi
-
-if ! [ -f test/certs/sunlight/mtc-logs.txt ] || [ test/certs/webpki/mtca-1.pubkey.pem -nt test/certs/sunlight/mtc-logs.txt ]; then
-  echo "Generating sunlight/..."
+sunlight() (
   mkdir -p test/certs/sunlight
   go run ./test/sunlight/genkeys/main.go -output-dir test/certs/sunlight -mtca-public-key test/certs/webpki/mtca-1.pubkey.pem
+)
+
+REGENERATED=false
+
+# generate deletes the directory $1 and regenerates it with the function $2 if
+# the directory is missing, was only partly generated, or is older than any of
+# the remaining arguments, which are the scripts and configs it's made from.
+generate() {
+  local dir="$1" fn="$2"
+  shift 2
+  local stamp="${dir}/.generated"
+  if [ -f "${stamp}" ] && [ -z "$(find "$@" -newer "${stamp}" -print -quit)" ]; then
+    return
+  fi
+  echo "Generating ${dir#test/certs/}/..."
+  rm -rf "${dir}"
+  "${fn}"
+  # Written last, so an interrupted run is redone.
+  touch "${stamp}"
+  REGENERATED=true
+}
+
+generate test/certs/ipki ipki test/certs/generate.sh
+generate test/certs/webpki webpki test/certs/generate.sh test/certs/webpki.go test/certs/*.yaml
+generate test/certs/sunlight sunlight test/certs/generate.sh test/sunlight/genkeys test/certs/webpki/mtca-1.pubkey.pem
+
+if [ "${REGENERATED}" = true ]; then
+  echo "Containers left running by an earlier run still use the old files." \
+    "If there are any, reset them with 'docker compose down --volumes --remove-orphans'."
 fi
