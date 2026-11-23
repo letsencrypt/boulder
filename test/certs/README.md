@@ -4,10 +4,15 @@
 
 This directory contains scripts and programs which generate PKIs (collections of
 keys and certificates) for use in our integration tests. Each PKI has its own
-subdirectory. The scripts do not regenerate a directory if it already exists, to
-allow the generated files to be re-used across many runs on a developer's
-machine. To force the scripts to regenerate a PKI, simply delete its whole
-directory.
+subdirectory, which is re-used across many runs on a developer's machine. When
+any of the scripts or configs a PKI is made from is newer than its
+subdirectory, or a previous run didn't finish generating it, the subdirectory is
+deleted and generated again from scratch. To force the scripts to regenerate a
+PKI, simply delete its whole directory.
+
+Containers left running by an earlier run keep using the old files, so after a
+PKI is regenerated, reset them with `docker compose down --volumes
+--remove-orphans`.
 
 This script is invoked automatically by the `bsetup` container in our docker
 compose system. It is invoked automatically by `t.sh` and `tn.sh`. If you want
@@ -23,9 +28,10 @@ bsetup-1 exited with code 0
 ```
 
 To add new certificates to an existing PKI, edit the script which generates that
-PKI's subdirectory. To add a whole new PKI, create a new generation script,
-execute that script from this directory's top-level `generate.sh`, and add the
-new subdirectory to this directory's `.gitignore` file.
+PKI's subdirectory. To add a whole new PKI, create a new generation script, call
+`generate` with it and its inputs from this directory's top-level
+`generate.sh`, and add the new subdirectory to this directory's `.gitignore`
+file.
 
 ### webpki
 
@@ -33,7 +39,8 @@ The "webpki" PKI emulates our publicly-trusted hierarchy. It consists of RSA and
 ECDSA roots, several intermediates and cross-signed intermediates, and CRLs.
 It also has one MTCA, which emulates our expected Merkle Cert issuer profile.
 These certificates and their keys are generated using the `ceremony` tool. The
-private keys are stored in SoftHSM in the `.softhsm-tokens` subdirectory.
+private keys are stored in SoftHSM in the `.softhsm-tokens` subdirectory, which
+is emptied whenever this PKI is regenerated.
 
 This PKI is loaded by the CA, RA, and other components. It is used as the
 issuance hierarchy for all end-entity certificates issued as part of the
