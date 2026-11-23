@@ -7,7 +7,10 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -16,6 +19,7 @@ import (
 	"github.com/eggsampler/acme/v3"
 	"github.com/miekg/dns"
 
+	"github.com/letsencrypt/boulder/core"
 	challtestsrvclient "github.com/letsencrypt/boulder/test/chall-test-srv-client"
 	"github.com/letsencrypt/boulder/test/vars"
 )
@@ -462,6 +466,150 @@ func TestCAAValidationMethods(t *testing.T) {
 			if err == nil && tc.expectError {
 				t.Errorf("issuing with challenge type %q and CAA %q succeeded, but should have failed", tc.challType, tc.caa)
 			}
+		})
+	}
+}
+
+// assertStoredECHStatus checks the ECH status of the last validation record
+// stored for domain's authorization. The challenge server doesn't report ECH
+// use and the WFE strips it, so only the primary VA's status is observable.
+func assertStoredECHStatus(t *testing.T, domain string, want core.ECHStatus) {
+	t.Helper()
+
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
+	if err != nil {
+		t.Fatalf("sql.Open: %s", err)
+	}
+	defer db.Close()
+
+	var recordsJSON []byte
+	err = db.QueryRow(`SELECT validationRecord FROM authz2 WHERE identifierValue = ?`, domain).Scan(&recordsJSON)
+	if err != nil {
+		t.Fatalf("reading validation records for %s: %s", domain, err)
+	}
+
+	var records []core.ValidationRecord
+	err = json.Unmarshal(recordsJSON, &records)
+	if err != nil {
+		t.Fatalf("unmarshaling validation records for %s: %s", domain, err)
+	}
+	if len(records) == 0 {
+		t.Fatalf("no validation records stored for %s", domain)
+	}
+
+	got := records[len(records)-1].ECH
+	if got != want {
+		t.Errorf("got stored ECH status %q for %s, want %q", got, domain, want)
+	}
+}
+
+func TestTLSALPN01ECH(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("ECH is only enabled in config-next")
+	}
+
+	echConfigList, err := testSrvClient.ECHConfigList()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name          string
+		echConfigList string
+		wantECH       core.ECHStatus
+	}{
+		{
+			name:          "accepted",
+			echConfigList: echConfigList,
+			wantECH:       core.ECHAccepted,
+		},
+		{
+			name:          "malformed config falls back",
+			echConfigList: base64.StdEncoding.EncodeToString([]byte{0x00, 0x04, 0xfe, 0x0d, 0x00, 0x00}),
+			wantECH:       core.ECHFailed,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Do a normal tls-alpn-01 validation against a domain that is serving
+			// an ECH config in an HTTPS record.
+			t.Parallel()
+
+			client, err := makeClient()
+			if err != nil {
+				t.Fatalf("creating acme client: %s", err)
+			}
+
+			domain := randomDomain(t)
+
+			order, err := client.Client.NewOrder(client.Account, []acme.Identifier{{Type: "dns", Value: domain}})
+			if err != nil {
+				t.Fatalf("creating order: %s", err)
+			}
+
+			authz, err := client.Client.FetchAuthorization(client.Account, order.Authorizations[0])
+			if err != nil {
+				t.Fatalf("fetching authorization: %s", err)
+			}
+
+			chal, ok := authz.ChallengeMap[acme.ChallengeTypeTLSALPN01]
+			if !ok {
+				t.Fatalf("no TLS-ALPN-01 challenge found in %#v", authz)
+			}
+
+			_, err = testSrvClient.AddARecord(domain, []string{"64.112.117.134"})
+			if err != nil {
+				t.Fatalf("adding A record: %s", err)
+			}
+			defer func() {
+				_, _ = testSrvClient.RemoveARecord(domain)
+			}()
+
+			_, err = testSrvClient.AddHTTPSRecord(domain, "1 . ech="+tc.echConfigList)
+			if err != nil {
+				t.Fatalf("adding HTTPS record: %s", err)
+			}
+			defer func() {
+				_, _ = testSrvClient.RemoveHTTPSRecords(domain)
+			}()
+
+			_, err = testSrvClient.AddTLSALPN01Response(domain, chal.KeyAuthorization)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				_, _ = testSrvClient.RemoveTLSALPN01Response(domain)
+			}()
+
+			_, err = client.Client.UpdateChallenge(client.Account, chal)
+			if err != nil {
+				t.Fatalf("completing TLS-ALPN-01 validation: %s", err)
+			}
+
+			// Check that every perspective made a DNS request for HTTPS records.
+			dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var httpsEvents []challtestsrvclient.DNSRequest
+			for _, event := range dnsEvents {
+				if event.Question.Qtype == dns.TypeHTTPS {
+					httpsEvents = append(httpsEvents, event)
+				}
+			}
+			assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(httpsEvents), "HTTPS lookup")
+
+			// Check that every perspective completed one handshake, and that the
+			// primary VA used ECH or not based on the test case.
+			events, err := testSrvClient.TLSALPN01RequestHistory(domain)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(events) != len(expectedUserAgents) {
+				t.Errorf("got %d TLS-ALPN-01 handshakes for %s, want %d", len(events), domain, len(expectedUserAgents))
+			}
+			assertStoredECHStatus(t, domain, tc.wantECH)
 		})
 	}
 }

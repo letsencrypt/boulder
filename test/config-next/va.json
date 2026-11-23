@@ -73,7 +73,8 @@
 		"slowRemoteTimeout": "2s",
 		"features": {
 			"DNSAccount01Enabled": true,
-			"DNSPersist01Enabled": true
+			"DNSPersist01Enabled": true,
+			"ValidationUsesECH": true
 		}
 	},
 	"syslog": {

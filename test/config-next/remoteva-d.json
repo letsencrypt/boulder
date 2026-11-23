@@ -42,7 +42,8 @@
 		"rir": "APNIC",
 		"features": {
 			"DNSAccount01Enabled": true,
-			"DNSPersist01Enabled": true
+			"DNSPersist01Enabled": true,
+			"ValidationUsesECH": true
 		}
 	},
 	"syslog": {
