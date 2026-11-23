@@ -251,6 +251,57 @@ loop:
 	}
 }
 
+// AssertMetricWithLabelsGreaterThan determines whether the value held by a
+// prometheus Collector (e.g. Gauge, Counter, CounterVec, etc) is greater than
+// the expected float64.  In order to make useful assertions about just a subset
+// of labels (e.g. for a CounterVec with fields "host" and "valid", being able
+// to assert that two "valid": "true" increments occurred, without caring which
+// host was tagged in each), takes a set of labels and ignores any metrics which
+// have different label values.
+//
+// Only works for simple metrics (Counters and Gauges), or for the *count* (not
+// value) of data points in a Histogram.
+func AssertMetricWithLabelsGreaterThan(t *testing.T, c prometheus.Collector, l prometheus.Labels, expected float64) {
+	t.Helper()
+	ch := make(chan prometheus.Metric)
+	done := make(chan struct{})
+	go func() {
+		c.Collect(ch)
+		close(done)
+	}()
+	var total float64
+	timeout := time.After(time.Second)
+loop:
+	for {
+	metric:
+		select {
+		case <-timeout:
+			t.Fatal("timed out collecting metrics")
+		case <-done:
+			break loop
+		case m := <-ch:
+			var iom io_prometheus_client.Metric
+			_ = m.Write(&iom)
+			for _, lp := range iom.Label {
+				// If any of the labels on this metric have the same name as but
+				// different value than a label in `l`, skip this metric.
+				val, ok := l[lp.GetName()]
+				if ok && lp.GetValue() != val {
+					break metric
+				}
+			}
+			// Exactly one of the Counter, Gauge, or Histogram values will be set by
+			// the .Write() operation, so add them all because the others will be 0.
+			total += iom.Counter.GetValue()
+			total += iom.Gauge.GetValue()
+			total += float64(iom.Histogram.GetSampleCount())
+		}
+	}
+	if total <= expected {
+		t.Errorf("metric with labels %+v: got %g, want greater than %g", l, total, expected)
+	}
+}
+
 // AssertHistogramBucketCount is similar to AssertMetricWithLabelsEquals, in
 // that it determines whether the number of samples within a given histogram
 // bucket matches the expectation. The bucket to check is indicated by a single
