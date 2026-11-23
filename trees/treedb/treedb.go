@@ -208,14 +208,14 @@ func (i *Impl) GetSubtree(ctx context.Context, mtcLogID string, id int64) (*Subt
 // InsertSubtree inserts a row into db, and returns the inserted row
 // ID, or an error. Because borp's `Insert` modifies its argument to set the ID
 // when a field is marked as autoincrement (`.SetKeys(true, "ID")`), this method
-// also modifies its argument (in this case, `model`).
-func (i *Impl) InsertSubtree(ctx context.Context, model *SubtreeModel) (int64, error) {
-	err := i.db.Insert(ctx, model)
+// also modifies its argument (in this case, `s`).
+func (i *Impl) InsertSubtree(ctx context.Context, s *SubtreeModel) (int64, error) {
+	err := i.db.Insert(ctx, s)
 	if err != nil {
 		return 0, fmt.Errorf("inserting into subtrees table: %s", err)
 	}
 
-	return model.ID, nil
+	return s.ID, nil
 }
 
 // GetUnsignedSubtrees returns up to limit of the log's newest subtrees that
