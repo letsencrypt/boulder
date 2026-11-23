@@ -83,7 +83,7 @@ service StorageAuthority {
   rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
-  rpc SetAuthzProcessing(AuthorizationID2) returns (google.protobuf.Empty) {}
+  rpc SetAuthzProcessing(SetAuthzProcessingRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
@@ -306,6 +306,14 @@ message Authorizations {
 
 message AuthorizationID2 {
   int64 id = 1;
+}
+
+message SetAuthzProcessingRequest {
+  // Next unused field number: 3
+  int64 id = 1;
+  // The type of the challenge being validated. Stored in the authz's
+  // "attempted" column, so that the challenge can be rendered as "processing".
+  string attempted = 2;
 }
 
 message RevokeCertificateRequest {
