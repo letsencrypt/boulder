@@ -24,6 +24,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"golang.org/x/mod/sumdb/tlog"
 
 	"github.com/letsencrypt/boulder/blog"
@@ -36,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/mtpublisher/mtpublishertest"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/privatekey"
+	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/trees"
 	"github.com/letsencrypt/boulder/trees/checkpoint"
 	"github.com/letsencrypt/boulder/trees/cosignature"
@@ -72,18 +75,22 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 
 	logger := blog.NewMock()
 
+	metrics := NewMTCAMetrics(prometheus.NewRegistry())
+
 	profile, err := issuance.NewProfile(issuance.ProfileConfig{
 		OmitCommonName:      true,
 		OmitKeyEncipherment: true,
 		OmitClientAuth:      true,
 		OmitSKID:            true,
 		MTC:                 true,
+		MaxValidityBackdate: config.Duration{Duration: time.Minute},
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		LintConfig:          "",
 		IgnoredLints: []string{
 			"w_ext_subject_key_identifier_missing_sub_cert",
 			"n_ct_sct_policy_count_unsatisfied",
 			"e_signature_algorithm_not_supported",
+			"e_subscriber_server_certificate_matches_cps_profile", // TODO(#8980): probably don't ignore
 		},
 	})
 	if err != nil {
@@ -104,6 +111,7 @@ func setup() (*mtca, *bs3test.FakeS3, error) {
 		newFakeDB(logID.String()),
 		fs3,
 		logger,
+		metrics,
 		clk)
 	if err != nil {
 		return nil, nil, err
@@ -858,8 +866,9 @@ func validateSerialMetadata(t *testing.T, m *mtca, fs3 *bs3test.FakeS3, treeSize
 // collectResults reads n results. The entryIndexes must exactly cover [firstIndex, firstIndex+n).
 //
 // Returns a map from entry index to the result of the request that received that index.
-func collectResults(t *testing.T, results <-chan issueResult, firstIndex int64, n int) map[int64]issueResult {
+func collectResults(t *testing.T, results <-chan issueResult, n int) map[int64]issueResult {
 	t.Helper()
+	var firstIndex int64 = 1
 	got := map[int64]issueResult{}
 	for i := 0; i < n; i++ {
 		res := <-results
@@ -935,7 +944,7 @@ func TestSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sequencing with waiting entries: %s", err)
 	}
-	got := collectResults(t, results, 1, 5)
+	got := collectResults(t, results, 5)
 
 	for entryIndex, issuanceResult := range got {
 		fake := mtca.treedb.(*fakeDB)
@@ -1036,7 +1045,7 @@ func TestSequenceStorageFailure(t *testing.T) {
 	}
 	// After storage recovered, we should pick up where we left off
 	// and sequence 2 entries starting at entryIndex 1.
-	got := collectResults(t, results, 1, 2)
+	got := collectResults(t, results, 2)
 
 	latest := verifyStores(t, mtca, fs3)
 	verifyCheckpoint(t, mtca, latest)
@@ -1098,7 +1107,7 @@ func TestSequenceAddSerialsFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sequencing after AddSerials recovered: %s", err)
 	}
-	got := collectResults(t, results, 1, 2)
+	got := collectResults(t, results, 2)
 
 	latest = verifyStores(t, mtca, fs3)
 	verifyCheckpoint(t, mtca, latest)
@@ -1163,4 +1172,120 @@ func verifyCheckpoint(t *testing.T, mtca *mtca, dbCheckpoint *treedb.CheckpointM
 	if checkpointCosignature.Timestamp != testTimeUnix {
 		t.Errorf("invalid timestamp: %d", checkpointCosignature.Timestamp)
 	}
+}
+
+func TestSequenceWithMetrics(t *testing.T) {
+	mtca, fs3, err := setup()
+	if err != nil {
+		t.Fatalf("setting up mtca: %s", err)
+	}
+
+	// Fill the pool with nine concurrent requests.
+	mtca.pool.maxSize = 9
+	results := issueMany(t, mtca, 9)
+
+	// With the pool full, a tenth request should fail and increase the pool full metric
+	req := makeIssueRequest(t)
+	_, err = mtca.Issue(t.Context(), req)
+	if err == nil {
+		t.Fatal("Issue with a full pool: got nil error, want error")
+	}
+
+	// imitate start time of a Loop() tick with a relaxed sequencing period
+	// since we're not actually running the loop
+	since := mtca.clk.Now()
+	mtca.sequencingPeriod = 30 * time.Second
+
+	// sequence the unready checkpoint
+	err = mtca.sequenceWithMetrics(t.Context(), since)
+	if err == nil {
+		t.Fatalf("sequencing with an unready checkpoint: got nil error, want error")
+	}
+	// An unready checkpoint is not a timeout.
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceDuration, prometheus.Labels{"result": "timeout"}, 0)
+
+	// now advance the fake clock past 10 sequencingPeriod
+	mtca.clk.(clock.FakeClock).Add(10*mtca.sequencingPeriod + time.Second)
+
+	// The checkpoint has no mirror signature yet, so sequencing must fail.
+	err = mtca.sequenceWithMetrics(t.Context(), since)
+	if err == nil {
+		t.Fatalf("sequencing with an unready checkpoint: got nil error, want error")
+	}
+
+	// without a cosignature, nothing should be ready, so most of the following
+	// assertions will be zero, and we should have incurred a timeout.
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "new_checkpoint", "result": "success"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "new_checkpoint", "result": "failed"}, 0)
+	// we would have validated the latest checkpoint
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "latest_checkpoint", "result": "success"}, 2)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "latest_checkpoint", "result": "failed"}, 0)
+	// we tried to add to a full pool above
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.issueFailures, prometheus.Labels{"reason": "pool_full"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.lastSeqSuccessTimestamp, prometheus.Labels{}, 0)
+	// we should have observed pending entries
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.pendingEntryPoolSize, prometheus.Labels{}, 9)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.pendingEntryPoolWait, prometheus.Labels{}, 0)
+	test.AssertHistogramBucketCount(t, mtca.metrics.sequenceBatchSize, prometheus.Labels{}, 9, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceDuration, prometheus.Labels{"result": "success"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceDuration, prometheus.Labels{"result": "failed"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceDuration, prometheus.Labels{"result": "timeout"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceTxDuration, prometheus.Labels{}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.signatureDurations, prometheus.Labels{"result": "failed", "type": "checkpoint"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.signatureDurations, prometheus.Labels{"result": "success", "type": "subtree"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.tileStoreDurations, prometheus.Labels{"operation": "stage_candidate", "result": "success"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.tileStoreDurations, prometheus.Labels{"operation": "publish_frontier", "result": "success"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.tileStoreDurations, prometheus.Labels{"operation": "serve_checkpoint", "result": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.treeSize, prometheus.Labels{}, 0)
+
+	// reset the clock before cosign to pass verifyCheckpoint
+	mtca.clk.(clock.FakeClock).Set(time.Unix(testTimeUnix, 0))
+
+	mirrorCosign(t, mtca)
+
+	// Now sequencing should succeed, assigning indexes 1 through 9 (the genesis
+	// null entry occupies index 0).
+	err = mtca.sequenceWithMetrics(t.Context(), since)
+	if err != nil {
+		t.Fatalf("sequencing with waiting entries: %s", err)
+	}
+	got := collectResults(t, results, 9)
+
+	// and everything should be sequenced, increasing the tree size, with no increase in errors
+	// so assert success metric increases, while errors not increase
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "new_checkpoint", "result": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "new_checkpoint", "result": "failed"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "latest_checkpoint", "result": "success"}, 3)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.checkpointValidations, prometheus.Labels{"stage": "latest_checkpoint", "result": "failed"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.issueFailures, prometheus.Labels{"reason": "pool_full"}, 1)
+	// successful sequencing should advance the timestamp
+	test.AssertMetricWithLabelsGreaterThan(t, mtca.metrics.lastSeqSuccessTimestamp, prometheus.Labels{}, 0)
+	// pending entries should be back to zero
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.pendingEntryPoolSize, prometheus.Labels{}, 0)
+	// asserting bucket durations is fraught, but we should have increased total observations here
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.pendingEntryPoolWait, prometheus.Labels{}, 9)
+	// sequencing 9 entries should give us a batch size observation in the less-than-or-equal-to 10 bucket
+	test.AssertHistogramBucketCount(t, mtca.metrics.sequenceBatchSize, prometheus.Labels{}, 9, 1)
+	// total observations should have increased for success labels, or stayed zero for error labels for these histograms
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceDuration, prometheus.Labels{"result": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceDuration, prometheus.Labels{"result": "failed"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceDuration, prometheus.Labels{"result": "timeout"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.sequenceTxDuration, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.signatureDurations, prometheus.Labels{"result": "failed"}, 0)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.signatureDurations, prometheus.Labels{"result": "success"}, 3)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.signatureDurations, prometheus.Labels{"result": "success", "type": "checkpoint"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.signatureDurations, prometheus.Labels{"result": "success", "type": "subtree"}, 2)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.tileStoreDurations, prometheus.Labels{"operation": "stage_candidate", "result": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.tileStoreDurations, prometheus.Labels{"operation": "publish_frontier", "result": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.tileStoreDurations, prometheus.Labels{"operation": "serve_checkpoint", "result": "success"}, 2)
+	test.AssertMetricWithLabelsEquals(t, mtca.metrics.treeSize, prometheus.Labels{}, 10)
+
+	// The in-memory frontier, DB checkpoint, and stored tiles must agree, and
+	// the resulting checkpoint signature must be valid.
+	latest := verifyStores(t, mtca, fs3)
+	verifyCheckpoint(t, mtca, latest)
+
+	// Each client's returned index must point at its own entry in the published
+	// entries tile.
+	validateStoredEntries(t, fs3, mtca.logID.TilePrefix(), latest.TreeSize, got)
 }
