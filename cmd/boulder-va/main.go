@@ -102,6 +102,9 @@ func main() {
 	cmd.FailOnError(err, "Setting and validating default config values")
 
 	features.Set(c.VA.Features)
+	if features.Get().DNSPersist01Enabled && c.VA.AccountHashPrefix == "" {
+		cmd.Fail("AccountHashPrefix must be provided when feature flag DNSPersist01Enabled is enabled")
+	}
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.VA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	cmd.LogStartup(logger)
@@ -188,6 +191,7 @@ func main() {
 			clk,
 			logger,
 			c.VA.AccountURIPrefixes,
+			c.VA.AccountHashPrefix,
 			"Experimental",
 			"",
 			iana.IsReservedAddr,
@@ -211,6 +215,7 @@ func main() {
 		clk,
 		logger,
 		c.VA.AccountURIPrefixes,
+		c.VA.AccountHashPrefix,
 		va.PrimaryPerspective,
 		"",
 		iana.IsReservedAddr,

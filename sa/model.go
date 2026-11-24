@@ -214,6 +214,15 @@ type regModel struct {
 	Status    string    `db:"status"`
 }
 
+// priorRegistrationKeyModel represents one row in the priorRegistrationKeys
+// table, written each time an account's key is replaced.
+type priorRegistrationKeyModel struct {
+	ID             int64     `db:"id"`
+	RegistrationID int64     `db:"registrationID"`
+	JWKThumbprint  []byte    `db:"jwkThumbprint"`
+	ReplacedAt     time.Time `db:"replacedAt"`
+}
+
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
 	// for the sake of the `Key` field, we do need to do the conversion in order

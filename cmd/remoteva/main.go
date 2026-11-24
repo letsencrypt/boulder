@@ -82,6 +82,9 @@ func main() {
 	err = c.RVA.SetDefaultsAndValidate(grpcAddr, debugAddr)
 	cmd.FailOnError(err, "Setting and validating default config values")
 	features.Set(c.RVA.Features)
+	if features.Get().DNSPersist01Enabled && c.RVA.AccountHashPrefix == "" {
+		cmd.Fail("AccountHashPrefix must be provided when feature flag DNSPersist01Enabled is enabled")
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RVA.DebugAddr)
 	defer oTelShutdown(context.Background())
@@ -125,6 +128,7 @@ func main() {
 		clk,
 		logger,
 		c.RVA.AccountURIPrefixes,
+		c.RVA.AccountHashPrefix,
 		c.RVA.Perspective,
 		c.RVA.RIR,
 		iana.IsReservedAddr,

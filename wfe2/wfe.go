@@ -125,9 +125,9 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// DirectoryCAAIdentity is used for the /directory response's "meta"
-	// element's "caaIdentities" field and the "issuer-domain-names" field of
-	// dns-persist-01 challenges. It MUST match the VA's issuerDomain field
-	// value.
+	// element's "caaIdentities" and "issuerDomainNames" fields and the
+	// "issuerDomainNames" field of dns-persist-01 challenges. It MUST match the
+	// VA's issuerDomain field value.
 	DirectoryCAAIdentity string
 
 	// DirectoryWebsite is used for the /directory response's "meta" element's
@@ -139,10 +139,10 @@ type WebFrontEndImpl struct {
 	// `LegacyKeyIDPrefix` for more information.
 	LegacyKeyIDPrefix string
 
-	// AccountURIPrefix is required to set the "accounturi" field of
-	// dns-persist-01 challenges. MUST match the first entry of the VA's
-	// AccountURIPrefixes field.
-	AccountURIPrefix string
+	// AccountHashPrefix is used for the /directory response's "meta" element's
+	// "accountHashPrefix" field. It MUST match the VA's accountHashPrefix field
+	// value.
+	AccountHashPrefix string
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -577,6 +577,12 @@ func (wfe *WebFrontEndImpl) Directory(
 	}
 	if len(wfe.certProfiles) != 0 {
 		metaMap["profiles"] = wfe.certProfiles
+	}
+	// draft-ietf-acme-dns-persist-03 sections 3.2 and 4.1 require a CA which
+	// offers dns-persist-01 to advertise these.
+	if features.Get().DNSPersist01Enabled && wfe.AccountHashPrefix != "" && wfe.DirectoryCAAIdentity != "" {
+		metaMap["accountHashPrefix"] = wfe.AccountHashPrefix
+		metaMap["issuerDomainNames"] = []string{wfe.DirectoryCAAIdentity}
 	}
 	// The "meta" directory entry may also include a string with a website URL
 	if wfe.DirectoryWebsite != "" {
@@ -1263,16 +1269,10 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	}
 
 	if challenge.Type == core.ChallengeTypeDNSPersist01 {
-		// draft-ietf-acme-dns-persist-01 section 3.1 states, "Servers MUST NOT
-		// send more than 10 issuer domain names." Be aware of this if we ever
+		// draft-ietf-acme-dns-persist-03 section 3.1 states, "Servers MUST NOT
+		// send more than 10 Issuer Domain Names." Be aware of this if we ever
 		// support configuration of multiple CAA identities.
 		challenge.IssuerDomainNames = []string{wfe.DirectoryCAAIdentity}
-
-		// TODO(#8724): Once the configuration of AccountURIPrefix is required
-		// to be non-empty, this conditional can be removed.
-		if wfe.AccountURIPrefix != "" {
-			challenge.AccountURI = fmt.Sprintf("%s%d", wfe.AccountURIPrefix, authz.RegistrationID)
-		}
 
 		// dns-persist-01 does not use a token, but authorizations store a
 		// single token which gets unconditionally assigned to all challenge
@@ -1282,7 +1282,6 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 		// Belt and suspenders: we don't expect these to ever be populated
 		// outside of this function, but just in case.
 		challenge.IssuerDomainNames = nil
-		challenge.AccountURI = ""
 	}
 }
 
@@ -1367,6 +1366,48 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
+	var ancestorDomain string
+	if authz.Challenges[challengeIndex].Type == core.ChallengeTypeDNSPersist01 {
+		// draft-ietf-acme-dns-persist-03 sections 4 and 6.2 require that we
+		// reject validation domain names longer than DNS allows, and any
+		// attempt to change the ancestorDomain of a finalized challenge.
+		var challengeResponse struct {
+			AncestorDomain json.RawMessage `json:"ancestorDomain"`
+		}
+		err = json.Unmarshal(body, &challengeResponse)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
+			return
+		}
+		identDomain := strings.TrimPrefix(authz.Identifier.Value, "*.")
+		validationDomain := identDomain
+		if len(challengeResponse.AncestorDomain) > 0 {
+			err = json.Unmarshal(challengeResponse.AncestorDomain, &ancestorDomain)
+			if err != nil || !strings.HasSuffix(identDomain, "."+ancestorDomain) {
+				wfe.sendError(response, logEvent, probs.Malformed("ancestorDomain must be a string naming a proper ancestor of the identifier"), err)
+				return
+			}
+			validationDomain = ancestorDomain
+		}
+		if len(core.DNSPersistPrefix)+1+len(validationDomain) > 253 {
+			wfe.sendError(response, logEvent, probs.Malformed("Validation domain name for %q exceeds 253 octets", validationDomain), nil)
+			return
+		}
+		if authz.Status == core.StatusValid {
+			// The validation record of a valid dns-persist-01 challenge holds
+			// the domain at which its TXT record was found.
+			validatedDomain := identDomain
+			records := authz.Challenges[challengeIndex].ValidationRecord
+			if len(records) > 0 {
+				validatedDomain = records[0].Hostname
+			}
+			if validationDomain != validatedDomain {
+				wfe.sendError(response, logEvent, probs.Malformed("ancestorDomain of a finalized challenge cannot be changed"), nil)
+				return
+			}
+		}
+	}
+
 	// We can expect some clients to try and update a challenge for an authorization
 	// that is already valid. In this case we don't need to process the challenge
 	// update. It wouldn't be helpful, the overall authorization is already good!
@@ -1396,6 +1437,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		authzPB, err = wfe.ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
+			AncestorDomain: ancestorDomain,
 		})
 		if err != nil || core.IsAnyNilOrZero(authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)

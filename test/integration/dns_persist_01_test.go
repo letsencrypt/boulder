@@ -3,14 +3,116 @@
 package integration
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/eggsampler/acme/v3"
+	"github.com/go-jose/go-jose/v4"
 )
+
+// dnsPersist01RecordValues returns an issuer-domain-name and a hashed
+// accounturi for the client's account, computed from the directory's "meta"
+// object.
+func dnsPersist01RecordValues(t *testing.T, c *client, domainName string) (string, string) {
+	t.Helper()
+
+	// TODO: Use the ACME client's directory once eggsampler/acme supports
+	// draft-ietf-acme-dns-persist-03 and exposes these "meta" fields.
+	resp, err := http.Get("http://boulder.service.consul:4001/directory")
+	if err != nil {
+		t.Fatalf("fetching directory: %s", err)
+	}
+	defer resp.Body.Close()
+
+	var directory struct {
+		Meta struct {
+			AccountHashPrefix string   `json:"accountHashPrefix"`
+			IssuerDomainNames []string `json:"issuerDomainNames"`
+		} `json:"meta"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&directory)
+	if err != nil {
+		t.Fatalf("parsing directory: %s", err)
+	}
+	if directory.Meta.AccountHashPrefix == "" {
+		t.Fatal("directory meta is missing accountHashPrefix")
+	}
+	if len(directory.Meta.IssuerDomainNames) == 0 {
+		t.Fatal("directory meta is missing issuerDomainNames")
+	}
+
+	preimage := append([]byte{byte(len(domainName))}, domainName+c.Account.Thumbprint+c.Account.URL...)
+	digest := sha256.Sum256(preimage)
+	accountURI := directory.Meta.AccountHashPrefix + "sha-256/" + base64.RawURLEncoding.EncodeToString(digest[:])
+	return directory.Meta.IssuerDomainNames[0], accountURI
+}
+
+// staticNonce is a jose.NonceSource which returns a single nonce.
+type staticNonce string
+
+func (n staticNonce) Nonce() (string, error) {
+	return string(n), nil
+}
+
+// respondWithAncestorDomain responds to a dns-persist-01 challenge with the
+// given ancestorDomain, and returns the response's status code and body.
+//
+// TODO: Use the ACME client once eggsampler/acme supports
+// draft-ietf-acme-dns-persist-03 and can send ancestorDomain.
+func respondWithAncestorDomain(t *testing.T, c *client, challengeURL string, ancestorDomain string) (int, []byte) {
+	t.Helper()
+
+	nonceResp, err := http.Head(c.Client.Directory().NewNonce)
+	if err != nil {
+		t.Fatalf("fetching nonce: %s", err)
+	}
+	nonceResp.Body.Close()
+
+	signer, err := jose.NewSigner(
+		jose.SigningKey{
+			Algorithm: jose.ES256,
+			Key:       jose.JSONWebKey{Key: c.Account.PrivateKey, KeyID: c.Account.URL},
+		},
+		&jose.SignerOptions{
+			NonceSource:  staticNonce(nonceResp.Header.Get("Replay-Nonce")),
+			ExtraHeaders: map[jose.HeaderKey]any{"url": challengeURL},
+		},
+	)
+	if err != nil {
+		t.Fatalf("creating signer: %s", err)
+	}
+	payload, err := json.Marshal(map[string]string{"ancestorDomain": ancestorDomain})
+	if err != nil {
+		t.Fatalf("marshaling challenge response: %s", err)
+	}
+	jws, err := signer.Sign(payload)
+	if err != nil {
+		t.Fatalf("signing challenge response: %s", err)
+	}
+
+	resp, err := http.Post(challengeURL, "application/jose+json", strings.NewReader(jws.FullSerialize()))
+	if err != nil {
+		t.Fatalf("responding to challenge: %s", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading challenge response: %s", err)
+	}
+	return resp.StatusCode, body
+}
 
 func TestDNSPersist01HappyPath(t *testing.T) {
 	t.Parallel()
@@ -43,11 +145,28 @@ func TestDNSPersist01HappyPath(t *testing.T) {
 		t.Fatal("dns-persist-01 challenge not offered by server")
 	}
 
-	if len(chal.IssuerDomainNames) == 0 {
-		t.Fatal("dns-persist-01 challenge missing issuer-domain-names")
+	issuer, accountURI := dnsPersist01RecordValues(t, c, domain)
+
+	// TODO: Check chal.IssuerDomainNames instead once eggsampler/acme supports
+	// draft-ietf-acme-dns-persist-03. Until then it parses the -01 field name,
+	// so fetch the authorization again to check it.
+	var rawAuth struct {
+		Challenges []struct {
+			Type              string   `json:"type"`
+			IssuerDomainNames []string `json:"issuerDomainNames"`
+		} `json:"challenges"`
+	}
+	err = c.Client.Fetch(c.Account, authzURL, &rawAuth)
+	if err != nil {
+		t.Fatalf("fetching raw authorization: %s", err)
+	}
+	for _, rawChal := range rawAuth.Challenges {
+		if rawChal.Type == acme.ChallengeTypeDNSPersist01 && !slices.Contains(rawChal.IssuerDomainNames, issuer) {
+			t.Fatalf("dns-persist-01 challenge issuerDomainNames %q does not contain %q", rawChal.IssuerDomainNames, issuer)
+		}
 	}
 
-	record := fmt.Sprintf("%s;accounturi=%s", chal.IssuerDomainNames[0], c.Account.URL)
+	record := fmt.Sprintf("%s;accounturi=%s", issuer, accountURI)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -105,8 +224,12 @@ func TestDNSPersist01WrongAccountURI(t *testing.T) {
 		t.Fatal("dns-persist-01 challenge not offered by server")
 	}
 
-	issuer := chal.IssuerDomainNames[0]
-	record := fmt.Sprintf("%s;accounturi=https://wrong.example/acct/999", issuer)
+	otherClient, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating other client: %s", err)
+	}
+	issuer, otherAccountURI := dnsPersist01RecordValues(t, otherClient, domain)
+	record := fmt.Sprintf("%s;accounturi=%s", issuer, otherAccountURI)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -214,8 +337,8 @@ func TestDNSPersist01WildcardDomain(t *testing.T) {
 		t.Fatal("dns-persist-01 challenge not offered by server")
 	}
 
-	issuer := chal.IssuerDomainNames[0]
-	record := fmt.Sprintf("%s;accounturi=%s;policy=wildcard", issuer, c.Account.URL)
+	issuer, accountURI := dnsPersist01RecordValues(t, c, domain)
+	record := fmt.Sprintf("%s;accounturi=%s;policy=wildcard", issuer, accountURI)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -276,8 +399,8 @@ func TestDNSPersist01WildcardMissingPolicy(t *testing.T) {
 	}
 
 	// Omit policy=wildcard, this should fail for a wildcard order.
-	issuer := chal.IssuerDomainNames[0]
-	record := fmt.Sprintf("%s;accounturi=%s", issuer, c.Account.URL)
+	issuer, accountURI := dnsPersist01RecordValues(t, c, domain)
+	record := fmt.Sprintf("%s;accounturi=%s", issuer, accountURI)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -337,7 +460,7 @@ func TestDNSPersist01MissingAccountURI(t *testing.T) {
 	}
 
 	// Record with matching issuer but no accounturi parameter.
-	issuer := chal.IssuerDomainNames[0]
+	issuer, _ := dnsPersist01RecordValues(t, c, domain)
 	record := fmt.Sprintf("%s;policy=wildcard", issuer)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
@@ -399,7 +522,8 @@ func TestDNSPersist01WrongIssuer(t *testing.T) {
 	_ = chal
 
 	// Record with a non-matching issuer-domain-name.
-	record := fmt.Sprintf("wrong-issuer.example;accounturi=%s", c.Account.URL)
+	_, accountURI := dnsPersist01RecordValues(t, c, domain)
+	record := fmt.Sprintf("wrong-issuer.example;accounturi=%s", accountURI)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -427,7 +551,7 @@ func TestDNSPersist01WrongIssuer(t *testing.T) {
 	}
 }
 
-func TestDNSPersist01NoAuthorizationReuse(t *testing.T) {
+func TestDNSPersist01AuthorizationReuse(t *testing.T) {
 	t.Parallel()
 
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
@@ -460,8 +584,8 @@ func TestDNSPersist01NoAuthorizationReuse(t *testing.T) {
 		t.Fatal("dns-persist-01 challenge not offered by server")
 	}
 
-	issuer := chal.IssuerDomainNames[0]
-	record := fmt.Sprintf("%s;accounturi=%s", issuer, c.Account.URL)
+	issuer, accountURI := dnsPersist01RecordValues(t, c, domain)
+	record := fmt.Sprintf("%s;accounturi=%s", issuer, accountURI)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -497,15 +621,16 @@ func TestDNSPersist01NoAuthorizationReuse(t *testing.T) {
 		t.Fatalf("finalizing first order: %s", err)
 	}
 
-	// Second order: Boulder should NOT reuse the existing dns-persist-01 authorization.
+	// Second order: Boulder should reuse the existing dns-persist-01
+	// authorization.
 	order2, err := c.Client.NewOrder(c.Account, idents)
 	if err != nil {
 		t.Fatalf("creating second order: %s", err)
 	}
 
 	authzURL2 := order2.Authorizations[0]
-	if authzURL1 == authzURL2 {
-		t.Errorf("expected different authorization URLs (no reuse), got same: %s", authzURL1)
+	if authzURL1 != authzURL2 {
+		t.Errorf("expected the same authorization URL (reuse), got %s and %s", authzURL1, authzURL2)
 	}
 
 	auth2, err := c.Client.FetchAuthorization(c.Account, authzURL2)
@@ -513,8 +638,8 @@ func TestDNSPersist01NoAuthorizationReuse(t *testing.T) {
 		t.Fatalf("fetching second authorization: %s", err)
 	}
 
-	if auth2.Status != "pending" {
-		t.Errorf("expected second authorization status to be 'pending', got '%s'", auth2.Status)
+	if auth2.Status != "valid" {
+		t.Errorf("expected second authorization status to be 'valid', got '%s'", auth2.Status)
 	}
 }
 
@@ -551,8 +676,8 @@ func TestDNSPersist01PersistUntilFuture(t *testing.T) {
 
 	// Set persistuntil to 1 hour in the future; validation should succeed.
 	futureTS := time.Now().Add(time.Hour).Unix()
-	issuer := chal.IssuerDomainNames[0]
-	record := fmt.Sprintf("%s;accounturi=%s;persistuntil=%d", issuer, c.Account.URL, futureTS)
+	issuer, accountURI := dnsPersist01RecordValues(t, c, domain)
+	record := fmt.Sprintf("%s;accounturi=%s;persistuntil=%d", issuer, accountURI, futureTS)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -576,6 +701,11 @@ func TestDNSPersist01PersistUntilFuture(t *testing.T) {
 
 	if auth.Status != "valid" {
 		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
+	}
+
+	if auth.Expires.After(time.Unix(futureTS, 0)) {
+		t.Fatalf("expected authorization to expire no later than persistUntil %s, got %s",
+			time.Unix(futureTS, 0).UTC(), auth.Expires.UTC())
 	}
 }
 
@@ -612,8 +742,8 @@ func TestDNSPersist01PersistUntilPast(t *testing.T) {
 
 	// Set persistuntil to 1 hour in the past; validation should fail.
 	pastTS := time.Now().Add(-time.Hour).Unix()
-	issuer := chal.IssuerDomainNames[0]
-	record := fmt.Sprintf("%s;accounturi=%s;persistuntil=%d", issuer, c.Account.URL, pastTS)
+	issuer, accountURI := dnsPersist01RecordValues(t, c, domain)
+	record := fmt.Sprintf("%s;accounturi=%s;persistuntil=%d", issuer, accountURI, pastTS)
 	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
 	if err != nil {
 		t.Fatalf("adding DNS response: %s", err)
@@ -633,10 +763,156 @@ func TestDNSPersist01PersistUntilPast(t *testing.T) {
 	if !ok {
 		t.Fatalf("updating challenge: expected acme.Problem error, got %T", err)
 	}
-	if prob.Type != "urn:ietf:params:acme:error:unauthorized" {
-		t.Fatalf("updating challenge: expected unauthorized error, got %s", prob.Type)
+	if prob.Type != "urn:ietf:params:acme:error:persistExpired" {
+		t.Fatalf("updating challenge: expected persistExpired error, got %s", prob.Type)
 	}
-	if !strings.Contains(prob.Detail, "is after persistUntil") {
+	if !strings.Contains(prob.Detail, "expired: persistUntil") {
 		t.Fatalf("updating challenge: expected persistUntil error, got %s", prob.Detail)
+	}
+}
+
+func TestDNSPersist01PriorAccountKey(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-persist-01 to be enabled")
+	}
+
+	domain := random_domain()
+	c, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating client: %s", err)
+	}
+
+	issuer, accountURI := dnsPersist01RecordValues(t, c, domain)
+	record := fmt.Sprintf("%s;accounturi=%s", issuer, accountURI)
+	_, err = testSrvClient.AddDNSPersist01Response(domain, record)
+	if err != nil {
+		t.Fatalf("adding DNS response: %s", err)
+	}
+	t.Cleanup(func() {
+		_, err := testSrvClient.RemoveDNSPersist01Response(domain)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// Roll the account key over twice, so that the record's key is not the most
+	// recently replaced one.
+	for range 2 {
+		newKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatalf("creating new account key: %s", err)
+		}
+		c.Account, err = c.Client.AccountKeyChange(c.Account, newKey)
+		if err != nil {
+			t.Fatalf("rolling over account key: %s", err)
+		}
+	}
+
+	idents := []acme.Identifier{{Type: "dns", Value: domain}}
+
+	order, err := c.Client.NewOrder(c.Account, idents)
+	if err != nil {
+		t.Fatalf("creating new order: %s", err)
+	}
+
+	authzURL := order.Authorizations[0]
+	auth, err := c.Client.FetchAuthorization(c.Account, authzURL)
+	if err != nil {
+		t.Fatalf("fetching authorization: %s", err)
+	}
+
+	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSPersist01]
+	if !ok {
+		t.Fatal("dns-persist-01 challenge not offered by server")
+	}
+
+	chal, err = c.Client.UpdateChallenge(c.Account, chal)
+	if err != nil {
+		t.Fatalf("updating challenge: %s", err)
+	}
+
+	auth, err = c.Client.FetchAuthorization(c.Account, authzURL)
+	if err != nil {
+		t.Fatalf("fetching authorization after challenge update: %s", err)
+	}
+
+	if auth.Status != "valid" {
+		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
+	}
+}
+
+func TestDNSPersist01AncestorDomain(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
+		t.Skip("Test requires dns-persist-01 to be enabled")
+	}
+
+	ancestorDomain := random_domain()
+	domain := "www." + ancestorDomain
+	c, err := makeClient()
+	if err != nil {
+		t.Fatalf("creating client: %s", err)
+	}
+
+	issuer, accountURI := dnsPersist01RecordValues(t, c, ancestorDomain)
+	record := fmt.Sprintf("%s;accounturi=%s;policy=wildcard", issuer, accountURI)
+	_, err = testSrvClient.AddDNSPersist01Response(ancestorDomain, record)
+	if err != nil {
+		t.Fatalf("adding DNS response: %s", err)
+	}
+	t.Cleanup(func() {
+		_, err := testSrvClient.RemoveDNSPersist01Response(ancestorDomain)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	idents := []acme.Identifier{{Type: "dns", Value: domain}}
+
+	order, err := c.Client.NewOrder(c.Account, idents)
+	if err != nil {
+		t.Fatalf("creating new order: %s", err)
+	}
+
+	authzURL := order.Authorizations[0]
+	auth, err := c.Client.FetchAuthorization(c.Account, authzURL)
+	if err != nil {
+		t.Fatalf("fetching authorization: %s", err)
+	}
+
+	chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNSPersist01]
+	if !ok {
+		t.Fatal("dns-persist-01 challenge not offered by server")
+	}
+
+	// A public suffix is rejected without changing the challenge's state.
+	status, body := respondWithAncestorDomain(t, c, chal.URL, "com")
+	if status != http.StatusForbidden || !strings.Contains(string(body), "urn:ietf:params:acme:error:unauthorized") {
+		t.Fatalf("responding with a public suffix: expected unauthorized error, got %d: %s", status, body)
+	}
+
+	status, body = respondWithAncestorDomain(t, c, chal.URL, ancestorDomain)
+	if status != http.StatusOK {
+		t.Fatalf("responding with ancestorDomain: got %d: %s", status, body)
+	}
+
+	for range 40 {
+		auth, err = c.Client.FetchAuthorization(c.Account, authzURL)
+		if err != nil {
+			t.Fatalf("fetching authorization after challenge response: %s", err)
+		}
+		if auth.Status != "pending" {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if auth.Status != "valid" {
+		t.Fatalf("expected authorization status to be 'valid', got '%s'", auth.Status)
+	}
+	if auth.Identifier.Value != domain {
+		t.Fatalf("expected authorization identifier to be %q, got %q", domain, auth.Identifier.Value)
 	}
 }
