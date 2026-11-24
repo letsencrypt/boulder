@@ -136,7 +136,7 @@ type mtca struct {
 type checkpointDB interface {
 	LatestCheckpoint(ctx context.Context, mtcLogID string) (*treedb.CheckpointModel, error)
 	InsertCheckpoint(ctx context.Context, c *treedb.CheckpointModel) error
-	InsertSubtree(ctx context.Context, model *treedb.SubtreeModel) (int64, error)
+	InsertSubtree(ctx context.Context, s *treedb.SubtreeModel) (int64, error)
 	WithTransaction(ctx context.Context, f treedb.TxFunc) (any, error)
 }
 
