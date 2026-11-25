@@ -1,3 +1,81 @@
+# Release (2026-10-21)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.6
+  * **Bug Fix**: Enforce event stream header key value length limit instead of truncating
+  * **Bug Fix**: Retain the value in a list with the zero value when encountering a null entry on a dense list. This matches how legacy code-generated JSON deserializers behaved.
+
+# Release (2026-10-09)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.5
+  * **Bug Fix**: Retain the key with the zero value when encountering a null-value key in a dense map. This matches how legacy code-generated JSON deserializers behaved.
+
+# Release (2026-10-07)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.4
+  * **Bug Fix**: Revert #698 that fixed JoinPath with trailing slash. This has a side effect on certain S3 API paths in the downstream SDK that need more consideration.
+
+# Release (2026-10-06)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.3
+  * **Bug Fix**: Accept either casing of `message`/`Message` on modeled JSON error structures in schema-based deserialization, and emit the `smithy.api#error` trait in generated schemas
+  * **Bug Fix**: Include the underlying error when logging failures to discard or close an HTTP response body
+
+# Release (2026-09-18)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.2
+  * **Bug Fix**: Avoid allocating a slice in ValidateEndpointHost by indexing into the hostname instead of using strings.Split.
+  * **Bug Fix**: Fix event stream decode panic on unknown header value type.
+  * **Bug Fix**: Fix schema-serde CBOR decode panic on malformed string/blob length.
+  * **Bug Fix**: JoinPath keeps a trailing slash when the added path is a slash.
+
+# Release (2026-08-26)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.1
+  * **Bug Fix**: Fix broken AddLogger middleware since its insert point was removed.
+
+# Release (2026-08-25.2)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.0
+  * **Feature**: Set `Content-Length` inline when the request body is set via `SetStream`. The `ComputeContentLength` middleware is now deprecated.
+
+# Release (2026-08-25)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.10
+  * **Bug Fix**: Fix a data race on the underlying writer when an event stream is closed while an event write is in flight.
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
 # Release (2026-08-21)
 
 ## General Highlights
